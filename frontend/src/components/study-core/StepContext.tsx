@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { bootstrapRunContext } from '@/lib/study-core-api'
 import type { JournalOption } from '@/types/study-core'
 
@@ -114,46 +115,81 @@ export function StepContext({
         <p className="text-sm text-muted-foreground">Provide the minimum study details so the wizard can create a project context and manuscript record.</p>
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
+            <Label htmlFor="context-project-title">Project Name</Label>
             <Input
+              id="context-project-title"
               value={values.projectTitle}
-              placeholder="Project name"
+              placeholder="e.g., HF Readmission AAWE Run"
               onChange={(event) => onValueChange('projectTitle', event.target.value)}
             />
             {attemptedSubmit && errors.projectTitle ? <p className="text-xs text-destructive">{errors.projectTitle}</p> : null}
           </div>
           <div className="space-y-1">
-            <Input value={values.studyType} placeholder="Study type" onChange={(event) => onValueChange('studyType', event.target.value)} />
+            <Label htmlFor="context-study-type">Study Type</Label>
+            <Input
+              id="context-study-type"
+              value={values.studyType}
+              placeholder="e.g., Observational cohort"
+              onChange={(event) => onValueChange('studyType', event.target.value)}
+            />
             {attemptedSubmit && errors.studyType ? <p className="text-xs text-destructive">{errors.studyType}</p> : null}
           </div>
           <div className="space-y-1">
-            <Input value={values.diseaseFocus} placeholder="Disease focus" onChange={(event) => onValueChange('diseaseFocus', event.target.value)} />
+            <Label htmlFor="context-disease-focus">Disease Focus</Label>
+            <Input
+              id="context-disease-focus"
+              value={values.diseaseFocus}
+              placeholder="e.g., Heart failure"
+              onChange={(event) => onValueChange('diseaseFocus', event.target.value)}
+            />
             {attemptedSubmit && errors.diseaseFocus ? <p className="text-xs text-destructive">{errors.diseaseFocus}</p> : null}
           </div>
           <div className="space-y-1">
-            <Input value={values.population} placeholder="Population" onChange={(event) => onValueChange('population', event.target.value)} />
+            <Label htmlFor="context-population">Population</Label>
+            <Input
+              id="context-population"
+              value={values.population}
+              placeholder="e.g., Adults admitted with decompensated HF"
+              onChange={(event) => onValueChange('population', event.target.value)}
+            />
             {attemptedSubmit && errors.population ? <p className="text-xs text-destructive">{errors.population}</p> : null}
           </div>
           <div className="space-y-1">
+            <Label htmlFor="context-primary-outcome">Primary Outcome</Label>
             <Input
+              id="context-primary-outcome"
               value={values.primaryOutcome}
-              placeholder="Primary outcome"
+              placeholder="e.g., 90-day all-cause readmission"
+              aria-describedby="context-primary-outcome-help"
               onChange={(event) => onValueChange('primaryOutcome', event.target.value)}
             />
+            <p id="context-primary-outcome-help" className="text-xs text-muted-foreground">
+              Define one specific endpoint you want the manuscript to emphasize.
+            </p>
             {attemptedSubmit && errors.primaryOutcome ? <p className="text-xs text-destructive">{errors.primaryOutcome}</p> : null}
           </div>
           <div className="space-y-1">
+            <Label htmlFor="context-analysis-approach">Analysis Approach</Label>
             <Input
+              id="context-analysis-approach"
               value={values.analysisApproach}
-              placeholder="Analysis approach"
+              placeholder="e.g., Adjusted Cox model with bootstrap validation"
+              aria-describedby="context-analysis-approach-help"
               onChange={(event) => onValueChange('analysisApproach', event.target.value)}
             />
+            <p id="context-analysis-approach-help" className="text-xs text-muted-foreground">
+              Summarize the main modeling strategy and any validation method.
+            </p>
             {attemptedSubmit && errors.analysisApproach ? <p className="text-xs text-destructive">{errors.analysisApproach}</p> : null}
           </div>
         </div>
 
         <div className="max-w-md">
-          <p className="mb-1 text-xs text-muted-foreground">Target journal</p>
+          <Label htmlFor="context-target-journal" className="mb-1 block">
+            Target Journal
+          </Label>
           <select
+            id="context-target-journal"
             className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
             value={targetJournal}
             onChange={(event) => onTargetJournalChange(event.target.value)}
