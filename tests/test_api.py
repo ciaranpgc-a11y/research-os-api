@@ -38,6 +38,18 @@ def _assert_job_cost_estimates(payload: dict) -> None:
     assert payload["pricing_model"] == "gpt-4.1-mini"
 
 
+def _set_citation_state(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "research_os.services.citation_service._CLAIM_CITATION_IDS",
+        {
+            "intro-p1": ["CIT-002", "CIT-005"],
+            "methods-p1": ["CIT-003"],
+            "results-p1": ["CIT-001"],
+            "discussion-p1": ["CIT-004"],
+        },
+    )
+
+
 def test_health_returns_ok(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
@@ -298,6 +310,119 @@ def test_v1_run_aawe_qc_returns_summary(monkeypatch) -> None:
     assert payload["low_severity_count"] >= 0
     assert len(payload["issues"]) >= 1
     assert payload["issues"][0]["severity"] in {"high", "medium", "low"}
+
+
+def test_v1_list_aawe_citations_supports_query_filter(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    with TestClient(app) as client:
+        response = client.get("/v1/aawe/citations", params={"q": "tripod", "limit": 10})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) >= 1
+    assert payload[0]["id"] == "CIT-001"
+
+
+def test_v1_get_aawe_claim_citations_returns_attachment_state(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    _set_citation_state(monkeypatch)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/v1/aawe/claims/intro-p1/citations",
+            params={"required_slots": 3},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["claim_id"] == "intro-p1"
+    assert payload["attached_citation_ids"] == ["CIT-002", "CIT-005"]
+    assert payload["missing_slots"] == 1
+
+
+def test_v1_put_aawe_claim_citations_updates_claim_state(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    _set_citation_state(monkeypatch)
+
+    with TestClient(app) as client:
+        update_response = client.put(
+            "/v1/aawe/claims/methods-p1/citations",
+            json={
+                "citation_ids": ["CIT-001", "CIT-003", "CIT-001"],
+                "required_slots": 2,
+            },
+        )
+        get_response = client.get(
+            "/v1/aawe/claims/methods-p1/citations",
+            params={"required_slots": 3},
+        )
+
+    assert update_response.status_code == 200
+    update_payload = update_response.json()
+    assert update_payload["attached_citation_ids"] == ["CIT-001", "CIT-003"]
+    assert update_payload["missing_slots"] == 0
+
+    assert get_response.status_code == 200
+    get_payload = get_response.json()
+    assert get_payload["attached_citation_ids"] == ["CIT-001", "CIT-003"]
+    assert get_payload["missing_slots"] == 1
+
+
+def test_v1_put_aawe_claim_citations_returns_404_for_unknown_citation(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    _set_citation_state(monkeypatch)
+
+    with TestClient(app) as client:
+        response = client.put(
+            "/v1/aawe/claims/intro-p1/citations",
+            json={
+                "citation_ids": ["CIT-999"],
+                "required_slots": 1,
+            },
+        )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["type"] == "not_found"
+    assert "Unknown citation IDs: CIT-999" in response.json()["error"]["detail"]
+
+
+def test_v1_export_aawe_citations_returns_references_text(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    _set_citation_state(monkeypatch)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/aawe/citations/export",
+            json={"claim_id": "intro-p1"},
+        )
+
+    assert response.status_code == 200
+    assert "attachment; filename=\"aawe-references.txt\"" in response.headers.get(
+        "content-disposition", ""
+    )
+    assert "# AAWE References Export" in response.text
+    assert "McDonagh TA, Metra M, Adamo M, et al. Eur Heart J. 2023;44:3599-3726." in response.text
+
+
+def test_v1_aawe_selection_insight_reflects_claim_citation_updates(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    _set_citation_state(monkeypatch)
+
+    with TestClient(app) as client:
+        update_response = client.put(
+            "/v1/aawe/claims/intro-p1/citations",
+            json={"citation_ids": ["CIT-003"], "required_slots": 2},
+        )
+        insight_response = client.get("/v1/aawe/insights/claim/intro-p1")
+
+    assert update_response.status_code == 200
+    assert insight_response.status_code == 200
+    payload = insight_response.json()
+    assert payload["citations"] == [
+        "Harrell FE. Regression Modeling Strategies. Springer; 2024."
+    ]
+    assert any("1 citation slot still open." == note for note in payload["qc"])
 
 
 def test_v1_create_and_list_project_manuscripts(monkeypatch, tmp_path) -> None:

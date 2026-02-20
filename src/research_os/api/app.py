@@ -14,6 +14,10 @@ from fastapi.responses import PlainTextResponse
 
 from research_os.config import get_openai_api_key
 from research_os.api.schemas import (
+    CitationExportRequest,
+    CitationRecordResponse,
+    ClaimCitationStateResponse,
+    ClaimCitationUpdateRequest,
     DraftMethodsRequest,
     DraftMethodsSuccessResponse,
     DraftSectionRequest,
@@ -38,6 +42,13 @@ from research_os.api.schemas import (
     WizardBootstrapResponse,
     WizardInferRequest,
     WizardInferResponse,
+)
+from research_os.services.citation_service import (
+    CitationRecordNotFoundError,
+    export_citation_references,
+    get_claim_citation_state,
+    list_citation_records,
+    set_claim_citations,
 )
 from research_os.logging_config import configure_logging
 from research_os.services.project_service import (
@@ -123,7 +134,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -269,6 +280,76 @@ def v1_get_aawe_selection_insight(
 @app.post("/v1/aawe/qc/run", response_model=QCRunResponse, tags=["v1"])
 def v1_run_aawe_qc() -> QCRunResponse:
     return QCRunResponse(**run_qc_checks())
+
+
+@app.get("/v1/aawe/citations", response_model=list[CitationRecordResponse], tags=["v1"])
+def v1_list_aawe_citations(
+    q: str = Query(default="", max_length=200),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[CitationRecordResponse]:
+    records = list_citation_records(query=q, limit=limit)
+    return [CitationRecordResponse(**record) for record in records]
+
+
+@app.get(
+    "/v1/aawe/claims/{claim_id}/citations",
+    response_model=ClaimCitationStateResponse,
+    responses=NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_get_aawe_claim_citations(
+    claim_id: str,
+    required_slots: int = Query(default=0, ge=0, le=20),
+) -> ClaimCitationStateResponse | JSONResponse:
+    try:
+        payload = get_claim_citation_state(claim_id, required_slots=required_slots)
+        return ClaimCitationStateResponse(**payload)
+    except CitationRecordNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.put(
+    "/v1/aawe/claims/{claim_id}/citations",
+    response_model=ClaimCitationStateResponse,
+    responses=NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_set_aawe_claim_citations(
+    claim_id: str,
+    request: ClaimCitationUpdateRequest,
+) -> ClaimCitationStateResponse | JSONResponse:
+    try:
+        payload = set_claim_citations(
+            claim_id,
+            request.citation_ids,
+            required_slots=request.required_slots,
+        )
+        return ClaimCitationStateResponse(**payload)
+    except CitationRecordNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.post(
+    "/v1/aawe/citations/export",
+    response_model=None,
+    responses=NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_export_aawe_citations(
+    request: CitationExportRequest,
+) -> PlainTextResponse | JSONResponse:
+    try:
+        filename, body = export_citation_references(
+            citation_ids=request.citation_ids,
+            claim_id=request.claim_id,
+        )
+        return PlainTextResponse(
+            content=body,
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except CitationRecordNotFoundError as exc:
+        return _build_not_found_response(str(exc))
 
 
 @app.post("/v1/wizard/infer", response_model=WizardInferResponse, tags=["v1"])

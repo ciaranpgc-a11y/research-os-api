@@ -1,5 +1,10 @@
 from typing import Literal
 
+from research_os.services.citation_service import (
+    CitationRecordNotFoundError,
+    get_claim_citation_state,
+)
+
 SelectionType = Literal["claim", "result", "qc"]
 
 
@@ -405,6 +410,38 @@ _QC_INSIGHTS: dict[str, dict[str, object]] = {
 }
 
 
+def _with_claim_citations(item_id: str, payload: dict[str, object]) -> dict[str, object]:
+    base_citations = payload.get("citations")
+    required_slots = len(base_citations) if isinstance(base_citations, list) else 0
+    try:
+        citation_state = get_claim_citation_state(item_id, required_slots=required_slots)
+    except CitationRecordNotFoundError:
+        return payload
+
+    attached_citations = citation_state.get("attached_citations", [])
+    citation_texts = [
+        str(record.get("citation_text", "")).strip()
+        for record in attached_citations
+        if isinstance(record, dict)
+    ]
+    citation_texts = [citation for citation in citation_texts if citation]
+
+    existing_qc = payload.get("qc", [])
+    qc_items = [item for item in existing_qc if isinstance(item, str)]
+    qc_items = [item for item in qc_items if "citation slot" not in item.lower()]
+
+    missing_slots = citation_state.get("missing_slots", 0)
+    if isinstance(missing_slots, int) and missing_slots > 0:
+        label = "slot" if missing_slots == 1 else "slots"
+        qc_items.append(f"{missing_slots} citation {label} still open.")
+
+    return {
+        **payload,
+        "citations": citation_texts,
+        "qc": qc_items,
+    }
+
+
 def get_selection_insight(selection_type: SelectionType, item_id: str) -> dict[str, object]:
     lookup = {
         "claim": _CLAIM_INSIGHTS,
@@ -416,8 +453,13 @@ def get_selection_insight(selection_type: SelectionType, item_id: str) -> dict[s
         raise SelectionInsightNotFoundError(
             f"No insight payload found for {selection_type} '{item_id}'."
         )
+    enriched_payload = (
+        _with_claim_citations(item_id, payload)
+        if selection_type == "claim"
+        else payload
+    )
     return {
         "selection_type": selection_type,
         "item_id": item_id,
-        **payload,
+        **enriched_payload,
     }

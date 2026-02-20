@@ -227,3 +227,32 @@ class QCRunResponse(BaseModel):
     medium_severity_count: int
     low_severity_count: int
     issues: list[QCIssueSummaryResponse] = Field(default_factory=list)
+
+
+class CitationRecordResponse(BaseModel):
+    id: str
+    title: str
+    authors: str
+    journal: str
+    year: int
+    doi: str
+    url: str
+    citation_text: str
+
+
+class ClaimCitationStateResponse(BaseModel):
+    claim_id: str
+    required_slots: int
+    attached_citation_ids: list[str] = Field(default_factory=list)
+    attached_citations: list[CitationRecordResponse] = Field(default_factory=list)
+    missing_slots: int
+
+
+class ClaimCitationUpdateRequest(BaseModel):
+    citation_ids: list[str] = Field(default_factory=list)
+    required_slots: int = 0
+
+
+class CitationExportRequest(BaseModel):
+    citation_ids: list[str] | None = None
+    claim_id: str | None = None
