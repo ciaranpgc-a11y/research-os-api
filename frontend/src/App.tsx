@@ -9,6 +9,7 @@ import { InferenceRulesPage } from '@/pages/inference-rules-page'
 import { JournalTargetingPage } from '@/pages/journal-targeting-page'
 import { LiteraturePage } from '@/pages/literature-page'
 import { ManuscriptPage } from '@/pages/manuscript-page'
+import { ManuscriptTablesPage } from '@/pages/manuscript-tables-page'
 import { OverviewPage } from '@/pages/overview-page'
 import { QCDashboardPage } from '@/pages/qc-dashboard-page'
 import { ResultsPage } from '@/pages/results-page'
@@ -46,6 +47,7 @@ function App() {
         <Route path="/study-core" element={<StudyCorePage />} />
         <Route path="/results" element={<ResultsPage />} />
         <Route path="/manuscript" element={<Navigate to="/manuscript/introduction" replace />} />
+        <Route path="/manuscript/tables" element={<ManuscriptTablesPage />} />
         <Route path="/manuscript/:section" element={<ManuscriptPage />} />
         <Route path="/literature" element={<LiteraturePage />} />
         <Route path="/journal-targeting" element={<JournalTargetingPage />} />

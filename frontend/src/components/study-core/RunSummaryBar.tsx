@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { ReadinessScore } from '@/lib/readiness-score'
+import { useDataWorkspaceStore } from '@/store/use-data-workspace-store'
 import type { ContextStatus, JobStatus, PlanStatus, QcStatus } from '@/store/use-study-core-wizard-store'
 
 type RunSummaryBarProps = {
@@ -35,6 +36,9 @@ export function RunSummaryBar({
 }: RunSummaryBarProps) {
   const [showBreakdown, setShowBreakdown] = useState(false)
   const readinessVariant = readinessScore.status === 'Ready' ? 'default' : readinessScore.status === 'Moderate' ? 'secondary' : 'outline'
+  const dataFilesCount = useDataWorkspaceStore((state) => state.dataAssets.length)
+  const workingTablesCount = useDataWorkspaceStore((state) => state.workingTables.length)
+  const manuscriptTablesCount = useDataWorkspaceStore((state) => state.manuscriptTables.length)
 
   return (
     <div className="sticky top-0 z-20 rounded-lg border border-border bg-background/95 p-3 shadow-sm backdrop-blur">
@@ -78,6 +82,9 @@ export function RunSummaryBar({
         <Badge variant={qcStatus === 'pass' ? 'default' : 'outline'}>
           QC status: {qcStatus}
         </Badge>
+        <Badge variant="outline">Data files: {dataFilesCount}</Badge>
+        <Badge variant="outline">Working tables: {workingTablesCount}</Badge>
+        <Badge variant="outline">Manuscript tables: {manuscriptTablesCount}</Badge>
       </div>
 
       {showBreakdown ? (

@@ -23,7 +23,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: 'STUDY DATA',
     items: [
-      { label: 'Results', path: '/results', badge: '2', badgeTone: 'neutral' },
+      { label: 'Data Library', path: '/results', badge: '2', badgeTone: 'neutral' },
       { label: 'Literature', path: '/literature' },
     ],
   },
