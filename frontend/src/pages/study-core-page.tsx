@@ -72,7 +72,7 @@ function buildResearchFrameSignature(values: ContextFormValues, targetJournal: s
 }
 
 const STEP_ITEMS: WizardStepItem[] = [
-  { id: 1, title: 'Research Frame', helper: 'Define inferential contract.' },
+  { id: 1, title: 'Research Overview', helper: 'Define study framing.' },
   { id: 2, title: 'Plan Sections', helper: 'Generate and edit outline.' },
   { id: 3, title: 'Run Generation', helper: 'Select sections and run.' },
   { id: 4, title: 'Draft Review', helper: 'Accept, regenerate, and edit.' },
@@ -422,10 +422,10 @@ export function StudyCorePage() {
     if (currentStep === 1) {
       return (
         <Step1Panel
-          objective={contextValues.researchObjective}
+          summary={contextValues.researchObjective}
           researchType={contextValues.studyArchitecture}
           guardrailsEnabled={guardrailsEnabled}
-          onReplaceObjective={(value) =>
+          onReplaceSummary={(value) =>
             setContextValues((current) => ({
               ...current,
               researchObjective: value,
@@ -464,7 +464,7 @@ export function StudyCorePage() {
         </div>
       </header>
 
-      <div className={showRightPanel ? 'grid items-start gap-4 xl:grid-cols-[190px_minmax(0,1fr)_300px]' : 'grid items-start gap-4 xl:grid-cols-[190px_minmax(0,1fr)]'}>
+      <div className={showRightPanel ? 'grid items-start gap-4 xl:grid-cols-[180px_minmax(0,1fr)_320px]' : 'grid items-start gap-4 xl:grid-cols-[180px_minmax(0,1fr)]'}>
         <div className="rounded-lg border border-border/80 bg-card p-2">
           <StudyCoreStepper
             steps={STEP_ITEMS}
