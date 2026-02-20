@@ -2,6 +2,8 @@ export type NavItem = {
   label: string
   path: string
   badge?: string
+  badgeTone?: 'neutral' | 'warning'
+  dividerBefore?: boolean
 }
 
 export type NavGroup = {
@@ -14,17 +16,15 @@ export const NAV_GROUPS: NavGroup[] = [
     title: 'WORKSPACE',
     items: [
       { label: 'Overview', path: '/overview' },
-      { label: 'Study Core', path: '/study-core' },
-      { label: 'QC Dashboard', path: '/qc', badge: '3' },
+      { label: 'Run Wizard', path: '/study-core' },
+      { label: 'Quality Check', path: '/qc', badge: '3', badgeTone: 'warning' },
     ],
   },
   {
     title: 'STUDY DATA',
     items: [
-      { label: 'Results', path: '/results', badge: '2' },
+      { label: 'Results', path: '/results', badge: '2', badgeTone: 'neutral' },
       { label: 'Literature', path: '/literature' },
-      { label: 'Figures', path: '/manuscript/figures' },
-      { label: 'Tables', path: '/manuscript/tables' },
     ],
   },
   {
@@ -35,9 +35,11 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Introduction', path: '/manuscript/introduction' },
       { label: 'Methods', path: '/manuscript/methods' },
       { label: 'Results', path: '/manuscript/results' },
-      { label: 'Discussion', path: '/manuscript/discussion', badge: '1' },
+      { label: 'Discussion', path: '/manuscript/discussion', badge: '1', badgeTone: 'warning' },
       { label: 'Limitations', path: '/manuscript/limitations' },
       { label: 'Conclusion', path: '/manuscript/conclusion' },
+      { label: 'Figures', path: '/manuscript/figures', dividerBefore: true },
+      { label: 'Tables', path: '/manuscript/tables' },
     ],
   },
   {
@@ -52,4 +54,3 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
 ]
-
