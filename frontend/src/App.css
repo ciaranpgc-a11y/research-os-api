@@ -35,11 +35,98 @@
   animation: aurora-float 11s ease-in-out infinite alternate;
 }
 
-.panel {
+.app-shell {
   position: relative;
   z-index: 1;
+  width: min(1500px, 100%);
   margin: 0 auto;
-  width: min(980px, 100%);
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 280px;
+  gap: 1rem;
+  align-items: start;
+}
+
+.sidebar {
+  border-radius: 18px;
+  border: 1px solid var(--line-soft);
+  background: rgba(8, 17, 34, 0.78);
+  box-shadow: 0 20px 42px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(6px);
+  padding: 0.9rem;
+  display: grid;
+  gap: 0.8rem;
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+}
+
+.sidebar-section {
+  border-radius: 12px;
+  border: 1px solid rgba(117, 161, 219, 0.3);
+  background: rgba(9, 20, 40, 0.8);
+  padding: 0.7rem 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.sidebar-section h3 {
+  margin: 0;
+  color: #d9e8ff;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.side-link {
+  color: #b8d9ff;
+  text-decoration: none;
+  padding: 0.35rem 0.45rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 0.9rem;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.side-link:hover {
+  border-color: rgba(74, 201, 185, 0.45);
+  background: rgba(19, 67, 73, 0.26);
+}
+
+.sidebar-kv {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: baseline;
+  color: #d6e4fb;
+  font-size: 0.86rem;
+}
+
+.sidebar-kv span {
+  color: #afc1df;
+}
+
+.sidebar-kv strong {
+  color: #f1f6ff;
+  font-size: 0.88rem;
+}
+
+.sidebar-kv code {
+  color: #d9f7f2;
+  font-size: 0.78rem;
+}
+
+.sidebar-note {
+  margin: 0;
+  color: #b9cae7;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.panel {
+  position: relative;
+  width: 100%;
   border-radius: 22px;
   border: 1px solid var(--line-soft);
   background: var(--bg-panel);
@@ -656,7 +743,7 @@
   position: relative;
   z-index: 1;
   margin: 0 auto;
-  width: min(900px, 100%);
+  width: min(1500px, 100%);
   display: flex;
   gap: 0.55rem;
   align-items: center;
@@ -674,6 +761,18 @@
   }
   to {
     transform: translate3d(3%, 2%, 0) scale(1.1);
+  }
+}
+
+@media (max-width: 1240px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: relative;
+    top: auto;
+    max-height: none;
   }
 }
 

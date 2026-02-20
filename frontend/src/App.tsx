@@ -474,6 +474,14 @@ function App() {
       }),
     [quickDraftSectionOrder, quickGenerationDrafts],
   )
+  const quickDraftReadyCount = useMemo(
+    () =>
+      quickDraftSectionOrder.filter((section) => {
+        const draft = quickGenerationDrafts[section] ?? ''
+        return draft.trim().length > 0
+      }).length,
+    [quickDraftSectionOrder, quickGenerationDrafts],
+  )
   const dynamicQuestionIds = useMemo(() => {
     if (!wizardInference) {
       return new Set<string>()
@@ -1572,7 +1580,43 @@ function App() {
   return (
     <main className="page">
       <div className="aurora" />
-      <section className="panel">
+      <div className="app-shell">
+        <aside className="sidebar left-sidebar">
+          <div className="sidebar-section">
+            <h3>Workspace</h3>
+            <a className="side-link" href="#quick-studio">
+              Quick Draft Studio
+            </a>
+            <a className="side-link" href="#single-studio">
+              Single-Section Generator
+            </a>
+            <a className="side-link" href="#setup-wizard">
+              Project Setup Wizard
+            </a>
+            <a className="side-link" href="#advanced-workspace">
+              Advanced Workspace
+            </a>
+          </div>
+          <div className="sidebar-section">
+            <h3>Session</h3>
+            <p className="sidebar-kv">
+              <span>API</span>
+              <strong>{healthText}</strong>
+            </p>
+            <p className="sidebar-kv">
+              <span>Last request</span>
+              <code>{requestId || '—'}</code>
+            </p>
+          </div>
+          <div className="sidebar-section">
+            <h3>Usage tip</h3>
+            <p className="sidebar-note">
+              Use Quick Draft Studio for rapid generation, then move into Advanced Workspace only when you need branch
+              management, snapshots, or async jobs.
+            </p>
+          </div>
+        </aside>
+        <section className="panel">
         <header className="panel-header">
           <p className="eyebrow">Research OS</p>
           <h1>Research Drafting Console</h1>
@@ -1580,7 +1624,7 @@ function App() {
           <span className={`health-chip health-${health}`}>{healthText}</span>
         </header>
 
-        <section className="section-block">
+        <section className="section-block" id="quick-studio">
           <div className="section-heading">
             <h2>Quick Draft Studio</h2>
             <span className="chip-inline">Primary workflow</span>
@@ -1672,7 +1716,7 @@ function App() {
           )}
         </section>
 
-        <section className="section-block">
+        <section className="section-block" id="single-studio">
           <h2>Single-Section Generator</h2>
           <p className="section-note">Optional: generate one section at a time.</p>
           <form onSubmit={onSubmit} className="composer">
@@ -1722,7 +1766,7 @@ function App() {
           )}
         </section>
 
-        <section className="section-block">
+        <section className="section-block" id="setup-wizard">
           <div className="section-heading">
             <h2>Project Setup Wizard</h2>
           </div>
@@ -1909,7 +1953,7 @@ function App() {
           )}
         </section>
 
-        <section className="section-block">
+        <section className="section-block" id="advanced-workspace">
           <div className="section-heading">
             <h2>Advanced Workspace</h2>
             <button type="button" className="ghost-button" onClick={loadProjects} disabled={isLoadingProjects}>
@@ -2345,7 +2389,61 @@ function App() {
             </section>
           )}
         </section>
-      </section>
+        </section>
+        <aside className="sidebar right-sidebar">
+          <div className="sidebar-section">
+            <h3>Quick Studio</h3>
+            <p className="sidebar-kv">
+              <span>Sections selected</span>
+              <strong>{quickGenerationSections.length}</strong>
+            </p>
+            <p className="sidebar-kv">
+              <span>Drafts ready</span>
+              <strong>{quickDraftReadyCount}</strong>
+            </p>
+            <p className="sidebar-kv">
+              <span>Est. high cost</span>
+              <strong>{formatUsd(quickGenerationEstimate.estimatedCostUsdHigh)}</strong>
+            </p>
+          </div>
+          <div className="sidebar-section">
+            <h3>Project Context</h3>
+            <p className="sidebar-kv">
+              <span>Projects</span>
+              <strong>{projects.length}</strong>
+            </p>
+            <p className="sidebar-kv">
+              <span>Manuscripts</span>
+              <strong>{manuscripts.length}</strong>
+            </p>
+            <p className="sidebar-note">
+              {selectedProject ? `Selected project: ${selectedProject.title}` : 'No project selected.'}
+            </p>
+            {selectedManuscript && <p className="sidebar-note">Branch: {selectedManuscript.branch_name}</p>}
+          </div>
+          <div className="sidebar-section">
+            <h3>Generation Status</h3>
+            {activeGenerationJob ? (
+              <>
+                <p className="sidebar-kv">
+                  <span>Status</span>
+                  <strong>{humanizeIdentifier(activeGenerationJob.status)}</strong>
+                </p>
+                <p className="sidebar-kv">
+                  <span>Progress</span>
+                  <strong>{activeGenerationJob.progress_percent}%</strong>
+                </p>
+                <p className="sidebar-kv">
+                  <span>Est. high cost</span>
+                  <strong>{formatUsd(activeGenerationJob.estimated_cost_usd_high)}</strong>
+                </p>
+              </>
+            ) : (
+              <p className="sidebar-note">No active async generation job.</p>
+            )}
+          </div>
+        </aside>
+      </div>
       <section className="api-hint">
         <p>API base URL</p>
         <code>{API_BASE_URL}</code>
