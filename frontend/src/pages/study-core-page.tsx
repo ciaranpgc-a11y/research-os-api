@@ -7,6 +7,7 @@ import { StepLinkQcExport } from '@/components/study-core/StepLinkQcExport'
 import { StepPlan } from '@/components/study-core/StepPlan'
 import { StepRun } from '@/components/study-core/StepRun'
 import { StudyCoreStepper, type WizardStepItem } from '@/components/study-core/StudyCoreStepper'
+import { computeReadinessScore } from '@/lib/readiness-score'
 import { fetchJournalOptions } from '@/lib/study-core-api'
 import { useStudyCoreWizardStore, type WizardStep } from '@/store/use-study-core-wizard-store'
 import type {
@@ -59,6 +60,9 @@ export function StudyCorePage() {
   const jobStatus = useStudyCoreWizardStore((state) => state.jobStatus)
   const acceptedSections = useStudyCoreWizardStore((state) => state.acceptedSections)
   const qcStatus = useStudyCoreWizardStore((state) => state.qcStatus)
+  const contextFields = useStudyCoreWizardStore((state) => state.contextFields)
+  const readinessSections = useStudyCoreWizardStore((state) => state.selectedSections)
+  const qcSeverityCounts = useStudyCoreWizardStore((state) => state.qcSeverityCounts)
   const devOverride = useStudyCoreWizardStore((state) => state.devOverride)
   const setCurrentStep = useStudyCoreWizardStore((state) => state.setCurrentStep)
   const setContextStatus = useStudyCoreWizardStore((state) => state.setContextStatus)
@@ -66,6 +70,9 @@ export function StudyCorePage() {
   const setJobStatus = useStudyCoreWizardStore((state) => state.setJobStatus)
   const setAcceptedSections = useStudyCoreWizardStore((state) => state.setAcceptedSections)
   const setQcStatus = useStudyCoreWizardStore((state) => state.setQcStatus)
+  const setContextFields = useStudyCoreWizardStore((state) => state.setContextFields)
+  const setWizardSections = useStudyCoreWizardStore((state) => state.setSelectedSections)
+  const setQcSeverityCounts = useStudyCoreWizardStore((state) => state.setQcSeverityCounts)
   const canNavigateToStep = useStudyCoreWizardStore((state) => state.canNavigateToStep)
 
   const [journals, setJournals] = useState<JournalOption[]>([])
@@ -158,6 +165,27 @@ export function StudyCorePage() {
   useEffect(() => {
     setAcceptedSections(acceptedSectionKeys.length)
   }, [acceptedSectionKeys, setAcceptedSections])
+
+  useEffect(() => {
+    setContextFields(contextValues)
+  }, [contextValues, setContextFields])
+
+  useEffect(() => {
+    setWizardSections(selectedSections)
+  }, [selectedSections, setWizardSections])
+
+  const readinessScore = useMemo(
+    () =>
+      computeReadinessScore({
+        contextFields,
+        planStatus,
+        selectedSections: readinessSections,
+        acceptedSections,
+        qcStatus,
+        qcSeverityCounts,
+      }),
+    [acceptedSections, contextFields, planStatus, qcSeverityCounts, qcStatus, readinessSections],
+  )
 
   const onContextSaved = (payload: {
     projectId: string
@@ -364,6 +392,7 @@ export function StudyCorePage() {
         links={links}
         onLinksChange={setLinks}
         onQcStatusChange={setQcStatus}
+        onQcSeverityCountsChange={setQcSeverityCounts}
         onStatus={setStatus}
         onError={setError}
         onRegisterPrimaryExportAction={setPrimaryExportAction}
@@ -384,6 +413,7 @@ export function StudyCorePage() {
         jobStatus={jobStatus}
         acceptedSections={acceptedSections}
         qcStatus={qcStatus}
+        readinessScore={readinessScore}
         primaryActionLabel={summaryState.label}
         nextActionText={summaryState.nextActionText}
         onPrimaryAction={summaryState.onAction}

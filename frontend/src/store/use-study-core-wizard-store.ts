@@ -5,6 +5,34 @@ export type ContextStatus = 'empty' | 'saved'
 export type PlanStatus = 'empty' | 'built'
 export type JobStatus = 'idle' | 'running' | 'succeeded' | 'failed'
 export type QcStatus = 'idle' | 'pass' | 'warn' | 'fail'
+export type ContextReadinessFields = {
+  projectTitle: string
+  studyType: string
+  diseaseFocus: string
+  population: string
+  primaryOutcome: string
+  analysisApproach: string
+}
+export type QcSeverityCounts = {
+  high: number
+  medium: number
+  low: number
+}
+
+const DEFAULT_CONTEXT_READINESS_FIELDS: ContextReadinessFields = {
+  projectTitle: '',
+  studyType: '',
+  diseaseFocus: '',
+  population: '',
+  primaryOutcome: '',
+  analysisApproach: '',
+}
+
+const DEFAULT_QC_SEVERITY_COUNTS: QcSeverityCounts = {
+  high: 0,
+  medium: 0,
+  low: 0,
+}
 
 type WizardStore = {
   currentStep: WizardStep
@@ -13,6 +41,9 @@ type WizardStore = {
   jobStatus: JobStatus
   acceptedSections: number
   qcStatus: QcStatus
+  contextFields: ContextReadinessFields
+  selectedSections: string[]
+  qcSeverityCounts: QcSeverityCounts
   devOverride: boolean
   setCurrentStep: (step: WizardStep) => void
   setContextStatus: (status: ContextStatus) => void
@@ -20,6 +51,9 @@ type WizardStore = {
   setJobStatus: (status: JobStatus) => void
   setAcceptedSections: (count: number) => void
   setQcStatus: (status: QcStatus) => void
+  setContextFields: (fields: ContextReadinessFields) => void
+  setSelectedSections: (sections: string[]) => void
+  setQcSeverityCounts: (counts: QcSeverityCounts) => void
   canNavigateToStep: (targetStep: WizardStep) => boolean
   resetWizard: () => void
 }
@@ -41,6 +75,9 @@ export const useStudyCoreWizardStore = create<WizardStore>((set, get) => ({
   jobStatus: 'idle',
   acceptedSections: 0,
   qcStatus: 'idle',
+  contextFields: DEFAULT_CONTEXT_READINESS_FIELDS,
+  selectedSections: ['introduction', 'methods', 'results', 'discussion'],
+  qcSeverityCounts: DEFAULT_QC_SEVERITY_COUNTS,
   devOverride: import.meta.env.DEV,
   setCurrentStep: (step) => set({ currentStep: clampStep(step) }),
   setContextStatus: (status) => set({ contextStatus: status }),
@@ -48,6 +85,16 @@ export const useStudyCoreWizardStore = create<WizardStore>((set, get) => ({
   setJobStatus: (status) => set({ jobStatus: status }),
   setAcceptedSections: (count) => set({ acceptedSections: Math.max(0, count) }),
   setQcStatus: (status) => set({ qcStatus: status }),
+  setContextFields: (fields) => set({ contextFields: { ...fields } }),
+  setSelectedSections: (sections) => set({ selectedSections: [...sections] }),
+  setQcSeverityCounts: (counts) =>
+    set({
+      qcSeverityCounts: {
+        high: Math.max(0, counts.high),
+        medium: Math.max(0, counts.medium),
+        low: Math.max(0, counts.low),
+      },
+    }),
   canNavigateToStep: (targetStep) => {
     const state = get()
     if (state.devOverride) {
@@ -87,6 +134,8 @@ export const useStudyCoreWizardStore = create<WizardStore>((set, get) => ({
       jobStatus: 'idle',
       acceptedSections: 0,
       qcStatus: 'idle',
+      contextFields: DEFAULT_CONTEXT_READINESS_FIELDS,
+      selectedSections: ['introduction', 'methods', 'results', 'discussion'],
+      qcSeverityCounts: DEFAULT_QC_SEVERITY_COUNTS,
     }),
 }))
-

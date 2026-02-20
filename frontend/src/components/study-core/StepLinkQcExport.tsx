@@ -24,6 +24,7 @@ type StepLinkQcExportProps = {
   links: ClaimLinkSuggestion[]
   onLinksChange: (links: ClaimLinkSuggestion[]) => void
   onQcStatusChange: (status: 'idle' | 'pass' | 'warn' | 'fail') => void
+  onQcSeverityCountsChange: (counts: { high: number; medium: number; low: number }) => void
   onStatus: (message: string) => void
   onError: (message: string) => void
   onRegisterPrimaryExportAction?: (action: (() => void) | null) => void
@@ -68,6 +69,7 @@ export function StepLinkQcExport({
   links,
   onLinksChange,
   onQcStatusChange,
+  onQcSeverityCountsChange,
   onStatus,
   onError,
   onRegisterPrimaryExportAction,
@@ -90,6 +92,13 @@ export function StepLinkQcExport({
   useEffect(() => {
     onQcStatusChange(qcStatus)
   }, [onQcStatusChange, qcStatus])
+  useEffect(() => {
+    onQcSeverityCountsChange({
+      high: qcRun?.high_severity_count ?? 0,
+      medium: qcRun?.medium_severity_count ?? 0,
+      low: qcRun?.low_severity_count ?? 0,
+    })
+  }, [onQcSeverityCountsChange, qcRun])
 
   const qcChecklist = useMemo(() => {
     const issues = qcRun?.issues ?? []
