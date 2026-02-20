@@ -73,9 +73,21 @@ class ManuscriptSectionsUpdateRequest(BaseModel):
     sections: dict[str, str] = Field(default_factory=dict)
 
 
+class ManuscriptSnapshotCreateRequest(BaseModel):
+    label: str | None = None
+    include_sections: list[str] | None = None
+
+
 class ManuscriptGenerateRequest(BaseModel):
     sections: list[str] | None = None
     notes_context: str
+    max_estimated_cost_usd: float | None = None
+    project_daily_budget_usd: float | None = None
+
+
+class GenerationJobRetryRequest(BaseModel):
+    max_estimated_cost_usd: float | None = None
+    project_daily_budget_usd: float | None = None
 
 
 class ManuscriptResponse(BaseModel):
@@ -86,6 +98,17 @@ class ManuscriptResponse(BaseModel):
     sections: dict[str, str]
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ManuscriptSnapshotResponse(BaseModel):
+    id: str
+    project_id: str
+    manuscript_id: str
+    label: str
+    sections: dict[str, str]
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -133,6 +156,9 @@ class GenerationJobResponse(BaseModel):
     project_id: str
     manuscript_id: str
     status: str
+    cancel_requested: bool = False
+    run_count: int = 1
+    parent_job_id: str | None = None
     sections: list[str]
     notes_context: str
     progress_percent: int

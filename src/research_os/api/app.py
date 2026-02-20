@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import FastAPI
+from fastapi import Query
 from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -16,11 +17,14 @@ from research_os.api.schemas import (
     DraftSectionRequest,
     DraftSectionSuccessResponse,
     ErrorResponse,
+    GenerationJobRetryRequest,
     GenerationJobResponse,
     HealthResponse,
     JournalOptionResponse,
     ManuscriptCreateRequest,
     ManuscriptGenerateRequest,
+    ManuscriptSnapshotCreateRequest,
+    ManuscriptSnapshotResponse,
     ManuscriptSectionsUpdateRequest,
     ManuscriptResponse,
     ProjectCreateRequest,
@@ -34,18 +38,29 @@ from research_os.logging_config import configure_logging
 from research_os.services.project_service import (
     ManuscriptBranchConflictError,
     ManuscriptNotFoundError,
+    ManuscriptSnapshotNotFoundError,
     ProjectNotFoundError,
+    create_manuscript_snapshot,
     create_manuscript_for_project,
     create_project_record,
     get_project_manuscript,
+    list_manuscript_snapshots,
     list_project_manuscripts,
     list_project_records,
+    restore_manuscript_snapshot,
     update_project_manuscript_sections,
 )
 from research_os.services.generation_job_service import (
+    GenerationBudgetExceededError,
+    GenerationDailyBudgetExceededError,
+    GenerationJobConflictError,
     GenerationJobNotFoundError,
+    GenerationJobStateError,
+    cancel_generation_job,
     enqueue_generation_job,
     get_generation_job_record,
+    list_generation_jobs_for_manuscript,
+    retry_generation_job,
     serialize_generation_job,
 )
 from research_os.services.manuscript_service import (
@@ -333,10 +348,79 @@ def v1_update_manuscript_sections(
         return _build_not_found_response(str(exc))
 
 
+@app.get(
+    "/v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots",
+    response_model=list[ManuscriptSnapshotResponse],
+    responses=NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_list_manuscript_snapshots(
+    project_id: str, manuscript_id: str, limit: int = Query(default=20, ge=1, le=100)
+) -> list[ManuscriptSnapshotResponse] | JSONResponse:
+    try:
+        snapshots = list_manuscript_snapshots(
+            project_id=project_id,
+            manuscript_id=manuscript_id,
+            limit=limit,
+        )
+        return [ManuscriptSnapshotResponse.model_validate(snapshot) for snapshot in snapshots]
+    except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.post(
+    "/v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots",
+    response_model=ManuscriptSnapshotResponse,
+    responses=NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_create_manuscript_snapshot(
+    project_id: str,
+    manuscript_id: str,
+    request: ManuscriptSnapshotCreateRequest,
+) -> ManuscriptSnapshotResponse | JSONResponse:
+    try:
+        snapshot = create_manuscript_snapshot(
+            project_id=project_id,
+            manuscript_id=manuscript_id,
+            label=request.label,
+            include_sections=request.include_sections,
+        )
+        return ManuscriptSnapshotResponse.model_validate(snapshot)
+    except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.post(
+    "/v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots/{snapshot_id}/restore",
+    response_model=ManuscriptResponse,
+    responses=NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_restore_manuscript_snapshot(
+    project_id: str,
+    manuscript_id: str,
+    snapshot_id: str,
+) -> ManuscriptResponse | JSONResponse:
+    try:
+        manuscript = restore_manuscript_snapshot(
+            project_id=project_id,
+            manuscript_id=manuscript_id,
+            snapshot_id=snapshot_id,
+        )
+        return ManuscriptResponse.model_validate(manuscript)
+    except (
+        ProjectNotFoundError,
+        ManuscriptNotFoundError,
+        ManuscriptSnapshotNotFoundError,
+    ) as exc:
+        return _build_not_found_response(str(exc))
+
+
 @app.post(
     "/v1/projects/{project_id}/manuscripts/{manuscript_id}/generate",
     response_model=GenerationJobResponse,
-    responses=NOT_FOUND_RESPONSES,
+    responses=NOT_FOUND_RESPONSES | CONFLICT_RESPONSES,
     tags=["v1"],
 )
 def v1_generate_manuscript(
@@ -350,8 +434,36 @@ def v1_generate_manuscript(
             manuscript_id=manuscript_id,
             sections=request.sections,
             notes_context=request.notes_context,
+            max_estimated_cost_usd=request.max_estimated_cost_usd,
+            project_daily_budget_usd=request.project_daily_budget_usd,
         )
         return GenerationJobResponse(**serialize_generation_job(job))
+    except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+    except (
+        GenerationBudgetExceededError,
+        GenerationDailyBudgetExceededError,
+        GenerationJobConflictError,
+    ) as exc:
+        return _build_conflict_response(str(exc))
+
+
+@app.get(
+    "/v1/projects/{project_id}/manuscripts/{manuscript_id}/generation-jobs",
+    response_model=list[GenerationJobResponse],
+    responses=NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_list_generation_jobs(
+    project_id: str, manuscript_id: str, limit: int = Query(default=20, ge=1, le=100)
+) -> list[GenerationJobResponse] | JSONResponse:
+    try:
+        jobs = list_generation_jobs_for_manuscript(
+            project_id=project_id,
+            manuscript_id=manuscript_id,
+            limit=limit,
+        )
+        return [GenerationJobResponse(**serialize_generation_job(job)) for job in jobs]
     except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
         return _build_not_found_response(str(exc))
 
@@ -368,6 +480,49 @@ def v1_get_generation_job(job_id: str) -> GenerationJobResponse | JSONResponse:
         return GenerationJobResponse(**serialize_generation_job(job))
     except GenerationJobNotFoundError as exc:
         return _build_not_found_response(str(exc))
+
+
+@app.post(
+    "/v1/generation-jobs/{job_id}/cancel",
+    response_model=GenerationJobResponse,
+    responses=NOT_FOUND_RESPONSES | CONFLICT_RESPONSES,
+    tags=["v1"],
+)
+def v1_cancel_generation_job(job_id: str) -> GenerationJobResponse | JSONResponse:
+    try:
+        job = cancel_generation_job(job_id)
+        return GenerationJobResponse(**serialize_generation_job(job))
+    except GenerationJobNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except GenerationJobStateError as exc:
+        return _build_conflict_response(str(exc))
+
+
+@app.post(
+    "/v1/generation-jobs/{job_id}/retry",
+    response_model=GenerationJobResponse,
+    responses=NOT_FOUND_RESPONSES | CONFLICT_RESPONSES,
+    tags=["v1"],
+)
+def v1_retry_generation_job(
+    job_id: str, request: GenerationJobRetryRequest
+) -> GenerationJobResponse | JSONResponse:
+    try:
+        job = retry_generation_job(
+            job_id,
+            max_estimated_cost_usd=request.max_estimated_cost_usd,
+            project_daily_budget_usd=request.project_daily_budget_usd,
+        )
+        return GenerationJobResponse(**serialize_generation_job(job))
+    except GenerationJobNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except (
+        GenerationJobStateError,
+        GenerationBudgetExceededError,
+        GenerationDailyBudgetExceededError,
+        GenerationJobConflictError,
+    ) as exc:
+        return _build_conflict_response(str(exc))
 
 
 @app.post(

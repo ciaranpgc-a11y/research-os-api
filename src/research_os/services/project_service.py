@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from research_os.db import Manuscript, Project, create_all_tables, session_scope
+from research_os.db import (
+    Manuscript,
+    ManuscriptSnapshot,
+    Project,
+    create_all_tables,
+    session_scope,
+)
 
 DEFAULT_SECTIONS = (
     "title",
@@ -28,6 +36,15 @@ class ManuscriptNotFoundError(RuntimeError):
     """Raised when a manuscript cannot be located for the given project."""
 
 
+class ManuscriptSnapshotNotFoundError(RuntimeError):
+    """Raised when a snapshot cannot be located for the given manuscript."""
+
+
+def _utc_timestamp_label() -> str:
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+    return f"Snapshot {timestamp}"
+
+
 def _materialize_sections(section_names: list[str] | None) -> dict[str, str]:
     names = section_names if section_names else list(DEFAULT_SECTIONS)
     return {name.strip(): "" for name in names if name.strip()}
@@ -41,6 +58,21 @@ def _normalize_section_updates(sections: dict[str, str]) -> dict[str, str]:
             continue
         normalized[key] = content
     return normalized
+
+
+def _select_snapshot_sections(
+    sections: dict[str, str], include_sections: list[str] | None
+) -> dict[str, str]:
+    if not include_sections:
+        return dict(sections)
+    selected: dict[str, str] = {}
+    for section_name in include_sections:
+        key = section_name.strip()
+        if not key:
+            continue
+        if key in sections:
+            selected[key] = sections[key]
+    return selected
 
 
 def create_project_record(
@@ -158,6 +190,120 @@ def update_project_manuscript_sections(
         current_sections = dict(manuscript.sections or {})
         current_sections.update(_normalize_section_updates(sections))
         manuscript.sections = current_sections
+        session.flush()
+        session.refresh(manuscript)
+        session.expunge(manuscript)
+        return manuscript
+
+
+def create_manuscript_snapshot(
+    *,
+    project_id: str,
+    manuscript_id: str,
+    label: str | None = None,
+    include_sections: list[str] | None = None,
+) -> ManuscriptSnapshot:
+    create_all_tables()
+    with session_scope() as session:
+        project = session.get(Project, project_id)
+        if project is None:
+            raise ProjectNotFoundError(f"Project '{project_id}' was not found.")
+        manuscript = session.get(Manuscript, manuscript_id)
+        if manuscript is None or manuscript.project_id != project_id:
+            raise ManuscriptNotFoundError(
+                (
+                    f"Manuscript '{manuscript_id}' was not found for project "
+                    f"'{project_id}'."
+                )
+            )
+
+        manuscript_sections = dict(manuscript.sections or {})
+        snapshot_sections = _select_snapshot_sections(
+            manuscript_sections, include_sections
+        )
+        normalized_label = (label or "").strip() or _utc_timestamp_label()
+        snapshot = ManuscriptSnapshot(
+            project_id=project_id,
+            manuscript_id=manuscript_id,
+            label=normalized_label,
+            sections=snapshot_sections,
+        )
+        session.add(snapshot)
+        session.flush()
+        session.refresh(snapshot)
+        session.expunge(snapshot)
+        return snapshot
+
+
+def list_manuscript_snapshots(
+    project_id: str, manuscript_id: str, *, limit: int = 20
+) -> list[ManuscriptSnapshot]:
+    create_all_tables()
+    with session_scope() as session:
+        project = session.get(Project, project_id)
+        if project is None:
+            raise ProjectNotFoundError(f"Project '{project_id}' was not found.")
+        manuscript = session.get(Manuscript, manuscript_id)
+        if manuscript is None or manuscript.project_id != project_id:
+            raise ManuscriptNotFoundError(
+                (
+                    f"Manuscript '{manuscript_id}' was not found for project "
+                    f"'{project_id}'."
+                )
+            )
+        normalized_limit = max(1, min(limit, 100))
+        snapshots = session.scalars(
+            select(ManuscriptSnapshot)
+            .where(
+                ManuscriptSnapshot.project_id == project_id,
+                ManuscriptSnapshot.manuscript_id == manuscript_id,
+            )
+            .order_by(ManuscriptSnapshot.created_at.desc())
+            .limit(normalized_limit)
+        ).all()
+        for snapshot in snapshots:
+            session.expunge(snapshot)
+        return snapshots
+
+
+def restore_manuscript_snapshot(
+    *,
+    project_id: str,
+    manuscript_id: str,
+    snapshot_id: str,
+) -> Manuscript:
+    create_all_tables()
+    with session_scope() as session:
+        project = session.get(Project, project_id)
+        if project is None:
+            raise ProjectNotFoundError(f"Project '{project_id}' was not found.")
+        manuscript = session.get(Manuscript, manuscript_id)
+        if manuscript is None or manuscript.project_id != project_id:
+            raise ManuscriptNotFoundError(
+                (
+                    f"Manuscript '{manuscript_id}' was not found for project "
+                    f"'{project_id}'."
+                )
+            )
+
+        snapshot = session.get(ManuscriptSnapshot, snapshot_id)
+        if snapshot is None:
+            raise ManuscriptSnapshotNotFoundError(
+                f"Snapshot '{snapshot_id}' was not found."
+            )
+        if (
+            snapshot.project_id != project_id
+            or snapshot.manuscript_id != manuscript_id
+        ):
+            raise ManuscriptSnapshotNotFoundError(
+                (
+                    f"Snapshot '{snapshot_id}' was not found for manuscript "
+                    f"'{manuscript_id}'."
+                )
+            )
+
+        manuscript.sections = dict(snapshot.sections or {})
+        manuscript.status = "draft"
         session.flush()
         session.refresh(manuscript)
         session.expunge(manuscript)

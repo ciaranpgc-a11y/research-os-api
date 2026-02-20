@@ -1,19 +1,27 @@
 services:
   - type: web
-    name: research-os-api
+    name: research-os-api-achk
     runtime: docker
+    branch: main
+    autoDeployTrigger: commit
     healthCheckPath: /v1/health
     envVars:
       - key: OPENAI_API_KEY
         sync: false
       - key: CORS_ALLOW_ORIGINS
-        value: http://localhost:5173,https://research-os-ui-achk.onrender.com,https://research-os-ui.onrender.com
-  - name: research-os-ui
+        value: http://localhost:5173,https://research-os-ui-achk.onrender.com
+  - name: research-os-ui-achk
     type: web
     runtime: static
+    branch: main
+    autoDeployTrigger: commit
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
+    headers:
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache
     envVars:
       - key: VITE_API_BASE_URL
         value: https://research-os-api-achk.onrender.com

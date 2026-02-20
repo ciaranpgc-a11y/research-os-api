@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import (
+    Boolean,
+    Float,
     JSON,
     DateTime,
     ForeignKey,
@@ -94,9 +96,33 @@ class Manuscript(Base):
     )
 
     project: Mapped[Project] = relationship(back_populates="manuscripts")
+    snapshots: Mapped[list["ManuscriptSnapshot"]] = relationship(
+        back_populates="manuscript", cascade="all, delete-orphan"
+    )
     generation_jobs: Mapped[list["GenerationJob"]] = relationship(
         back_populates="manuscript", cascade="all, delete-orphan"
     )
+
+
+class ManuscriptSnapshot(Base):
+    __tablename__ = "manuscript_snapshots"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="CASCADE")
+    )
+    manuscript_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("manuscripts.id", ondelete="CASCADE")
+    )
+    label: Mapped[str] = mapped_column(String(255), default="")
+    sections: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    manuscript: Mapped[Manuscript] = relationship(back_populates="snapshots")
 
 
 class GenerationJob(Base):
@@ -112,8 +138,17 @@ class GenerationJob(Base):
         String(36), ForeignKey("manuscripts.id", ondelete="CASCADE")
     )
     status: Mapped[str] = mapped_column(String(32), default="queued")
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    run_count: Mapped[int] = mapped_column(Integer, default=1)
+    parent_job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     sections: Mapped[list[str]] = mapped_column(JSON, default=list)
     notes_context: Mapped[str] = mapped_column(Text, default="")
+    pricing_model: Mapped[str] = mapped_column(String(64), default="gpt-4.1-mini")
+    estimated_input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    estimated_output_tokens_low: Mapped[int] = mapped_column(Integer, default=0)
+    estimated_output_tokens_high: Mapped[int] = mapped_column(Integer, default=0)
+    estimated_cost_usd_low: Mapped[float] = mapped_column(Float, default=0.0)
+    estimated_cost_usd_high: Mapped[float] = mapped_column(Float, default=0.0)
     progress_percent: Mapped[int] = mapped_column(Integer, default=0)
     current_section: Mapped[str | None] = mapped_column(String(128), nullable=True)
     error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)

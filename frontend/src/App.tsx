@@ -58,11 +58,23 @@ type ManuscriptResponse = {
   updated_at: string
 }
 
+type ManuscriptSnapshotResponse = {
+  id: string
+  project_id: string
+  manuscript_id: string
+  label: string
+  sections: Record<string, string>
+  created_at: string
+}
+
 type GenerationJobResponse = {
   id: string
   project_id: string
   manuscript_id: string
-  status: 'queued' | 'running' | 'completed' | 'failed'
+  status: 'queued' | 'running' | 'cancel_requested' | 'completed' | 'failed' | 'cancelled'
+  cancel_requested: boolean
+  run_count: number
+  parent_job_id: string | null
   sections: string[]
   notes_context: string
   progress_percent: number
@@ -79,6 +91,8 @@ type GenerationJobResponse = {
   estimated_cost_usd_low: number
   estimated_cost_usd_high: number
 }
+
+type GenerationHistoryFilter = 'all' | GenerationJobResponse['status']
 
 type WizardBootstrapResponse = {
   project: ProjectResponse
@@ -125,6 +139,15 @@ const ESTIMATE_SECTION_OUTPUT_TOKEN_RANGES: Record<string, [number, number]> = {
 }
 
 const SECTION_DRAFT_OPTIONS = ['title', 'abstract', 'introduction', 'methods', 'results', 'discussion', 'conclusion']
+const GENERATION_HISTORY_FILTER_OPTIONS: Array<{ value: GenerationHistoryFilter; label: string }> = [
+  { value: 'all', label: 'All statuses' },
+  { value: 'queued', label: 'Queued' },
+  { value: 'running', label: 'Running' },
+  { value: 'cancel_requested', label: 'Cancel requested' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'failed', label: 'Failed' },
+  { value: 'cancelled', label: 'Cancelled' },
+]
 
 const BASE_WIZARD_FIELDS: WizardFieldConfig[] = [
   {
@@ -215,6 +238,18 @@ function formatUtcDate(value: string): string {
 
 function formatUsd(value: number): string {
   return `$${value.toFixed(4)}`
+}
+
+function parseOptionalPositiveNumber(value: string): number | undefined {
+  const normalized = value.trim()
+  if (!normalized) {
+    return undefined
+  }
+  const parsed = Number(normalized)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined
+  }
+  return parsed
 }
 
 function estimateGenerationCostRange(sections: string[], notesContext: string) {
@@ -319,12 +354,27 @@ function App() {
   const [isGeneratingSection, setIsGeneratingSection] = useState(false)
   const [generateSectionError, setGenerateSectionError] = useState('')
   const [generateSectionSuccess, setGenerateSectionSuccess] = useState('')
+  const [snapshotLabel, setSnapshotLabel] = useState('')
+  const [snapshots, setSnapshots] = useState<ManuscriptSnapshotResponse[]>([])
+  const [isLoadingSnapshots, setIsLoadingSnapshots] = useState(false)
+  const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false)
+  const [restoringSnapshotId, setRestoringSnapshotId] = useState('')
+  const [snapshotsError, setSnapshotsError] = useState('')
+  const [snapshotSuccess, setSnapshotSuccess] = useState('')
   const [fullGenerationNotesContext, setFullGenerationNotesContext] = useState('')
   const [fullGenerationSections, setFullGenerationSections] = useState<string[]>([])
+  const [fullGenerationMaxCostUsd, setFullGenerationMaxCostUsd] = useState('')
+  const [fullGenerationDailyBudgetUsd, setFullGenerationDailyBudgetUsd] = useState('')
   const [isStartingFullGeneration, setIsStartingFullGeneration] = useState(false)
+  const [isCancellingGenerationJob, setIsCancellingGenerationJob] = useState(false)
+  const [isRetryingGenerationJob, setIsRetryingGenerationJob] = useState(false)
   const [fullGenerationError, setFullGenerationError] = useState('')
   const [fullGenerationSuccess, setFullGenerationSuccess] = useState('')
   const [activeGenerationJob, setActiveGenerationJob] = useState<GenerationJobResponse | null>(null)
+  const [generationHistory, setGenerationHistory] = useState<GenerationJobResponse[]>([])
+  const [isLoadingGenerationHistory, setIsLoadingGenerationHistory] = useState(false)
+  const [generationHistoryError, setGenerationHistoryError] = useState('')
+  const [generationHistoryFilter, setGenerationHistoryFilter] = useState<GenerationHistoryFilter>('all')
 
   const canSubmit = useMemo(
     () => notes.trim().length > 0 && draftSection.trim().length > 0 && !isSubmitting,
@@ -411,6 +461,59 @@ function App() {
     }
   }, [])
 
+  const loadSnapshots = useCallback(async (projectId: string, manuscriptId: string) => {
+    setIsLoadingSnapshots(true)
+    setSnapshotsError('')
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/v1/projects/${projectId}/manuscripts/${manuscriptId}/snapshots?limit=20`,
+      )
+      if (!response.ok) {
+        throw new Error(await readApiErrorMessage(response, 'Could not load snapshots'))
+      }
+      const payload = (await response.json()) as ManuscriptSnapshotResponse[]
+      setSnapshots(payload)
+      return payload
+    } catch (error) {
+      setSnapshotsError(error instanceof Error ? error.message : 'Could not load snapshots')
+      setSnapshots([])
+      return [] as ManuscriptSnapshotResponse[]
+    } finally {
+      setIsLoadingSnapshots(false)
+    }
+  }, [])
+
+  const loadGenerationJobs = useCallback(async (projectId: string, manuscriptId: string) => {
+    setIsLoadingGenerationHistory(true)
+    setGenerationHistoryError('')
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/v1/projects/${projectId}/manuscripts/${manuscriptId}/generation-jobs?limit=20`,
+      )
+      if (!response.ok) {
+        throw new Error(await readApiErrorMessage(response, 'Could not load generation jobs'))
+      }
+      const payload = (await response.json()) as GenerationJobResponse[]
+      setGenerationHistory(payload)
+      setActiveGenerationJob((current) => {
+        if (current && current.manuscript_id === manuscriptId) {
+          const refreshedCurrent = payload.find((job) => job.id === current.id)
+          if (refreshedCurrent) {
+            return refreshedCurrent
+          }
+        }
+        return payload[0] ?? null
+      })
+      return payload
+    } catch (error) {
+      setGenerationHistoryError(error instanceof Error ? error.message : 'Could not load generation jobs')
+      setGenerationHistory([])
+      return [] as GenerationJobResponse[]
+    } finally {
+      setIsLoadingGenerationHistory(false)
+    }
+  }, [])
+
   useEffect(() => {
     const checkHealth = async () => {
       try {
@@ -464,15 +567,43 @@ function App() {
   }, [loadManuscripts, selectedProjectId])
 
   useEffect(() => {
+    if (!selectedProjectId || !selectedManuscriptId) {
+      setGenerationHistory([])
+      setGenerationHistoryError('')
+      return
+    }
+    loadGenerationJobs(selectedProjectId, selectedManuscriptId)
+  }, [loadGenerationJobs, selectedManuscriptId, selectedProjectId])
+
+  useEffect(() => {
+    if (!selectedProjectId || !selectedManuscriptId) {
+      setSnapshots([])
+      setSnapshotsError('')
+      return
+    }
+    loadSnapshots(selectedProjectId, selectedManuscriptId)
+  }, [loadSnapshots, selectedManuscriptId, selectedProjectId])
+
+  useEffect(() => {
     setCreateManuscriptError('')
     setCreateManuscriptSuccess('')
     setSaveSectionError('')
     setSaveSectionSuccess('')
     setGenerateSectionError('')
     setGenerateSectionSuccess('')
+    setSnapshots([])
+    setSnapshotsError('')
+    setSnapshotSuccess('')
+    setSnapshotLabel('')
     setFullGenerationError('')
     setFullGenerationSuccess('')
+    setFullGenerationNotesContext('')
+    setFullGenerationMaxCostUsd('')
+    setFullGenerationDailyBudgetUsd('')
     setActiveGenerationJob(null)
+    setGenerationHistory([])
+    setGenerationHistoryError('')
+    setGenerationHistoryFilter('all')
   }, [selectedProjectId])
 
   const onSubmit = async (event: FormEvent) => {
@@ -616,14 +747,34 @@ function App() {
       selectedProjectId,
     ],
   )
+  const canCreateSnapshot = useMemo(
+    () =>
+      selectedProjectId.trim().length > 0 &&
+      selectedManuscriptId.trim().length > 0 &&
+      !isCreatingSnapshot &&
+      !isSavingSection &&
+      !isGeneratingSection,
+    [
+      isCreatingSnapshot,
+      isGeneratingSection,
+      isSavingSection,
+      selectedManuscriptId,
+      selectedProjectId,
+    ],
+  )
   const canStartFullGeneration = useMemo(
     () =>
       selectedProjectId.trim().length > 0 &&
       selectedManuscriptId.trim().length > 0 &&
       fullGenerationSections.length > 0 &&
       fullGenerationNotesContext.trim().length > 0 &&
-      !isStartingFullGeneration,
+      !isStartingFullGeneration &&
+      !(
+        activeGenerationJob !== null &&
+        ['queued', 'running', 'cancel_requested'].includes(activeGenerationJob.status)
+      ),
     [
+      activeGenerationJob,
       fullGenerationNotesContext,
       fullGenerationSections.length,
       isStartingFullGeneration,
@@ -634,15 +785,50 @@ function App() {
   const isGenerationJobInFlight = useMemo(
     () =>
       activeGenerationJob !== null &&
-      (activeGenerationJob.status === 'queued' || activeGenerationJob.status === 'running'),
+      ['queued', 'running', 'cancel_requested'].includes(activeGenerationJob.status),
     [activeGenerationJob],
   )
   const liveGenerationEstimate = useMemo(
     () => estimateGenerationCostRange(fullGenerationSections, fullGenerationNotesContext),
     [fullGenerationNotesContext, fullGenerationSections],
   )
+  const filteredGenerationHistory = useMemo(() => {
+    if (generationHistoryFilter === 'all') {
+      return generationHistory
+    }
+    return generationHistory.filter((job) => job.status === generationHistoryFilter)
+  }, [generationHistory, generationHistoryFilter])
+  const generationHistorySummary = useMemo(() => {
+    const inFlightCount = generationHistory.filter((job) =>
+      ['queued', 'running', 'cancel_requested'].includes(job.status),
+    ).length
+    const failedCount = generationHistory.filter((job) => job.status === 'failed').length
+    const estimatedHighTotalUsd = generationHistory.reduce((total, job) => total + job.estimated_cost_usd_high, 0)
+    return {
+      totalCount: generationHistory.length,
+      inFlightCount,
+      failedCount,
+      estimatedHighTotalUsd,
+    }
+  }, [generationHistory])
+  const canCancelGenerationJob = useMemo(
+    () =>
+      activeGenerationJob !== null &&
+      ['queued', 'running', 'cancel_requested'].includes(activeGenerationJob.status) &&
+      !isCancellingGenerationJob,
+    [activeGenerationJob, isCancellingGenerationJob],
+  )
+  const canRetryGenerationJob = useMemo(
+    () =>
+      activeGenerationJob !== null &&
+      ['failed', 'cancelled'].includes(activeGenerationJob.status) &&
+      !isRetryingGenerationJob,
+    [activeGenerationJob, isRetryingGenerationJob],
+  )
 
   useEffect(() => {
+    setSnapshotsError('')
+    setSnapshotSuccess('')
     if (!selectedManuscript) {
       setSectionEditorKey('')
       setSectionEditorContent('')
@@ -824,6 +1010,77 @@ function App() {
     }
   }
 
+  const createSnapshot = async () => {
+    if (!canCreateSnapshot || !selectedProject || !selectedManuscript) {
+      return
+    }
+    setSnapshotsError('')
+    setSnapshotSuccess('')
+    setIsCreatingSnapshot(true)
+    try {
+      const normalizedLabel = snapshotLabel.trim()
+      const response = await fetch(
+        `${API_BASE_URL}/v1/projects/${selectedProject.id}/manuscripts/${selectedManuscript.id}/snapshots`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            label: normalizedLabel.length > 0 ? normalizedLabel : undefined,
+          }),
+        },
+      )
+      if (!response.ok) {
+        throw new Error(await readApiErrorMessage(response, 'Could not create snapshot'))
+      }
+      const payload = (await response.json()) as ManuscriptSnapshotResponse
+      setSnapshots((current) => [payload, ...current.filter((snapshot) => snapshot.id !== payload.id)])
+      setSnapshotLabel('')
+      setSnapshotSuccess(`Created snapshot "${payload.label}".`)
+      await loadSnapshots(selectedProject.id, selectedManuscript.id)
+    } catch (error) {
+      setSnapshotsError(error instanceof Error ? error.message : 'Could not create snapshot')
+    } finally {
+      setIsCreatingSnapshot(false)
+    }
+  }
+
+  const restoreSnapshot = async (snapshot: ManuscriptSnapshotResponse) => {
+    if (!selectedProject || !selectedManuscript || restoringSnapshotId) {
+      return
+    }
+    setSnapshotsError('')
+    setSnapshotSuccess('')
+    setRestoringSnapshotId(snapshot.id)
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/v1/projects/${selectedProject.id}/manuscripts/${selectedManuscript.id}/snapshots/${snapshot.id}/restore`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      )
+      if (!response.ok) {
+        throw new Error(await readApiErrorMessage(response, 'Could not restore snapshot'))
+      }
+      const payload = (await response.json()) as ManuscriptResponse
+      if (sectionEditorKey && payload.sections[sectionEditorKey] !== undefined) {
+        setSectionEditorContent(payload.sections[sectionEditorKey])
+      }
+      setSnapshotSuccess(`Restored snapshot "${snapshot.label}".`)
+      await loadManuscripts(selectedProject.id)
+      setSelectedManuscriptId(payload.id)
+      await loadSnapshots(selectedProject.id, payload.id)
+    } catch (error) {
+      setSnapshotsError(error instanceof Error ? error.message : 'Could not restore snapshot')
+    } finally {
+      setRestoringSnapshotId('')
+    }
+  }
+
   const toggleFullGenerationSection = (section: string) => {
     setFullGenerationSections((current) => {
       if (current.includes(section)) {
@@ -833,6 +1090,29 @@ function App() {
     })
   }
 
+  const selectAllFullGenerationSections = () => {
+    setFullGenerationSections(sectionKeys)
+  }
+
+  const clearFullGenerationSections = () => {
+    setFullGenerationSections([])
+  }
+
+  const loadGenerationJobIntoForm = (job: GenerationJobResponse) => {
+    setActiveGenerationJob(job)
+    setFullGenerationSections(job.sections)
+    setFullGenerationNotesContext(job.notes_context)
+    setFullGenerationSuccess(`Loaded job ${job.id} settings into the generation form.`)
+    setFullGenerationError('')
+  }
+
+  const refreshGenerationHistory = async () => {
+    if (!selectedProject || !selectedManuscript) {
+      return
+    }
+    await loadGenerationJobs(selectedProject.id, selectedManuscript.id)
+  }
+
   const startFullManuscriptGeneration = async () => {
     if (!canStartFullGeneration || !selectedProject || !selectedManuscript) {
       return
@@ -840,6 +1120,8 @@ function App() {
     setFullGenerationError('')
     setFullGenerationSuccess('')
     setIsStartingFullGeneration(true)
+    const parsedMaxCostUsd = parseOptionalPositiveNumber(fullGenerationMaxCostUsd)
+    const parsedDailyBudgetUsd = parseOptionalPositiveNumber(fullGenerationDailyBudgetUsd)
     try {
       const response = await fetch(
         `${API_BASE_URL}/v1/projects/${selectedProject.id}/manuscripts/${selectedManuscript.id}/generate`,
@@ -851,6 +1133,8 @@ function App() {
           body: JSON.stringify({
             sections: fullGenerationSections,
             notes_context: fullGenerationNotesContext.trim(),
+            max_estimated_cost_usd: parsedMaxCostUsd,
+            project_daily_budget_usd: parsedDailyBudgetUsd,
           }),
         },
       )
@@ -863,6 +1147,7 @@ function App() {
       }
       const payload = (await response.json()) as GenerationJobResponse
       setActiveGenerationJob(payload)
+      setGenerationHistory((current) => [payload, ...current.filter((job) => job.id !== payload.id)])
       setFullGenerationSuccess(
         `Queued generation job ${payload.id}. Estimated cost ${formatUsd(payload.estimated_cost_usd_low)}-${formatUsd(payload.estimated_cost_usd_high)}.`,
       )
@@ -881,7 +1166,7 @@ function App() {
     if (!activeGenerationJob || !selectedProject) {
       return
     }
-    if (!['queued', 'running'].includes(activeGenerationJob.status)) {
+    if (!['queued', 'running', 'cancel_requested'].includes(activeGenerationJob.status)) {
       return
     }
 
@@ -897,15 +1182,32 @@ function App() {
           return
         }
         setActiveGenerationJob(payload)
+        setGenerationHistory((current) => {
+          const remaining = current.filter((job) => job.id !== payload.id)
+          return [payload, ...remaining]
+        })
         if (payload.status === 'completed') {
           setFullGenerationSuccess(
             `Generation completed (${payload.sections.length} sections). Estimated cost ${formatUsd(payload.estimated_cost_usd_low)}-${formatUsd(payload.estimated_cost_usd_high)}.`,
           )
           setFullGenerationError('')
           await loadManuscripts(selectedProject.id)
+          if (selectedManuscript) {
+            await loadGenerationJobs(selectedProject.id, selectedManuscript.id)
+          }
         } else if (payload.status === 'failed') {
           setFullGenerationError(payload.error_detail || 'Generation job failed.')
           await loadManuscripts(selectedProject.id)
+          if (selectedManuscript) {
+            await loadGenerationJobs(selectedProject.id, selectedManuscript.id)
+          }
+        } else if (payload.status === 'cancelled') {
+          setFullGenerationSuccess(`Generation job ${payload.id} cancelled.`)
+          setFullGenerationError('')
+          await loadManuscripts(selectedProject.id)
+          if (selectedManuscript) {
+            await loadGenerationJobs(selectedProject.id, selectedManuscript.id)
+          }
         }
       } catch (error) {
         if (!cancelled) {
@@ -918,7 +1220,82 @@ function App() {
       cancelled = true
       window.clearTimeout(timerId)
     }
-  }, [activeGenerationJob, loadManuscripts, selectedProject])
+  }, [activeGenerationJob, loadGenerationJobs, loadManuscripts, selectedManuscript, selectedProject])
+
+  const cancelActiveGenerationJob = async () => {
+    if (!activeGenerationJob || !canCancelGenerationJob) {
+      return
+    }
+    setIsCancellingGenerationJob(true)
+    setFullGenerationError('')
+    setFullGenerationSuccess('')
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/generation-jobs/${activeGenerationJob.id}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+      if (!response.ok) {
+        throw new Error(await readApiErrorMessage(response, 'Could not cancel generation job'))
+      }
+      const payload = (await response.json()) as GenerationJobResponse
+      setActiveGenerationJob(payload)
+      setGenerationHistory((current) => [payload, ...current.filter((job) => job.id !== payload.id)])
+      setFullGenerationSuccess(`Job ${payload.id} cancellation requested.`)
+      if (selectedProject) {
+        await loadManuscripts(selectedProject.id)
+      }
+      if (selectedProject && selectedManuscript) {
+        await loadGenerationJobs(selectedProject.id, selectedManuscript.id)
+      }
+    } catch (error) {
+      setFullGenerationError(error instanceof Error ? error.message : 'Could not cancel generation job')
+    } finally {
+      setIsCancellingGenerationJob(false)
+    }
+  }
+
+  const retryActiveGenerationJob = async () => {
+    if (!activeGenerationJob || !canRetryGenerationJob) {
+      return
+    }
+    setIsRetryingGenerationJob(true)
+    setFullGenerationError('')
+    setFullGenerationSuccess('')
+    const parsedMaxCostUsd = parseOptionalPositiveNumber(fullGenerationMaxCostUsd)
+    const parsedDailyBudgetUsd = parseOptionalPositiveNumber(fullGenerationDailyBudgetUsd)
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/generation-jobs/${activeGenerationJob.id}/retry`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          max_estimated_cost_usd: parsedMaxCostUsd,
+          project_daily_budget_usd: parsedDailyBudgetUsd,
+        }),
+      })
+      if (!response.ok) {
+        throw new Error(await readApiErrorMessage(response, 'Could not retry generation job'))
+      }
+      const payload = (await response.json()) as GenerationJobResponse
+      setActiveGenerationJob(payload)
+      setGenerationHistory((current) => [payload, ...current.filter((job) => job.id !== payload.id)])
+      setFullGenerationSuccess(
+        `Retried as job ${payload.id}. Estimated cost ${formatUsd(payload.estimated_cost_usd_low)}-${formatUsd(payload.estimated_cost_usd_high)}.`,
+      )
+      setFullGenerationSections(payload.sections)
+      setFullGenerationNotesContext(payload.notes_context)
+      if (selectedProject && selectedManuscript) {
+        await loadGenerationJobs(selectedProject.id, selectedManuscript.id)
+      }
+    } catch (error) {
+      setFullGenerationError(error instanceof Error ? error.message : 'Could not retry generation job')
+    } finally {
+      setIsRetryingGenerationJob(false)
+    }
+  }
 
   return (
     <main className="page">
@@ -1296,6 +1673,70 @@ function App() {
                           </button>
                         </div>
                       </div>
+                      <div className="snapshot-box">
+                        <h4>Snapshots</h4>
+                        <p className="muted">
+                          Save manuscript states before edits or generation, then restore when needed.
+                        </p>
+                        <div className="inline-fields">
+                          <label>
+                            Snapshot label (optional)
+                            <input
+                              type="text"
+                              value={snapshotLabel}
+                              onChange={(event) => setSnapshotLabel(event.target.value)}
+                              placeholder="e.g. Before discussion rewrite"
+                            />
+                          </label>
+                        </div>
+                        <div className="inline-actions">
+                          <button type="button" onClick={createSnapshot} disabled={!canCreateSnapshot}>
+                            {isCreatingSnapshot ? 'Saving...' : 'Save Snapshot'}
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={() =>
+                              selectedProject &&
+                              selectedManuscript &&
+                              loadSnapshots(selectedProject.id, selectedManuscript.id)
+                            }
+                            disabled={isLoadingSnapshots || !selectedProject || !selectedManuscript}
+                          >
+                            {isLoadingSnapshots ? 'Refreshing...' : 'Refresh'}
+                          </button>
+                        </div>
+                        {snapshotsError && <p>{snapshotsError}</p>}
+                        {snapshotSuccess && <p>{snapshotSuccess}</p>}
+                        {!snapshotsError && !isLoadingSnapshots && snapshots.length === 0 && (
+                          <p className="muted">No snapshots yet.</p>
+                        )}
+                        {snapshots.length > 0 && (
+                          <div className="snapshot-list">
+                            {snapshots.map((snapshot) => (
+                              <div key={snapshot.id} className="snapshot-item">
+                                <div className="snapshot-meta">
+                                  <strong>{snapshot.label}</strong>
+                                  <span>{formatUtcDate(snapshot.created_at)}</span>
+                                </div>
+                                <p className="muted">
+                                  {Object.keys(snapshot.sections).length} sections captured
+                                </p>
+                                <div className="inline-actions">
+                                  <button
+                                    type="button"
+                                    className="ghost-button"
+                                    onClick={() => restoreSnapshot(snapshot)}
+                                    disabled={Boolean(restoringSnapshotId)}
+                                  >
+                                    {restoringSnapshotId === snapshot.id ? 'Restoring...' : 'Restore'}
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       <div className="full-generation-box">
                         <h4>Async Full-Manuscript Generation</h4>
                         <p className="muted">
@@ -1314,6 +1755,14 @@ function App() {
                             </label>
                           ))}
                         </div>
+                        <div className="inline-actions">
+                          <button type="button" className="ghost-button" onClick={selectAllFullGenerationSections}>
+                            Select All
+                          </button>
+                          <button type="button" className="ghost-button" onClick={clearFullGenerationSections}>
+                            Clear
+                          </button>
+                        </div>
                         <label>
                           Shared notes context for all selected sections
                           <textarea
@@ -1323,6 +1772,30 @@ function App() {
                             placeholder="Provide the common study context used to draft all selected sections."
                           />
                         </label>
+                        <div className="inline-fields">
+                          <label>
+                            Max estimated job cost (USD, optional)
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.0001"
+                              value={fullGenerationMaxCostUsd}
+                              onChange={(event) => setFullGenerationMaxCostUsd(event.target.value)}
+                              placeholder="e.g. 0.0500"
+                            />
+                          </label>
+                          <label>
+                            Project daily budget cap (USD, optional)
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.0001"
+                              value={fullGenerationDailyBudgetUsd}
+                              onChange={(event) => setFullGenerationDailyBudgetUsd(event.target.value)}
+                              placeholder="e.g. 0.2000"
+                            />
+                          </label>
+                        </div>
                         <p className="muted">
                           Live estimate: {formatUsd(liveGenerationEstimate.estimatedCostUsdLow)} -{' '}
                           {formatUsd(liveGenerationEstimate.estimatedCostUsdHigh)} ({liveGenerationEstimate.estimatedInputTokens}{' '}
@@ -1339,10 +1812,21 @@ function App() {
                             <p>
                               Job: <code>{activeGenerationJob.id}</code>
                             </p>
+                            {activeGenerationJob.parent_job_id && (
+                              <p>
+                                Parent job: <code>{activeGenerationJob.parent_job_id}</code>
+                              </p>
+                            )}
                             <p>
                               Status: <strong>{humanizeIdentifier(activeGenerationJob.status)}</strong> | Progress:{' '}
                               <strong>{activeGenerationJob.progress_percent}%</strong>
                             </p>
+                            <p>
+                              Run: <strong>{activeGenerationJob.run_count}</strong>
+                            </p>
+                            {activeGenerationJob.cancel_requested && (
+                              <p className="muted">Cancellation requested. Waiting for job to stop safely.</p>
+                            )}
                             {activeGenerationJob.current_section && (
                               <p>
                                 Current section: <strong>{humanizeIdentifier(activeGenerationJob.current_section)}</strong>
@@ -1357,8 +1841,88 @@ function App() {
                             </p>
                             {activeGenerationJob.error_detail && <p>{activeGenerationJob.error_detail}</p>}
                             {isGenerationJobInFlight && <p className="muted">Polling job status...</p>}
+                            <div className="inline-actions">
+                              <button type="button" onClick={cancelActiveGenerationJob} disabled={!canCancelGenerationJob}>
+                                {isCancellingGenerationJob ? 'Cancelling...' : 'Cancel Job'}
+                              </button>
+                              <button type="button" onClick={retryActiveGenerationJob} disabled={!canRetryGenerationJob}>
+                                {isRetryingGenerationJob ? 'Retrying...' : 'Retry Job'}
+                              </button>
+                            </div>
                           </div>
                         )}
+                        <div className="job-history-box">
+                          <div className="history-header">
+                            <h5>Recent Jobs</h5>
+                            <div className="history-header-actions">
+                              <label>
+                                Status
+                                <select
+                                  value={generationHistoryFilter}
+                                  onChange={(event) =>
+                                    setGenerationHistoryFilter(event.target.value as GenerationHistoryFilter)
+                                  }
+                                >
+                                  {GENERATION_HISTORY_FILTER_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <button
+                                type="button"
+                                className="ghost-button"
+                                onClick={refreshGenerationHistory}
+                                disabled={isLoadingGenerationHistory}
+                              >
+                                {isLoadingGenerationHistory ? 'Refreshing...' : 'Refresh'}
+                              </button>
+                            </div>
+                          </div>
+                          <p className="muted">
+                            {generationHistorySummary.totalCount} total jobs, {generationHistorySummary.inFlightCount} in-flight,{' '}
+                            {generationHistorySummary.failedCount} failed, estimated high-total{' '}
+                            {formatUsd(generationHistorySummary.estimatedHighTotalUsd)}.
+                          </p>
+                          {isLoadingGenerationHistory && <p className="muted">Loading generation jobs...</p>}
+                          {generationHistoryError && <p>{generationHistoryError}</p>}
+                          {!generationHistoryError && !isLoadingGenerationHistory && filteredGenerationHistory.length === 0 && (
+                            <p className="muted">No generation jobs found for this manuscript.</p>
+                          )}
+                          {filteredGenerationHistory.length > 0 && (
+                            <div className="job-history-list">
+                              {filteredGenerationHistory.map((job) => (
+                                <div
+                                  key={job.id}
+                                  className={`job-history-item ${activeGenerationJob?.id === job.id ? 'selected' : ''}`}
+                                >
+                                  <div className="job-history-meta">
+                                    <code>{job.id}</code>
+                                    <span className={`job-pill job-pill-${job.status}`}>
+                                      {humanizeIdentifier(job.status)}
+                                    </span>
+                                  </div>
+                                  <p className="muted">
+                                    {formatUtcDate(job.created_at)} | Run {job.run_count} | {job.sections.length} sections
+                                  </p>
+                                  <p className="muted">
+                                    Estimate: {formatUsd(job.estimated_cost_usd_low)} - {formatUsd(job.estimated_cost_usd_high)}
+                                  </p>
+                                  <div className="inline-actions">
+                                    <button
+                                      type="button"
+                                      className="ghost-button"
+                                      onClick={() => loadGenerationJobIntoForm(job)}
+                                    >
+                                      Load Settings
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                       {saveSectionError && <p>{saveSectionError}</p>}
                       {saveSectionSuccess && <p>{saveSectionSuccess}</p>}

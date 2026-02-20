@@ -23,7 +23,7 @@ def _wait_for_job_terminal_status(
         assert response.status_code == 200
         payload = response.json()
         last_payload = payload
-        if payload["status"] in {"completed", "failed"}:
+        if payload["status"] in {"completed", "failed", "cancelled"}:
             return payload
         time.sleep(0.05)
     raise AssertionError(f"Generation job '{job_id}' did not reach terminal state.")
@@ -374,6 +374,101 @@ def test_v1_get_project_manuscript_returns_404_for_missing_manuscript(
     assert response.json()["error"]["type"] == "not_found"
 
 
+def test_v1_create_list_and_restore_manuscript_snapshot(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Snapshot Project",
+                "target_journal": "ehj",
+            },
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "snapshot-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+
+        seeded_response = client.patch(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}",
+            json={
+                "sections": {
+                    "methods": "Original methods snapshot content",
+                    "results": "Original results snapshot content",
+                }
+            },
+        )
+        create_snapshot_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots",
+            json={"label": "Baseline before edits"},
+        )
+        snapshot_id = create_snapshot_response.json()["id"]
+        list_snapshots_response = client.get(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots"
+        )
+
+        client.patch(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}",
+            json={"sections": {"methods": "Changed methods content"}},
+        )
+        restore_response = client.post(
+            (
+                f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots/"
+                f"{snapshot_id}/restore"
+            )
+        )
+
+    assert seeded_response.status_code == 200
+    assert create_snapshot_response.status_code == 200
+    snapshot_payload = create_snapshot_response.json()
+    assert snapshot_payload["label"] == "Baseline before edits"
+    assert snapshot_payload["sections"]["methods"] == "Original methods snapshot content"
+
+    assert list_snapshots_response.status_code == 200
+    assert len(list_snapshots_response.json()) == 1
+    assert list_snapshots_response.json()[0]["id"] == snapshot_id
+
+    assert restore_response.status_code == 200
+    restored_sections = restore_response.json()["sections"]
+    assert restored_sections["methods"] == "Original methods snapshot content"
+    assert restored_sections["results"] == "Original results snapshot content"
+
+
+def test_v1_restore_snapshot_returns_404_for_missing_snapshot(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Missing Snapshot Project",
+                "target_journal": "jacc",
+            },
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "snapshot-missing-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        response = client.post(
+            (
+                f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots/"
+                "missing-snapshot-id/restore"
+            )
+        )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["type"] == "not_found"
+
+
 def test_v1_generate_manuscript_job_completes_and_updates_sections(
     monkeypatch, tmp_path
 ) -> None:
@@ -493,6 +588,311 @@ def test_v1_get_generation_job_returns_404_for_missing_job(
 
     assert response.status_code == 404
     assert response.json()["error"]["type"] == "not_found"
+
+
+def test_v1_list_generation_jobs_returns_recent_jobs_for_manuscript(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "research_os.services.generation_job_service._start_generation_thread",
+        lambda _: None,
+    )
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "History Project",
+                "target_journal": "ehj",
+            },
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "history-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+
+        first_enqueue = client.post(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/generate",
+            json={
+                "sections": ["methods"],
+                "notes_context": "History run one",
+            },
+        )
+        first_job_id = first_enqueue.json()["id"]
+        cancel_first = client.post(f"/v1/generation-jobs/{first_job_id}/cancel")
+        second_enqueue = client.post(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/generate",
+            json={
+                "sections": ["results"],
+                "notes_context": "History run two",
+            },
+        )
+        list_response = client.get(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/generation-jobs",
+            params={"limit": 1},
+        )
+
+    assert first_enqueue.status_code == 200
+    assert cancel_first.status_code == 200
+    assert second_enqueue.status_code == 200
+    assert list_response.status_code == 200
+    payload = list_response.json()
+    assert len(payload) == 1
+    assert payload[0]["id"] == second_enqueue.json()["id"]
+    assert payload[0]["notes_context"] == "History run two"
+
+
+def test_v1_list_generation_jobs_returns_404_for_missing_project_or_manuscript(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        missing_project_response = client.get(
+            "/v1/projects/missing/manuscripts/missing/generation-jobs"
+        )
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Missing Manuscript History Project",
+                "target_journal": "jacc",
+            },
+        )
+        project_id = project_response.json()["id"]
+        missing_manuscript_response = client.get(
+            f"/v1/projects/{project_id}/manuscripts/missing/generation-jobs"
+        )
+
+    assert missing_project_response.status_code == 404
+    assert missing_project_response.json()["error"]["type"] == "not_found"
+    assert missing_manuscript_response.status_code == 404
+    assert missing_manuscript_response.json()["error"]["type"] == "not_found"
+
+
+def test_v1_generate_manuscript_returns_409_when_per_job_budget_exceeded(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Budget Exceeded Project",
+                "target_journal": "ehj",
+            },
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "budget-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        response = client.post(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/generate",
+            json={
+                "sections": ["methods"],
+                "notes_context": "Core trial notes with details",
+                "max_estimated_cost_usd": 0.00001,
+            },
+        )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["type"] == "conflict"
+    assert "per-job cap" in response.json()["error"]["detail"]
+
+
+def test_v1_generate_manuscript_returns_409_when_daily_budget_exceeded(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "research_os.services.generation_job_service._start_generation_thread",
+        lambda _: None,
+    )
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Daily Budget Project",
+                "target_journal": "ehj",
+            },
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "daily-budget-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        first_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/generate",
+            json={
+                "sections": ["methods"],
+                "notes_context": ("Detailed trial notes " * 20).strip(),
+            },
+        )
+        second_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/generate",
+            json={
+                "sections": ["results"],
+                "notes_context": ("Detailed trial notes " * 20).strip(),
+                "project_daily_budget_usd": 0.001,
+            },
+        )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 409
+    assert second_response.json()["error"]["type"] == "conflict"
+    assert "daily budget" in second_response.json()["error"]["detail"]
+
+
+def test_v1_generate_manuscript_returns_409_when_job_already_active(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "research_os.services.generation_job_service._start_generation_thread",
+        lambda _: None,
+    )
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Conflict Project",
+                "target_journal": "ehj",
+            },
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "conflict-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        first_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/generate",
+            json={
+                "sections": ["methods"],
+                "notes_context": "Queued generation",
+            },
+        )
+        second_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/generate",
+            json={
+                "sections": ["results"],
+                "notes_context": "Second generation request",
+            },
+        )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 409
+    assert second_response.json()["error"]["type"] == "conflict"
+    assert "already active" in second_response.json()["error"]["detail"]
+
+
+def test_v1_cancel_generation_job_marks_queued_job_cancelled(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "research_os.services.generation_job_service._start_generation_thread",
+        lambda _: None,
+    )
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Cancel Job Project",
+                "target_journal": "ehj",
+            },
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "cancel-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        enqueue_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/generate",
+            json={
+                "sections": ["methods"],
+                "notes_context": "Cancel this before running",
+            },
+        )
+        job_id = enqueue_response.json()["id"]
+        cancel_response = client.post(f"/v1/generation-jobs/{job_id}/cancel")
+        fetch_response = client.get(f"/v1/generation-jobs/{job_id}")
+
+    assert enqueue_response.status_code == 200
+    assert cancel_response.status_code == 200
+    assert cancel_response.json()["status"] == "cancelled"
+    assert fetch_response.status_code == 200
+    assert fetch_response.json()["status"] == "cancelled"
+
+
+def test_v1_retry_generation_job_enqueues_new_run_after_failure(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    def _fail_draft(_: str, __: str) -> str:
+        raise RuntimeError("Model crash")
+
+    monkeypatch.setattr(
+        "research_os.services.generation_job_service.draft_section_from_notes",
+        _fail_draft,
+    )
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Retry Job Project",
+                "target_journal": "ehj",
+            },
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "retry-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        failed_enqueue = client.post(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/generate",
+            json={
+                "sections": ["methods"],
+                "notes_context": "Fail then retry",
+            },
+        )
+        failed_job_id = failed_enqueue.json()["id"]
+        failed_terminal = _wait_for_job_terminal_status(client, failed_job_id)
+        assert failed_terminal["status"] == "failed"
+
+        def _success_draft(section: str, _: str) -> str:
+            return f"{section} regenerated"
+
+        monkeypatch.setattr(
+            "research_os.services.generation_job_service.draft_section_from_notes",
+            _success_draft,
+        )
+
+        retry_response = client.post(
+            f"/v1/generation-jobs/{failed_job_id}/retry",
+            json={},
+        )
+        retried_job_id = retry_response.json()["id"]
+        retry_terminal = _wait_for_job_terminal_status(client, retried_job_id)
+
+    assert failed_enqueue.status_code == 200
+    assert retry_response.status_code == 200
+    assert retry_response.json()["parent_job_id"] == failed_job_id
+    assert retry_response.json()["run_count"] == 2
+    assert retry_terminal["status"] == "completed"
 
 
 def test_v1_create_manuscript_returns_409_for_duplicate_branch(

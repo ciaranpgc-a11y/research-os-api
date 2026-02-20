@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import threading
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+
+from sqlalchemy import select
 
 from research_os.db import (
     GenerationJob,
@@ -22,6 +24,22 @@ class GenerationJobNotFoundError(RuntimeError):
     """Raised when a generation job cannot be located."""
 
 
+class GenerationJobConflictError(RuntimeError):
+    """Raised when another generation job is already active for a manuscript."""
+
+
+class GenerationBudgetExceededError(RuntimeError):
+    """Raised when a per-job estimated-cost cap is exceeded."""
+
+
+class GenerationDailyBudgetExceededError(RuntimeError):
+    """Raised when a project daily budget cap would be exceeded."""
+
+
+class GenerationJobStateError(RuntimeError):
+    """Raised when a generation job cannot transition from current state."""
+
+
 DEFAULT_GENERATION_MODEL = "gpt-4.1-mini"
 _MODEL_PRICING_USD_PER_1M = {
     "gpt-4.1-mini": {"input": 0.40, "output": 1.60},
@@ -38,10 +56,20 @@ _SECTION_OUTPUT_TOKEN_RANGES = {
     "discussion": (220, 520),
     "conclusion": (70, 180),
 }
+_ACTIVE_JOB_STATUSES = ("queued", "running", "cancel_requested")
+_DAILY_BUDGET_STATUSES = ("queued", "running", "cancel_requested", "completed", "failed")
+_RETRYABLE_STATUSES = ("failed", "cancelled")
+_TERMINAL_STATUSES = ("completed", "failed", "cancelled")
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _coerce_utc_date(timestamp: datetime) -> date:
+    if timestamp.tzinfo is None:
+        return timestamp.date()
+    return timestamp.astimezone(timezone.utc).date()
 
 
 def _resolve_sections(
@@ -66,6 +94,15 @@ def _mark_job_failed(job: GenerationJob, detail: str) -> None:
     job.error_detail = detail
     job.current_section = None
     job.completed_at = _utcnow()
+    job.cancel_requested = False
+
+
+def _mark_job_cancelled(job: GenerationJob) -> None:
+    job.status = "cancelled"
+    job.current_section = None
+    job.completed_at = _utcnow()
+    job.cancel_requested = False
+    job.error_detail = None
 
 
 def _estimate_notes_tokens(notes_context: str) -> int:
@@ -113,17 +150,79 @@ def estimate_generation_cost(
     }
 
 
+def _project_daily_estimated_spend_high(session, project_id: str, today_utc: date) -> float:
+    jobs = session.scalars(
+        select(GenerationJob).where(
+            GenerationJob.project_id == project_id,
+            GenerationJob.status.in_(_DAILY_BUDGET_STATUSES),
+        )
+    ).all()
+    total = 0.0
+    for job in jobs:
+        if _coerce_utc_date(job.created_at) != today_utc:
+            continue
+        total += float(job.estimated_cost_usd_high or 0.0)
+    return round(total, 6)
+
+
+def _validate_enqueue_guardrails(
+    *,
+    session,
+    manuscript_id: str,
+    project_id: str,
+    estimate_high_cost_usd: float,
+    max_estimated_cost_usd: float | None,
+    project_daily_budget_usd: float | None,
+) -> None:
+    if (
+        max_estimated_cost_usd is not None
+        and estimate_high_cost_usd > max_estimated_cost_usd
+    ):
+        raise GenerationBudgetExceededError(
+            (
+                "Estimated generation cost exceeds the per-job cap "
+                f"({estimate_high_cost_usd:.4f} > {max_estimated_cost_usd:.4f} USD)."
+            )
+        )
+
+    if project_daily_budget_usd is not None:
+        today_utc = _utcnow().date()
+        spend_so_far = _project_daily_estimated_spend_high(
+            session, project_id, today_utc
+        )
+        projected_total = spend_so_far + estimate_high_cost_usd
+        if projected_total > project_daily_budget_usd:
+            raise GenerationDailyBudgetExceededError(
+                (
+                    "Estimated generation cost would exceed project daily budget "
+                    f"({projected_total:.4f} > {project_daily_budget_usd:.4f} USD)."
+                )
+            )
+
+    active_job = session.scalars(
+        select(GenerationJob).where(
+            GenerationJob.manuscript_id == manuscript_id,
+            GenerationJob.status.in_(_ACTIVE_JOB_STATUSES),
+        )
+    ).first()
+    if active_job is not None:
+        raise GenerationJobConflictError(
+            (
+                "Another generation job is already active for this manuscript "
+                f"(job_id={active_job.id})."
+            )
+        )
+
+
 def serialize_generation_job(job: GenerationJob) -> dict[str, object]:
-    estimate = estimate_generation_cost(
-        sections=list(job.sections or []),
-        notes_context=job.notes_context or "",
-        model=DEFAULT_GENERATION_MODEL,
-    )
     return {
         "id": job.id,
         "project_id": job.project_id,
         "manuscript_id": job.manuscript_id,
         "status": job.status,
+        "cancel_requested": bool(job.cancel_requested),
+        "run_count": int(job.run_count),
+        "parent_job_id": job.parent_job_id,
         "sections": list(job.sections or []),
         "notes_context": job.notes_context,
         "progress_percent": job.progress_percent,
@@ -133,7 +232,12 @@ def serialize_generation_job(job: GenerationJob) -> dict[str, object]:
         "completed_at": job.completed_at,
         "created_at": job.created_at,
         "updated_at": job.updated_at,
-        **estimate,
+        "pricing_model": job.pricing_model,
+        "estimated_input_tokens": job.estimated_input_tokens,
+        "estimated_output_tokens_low": job.estimated_output_tokens_low,
+        "estimated_output_tokens_high": job.estimated_output_tokens_high,
+        "estimated_cost_usd_low": float(job.estimated_cost_usd_low or 0.0),
+        "estimated_cost_usd_high": float(job.estimated_cost_usd_high or 0.0),
     }
 
 
@@ -156,6 +260,13 @@ def _run_generation_job(job_id: str) -> None:
             session.commit()
             return
 
+        if job.status != "queued":
+            return
+        if job.cancel_requested:
+            _mark_job_cancelled(job)
+            session.commit()
+            return
+
         sections = list(job.sections or [])
         if not sections:
             sections = _resolve_sections(None, manuscript.sections or {})
@@ -173,6 +284,13 @@ def _run_generation_job(job_id: str) -> None:
         total_sections = len(sections)
         manuscript_sections = dict(manuscript.sections or {})
         for index, section_name in enumerate(sections, start=1):
+            session.refresh(job)
+            if job.cancel_requested:
+                _mark_job_cancelled(job)
+                manuscript.status = "draft"
+                session.commit()
+                return
+
             job.current_section = section_name
             session.commit()
 
@@ -189,13 +307,17 @@ def _run_generation_job(job_id: str) -> None:
         job.current_section = None
         job.progress_percent = 100
         job.completed_at = _utcnow()
+        job.cancel_requested = False
         manuscript.status = "draft"
         session.commit()
     except Exception as exc:
         session.rollback()
         job = session.get(GenerationJob, job_id)
         if job is not None:
-            _mark_job_failed(job, str(exc))
+            if job.cancel_requested:
+                _mark_job_cancelled(job)
+            else:
+                _mark_job_failed(job, str(exc))
             manuscript = session.get(Manuscript, job.manuscript_id)
             if manuscript is not None:
                 manuscript.status = "draft"
@@ -220,6 +342,10 @@ def enqueue_generation_job(
     manuscript_id: str,
     sections: list[str] | None,
     notes_context: str,
+    max_estimated_cost_usd: float | None = None,
+    project_daily_budget_usd: float | None = None,
+    parent_job_id: str | None = None,
+    run_count: int = 1,
 ) -> GenerationJob:
     create_all_tables()
     SessionLocal = get_session_factory()
@@ -235,12 +361,37 @@ def enqueue_generation_job(
             )
 
         resolved_sections = _resolve_sections(sections, manuscript.sections or {})
+        normalized_notes_context = notes_context.strip()
+        estimate = estimate_generation_cost(
+            sections=resolved_sections,
+            notes_context=normalized_notes_context,
+            model=DEFAULT_GENERATION_MODEL,
+        )
+        estimate_high_cost_usd = float(estimate["estimated_cost_usd_high"])
+        _validate_enqueue_guardrails(
+            session=session,
+            manuscript_id=manuscript_id,
+            project_id=project_id,
+            estimate_high_cost_usd=estimate_high_cost_usd,
+            max_estimated_cost_usd=max_estimated_cost_usd,
+            project_daily_budget_usd=project_daily_budget_usd,
+        )
+
         job = GenerationJob(
             project_id=project_id,
             manuscript_id=manuscript_id,
             status="queued",
+            cancel_requested=False,
+            run_count=max(1, run_count),
+            parent_job_id=parent_job_id,
             sections=resolved_sections,
-            notes_context=notes_context.strip(),
+            notes_context=normalized_notes_context,
+            pricing_model=str(estimate["pricing_model"]),
+            estimated_input_tokens=int(estimate["estimated_input_tokens"]),
+            estimated_output_tokens_low=int(estimate["estimated_output_tokens_low"]),
+            estimated_output_tokens_high=int(estimate["estimated_output_tokens_high"]),
+            estimated_cost_usd_low=float(estimate["estimated_cost_usd_low"]),
+            estimated_cost_usd_high=float(estimate["estimated_cost_usd_high"]),
             progress_percent=0,
         )
         session.add(job)
@@ -266,3 +417,94 @@ def get_generation_job_record(job_id: str) -> GenerationJob:
         return job
     finally:
         session.close()
+
+
+def list_generation_jobs_for_manuscript(
+    project_id: str, manuscript_id: str, *, limit: int = 20
+) -> list[GenerationJob]:
+    create_all_tables()
+    SessionLocal = get_session_factory()
+    session = SessionLocal()
+    try:
+        project = session.get(Project, project_id)
+        if project is None:
+            raise ProjectNotFoundError(f"Project '{project_id}' was not found.")
+        manuscript = session.get(Manuscript, manuscript_id)
+        if manuscript is None or manuscript.project_id != project_id:
+            raise ManuscriptNotFoundError(
+                f"Manuscript '{manuscript_id}' was not found for project '{project_id}'."
+            )
+
+        normalized_limit = max(1, min(limit, 100))
+        jobs = session.scalars(
+            select(GenerationJob)
+            .where(
+                GenerationJob.project_id == project_id,
+                GenerationJob.manuscript_id == manuscript_id,
+            )
+            .order_by(GenerationJob.created_at.desc())
+            .limit(normalized_limit)
+        ).all()
+        for job in jobs:
+            session.expunge(job)
+        return jobs
+    finally:
+        session.close()
+
+
+def cancel_generation_job(job_id: str) -> GenerationJob:
+    create_all_tables()
+    SessionLocal = get_session_factory()
+    session = SessionLocal()
+    try:
+        job = session.get(GenerationJob, job_id)
+        if job is None:
+            raise GenerationJobNotFoundError(f"Generation job '{job_id}' was not found.")
+
+        if job.status in _TERMINAL_STATUSES:
+            session.expunge(job)
+            return job
+
+        if job.status == "queued":
+            _mark_job_cancelled(job)
+        elif job.status in {"running", "cancel_requested"}:
+            job.status = "cancel_requested"
+            job.cancel_requested = True
+        else:
+            raise GenerationJobStateError(
+                f"Generation job '{job_id}' cannot be cancelled from status '{job.status}'."
+            )
+
+        session.commit()
+        session.refresh(job)
+        session.expunge(job)
+        return job
+    finally:
+        session.close()
+
+
+def retry_generation_job(
+    job_id: str,
+    *,
+    max_estimated_cost_usd: float | None = None,
+    project_daily_budget_usd: float | None = None,
+) -> GenerationJob:
+    source_job = get_generation_job_record(job_id)
+    if source_job.status not in _RETRYABLE_STATUSES:
+        raise GenerationJobStateError(
+            (
+                f"Generation job '{job_id}' cannot be retried from status "
+                f"'{source_job.status}'."
+            )
+        )
+
+    return enqueue_generation_job(
+        project_id=source_job.project_id,
+        manuscript_id=source_job.manuscript_id,
+        sections=list(source_job.sections or []),
+        notes_context=source_job.notes_context,
+        max_estimated_cost_usd=max_estimated_cost_usd,
+        project_daily_budget_usd=project_daily_budget_usd,
+        parent_job_id=source_job.id,
+        run_count=int(source_job.run_count) + 1,
+    )

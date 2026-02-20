@@ -46,12 +46,19 @@ Primary versioned routes:
 - `POST /v1/projects/{project_id}/manuscripts`
 - `GET /v1/projects/{project_id}/manuscripts/{manuscript_id}`
 - `PATCH /v1/projects/{project_id}/manuscripts/{manuscript_id}`
+- `GET /v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots`
+- `POST /v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots`
+- `POST /v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots/{snapshot_id}/restore`
 - `POST /v1/projects/{project_id}/manuscripts/{manuscript_id}/generate`
+- `GET /v1/projects/{project_id}/manuscripts/{manuscript_id}/generation-jobs`
 - `GET /v1/generation-jobs/{job_id}`
+- `POST /v1/generation-jobs/{job_id}/cancel`
+- `POST /v1/generation-jobs/{job_id}/retry`
 - `POST /v1/draft/section`
 - `POST /v1/draft/methods`
 
 `/v1/generation-jobs/{job_id}` responses include estimated token and USD cost ranges for planning.
+Generation enqueue and retry requests can include `max_estimated_cost_usd` and `project_daily_budget_usd` guardrails.
 
 Compatibility routes:
 - `GET /health`
@@ -88,8 +95,8 @@ curl.exe --% -X POST http://127.0.0.1:8000/v1/projects/PROJECT_ID/manuscripts/MA
 ## Deploy to Render
 
 `render.yaml` provisions:
-- `research-os-api` (Docker web service)
-- `research-os-ui` (static site from `frontend/`)
+- `research-os-api-achk` (Docker web service)
+- `research-os-ui-achk` (static site from `frontend/`)
 
 Required API environment variables:
 - `OPENAI_API_KEY` (must be set; API fails startup if missing)
