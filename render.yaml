@@ -7,12 +7,12 @@ services:
       - key: OPENAI_API_KEY
       - key: CORS_ALLOW_ORIGINS
         value: http://localhost:5173,https://research-os-ui.onrender.com
-
-staticSites:
   - name: research-os-ui
+    type: web
+    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
-    publishPath: dist
+    staticPublishPath: ./frontend/dist
     envVars:
       - key: VITE_API_BASE_URL
         value: https://research-os-api.onrender.com
