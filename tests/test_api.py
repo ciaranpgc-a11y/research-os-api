@@ -576,6 +576,101 @@ def test_v1_restore_snapshot_returns_409_for_invalid_mode(
     assert "merge" in response.json()["error"]["detail"]
 
 
+def test_v1_export_manuscript_markdown_filters_empty_sections_by_default(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Export Project",
+                "target_journal": "ehj",
+            },
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "export-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        client.patch(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}",
+            json={
+                "sections": {
+                    "methods": "Methods text for export.",
+                    "results": "",
+                }
+            },
+        )
+
+        response = client.get(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/export/markdown"
+        )
+
+    assert response.status_code == 200
+    assert "text/markdown" in response.headers["content-type"]
+    assert "attachment; filename=" in response.headers["content-disposition"]
+    body = response.text
+    assert "# Export Project" in body
+    assert "## Methods" in body
+    assert "Methods text for export." in body
+    assert "## Results" not in body
+
+
+def test_v1_export_manuscript_markdown_can_include_empty_sections(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Export Empty Sections Project",
+                "target_journal": "jacc",
+            },
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "export-empty-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        response = client.get(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/export/markdown",
+            params={"include_empty": True},
+        )
+
+    assert response.status_code == 200
+    body = response.text
+    assert "## Title" in body
+    assert "_No content provided._" in body
+
+
+def test_v1_export_manuscript_markdown_returns_404_for_missing_manuscript(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Export Missing Project",
+                "target_journal": "ehj",
+            },
+        )
+        project_id = project_response.json()["id"]
+        response = client.get(
+            f"/v1/projects/{project_id}/manuscripts/missing/export/markdown"
+        )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["type"] == "not_found"
+
+
 def test_v1_generate_manuscript_job_completes_and_updates_sections(
     monkeypatch, tmp_path
 ) -> None:

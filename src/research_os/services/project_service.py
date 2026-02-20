@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -47,6 +48,19 @@ class ManuscriptSnapshotRestoreModeError(RuntimeError):
 def _utc_timestamp_label() -> str:
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
     return f"Snapshot {timestamp}"
+
+
+def _slugify(value: str) -> str:
+    normalized = re.sub(r"[^a-zA-Z0-9_-]+", "-", value.strip().lower())
+    normalized = normalized.strip("-")
+    return normalized or "manuscript"
+
+
+def _ordered_section_keys(sections: dict[str, str]) -> list[str]:
+    section_keys = list(sections.keys())
+    default_order = [section for section in DEFAULT_SECTIONS if section in sections]
+    extras = [section for section in section_keys if section not in default_order]
+    return [*default_order, *extras]
 
 
 def _materialize_sections(section_names: list[str] | None) -> dict[str, str]:
@@ -331,3 +345,64 @@ def restore_manuscript_snapshot(
         session.refresh(manuscript)
         session.expunge(manuscript)
         return manuscript
+
+
+def export_project_manuscript_markdown(
+    *,
+    project_id: str,
+    manuscript_id: str,
+    include_empty_sections: bool = False,
+) -> tuple[str, str]:
+    create_all_tables()
+    with session_scope() as session:
+        project = session.get(Project, project_id)
+        if project is None:
+            raise ProjectNotFoundError(f"Project '{project_id}' was not found.")
+        manuscript = session.get(Manuscript, manuscript_id)
+        if manuscript is None or manuscript.project_id != project_id:
+            raise ManuscriptNotFoundError(
+                (
+                    f"Manuscript '{manuscript_id}' was not found for project "
+                    f"'{project_id}'."
+                )
+            )
+
+        sections = dict(manuscript.sections or {})
+        ordered_sections = _ordered_section_keys(sections)
+        export_timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+
+        lines: list[str] = []
+        lines.append(f"# {project.title}")
+        lines.append("")
+        lines.append(f"- Project ID: `{project.id}`")
+        lines.append(f"- Manuscript ID: `{manuscript.id}`")
+        lines.append(f"- Branch: `{manuscript.branch_name}`")
+        lines.append(f"- Target journal: `{project.target_journal}`")
+        lines.append(f"- Exported (UTC): `{export_timestamp}`")
+        lines.append("")
+
+        rendered_sections = 0
+        for section_key in ordered_sections:
+            section_content = str(sections.get(section_key, "")).strip()
+            if not section_content and not include_empty_sections:
+                continue
+            rendered_sections += 1
+            lines.append(f"## {section_key.replace('_', ' ').title()}")
+            lines.append("")
+            if section_content:
+                lines.append(section_content)
+            else:
+                lines.append("_No content provided._")
+            lines.append("")
+
+        if rendered_sections == 0:
+            lines.append("_No non-empty sections available to export._")
+            lines.append("")
+
+        filename = (
+            f"{_slugify(project.title)}-"
+            f"{_slugify(manuscript.branch_name)}-"
+            f"{manuscript.id[:8]}.md"
+        )
+        markdown = "\n".join(lines).strip() + "\n"
+        return filename, markdown

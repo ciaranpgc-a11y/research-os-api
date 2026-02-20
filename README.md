@@ -54,6 +54,7 @@ Primary versioned routes:
 - `GET /v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots`
 - `POST /v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots`
 - `POST /v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots/{snapshot_id}/restore`
+- `GET /v1/projects/{project_id}/manuscripts/{manuscript_id}/export/markdown`
 - `POST /v1/projects/{project_id}/manuscripts/{manuscript_id}/generate`
 - `GET /v1/projects/{project_id}/manuscripts/{manuscript_id}/generation-jobs`
 - `GET /v1/generation-jobs/{job_id}`
@@ -65,6 +66,7 @@ Primary versioned routes:
 `/v1/generation-jobs/{job_id}` responses include estimated token and USD cost ranges for planning.
 Generation enqueue and retry requests can include `max_estimated_cost_usd` and `project_daily_budget_usd` guardrails.
 Snapshot restore requests support `mode` (`replace` or `merge`) and optional `sections` filters.
+Markdown export accepts `include_empty=true` to include blank sections in output.
 
 Compatibility routes:
 - `GET /health`

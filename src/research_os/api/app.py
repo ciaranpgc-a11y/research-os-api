@@ -9,6 +9,7 @@ from fastapi import Query
 from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.responses import PlainTextResponse
 
 from research_os.config import get_openai_api_key
 from research_os.api.schemas import (
@@ -42,6 +43,7 @@ from research_os.services.project_service import (
     ManuscriptSnapshotNotFoundError,
     ManuscriptSnapshotRestoreModeError,
     ProjectNotFoundError,
+    export_project_manuscript_markdown,
     create_manuscript_snapshot,
     create_manuscript_for_project,
     create_project_record,
@@ -423,6 +425,32 @@ def v1_restore_manuscript_snapshot(
         return _build_not_found_response(str(exc))
     except ManuscriptSnapshotRestoreModeError as exc:
         return _build_conflict_response(str(exc))
+
+
+@app.get(
+    "/v1/projects/{project_id}/manuscripts/{manuscript_id}/export/markdown",
+    response_model=None,
+    responses=NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_export_manuscript_markdown(
+    project_id: str,
+    manuscript_id: str,
+    include_empty: bool = Query(default=False),
+) -> PlainTextResponse:
+    try:
+        filename, markdown = export_project_manuscript_markdown(
+            project_id=project_id,
+            manuscript_id=manuscript_id,
+            include_empty_sections=include_empty,
+        )
+        return PlainTextResponse(
+            content=markdown,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
 
 
 @app.post(

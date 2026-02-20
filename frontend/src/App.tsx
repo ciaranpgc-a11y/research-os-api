@@ -310,6 +310,24 @@ function prettyOption(value: string, labelMap?: Record<string, string>): string 
   return humanizeIdentifier(value)
 }
 
+function getFilenameFromContentDisposition(
+  contentDisposition: string | null,
+  fallback: string,
+): string {
+  if (!contentDisposition) {
+    return fallback
+  }
+  const quoted = contentDisposition.match(/filename=\"([^\"]+)\"/i)
+  if (quoted?.[1]) {
+    return quoted[1]
+  }
+  const unquoted = contentDisposition.match(/filename=([^;]+)/i)
+  if (unquoted?.[1]) {
+    return unquoted[1].trim()
+  }
+  return fallback
+}
+
 function App() {
   const [notes, setNotes] = useState('')
   const [methods, setMethods] = useState('')
@@ -352,6 +370,10 @@ function App() {
   const [isSavingSection, setIsSavingSection] = useState(false)
   const [saveSectionError, setSaveSectionError] = useState('')
   const [saveSectionSuccess, setSaveSectionSuccess] = useState('')
+  const [isExportingManuscript, setIsExportingManuscript] = useState(false)
+  const [exportIncludeEmptySections, setExportIncludeEmptySections] = useState(false)
+  const [exportManuscriptError, setExportManuscriptError] = useState('')
+  const [exportManuscriptSuccess, setExportManuscriptSuccess] = useState('')
   const [sectionGenerationNotes, setSectionGenerationNotes] = useState('')
   const [isGeneratingSection, setIsGeneratingSection] = useState(false)
   const [generateSectionError, setGenerateSectionError] = useState('')
@@ -593,6 +615,8 @@ function App() {
     setCreateManuscriptSuccess('')
     setSaveSectionError('')
     setSaveSectionSuccess('')
+    setExportManuscriptError('')
+    setExportManuscriptSuccess('')
     setGenerateSectionError('')
     setGenerateSectionSuccess('')
     setSnapshots([])
@@ -601,6 +625,7 @@ function App() {
     setSnapshotLabel('')
     setSnapshotRestoreMode('replace')
     setSnapshotRestoreSectionsInput('')
+    setExportIncludeEmptySections(false)
     setFullGenerationError('')
     setFullGenerationSuccess('')
     setFullGenerationNotesContext('')
@@ -752,6 +777,13 @@ function App() {
       selectedManuscriptId,
       selectedProjectId,
     ],
+  )
+  const canExportManuscript = useMemo(
+    () =>
+      selectedProjectId.trim().length > 0 &&
+      selectedManuscriptId.trim().length > 0 &&
+      !isExportingManuscript,
+    [isExportingManuscript, selectedManuscriptId, selectedProjectId],
   )
   const canCreateSnapshot = useMemo(
     () =>
@@ -960,6 +992,48 @@ function App() {
       setSaveSectionSuccess('')
     } finally {
       setIsSavingSection(false)
+    }
+  }
+
+  const exportManuscriptMarkdown = async () => {
+    if (!canExportManuscript || !selectedProject || !selectedManuscript) {
+      return
+    }
+    setExportManuscriptError('')
+    setExportManuscriptSuccess('')
+    setIsExportingManuscript(true)
+    try {
+      const params = new URLSearchParams()
+      if (exportIncludeEmptySections) {
+        params.set('include_empty', 'true')
+      }
+      const query = params.toString()
+      const response = await fetch(
+        `${API_BASE_URL}/v1/projects/${selectedProject.id}/manuscripts/${selectedManuscript.id}/export/markdown${
+          query ? `?${query}` : ''
+        }`,
+      )
+      if (!response.ok) {
+        throw new Error(await readApiErrorMessage(response, 'Could not export manuscript'))
+      }
+      const blob = await response.blob()
+      const filename = getFilenameFromContentDisposition(
+        response.headers.get('Content-Disposition'),
+        `${selectedManuscript.branch_name}-manuscript.md`,
+      )
+      const url = window.URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = filename
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      window.URL.revokeObjectURL(url)
+      setExportManuscriptSuccess(`Downloaded ${filename}.`)
+    } catch (error) {
+      setExportManuscriptError(error instanceof Error ? error.message : 'Could not export manuscript')
+    } finally {
+      setIsExportingManuscript(false)
     }
   }
 
@@ -1668,6 +1742,22 @@ function App() {
                           {isSavingSection ? 'Saving...' : 'Save Section'}
                         </button>
                       </div>
+                      <div className="inline-actions">
+                        <label className="checkbox-inline">
+                          <input
+                            type="checkbox"
+                            checked={exportIncludeEmptySections}
+                            onChange={(event) => setExportIncludeEmptySections(event.target.checked)}
+                            disabled={isExportingManuscript}
+                          />
+                          <span>Include empty sections</span>
+                        </label>
+                        <button type="button" onClick={exportManuscriptMarkdown} disabled={!canExportManuscript}>
+                          {isExportingManuscript ? 'Exporting...' : 'Export Markdown'}
+                        </button>
+                      </div>
+                      {exportManuscriptError && <p>{exportManuscriptError}</p>}
+                      {exportManuscriptSuccess && <p>{exportManuscriptSuccess}</p>}
                       <div className="generation-box">
                         <label>
                           Generation notes for selected section

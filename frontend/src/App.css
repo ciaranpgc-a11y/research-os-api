@@ -588,6 +588,18 @@
   cursor: not-allowed;
 }
 
+.checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #d6def0;
+  font-size: 0.88rem;
+}
+
+.checkbox-inline input {
+  accent-color: #ff9f47;
+}
+
 .trace code,
 .api-hint code {
   font-size: 0.85rem;
