@@ -27,7 +27,7 @@ type RunRecommendations = {
 }
 
 const CONTEXT_KEY = 'aawe-run-context'
-const SNAPSHOT_KEY = 'aawe-run-wizard-snapshot'
+const RESEARCH_FRAME_SIGNATURE_KEY = 'aawe-research-frame-signature'
 const CORE_SECTIONS = ['introduction', 'methods', 'results', 'discussion']
 
 function buildGenerationBrief(values: ContextFormValues, sections: string[], guardrailsEnabled: boolean): string {
@@ -57,6 +57,20 @@ function readStoredRunContext(): RunContext | null {
   }
 }
 
+function isResearchFrameComplete(values: ContextFormValues): boolean {
+  return Boolean(values.projectTitle.trim() && values.studyArchitecture.trim() && values.researchObjective.trim())
+}
+
+function buildResearchFrameSignature(values: ContextFormValues, targetJournal: string): string {
+  return JSON.stringify({
+    projectTitle: values.projectTitle.trim(),
+    researchObjective: values.researchObjective.trim(),
+    studyArchitecture: values.studyArchitecture.trim(),
+    interpretationMode: values.interpretationMode.trim(),
+    targetJournal: targetJournal.trim(),
+  })
+}
+
 const STEP_ITEMS: WizardStepItem[] = [
   { id: 1, title: 'Research Frame', helper: 'Define inferential contract.' },
   { id: 2, title: 'Plan Sections', helper: 'Generate and edit outline.' },
@@ -67,7 +81,6 @@ const STEP_ITEMS: WizardStepItem[] = [
 
 export function StudyCorePage() {
   const currentStep = useStudyCoreWizardStore((state) => state.currentStep)
-  const contextStatus = useStudyCoreWizardStore((state) => state.contextStatus)
   const planStatus = useStudyCoreWizardStore((state) => state.planStatus)
   const jobStatus = useStudyCoreWizardStore((state) => state.jobStatus)
   const acceptedSections = useStudyCoreWizardStore((state) => state.acceptedSections)
@@ -118,7 +131,9 @@ export function StudyCorePage() {
   const [links, setLinks] = useState<ClaimLinkSuggestion[]>([])
   const [draftsBySection, setDraftsBySection] = useState<Record<string, string>>({})
   const [acceptedSectionKeys, setAcceptedSectionKeys] = useState<string[]>([])
-  const [primaryExportAction, setPrimaryExportAction] = useState<(() => void) | null>(null)
+  const [savedResearchFrameSignature, setSavedResearchFrameSignature] = useState<string | null>(() =>
+    window.localStorage.getItem(RESEARCH_FRAME_SIGNATURE_KEY),
+  )
 
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
@@ -139,9 +154,22 @@ export function StudyCorePage() {
     [contextValues.interpretationMode, contextValues.researchObjective, contextValues.studyArchitecture],
   )
 
+  const suggestedBrief = useMemo(
+    () => buildGenerationBrief(contextValues, selectedSections, guardrailsEnabled),
+    [contextValues, guardrailsEnabled, selectedSections],
+  )
+  const currentResearchFrameSignature = useMemo(
+    () => buildResearchFrameSignature(contextValues, targetJournal),
+    [contextValues, targetJournal],
+  )
+  const researchFrameComplete = useMemo(() => isResearchFrameComplete(contextValues), [contextValues])
+  const researchFrameSaved = useMemo(
+    () => Boolean(runContext) && researchFrameComplete && savedResearchFrameSignature === currentResearchFrameSignature,
+    [currentResearchFrameSignature, researchFrameComplete, runContext, savedResearchFrameSignature],
+  )
   const completedSteps = useMemo(() => {
     const completed: WizardStep[] = []
-    if (contextStatus === 'saved') {
+    if (researchFrameSaved) {
       completed.push(1)
     }
     if (planStatus === 'built') {
@@ -157,12 +185,7 @@ export function StudyCorePage() {
       completed.push(5)
     }
     return completed
-  }, [acceptedSections, contextStatus, jobStatus, planStatus, qcStatus])
-
-  const suggestedBrief = useMemo(
-    () => buildGenerationBrief(contextValues, selectedSections, guardrailsEnabled),
-    [contextValues, guardrailsEnabled, selectedSections],
-  )
+  }, [acceptedSections, jobStatus, planStatus, qcStatus, researchFrameSaved])
 
   useEffect(() => {
     void fetchJournalOptions()
@@ -185,12 +208,16 @@ export function StudyCorePage() {
   useEffect(() => {
     if (!runContext) {
       window.localStorage.removeItem(CONTEXT_KEY)
-      setContextStatus('empty')
+      window.localStorage.removeItem(RESEARCH_FRAME_SIGNATURE_KEY)
+      setSavedResearchFrameSignature(null)
       return
     }
     window.localStorage.setItem(CONTEXT_KEY, JSON.stringify(runContext))
-    setContextStatus('saved')
-  }, [runContext, setContextStatus])
+  }, [runContext])
+
+  useEffect(() => {
+    setContextStatus(researchFrameSaved ? 'saved' : 'empty')
+  }, [researchFrameSaved, setContextStatus])
 
   useEffect(() => {
     if (generationBriefTouched) {
@@ -256,7 +283,8 @@ export function StudyCorePage() {
     }
     setGenerationBrief(buildGenerationBrief(contextValues, nextSections, guardrailsEnabled))
     setGenerationBriefTouched(false)
-    setContextStatus('saved')
+    setSavedResearchFrameSignature(currentResearchFrameSignature)
+    window.localStorage.setItem(RESEARCH_FRAME_SIGNATURE_KEY, currentResearchFrameSignature)
   }
 
   const onPlanChange = (nextPlan: OutlinePlanState | null) => {
@@ -283,56 +311,6 @@ export function StudyCorePage() {
       }
       return [...current, section]
     })
-  }
-
-  const onContinue = () => {
-    setError('')
-    if (currentStep === 5) {
-      if (qcStatus === 'pass' && primaryExportAction) {
-        primaryExportAction()
-        return
-      }
-      setStatus('QC and export are available in Step 5.')
-      return
-    }
-    const nextStep = (currentStep + 1) as WizardStep
-    if (canNavigateToStep(nextStep)) {
-      setCurrentStep(nextStep)
-      return
-    }
-    if (currentStep === 1) {
-      setError('Save Research Frame to unlock Step 2.')
-      return
-    }
-    if (currentStep === 2) {
-      setError('Generate and edit the plan to unlock Step 3.')
-      return
-    }
-    if (currentStep === 3) {
-      setError('Run generation successfully to unlock Step 4.')
-      return
-    }
-    if (currentStep === 4) {
-      setError('Accept at least one section to unlock Step 5.')
-      return
-    }
-  }
-
-  const onSaveWorkspace = () => {
-    const snapshot = {
-      savedAt: new Date().toISOString(),
-      runContext,
-      targetJournal,
-      contextValues,
-      selectedSections,
-      plan,
-      draftsBySection,
-      acceptedSectionKeys,
-      runRecommendations,
-      guardrailsEnabled,
-    }
-    window.localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot))
-    setStatus('Workspace saved locally.')
   }
 
   const renderActiveStep = () => {
@@ -436,7 +414,6 @@ export function StudyCorePage() {
         onQcSeverityCountsChange={setQcSeverityCounts}
         onStatus={setStatus}
         onError={setError}
-        onRegisterPrimaryExportAction={setPrimaryExportAction}
       />
     )
   }
@@ -467,63 +444,55 @@ export function StudyCorePage() {
     return null
   }
 
-  const showRightPanel = currentStep === 1
+  const showRightPanel = currentStep === 1 && contextValues.researchObjective.trim().length > 0
 
   return (
     <section className="space-y-4">
-      <header className="sticky top-0 z-20 rounded-lg border border-border bg-background/95 p-3 shadow-sm backdrop-blur">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-[260px] flex-1 space-y-1">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Study Core - Run Wizard</p>
-            <Input
-              value={contextValues.projectTitle}
-              placeholder="Manuscript title"
-              onChange={(event) =>
-                setContextValues((current) => ({
-                  ...current,
-                  projectTitle: event.target.value,
-                }))
-              }
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onContinue}
-              className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              Continue
-            </button>
-            <button
-              type="button"
-              onClick={onSaveWorkspace}
-              className="h-9 rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted/50"
-            >
-              Save
-            </button>
-          </div>
+      <header className="rounded-lg border border-border/80 bg-muted/20 p-3">
+        <div className="min-w-[260px] space-y-1">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Study Core - Run Wizard</p>
+          <Input
+            value={contextValues.projectTitle}
+            placeholder="Manuscript title"
+            onChange={(event) =>
+              setContextValues((current) => ({
+                ...current,
+                projectTitle: event.target.value,
+              }))
+            }
+          />
         </div>
       </header>
 
-      <div className={showRightPanel ? 'grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)_280px]' : 'grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)]'}>
-        <StudyCoreStepper
-          steps={STEP_ITEMS}
-          currentStep={currentStep}
-          completedSteps={completedSteps}
-          canNavigateToStep={canNavigateToStep}
-          onStepSelect={(step) => {
-            if (canNavigateToStep(step)) {
-              setCurrentStep(step)
-            }
-          }}
-          devOverride={devOverride}
-        />
-
-        <div key={currentStep} className="wizard-step-transition space-y-3">
-          {renderActiveStep()}
+      <div className={showRightPanel ? 'grid items-start gap-4 xl:grid-cols-[200px_minmax(0,1fr)_240px]' : 'grid items-start gap-4 xl:grid-cols-[200px_minmax(0,1fr)]'}>
+        <div className="rounded-lg border border-border/80 bg-card p-2">
+          <StudyCoreStepper
+            steps={STEP_ITEMS}
+            currentStep={currentStep}
+            completedSteps={completedSteps}
+            canNavigateToStep={canNavigateToStep}
+            onStepSelect={(step) => {
+              if (canNavigateToStep(step)) {
+                setCurrentStep(step)
+              }
+            }}
+            devOverride={devOverride}
+          />
         </div>
 
-        {showRightPanel ? <div key={`panel-${currentStep}`} className="wizard-step-transition">{renderRightPanel()}</div> : null}
+        <div className="rounded-lg border border-border/80 bg-background p-2">
+          <div key={currentStep} className="wizard-step-transition space-y-3">
+            {renderActiveStep()}
+          </div>
+        </div>
+
+        {showRightPanel ? (
+          <div className="rounded-lg border border-border/80 bg-card p-2">
+            <div key={`panel-${currentStep}`} className="wizard-step-transition">
+              {renderRightPanel()}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {status ? <p className="text-sm text-emerald-600">{status}</p> : null}
