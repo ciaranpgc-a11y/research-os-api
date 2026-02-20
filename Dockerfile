@@ -11,9 +11,11 @@ RUN python -m pip install --upgrade pip && \
     python -c "import tomllib, subprocess; deps = tomllib.load(open('pyproject.toml', 'rb')).get('project', {}).get('dependencies', []); subprocess.check_call(['python', '-m', 'pip', 'install', '--no-cache-dir', *deps])"
 
 COPY src ./src
+COPY alembic.ini ./
+COPY alembic ./alembic
 
 RUN python -m pip install --no-cache-dir --no-deps .
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "uvicorn research_os.api.app:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn research_os.api.app:app --host 0.0.0.0 --port ${PORT:-8000}"]

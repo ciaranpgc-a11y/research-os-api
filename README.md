@@ -16,6 +16,11 @@ Backend test:
 python -m pytest -q
 ```
 
+Database migration:
+```bash
+python -m alembic upgrade head
+```
+
 Run API locally:
 ```bash
 python -m uvicorn research_os.api.app:app --reload
@@ -98,6 +103,8 @@ curl.exe --% -X POST http://127.0.0.1:8000/v1/projects/PROJECT_ID/manuscripts/MA
 `render.yaml` provisions:
 - `research-os-api-achk` (Docker web service)
 - `research-os-ui-achk` (static site from `frontend/`)
+
+The API Docker startup runs `alembic upgrade head` before launching Uvicorn.
 
 Required API environment variables:
 - `OPENAI_API_KEY` (must be set; API fails startup if missing)
