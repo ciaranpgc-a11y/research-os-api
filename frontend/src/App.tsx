@@ -1575,15 +1575,15 @@ function App() {
       <section className="panel">
         <header className="panel-header">
           <p className="eyebrow">Research OS</p>
-          <h1>Authoring + Project Wizard</h1>
-          <p className="subhead">Draft manuscript sections and bootstrap projects from one console.</p>
+          <h1>Research Drafting Console</h1>
+          <p className="subhead">Generate manuscript drafts fast, then use projects only when you need structured workflows.</p>
           <span className={`health-chip health-${health}`}>{healthText}</span>
         </header>
 
         <section className="section-block">
           <div className="section-heading">
-            <h2>Quick Manuscript Generation</h2>
-            <span className="chip-inline">No project needed</span>
+            <h2>Quick Draft Studio</h2>
+            <span className="chip-inline">Primary workflow</span>
           </div>
           <p className="section-note">
             Primary workflow: generate multiple manuscript sections directly from your notes without creating or uploading
@@ -1673,7 +1673,7 @@ function App() {
         </section>
 
         <section className="section-block">
-          <h2>Single Section Draft Studio</h2>
+          <h2>Single-Section Generator</h2>
           <p className="section-note">Optional: generate one section at a time.</p>
           <form onSubmit={onSubmit} className="composer">
             <label htmlFor="draft-section">Section</label>
@@ -1724,7 +1724,7 @@ function App() {
 
         <section className="section-block">
           <div className="section-heading">
-            <h2>Project Bootstrap Wizard</h2>
+            <h2>Project Setup Wizard</h2>
           </div>
           <p className="section-note">Infer adapts required questions from your current answers before creating a project.</p>
 
@@ -1911,7 +1911,7 @@ function App() {
 
         <section className="section-block">
           <div className="section-heading">
-            <h2>Project Library</h2>
+            <h2>Advanced Workspace</h2>
             <button type="button" className="ghost-button" onClick={loadProjects} disabled={isLoadingProjects}>
               {isLoadingProjects ? 'Refreshing...' : 'Refresh'}
             </button>
