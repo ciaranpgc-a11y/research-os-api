@@ -1,3 +1,5 @@
+import { useMemo, useState } from 'react'
+
 import { Button } from '@/components/ui/button'
 
 type Step1PanelProps = {
@@ -62,33 +64,59 @@ export function Step1Panel({
   onApplyResearchType,
   onGuardrailsChange,
 }: Step1PanelProps) {
-  const objectiveOptions = buildObjectiveOptions(objective)
-  const suggestedResearchType = researchTypeSuggestion(researchType, objective)
+  const [generatedObjectiveOptions, setGeneratedObjectiveOptions] = useState<string[]>([])
+  const [generatedResearchType, setGeneratedResearchType] = useState<string | null>(null)
+  const [generatedKey, setGeneratedKey] = useState('')
+
+  const currentKey = useMemo(
+    () => `${objective.trim().toLowerCase()}::${researchType.trim().toLowerCase()}`,
+    [objective, researchType],
+  )
+  const hasGenerated = generatedKey.length > 0
+  const isStale = hasGenerated && generatedKey !== currentKey
+
+  const onGenerateRefinements = () => {
+    setGeneratedObjectiveOptions(buildObjectiveOptions(objective))
+    setGeneratedResearchType(researchTypeSuggestion(researchType, objective))
+    setGeneratedKey(currentKey)
+  }
 
   return (
     <aside className="space-y-3 rounded-lg border border-border bg-card p-3">
       <h3 className="text-sm font-semibold">Framing Recommendations</h3>
 
       <div className="space-y-2 rounded-md border border-border bg-background p-3">
-        <p className="text-sm font-medium">Objective refinement</p>
-        <p className="text-xs text-muted-foreground">Choose a tighter objective rewrite.</p>
-        <div className="space-y-2">
-          {objectiveOptions.slice(0, 3).map((option) => (
-            <div key={option} className="rounded border border-border/70 p-2">
-              <p className="text-xs text-muted-foreground">{option}</p>
-              <Button size="sm" className="mt-2" onClick={() => onReplaceObjective(option)}>
-                Replace objective
-              </Button>
-            </div>
-          ))}
-        </div>
+        <p className="text-sm font-medium">Refinement controls</p>
+        <p className="text-xs text-muted-foreground">Generate recommendations on demand.</p>
+        <Button size="sm" onClick={onGenerateRefinements} disabled={!objective.trim()}>
+          Generate refinements
+        </Button>
+        {!objective.trim() ? <p className="text-xs text-muted-foreground">Add a core objective summary to enable refinements.</p> : null}
+        {isStale ? <p className="text-xs text-muted-foreground">Objective changed. Regenerate refinements.</p> : null}
       </div>
 
-      {suggestedResearchType ? (
+      {hasGenerated ? (
+        <div className="space-y-2 rounded-md border border-border bg-background p-3">
+          <p className="text-sm font-medium">Objective refinement</p>
+          <p className="text-xs text-muted-foreground">Choose a tighter objective rewrite.</p>
+          <div className="space-y-2">
+            {generatedObjectiveOptions.slice(0, 3).map((option) => (
+              <div key={option} className="rounded border border-border/70 p-2">
+                <p className="text-xs text-muted-foreground">{option}</p>
+                <Button size="sm" className="mt-2" onClick={() => onReplaceObjective(option)}>
+                  Replace objective
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {hasGenerated && generatedResearchType ? (
         <div className="space-y-2 rounded-md border border-border bg-background p-3">
           <p className="text-sm font-medium">Research type suggestion</p>
-          <p className="text-xs text-muted-foreground">Objective wording fits {suggestedResearchType.toLowerCase()} best.</p>
-          <Button size="sm" onClick={() => onApplyResearchType(suggestedResearchType)}>
+          <p className="text-xs text-muted-foreground">Objective wording fits {generatedResearchType.toLowerCase()} best.</p>
+          <Button size="sm" onClick={() => onApplyResearchType(generatedResearchType)}>
             Apply suggested research type
           </Button>
         </div>

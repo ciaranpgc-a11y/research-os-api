@@ -464,7 +464,7 @@ export function StudyCorePage() {
         </div>
       </header>
 
-      <div className={showRightPanel ? 'grid items-start gap-4 xl:grid-cols-[200px_minmax(0,1fr)_240px]' : 'grid items-start gap-4 xl:grid-cols-[200px_minmax(0,1fr)]'}>
+      <div className={showRightPanel ? 'grid items-start gap-4 xl:grid-cols-[190px_minmax(0,1fr)_300px]' : 'grid items-start gap-4 xl:grid-cols-[190px_minmax(0,1fr)]'}>
         <div className="rounded-lg border border-border/80 bg-card p-2">
           <StudyCoreStepper
             steps={STEP_ITEMS}

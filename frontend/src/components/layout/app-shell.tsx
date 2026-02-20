@@ -14,7 +14,8 @@ export function AppShell() {
   const rightPanelOpen = useAaweStore((state) => state.rightPanelOpen)
   const setLeftPanelOpen = useAaweStore((state) => state.setLeftPanelOpen)
   const setRightPanelOpen = useAaweStore((state) => state.setRightPanelOpen)
-  const showInsightPanel = location.pathname !== '/study-core'
+  const isStudyCoreRoute = location.pathname === '/study-core'
+  const showInsightPanel = !isStudyCoreRoute
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -36,7 +37,12 @@ export function AppShell() {
 
         <main className="min-w-0 overflow-hidden bg-background">
           <ScrollArea className="h-full">
-            <div className="mx-auto w-full max-w-6xl px-4 py-4 md:px-6">
+            <div
+              className={cn(
+                'mx-auto w-full py-4',
+                isStudyCoreRoute ? 'max-w-none px-3 md:px-4' : 'max-w-6xl px-4 md:px-6',
+              )}
+            >
               <Outlet />
             </div>
           </ScrollArea>
