@@ -1,13 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { RunSummaryBar } from '@/components/study-core/RunSummaryBar'
-import { RunEntryPanel } from '@/components/study-core/RunEntryPanel'
+import { Step1Panel } from '@/components/study-core/Step1Panel'
+import { Step2Panel } from '@/components/study-core/Step2Panel'
+import { Step3Panel } from '@/components/study-core/Step3Panel'
+import { Step4Panel, type DraftCorrection } from '@/components/study-core/Step4Panel'
+import { Step5Panel, type QcFix } from '@/components/study-core/Step5Panel'
 import { StepContext, type ContextFormValues } from '@/components/study-core/StepContext'
 import { StepDraftReview } from '@/components/study-core/StepDraftReview'
 import { StepLinkQcExport } from '@/components/study-core/StepLinkQcExport'
 import { StepPlan } from '@/components/study-core/StepPlan'
 import { StepRun } from '@/components/study-core/StepRun'
 import { StudyCoreStepper, type WizardStepItem } from '@/components/study-core/StudyCoreStepper'
+import { Input } from '@/components/ui/input'
+import { analyzePlan } from '@/lib/analyze-plan'
 import { fetchJournalOptions } from '@/lib/study-core-api'
 import { useStudyCoreWizardStore, type WizardStep } from '@/store/use-study-core-wizard-store'
 import type {
@@ -19,21 +24,28 @@ import type {
 } from '@/types/study-core'
 
 type RunContext = { projectId: string; manuscriptId: string }
+type RegisteredRunActions = { runWithRecommended: () => void; runAnyway: () => void }
+type RunRecommendations = {
+  conservativeWithLimitations: boolean
+  uncertaintyInResults: boolean
+  mechanisticAsHypothesis: boolean
+}
 
 const CONTEXT_KEY = 'aawe-run-context'
+const SNAPSHOT_KEY = 'aawe-run-wizard-snapshot'
 const CORE_SECTIONS = ['introduction', 'methods', 'results', 'discussion']
 
-function buildGenerationBrief(values: ContextFormValues, sections: string[]): string {
+function buildGenerationBrief(values: ContextFormValues, sections: string[], guardrailsEnabled: boolean): string {
   const lines = [
     values.researchObjective.trim() ? `Objective: ${values.researchObjective.trim()}` : '',
-    values.studyType.trim() ? `Study type: ${values.studyType.trim()}` : '',
-    values.primaryDataSource.trim() ? `Primary data source: ${values.primaryDataSource.trim()}` : '',
-    values.primaryAnalyticalClaim.trim() ? `Primary analytical claim: ${values.primaryAnalyticalClaim.trim()}` : '',
+    values.studyArchitecture.trim() ? `Architecture: ${values.studyArchitecture.trim()}` : '',
+    values.interpretationMode.trim() ? `Interpretation mode: ${values.interpretationMode.trim()}` : '',
     sections.length > 0
       ? `Priority sections: ${sections
           .map((section) => section.charAt(0).toUpperCase() + section.slice(1))
           .join(', ')}`
       : '',
+    guardrailsEnabled ? 'Use associative inference only and include explicit limitations.' : '',
   ]
   return lines.filter(Boolean).join('\n')
 }
@@ -50,12 +62,42 @@ function readStoredRunContext(): RunContext | null {
   }
 }
 
+function mergeBullets(existing: string[], additions: string[]): string[] {
+  const seen = new Set(existing.map((bullet) => bullet.trim().toLowerCase()).filter(Boolean))
+  const next = [...existing]
+  for (const bullet of additions) {
+    const trimmed = bullet.trim()
+    if (!trimmed) {
+      continue
+    }
+    const key = trimmed.toLowerCase()
+    if (seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    next.push(trimmed)
+  }
+  return next
+}
+
+function applyCausalReplacements(text: string): { nextText: string; changed: boolean } {
+  const nextText = text
+    .replace(/\bcauses?\b/gi, 'is associated with')
+    .replace(/\bcausal\b/gi, 'associative')
+    .replace(/\bled to\b/gi, 'was associated with')
+    .replace(/\bresulted in\b/gi, 'was associated with')
+  return {
+    nextText,
+    changed: nextText !== text,
+  }
+}
+
 const STEP_ITEMS: WizardStepItem[] = [
-  { id: 1, title: 'Research Frame', helper: 'Define the core frame for a new manuscript run.' },
-  { id: 2, title: 'Plan Sections', helper: 'Choose sections and refine an outline.' },
-  { id: 3, title: 'Run Generation', helper: 'Estimate cost and run generation.' },
-  { id: 4, title: 'Draft Review', helper: 'Accept or regenerate section drafts.' },
-  { id: 5, title: 'Link + QC + Export', helper: 'Link evidence, run QC, then export.' },
+  { id: 1, title: 'Research Frame', helper: 'Define inferential contract.' },
+  { id: 2, title: 'Plan Sections', helper: 'Generate and edit outline.' },
+  { id: 3, title: 'Run Generation', helper: 'Select sections and run.' },
+  { id: 4, title: 'Draft Review', helper: 'Accept, regenerate, and edit.' },
+  { id: 5, title: 'QC + Export', helper: 'Run QC and export.' },
 ]
 
 export function StudyCorePage() {
@@ -85,13 +127,19 @@ export function StudyCorePage() {
   const [contextValues, setContextValues] = useState<ContextFormValues>({
     projectTitle: 'AAWE Research Workspace',
     researchObjective: '',
-    primaryDataSource: '',
-    studyType: 'Observational',
-    primaryAnalyticalClaim: '',
+    studyArchitecture: '',
+    interpretationMode: '',
+  })
+
+  const [guardrailsEnabled, setGuardrailsEnabled] = useState(true)
+  const [runRecommendations, setRunRecommendations] = useState<RunRecommendations>({
+    conservativeWithLimitations: true,
+    uncertaintyInResults: false,
+    mechanisticAsHypothesis: false,
   })
 
   const [selectedSections, setSelectedSections] = useState<string[]>(CORE_SECTIONS)
-  const [generationBrief, setGenerationBrief] = useState(buildGenerationBrief(contextValues, CORE_SECTIONS))
+  const [generationBrief, setGenerationBrief] = useState(buildGenerationBrief(contextValues, CORE_SECTIONS, guardrailsEnabled))
   const [generationBriefTouched, setGenerationBriefTouched] = useState(false)
   const [temperature, setTemperature] = useState(0.3)
   const [reasoningEffort, setReasoningEffort] = useState<'low' | 'medium' | 'high'>('medium')
@@ -106,29 +154,25 @@ export function StudyCorePage() {
   const [draftsBySection, setDraftsBySection] = useState<Record<string, string>>({})
   const [acceptedSectionKeys, setAcceptedSectionKeys] = useState<string[]>([])
   const [primaryExportAction, setPrimaryExportAction] = useState<(() => void) | null>(null)
+  const [runActions, setRunActions] = useState<RegisteredRunActions | null>(null)
 
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
 
   const answers = useMemo(
     () => ({
-      study_type: contextValues.studyType,
+      study_type: contextValues.studyArchitecture,
       research_objective: contextValues.researchObjective,
-      primary_data_source: contextValues.primaryDataSource,
-      primary_analytical_claim: contextValues.primaryAnalyticalClaim,
-      analysis_summary: contextValues.primaryAnalyticalClaim,
+      primary_data_source: 'manual_input',
+      primary_analytical_claim: contextValues.interpretationMode || 'Associative',
+      analysis_summary: contextValues.interpretationMode ? `Interpretation mode: ${contextValues.interpretationMode}` : 'Interpretation mode: Associative',
       disease_focus: '',
       population: '',
       primary_outcome: '',
       manuscript_goal: 'generate_full_manuscript',
-      data_source: contextValues.primaryDataSource || 'manual_entry',
+      data_source: 'manual_entry',
     }),
-    [
-      contextValues.primaryAnalyticalClaim,
-      contextValues.primaryDataSource,
-      contextValues.researchObjective,
-      contextValues.studyType,
-    ],
+    [contextValues.interpretationMode, contextValues.researchObjective, contextValues.studyArchitecture],
   )
 
   const completedSteps = useMemo(() => {
@@ -152,8 +196,8 @@ export function StudyCorePage() {
   }, [acceptedSections, contextStatus, jobStatus, planStatus, qcStatus])
 
   const suggestedBrief = useMemo(
-    () => buildGenerationBrief(contextValues, selectedSections),
-    [contextValues, selectedSections],
+    () => buildGenerationBrief(contextValues, selectedSections, guardrailsEnabled),
+    [contextValues, guardrailsEnabled, selectedSections],
   )
 
   useEffect(() => {
@@ -221,44 +265,28 @@ export function StudyCorePage() {
     temperature,
   ])
 
-  const applyContextPayload = (
-    payload: {
-      projectId: string
-      manuscriptId: string
-      recommendedSections: string[]
-    },
-    options?: {
-      advanceToPlan?: boolean
-    },
-  ) => {
-    const shouldAdvanceToPlan = options?.advanceToPlan ?? true
+  useEffect(() => {
+    setRunRecommendations((current) => ({
+      ...current,
+      conservativeWithLimitations: guardrailsEnabled,
+    }))
+  }, [guardrailsEnabled])
+
+  const applyContextPayload = (payload: { projectId: string; manuscriptId: string; recommendedSections: string[] }) => {
     setRunContext({ projectId: payload.projectId, manuscriptId: payload.manuscriptId })
     const nextSections = payload.recommendedSections.length > 0 ? payload.recommendedSections : selectedSections
     if (payload.recommendedSections.length > 0) {
       setSelectedSections(payload.recommendedSections)
     }
-    setGenerationBrief(buildGenerationBrief(contextValues, nextSections))
+    setGenerationBrief(buildGenerationBrief(contextValues, nextSections, guardrailsEnabled))
     setGenerationBriefTouched(false)
     setContextStatus('saved')
-    if (shouldAdvanceToPlan) {
-      setCurrentStep(2)
-    }
-  }
-
-  const markDraftSeededFlowReady = (sections: string[]) => {
-    setSelectedSections(sections)
-    setPlan((current) => current ?? { sections: sections.map((section) => ({ name: section, bullets: [] })) })
-    setPlanStatus('built')
-    setJobStatus('succeeded')
   }
 
   const onPlanChange = (nextPlan: OutlinePlanState | null) => {
     setPlan(nextPlan)
     if (nextPlan) {
       setPlanStatus('built')
-      if (currentStep < 3) {
-        setCurrentStep(3)
-      }
       return
     }
     setPlanStatus('empty')
@@ -266,9 +294,6 @@ export function StudyCorePage() {
 
   const onJobStatusChange = (nextStatus: 'idle' | 'running' | 'succeeded' | 'failed') => {
     setJobStatus(nextStatus)
-    if (nextStatus === 'succeeded' && currentStep < 4) {
-      setCurrentStep(4)
-    }
   }
 
   const onDraftChange = (section: string, draft: string) => {
@@ -282,73 +307,278 @@ export function StudyCorePage() {
       }
       return [...current, section]
     })
-    if (currentStep < 5) {
-      setCurrentStep(5)
+  }
+
+  const onContinue = () => {
+    setError('')
+    if (currentStep === 5) {
+      if (qcStatus === 'pass' && primaryExportAction) {
+        primaryExportAction()
+        return
+      }
+      setStatus('QC and export are available in Step 5.')
+      return
+    }
+    const nextStep = (currentStep + 1) as WizardStep
+    if (canNavigateToStep(nextStep)) {
+      setCurrentStep(nextStep)
+      return
+    }
+    if (currentStep === 1) {
+      setError('Save Research Frame to unlock Step 2.')
+      return
+    }
+    if (currentStep === 2) {
+      setError('Generate and edit the plan to unlock Step 3.')
+      return
+    }
+    if (currentStep === 3) {
+      setError('Run generation successfully to unlock Step 4.')
+      return
+    }
+    if (currentStep === 4) {
+      setError('Accept at least one section to unlock Step 5.')
+      return
     }
   }
 
-  const summaryState = useMemo(() => {
-    if (contextStatus === 'empty') {
-      return {
-        label: 'Set context',
-        nextActionText: 'Complete Step 1 to initialise a project and manuscript run context.',
-        onAction: () => setCurrentStep(1),
-      }
+  const onSaveWorkspace = () => {
+    const snapshot = {
+      savedAt: new Date().toISOString(),
+      runContext,
+      targetJournal,
+      contextValues,
+      selectedSections,
+      plan,
+      draftsBySection,
+      acceptedSectionKeys,
+      runRecommendations,
+      guardrailsEnabled,
     }
-    if (planStatus === 'empty') {
-      return {
-        label: 'Build plan',
-        nextActionText: 'Complete Step 2 to define which sections the run should generate.',
-        onAction: () => setCurrentStep(2),
-      }
+    window.localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot))
+    setStatus('Workspace saved locally.')
+  }
+
+  const onEntryNew = () => {
+    setCurrentStep(1)
+  }
+
+  const onEntryContinue = () => {
+    if (acceptedSections > 0 || Object.keys(draftsBySection).length > 0) {
+      setCurrentStep(4)
+      return
     }
-    if (jobStatus === 'idle' || jobStatus === 'failed') {
-      return {
-        label: 'Run generation',
-        nextActionText: 'Use Step 3 to estimate cost and run generation.',
-        onAction: () => setCurrentStep(3),
-      }
+    if (planStatus === 'built') {
+      setCurrentStep(3)
+      return
     }
-    if (jobStatus === 'running') {
-      return {
-        label: 'Run generation',
-        nextActionText: 'Generation is running. Open Step 3 to monitor live status.',
-        onAction: () => setCurrentStep(3),
-      }
+    if (contextStatus === 'saved') {
+      setCurrentStep(2)
+      return
     }
-    if (acceptedSections === 0) {
-      return {
-        label: 'Review drafts',
-        nextActionText: 'Open Step 4 to accept at least one section into the manuscript.',
-        onAction: () => setCurrentStep(4),
-      }
-    }
-    if (qcStatus === 'idle') {
-      return {
-        label: 'Run QC',
-        nextActionText: 'Open Step 5, run QC, and resolve high-severity findings.',
-        onAction: () => setCurrentStep(5),
-      }
-    }
-    if (qcStatus === 'pass') {
-      return {
-        label: 'Export',
-        nextActionText: 'QC passed. Export the manuscript and reference pack.',
-        onAction: () => {
-          if (primaryExportAction) {
-            primaryExportAction()
-            return
+    setCurrentStep(1)
+  }
+
+  const onEntryRefine = () => {
+    setCurrentStep(4)
+  }
+
+  const applyPlanSectionPatch = useCallback(
+    (section: string, bulletsToInsert: string[]) => {
+      setPlan((current) => {
+        if (!current) {
+          return {
+            sections: [{ name: section, bullets: mergeBullets([], bulletsToInsert) }],
           }
-          setCurrentStep(5)
-        },
+        }
+        const existing = current.sections.find((item) => item.name === section)
+        if (!existing) {
+          return {
+            sections: [...current.sections, { name: section, bullets: mergeBullets([], bulletsToInsert) }],
+          }
+        }
+        return {
+          sections: current.sections.map((item) =>
+            item.name === section ? { ...item, bullets: mergeBullets(item.bullets, bulletsToInsert) } : item,
+          ),
+        }
+      })
+      setPlanStatus('built')
+      setStatus(`${section.charAt(0).toUpperCase()}${section.slice(1)} updated with recommended bullets.`)
+    },
+    [setPlanStatus],
+  )
+
+  const planRecommendations = useMemo(
+    () =>
+      analyzePlan({
+        objective: contextValues.researchObjective,
+        plan,
+        applySectionPatch: applyPlanSectionPatch,
+      }),
+    [applyPlanSectionPatch, contextValues.researchObjective, plan],
+  )
+
+  const draftCorrections = useMemo<DraftCorrection[]>(() => {
+    const corrections: DraftCorrection[] = []
+    const causalSectionName = ['discussion', 'results', 'introduction'].find((section) => {
+      const sectionText = draftsBySection[section]
+      if (!sectionText) {
+        return false
+      }
+      return /\bcausal\b|\bcauses?\b|\bled to\b|\bresulted in\b/i.test(sectionText)
+    })
+
+    if (causalSectionName) {
+      const original = draftsBySection[causalSectionName] ?? ''
+      const replacement = applyCausalReplacements(original)
+      if (replacement.changed) {
+        corrections.push({
+          title: 'Replace causal phrasing with associative phrasing.',
+          rationale: 'Retrospective observational writing should avoid causal claims.',
+          optionalPreview: `- ${original.slice(0, 180)}\n+ ${replacement.nextText.slice(0, 180)}`,
+          applyPatch: () => {
+            setDraftsBySection((current) => ({ ...current, [causalSectionName]: replacement.nextText }))
+            setStatus(`Applied associative phrasing in ${causalSectionName}.`)
+          },
+        })
       }
     }
-    return {
-      label: 'Run QC',
-      nextActionText: 'QC has warnings or failures. Open Step 5 to review checks and choose export mode.',
-      onAction: () => setCurrentStep(5),
+
+    const discussionText = draftsBySection.discussion ?? ''
+    const resultsText = draftsBySection.results ?? ''
+    const discussionNeedsAlignment =
+      /\bsignificant\b|\bstrong effect\b|\bproved\b/i.test(discussionText) &&
+      !/\bconfidence interval\b|\b95% ci\b|\bp-value\b|\bestimate\b/i.test(resultsText)
+    if (discussionNeedsAlignment) {
+      const alignmentSentence =
+        'Interpretation should be restricted to associations supported by reported estimates and uncertainty.'
+      corrections.push({
+        title: 'Align Discussion claims with Results.',
+        rationale: 'Discussion claims should reference the estimate and uncertainty reported in Results.',
+        optionalPreview: `+ Discussion: ${alignmentSentence}`,
+        applyPatch: () => {
+          setDraftsBySection((current) => ({
+            ...current,
+            discussion: `${current.discussion ?? ''}\n\n${alignmentSentence}`.trim(),
+          }))
+          setStatus('Aligned Discussion claims to Results language.')
+        },
+      })
     }
-  }, [acceptedSections, contextStatus, jobStatus, planStatus, primaryExportAction, qcStatus, setCurrentStep])
+
+    const missingLimitations = discussionText.trim() && !/\blimitation\b|\blimitations\b/i.test(discussionText)
+    if (missingLimitations) {
+      const limitationsParagraph =
+        'Limitations: This retrospective observational design is susceptible to residual confounding, selection bias, and measurement error.'
+      corrections.push({
+        title: 'Insert missing limitations paragraph.',
+        rationale: 'Discussion should explicitly state study limitations and their effect on interpretation.',
+        optionalPreview: `+ Discussion: ${limitationsParagraph}`,
+        applyPatch: () => {
+          setDraftsBySection((current) => ({
+            ...current,
+            discussion: `${current.discussion ?? ''}\n\n${limitationsParagraph}`.trim(),
+          }))
+          setStatus('Inserted limitations paragraph in Discussion.')
+        },
+      })
+    }
+
+    return corrections.slice(0, 3)
+  }, [draftsBySection])
+
+  const qcFixes = useMemo<QcFix[]>(
+    () => [
+      {
+        title: 'Standardize terminology',
+        rationale: 'Use one consistent disease and design label throughout the manuscript.',
+        optionalPreview: '+ Replace variant terms with standardized terminology.',
+        applyPatch: () => {
+          setDraftsBySection((current) => {
+            const next: Record<string, string> = {}
+            for (const [section, text] of Object.entries(current)) {
+              let updated = text
+              updated = updated.replace(/\bpulm\.?\s*hypertension\b/gi, 'pulmonary hypertension')
+              if (/\bPH\b/.test(updated) && !/pulmonary hypertension \(PH\)/i.test(updated) && /pulmonary hypertension/i.test(updated)) {
+                updated = updated.replace(/pulmonary hypertension/i, 'pulmonary hypertension (PH)')
+              }
+              next[section] = updated
+            }
+            return next
+          })
+          setStatus('Standardized terminology across draft sections.')
+        },
+      },
+      {
+        title: 'Fix missing abbreviations',
+        rationale: 'Define abbreviations the first time they appear.',
+        optionalPreview: '+ Add abbreviation definitions where needed.',
+        applyPatch: () => {
+          setDraftsBySection((current) => {
+            const next: Record<string, string> = {}
+            for (const [section, text] of Object.entries(current)) {
+              const defs: string[] = []
+              if (/\bCI\b/.test(text) && !/confidence interval \(CI\)/i.test(text)) {
+                defs.push('confidence interval (CI)')
+              }
+              if (/\bOR\b/.test(text) && !/odds ratio \(OR\)/i.test(text)) {
+                defs.push('odds ratio (OR)')
+              }
+              if (defs.length === 0 || /Abbreviations:/i.test(text)) {
+                next[section] = text
+                continue
+              }
+              next[section] = `${text}\n\nAbbreviations: ${defs.join('; ')}.`
+            }
+            return next
+          })
+          setStatus('Inserted missing abbreviation definitions.')
+        },
+      },
+      {
+        title: 'Adjust to journal style',
+        rationale: 'Shift first-person phrasing to neutral scientific voice.',
+        optionalPreview: '- We observed...\n+ This study observed...',
+        applyPatch: () => {
+          setDraftsBySection((current) => {
+            const next: Record<string, string> = {}
+            for (const [section, text] of Object.entries(current)) {
+              let updated = text
+              updated = updated.replace(/\bWe\b/g, 'This study')
+              updated = updated.replace(/\bour\b/gi, 'the')
+              updated = updated.replace(/!/g, '.')
+              next[section] = updated
+            }
+            return next
+          })
+          setStatus('Adjusted draft language toward journal style.')
+        },
+      },
+    ],
+    [],
+  )
+
+  const onRunWithRecommended = () => {
+    setRunRecommendations({
+      conservativeWithLimitations: true,
+      uncertaintyInResults: true,
+      mechanisticAsHypothesis: true,
+    })
+    if (!runActions) {
+      setError('Run controls are not ready yet.')
+      return
+    }
+    runActions.runWithRecommended()
+  }
+
+  const onRunAnyway = () => {
+    if (!runActions) {
+      setError('Run controls are not ready yet.')
+      return
+    }
+    runActions.runAnyway()
+  }
 
   const renderActiveStep = () => {
     if (currentStep === 1) {
@@ -357,8 +587,6 @@ export function StudyCorePage() {
           values={contextValues}
           targetJournal={targetJournal}
           journals={journals}
-          contextSaved={contextStatus === 'saved'}
-          contextCard={runContext ? { projectId: runContext.projectId, manuscriptId: runContext.manuscriptId } : null}
           onValueChange={(field, value) =>
             setContextValues((current) => ({
               ...current,
@@ -366,7 +594,7 @@ export function StudyCorePage() {
             }))
           }
           onTargetJournalChange={setTargetJournal}
-          onContextSaved={(payload) => applyContextPayload(payload, { advanceToPlan: true })}
+          onContextSaved={applyContextPayload}
           onStatus={setStatus}
           onError={setError}
         />
@@ -382,6 +610,7 @@ export function StudyCorePage() {
           generationBrief={generationBrief}
           plan={plan}
           estimatePreview={estimatePreview}
+          mechanisticRelevant={contextValues.interpretationMode.toLowerCase().includes('mechanistic')}
           onSectionsChange={setSelectedSections}
           onPlanChange={onPlanChange}
           onEstimateChange={setEstimatePreview}
@@ -404,6 +633,8 @@ export function StudyCorePage() {
           dailyBudgetUsd={dailyBudgetUsd}
           estimate={estimatePreview}
           activeJob={activeJob}
+          recommendations={runRecommendations}
+          onSectionsChange={setSelectedSections}
           onGenerationBriefChange={(value) => {
             setGenerationBriefTouched(true)
             setGenerationBrief(value)
@@ -415,6 +646,7 @@ export function StudyCorePage() {
           onEstimateChange={setEstimatePreview}
           onActiveJobChange={setActiveJob}
           onJobStatusChange={onJobStatusChange}
+          onRegisterRunActions={setRunActions}
           onStatus={setStatus}
           onError={setError}
         />
@@ -455,47 +687,127 @@ export function StudyCorePage() {
     )
   }
 
+  const renderRightPanel = () => {
+    if (currentStep === 1) {
+      return (
+        <Step1Panel
+          objective={contextValues.researchObjective}
+          studyArchitecture={contextValues.studyArchitecture}
+          guardrailsEnabled={guardrailsEnabled}
+          onReplaceObjective={(value) =>
+            setContextValues((current) => ({
+              ...current,
+              researchObjective: value,
+            }))
+          }
+          onApplyArchitecture={(value) =>
+            setContextValues((current) => ({
+              ...current,
+              studyArchitecture: value,
+            }))
+          }
+          onGuardrailsChange={setGuardrailsEnabled}
+        />
+      )
+    }
+    if (currentStep === 2) {
+      return <Step2Panel recommendations={planRecommendations} />
+    }
+    if (currentStep === 3) {
+      return (
+        <Step3Panel
+          recommendations={runRecommendations}
+          busy={jobStatus === 'running'}
+          onApplyConservative={() =>
+            setRunRecommendations((current) => ({
+              ...current,
+              conservativeWithLimitations: true,
+            }))
+          }
+          onApplyUncertainty={() =>
+            setRunRecommendations((current) => ({
+              ...current,
+              uncertaintyInResults: true,
+            }))
+          }
+          onApplyMechanisticLabel={() =>
+            setRunRecommendations((current) => ({
+              ...current,
+              mechanisticAsHypothesis: true,
+            }))
+          }
+          onRunWithRecommended={onRunWithRecommended}
+          onRunAnyway={onRunAnyway}
+        />
+      )
+    }
+    if (currentStep === 4) {
+      return <Step4Panel corrections={draftCorrections} />
+    }
+    return <Step5Panel fixes={qcFixes} />
+  }
+
   return (
     <section className="space-y-4">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Study Core - Run Wizard</h1>
-        <p className="text-sm text-muted-foreground">Follow a guided 5-step workflow to move from setup through export with progressive disclosure.</p>
+      <header className="sticky top-0 z-20 rounded-lg border border-border bg-background/95 p-3 shadow-sm backdrop-blur">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-[260px] flex-1 space-y-1">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Study Core - Run Wizard</p>
+            <Input
+              value={contextValues.projectTitle}
+              placeholder="Manuscript title"
+              onChange={(event) =>
+                setContextValues((current) => ({
+                  ...current,
+                  projectTitle: event.target.value,
+                }))
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              Context {contextStatus === 'saved' ? '✓' : '✗'} | Plan {planStatus === 'built' ? '✓' : '✗'} | Draft{' '}
+              {acceptedSections > 0 ? '✓' : '✗'} | QC {qcStatus === 'pass' ? '✓' : '✗'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onContinue}
+              className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              Continue
+            </button>
+            <button
+              type="button"
+              onClick={onSaveWorkspace}
+              className="h-9 rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted/50"
+            >
+              Save
+            </button>
+          </div>
+        </div>
       </header>
 
-      <RunEntryPanel
-        runContext={runContext}
-        targetJournal={targetJournal}
-        contextValues={contextValues}
-        onOpenStepOne={() => setCurrentStep(1)}
-        onContextEstablished={(payload) => {
-          applyContextPayload(payload, { advanceToPlan: false })
-        }}
-        onDraftImported={({ sections, draftsBySection: importedDrafts }) => {
-          setDraftsBySection((current) => ({ ...current, ...importedDrafts }))
-          markDraftSeededFlowReady(sections)
-          setCurrentStep(4)
-        }}
-        onRefineLoaded={({ section, text }) => {
-          setDraftsBySection((current) => ({ ...current, [section]: text }))
-          markDraftSeededFlowReady([section])
-          setCurrentStep(4)
-        }}
-        onStatus={setStatus}
-        onError={setError}
-      />
+      <div className="inline-flex rounded-md border border-border bg-background p-1">
+        <button type="button" onClick={onEntryNew} className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground">
+          New
+        </button>
+        <button
+          type="button"
+          onClick={onEntryContinue}
+          className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        >
+          Continue
+        </button>
+        <button
+          type="button"
+          onClick={onEntryRefine}
+          className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        >
+          Refine
+        </button>
+      </div>
 
-      <RunSummaryBar
-        contextStatus={contextStatus}
-        planStatus={planStatus}
-        jobStatus={jobStatus}
-        acceptedSections={acceptedSections}
-        qcStatus={qcStatus}
-        primaryActionLabel={summaryState.label}
-        nextActionText={summaryState.nextActionText}
-        onPrimaryAction={summaryState.onAction}
-      />
-
-      <div className="grid gap-4 md:grid-cols-[280px_minmax(0,1fr)]">
+      <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
         <StudyCoreStepper
           steps={STEP_ITEMS}
           currentStep={currentStep}
@@ -511,6 +823,10 @@ export function StudyCorePage() {
 
         <div key={currentStep} className="wizard-step-transition space-y-3">
           {renderActiveStep()}
+        </div>
+
+        <div key={`panel-${currentStep}`} className="wizard-step-transition">
+          {renderRightPanel()}
         </div>
       </div>
 

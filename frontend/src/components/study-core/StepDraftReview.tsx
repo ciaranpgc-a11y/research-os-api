@@ -1,9 +1,7 @@
 import { Check, Loader2, RefreshCcw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { fetchManuscript, generateGroundedDraft, updateManuscriptSections } from '@/lib/study-core-api'
 import { manuscriptParagraphs } from '@/mock/manuscript'
@@ -154,16 +152,52 @@ export function StepDraftReview({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Step 4: Draft Review</CardTitle>
-        <CardDescription>Review each generated section, accept what is ready, or regenerate sections as needed.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">Open each section tab, confirm quality, and accept the sections you want in the manuscript.</p>
+    <div className="space-y-4 rounded-lg border border-border bg-card p-4">
+      <div className="space-y-1">
+        <h2 className="text-base font-semibold">Step 4: Draft Review</h2>
+        <p className="text-sm text-muted-foreground">Review, edit, regenerate, and accept section drafts.</p>
+      </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="text-xs font-medium text-muted-foreground">Style</label>
+      <Tabs value={activeSection} onValueChange={setActiveSection}>
+        <TabsList className="h-auto flex-wrap bg-muted/70 p-1">
+          {sections.map((section) => (
+            <TabsTrigger key={section} value={section} className="mb-1">
+              {labelForSection(section)}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        {sections.map((section) => {
+          const isAccepted = acceptedSectionKeys.includes(section)
+          return (
+            <TabsContent key={section} value={section} className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-medium">{isAccepted ? 'Accepted' : 'Pending'}</p>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => void onRegenerateSection(section)} disabled={busySection === section}>
+                    {busySection === section ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="mr-1 h-3.5 w-3.5" />}
+                    Regenerate
+                  </Button>
+                  <Button size="sm" onClick={() => void onAcceptSection(section)} disabled={busySection === section}>
+                    {busySection === section ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Check className="mr-1 h-3.5 w-3.5" />}
+                    Accept
+                  </Button>
+                </div>
+              </div>
+              <textarea
+                className="min-h-60 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={draftsBySection[section] ?? ''}
+                onChange={(event) => onDraftChange(section, event.target.value)}
+              />
+            </TabsContent>
+          )
+        })}
+      </Tabs>
+
+      <details className="rounded-md border border-border/70 bg-muted/20 p-3">
+        <summary className="cursor-pointer text-sm font-medium">Details</summary>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label className="text-xs font-medium text-muted-foreground">Style profile</label>
           <select
             className="h-9 rounded-md border border-border bg-background px-3 text-sm"
             value={styleProfile}
@@ -173,51 +207,10 @@ export function StepDraftReview({
             <option value="narrative_review">clinical</option>
             <option value="concise">concise</option>
           </select>
-          <Badge variant="outline">Accepted sections: {acceptedSectionKeys.length}</Badge>
+          <p className="text-xs text-muted-foreground">Accepted sections: {acceptedSectionKeys.length}</p>
+          <p className="text-xs text-muted-foreground">Evidence links for active section: {evidenceCountForSection(activeSection, links)}</p>
         </div>
-
-        <Tabs value={activeSection} onValueChange={setActiveSection}>
-          <TabsList className="h-auto flex-wrap bg-muted/70 p-1">
-            {sections.map((section) => (
-              <TabsTrigger key={section} value={section} className="mb-1">
-                {labelForSection(section)}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          {sections.map((section) => {
-            const evidenceCount = evidenceCountForSection(section, links)
-            const isAccepted = acceptedSectionKeys.includes(section)
-            return (
-              <TabsContent key={section} value={section} className="space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant={isAccepted ? 'default' : 'outline'}>
-                      {isAccepted ? 'Accepted' : 'Pending'}
-                    </Badge>
-                    <Badge variant="secondary">Evidence links: {evidenceCount}</Badge>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => void onRegenerateSection(section)} disabled={busySection === section}>
-                      {busySection === section ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="mr-1 h-3.5 w-3.5" />}
-                      Regenerate section
-                    </Button>
-                    <Button size="sm" onClick={() => void onAcceptSection(section)} disabled={busySection === section}>
-                      {busySection === section ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Check className="mr-1 h-3.5 w-3.5" />}
-                      Accept to manuscript
-                    </Button>
-                  </div>
-                </div>
-                <textarea
-                  className="min-h-60 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                  value={draftsBySection[section] ?? ''}
-                  onChange={(event) => onDraftChange(section, event.target.value)}
-                />
-              </TabsContent>
-            )
-          })}
-        </Tabs>
-      </CardContent>
-    </Card>
+      </details>
+    </div>
   )
 }
