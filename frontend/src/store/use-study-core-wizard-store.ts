@@ -11,6 +11,8 @@ export type ContextReadinessFields = {
   researchObjective: string
   studyArchitecture: string
   interpretationMode: string
+  studyType: string
+  primaryAnalyticalClaim: string
 }
 export type QcSeverityCounts = {
   high: number
@@ -32,6 +34,8 @@ const DEFAULT_CONTEXT_READINESS_FIELDS: ContextReadinessFields = {
   researchObjective: '',
   studyArchitecture: '',
   interpretationMode: '',
+  studyType: '',
+  primaryAnalyticalClaim: '',
 }
 
 const DEFAULT_QC_SEVERITY_COUNTS: QcSeverityCounts = {

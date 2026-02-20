@@ -235,7 +235,14 @@ export function StudyCorePage() {
   }, [acceptedSectionKeys, setAcceptedSections])
 
   useEffect(() => {
-    setContextFields(contextValues)
+    setContextFields({
+      projectTitle: contextValues.projectTitle,
+      researchObjective: contextValues.researchObjective,
+      studyArchitecture: contextValues.studyArchitecture,
+      interpretationMode: contextValues.interpretationMode,
+      studyType: contextValues.studyArchitecture,
+      primaryAnalyticalClaim: contextValues.interpretationMode,
+    })
   }, [contextValues, setContextFields])
 
   useEffect(() => {
