@@ -1,5 +1,6 @@
 import { API_BASE_URL } from '@/lib/api'
 import type { ApiErrorPayload } from '@/types/insight'
+import type { QCRunResponse } from '@/types/qc-run'
 import type {
   CitationAutofillPayload,
   ClaimLinkerPayload,
@@ -387,6 +388,29 @@ export async function exportQcGatedMarkdown(
   const content = await response.text()
   const filename = inferFilename(response.headers.get('content-disposition'), 'aawe-manuscript.md')
   return { filename, content }
+}
+
+export async function exportManuscriptMarkdownWithWarnings(
+  projectId: string,
+  manuscriptId: string,
+): Promise<{ filename: string; content: string }> {
+  const response = await fetch(
+    `${API_BASE_URL}/v1/projects/${encodeURIComponent(projectId)}/manuscripts/${encodeURIComponent(manuscriptId)}/export/markdown?include_empty=false`,
+  )
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Export with warnings failed (${response.status})`))
+  }
+  const content = await response.text()
+  const filename = inferFilename(response.headers.get('content-disposition'), 'aawe-manuscript.md')
+  return { filename, content }
+}
+
+export async function runQcChecks(): Promise<QCRunResponse> {
+  const response = await fetch(`${API_BASE_URL}/v1/aawe/qc/run`, { method: 'POST' })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `QC run failed (${response.status})`))
+  }
+  return (await response.json()) as QCRunResponse
 }
 
 export async function exportReferencePack(input: {
