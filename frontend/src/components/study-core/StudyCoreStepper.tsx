@@ -43,7 +43,7 @@ export function StudyCoreStepper({
               key={step.id}
               variant="ghost"
               className={cn(
-                'h-auto w-full justify-start rounded-md border border-transparent px-2 py-2 text-left',
+                'h-auto w-full items-start justify-start whitespace-normal rounded-md border border-transparent px-2 py-2 text-left',
                 isActive && 'border-border bg-accent',
                 !canAccess && !isCompleted && 'opacity-60',
               )}
@@ -54,10 +54,10 @@ export function StudyCoreStepper({
                 {isCompleted ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Circle className="h-4 w-4 text-muted-foreground" />}
               </div>
               <div className="space-y-0.5">
-                <p className="text-sm font-medium">
+                <p className="break-words text-sm font-medium leading-snug">
                   Step {step.id}: {step.title}
                 </p>
-                <p className="text-xs text-muted-foreground">{step.helper}</p>
+                <p className="break-words text-xs leading-tight text-muted-foreground">{step.helper}</p>
               </div>
             </Button>
           )
