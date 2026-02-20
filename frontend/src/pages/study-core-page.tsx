@@ -71,6 +71,7 @@ export function StudyCorePage() {
   const setQcStatus = useStudyCoreWizardStore((state) => state.setQcStatus)
   const setContextFields = useStudyCoreWizardStore((state) => state.setContextFields)
   const setWizardSections = useStudyCoreWizardStore((state) => state.setSelectedSections)
+  const setOutlinePlan = useStudyCoreWizardStore((state) => state.setOutlinePlan)
   const setQcSeverityCounts = useStudyCoreWizardStore((state) => state.setQcSeverityCounts)
   const canNavigateToStep = useStudyCoreWizardStore((state) => state.canNavigateToStep)
 
@@ -179,6 +180,10 @@ export function StudyCorePage() {
   useEffect(() => {
     setWizardSections(selectedSections)
   }, [selectedSections, setWizardSections])
+
+  useEffect(() => {
+    setOutlinePlan(plan)
+  }, [plan, setOutlinePlan])
 
   const readinessScore = useMemo(
     () =>

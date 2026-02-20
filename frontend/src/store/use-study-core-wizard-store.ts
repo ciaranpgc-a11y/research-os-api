@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { OutlinePlanState } from '@/types/study-core'
 
 export type WizardStep = 1 | 2 | 3 | 4 | 5
 export type ContextStatus = 'empty' | 'saved'
@@ -41,6 +42,7 @@ type WizardStore = {
   qcStatus: QcStatus
   contextFields: ContextReadinessFields
   selectedSections: string[]
+  outlinePlan: OutlinePlanState | null
   qcSeverityCounts: QcSeverityCounts
   devOverride: boolean
   setCurrentStep: (step: WizardStep) => void
@@ -51,6 +53,7 @@ type WizardStore = {
   setQcStatus: (status: QcStatus) => void
   setContextFields: (fields: ContextReadinessFields) => void
   setSelectedSections: (sections: string[]) => void
+  setOutlinePlan: (plan: OutlinePlanState | null) => void
   setQcSeverityCounts: (counts: QcSeverityCounts) => void
   canNavigateToStep: (targetStep: WizardStep) => boolean
   resetWizard: () => void
@@ -75,6 +78,7 @@ export const useStudyCoreWizardStore = create<WizardStore>((set, get) => ({
   qcStatus: 'idle',
   contextFields: DEFAULT_CONTEXT_READINESS_FIELDS,
   selectedSections: ['introduction', 'methods', 'results', 'discussion'],
+  outlinePlan: null,
   qcSeverityCounts: DEFAULT_QC_SEVERITY_COUNTS,
   devOverride: import.meta.env.DEV,
   setCurrentStep: (step) => set({ currentStep: clampStep(step) }),
@@ -85,6 +89,7 @@ export const useStudyCoreWizardStore = create<WizardStore>((set, get) => ({
   setQcStatus: (status) => set({ qcStatus: status }),
   setContextFields: (fields) => set({ contextFields: { ...fields } }),
   setSelectedSections: (sections) => set({ selectedSections: [...sections] }),
+  setOutlinePlan: (plan) => set({ outlinePlan: plan }),
   setQcSeverityCounts: (counts) =>
     set({
       qcSeverityCounts: {
@@ -134,6 +139,7 @@ export const useStudyCoreWizardStore = create<WizardStore>((set, get) => ({
       qcStatus: 'idle',
       contextFields: DEFAULT_CONTEXT_READINESS_FIELDS,
       selectedSections: ['introduction', 'methods', 'results', 'discussion'],
+      outlinePlan: null,
       qcSeverityCounts: DEFAULT_QC_SEVERITY_COUNTS,
     }),
 }))
