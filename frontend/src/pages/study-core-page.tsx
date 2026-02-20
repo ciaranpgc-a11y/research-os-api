@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import {
+  autofillCitations,
   bootstrapRunContext,
   cancelGeneration,
   enqueueGeneration,
@@ -18,21 +19,29 @@ import {
   fetchJournalOptions,
   generateGroundedDraft,
   planSections,
+  regenerateParagraph,
   retryGeneration,
+  runConsistencyCheck,
   runClaimLinker,
+  synthesizeTitleAbstract,
 } from '@/lib/study-core-api'
 import { manuscriptParagraphs } from '@/mock/manuscript'
 import { resultObjects } from '@/mock/results'
 import { PageFrame } from '@/pages/page-frame'
 import { useAaweStore } from '@/store/use-aawe-store'
 import type {
+  CitationAutofillPayload,
   ClaimLinkSuggestion,
+  ConsistencyCheckPayload,
   GenerationEstimate,
   GenerationJobPayload,
   GroundedDraftEvidenceLinkInput,
   GroundedDraftPayload,
   JournalOption,
+  ParagraphConstraint,
+  ParagraphRegenerationPayload,
   SectionPlanPayload,
+  TitleAbstractPayload,
 } from '@/types/study-core'
 
 type RunContext = { projectId: string; manuscriptId: string }
@@ -41,6 +50,7 @@ const CONTEXT_KEY = 'aawe-run-context'
 const GROUNDED_DRAFT_PREFS_KEY = 'aawe-grounded-draft-prefs'
 const GROUNDED_DRAFT_OUTPUTS_KEY = 'aawe-grounded-draft-outputs'
 const SECTIONS = ['introduction', 'methods', 'results', 'discussion']
+const PARAGRAPH_CONSTRAINTS: ParagraphConstraint[] = ['shorter', 'more_cautious', 'journal_tone', 'keep_stats_unchanged']
 
 function parseOptionalNumber(value: string): number | null {
   if (!value.trim()) {
@@ -122,6 +132,18 @@ export function StudyCorePage() {
     const payload = loadStoredValue<{ persistGroundedDrafts?: boolean }>(GROUNDED_DRAFT_PREFS_KEY, {})
     return payload.persistGroundedDrafts ?? true
   })
+  const [synthesisMaxWords, setSynthesisMaxWords] = useState('220')
+  const [synthesizedDraft, setSynthesizedDraft] = useState<TitleAbstractPayload | null>(null)
+  const [consistencyReport, setConsistencyReport] = useState<ConsistencyCheckPayload | null>(null)
+  const [includeLowConsistencySeverity, setIncludeLowConsistencySeverity] = useState(false)
+  const [paragraphSection, setParagraphSection] = useState('introduction')
+  const [paragraphIndex, setParagraphIndex] = useState('0')
+  const [paragraphConstraint, setParagraphConstraint] = useState<ParagraphConstraint>('more_cautious')
+  const [paragraphInstruction, setParagraphInstruction] = useState('')
+  const [paragraphRegenResult, setParagraphRegenResult] = useState<ParagraphRegenerationPayload | null>(null)
+  const [autofillRequiredSlots, setAutofillRequiredSlots] = useState('2')
+  const [autofillOverwriteExisting, setAutofillOverwriteExisting] = useState(false)
+  const [autofillPayload, setAutofillPayload] = useState<CitationAutofillPayload | null>(null)
 
   const [plan, setPlan] = useState<SectionPlanPayload | null>(null)
   const [estimate, setEstimate] = useState<GenerationEstimate | null>(null)
@@ -198,6 +220,15 @@ export function StudyCorePage() {
       setDraftSection(selectedSections[0])
     }
   }, [draftSection, selectedSections])
+
+  useEffect(() => {
+    if (selectedSections.length === 0) {
+      return
+    }
+    if (!selectedSections.includes(paragraphSection)) {
+      setParagraphSection(selectedSections[0])
+    }
+  }, [paragraphSection, selectedSections])
 
   useEffect(() => {
     if (!activeJob || !isActive(activeJob)) return
@@ -397,6 +428,163 @@ export function StudyCorePage() {
     }
   }
 
+  const onSynthesizeTitleAbstract = async () => {
+    if (!runContext) {
+      setError('Create run context first.')
+      return
+    }
+    const maxWords = parseOptionalNumber(synthesisMaxWords)
+    if (maxWords === null || maxWords <= 0) {
+      setError('Max abstract words must be numeric.')
+      return
+    }
+
+    setBusy('synthesize')
+    setError('')
+    setStatus('')
+    try {
+      const payload = await synthesizeTitleAbstract({
+        projectId: runContext.projectId,
+        manuscriptId: runContext.manuscriptId,
+        styleProfile,
+        maxAbstractWords: Math.round(maxWords),
+        persistToManuscript: true,
+      })
+      setSynthesizedDraft(payload)
+      setGroundedDrafts((current) => ({
+        ...current,
+        title: {
+          section: 'title',
+          style_profile: payload.style_profile,
+          generation_mode: 'full',
+          draft: payload.title,
+          passes: [],
+          evidence_anchor_labels: [],
+          citation_ids: [],
+          unsupported_sentences: [],
+          persisted: payload.persisted,
+          manuscript: payload.manuscript,
+        },
+        abstract: {
+          section: 'abstract',
+          style_profile: payload.style_profile,
+          generation_mode: 'full',
+          draft: payload.abstract,
+          passes: [],
+          evidence_anchor_labels: [],
+          citation_ids: [],
+          unsupported_sentences: [],
+          persisted: payload.persisted,
+          manuscript: payload.manuscript,
+        },
+      }))
+      setStatus(`Synthesized title + abstract (${payload.style_profile}).`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not synthesize title and abstract.')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const onRunConsistency = async () => {
+    if (!runContext) {
+      setError('Create run context first.')
+      return
+    }
+    setBusy('consistency')
+    setError('')
+    setStatus('')
+    try {
+      const payload = await runConsistencyCheck({
+        projectId: runContext.projectId,
+        manuscriptId: runContext.manuscriptId,
+        includeLowSeverity: includeLowConsistencySeverity,
+      })
+      setConsistencyReport(payload)
+      setStatus(`Consistency check found ${payload.total_issues} issue(s).`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not run consistency check.')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const onRegenerateParagraph = async () => {
+    if (!runContext) {
+      setError('Create run context first.')
+      return
+    }
+    const indexValue = parseOptionalNumber(paragraphIndex)
+    if (indexValue === null || indexValue < 0) {
+      setError('Paragraph index must be numeric and >= 0.')
+      return
+    }
+
+    setBusy('paragraph')
+    setError('')
+    setStatus('')
+    try {
+      const payload = await regenerateParagraph({
+        projectId: runContext.projectId,
+        manuscriptId: runContext.manuscriptId,
+        section: paragraphSection,
+        paragraphIndex: Math.floor(indexValue),
+        notesContext,
+        constraints: [paragraphConstraint],
+        freeformInstruction: paragraphInstruction.trim() ? paragraphInstruction : null,
+        evidenceLinks: buildEvidenceLinksForSection(paragraphSection),
+        citationIds: groundedDrafts[paragraphSection]?.citation_ids ?? [],
+        persistToManuscript: true,
+      })
+      setParagraphRegenResult(payload)
+      setGroundedDrafts((current) => ({
+        ...current,
+        [paragraphSection]: {
+          section: paragraphSection,
+          style_profile: styleProfile,
+          generation_mode: 'targeted',
+          draft: payload.updated_section_text,
+          passes: [],
+          evidence_anchor_labels: current[paragraphSection]?.evidence_anchor_labels ?? [],
+          citation_ids: current[paragraphSection]?.citation_ids ?? [],
+          unsupported_sentences: payload.unsupported_sentences,
+          persisted: payload.persisted,
+          manuscript: payload.manuscript,
+        },
+      }))
+      setStatus(`Regenerated paragraph ${payload.paragraph_index} in ${payload.section}.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not regenerate paragraph.')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const onAutofillCitations = async () => {
+    const slots = parseOptionalNumber(autofillRequiredSlots)
+    if (slots === null || slots <= 0) {
+      setError('Required slots must be numeric and > 0.')
+      return
+    }
+
+    setBusy('autofill')
+    setError('')
+    setStatus('')
+    try {
+      const payload = await autofillCitations({
+        claimIds: claimIds.length > 0 ? claimIds : null,
+        requiredSlots: Math.floor(slots),
+        overwriteExisting: autofillOverwriteExisting,
+      })
+      setAutofillPayload(payload)
+      setStatus(`Autofilled citations for ${payload.updated_claims.length} claim(s).`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not autofill citations.')
+    } finally {
+      setBusy('')
+    }
+  }
+
   const onLink = async () => {
     setBusy('link')
     setError('')
@@ -581,6 +769,75 @@ export function StudyCorePage() {
         </Card>
 
         <Card>
+          <CardHeader><CardTitle className="text-base">Synthesis + Consistency + Paragraph Controls</CardTitle><CardDescription>Generate title/abstract, run cross-section consistency checks, and regenerate individual paragraphs.</CardDescription></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-3">
+              <Input value={synthesisMaxWords} onChange={(event) => setSynthesisMaxWords(event.target.value)} />
+              <Button variant="outline" onClick={onSynthesizeTitleAbstract} disabled={busy === 'synthesize' || !runContext}>
+                {busy === 'synthesize' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}
+                Synthesize Title + Abstract
+              </Button>
+              <label className="flex items-center gap-2 rounded-md border border-border px-3 text-sm">
+                <input type="checkbox" checked={includeLowConsistencySeverity} onChange={(event) => setIncludeLowConsistencySeverity(event.target.checked)} />
+                include low severity
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={onRunConsistency} disabled={busy === 'consistency' || !runContext}>
+                {busy === 'consistency' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+                Run Consistency Check
+              </Button>
+              {consistencyReport ? (
+                <Badge variant="secondary">
+                  issues {consistencyReport.total_issues} | high {consistencyReport.high_severity_count}
+                </Badge>
+              ) : null}
+            </div>
+            {synthesizedDraft ? (
+              <div className="space-y-1 rounded-md border border-border p-2 text-xs">
+                <p className="font-medium">Title</p>
+                <p>{synthesizedDraft.title}</p>
+                <p className="font-medium">Abstract</p>
+                <p>{synthesizedDraft.abstract}</p>
+              </div>
+            ) : null}
+            {consistencyReport ? (
+              <div className="space-y-1">
+                {consistencyReport.issues.map((issue) => (
+                  <div key={issue.id} className="rounded-md border border-border px-2 py-1 text-xs">
+                    [{issue.severity}] {issue.summary}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            <Separator />
+            <div className="grid gap-3 md:grid-cols-4">
+              <select className="h-9 rounded-md border border-border bg-background px-3 text-sm" value={paragraphSection} onChange={(event) => setParagraphSection(event.target.value)}>
+                {(selectedSections.length > 0 ? selectedSections : SECTIONS).map((section) => <option key={section} value={section}>{section}</option>)}
+              </select>
+              <Input value={paragraphIndex} onChange={(event) => setParagraphIndex(event.target.value)} />
+              <select className="h-9 rounded-md border border-border bg-background px-3 text-sm" value={paragraphConstraint} onChange={(event) => setParagraphConstraint(event.target.value as ParagraphConstraint)}>
+                {PARAGRAPH_CONSTRAINTS.map((constraint) => <option key={constraint} value={constraint}>{constraint}</option>)}
+              </select>
+              <Button variant="outline" onClick={onRegenerateParagraph} disabled={busy === 'paragraph' || !runContext}>
+                {busy === 'paragraph' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+                Regenerate Paragraph
+              </Button>
+            </div>
+            <Input value={paragraphInstruction} onChange={(event) => setParagraphInstruction(event.target.value)} placeholder="Optional instruction: keep phrasing neutral and avoid overclaiming." />
+            {paragraphRegenResult ? (
+              <div className="space-y-1 rounded-md border border-border p-2 text-xs">
+                <p className="font-medium">Original</p>
+                <p>{paragraphRegenResult.original_paragraph}</p>
+                <p className="font-medium">Regenerated</p>
+                <p>{paragraphRegenResult.regenerated_paragraph}</p>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card>
           <CardHeader><CardTitle className="text-base">Evidence-to-Claim Linker</CardTitle><CardDescription>Suggest claim-result links and inspect directly in workspace.</CardDescription></CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -608,11 +865,35 @@ export function StudyCorePage() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle className="text-base">QC Gate + Reference Pack</CardTitle><CardDescription>Export manuscript only if high-severity QC issues are cleared, and build formatted references.</CardDescription></CardHeader>
-          <CardContent className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={onExportMarkdown} disabled={busy === 'markdown' || !runContext}>{busy === 'markdown' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-1 h-4 w-4" />}Export Manuscript (QC-gated)</Button>
-            <select className="h-9 rounded-md border border-border bg-background px-3 text-sm" value={referenceStyle} onChange={(event) => setReferenceStyle(event.target.value as 'vancouver' | 'ama')}><option value="vancouver">Vancouver</option><option value="ama">AMA</option></select>
-            <Button variant="outline" onClick={onExportReferences} disabled={busy === 'refs'}>{busy === 'refs' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}Export Reference Pack</Button>
+          <CardHeader><CardTitle className="text-base">Citations + Export</CardTitle><CardDescription>Autofill citation slots, then export reference packs and QC-gated manuscript markdown.</CardDescription></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-4">
+              <Input value={autofillRequiredSlots} onChange={(event) => setAutofillRequiredSlots(event.target.value)} />
+              <label className="flex items-center gap-2 rounded-md border border-border px-3 text-sm">
+                <input type="checkbox" checked={autofillOverwriteExisting} onChange={(event) => setAutofillOverwriteExisting(event.target.checked)} />
+                overwrite existing
+              </label>
+              <Button variant="outline" onClick={onAutofillCitations} disabled={busy === 'autofill'}>
+                {busy === 'autofill' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+                Autofill Citation Slots
+              </Button>
+              {autofillPayload ? <Badge variant="secondary">{autofillPayload.updated_claims.length} claims updated</Badge> : <span />}
+            </div>
+            {autofillPayload ? (
+              <div className="space-y-1">
+                {autofillPayload.updated_claims.map((claim) => (
+                  <div key={claim.claim_id} className="rounded-md border border-border px-2 py-1 text-xs">
+                    {claim.claim_id}: {claim.attached_citation_ids.join(', ')} (missing {claim.missing_slots})
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <Separator />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" onClick={onExportMarkdown} disabled={busy === 'markdown' || !runContext}>{busy === 'markdown' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-1 h-4 w-4" />}Export Manuscript (QC-gated)</Button>
+              <select className="h-9 rounded-md border border-border bg-background px-3 text-sm" value={referenceStyle} onChange={(event) => setReferenceStyle(event.target.value as 'vancouver' | 'ama')}><option value="vancouver">Vancouver</option><option value="ama">AMA</option></select>
+              <Button variant="outline" onClick={onExportReferences} disabled={busy === 'refs'}>{busy === 'refs' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}Export Reference Pack</Button>
+            </div>
           </CardContent>
         </Card>
 

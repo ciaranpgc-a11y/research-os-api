@@ -16,10 +16,14 @@ from research_os.config import get_openai_api_key
 from research_os.api.schemas import (
     ClaimLinkerRequest,
     ClaimLinkerResponse,
+    CitationAutofillRequest,
+    CitationAutofillResponse,
     CitationExportRequest,
     CitationRecordResponse,
     ClaimCitationStateResponse,
     ClaimCitationUpdateRequest,
+    ConsistencyCheckRequest,
+    ConsistencyCheckResponse,
     DraftMethodsRequest,
     DraftMethodsSuccessResponse,
     DraftSectionRequest,
@@ -42,12 +46,16 @@ from research_os.api.schemas import (
     ManuscriptSnapshotResponse,
     ManuscriptSectionsUpdateRequest,
     ManuscriptResponse,
+    ParagraphRegenerationRequest,
+    ParagraphRegenerationResponse,
     ProjectCreateRequest,
     ProjectResponse,
     QCGatedExportRequest,
     ReferencePackRequest,
     SectionPlanRequest,
     SectionPlanResponse,
+    TitleAbstractSynthesisRequest,
+    TitleAbstractSynthesisResponse,
     WizardBootstrapRequest,
     WizardBootstrapResponse,
     WizardInferRequest,
@@ -55,6 +63,7 @@ from research_os.api.schemas import (
 )
 from research_os.services.citation_service import (
     CitationRecordNotFoundError,
+    autofill_claim_citations,
     export_citation_references,
     export_reference_pack,
     get_claim_citation_state,
@@ -94,6 +103,7 @@ from research_os.services.generation_job_service import (
     serialize_generation_job,
 )
 from research_os.services.claim_linker_service import suggest_claim_links
+from research_os.services.consistency_service import run_cross_section_consistency_check
 from research_os.services.grounded_draft_service import (
     GroundedDraftGenerationError,
     generate_grounded_section_draft,
@@ -102,12 +112,22 @@ from research_os.services.insight_service import (
     SelectionInsightNotFoundError,
     get_selection_insight,
 )
+from research_os.services.paragraph_regeneration_service import (
+    ParagraphRegenerationError,
+    regenerate_paragraph_text,
+    replace_paragraph,
+    split_section_paragraphs,
+)
 from research_os.services.qc_service import run_qc_checks
 from research_os.services.section_planning_service import build_section_plan
 from research_os.services.manuscript_service import (
     ManuscriptGenerationError,
     draft_methods_from_notes,
     draft_section_from_notes,
+)
+from research_os.services.title_abstract_service import (
+    TitleAbstractSynthesisError,
+    synthesize_title_and_abstract,
 )
 from research_os.services.wizard_service import (
     JOURNAL_PRESETS,
@@ -200,7 +220,15 @@ async def handle_unexpected_exception(request: Request, exc: Exception) -> JSONR
 
 
 def _build_error_response(exc: Exception) -> JSONResponse:
-    if isinstance(exc, (ManuscriptGenerationError, GroundedDraftGenerationError)):
+    if isinstance(
+        exc,
+        (
+            ManuscriptGenerationError,
+            GroundedDraftGenerationError,
+            TitleAbstractSynthesisError,
+            ParagraphRegenerationError,
+        ),
+    ):
         return JSONResponse(
             status_code=502,
             content={
@@ -407,6 +435,166 @@ def v1_generate_aawe_grounded_draft(
 
 
 @app.post(
+    "/v1/aawe/projects/{project_id}/manuscripts/{manuscript_id}/synthesize/title-abstract",
+    response_model=TitleAbstractSynthesisResponse,
+    responses=ERROR_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_synthesize_title_abstract(
+    project_id: str,
+    manuscript_id: str,
+    request: TitleAbstractSynthesisRequest,
+) -> TitleAbstractSynthesisResponse | JSONResponse:
+    try:
+        manuscript = get_project_manuscript(project_id, manuscript_id)
+    except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+
+    payload = synthesize_title_and_abstract(
+        sections=dict(manuscript.sections or {}),
+        style_profile=request.style_profile,
+        max_abstract_words=max(80, min(request.max_abstract_words, 450)),
+        model=request.model or "gpt-4.1-mini",
+    )
+
+    persisted = False
+    manuscript_payload: ManuscriptResponse | None = None
+    if request.persist_to_manuscript:
+        updated_manuscript = update_project_manuscript_sections(
+            project_id=project_id,
+            manuscript_id=manuscript_id,
+            sections={
+                "title": payload["title"],
+                "abstract": payload["abstract"],
+            },
+        )
+        persisted = True
+        manuscript_payload = ManuscriptResponse.model_validate(updated_manuscript)
+
+    return TitleAbstractSynthesisResponse(
+        title=payload["title"],
+        abstract=payload["abstract"],
+        style_profile=request.style_profile,
+        persisted=persisted,
+        manuscript=manuscript_payload,
+    )
+
+
+@app.post(
+    "/v1/aawe/projects/{project_id}/manuscripts/{manuscript_id}/consistency/check",
+    response_model=ConsistencyCheckResponse,
+    responses=NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_run_cross_section_consistency_check(
+    project_id: str,
+    manuscript_id: str,
+    request: ConsistencyCheckRequest,
+) -> ConsistencyCheckResponse | JSONResponse:
+    try:
+        manuscript = get_project_manuscript(project_id, manuscript_id)
+    except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+
+    payload = run_cross_section_consistency_check(dict(manuscript.sections or {}))
+    if not request.include_low_severity:
+        filtered = [
+            issue for issue in payload["issues"] if issue.get("severity") != "low"
+        ]
+        payload["issues"] = filtered
+        payload["total_issues"] = len(filtered)
+        payload["high_severity_count"] = sum(
+            1 for issue in filtered if issue.get("severity") == "high"
+        )
+        payload["medium_severity_count"] = sum(
+            1 for issue in filtered if issue.get("severity") == "medium"
+        )
+        payload["low_severity_count"] = sum(
+            1 for issue in filtered if issue.get("severity") == "low"
+        )
+    return ConsistencyCheckResponse(**payload)
+
+
+@app.post(
+    "/v1/aawe/projects/{project_id}/manuscripts/{manuscript_id}/sections/{section}/paragraphs/regenerate",
+    response_model=ParagraphRegenerationResponse,
+    responses=ERROR_RESPONSES | NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_regenerate_section_paragraph(
+    project_id: str,
+    manuscript_id: str,
+    section: str,
+    request: ParagraphRegenerationRequest,
+) -> ParagraphRegenerationResponse | JSONResponse:
+    try:
+        manuscript = get_project_manuscript(project_id, manuscript_id)
+    except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+
+    section_key = section.strip().lower()
+    sections = dict(manuscript.sections or {})
+    section_text = str(sections.get(section_key, "")).strip()
+    if not section_text:
+        return _build_bad_request_response(
+            f"Section '{section_key}' is empty or missing in manuscript."
+        )
+
+    paragraphs = split_section_paragraphs(section_text)
+    if not paragraphs:
+        return _build_bad_request_response(
+            f"Section '{section_key}' has no paragraphs to regenerate."
+        )
+    if request.paragraph_index < 0 or request.paragraph_index >= len(paragraphs):
+        return _build_bad_request_response(
+            (
+                f"paragraph_index {request.paragraph_index} is out of range "
+                f"(0-{len(paragraphs) - 1})."
+            )
+        )
+
+    original_paragraph = paragraphs[request.paragraph_index]
+    regen_payload = regenerate_paragraph_text(
+        section=section_key,
+        paragraph_text=original_paragraph,
+        notes_context=request.notes_context,
+        constraints=request.constraints,
+        evidence_links=[link.model_dump() for link in request.evidence_links],
+        citation_ids=request.citation_ids,
+        freeform_instruction=request.freeform_instruction,
+        model=request.model or "gpt-4.1-mini",
+    )
+    _, updated_section_text = replace_paragraph(
+        section_text,
+        request.paragraph_index,
+        str(regen_payload["revised_paragraph"]),
+    )
+
+    persisted = False
+    manuscript_payload: ManuscriptResponse | None = None
+    if request.persist_to_manuscript:
+        updated_manuscript = update_project_manuscript_sections(
+            project_id=project_id,
+            manuscript_id=manuscript_id,
+            sections={section_key: updated_section_text},
+        )
+        persisted = True
+        manuscript_payload = ManuscriptResponse.model_validate(updated_manuscript)
+
+    return ParagraphRegenerationResponse(
+        section=section_key,
+        paragraph_index=request.paragraph_index,
+        constraints=regen_payload["constraints"],
+        original_paragraph=original_paragraph,
+        regenerated_paragraph=regen_payload["revised_paragraph"],
+        updated_section_text=updated_section_text,
+        unsupported_sentences=regen_payload["unsupported_sentences"],
+        persisted=persisted,
+        manuscript=manuscript_payload,
+    )
+
+
+@app.post(
     "/v1/aawe/linker/claims",
     response_model=ClaimLinkerResponse,
     tags=["v1"],
@@ -462,6 +650,26 @@ def v1_set_aawe_claim_citations(
             required_slots=request.required_slots,
         )
         return ClaimCitationStateResponse(**payload)
+    except CitationRecordNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.post(
+    "/v1/aawe/citations/autofill",
+    response_model=CitationAutofillResponse,
+    responses=NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_autofill_aawe_citations(
+    request: CitationAutofillRequest,
+) -> CitationAutofillResponse | JSONResponse:
+    try:
+        payload = autofill_claim_citations(
+            claim_ids=request.claim_ids,
+            required_slots=request.required_slots,
+            overwrite_existing=request.overwrite_existing,
+        )
+        return CitationAutofillResponse(**payload)
     except CitationRecordNotFoundError as exc:
         return _build_not_found_response(str(exc))
 

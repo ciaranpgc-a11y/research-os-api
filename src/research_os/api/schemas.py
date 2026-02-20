@@ -344,6 +344,99 @@ class GroundedDraftResponse(BaseModel):
     manuscript: ManuscriptResponse | None = None
 
 
+class TitleAbstractSynthesisRequest(BaseModel):
+    style_profile: Literal["technical", "concise", "narrative_review"] = "technical"
+    max_abstract_words: int = 250
+    model: str | None = None
+    persist_to_manuscript: bool = True
+
+
+class TitleAbstractSynthesisResponse(BaseModel):
+    title: str
+    abstract: str
+    style_profile: Literal["technical", "concise", "narrative_review"]
+    persisted: bool
+    manuscript: ManuscriptResponse | None = None
+
+
+class ConsistencyCheckRequest(BaseModel):
+    include_low_severity: bool = True
+
+
+class ConsistencyIssueResponse(BaseModel):
+    id: str
+    severity: Literal["high", "medium", "low"]
+    type: str
+    summary: str
+    suggested_fix: str
+    sections: list[str] = Field(default_factory=list)
+
+
+class ConsistencyCheckResponse(BaseModel):
+    run_id: str
+    generated_at: datetime
+    total_issues: int
+    high_severity_count: int
+    medium_severity_count: int
+    low_severity_count: int
+    issues: list[ConsistencyIssueResponse] = Field(default_factory=list)
+
+
+class ParagraphRegenerationRequest(BaseModel):
+    paragraph_index: int = 0
+    notes_context: str
+    constraints: list[
+        Literal["shorter", "more_cautious", "journal_tone", "keep_stats_unchanged"]
+    ] = Field(default_factory=list)
+    freeform_instruction: str | None = None
+    evidence_links: list[GroundedDraftEvidenceLinkRequest] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    model: str | None = None
+    persist_to_manuscript: bool = True
+
+
+class ParagraphRegenerationResponse(BaseModel):
+    section: str
+    paragraph_index: int
+    constraints: list[
+        Literal["shorter", "more_cautious", "journal_tone", "keep_stats_unchanged"]
+    ] = Field(default_factory=list)
+    original_paragraph: str
+    regenerated_paragraph: str
+    updated_section_text: str
+    unsupported_sentences: list[str] = Field(default_factory=list)
+    persisted: bool
+    manuscript: ManuscriptResponse | None = None
+
+
+class CitationAutofillRequest(BaseModel):
+    claim_ids: list[str] | None = None
+    required_slots: int = 2
+    overwrite_existing: bool = False
+
+
+class CitationAutofillSuggestionResponse(BaseModel):
+    citation_id: str
+    confidence: Literal["high", "medium", "low"]
+    reason: str
+
+
+class ClaimCitationAutofillStateResponse(BaseModel):
+    claim_id: str
+    required_slots: int
+    attached_citation_ids: list[str] = Field(default_factory=list)
+    attached_citations: list[CitationRecordResponse] = Field(default_factory=list)
+    missing_slots: int
+    suggestions: list[CitationAutofillSuggestionResponse] = Field(default_factory=list)
+    autofill_applied: bool = False
+
+
+class CitationAutofillResponse(BaseModel):
+    run_id: str
+    generated_at: datetime
+    updated_claims: list[ClaimCitationAutofillStateResponse] = Field(default_factory=list)
+
+
 class ClaimLinkerRequest(BaseModel):
     claim_ids: list[str] | None = None
     min_confidence: Literal["high", "medium", "low"] = "low"

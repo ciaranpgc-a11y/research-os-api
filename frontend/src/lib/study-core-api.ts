@@ -1,8 +1,12 @@
 import { API_BASE_URL } from '@/lib/api'
 import type { ApiErrorPayload } from '@/types/insight'
 import type {
+  CitationAutofillPayload,
   ClaimLinkerPayload,
+  ConsistencyCheckPayload,
   GenerationEstimate,
+  ParagraphConstraint,
+  ParagraphRegenerationPayload,
   GroundedDraftEvidenceLinkInput,
   GroundedDraftPayload,
   GenerationJobPayload,
@@ -10,6 +14,7 @@ import type {
   ManuscriptRecord,
   ProjectRecord,
   SectionPlanPayload,
+  TitleAbstractPayload,
   WizardBootstrapPayload,
 } from '@/types/study-core'
 
@@ -144,6 +149,106 @@ export async function generateGroundedDraft(input: {
     throw new Error(await parseApiError(response, `Grounded draft generation failed (${response.status})`))
   }
   return (await response.json()) as GroundedDraftPayload
+}
+
+export async function synthesizeTitleAbstract(input: {
+  projectId: string
+  manuscriptId: string
+  styleProfile: 'technical' | 'concise' | 'narrative_review'
+  maxAbstractWords: number
+  persistToManuscript: boolean
+}): Promise<TitleAbstractPayload> {
+  const response = await fetch(
+    `${API_BASE_URL}/v1/aawe/projects/${encodeURIComponent(input.projectId)}/manuscripts/${encodeURIComponent(input.manuscriptId)}/synthesize/title-abstract`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        style_profile: input.styleProfile,
+        max_abstract_words: input.maxAbstractWords,
+        persist_to_manuscript: input.persistToManuscript,
+      }),
+    },
+  )
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Title/abstract synthesis failed (${response.status})`))
+  }
+  return (await response.json()) as TitleAbstractPayload
+}
+
+export async function runConsistencyCheck(input: {
+  projectId: string
+  manuscriptId: string
+  includeLowSeverity: boolean
+}): Promise<ConsistencyCheckPayload> {
+  const response = await fetch(
+    `${API_BASE_URL}/v1/aawe/projects/${encodeURIComponent(input.projectId)}/manuscripts/${encodeURIComponent(input.manuscriptId)}/consistency/check`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        include_low_severity: input.includeLowSeverity,
+      }),
+    },
+  )
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Consistency check failed (${response.status})`))
+  }
+  return (await response.json()) as ConsistencyCheckPayload
+}
+
+export async function regenerateParagraph(input: {
+  projectId: string
+  manuscriptId: string
+  section: string
+  paragraphIndex: number
+  notesContext: string
+  constraints: ParagraphConstraint[]
+  freeformInstruction: string | null
+  evidenceLinks: GroundedDraftEvidenceLinkInput[]
+  citationIds: string[]
+  persistToManuscript: boolean
+}): Promise<ParagraphRegenerationPayload> {
+  const response = await fetch(
+    `${API_BASE_URL}/v1/aawe/projects/${encodeURIComponent(input.projectId)}/manuscripts/${encodeURIComponent(input.manuscriptId)}/sections/${encodeURIComponent(input.section)}/paragraphs/regenerate`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        paragraph_index: input.paragraphIndex,
+        notes_context: input.notesContext,
+        constraints: input.constraints,
+        freeform_instruction: input.freeformInstruction,
+        evidence_links: input.evidenceLinks,
+        citation_ids: input.citationIds,
+        persist_to_manuscript: input.persistToManuscript,
+      }),
+    },
+  )
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Paragraph regeneration failed (${response.status})`))
+  }
+  return (await response.json()) as ParagraphRegenerationPayload
+}
+
+export async function autofillCitations(input: {
+  claimIds: string[] | null
+  requiredSlots: number
+  overwriteExisting: boolean
+}): Promise<CitationAutofillPayload> {
+  const response = await fetch(`${API_BASE_URL}/v1/aawe/citations/autofill`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      claim_ids: input.claimIds,
+      required_slots: input.requiredSlots,
+      overwrite_existing: input.overwriteExisting,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Citation autofill failed (${response.status})`))
+  }
+  return (await response.json()) as CitationAutofillPayload
 }
 
 export async function updateManuscriptSections(input: {

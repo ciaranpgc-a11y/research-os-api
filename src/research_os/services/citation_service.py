@@ -1,5 +1,7 @@
 from collections import OrderedDict
+from datetime import datetime, timezone
 from typing import Literal
+from uuid import uuid4
 
 
 class CitationRecordNotFoundError(Exception):
@@ -64,6 +66,13 @@ _CLAIM_CITATION_IDS: dict[str, list[str]] = {
     "methods-p1": ["CIT-003"],
     "results-p1": ["CIT-001"],
     "discussion-p1": ["CIT-004"],
+}
+
+_CLAIM_AUTOFILL_PRIORITIES: dict[str, list[str]] = {
+    "intro": ["CIT-002", "CIT-005", "CIT-001"],
+    "methods": ["CIT-003", "CIT-001"],
+    "results": ["CIT-001", "CIT-003"],
+    "discussion": ["CIT-004", "CIT-001", "CIT-005"],
 }
 
 
@@ -152,6 +161,79 @@ def _resolve_claim_ids_to_citations(claim_ids: list[str] | None) -> list[str]:
             continue
         flattened.extend(_CLAIM_CITATION_IDS.get(key, []))
     return _validate_citation_ids(flattened) if flattened else []
+
+
+def _autofill_candidates_for_claim(claim_id: str) -> list[str]:
+    claim_key = claim_id.strip().lower()
+    for prefix, prioritized in _CLAIM_AUTOFILL_PRIORITIES.items():
+        if claim_key.startswith(prefix):
+            return list(prioritized)
+    return ["CIT-001", "CIT-003", "CIT-005"]
+
+
+def autofill_claim_citations(
+    *,
+    claim_ids: list[str] | None = None,
+    required_slots: int = 2,
+    overwrite_existing: bool = False,
+) -> dict[str, object]:
+    normalized_required_slots = max(1, min(required_slots, 20))
+    target_claim_ids = (
+        [claim_id for claim_id in claim_ids if claim_id.strip()]
+        if claim_ids
+        else sorted(_CLAIM_CITATION_IDS.keys())
+    )
+
+    if not target_claim_ids:
+        return {
+            "run_id": f"caf-{uuid4().hex[:10]}",
+            "generated_at": datetime.now(timezone.utc),
+            "updated_claims": [],
+        }
+
+    updated_claims: list[dict[str, object]] = []
+    lookup = _citation_lookup()
+    for claim_id in target_claim_ids:
+        existing_ids = (
+            [] if overwrite_existing else list(_CLAIM_CITATION_IDS.get(claim_id, []))
+        )
+        existing_ids = _validate_citation_ids(existing_ids) if existing_ids else []
+
+        attached_ids = list(existing_ids)
+        autofill_suggestions: list[dict[str, str]] = []
+        for candidate_id in _autofill_candidates_for_claim(claim_id):
+            if len(attached_ids) >= normalized_required_slots:
+                break
+            if candidate_id in attached_ids:
+                continue
+            if candidate_id not in lookup:
+                continue
+            attached_ids.append(candidate_id)
+            autofill_suggestions.append(
+                {
+                    "citation_id": candidate_id,
+                    "confidence": "medium",
+                    "reason": (
+                        "Matched claim topic to citation priority profile and open slot."
+                    ),
+                }
+            )
+
+        _CLAIM_CITATION_IDS[claim_id] = attached_ids
+        claim_state = _build_claim_citation_state(
+            claim_id,
+            attached_ids,
+            normalized_required_slots,
+        )
+        claim_state["suggestions"] = autofill_suggestions
+        claim_state["autofill_applied"] = len(autofill_suggestions) > 0
+        updated_claims.append(claim_state)
+
+    return {
+        "run_id": f"caf-{uuid4().hex[:10]}",
+        "generated_at": datetime.now(timezone.utc),
+        "updated_claims": updated_claims,
+    }
 
 
 def _format_reference_line(

@@ -618,6 +618,193 @@ def test_v1_generate_aawe_grounded_draft_persists_section_when_requested(
     )
 
 
+def test_v1_synthesize_title_abstract_persists_to_manuscript(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "research_os.api.app.synthesize_title_and_abstract",
+        lambda **_: {
+            "title": "Intervention and 90-day Readmission in Heart Failure Cohort",
+            "abstract": "Background and methods synthesized abstract text.",
+        },
+    )
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={"title": "Synthesis Project", "target_journal": "ehj"},
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "synthesis-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        patch_response = client.patch(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}",
+            json={
+                "sections": {
+                    "introduction": "HF readmission burden remains high.",
+                    "methods": "Adults were analyzed with adjusted Cox models.",
+                    "results": "Readmission risk was lower in intervention arm.",
+                    "discussion": "Findings aligned with contemporary programs.",
+                }
+            },
+        )
+        assert patch_response.status_code == 200
+
+        synthesis_response = client.post(
+            f"/v1/aawe/projects/{project_id}/manuscripts/{manuscript_id}/synthesize/title-abstract",
+            json={"style_profile": "technical", "persist_to_manuscript": True},
+        )
+        manuscript_fetch = client.get(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}"
+        )
+
+    assert synthesis_response.status_code == 200
+    payload = synthesis_response.json()
+    assert payload["persisted"] is True
+    assert payload["title"].startswith("Intervention")
+    assert "synthesized abstract" in payload["abstract"]
+
+    assert manuscript_fetch.status_code == 200
+    sections = manuscript_fetch.json()["sections"]
+    assert sections["title"] == payload["title"]
+    assert sections["abstract"] == payload["abstract"]
+
+
+def test_v1_cross_section_consistency_check_returns_issue_summary(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={"title": "Consistency Project", "target_journal": "jacc"},
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "consistency-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        patch_response = client.patch(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}",
+            json={
+                "sections": {
+                    "methods": "Eligible adults were included (N=120).",
+                    "results": "Primary endpoint favored intervention (N=98).",
+                    "discussion": "We observed higher risk in intervention with 35% event burden.",
+                }
+            },
+        )
+        assert patch_response.status_code == 200
+
+        consistency_response = client.post(
+            f"/v1/aawe/projects/{project_id}/manuscripts/{manuscript_id}/consistency/check",
+            json={"include_low_severity": False},
+        )
+
+    assert consistency_response.status_code == 200
+    payload = consistency_response.json()
+    assert payload["run_id"].startswith("cns-")
+    assert payload["total_issues"] >= 1
+    assert payload["high_severity_count"] >= 1
+    assert payload["low_severity_count"] == 0
+
+
+def test_v1_regenerate_paragraph_updates_manuscript_section(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "research_os.api.app.regenerate_paragraph_text",
+        lambda **_: {
+            "section": "discussion",
+            "constraints": ["more_cautious"],
+            "revised_paragraph": "Revised discussion sentence with caution [E1].",
+            "unsupported_sentences": [],
+        },
+    )
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={"title": "Paragraph Regen Project", "target_journal": "ehj"},
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "paragraph-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        patch_response = client.patch(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}",
+            json={
+                "sections": {
+                    "discussion": (
+                        "Original first paragraph.\n\nOriginal second paragraph."
+                    )
+                }
+            },
+        )
+        assert patch_response.status_code == 200
+
+        regen_response = client.post(
+            (
+                f"/v1/aawe/projects/{project_id}/manuscripts/{manuscript_id}/"
+                "sections/discussion/paragraphs/regenerate"
+            ),
+            json={
+                "paragraph_index": 1,
+                "notes_context": "Discussion notes context",
+                "constraints": ["more_cautious"],
+                "persist_to_manuscript": True,
+            },
+        )
+        manuscript_fetch = client.get(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}"
+        )
+
+    assert regen_response.status_code == 200
+    payload = regen_response.json()
+    assert payload["paragraph_index"] == 1
+    assert payload["persisted"] is True
+    assert "Revised discussion sentence with caution" in payload["regenerated_paragraph"]
+
+    assert manuscript_fetch.status_code == 200
+    assert "Revised discussion sentence with caution" in manuscript_fetch.json()["sections"][
+        "discussion"
+    ]
+
+
+def test_v1_citation_autofill_returns_updated_claim_states(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "research_os.services.citation_service._CLAIM_CITATION_IDS",
+        {"results-p1": []},
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/aawe/citations/autofill",
+            json={
+                "claim_ids": ["results-p1"],
+                "required_slots": 2,
+                "overwrite_existing": False,
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["run_id"].startswith("caf-")
+    assert len(payload["updated_claims"]) == 1
+    claim_state = payload["updated_claims"][0]
+    assert claim_state["claim_id"] == "results-p1"
+    assert len(claim_state["attached_citation_ids"]) >= 1
+    assert claim_state["autofill_applied"] is True
+
+
 def test_v1_link_aawe_claims_returns_filtered_suggestions(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 

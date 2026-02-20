@@ -147,3 +147,65 @@ export type GroundedDraftPayload = {
   persisted: boolean
   manuscript: ManuscriptRecord | null
 }
+
+export type TitleAbstractPayload = {
+  title: string
+  abstract: string
+  style_profile: 'technical' | 'concise' | 'narrative_review'
+  persisted: boolean
+  manuscript: ManuscriptRecord | null
+}
+
+export type ConsistencyIssuePayload = {
+  id: string
+  severity: 'high' | 'medium' | 'low'
+  type: string
+  summary: string
+  suggested_fix: string
+  sections: string[]
+}
+
+export type ConsistencyCheckPayload = {
+  run_id: string
+  generated_at: string
+  total_issues: number
+  high_severity_count: number
+  medium_severity_count: number
+  low_severity_count: number
+  issues: ConsistencyIssuePayload[]
+}
+
+export type ParagraphConstraint = 'shorter' | 'more_cautious' | 'journal_tone' | 'keep_stats_unchanged'
+
+export type ParagraphRegenerationPayload = {
+  section: string
+  paragraph_index: number
+  constraints: ParagraphConstraint[]
+  original_paragraph: string
+  regenerated_paragraph: string
+  updated_section_text: string
+  unsupported_sentences: string[]
+  persisted: boolean
+  manuscript: ManuscriptRecord | null
+}
+
+export type CitationAutofillSuggestion = {
+  citation_id: string
+  confidence: 'high' | 'medium' | 'low'
+  reason: string
+}
+
+export type ClaimCitationAutofillState = {
+  claim_id: string
+  required_slots: number
+  attached_citation_ids: string[]
+  missing_slots: number
+  suggestions: CitationAutofillSuggestion[]
+  autofill_applied: boolean
+}
+
+export type CitationAutofillPayload = {
+  run_id: string
+  generated_at: string
+  updated_claims: ClaimCitationAutofillState[]
+}
