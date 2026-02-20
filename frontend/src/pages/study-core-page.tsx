@@ -1,10 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { Step1Panel } from '@/components/study-core/Step1Panel'
-import { Step2Panel } from '@/components/study-core/Step2Panel'
-import { Step3Panel } from '@/components/study-core/Step3Panel'
-import { Step4Panel, type DraftCorrection } from '@/components/study-core/Step4Panel'
-import { Step5Panel, type QcFix } from '@/components/study-core/Step5Panel'
 import { StepContext, type ContextFormValues } from '@/components/study-core/StepContext'
 import { StepDraftReview } from '@/components/study-core/StepDraftReview'
 import { StepLinkQcExport } from '@/components/study-core/StepLinkQcExport'
@@ -12,7 +8,6 @@ import { StepPlan } from '@/components/study-core/StepPlan'
 import { StepRun } from '@/components/study-core/StepRun'
 import { StudyCoreStepper, type WizardStepItem } from '@/components/study-core/StudyCoreStepper'
 import { Input } from '@/components/ui/input'
-import { analyzePlan } from '@/lib/analyze-plan'
 import { fetchJournalOptions } from '@/lib/study-core-api'
 import { useStudyCoreWizardStore, type WizardStep } from '@/store/use-study-core-wizard-store'
 import type {
@@ -24,7 +19,6 @@ import type {
 } from '@/types/study-core'
 
 type RunContext = { projectId: string; manuscriptId: string }
-type RegisteredRunActions = { runWithRecommended: () => void; runAnyway: () => void }
 type RunRecommendations = {
   conservativeWithLimitations: boolean
   uncertaintyInResults: boolean
@@ -34,8 +28,6 @@ type RunRecommendations = {
 const CONTEXT_KEY = 'aawe-run-context'
 const SNAPSHOT_KEY = 'aawe-run-wizard-snapshot'
 const CORE_SECTIONS = ['introduction', 'methods', 'results', 'discussion']
-const CHECK_MARK = '\u2713'
-const CROSS_MARK = '\u2717'
 
 function buildGenerationBrief(values: ContextFormValues, sections: string[], guardrailsEnabled: boolean): string {
   const lines = [
@@ -61,36 +53,6 @@ function readStoredRunContext(): RunContext | null {
     return JSON.parse(raw) as RunContext
   } catch {
     return null
-  }
-}
-
-function mergeBullets(existing: string[], additions: string[]): string[] {
-  const seen = new Set(existing.map((bullet) => bullet.trim().toLowerCase()).filter(Boolean))
-  const next = [...existing]
-  for (const bullet of additions) {
-    const trimmed = bullet.trim()
-    if (!trimmed) {
-      continue
-    }
-    const key = trimmed.toLowerCase()
-    if (seen.has(key)) {
-      continue
-    }
-    seen.add(key)
-    next.push(trimmed)
-  }
-  return next
-}
-
-function applyCausalReplacements(text: string): { nextText: string; changed: boolean } {
-  const nextText = text
-    .replace(/\bcauses?\b/gi, 'is associated with')
-    .replace(/\bcausal\b/gi, 'associative')
-    .replace(/\bled to\b/gi, 'was associated with')
-    .replace(/\bresulted in\b/gi, 'was associated with')
-  return {
-    nextText,
-    changed: nextText !== text,
   }
 }
 
@@ -156,7 +118,6 @@ export function StudyCorePage() {
   const [draftsBySection, setDraftsBySection] = useState<Record<string, string>>({})
   const [acceptedSectionKeys, setAcceptedSectionKeys] = useState<string[]>([])
   const [primaryExportAction, setPrimaryExportAction] = useState<(() => void) | null>(null)
-  const [runActions, setRunActions] = useState<RegisteredRunActions | null>(null)
 
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
@@ -392,203 +353,6 @@ export function StudyCorePage() {
     setCurrentStep(4)
   }
 
-  const applyPlanSectionPatch = useCallback(
-    (section: string, bulletsToInsert: string[]) => {
-      setPlan((current) => {
-        if (!current) {
-          return {
-            sections: [{ name: section, bullets: mergeBullets([], bulletsToInsert) }],
-          }
-        }
-        const existing = current.sections.find((item) => item.name === section)
-        if (!existing) {
-          return {
-            sections: [...current.sections, { name: section, bullets: mergeBullets([], bulletsToInsert) }],
-          }
-        }
-        return {
-          sections: current.sections.map((item) =>
-            item.name === section ? { ...item, bullets: mergeBullets(item.bullets, bulletsToInsert) } : item,
-          ),
-        }
-      })
-      setPlanStatus('built')
-      setStatus(`${section.charAt(0).toUpperCase()}${section.slice(1)} updated with recommended bullets.`)
-    },
-    [setPlanStatus],
-  )
-
-  const planRecommendations = useMemo(
-    () =>
-      analyzePlan({
-        objective: contextValues.researchObjective,
-        plan,
-        applySectionPatch: applyPlanSectionPatch,
-      }),
-    [applyPlanSectionPatch, contextValues.researchObjective, plan],
-  )
-
-  const draftCorrections = useMemo<DraftCorrection[]>(() => {
-    const corrections: DraftCorrection[] = []
-    const causalSectionName = ['discussion', 'results', 'introduction'].find((section) => {
-      const sectionText = draftsBySection[section]
-      if (!sectionText) {
-        return false
-      }
-      return /\bcausal\b|\bcauses?\b|\bled to\b|\bresulted in\b/i.test(sectionText)
-    })
-
-    if (causalSectionName) {
-      const original = draftsBySection[causalSectionName] ?? ''
-      const replacement = applyCausalReplacements(original)
-      if (replacement.changed) {
-        corrections.push({
-          title: 'Replace causal phrasing with associative phrasing.',
-          rationale: 'Retrospective observational writing should avoid causal claims.',
-          optionalPreview: `- ${original.slice(0, 180)}\n+ ${replacement.nextText.slice(0, 180)}`,
-          applyPatch: () => {
-            setDraftsBySection((current) => ({ ...current, [causalSectionName]: replacement.nextText }))
-            setStatus(`Applied associative phrasing in ${causalSectionName}.`)
-          },
-        })
-      }
-    }
-
-    const discussionText = draftsBySection.discussion ?? ''
-    const resultsText = draftsBySection.results ?? ''
-    const discussionNeedsAlignment =
-      /\bsignificant\b|\bstrong effect\b|\bproved\b/i.test(discussionText) &&
-      !/\bconfidence interval\b|\b95% ci\b|\bp-value\b|\bestimate\b/i.test(resultsText)
-    if (discussionNeedsAlignment) {
-      const alignmentSentence =
-        'Interpretation should be restricted to associations supported by reported estimates and uncertainty.'
-      corrections.push({
-        title: 'Align Discussion claims with Results.',
-        rationale: 'Discussion claims should reference the estimate and uncertainty reported in Results.',
-        optionalPreview: `+ Discussion: ${alignmentSentence}`,
-        applyPatch: () => {
-          setDraftsBySection((current) => ({
-            ...current,
-            discussion: `${current.discussion ?? ''}\n\n${alignmentSentence}`.trim(),
-          }))
-          setStatus('Aligned Discussion claims to Results language.')
-        },
-      })
-    }
-
-    const missingLimitations = discussionText.trim() && !/\blimitation\b|\blimitations\b/i.test(discussionText)
-    if (missingLimitations) {
-      const limitationsParagraph =
-        'Limitations: This retrospective observational design is susceptible to residual confounding, selection bias, and measurement error.'
-      corrections.push({
-        title: 'Insert missing limitations paragraph.',
-        rationale: 'Discussion should explicitly state study limitations and their effect on interpretation.',
-        optionalPreview: `+ Discussion: ${limitationsParagraph}`,
-        applyPatch: () => {
-          setDraftsBySection((current) => ({
-            ...current,
-            discussion: `${current.discussion ?? ''}\n\n${limitationsParagraph}`.trim(),
-          }))
-          setStatus('Inserted limitations paragraph in Discussion.')
-        },
-      })
-    }
-
-    return corrections.slice(0, 3)
-  }, [draftsBySection])
-
-  const qcFixes = useMemo<QcFix[]>(
-    () => [
-      {
-        title: 'Standardize terminology',
-        rationale: 'Use one consistent disease and design label throughout the manuscript.',
-        optionalPreview: '+ Replace variant terms with standardized terminology.',
-        applyPatch: () => {
-          setDraftsBySection((current) => {
-            const next: Record<string, string> = {}
-            for (const [section, text] of Object.entries(current)) {
-              let updated = text
-              updated = updated.replace(/\bpulm\.?\s*hypertension\b/gi, 'pulmonary hypertension')
-              if (/\bPH\b/.test(updated) && !/pulmonary hypertension \(PH\)/i.test(updated) && /pulmonary hypertension/i.test(updated)) {
-                updated = updated.replace(/pulmonary hypertension/i, 'pulmonary hypertension (PH)')
-              }
-              next[section] = updated
-            }
-            return next
-          })
-          setStatus('Standardized terminology across draft sections.')
-        },
-      },
-      {
-        title: 'Fix missing abbreviations',
-        rationale: 'Define abbreviations the first time they appear.',
-        optionalPreview: '+ Add abbreviation definitions where needed.',
-        applyPatch: () => {
-          setDraftsBySection((current) => {
-            const next: Record<string, string> = {}
-            for (const [section, text] of Object.entries(current)) {
-              const defs: string[] = []
-              if (/\bCI\b/.test(text) && !/confidence interval \(CI\)/i.test(text)) {
-                defs.push('confidence interval (CI)')
-              }
-              if (/\bOR\b/.test(text) && !/odds ratio \(OR\)/i.test(text)) {
-                defs.push('odds ratio (OR)')
-              }
-              if (defs.length === 0 || /Abbreviations:/i.test(text)) {
-                next[section] = text
-                continue
-              }
-              next[section] = `${text}\n\nAbbreviations: ${defs.join('; ')}.`
-            }
-            return next
-          })
-          setStatus('Inserted missing abbreviation definitions.')
-        },
-      },
-      {
-        title: 'Adjust to journal style',
-        rationale: 'Shift first-person phrasing to neutral scientific voice.',
-        optionalPreview: '- We observed...\n+ This study observed...',
-        applyPatch: () => {
-          setDraftsBySection((current) => {
-            const next: Record<string, string> = {}
-            for (const [section, text] of Object.entries(current)) {
-              let updated = text
-              updated = updated.replace(/\bWe\b/g, 'This study')
-              updated = updated.replace(/\bour\b/gi, 'the')
-              updated = updated.replace(/!/g, '.')
-              next[section] = updated
-            }
-            return next
-          })
-          setStatus('Adjusted draft language toward journal style.')
-        },
-      },
-    ],
-    [],
-  )
-
-  const onRunWithRecommended = () => {
-    setRunRecommendations({
-      conservativeWithLimitations: true,
-      uncertaintyInResults: true,
-      mechanisticAsHypothesis: true,
-    })
-    if (!runActions) {
-      setError('Run controls are not ready yet.')
-      return
-    }
-    runActions.runWithRecommended()
-  }
-
-  const onRunAnyway = () => {
-    if (!runActions) {
-      setError('Run controls are not ready yet.')
-      return
-    }
-    runActions.runAnyway()
-  }
-
   const renderActiveStep = () => {
     if (currentStep === 1) {
       return (
@@ -655,7 +419,6 @@ export function StudyCorePage() {
           onEstimateChange={setEstimatePreview}
           onActiveJobChange={setActiveJob}
           onJobStatusChange={onJobStatusChange}
-          onRegisterRunActions={setRunActions}
           onStatus={setStatus}
           onError={setError}
         />
@@ -719,42 +482,10 @@ export function StudyCorePage() {
         />
       )
     }
-    if (currentStep === 2) {
-      return <Step2Panel recommendations={planRecommendations} />
-    }
-    if (currentStep === 3) {
-      return (
-        <Step3Panel
-          recommendations={runRecommendations}
-          busy={jobStatus === 'running'}
-          onApplyConservative={() =>
-            setRunRecommendations((current) => ({
-              ...current,
-              conservativeWithLimitations: true,
-            }))
-          }
-          onApplyUncertainty={() =>
-            setRunRecommendations((current) => ({
-              ...current,
-              uncertaintyInResults: true,
-            }))
-          }
-          onApplyMechanisticLabel={() =>
-            setRunRecommendations((current) => ({
-              ...current,
-              mechanisticAsHypothesis: true,
-            }))
-          }
-          onRunWithRecommended={onRunWithRecommended}
-          onRunAnyway={onRunAnyway}
-        />
-      )
-    }
-    if (currentStep === 4) {
-      return <Step4Panel corrections={draftCorrections} />
-    }
-    return <Step5Panel fixes={qcFixes} />
+    return null
   }
+
+  const showRightPanel = currentStep === 1
 
   return (
     <section className="space-y-4">
@@ -772,10 +503,6 @@ export function StudyCorePage() {
                 }))
               }
             />
-            <p className="text-xs text-muted-foreground">
-              Context {contextStatus === 'saved' ? CHECK_MARK : CROSS_MARK} | Plan {planStatus === 'built' ? CHECK_MARK : CROSS_MARK} | Draft{' '}
-              {acceptedSections > 0 ? CHECK_MARK : CROSS_MARK} | QC {qcStatus === 'pass' ? CHECK_MARK : CROSS_MARK}
-            </p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -816,7 +543,7 @@ export function StudyCorePage() {
         </button>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
+      <div className={showRightPanel ? 'grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_320px]' : 'grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]'}>
         <StudyCoreStepper
           steps={STEP_ITEMS}
           currentStep={currentStep}
@@ -834,9 +561,7 @@ export function StudyCorePage() {
           {renderActiveStep()}
         </div>
 
-        <div key={`panel-${currentStep}`} className="wizard-step-transition">
-          {renderRightPanel()}
-        </div>
+        {showRightPanel ? <div key={`panel-${currentStep}`} className="wizard-step-transition">{renderRightPanel()}</div> : null}
       </div>
 
       {status ? <p className="text-sm text-emerald-600">{status}</p> : null}
