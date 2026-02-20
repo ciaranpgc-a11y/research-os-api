@@ -16,9 +16,11 @@ from research_os.api.schemas import (
     DraftSectionRequest,
     DraftSectionSuccessResponse,
     ErrorResponse,
+    GenerationJobResponse,
     HealthResponse,
     JournalOptionResponse,
     ManuscriptCreateRequest,
+    ManuscriptGenerateRequest,
     ManuscriptSectionsUpdateRequest,
     ManuscriptResponse,
     ProjectCreateRequest,
@@ -39,6 +41,12 @@ from research_os.services.project_service import (
     list_project_manuscripts,
     list_project_records,
     update_project_manuscript_sections,
+)
+from research_os.services.generation_job_service import (
+    GenerationJobNotFoundError,
+    enqueue_generation_job,
+    get_generation_job_record,
+    serialize_generation_job,
 )
 from research_os.services.manuscript_service import (
     ManuscriptGenerationError,
@@ -322,6 +330,43 @@ def v1_update_manuscript_sections(
             sections=request.sections,
         )
     except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.post(
+    "/v1/projects/{project_id}/manuscripts/{manuscript_id}/generate",
+    response_model=GenerationJobResponse,
+    responses=NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_generate_manuscript(
+    project_id: str,
+    manuscript_id: str,
+    request: ManuscriptGenerateRequest,
+) -> GenerationJobResponse | JSONResponse:
+    try:
+        job = enqueue_generation_job(
+            project_id=project_id,
+            manuscript_id=manuscript_id,
+            sections=request.sections,
+            notes_context=request.notes_context,
+        )
+        return GenerationJobResponse(**serialize_generation_job(job))
+    except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.get(
+    "/v1/generation-jobs/{job_id}",
+    response_model=GenerationJobResponse,
+    responses=NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_get_generation_job(job_id: str) -> GenerationJobResponse | JSONResponse:
+    try:
+        job = get_generation_job_record(job_id)
+        return GenerationJobResponse(**serialize_generation_job(job))
+    except GenerationJobNotFoundError as exc:
         return _build_not_found_response(str(exc))
 
 

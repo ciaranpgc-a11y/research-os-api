@@ -1,3 +1,5 @@
+import time
+
 from fastapi.testclient import TestClient
 
 from research_os.api.app import app
@@ -9,6 +11,31 @@ def _set_test_environment(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "research_os_test.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{db_path}")
     reset_database_state()
+
+
+def _wait_for_job_terminal_status(
+    client: TestClient, job_id: str, timeout_seconds: float = 5.0
+):
+    deadline = time.monotonic() + timeout_seconds
+    last_payload = None
+    while time.monotonic() < deadline:
+        response = client.get(f"/v1/generation-jobs/{job_id}")
+        assert response.status_code == 200
+        payload = response.json()
+        last_payload = payload
+        if payload["status"] in {"completed", "failed"}:
+            return payload
+        time.sleep(0.05)
+    raise AssertionError(f"Generation job '{job_id}' did not reach terminal state.")
+
+
+def _assert_job_cost_estimates(payload: dict) -> None:
+    assert payload["estimated_input_tokens"] > 0
+    assert payload["estimated_output_tokens_low"] > 0
+    assert payload["estimated_output_tokens_high"] >= payload["estimated_output_tokens_low"]
+    assert payload["estimated_cost_usd_low"] >= 0
+    assert payload["estimated_cost_usd_high"] >= payload["estimated_cost_usd_low"]
+    assert payload["pricing_model"] == "gpt-4.1-mini"
 
 
 def test_health_returns_ok(monkeypatch) -> None:
@@ -342,6 +369,127 @@ def test_v1_get_project_manuscript_returns_404_for_missing_manuscript(
         )
         project_id = project_response.json()["id"]
         response = client.get(f"/v1/projects/{project_id}/manuscripts/missing")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["type"] == "not_found"
+
+
+def test_v1_generate_manuscript_job_completes_and_updates_sections(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    def _mock_draft(section: str, notes: str) -> str:
+        assert notes == "Core trial notes"
+        return f"{section} draft content"
+
+    monkeypatch.setattr(
+        "research_os.services.generation_job_service.draft_section_from_notes",
+        _mock_draft,
+    )
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Async Generation Project",
+                "target_journal": "ehj",
+            },
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "async-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        enqueue_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/generate",
+            json={
+                "sections": ["introduction", "results"],
+                "notes_context": "Core trial notes",
+            },
+        )
+        job_id = enqueue_response.json()["id"]
+        terminal_payload = _wait_for_job_terminal_status(client, job_id)
+        manuscript_fetch = client.get(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}"
+        )
+
+    assert enqueue_response.status_code == 200
+    _assert_job_cost_estimates(enqueue_response.json())
+    assert terminal_payload["status"] == "completed"
+    assert terminal_payload["progress_percent"] == 100
+    assert terminal_payload["error_detail"] is None
+    _assert_job_cost_estimates(terminal_payload)
+
+    assert manuscript_fetch.status_code == 200
+    sections = manuscript_fetch.json()["sections"]
+    assert sections["introduction"] == "introduction draft content"
+    assert sections["results"] == "results draft content"
+
+
+def test_v1_generate_manuscript_job_fails_and_keeps_partial_progress(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    def _mock_draft(section: str, _: str) -> str:
+        if section == "results":
+            raise RuntimeError("Model timeout")
+        return f"{section} draft content"
+
+    monkeypatch.setattr(
+        "research_os.services.generation_job_service.draft_section_from_notes",
+        _mock_draft,
+    )
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Async Failure Project",
+                "target_journal": "jacc",
+            },
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "failing-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        enqueue_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/generate",
+            json={
+                "sections": ["introduction", "results", "discussion"],
+                "notes_context": "Failure notes",
+            },
+        )
+        job_id = enqueue_response.json()["id"]
+        terminal_payload = _wait_for_job_terminal_status(client, job_id)
+        manuscript_fetch = client.get(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}"
+        )
+
+    assert enqueue_response.status_code == 200
+    _assert_job_cost_estimates(enqueue_response.json())
+    assert terminal_payload["status"] == "failed"
+    assert "Model timeout" in (terminal_payload["error_detail"] or "")
+    assert terminal_payload["progress_percent"] < 100
+    _assert_job_cost_estimates(terminal_payload)
+
+    assert manuscript_fetch.status_code == 200
+    sections = manuscript_fetch.json()["sections"]
+    assert sections["introduction"] == "introduction draft content"
+    assert sections["discussion"] == ""
+
+
+def test_v1_get_generation_job_returns_404_for_missing_job(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        response = client.get("/v1/generation-jobs/missing-job")
 
     assert response.status_code == 404
     assert response.json()["error"]["type"] == "not_found"

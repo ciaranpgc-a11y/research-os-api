@@ -58,6 +58,28 @@ type ManuscriptResponse = {
   updated_at: string
 }
 
+type GenerationJobResponse = {
+  id: string
+  project_id: string
+  manuscript_id: string
+  status: 'queued' | 'running' | 'completed' | 'failed'
+  sections: string[]
+  notes_context: string
+  progress_percent: number
+  current_section: string | null
+  error_detail: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+  pricing_model: string
+  estimated_input_tokens: number
+  estimated_output_tokens_low: number
+  estimated_output_tokens_high: number
+  estimated_cost_usd_low: number
+  estimated_cost_usd_high: number
+}
+
 type WizardBootstrapResponse = {
   project: ProjectResponse
   manuscript: ManuscriptResponse
@@ -86,6 +108,20 @@ const DATA_SOURCE_LABELS: Record<string, string> = {
   stats_text_output: 'Statistical text output',
   existing_draft: 'Existing draft',
   manual_entry: 'Manual entry',
+}
+
+const ESTIMATE_PROMPT_OVERHEAD_TOKENS = 90
+const ESTIMATE_MIN_NOTES_TOKENS = 24
+const ESTIMATE_INPUT_USD_PER_1M = 0.4
+const ESTIMATE_OUTPUT_USD_PER_1M = 1.6
+const ESTIMATE_SECTION_OUTPUT_TOKEN_RANGES: Record<string, [number, number]> = {
+  title: [12, 32],
+  abstract: [120, 280],
+  introduction: [180, 420],
+  methods: [220, 520],
+  results: [180, 420],
+  discussion: [220, 520],
+  conclusion: [70, 180],
 }
 
 const SECTION_DRAFT_OPTIONS = ['title', 'abstract', 'introduction', 'methods', 'results', 'discussion', 'conclusion']
@@ -177,6 +213,51 @@ function formatUtcDate(value: string): string {
   return new Date(timestamp).toLocaleString()
 }
 
+function formatUsd(value: number): string {
+  return `$${value.toFixed(4)}`
+}
+
+function estimateGenerationCostRange(sections: string[], notesContext: string) {
+  const normalizedSections = sections
+    .map((section) => section.trim().toLowerCase())
+    .filter((section) => section.length > 0)
+  if (normalizedSections.length === 0) {
+    return {
+      estimatedInputTokens: 0,
+      estimatedOutputTokensLow: 0,
+      estimatedOutputTokensHigh: 0,
+      estimatedCostUsdLow: 0,
+      estimatedCostUsdHigh: 0,
+    }
+  }
+  const effectiveSections = normalizedSections
+  const notesTokens = Math.max(Math.floor(notesContext.length / 4), ESTIMATE_MIN_NOTES_TOKENS)
+  const estimatedInputTokens = effectiveSections.length * (notesTokens + ESTIMATE_PROMPT_OVERHEAD_TOKENS)
+
+  let estimatedOutputTokensLow = 0
+  let estimatedOutputTokensHigh = 0
+  for (const section of effectiveSections) {
+    const [low, high] = ESTIMATE_SECTION_OUTPUT_TOKEN_RANGES[section] ?? [160, 380]
+    estimatedOutputTokensLow += low
+    estimatedOutputTokensHigh += high
+  }
+
+  const estimatedCostUsdLow =
+    (estimatedInputTokens / 1_000_000) * ESTIMATE_INPUT_USD_PER_1M +
+    (estimatedOutputTokensLow / 1_000_000) * ESTIMATE_OUTPUT_USD_PER_1M
+  const estimatedCostUsdHigh =
+    (estimatedInputTokens / 1_000_000) * ESTIMATE_INPUT_USD_PER_1M +
+    (estimatedOutputTokensHigh / 1_000_000) * ESTIMATE_OUTPUT_USD_PER_1M
+
+  return {
+    estimatedInputTokens,
+    estimatedOutputTokensLow,
+    estimatedOutputTokensHigh,
+    estimatedCostUsdLow,
+    estimatedCostUsdHigh,
+  }
+}
+
 function humanizeIdentifier(value: string): string {
   const normalized = value.replace(/[_-]+/g, ' ').trim()
   if (!normalized) {
@@ -238,6 +319,12 @@ function App() {
   const [isGeneratingSection, setIsGeneratingSection] = useState(false)
   const [generateSectionError, setGenerateSectionError] = useState('')
   const [generateSectionSuccess, setGenerateSectionSuccess] = useState('')
+  const [fullGenerationNotesContext, setFullGenerationNotesContext] = useState('')
+  const [fullGenerationSections, setFullGenerationSections] = useState<string[]>([])
+  const [isStartingFullGeneration, setIsStartingFullGeneration] = useState(false)
+  const [fullGenerationError, setFullGenerationError] = useState('')
+  const [fullGenerationSuccess, setFullGenerationSuccess] = useState('')
+  const [activeGenerationJob, setActiveGenerationJob] = useState<GenerationJobResponse | null>(null)
 
   const canSubmit = useMemo(
     () => notes.trim().length > 0 && draftSection.trim().length > 0 && !isSubmitting,
@@ -383,6 +470,9 @@ function App() {
     setSaveSectionSuccess('')
     setGenerateSectionError('')
     setGenerateSectionSuccess('')
+    setFullGenerationError('')
+    setFullGenerationSuccess('')
+    setActiveGenerationJob(null)
   }, [selectedProjectId])
 
   const onSubmit = async (event: FormEvent) => {
@@ -526,22 +616,59 @@ function App() {
       selectedProjectId,
     ],
   )
+  const canStartFullGeneration = useMemo(
+    () =>
+      selectedProjectId.trim().length > 0 &&
+      selectedManuscriptId.trim().length > 0 &&
+      fullGenerationSections.length > 0 &&
+      fullGenerationNotesContext.trim().length > 0 &&
+      !isStartingFullGeneration,
+    [
+      fullGenerationNotesContext,
+      fullGenerationSections.length,
+      isStartingFullGeneration,
+      selectedManuscriptId,
+      selectedProjectId,
+    ],
+  )
+  const isGenerationJobInFlight = useMemo(
+    () =>
+      activeGenerationJob !== null &&
+      (activeGenerationJob.status === 'queued' || activeGenerationJob.status === 'running'),
+    [activeGenerationJob],
+  )
+  const liveGenerationEstimate = useMemo(
+    () => estimateGenerationCostRange(fullGenerationSections, fullGenerationNotesContext),
+    [fullGenerationNotesContext, fullGenerationSections],
+  )
 
   useEffect(() => {
     if (!selectedManuscript) {
       setSectionEditorKey('')
       setSectionEditorContent('')
+      setFullGenerationSections([])
       return
     }
     const keys = Object.keys(selectedManuscript.sections)
     if (keys.length === 0) {
       setSectionEditorKey('')
       setSectionEditorContent('')
+      setFullGenerationSections([])
       return
     }
     const nextKey = keys.includes(sectionEditorKey) ? sectionEditorKey : keys[0]
     setSectionEditorKey(nextKey)
     setSectionEditorContent(selectedManuscript.sections[nextKey] ?? '')
+    setFullGenerationSections((current) => {
+      const filtered = current.filter((section) => keys.includes(section))
+      if (filtered.length > 0) {
+        return filtered
+      }
+      return keys
+    })
+    setActiveGenerationJob((current) =>
+      current && current.manuscript_id === selectedManuscript.id ? current : null,
+    )
   }, [sectionEditorKey, selectedManuscript])
 
   const createManuscript = async () => {
@@ -696,6 +823,102 @@ function App() {
       setIsGeneratingSection(false)
     }
   }
+
+  const toggleFullGenerationSection = (section: string) => {
+    setFullGenerationSections((current) => {
+      if (current.includes(section)) {
+        return current.filter((item) => item !== section)
+      }
+      return [...current, section]
+    })
+  }
+
+  const startFullManuscriptGeneration = async () => {
+    if (!canStartFullGeneration || !selectedProject || !selectedManuscript) {
+      return
+    }
+    setFullGenerationError('')
+    setFullGenerationSuccess('')
+    setIsStartingFullGeneration(true)
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/v1/projects/${selectedProject.id}/manuscripts/${selectedManuscript.id}/generate`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sections: fullGenerationSections,
+            notes_context: fullGenerationNotesContext.trim(),
+          }),
+        },
+      )
+      const returnedRequestId = response.headers.get('X-Request-ID') ?? ''
+      if (returnedRequestId) {
+        setRequestId(returnedRequestId)
+      }
+      if (!response.ok) {
+        throw new Error(await readApiErrorMessage(response, 'Could not enqueue full manuscript generation'))
+      }
+      const payload = (await response.json()) as GenerationJobResponse
+      setActiveGenerationJob(payload)
+      setFullGenerationSuccess(
+        `Queued generation job ${payload.id}. Estimated cost ${formatUsd(payload.estimated_cost_usd_low)}-${formatUsd(payload.estimated_cost_usd_high)}.`,
+      )
+      setFullGenerationError('')
+    } catch (error) {
+      setFullGenerationError(
+        error instanceof Error ? error.message : 'Could not enqueue full manuscript generation',
+      )
+      setFullGenerationSuccess('')
+    } finally {
+      setIsStartingFullGeneration(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!activeGenerationJob || !selectedProject) {
+      return
+    }
+    if (!['queued', 'running'].includes(activeGenerationJob.status)) {
+      return
+    }
+
+    let cancelled = false
+    const timerId = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/v1/generation-jobs/${activeGenerationJob.id}`)
+        if (!response.ok) {
+          throw new Error(await readApiErrorMessage(response, 'Could not poll generation job'))
+        }
+        const payload = (await response.json()) as GenerationJobResponse
+        if (cancelled) {
+          return
+        }
+        setActiveGenerationJob(payload)
+        if (payload.status === 'completed') {
+          setFullGenerationSuccess(
+            `Generation completed (${payload.sections.length} sections). Estimated cost ${formatUsd(payload.estimated_cost_usd_low)}-${formatUsd(payload.estimated_cost_usd_high)}.`,
+          )
+          setFullGenerationError('')
+          await loadManuscripts(selectedProject.id)
+        } else if (payload.status === 'failed') {
+          setFullGenerationError(payload.error_detail || 'Generation job failed.')
+          await loadManuscripts(selectedProject.id)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setFullGenerationError(error instanceof Error ? error.message : 'Could not poll generation job')
+        }
+      }
+    }, 1500)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timerId)
+    }
+  }, [activeGenerationJob, loadManuscripts, selectedProject])
 
   return (
     <main className="page">
@@ -1073,10 +1296,76 @@ function App() {
                           </button>
                         </div>
                       </div>
+                      <div className="full-generation-box">
+                        <h4>Async Full-Manuscript Generation</h4>
+                        <p className="muted">
+                          Queue multi-section generation in the background with progress tracking and estimated cost.
+                        </p>
+                        <div className="section-toggle-grid">
+                          {sectionKeys.map((section) => (
+                            <label key={section} className="section-toggle">
+                              <input
+                                type="checkbox"
+                                checked={fullGenerationSections.includes(section)}
+                                onChange={() => toggleFullGenerationSection(section)}
+                                disabled={isStartingFullGeneration}
+                              />
+                              <span>{humanizeIdentifier(section)}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <label>
+                          Shared notes context for all selected sections
+                          <textarea
+                            rows={6}
+                            value={fullGenerationNotesContext}
+                            onChange={(event) => setFullGenerationNotesContext(event.target.value)}
+                            placeholder="Provide the common study context used to draft all selected sections."
+                          />
+                        </label>
+                        <p className="muted">
+                          Live estimate: {formatUsd(liveGenerationEstimate.estimatedCostUsdLow)} -{' '}
+                          {formatUsd(liveGenerationEstimate.estimatedCostUsdHigh)} ({liveGenerationEstimate.estimatedInputTokens}{' '}
+                          input tokens, {liveGenerationEstimate.estimatedOutputTokensLow} -{' '}
+                          {liveGenerationEstimate.estimatedOutputTokensHigh} output tokens)
+                        </p>
+                        <div className="inline-actions">
+                          <button type="button" onClick={startFullManuscriptGeneration} disabled={!canStartFullGeneration}>
+                            {isStartingFullGeneration ? 'Queuing...' : 'Generate Selected Sections (Async)'}
+                          </button>
+                        </div>
+                        {activeGenerationJob && (
+                          <div className="job-status">
+                            <p>
+                              Job: <code>{activeGenerationJob.id}</code>
+                            </p>
+                            <p>
+                              Status: <strong>{humanizeIdentifier(activeGenerationJob.status)}</strong> | Progress:{' '}
+                              <strong>{activeGenerationJob.progress_percent}%</strong>
+                            </p>
+                            {activeGenerationJob.current_section && (
+                              <p>
+                                Current section: <strong>{humanizeIdentifier(activeGenerationJob.current_section)}</strong>
+                              </p>
+                            )}
+                            <p>
+                              Estimated cost ({activeGenerationJob.pricing_model}):{' '}
+                              <strong>
+                                {formatUsd(activeGenerationJob.estimated_cost_usd_low)} -{' '}
+                                {formatUsd(activeGenerationJob.estimated_cost_usd_high)}
+                              </strong>
+                            </p>
+                            {activeGenerationJob.error_detail && <p>{activeGenerationJob.error_detail}</p>}
+                            {isGenerationJobInFlight && <p className="muted">Polling job status...</p>}
+                          </div>
+                        )}
+                      </div>
                       {saveSectionError && <p>{saveSectionError}</p>}
                       {saveSectionSuccess && <p>{saveSectionSuccess}</p>}
                       {generateSectionError && <p>{generateSectionError}</p>}
                       {generateSectionSuccess && <p>{generateSectionSuccess}</p>}
+                      {fullGenerationError && <p>{fullGenerationError}</p>}
+                      {fullGenerationSuccess && <p>{fullGenerationSuccess}</p>}
                       <p className="muted">Available sections: {sectionKeys.join(', ')}</p>
                     </div>
                   )}

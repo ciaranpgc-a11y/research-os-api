@@ -9,6 +9,7 @@ from sqlalchemy import (
     JSON,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -67,6 +68,9 @@ class Project(Base):
     manuscripts: Mapped[list["Manuscript"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
+    generation_jobs: Mapped[list["GenerationJob"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
 
 
 class Manuscript(Base):
@@ -90,6 +94,44 @@ class Manuscript(Base):
     )
 
     project: Mapped[Project] = relationship(back_populates="manuscripts")
+    generation_jobs: Mapped[list["GenerationJob"]] = relationship(
+        back_populates="manuscript", cascade="all, delete-orphan"
+    )
+
+
+class GenerationJob(Base):
+    __tablename__ = "generation_jobs"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="CASCADE")
+    )
+    manuscript_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("manuscripts.id", ondelete="CASCADE")
+    )
+    status: Mapped[str] = mapped_column(String(32), default="queued")
+    sections: Mapped[list[str]] = mapped_column(JSON, default=list)
+    notes_context: Mapped[str] = mapped_column(Text, default="")
+    progress_percent: Mapped[int] = mapped_column(Integer, default=0)
+    current_section: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    project: Mapped[Project] = relationship(back_populates="generation_jobs")
+    manuscript: Mapped[Manuscript] = relationship(back_populates="generation_jobs")
 
 
 _engine = None

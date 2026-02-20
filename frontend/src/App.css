@@ -351,6 +351,46 @@
   border-top: 1px dashed rgba(255, 255, 255, 0.16);
 }
 
+.full-generation-box {
+  margin-top: 0.45rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed rgba(255, 255, 255, 0.16);
+  display: grid;
+  gap: 0.6rem;
+}
+
+.full-generation-box h4 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.section-toggle-grid {
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+  color: #d8e1f5;
+}
+
+.section-toggle input {
+  accent-color: #ff9f47;
+}
+
+.job-status {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  padding: 0.6rem 0.72rem;
+  background: rgba(7, 16, 28, 0.72);
+  display: grid;
+  gap: 0.35rem;
+}
+
 .inline-form {
   margin-top: 0.7rem;
   display: grid;
@@ -439,6 +479,10 @@
   }
 
   .inline-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .section-toggle-grid {
     grid-template-columns: 1fr;
   }
 

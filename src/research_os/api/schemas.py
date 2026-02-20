@@ -73,6 +73,11 @@ class ManuscriptSectionsUpdateRequest(BaseModel):
     sections: dict[str, str] = Field(default_factory=dict)
 
 
+class ManuscriptGenerateRequest(BaseModel):
+    sections: list[str] | None = None
+    notes_context: str
+
+
 class ManuscriptResponse(BaseModel):
     id: str
     project_id: str
@@ -121,3 +126,27 @@ class WizardBootstrapResponse(BaseModel):
     project: ProjectResponse
     manuscript: ManuscriptResponse
     inference: WizardInferResponse
+
+
+class GenerationJobResponse(BaseModel):
+    id: str
+    project_id: str
+    manuscript_id: str
+    status: str
+    sections: list[str]
+    notes_context: str
+    progress_percent: int
+    current_section: str | None = None
+    error_detail: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+    pricing_model: str
+    estimated_input_tokens: int
+    estimated_output_tokens_low: int
+    estimated_output_tokens_high: int
+    estimated_cost_usd_low: float
+    estimated_cost_usd_high: float
+
+    model_config = ConfigDict(from_attributes=True)

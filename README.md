@@ -46,8 +46,12 @@ Primary versioned routes:
 - `POST /v1/projects/{project_id}/manuscripts`
 - `GET /v1/projects/{project_id}/manuscripts/{manuscript_id}`
 - `PATCH /v1/projects/{project_id}/manuscripts/{manuscript_id}`
+- `POST /v1/projects/{project_id}/manuscripts/{manuscript_id}/generate`
+- `GET /v1/generation-jobs/{job_id}`
 - `POST /v1/draft/section`
 - `POST /v1/draft/methods`
+
+`/v1/generation-jobs/{job_id}` responses include estimated token and USD cost ranges for planning.
 
 Compatibility routes:
 - `GET /health`
@@ -74,6 +78,11 @@ curl.exe --% -X POST http://127.0.0.1:8000/v1/draft/methods -H "Content-Type: ap
 PowerShell-safe wizard infer request:
 ```powershell
 curl.exe --% -X POST http://127.0.0.1:8000/v1/wizard/infer -H "Content-Type: application/json" -d "{\"target_journal\":\"ehj\",\"answers\":{\"disease_focus\":\"Heart failure\",\"population\":\"Adults\"}}"
+```
+
+PowerShell-safe async generation enqueue:
+```powershell
+curl.exe --% -X POST http://127.0.0.1:8000/v1/projects/PROJECT_ID/manuscripts/MANUSCRIPT_ID/generate -H "Content-Type: application/json" -d "{\"sections\":[\"introduction\",\"methods\",\"results\"],\"notes_context\":\"core trial notes\"}"
 ```
 
 ## Deploy to Render
