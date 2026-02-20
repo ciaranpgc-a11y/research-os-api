@@ -1,10 +1,7 @@
 import { Download, Loader2, ShieldCheck } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   exportManuscriptMarkdownWithWarnings,
   exportQcGatedMarkdown,
@@ -29,14 +26,6 @@ type StepLinkQcExportProps = {
   onError: (message: string) => void
   onRegisterPrimaryExportAction?: (action: (() => void) | null) => void
 }
-
-const REQUIRED_QC_CATEGORIES = [
-  'Unsupported claims',
-  'Missing citations',
-  'Inconsistent numbers',
-  'Journal non-compliance',
-  'Word budget',
-]
 
 function downloadText(filename: string, content: string, type: string) {
   const blob = new Blob([content], { type })
@@ -76,7 +65,6 @@ export function StepLinkQcExport({
 }: StepLinkQcExportProps) {
   const [minConfidence, setMinConfidence] = useState<'high' | 'medium' | 'low'>('medium')
   const [referenceStyle, setReferenceStyle] = useState<'vancouver' | 'ama'>('vancouver')
-  const [suggestionDecisions, setSuggestionDecisions] = useState<Record<string, 'accepted' | 'rejected'>>({})
   const [qcRun, setQcRun] = useState<QCRunResponse | null>(null)
   const [busy, setBusy] = useState<'link' | 'qc' | 'export' | 'export-override' | 'refs' | ''>('')
 
@@ -92,6 +80,7 @@ export function StepLinkQcExport({
   useEffect(() => {
     onQcStatusChange(qcStatus)
   }, [onQcStatusChange, qcStatus])
+
   useEffect(() => {
     onQcSeverityCountsChange({
       high: qcRun?.high_severity_count ?? 0,
@@ -99,19 +88,6 @@ export function StepLinkQcExport({
       low: qcRun?.low_severity_count ?? 0,
     })
   }, [onQcSeverityCountsChange, qcRun])
-
-  const qcChecklist = useMemo(() => {
-    const issues = qcRun?.issues ?? []
-    return REQUIRED_QC_CATEGORIES.map((category) => {
-      const issue = issues.find((item) => item.category.toLowerCase() === category.toLowerCase())
-      return {
-        category,
-        count: issue?.count ?? 0,
-        severity: issue?.severity ?? 'low',
-        summary: issue?.summary ?? 'No findings in this category.',
-      }
-    })
-  }, [qcRun])
 
   const onRunLinker = async () => {
     setBusy('link')
@@ -136,8 +112,7 @@ export function StepLinkQcExport({
     try {
       const payload = await runQcChecks()
       setQcRun(payload)
-      const status = deriveQcStatus(payload)
-      onStatus(`QC completed (${status}).`)
+      onStatus(`QC completed (${deriveQcStatus(payload)}).`)
     } catch (error) {
       onError(error instanceof Error ? error.message : 'Could not run QC.')
     } finally {
@@ -217,21 +192,50 @@ export function StepLinkQcExport({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Step 5: Link Claims to Evidence + Quality Check & Export</CardTitle>
-        <CardDescription>Link claims, run quality checks, and export once the QC gate is ready.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">Use Linking to review claim-result mapping, then run QC and export in the final tab.</p>
+    <div className="space-y-4 rounded-lg border border-border bg-card p-4">
+      <div className="space-y-1">
+        <h2 className="text-base font-semibold">Step 5: QC + Export</h2>
+        <p className="text-sm text-muted-foreground">Run QC and export the manuscript.</p>
+      </div>
 
-        <Tabs defaultValue="linking">
-          <TabsList>
-            <TabsTrigger value="linking">Linking</TabsTrigger>
-            <TabsTrigger value="qc-export">QC + Export</TabsTrigger>
-          </TabsList>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="outline" onClick={onRunQc} disabled={busy === 'qc'}>
+          {busy === 'qc' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-1 h-4 w-4" />}
+          Run QC
+        </Button>
+        <p className="text-sm text-muted-foreground">QC status: {qcStatus}</p>
+      </div>
 
-          <TabsContent value="linking" className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={() => void onExportStrict()} disabled={busy === 'export' || qcStatus !== 'pass'}>
+          {busy === 'export' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}
+          Export
+        </Button>
+        {qcStatus !== 'pass' ? (
+          <Button variant="outline" onClick={() => void onExportWithWarnings()} disabled={busy === 'export-override'}>
+            {busy === 'export-override' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}
+            Export with warnings
+          </Button>
+        ) : null}
+      </div>
+
+      <details className="rounded-md border border-border/70 bg-muted/20 p-3">
+        <summary className="cursor-pointer text-sm font-medium">Details</summary>
+        <div className="mt-3 space-y-3">
+          <div className="grid gap-2 md:grid-cols-2">
+            {(qcRun?.issues ?? []).map((item) => (
+              <div key={item.id} className="rounded-md border border-border bg-background p-2 text-xs">
+                <p className="font-medium">{item.category}</p>
+                <p className="text-muted-foreground">
+                  {item.count > 0 ? `${item.count} issue(s) - ${item.summary}` : 'Clear'}
+                </p>
+              </div>
+            ))}
+            {!qcRun ? <p className="text-xs text-muted-foreground">No QC run yet.</p> : null}
+          </div>
+
+          <div className="space-y-2 rounded-md border border-border bg-background p-3">
+            <p className="text-sm font-medium">Linking diagnostics</p>
             <div className="flex flex-wrap items-center gap-2">
               <select
                 className="h-9 rounded-md border border-border bg-background px-3 text-sm"
@@ -246,92 +250,26 @@ export function StepLinkQcExport({
                 {busy === 'link' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
                 Run Linker
               </Button>
-              <Badge variant="secondary">Suggestions: {links.length}</Badge>
+              <p className="text-xs text-muted-foreground">Suggestions: {links.length}</p>
             </div>
+          </div>
 
-            <div className="space-y-2">
-              {links.map((suggestion) => {
-                const decisionKey = `${suggestion.claim_id}-${suggestion.result_id}`
-                const decision = suggestionDecisions[decisionKey]
-                return (
-                  <div key={decisionKey} className="rounded-md border border-border p-2 text-xs">
-                    <p>
-                      {suggestion.claim_heading} {' -> '} {suggestion.result_id} ({suggestion.confidence})
-                    </p>
-                    <p className="text-muted-foreground">{suggestion.rationale}</p>
-                    <div className="mt-2 flex gap-2">
-                      <Button
-                        size="sm"
-                        variant={decision === 'accepted' ? 'secondary' : 'outline'}
-                        className={decision === 'accepted' ? '' : 'text-muted-foreground hover:text-foreground'}
-                        onClick={() => setSuggestionDecisions((current) => ({ ...current, [decisionKey]: 'accepted' }))}
-                      >
-                        Accept
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={decision === 'rejected' ? 'secondary' : 'outline'}
-                        className={decision === 'rejected' ? '' : 'text-muted-foreground hover:text-foreground'}
-                        onClick={() => setSuggestionDecisions((current) => ({ ...current, [decisionKey]: 'rejected' }))}
-                      >
-                        Reject
-                      </Button>
-                    </div>
-                  </div>
-                )
-              })}
-              {links.length === 0 ? <p className="text-xs text-muted-foreground">Run linker to load evidence suggestions.</p> : null}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="qc-export" className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" onClick={onRunQc} disabled={busy === 'qc'}>
-                {busy === 'qc' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-1 h-4 w-4" />}
-                Run QC
-              </Button>
-              <Badge variant={qcStatus === 'pass' ? 'default' : 'secondary'}>QC status: {qcStatus}</Badge>
-            </div>
-
-            <div className="grid gap-2 md:grid-cols-2">
-              {qcChecklist.map((item) => (
-                <div key={item.category} className="rounded-md border border-border p-2 text-xs">
-                  <p className="font-medium">{item.category}</p>
-                  <p className="text-muted-foreground">
-                    {item.count > 0 ? `${item.count} issue(s) - ${item.summary}` : 'Clear'}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={() => void onExportStrict()} disabled={busy === 'export' || qcStatus !== 'pass'}>
-                {busy === 'export' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}
-                Export
-              </Button>
-              {qcStatus !== 'pass' ? (
-                <Button variant="outline" onClick={() => void onExportWithWarnings()} disabled={busy === 'export-override'}>
-                  {busy === 'export-override' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}
-                  Export with warnings
-                </Button>
-              ) : null}
-
-              <select
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm"
-                value={referenceStyle}
-                onChange={(event) => setReferenceStyle(event.target.value as 'vancouver' | 'ama')}
-              >
-                <option value="vancouver">Vancouver</option>
-                <option value="ama">AMA</option>
-              </select>
-              <Button variant="outline" onClick={onExportReferences} disabled={busy === 'refs'}>
-                {busy === 'refs' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
-                Export Reference Pack
-              </Button>
-            </div>
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              className="h-9 rounded-md border border-border bg-background px-3 text-sm"
+              value={referenceStyle}
+              onChange={(event) => setReferenceStyle(event.target.value as 'vancouver' | 'ama')}
+            >
+              <option value="vancouver">Vancouver</option>
+              <option value="ama">AMA</option>
+            </select>
+            <Button variant="outline" onClick={onExportReferences} disabled={busy === 'refs'}>
+              {busy === 'refs' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+              Export Reference Pack
+            </Button>
+          </div>
+        </div>
+      </details>
+    </div>
   )
 }
