@@ -34,6 +34,8 @@ type RunRecommendations = {
 const CONTEXT_KEY = 'aawe-run-context'
 const SNAPSHOT_KEY = 'aawe-run-wizard-snapshot'
 const CORE_SECTIONS = ['introduction', 'methods', 'results', 'discussion']
+const CHECK_MARK = '\u2713'
+const CROSS_MARK = '\u2717'
 
 function buildGenerationBrief(values: ContextFormValues, sections: string[], guardrailsEnabled: boolean): string {
   const lines = [
@@ -771,8 +773,8 @@ export function StudyCorePage() {
               }
             />
             <p className="text-xs text-muted-foreground">
-              Context {contextStatus === 'saved' ? '✓' : '✗'} | Plan {planStatus === 'built' ? '✓' : '✗'} | Draft{' '}
-              {acceptedSections > 0 ? '✓' : '✗'} | QC {qcStatus === 'pass' ? '✓' : '✗'}
+              Context {contextStatus === 'saved' ? CHECK_MARK : CROSS_MARK} | Plan {planStatus === 'built' ? CHECK_MARK : CROSS_MARK} | Draft{' '}
+              {acceptedSections > 0 ? CHECK_MARK : CROSS_MARK} | QC {qcStatus === 'pass' ? CHECK_MARK : CROSS_MARK}
             </p>
           </div>
           <div className="flex items-center gap-2">

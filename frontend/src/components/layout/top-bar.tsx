@@ -14,9 +14,10 @@ import type { QCRunResponse } from '@/types/qc-run'
 type TopBarProps = {
   onOpenLeftNav: () => void
   onOpenRightPanel: () => void
+  showRightPanelButton?: boolean
 }
 
-export function TopBar({ onOpenLeftNav, onOpenRightPanel }: TopBarProps) {
+export function TopBar({ onOpenLeftNav, onOpenRightPanel, showRightPanelButton = true }: TopBarProps) {
   const navigate = useNavigate()
   const theme = useAaweStore((state) => state.theme)
   const toggleTheme = useAaweStore((state) => state.toggleTheme)
@@ -131,17 +132,19 @@ export function TopBar({ onOpenLeftNav, onOpenRightPanel }: TopBarProps) {
           {isRunningQc ? 'Running...' : 'Run QC'}
         </Button>
         {qcStatus ? <span className="hidden text-xs text-muted-foreground md:inline">{qcStatus}</span> : null}
-        <TooltipProvider delayDuration={100}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" size="icon" className="insight:hidden" onClick={onOpenRightPanel}>
-                <PanelRight className="h-4 w-4" />
-                <span className="sr-only">Open insights</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Open Insight Panel</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        {showRightPanelButton ? (
+          <TooltipProvider delayDuration={100}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="icon" className="insight:hidden" onClick={onOpenRightPanel}>
+                  <PanelRight className="h-4 w-4" />
+                  <span className="sr-only">Open insights</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Open Insight Panel</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : null}
       </div>
     </header>
   )

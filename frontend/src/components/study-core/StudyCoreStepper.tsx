@@ -1,6 +1,5 @@
 import { CheckCircle2, Circle } from 'lucide-react'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { WizardStep } from '@/store/use-study-core-wizard-store'
@@ -28,21 +27,10 @@ export function StudyCoreStepper({
   onStepSelect,
   devOverride,
 }: StudyCoreStepperProps) {
-  const completedCount = completedSteps.length
-  const progressPercent = Math.round((completedCount / steps.length) * 100)
-
   return (
     <aside className="space-y-3 rounded-lg border border-border bg-card p-3">
       <div className="space-y-1">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold">Run Steps</p>
-          <Badge variant="secondary">
-            {completedCount}/{steps.length}
-          </Badge>
-        </div>
-        <div className="h-1.5 rounded-full bg-muted">
-          <div className="h-1.5 rounded-full bg-primary transition-all duration-300" style={{ width: `${progressPercent}%` }} />
-        </div>
+        <p className="text-sm font-semibold">Run Steps</p>
       </div>
 
       <div className="space-y-2">
@@ -82,4 +70,3 @@ export function StudyCoreStepper({
     </aside>
   )
 }
-
