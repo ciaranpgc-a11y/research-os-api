@@ -88,6 +88,8 @@ const DATA_SOURCE_LABELS: Record<string, string> = {
   manual_entry: 'Manual entry',
 }
 
+const SECTION_DRAFT_OPTIONS = ['title', 'abstract', 'introduction', 'methods', 'results', 'discussion', 'conclusion']
+
 const BASE_WIZARD_FIELDS: WizardFieldConfig[] = [
   {
     id: 'disease_focus',
@@ -193,6 +195,8 @@ function prettyOption(value: string, labelMap?: Record<string, string>): string 
 function App() {
   const [notes, setNotes] = useState('')
   const [methods, setMethods] = useState('')
+  const [draftSection, setDraftSection] = useState('methods')
+  const [lastGeneratedSection, setLastGeneratedSection] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [requestId, setRequestId] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
@@ -235,7 +239,10 @@ function App() {
   const [generateSectionError, setGenerateSectionError] = useState('')
   const [generateSectionSuccess, setGenerateSectionSuccess] = useState('')
 
-  const canSubmit = useMemo(() => notes.trim().length > 0 && !isSubmitting, [notes, isSubmitting])
+  const canSubmit = useMemo(
+    () => notes.trim().length > 0 && draftSection.trim().length > 0 && !isSubmitting,
+    [draftSection, isSubmitting, notes],
+  )
   const canBootstrap = useMemo(
     () => projectTitle.trim().length > 0 && targetJournal.trim().length > 0 && !isBootstrapping,
     [isBootstrapping, projectTitle, targetJournal],
@@ -386,15 +393,16 @@ function App() {
     setIsSubmitting(true)
     setErrorMessage('')
     setMethods('')
+    setLastGeneratedSection('')
     setRequestId('')
 
     try {
-      const response = await fetch(`${API_BASE_URL}/v1/draft/methods`, {
+      const response = await fetch(`${API_BASE_URL}/v1/draft/section`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ notes }),
+        body: JSON.stringify({ section: draftSection, notes }),
       })
 
       const returnedRequestId = response.headers.get('X-Request-ID') ?? ''
@@ -404,8 +412,9 @@ function App() {
         throw new Error(await readApiErrorMessage(response, 'Request failed'))
       }
 
-      const payload = (await response.json()) as { methods: string }
-      setMethods(payload.methods)
+      const payload = (await response.json()) as { section: string; draft: string }
+      setMethods(payload.draft)
+      setLastGeneratedSection(payload.section)
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unexpected error')
     } finally {
@@ -635,7 +644,7 @@ function App() {
     }
   }
 
-  const generateMethodsIntoSection = async () => {
+  const generateDraftIntoSection = async () => {
     if (!canGenerateSection || !selectedProject || !selectedManuscript) {
       return
     }
@@ -645,39 +654,43 @@ function App() {
     setIsGeneratingSection(true)
     const normalizedSectionKey = sectionEditorKey.trim()
     try {
-      const draftResponse = await fetch(`${API_BASE_URL}/v1/draft/methods`, {
+      const draftResponse = await fetch(`${API_BASE_URL}/v1/draft/section`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ notes: sectionGenerationNotes.trim() }),
+        body: JSON.stringify({
+          section: normalizedSectionKey,
+          notes: sectionGenerationNotes.trim(),
+        }),
       })
       const returnedRequestId = draftResponse.headers.get('X-Request-ID') ?? ''
       if (returnedRequestId) {
         setRequestId(returnedRequestId)
       }
       if (!draftResponse.ok) {
-        throw new Error(await readApiErrorMessage(draftResponse, 'Could not generate methods text'))
+        throw new Error(await readApiErrorMessage(draftResponse, 'Could not generate section text'))
       }
-      const draftPayload = (await draftResponse.json()) as { methods: string }
-      const generatedMethods = draftPayload.methods
-      setMethods(generatedMethods)
-      setSectionEditorContent(generatedMethods)
+      const draftPayload = (await draftResponse.json()) as { section: string; draft: string }
+      const generatedDraft = draftPayload.draft
+      setMethods(generatedDraft)
+      setLastGeneratedSection(draftPayload.section)
+      setSectionEditorContent(generatedDraft)
 
       const updatedManuscript = await patchManuscriptSection(
         selectedProject.id,
         selectedManuscript.id,
         normalizedSectionKey,
-        generatedMethods,
+        generatedDraft,
       )
       setGenerateSectionSuccess(
-        `Generated methods and saved section "${normalizedSectionKey}" on branch "${updatedManuscript.branch_name}".`,
+        `Generated and saved section "${normalizedSectionKey}" on branch "${updatedManuscript.branch_name}".`,
       )
       setGenerateSectionError('')
       await loadManuscripts(selectedProject.id)
       setSelectedManuscriptId(updatedManuscript.id)
     } catch (error) {
-      setGenerateSectionError(error instanceof Error ? error.message : 'Could not generate methods for this section')
+      setGenerateSectionError(error instanceof Error ? error.message : 'Could not generate draft for this section')
       setGenerateSectionSuccess('')
     } finally {
       setIsGeneratingSection(false)
@@ -691,23 +704,35 @@ function App() {
         <header className="panel-header">
           <p className="eyebrow">Research OS</p>
           <h1>Authoring + Project Wizard</h1>
-          <p className="subhead">Draft methods text and bootstrap manuscript projects from one console.</p>
+          <p className="subhead">Draft manuscript sections and bootstrap projects from one console.</p>
           <span className={`health-chip health-${health}`}>{healthText}</span>
         </header>
 
         <section className="section-block">
-          <h2>Methods Draft Studio</h2>
+          <h2>Section Draft Studio</h2>
           <form onSubmit={onSubmit} className="composer">
-            <label htmlFor="notes">Study Notes</label>
+            <label htmlFor="draft-section">Section</label>
+            <select
+              id="draft-section"
+              value={draftSection}
+              onChange={(event) => setDraftSection(event.target.value)}
+            >
+              {SECTION_DRAFT_OPTIONS.map((section) => (
+                <option key={section} value={section}>
+                  {humanizeIdentifier(section)}
+                </option>
+              ))}
+            </select>
+            <label htmlFor="notes">Section Notes</label>
             <textarea
               id="notes"
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
-              placeholder="Paste rough protocol notes, instrumentation details, and analysis plan..."
+              placeholder="Paste source notes for the selected section..."
               rows={8}
             />
             <button type="submit" disabled={!canSubmit}>
-              {isSubmitting ? 'Generating...' : 'Generate Draft'}
+              {isSubmitting ? 'Generating...' : 'Generate Section Draft'}
             </button>
           </form>
 
@@ -720,7 +745,7 @@ function App() {
 
           {methods && (
             <section className="result success">
-              <h3>Generated Methods</h3>
+              <h3>Generated {humanizeIdentifier(lastGeneratedSection || draftSection)} Draft</h3>
               <pre>{methods}</pre>
             </section>
           )}
@@ -1039,12 +1064,12 @@ function App() {
                             rows={5}
                             value={sectionGenerationNotes}
                             onChange={(event) => setSectionGenerationNotes(event.target.value)}
-                            placeholder="Paste protocol notes to generate methods-style text directly into this section."
+                            placeholder="Paste source notes to generate text directly into the selected section."
                           />
                         </label>
                         <div className="inline-actions">
-                          <button type="button" onClick={generateMethodsIntoSection} disabled={!canGenerateSection}>
-                            {isGeneratingSection ? 'Generating...' : 'Generate Methods + Save Section'}
+                          <button type="button" onClick={generateDraftIntoSection} disabled={!canGenerateSection}>
+                            {isGeneratingSection ? 'Generating...' : 'Generate Draft + Save Section'}
                           </button>
                         </div>
                       </div>

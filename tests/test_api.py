@@ -63,6 +63,49 @@ def test_v1_draft_methods_returns_generated_draft(monkeypatch) -> None:
     assert response.json() == {"methods": "Generated methods draft"}
 
 
+def test_v1_draft_section_returns_generated_draft(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    def _mock_draft(section: str, notes: str) -> str:
+        assert section == "results"
+        assert notes == "Example results notes"
+        return "Generated results draft"
+
+    monkeypatch.setattr("research_os.api.app.draft_section_from_notes", _mock_draft)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/draft/section",
+            json={"section": "results", "notes": "Example results notes"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"section": "results", "draft": "Generated results draft"}
+
+
+def test_draft_section_returns_generated_draft(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    def _mock_draft(section: str, notes: str) -> str:
+        assert section == "discussion"
+        assert notes == "Example discussion notes"
+        return "Generated discussion draft"
+
+    monkeypatch.setattr("research_os.api.app.draft_section_from_notes", _mock_draft)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/draft/section",
+            json={"section": "discussion", "notes": "Example discussion notes"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "section": "discussion",
+        "draft": "Generated discussion draft",
+    }
+
+
 def test_draft_methods_returns_502_on_generation_error(monkeypatch) -> None:
     from research_os.services.manuscript_service import ManuscriptGenerationError
 
@@ -98,6 +141,32 @@ def test_v1_draft_methods_returns_502_on_generation_error(monkeypatch) -> None:
 
     with TestClient(app) as client:
         response = client.post("/v1/draft/methods", json={"notes": "Example notes"})
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "error": {
+            "message": "OpenAI request failed",
+            "type": "openai_error",
+            "detail": "OpenAI down",
+        }
+    }
+
+
+def test_v1_draft_section_returns_502_on_generation_error(monkeypatch) -> None:
+    from research_os.services.manuscript_service import ManuscriptGenerationError
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    def _mock_fail(_: str, __: str) -> str:
+        raise ManuscriptGenerationError("OpenAI down")
+
+    monkeypatch.setattr("research_os.api.app.draft_section_from_notes", _mock_fail)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/draft/section",
+            json={"section": "introduction", "notes": "Example notes"},
+        )
 
     assert response.status_code == 502
     assert response.json() == {

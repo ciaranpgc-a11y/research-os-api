@@ -13,6 +13,8 @@ from research_os.config import get_openai_api_key
 from research_os.api.schemas import (
     DraftMethodsRequest,
     DraftMethodsSuccessResponse,
+    DraftSectionRequest,
+    DraftSectionSuccessResponse,
     ErrorResponse,
     HealthResponse,
     JournalOptionResponse,
@@ -41,6 +43,7 @@ from research_os.services.project_service import (
 from research_os.services.manuscript_service import (
     ManuscriptGenerationError,
     draft_methods_from_notes,
+    draft_section_from_notes,
 )
 from research_os.services.wizard_service import (
     JOURNAL_PRESETS,
@@ -178,6 +181,18 @@ def _build_conflict_response(detail: str) -> JSONResponse:
     )
 
 
+def _generate_section_response(
+    section: str, notes: str
+) -> DraftSectionSuccessResponse | JSONResponse:
+    try:
+        return DraftSectionSuccessResponse(
+            section=section,
+            draft=draft_section_from_notes(section, notes),
+        )
+    except Exception as exc:
+        return _build_error_response(exc)
+
+
 def _generate_methods_response(
     request: DraftMethodsRequest,
 ) -> DraftMethodsSuccessResponse | JSONResponse:
@@ -311,6 +326,18 @@ def v1_update_manuscript_sections(
 
 
 @app.post(
+    "/v1/draft/section",
+    response_model=DraftSectionSuccessResponse,
+    responses=ERROR_RESPONSES,
+    tags=["v1"],
+)
+def v1_draft_section(
+    request: DraftSectionRequest,
+) -> DraftSectionSuccessResponse | JSONResponse:
+    return _generate_section_response(request.section, request.notes)
+
+
+@app.post(
     "/v1/draft/methods",
     response_model=DraftMethodsSuccessResponse,
     responses=ERROR_RESPONSES,
@@ -333,3 +360,11 @@ def draft_methods(request: DraftMethodsRequest):
     if isinstance(response, JSONResponse):
         return response
     return {"draft": response.methods}
+
+
+@app.post("/draft/section", responses=ERROR_RESPONSES)
+def draft_section(request: DraftSectionRequest):
+    response = v1_draft_section(request)
+    if isinstance(response, JSONResponse):
+        return response
+    return {"section": response.section, "draft": response.draft}

@@ -15,6 +15,16 @@ class DraftMethodsSuccessResponse(BaseModel):
     methods: str
 
 
+class DraftSectionRequest(BaseModel):
+    section: str
+    notes: str
+
+
+class DraftSectionSuccessResponse(BaseModel):
+    section: str
+    draft: str
+
+
 class ErrorDetail(BaseModel):
     message: str
     type: str

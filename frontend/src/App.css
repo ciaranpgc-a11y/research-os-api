@@ -121,6 +121,15 @@
   color: #edf1fb;
 }
 
+.composer select {
+  border-radius: 14px;
+  border: 1px solid rgba(240, 138, 69, 0.35);
+  padding: 0.7rem 0.85rem;
+  font: inherit;
+  background: rgba(11, 16, 23, 0.9);
+  color: #edf1fb;
+}
+
 .composer button {
   justify-self: start;
   border: 0;

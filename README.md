@@ -2,7 +2,7 @@
 
 Research OS provides:
 - A FastAPI backend for manuscript drafting + project/manuscript state.
-- A React frontend for methods drafting and project bootstrap wizard flows.
+- A React frontend for section drafting, manuscript editing, and project bootstrap wizard flows.
 
 ## Local Development
 
@@ -46,10 +46,12 @@ Primary versioned routes:
 - `POST /v1/projects/{project_id}/manuscripts`
 - `GET /v1/projects/{project_id}/manuscripts/{manuscript_id}`
 - `PATCH /v1/projects/{project_id}/manuscripts/{manuscript_id}`
+- `POST /v1/draft/section`
 - `POST /v1/draft/methods`
 
 Compatibility routes:
 - `GET /health`
+- `POST /draft/section`
 - `POST /draft/methods`
 
 ### Quick checks
@@ -57,6 +59,11 @@ Compatibility routes:
 Health:
 ```bash
 curl http://127.0.0.1:8000/v1/health
+```
+
+PowerShell-safe section draft request:
+```powershell
+curl.exe --% -X POST http://127.0.0.1:8000/v1/draft/section -H "Content-Type: application/json" -d "{\"section\":\"results\",\"notes\":\"test notes\"}"
 ```
 
 PowerShell-safe methods draft request:
