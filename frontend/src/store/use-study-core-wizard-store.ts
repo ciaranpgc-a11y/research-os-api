@@ -7,11 +7,10 @@ export type JobStatus = 'idle' | 'running' | 'succeeded' | 'failed'
 export type QcStatus = 'idle' | 'pass' | 'warn' | 'fail'
 export type ContextReadinessFields = {
   projectTitle: string
+  researchObjective: string
+  primaryDataSource: string
   studyType: string
-  diseaseFocus: string
-  population: string
-  primaryOutcome: string
-  analysisApproach: string
+  primaryAnalyticalClaim: string
 }
 export type QcSeverityCounts = {
   high: number
@@ -21,11 +20,10 @@ export type QcSeverityCounts = {
 
 const DEFAULT_CONTEXT_READINESS_FIELDS: ContextReadinessFields = {
   projectTitle: '',
+  researchObjective: '',
+  primaryDataSource: '',
   studyType: '',
-  diseaseFocus: '',
-  population: '',
-  primaryOutcome: '',
-  analysisApproach: '',
+  primaryAnalyticalClaim: '',
 }
 
 const DEFAULT_QC_SEVERITY_COUNTS: QcSeverityCounts = {

@@ -80,6 +80,16 @@ export type SectionPlanPayload = {
   total_estimated_cost_usd_high: number
 }
 
+export type OutlinePlanSection = {
+  name: string
+  bullets: string[]
+  tags?: string[]
+}
+
+export type OutlinePlanState = {
+  sections: OutlinePlanSection[]
+}
+
 export type ClaimLinkSuggestion = {
   claim_id: string
   claim_heading: string

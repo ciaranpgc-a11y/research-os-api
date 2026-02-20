@@ -15,7 +15,7 @@ import type {
   GenerationEstimate,
   GenerationJobPayload,
   JournalOption,
-  SectionPlanPayload,
+  OutlinePlanState,
 } from '@/types/study-core'
 
 type RunContext = { projectId: string; manuscriptId: string }
@@ -25,11 +25,10 @@ const CORE_SECTIONS = ['introduction', 'methods', 'results', 'discussion']
 
 function buildNotesContext(values: ContextFormValues): string {
   return [
+    `research_objective: ${values.researchObjective}`,
     `study_type: ${values.studyType}`,
-    `disease_focus: ${values.diseaseFocus}`,
-    `population: ${values.population}`,
-    `primary_outcome: ${values.primaryOutcome}`,
-    `analysis_approach: ${values.analysisApproach}`,
+    `primary_data_source: ${values.primaryDataSource}`,
+    `primary_analytical_claim: ${values.primaryAnalyticalClaim}`,
   ].join('\n')
 }
 
@@ -46,7 +45,7 @@ function readStoredRunContext(): RunContext | null {
 }
 
 const STEP_ITEMS: WizardStepItem[] = [
-  { id: 1, title: 'Context', helper: 'Save project and study metadata.' },
+  { id: 1, title: 'Research Frame', helper: 'Set a new frame or import existing draft text.' },
   { id: 2, title: 'Plan Sections', helper: 'Choose sections and build a plan.' },
   { id: 3, title: 'Run Generation', helper: 'Estimate and run draft generation.' },
   { id: 4, title: 'Draft Review', helper: 'Accept or regenerate sections.' },
@@ -79,12 +78,11 @@ export function StudyCorePage() {
   const [targetJournal, setTargetJournal] = useState('generic-original')
   const [runContext, setRunContext] = useState<RunContext | null>(() => readStoredRunContext())
   const [contextValues, setContextValues] = useState<ContextFormValues>({
-    projectTitle: 'AAWE Manuscript Workspace',
-    studyType: 'observational cohort',
-    diseaseFocus: 'Heart failure',
-    population: 'Adults admitted with decompensated heart failure',
-    primaryOutcome: '90-day all-cause readmission',
-    analysisApproach: 'Adjusted Cox model with bootstrap validation',
+    projectTitle: 'AAWE Research Workspace',
+    researchObjective: '',
+    primaryDataSource: '',
+    studyType: 'Observational',
+    primaryAnalyticalClaim: '',
   })
 
   const [selectedSections, setSelectedSections] = useState<string[]>(CORE_SECTIONS)
@@ -95,7 +93,7 @@ export function StudyCorePage() {
   const [dailyBudgetUsd, setDailyBudgetUsd] = useState('0.25')
   const [styleProfile, setStyleProfile] = useState<'technical' | 'concise' | 'narrative_review'>('technical')
 
-  const [plan, setPlan] = useState<SectionPlanPayload | null>(null)
+  const [plan, setPlan] = useState<OutlinePlanState | null>(null)
   const [estimatePreview, setEstimatePreview] = useState<GenerationEstimate | null>(null)
   const [activeJob, setActiveJob] = useState<GenerationJobPayload | null>(null)
   const [links, setLinks] = useState<ClaimLinkSuggestion[]>([])
@@ -109,14 +107,22 @@ export function StudyCorePage() {
   const answers = useMemo(
     () => ({
       study_type: contextValues.studyType,
-      disease_focus: contextValues.diseaseFocus,
-      population: contextValues.population,
-      primary_outcome: contextValues.primaryOutcome,
-      analysis_summary: contextValues.analysisApproach,
+      research_objective: contextValues.researchObjective,
+      primary_data_source: contextValues.primaryDataSource,
+      primary_analytical_claim: contextValues.primaryAnalyticalClaim,
+      analysis_summary: contextValues.primaryAnalyticalClaim,
+      disease_focus: '',
+      population: '',
+      primary_outcome: '',
       manuscript_goal: 'generate_full_manuscript',
-      data_source: 'manual_entry',
+      data_source: contextValues.primaryDataSource || 'manual_entry',
     }),
-    [contextValues.analysisApproach, contextValues.diseaseFocus, contextValues.population, contextValues.primaryOutcome, contextValues.studyType],
+    [
+      contextValues.primaryAnalyticalClaim,
+      contextValues.primaryDataSource,
+      contextValues.researchObjective,
+      contextValues.studyType,
+    ],
   )
 
   const completedSteps = useMemo(() => {
@@ -187,21 +193,29 @@ export function StudyCorePage() {
     [acceptedSections, contextFields, planStatus, qcSeverityCounts, qcStatus, readinessSections],
   )
 
-  const onContextSaved = (payload: {
-    projectId: string
-    manuscriptId: string
-    recommendedSections: string[]
-  }) => {
+  const onContextSaved = (
+    payload: {
+      projectId: string
+      manuscriptId: string
+      recommendedSections: string[]
+    },
+    options?: {
+      advanceToPlan?: boolean
+    },
+  ) => {
+    const shouldAdvanceToPlan = options?.advanceToPlan ?? true
     setRunContext({ projectId: payload.projectId, manuscriptId: payload.manuscriptId })
     if (payload.recommendedSections.length > 0) {
       setSelectedSections(payload.recommendedSections)
     }
     setNotesContext(buildNotesContext(contextValues))
     setContextStatus('saved')
-    setCurrentStep(2)
+    if (shouldAdvanceToPlan) {
+      setCurrentStep(2)
+    }
   }
 
-  const onPlanChange = (nextPlan: SectionPlanPayload | null) => {
+  const onPlanChange = (nextPlan: OutlinePlanState | null) => {
     setPlan(nextPlan)
     if (nextPlan) {
       setPlanStatus('built')
@@ -316,6 +330,21 @@ export function StudyCorePage() {
           }
           onTargetJournalChange={setTargetJournal}
           onContextSaved={onContextSaved}
+          onDraftImported={({ sections, draftsBySection: importedDrafts }) => {
+            setDraftsBySection((current) => ({ ...current, ...importedDrafts }))
+            setSelectedSections(sections)
+            setCurrentStep(4)
+          }}
+          onRefineLoaded={({ section, text }) => {
+            setDraftsBySection((current) => ({ ...current, [section]: text }))
+            setSelectedSections((current) => {
+              if (current.includes(section)) {
+                return current
+              }
+              return [...current, section]
+            })
+            setCurrentStep(4)
+          }}
           onStatus={setStatus}
           onError={setError}
         />
