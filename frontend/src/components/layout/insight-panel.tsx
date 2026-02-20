@@ -1,12 +1,20 @@
-import { AlertTriangle, BookOpen, FlaskConical, ShieldCheck } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, BookOpen, FlaskConical, Loader2, ShieldCheck } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { API_BASE_URL } from '@/lib/api'
 import { useAaweStore } from '@/store/use-aawe-store'
+import type { ApiErrorPayload, SelectionInsight } from '@/types/insight'
 import type { SelectionItem } from '@/types/selection'
+
+type InsightTarget = {
+  selectionType: 'claim' | 'result' | 'qc'
+  itemId: string
+}
 
 function EmptyState() {
   return (
@@ -22,181 +30,127 @@ function EmptyState() {
   )
 }
 
-function renderEvidence(selection: SelectionItem) {
+function getInsightTarget(selection: SelectionItem): InsightTarget | null {
   if (!selection) {
-    return <EmptyState />
+    return null
   }
   if (selection.type === 'claim') {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">{selection.data.heading}</CardTitle>
-          <CardDescription>{selection.data.tag} claim</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {selection.data.evidenceAnchors.map((anchor) => (
-            <div key={anchor.id} className="space-y-1 rounded-md border border-border p-2">
-              <p className="text-xs font-medium">{anchor.label}</p>
-              <p className="text-xs text-muted-foreground">{anchor.source}</p>
-              <Badge variant="secondary">{anchor.confidence} confidence</Badge>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    )
+    return { selectionType: 'claim', itemId: selection.data.id }
   }
   if (selection.type === 'result') {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Result {selection.data.id}</CardTitle>
-          <CardDescription>{selection.data.type}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2 text-xs">
-          <p>
-            Effect: <span className="font-medium">{selection.data.effect}</span>
-          </p>
-          <p>Interval: {selection.data.ci}</p>
-          <p>Model: {selection.data.model}</p>
-          <p>Population filter: {selection.data.derivation.populationFilter}</p>
-        </CardContent>
-      </Card>
-    )
+    return { selectionType: 'result', itemId: selection.data.id }
   }
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm">{selection.data.category}</CardTitle>
-        <CardDescription>{selection.data.summary}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-2 text-xs">
-        <p>
-          Severity: <Badge variant={selection.data.severity === 'High' ? 'destructive' : 'secondary'}>{selection.data.severity}</Badge>
-        </p>
-        <p>Affected items: {selection.data.affectedItems.join(', ')}</p>
-      </CardContent>
-    </Card>
-  )
+  return { selectionType: 'qc', itemId: selection.data.id }
 }
 
-function renderQc(selection: SelectionItem) {
+function buildFallbackInsight(selection: SelectionItem): SelectionInsight | null {
   if (!selection) {
-    return <EmptyState />
+    return null
   }
-  if (selection.type === 'qc') {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">QC Focus</CardTitle>
-          <CardDescription>{selection.data.category}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2 text-xs">
-          <p>Issue count: {selection.data.count}</p>
-          <p>Recommendation: {selection.data.recommendation}</p>
-        </CardContent>
-      </Card>
-    )
-  }
-  if (selection.type === 'result') {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Result QC</CardTitle>
-          <CardDescription>{selection.data.id}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2 text-xs">
-          <p>Adjusted: {selection.data.adjusted ? 'Yes' : 'No'}</p>
-          <p>Validated: {selection.data.validated ? 'Yes' : 'No'}</p>
-          <p>Checks: {selection.data.derivation.validationChecks.join('; ')}</p>
-        </CardContent>
-      </Card>
-    )
-  }
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm">Claim QC</CardTitle>
-        <CardDescription>{selection.data.id}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-2 text-xs">
-        <p>Evidence anchors: {selection.data.evidenceAnchors.length}</p>
-        <p>Citation slots: {selection.data.citationSlots}</p>
-        <p>Claim strength: {selection.data.claimStrength}%</p>
-      </CardContent>
-    </Card>
-  )
-}
 
-function renderDerivation(selection: SelectionItem) {
-  if (!selection) {
-    return <EmptyState />
-  }
-  if (selection.type === 'result') {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Derivation Trace</CardTitle>
-          <CardDescription>{selection.data.id}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2 text-xs">
-          <p>Dataset: {selection.data.derivation.dataset}</p>
-          <p>Estimation: {selection.data.derivation.estimation}</p>
-          <p>Covariates: {selection.data.derivation.covariates.join(', ')}</p>
-          <p>Validation: {selection.data.derivation.validationChecks.join('; ')}</p>
-        </CardContent>
-      </Card>
-    )
-  }
   if (selection.type === 'claim') {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Claim Assembly</CardTitle>
-          <CardDescription>{selection.data.id}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2 text-xs">
-          <p>Section: {selection.data.section}</p>
-          <p>Tag: {selection.data.tag}</p>
-          <p>Word target: {selection.data.wordTarget}</p>
-          <p>Anchors linked: {selection.data.evidenceAnchors.map((anchor) => anchor.id).join(', ')}</p>
-        </CardContent>
-      </Card>
-    )
+    return {
+      selection_type: 'claim',
+      item_id: selection.data.id,
+      title: selection.data.heading,
+      summary: selection.data.text,
+      evidence: selection.data.evidenceAnchors.map((anchor) => ({
+        id: anchor.id,
+        label: anchor.label,
+        source: anchor.source,
+        confidence: anchor.confidence,
+      })),
+      qc: [
+        `Claim strength ${selection.data.claimStrength}%`,
+        `${selection.data.citationSlots} citation slots currently configured.`,
+      ],
+      derivation: {
+        dataset: 'Local manuscript state',
+        population_filter: `Section ${selection.data.section}`,
+        model: `${selection.data.tag} claim composition`,
+        covariates: [],
+        validation_checks: [`${selection.data.evidenceAnchors.length} evidence anchors linked`],
+        notes: [`Word target ${selection.data.wordTarget}`],
+      },
+      citations: selection.data.suggestedCitations,
+    }
   }
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm">QC Derivation</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2 text-xs">
-        <p>Rule ID: {selection.data.id}</p>
-        <p>Summary: {selection.data.summary}</p>
-      </CardContent>
-    </Card>
-  )
+
+  if (selection.type === 'result') {
+    return {
+      selection_type: 'result',
+      item_id: selection.data.id,
+      title: `${selection.data.type} ${selection.data.id}`,
+      summary: `${selection.data.effect} (${selection.data.ci})`,
+      evidence: [
+        {
+          id: selection.data.id,
+          label: 'Result object',
+          source: selection.data.model,
+          confidence: selection.data.validated ? 'High' : 'Moderate',
+        },
+      ],
+      qc: [
+        `Adjusted: ${selection.data.adjusted ? 'Yes' : 'No'}`,
+        `Validated: ${selection.data.validated ? 'Yes' : 'No'}`,
+      ],
+      derivation: {
+        dataset: selection.data.derivation.dataset,
+        population_filter: selection.data.derivation.populationFilter,
+        model: selection.data.derivation.estimation,
+        covariates: selection.data.derivation.covariates,
+        validation_checks: selection.data.derivation.validationChecks,
+        notes: [],
+      },
+      citations: selection.data.citations,
+    }
+  }
+
+  return {
+    selection_type: 'qc',
+    item_id: selection.data.id,
+    title: selection.data.category,
+    summary: selection.data.summary,
+    evidence: [
+      {
+        id: selection.data.id,
+        label: 'QC finding',
+        source: selection.data.category,
+        confidence: selection.data.severity,
+      },
+    ],
+    qc: [
+      `${selection.data.count} findings detected.`,
+      selection.data.recommendation,
+    ],
+    derivation: {
+      dataset: 'Local QC item',
+      population_filter: selection.data.affectedItems.join(', ') || 'N/A',
+      model: 'Rule-based QC card',
+      covariates: [],
+      validation_checks: [],
+      notes: [],
+    },
+    citations: selection.data.referenceGuidelines,
+  }
 }
 
-function renderCitations(selection: SelectionItem) {
-  if (!selection) {
+function renderEvidence(insight: SelectionInsight | null) {
+  if (!insight) {
     return <EmptyState />
   }
-  const citations =
-    selection.type === 'claim'
-      ? selection.data.suggestedCitations
-      : selection.type === 'result'
-        ? selection.data.citations
-        : selection.data.referenceGuidelines
-
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">Citation Guidance</CardTitle>
-        <CardDescription>Context-aware references for the selected item.</CardDescription>
+        <CardTitle className="text-sm">{insight.title}</CardTitle>
+        <CardDescription>{insight.summary}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-2">
-        {citations.map((citation) => (
-          <div key={citation} className="rounded-md border border-border px-2 py-1 text-xs">
-            {citation}
+      <CardContent className="space-y-3">
+        {insight.evidence.map((evidence) => (
+          <div key={evidence.id} className="space-y-1 rounded-md border border-border p-2">
+            <p className="text-xs font-medium">{evidence.label}</p>
+            <p className="text-xs text-muted-foreground">{evidence.source}</p>
+            {evidence.confidence && <Badge variant="secondary">{evidence.confidence} confidence</Badge>}
           </div>
         ))}
       </CardContent>
@@ -204,19 +158,158 @@ function renderCitations(selection: SelectionItem) {
   )
 }
 
+function renderQc(insight: SelectionInsight | null) {
+  if (!insight) {
+    return <EmptyState />
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">QC Perspective</CardTitle>
+        <CardDescription>{insight.title}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2 text-xs">
+        {insight.qc.length === 0 ? (
+          <p className="text-muted-foreground">No QC notes available for this selection.</p>
+        ) : (
+          insight.qc.map((item) => (
+            <div key={item} className="rounded-md border border-border px-2 py-1">
+              {item}
+            </div>
+          ))
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function renderDerivation(insight: SelectionInsight | null) {
+  if (!insight) {
+    return <EmptyState />
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">Derivation Trace</CardTitle>
+        <CardDescription>{insight.item_id}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2 text-xs">
+        <p>Dataset: {insight.derivation.dataset}</p>
+        <p>Population: {insight.derivation.population_filter}</p>
+        <p>Model: {insight.derivation.model}</p>
+        {insight.derivation.covariates.length > 0 && (
+          <p>Covariates: {insight.derivation.covariates.join(', ')}</p>
+        )}
+        {insight.derivation.validation_checks.length > 0 && (
+          <p>Validation: {insight.derivation.validation_checks.join('; ')}</p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function renderCitations(insight: SelectionInsight | null) {
+  if (!insight) {
+    return <EmptyState />
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">Citation Guidance</CardTitle>
+        <CardDescription>Context-aware references for the selected item.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {insight.citations.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No citations available for this selection.</p>
+        ) : (
+          insight.citations.map((citation) => (
+            <div key={citation} className="rounded-md border border-border px-2 py-1 text-xs">
+              {citation}
+            </div>
+          ))
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function InsightPanel() {
   const selectedItem = useAaweStore((state) => state.selectedItem)
+  const [apiInsight, setApiInsight] = useState<SelectionInsight | null>(null)
+  const [loadingInsight, setLoadingInsight] = useState(false)
+  const [insightError, setInsightError] = useState('')
+
+  const target = useMemo(() => getInsightTarget(selectedItem), [selectedItem])
+  const fallbackInsight = useMemo(() => buildFallbackInsight(selectedItem), [selectedItem])
+  const activeInsight = apiInsight ?? fallbackInsight
+
+  useEffect(() => {
+    if (!target) {
+      setApiInsight(null)
+      setInsightError('')
+      setLoadingInsight(false)
+      return
+    }
+
+    const controller = new AbortController()
+    let isCancelled = false
+
+    const loadInsight = async () => {
+      setLoadingInsight(true)
+      setInsightError('')
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/v1/aawe/insights/${target.selectionType}/${encodeURIComponent(target.itemId)}`,
+          { signal: controller.signal },
+        )
+        if (!response.ok) {
+          let detail = `Insight lookup failed (${response.status})`
+          try {
+            const payload = (await response.json()) as ApiErrorPayload
+            detail = payload.error?.detail || payload.error?.message || detail
+          } catch {
+            // keep default detail
+          }
+          throw new Error(detail)
+        }
+        const payload = (await response.json()) as SelectionInsight
+        if (!isCancelled) {
+          setApiInsight(payload)
+        }
+      } catch (error) {
+        if (!isCancelled && !controller.signal.aborted) {
+          setApiInsight(null)
+          setInsightError(error instanceof Error ? error.message : 'Could not load insight payload.')
+        }
+      } finally {
+        if (!isCancelled) {
+          setLoadingInsight(false)
+        }
+      }
+    }
+
+    loadInsight()
+
+    return () => {
+      isCancelled = true
+      controller.abort()
+    }
+  }, [target])
 
   return (
     <aside className="flex h-full flex-col bg-card">
       <div className="space-y-2 border-b border-border p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold">Insight & Integrity</h2>
-          {selectedItem ? <Badge variant="outline">{selectedItem.type}</Badge> : <Badge variant="secondary">idle</Badge>}
+          <div className="flex items-center gap-1">
+            {loadingInsight && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+            {selectedItem ? <Badge variant="outline">{selectedItem.type}</Badge> : <Badge variant="secondary">idle</Badge>}
+          </div>
         </div>
         <p className="text-xs text-muted-foreground">
           Evidence, QC, derivation, and citations are synchronized to your current selection.
         </p>
+        {insightError && <p className="text-xs text-destructive">{insightError}</p>}
       </div>
       <ScrollArea className="flex-1">
         <div className="p-4">
@@ -239,10 +332,10 @@ export function InsightPanel() {
                 Citations
               </TabsTrigger>
             </TabsList>
-            <TabsContent value="evidence">{renderEvidence(selectedItem)}</TabsContent>
-            <TabsContent value="qc">{renderQc(selectedItem)}</TabsContent>
-            <TabsContent value="derivation">{renderDerivation(selectedItem)}</TabsContent>
-            <TabsContent value="citations">{renderCitations(selectedItem)}</TabsContent>
+            <TabsContent value="evidence">{renderEvidence(activeInsight)}</TabsContent>
+            <TabsContent value="qc">{renderQc(activeInsight)}</TabsContent>
+            <TabsContent value="derivation">{renderDerivation(activeInsight)}</TabsContent>
+            <TabsContent value="citations">{renderCitations(activeInsight)}</TabsContent>
           </Tabs>
           <Separator className="my-4" />
           <p className="text-xs text-muted-foreground">

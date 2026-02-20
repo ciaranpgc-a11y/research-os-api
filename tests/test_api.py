@@ -255,6 +255,19 @@ def test_v1_aawe_selection_insight_returns_claim_payload(monkeypatch) -> None:
     assert len(payload["citations"]) >= 1
 
 
+def test_v1_aawe_selection_insight_returns_result_payload(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    with TestClient(app) as client:
+        response = client.get("/v1/aawe/insights/result/RES-001")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selection_type"] == "result"
+    assert payload["item_id"] == "RES-001"
+    assert payload["derivation"]["dataset"] == "HF Registry v2025.2"
+
+
 def test_v1_aawe_selection_insight_returns_404_for_missing_item(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
