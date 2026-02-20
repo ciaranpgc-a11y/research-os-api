@@ -24,9 +24,23 @@ class ManuscriptBranchConflictError(RuntimeError):
     """Raised when a manuscript branch already exists for a project."""
 
 
+class ManuscriptNotFoundError(RuntimeError):
+    """Raised when a manuscript cannot be located for the given project."""
+
+
 def _materialize_sections(section_names: list[str] | None) -> dict[str, str]:
     names = section_names if section_names else list(DEFAULT_SECTIONS)
     return {name.strip(): "" for name in names if name.strip()}
+
+
+def _normalize_section_updates(sections: dict[str, str]) -> dict[str, str]:
+    normalized: dict[str, str] = {}
+    for section_name, content in sections.items():
+        key = section_name.strip()
+        if not key:
+            continue
+        normalized[key] = content
+    return normalized
 
 
 def create_project_record(
@@ -108,3 +122,43 @@ def list_project_manuscripts(project_id: str) -> list[Manuscript]:
         for manuscript in manuscripts:
             session.expunge(manuscript)
         return manuscripts
+
+
+def get_project_manuscript(project_id: str, manuscript_id: str) -> Manuscript:
+    create_all_tables()
+    with session_scope() as session:
+        project = session.get(Project, project_id)
+        if project is None:
+            raise ProjectNotFoundError(f"Project '{project_id}' was not found.")
+        manuscript = session.get(Manuscript, manuscript_id)
+        if manuscript is None or manuscript.project_id != project_id:
+            raise ManuscriptNotFoundError(
+                f"Manuscript '{manuscript_id}' was not found for project '{project_id}'."
+            )
+        session.expunge(manuscript)
+        return manuscript
+
+
+def update_project_manuscript_sections(
+    *,
+    project_id: str,
+    manuscript_id: str,
+    sections: dict[str, str],
+) -> Manuscript:
+    create_all_tables()
+    with session_scope() as session:
+        project = session.get(Project, project_id)
+        if project is None:
+            raise ProjectNotFoundError(f"Project '{project_id}' was not found.")
+        manuscript = session.get(Manuscript, manuscript_id)
+        if manuscript is None or manuscript.project_id != project_id:
+            raise ManuscriptNotFoundError(
+                f"Manuscript '{manuscript_id}' was not found for project '{project_id}'."
+            )
+        current_sections = dict(manuscript.sections or {})
+        current_sections.update(_normalize_section_updates(sections))
+        manuscript.sections = current_sections
+        session.flush()
+        session.refresh(manuscript)
+        session.expunge(manuscript)
+        return manuscript

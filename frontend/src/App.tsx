@@ -156,6 +156,17 @@ function normalizeAnswers(answers: Record<string, string>): Record<string, strin
   return sanitized
 }
 
+function parseSections(value: string): string[] | undefined {
+  const sections = value
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+  if (sections.length === 0) {
+    return undefined
+  }
+  return sections
+}
+
 function formatUtcDate(value: string): string {
   const timestamp = Date.parse(value)
   if (Number.isNaN(timestamp)) {
@@ -206,8 +217,23 @@ function App() {
   const [isLoadingProjects, setIsLoadingProjects] = useState(false)
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [manuscripts, setManuscripts] = useState<ManuscriptResponse[]>([])
+  const [selectedManuscriptId, setSelectedManuscriptId] = useState('')
   const [isLoadingManuscripts, setIsLoadingManuscripts] = useState(false)
   const [manuscriptsError, setManuscriptsError] = useState('')
+  const [newBranchName, setNewBranchName] = useState('main')
+  const [newSectionsInput, setNewSectionsInput] = useState('')
+  const [isCreatingManuscript, setIsCreatingManuscript] = useState(false)
+  const [createManuscriptError, setCreateManuscriptError] = useState('')
+  const [createManuscriptSuccess, setCreateManuscriptSuccess] = useState('')
+  const [sectionEditorKey, setSectionEditorKey] = useState('')
+  const [sectionEditorContent, setSectionEditorContent] = useState('')
+  const [isSavingSection, setIsSavingSection] = useState(false)
+  const [saveSectionError, setSaveSectionError] = useState('')
+  const [saveSectionSuccess, setSaveSectionSuccess] = useState('')
+  const [sectionGenerationNotes, setSectionGenerationNotes] = useState('')
+  const [isGeneratingSection, setIsGeneratingSection] = useState(false)
+  const [generateSectionError, setGenerateSectionError] = useState('')
+  const [generateSectionSuccess, setGenerateSectionSuccess] = useState('')
 
   const canSubmit = useMemo(() => notes.trim().length > 0 && !isSubmitting, [notes, isSubmitting])
   const canBootstrap = useMemo(
@@ -276,9 +302,16 @@ function App() {
       }
       const payload = (await response.json()) as ManuscriptResponse[]
       setManuscripts(payload)
+      setSelectedManuscriptId((current) => {
+        if (payload.some((manuscript) => manuscript.id === current)) {
+          return current
+        }
+        return payload[0]?.id ?? ''
+      })
     } catch (error) {
       setManuscriptsError(error instanceof Error ? error.message : 'Could not load manuscripts')
       setManuscripts([])
+      setSelectedManuscriptId('')
     } finally {
       setIsLoadingManuscripts(false)
     }
@@ -330,10 +363,20 @@ function App() {
     if (!selectedProjectId) {
       setManuscripts([])
       setManuscriptsError('')
+      setSelectedManuscriptId('')
       return
     }
     loadManuscripts(selectedProjectId)
   }, [loadManuscripts, selectedProjectId])
+
+  useEffect(() => {
+    setCreateManuscriptError('')
+    setCreateManuscriptSuccess('')
+    setSaveSectionError('')
+    setSaveSectionSuccess('')
+    setGenerateSectionError('')
+    setGenerateSectionSuccess('')
+  }, [selectedProjectId])
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -423,6 +466,7 @@ function App() {
       setWizardBootstrap(payload)
       setWizardInference(payload.inference)
       setSelectedProjectId(payload.project.id)
+      setSelectedManuscriptId(payload.manuscript.id)
       await loadProjects()
       await loadManuscripts(payload.project.id)
     } catch (error) {
@@ -436,6 +480,209 @@ function App() {
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
     [projects, selectedProjectId],
   )
+  const selectedManuscript = useMemo(
+    () => manuscripts.find((manuscript) => manuscript.id === selectedManuscriptId) ?? null,
+    [manuscripts, selectedManuscriptId],
+  )
+  const sectionKeys = useMemo(
+    () => (selectedManuscript ? Object.keys(selectedManuscript.sections) : []),
+    [selectedManuscript],
+  )
+  const canCreateManuscript = useMemo(
+    () => selectedProjectId.trim().length > 0 && newBranchName.trim().length > 0 && !isCreatingManuscript,
+    [isCreatingManuscript, newBranchName, selectedProjectId],
+  )
+  const canSaveSection = useMemo(
+    () =>
+      selectedProjectId.trim().length > 0 &&
+      selectedManuscriptId.trim().length > 0 &&
+      sectionEditorKey.trim().length > 0 &&
+      !isSavingSection,
+    [isSavingSection, sectionEditorKey, selectedManuscriptId, selectedProjectId],
+  )
+  const canGenerateSection = useMemo(
+    () =>
+      selectedProjectId.trim().length > 0 &&
+      selectedManuscriptId.trim().length > 0 &&
+      sectionEditorKey.trim().length > 0 &&
+      sectionGenerationNotes.trim().length > 0 &&
+      !isSavingSection &&
+      !isGeneratingSection,
+    [
+      isGeneratingSection,
+      isSavingSection,
+      sectionEditorKey,
+      sectionGenerationNotes,
+      selectedManuscriptId,
+      selectedProjectId,
+    ],
+  )
+
+  useEffect(() => {
+    if (!selectedManuscript) {
+      setSectionEditorKey('')
+      setSectionEditorContent('')
+      return
+    }
+    const keys = Object.keys(selectedManuscript.sections)
+    if (keys.length === 0) {
+      setSectionEditorKey('')
+      setSectionEditorContent('')
+      return
+    }
+    const nextKey = keys.includes(sectionEditorKey) ? sectionEditorKey : keys[0]
+    setSectionEditorKey(nextKey)
+    setSectionEditorContent(selectedManuscript.sections[nextKey] ?? '')
+  }, [sectionEditorKey, selectedManuscript])
+
+  const createManuscript = async () => {
+    if (!canCreateManuscript || !selectedProject) {
+      return
+    }
+    setCreateManuscriptError('')
+    setCreateManuscriptSuccess('')
+    setIsCreatingManuscript(true)
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/projects/${selectedProject.id}/manuscripts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          branch_name: newBranchName.trim(),
+          sections: parseSections(newSectionsInput),
+        }),
+      })
+      if (!response.ok) {
+        throw new Error(await readApiErrorMessage(response, 'Could not create manuscript branch'))
+      }
+      const payload = (await response.json()) as ManuscriptResponse
+      setCreateManuscriptSuccess(`Created manuscript branch "${payload.branch_name}".`)
+      setCreateManuscriptError('')
+      setNewSectionsInput('')
+      setNewBranchName('')
+      setSelectedManuscriptId(payload.id)
+      await loadManuscripts(selectedProject.id)
+    } catch (error) {
+      setCreateManuscriptError(error instanceof Error ? error.message : 'Could not create manuscript branch')
+      setCreateManuscriptSuccess('')
+    } finally {
+      setIsCreatingManuscript(false)
+    }
+  }
+
+  const onSectionKeyChange = (nextKey: string) => {
+    setSectionEditorKey(nextKey)
+    setSaveSectionError('')
+    setSaveSectionSuccess('')
+    setGenerateSectionError('')
+    setGenerateSectionSuccess('')
+    if (!selectedManuscript) {
+      setSectionEditorContent('')
+      return
+    }
+    setSectionEditorContent(selectedManuscript.sections[nextKey] ?? '')
+  }
+
+  const patchManuscriptSection = async (
+    projectId: string,
+    manuscriptId: string,
+    sectionKey: string,
+    content: string,
+  ): Promise<ManuscriptResponse> => {
+    const response = await fetch(`${API_BASE_URL}/v1/projects/${projectId}/manuscripts/${manuscriptId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sections: {
+          [sectionKey]: content,
+        },
+      }),
+    })
+    if (!response.ok) {
+      throw new Error(await readApiErrorMessage(response, 'Could not save manuscript section'))
+    }
+    return (await response.json()) as ManuscriptResponse
+  }
+
+  const saveManuscriptSection = async () => {
+    if (!canSaveSection || !selectedProject || !selectedManuscript) {
+      return
+    }
+    setSaveSectionError('')
+    setSaveSectionSuccess('')
+    setGenerateSectionError('')
+    setIsSavingSection(true)
+    const normalizedSectionKey = sectionEditorKey.trim()
+    try {
+      const payload = await patchManuscriptSection(
+        selectedProject.id,
+        selectedManuscript.id,
+        normalizedSectionKey,
+        sectionEditorContent,
+      )
+      setSaveSectionSuccess(`Saved section "${normalizedSectionKey}" on branch "${payload.branch_name}".`)
+      setSaveSectionError('')
+      await loadManuscripts(selectedProject.id)
+      setSelectedManuscriptId(payload.id)
+    } catch (error) {
+      setSaveSectionError(error instanceof Error ? error.message : 'Could not save manuscript section')
+      setSaveSectionSuccess('')
+    } finally {
+      setIsSavingSection(false)
+    }
+  }
+
+  const generateMethodsIntoSection = async () => {
+    if (!canGenerateSection || !selectedProject || !selectedManuscript) {
+      return
+    }
+    setGenerateSectionError('')
+    setGenerateSectionSuccess('')
+    setSaveSectionError('')
+    setIsGeneratingSection(true)
+    const normalizedSectionKey = sectionEditorKey.trim()
+    try {
+      const draftResponse = await fetch(`${API_BASE_URL}/v1/draft/methods`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ notes: sectionGenerationNotes.trim() }),
+      })
+      const returnedRequestId = draftResponse.headers.get('X-Request-ID') ?? ''
+      if (returnedRequestId) {
+        setRequestId(returnedRequestId)
+      }
+      if (!draftResponse.ok) {
+        throw new Error(await readApiErrorMessage(draftResponse, 'Could not generate methods text'))
+      }
+      const draftPayload = (await draftResponse.json()) as { methods: string }
+      const generatedMethods = draftPayload.methods
+      setMethods(generatedMethods)
+      setSectionEditorContent(generatedMethods)
+
+      const updatedManuscript = await patchManuscriptSection(
+        selectedProject.id,
+        selectedManuscript.id,
+        normalizedSectionKey,
+        generatedMethods,
+      )
+      setGenerateSectionSuccess(
+        `Generated methods and saved section "${normalizedSectionKey}" on branch "${updatedManuscript.branch_name}".`,
+      )
+      setGenerateSectionError('')
+      await loadManuscripts(selectedProject.id)
+      setSelectedManuscriptId(updatedManuscript.id)
+    } catch (error) {
+      setGenerateSectionError(error instanceof Error ? error.message : 'Could not generate methods for this section')
+      setGenerateSectionSuccess('')
+    } finally {
+      setIsGeneratingSection(false)
+    }
+  }
 
   return (
     <main className="page">
@@ -708,20 +955,107 @@ function App() {
           {selectedProject && (
             <section className="result info">
               <h3>Manuscripts for {selectedProject.title}</h3>
+              <div className="inline-form">
+                <div className="inline-fields">
+                  <label>
+                    Branch name
+                    <input
+                      type="text"
+                      value={newBranchName}
+                      onChange={(event) => setNewBranchName(event.target.value)}
+                      placeholder="e.g. jacc-revision-1"
+                    />
+                  </label>
+                  <label>
+                    Sections (optional, comma-separated)
+                    <input
+                      type="text"
+                      value={newSectionsInput}
+                      onChange={(event) => setNewSectionsInput(event.target.value)}
+                      placeholder="title, abstract, methods, results"
+                    />
+                  </label>
+                </div>
+                <div className="inline-actions">
+                  <button type="button" onClick={createManuscript} disabled={!canCreateManuscript}>
+                    {isCreatingManuscript ? 'Creating...' : 'Create Branch Manuscript'}
+                  </button>
+                </div>
+              </div>
+              {createManuscriptError && <p>{createManuscriptError}</p>}
+              {createManuscriptSuccess && <p>{createManuscriptSuccess}</p>}
               {isLoadingManuscripts && <p>Loading manuscripts...</p>}
               {manuscriptsError && <p>{manuscriptsError}</p>}
               {!isLoadingManuscripts && !manuscriptsError && manuscripts.length === 0 && <p>No manuscripts yet.</p>}
               {!isLoadingManuscripts && !manuscriptsError && manuscripts.length > 0 && (
-                <ul className="manuscript-list">
-                  {manuscripts.map((manuscript) => (
-                    <li key={manuscript.id}>
-                      <span>
+                <>
+                  <div className="manuscript-picker">
+                    {manuscripts.map((manuscript) => (
+                      <button
+                        type="button"
+                        key={manuscript.id}
+                        className={`manuscript-chip ${manuscript.id === selectedManuscriptId ? 'selected' : ''}`}
+                        onClick={() => setSelectedManuscriptId(manuscript.id)}
+                      >
                         {manuscript.branch_name} ({manuscript.status})
-                      </span>
-                      <code>{Object.keys(manuscript.sections).join(', ')}</code>
-                    </li>
-                  ))}
-                </ul>
+                      </button>
+                    ))}
+                  </div>
+                  {selectedManuscript && (
+                    <div className="section-editor">
+                      <p className="muted">Editing branch {selectedManuscript.branch_name}</p>
+                      <label>
+                        Section
+                        <select
+                          value={sectionEditorKey}
+                          onChange={(event) => onSectionKeyChange(event.target.value)}
+                          disabled={sectionKeys.length === 0}
+                        >
+                          {sectionKeys.map((section) => (
+                            <option key={section} value={section}>
+                              {humanizeIdentifier(section)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Content
+                        <textarea
+                          rows={8}
+                          value={sectionEditorContent}
+                          onChange={(event) => setSectionEditorContent(event.target.value)}
+                          disabled={sectionKeys.length === 0}
+                        />
+                      </label>
+                      <div className="inline-actions">
+                        <button type="button" onClick={saveManuscriptSection} disabled={!canSaveSection}>
+                          {isSavingSection ? 'Saving...' : 'Save Section'}
+                        </button>
+                      </div>
+                      <div className="generation-box">
+                        <label>
+                          Generation notes for selected section
+                          <textarea
+                            rows={5}
+                            value={sectionGenerationNotes}
+                            onChange={(event) => setSectionGenerationNotes(event.target.value)}
+                            placeholder="Paste protocol notes to generate methods-style text directly into this section."
+                          />
+                        </label>
+                        <div className="inline-actions">
+                          <button type="button" onClick={generateMethodsIntoSection} disabled={!canGenerateSection}>
+                            {isGeneratingSection ? 'Generating...' : 'Generate Methods + Save Section'}
+                          </button>
+                        </div>
+                      </div>
+                      {saveSectionError && <p>{saveSectionError}</p>}
+                      {saveSectionSuccess && <p>{saveSectionSuccess}</p>}
+                      {generateSectionError && <p>{generateSectionError}</p>}
+                      {generateSectionSuccess && <p>{generateSectionSuccess}</p>}
+                      <p className="muted">Available sections: {sectionKeys.join(', ')}</p>
+                    </div>
+                  )}
+                </>
               )}
             </section>
           )}

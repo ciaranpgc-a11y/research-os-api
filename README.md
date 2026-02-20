@@ -44,6 +44,8 @@ Primary versioned routes:
 - `POST /v1/projects`
 - `GET /v1/projects/{project_id}/manuscripts`
 - `POST /v1/projects/{project_id}/manuscripts`
+- `GET /v1/projects/{project_id}/manuscripts/{manuscript_id}`
+- `PATCH /v1/projects/{project_id}/manuscripts/{manuscript_id}`
 - `POST /v1/draft/methods`
 
 Compatibility routes:

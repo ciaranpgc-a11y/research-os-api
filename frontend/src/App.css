@@ -291,6 +291,100 @@
   gap: 0.2rem;
 }
 
+.manuscript-picker {
+  margin-top: 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.manuscript-chip {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 0.4rem 0.72rem;
+  background: rgba(7, 13, 23, 0.8);
+  color: #e3ebff;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.manuscript-chip.selected {
+  border-color: rgba(255, 191, 140, 0.9);
+  box-shadow: 0 0 0 1px rgba(255, 191, 140, 0.22);
+}
+
+.section-editor {
+  margin-top: 0.8rem;
+  display: grid;
+  gap: 0.62rem;
+}
+
+.section-editor label {
+  display: grid;
+  gap: 0.35rem;
+  color: #dce5f8;
+  font-size: 0.9rem;
+}
+
+.section-editor select,
+.section-editor textarea {
+  border-radius: 10px;
+  border: 1px solid rgba(240, 138, 69, 0.35);
+  padding: 0.6rem 0.7rem;
+  font: inherit;
+  background: rgba(11, 16, 23, 0.9);
+  color: #edf1fb;
+}
+
+.generation-box {
+  margin-top: 0.35rem;
+  padding-top: 0.65rem;
+  border-top: 1px dashed rgba(255, 255, 255, 0.16);
+}
+
+.inline-form {
+  margin-top: 0.7rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.inline-fields {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.inline-fields label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: #d6def0;
+}
+
+.inline-fields input {
+  border-radius: 10px;
+  border: 1px solid rgba(240, 138, 69, 0.35);
+  padding: 0.55rem 0.65rem;
+  font: inherit;
+  background: rgba(11, 16, 23, 0.9);
+  color: #edf1fb;
+}
+
+.inline-actions button {
+  border: 0;
+  border-radius: 11px;
+  padding: 0.62rem 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: linear-gradient(110deg, #ff6b4f, #ff9f47);
+  color: #10131b;
+}
+
+.inline-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .trace code,
 .api-hint code {
   font-size: 0.85rem;
@@ -333,6 +427,10 @@
   .section-heading {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .inline-fields {
+    grid-template-columns: 1fr;
   }
 
   .api-hint {

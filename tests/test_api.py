@@ -179,6 +179,105 @@ def test_v1_create_and_list_project_manuscripts(monkeypatch, tmp_path) -> None:
     assert len(list_manuscript_response.json()) == 1
 
 
+def test_v1_create_manuscript_uses_default_sections_when_not_provided(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Default Sections Project",
+                "target_journal": "ehj",
+            },
+        )
+        project_id = project_response.json()["id"]
+        create_manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "default-sections"},
+        )
+
+    assert create_manuscript_response.status_code == 200
+    payload = create_manuscript_response.json()
+    assert list(payload["sections"].keys()) == [
+        "title",
+        "abstract",
+        "introduction",
+        "methods",
+        "results",
+        "discussion",
+        "conclusion",
+    ]
+
+
+def test_v1_get_and_patch_project_manuscript(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Section Edit Project",
+                "target_journal": "ehj",
+            },
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "section-edit"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        patch_response = client.patch(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}",
+            json={
+                "sections": {
+                    "methods": "Updated methods content",
+                    "limitations": "Single-center retrospective design.",
+                }
+            },
+        )
+        get_response = client.get(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}"
+        )
+
+    assert patch_response.status_code == 200
+    patched_payload = patch_response.json()
+    assert patched_payload["sections"]["methods"] == "Updated methods content"
+    assert (
+        patched_payload["sections"]["limitations"]
+        == "Single-center retrospective design."
+    )
+
+    assert get_response.status_code == 200
+    fetched_payload = get_response.json()
+    assert fetched_payload["sections"]["methods"] == "Updated methods content"
+    assert (
+        fetched_payload["sections"]["limitations"]
+        == "Single-center retrospective design."
+    )
+
+
+def test_v1_get_project_manuscript_returns_404_for_missing_manuscript(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Missing Manuscript Project",
+                "target_journal": "ehj",
+            },
+        )
+        project_id = project_response.json()["id"]
+        response = client.get(f"/v1/projects/{project_id}/manuscripts/missing")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["type"] == "not_found"
+
+
 def test_v1_create_manuscript_returns_409_for_duplicate_branch(
     monkeypatch, tmp_path
 ) -> None:

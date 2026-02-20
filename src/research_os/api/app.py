@@ -17,6 +17,7 @@ from research_os.api.schemas import (
     HealthResponse,
     JournalOptionResponse,
     ManuscriptCreateRequest,
+    ManuscriptSectionsUpdateRequest,
     ManuscriptResponse,
     ProjectCreateRequest,
     ProjectResponse,
@@ -28,11 +29,14 @@ from research_os.api.schemas import (
 from research_os.logging_config import configure_logging
 from research_os.services.project_service import (
     ManuscriptBranchConflictError,
+    ManuscriptNotFoundError,
     ProjectNotFoundError,
     create_manuscript_for_project,
     create_project_record,
+    get_project_manuscript,
     list_project_manuscripts,
     list_project_records,
+    update_project_manuscript_sections,
 )
 from research_os.services.manuscript_service import (
     ManuscriptGenerationError,
@@ -81,7 +85,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -268,6 +272,42 @@ def v1_create_manuscript(
         return _build_not_found_response(str(exc))
     except ManuscriptBranchConflictError as exc:
         return _build_conflict_response(str(exc))
+
+
+@app.get(
+    "/v1/projects/{project_id}/manuscripts/{manuscript_id}",
+    response_model=ManuscriptResponse,
+    responses=NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_get_manuscript(
+    project_id: str, manuscript_id: str
+) -> ManuscriptResponse | JSONResponse:
+    try:
+        return get_project_manuscript(project_id, manuscript_id)
+    except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.patch(
+    "/v1/projects/{project_id}/manuscripts/{manuscript_id}",
+    response_model=ManuscriptResponse,
+    responses=NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_update_manuscript_sections(
+    project_id: str,
+    manuscript_id: str,
+    request: ManuscriptSectionsUpdateRequest,
+) -> ManuscriptResponse | JSONResponse:
+    try:
+        return update_project_manuscript_sections(
+            project_id=project_id,
+            manuscript_id=manuscript_id,
+            sections=request.sections,
+        )
+    except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
 
 
 @app.post(

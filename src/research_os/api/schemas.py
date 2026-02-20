@@ -59,6 +59,10 @@ class ManuscriptCreateRequest(BaseModel):
     sections: list[str] | None = None
 
 
+class ManuscriptSectionsUpdateRequest(BaseModel):
+    sections: dict[str, str] = Field(default_factory=dict)
+
+
 class ManuscriptResponse(BaseModel):
     id: str
     project_id: str
