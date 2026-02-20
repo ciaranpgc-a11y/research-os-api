@@ -18,9 +18,11 @@ PowerShell-safe POST example:
 # Deploy to Render
 
 1. Connect the GitHub repository in Render.
-2. Render reads `render.yaml` and creates the `research-os-api` web service.
-3. Set `OPENAI_API_KEY` in the Render dashboard environment variables.
-4. Deploy.
+2. Render reads `render.yaml` and creates:
+   - `research-os-api` (Docker web service)
+   - `research-os-ui` (static site from `frontend/`)
+3. Set `OPENAI_API_KEY` in the Render dashboard environment variables for `research-os-api`.
+4. Deploy both services.
 
 Health check endpoint:
   /v1/health
@@ -28,11 +30,19 @@ Health check endpoint:
 Expected startup behavior:
   The service fails fast during startup if OPENAI_API_KEY is missing.
 
+UI/API wiring:
+  `research-os-ui` uses `VITE_API_BASE_URL=https://research-os-api.onrender.com`
+  API CORS is controlled by `CORS_ALLOW_ORIGINS`.
+
 # Production notes
 
 - Use at least 1 worker only.
 - Keep reload off in production (Docker CMD already runs uvicorn without --reload).
 - No `.env` file is required in production; Render env vars supply OPENAI_API_KEY.
+
+## Logging
+This service emits structured JSON logs including request_id and duration.
+Each response includes X-Request-ID header for traceability.
 
 # Docker
 
@@ -47,3 +57,16 @@ Health check:
 
 PowerShell-safe POST example:
   curl.exe --% -X POST http://127.0.0.1:8000/draft/methods -H "Content-Type: application/json" -d "{\"notes\":\"test\"}"
+
+# UI (frontend)
+
+From `frontend/`:
+  npm install
+  npm run dev
+
+Optional API base override:
+  set VITE_API_BASE_URL=http://127.0.0.1:8000
+
+The UI calls:
+  GET /v1/health
+  POST /v1/draft/methods

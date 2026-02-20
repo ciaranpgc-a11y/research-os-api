@@ -1,4 +1,11 @@
+import logging
+import os
+import time
+from uuid import uuid4
+
 from fastapi import FastAPI
+from fastapi import Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from research_os.config import get_openai_api_key
@@ -12,6 +19,10 @@ from research_os.services.manuscript_service import (
     ManuscriptGenerationError,
     draft_methods_from_notes,
 )
+from research_os.logging_config import configure_logging
+
+configure_logging()
+logger = logging.getLogger(__name__)
 
 ERROR_RESPONSES = {
     500: {"model": ErrorResponse},
@@ -21,12 +32,65 @@ ERROR_RESPONSES = {
 
 app = FastAPI(title="Research OS API", version="0.1.0")
 
+cors_allow_origins = os.getenv(
+    "CORS_ALLOW_ORIGINS",
+    "http://localhost:5173,https://research-os-ui.onrender.com",
+)
+allow_origins = [
+    origin.strip() for origin in cors_allow_origins.split(",") if origin.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allow_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
+
 
 # Fail fast during startup to avoid confusing downstream OpenAI runtime errors.
 # Tests set a dummy OPENAI_API_KEY before creating TestClient.
 @app.on_event("startup")
 def validate_configuration() -> None:
     get_openai_api_key()
+
+
+@app.middleware("http")
+async def add_request_context(request: Request, call_next):
+    request_id = str(uuid4())
+    request.state.request_id = request_id
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = round((time.perf_counter() - start) * 1000, 2)
+    response.headers["X-Request-ID"] = request_id
+    logger.info(
+        "request_completed",
+        extra={
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "duration_ms": duration_ms,
+        },
+    )
+    return response
+
+
+@app.exception_handler(Exception)
+async def handle_unexpected_exception(request: Request, exc: Exception) -> JSONResponse:
+    request_id = getattr(request.state, "request_id", None)
+    logger.exception(
+        "unhandled_exception",
+        extra={
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+        },
+    )
+    response = _build_error_response(exc)
+    if request_id:
+        response.headers["X-Request-ID"] = request_id
+    return response
 
 
 def _build_error_response(exc: Exception) -> JSONResponse:
