@@ -1,3 +1,5 @@
+import { useMemo } from 'react'
+
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -8,6 +10,27 @@ import { useAaweStore } from '@/store/use-aawe-store'
 export function ResultsPage() {
   const selectedItem = useAaweStore((state) => state.selectedItem)
   const setSelectedItem = useAaweStore((state) => state.setSelectedItem)
+  const searchQuery = useAaweStore((state) => state.searchQuery)
+
+  const normalizedQuery = searchQuery.trim().toLowerCase()
+  const filteredResults = useMemo(() => {
+    if (!normalizedQuery) {
+      return resultObjects
+    }
+    return resultObjects.filter((result) => {
+      const text = [
+        result.id,
+        result.type,
+        result.effect,
+        result.ci,
+        result.model,
+        result.derivation.populationFilter,
+      ]
+        .join(' ')
+        .toLowerCase()
+      return text.includes(normalizedQuery)
+    })
+  }, [normalizedQuery])
 
   return (
     <PageFrame
@@ -33,7 +56,7 @@ export function ResultsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {resultObjects.map((result) => {
+              {filteredResults.map((result) => {
                 const isActive = selectedItem?.type === 'result' && selectedItem.data.id === result.id
                 return (
                   <TableRow
@@ -62,6 +85,9 @@ export function ResultsPage() {
               })}
             </TableBody>
           </Table>
+          {filteredResults.length === 0 ? (
+            <p className="mt-3 text-xs text-muted-foreground">No result objects match the current search query.</p>
+          ) : null}
         </CardContent>
       </Card>
     </PageFrame>

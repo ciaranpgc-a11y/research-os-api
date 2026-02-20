@@ -209,3 +209,21 @@ class SelectionInsightResponse(BaseModel):
     qc: list[str] = Field(default_factory=list)
     derivation: InsightDerivationResponse
     citations: list[str] = Field(default_factory=list)
+
+
+class QCIssueSummaryResponse(BaseModel):
+    id: str
+    category: str
+    severity: Literal["high", "medium", "low"]
+    count: int
+    summary: str
+
+
+class QCRunResponse(BaseModel):
+    run_id: str
+    generated_at: datetime
+    total_findings: int
+    high_severity_count: int
+    medium_severity_count: int
+    low_severity_count: int
+    issues: list[QCIssueSummaryResponse] = Field(default_factory=list)

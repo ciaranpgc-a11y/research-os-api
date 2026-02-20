@@ -23,6 +23,7 @@ from research_os.api.schemas import (
     GenerationJobResponse,
     HealthResponse,
     JournalOptionResponse,
+    QCRunResponse,
     SelectionInsightResponse,
     ManuscriptCreateRequest,
     ManuscriptGenerateRequest,
@@ -73,6 +74,7 @@ from research_os.services.insight_service import (
     SelectionInsightNotFoundError,
     get_selection_insight,
 )
+from research_os.services.qc_service import run_qc_checks
 from research_os.services.manuscript_service import (
     ManuscriptGenerationError,
     draft_methods_from_notes,
@@ -262,6 +264,11 @@ def v1_get_aawe_selection_insight(
         return SelectionInsightResponse(**payload)
     except SelectionInsightNotFoundError as exc:
         return _build_not_found_response(str(exc))
+
+
+@app.post("/v1/aawe/qc/run", response_model=QCRunResponse, tags=["v1"])
+def v1_run_aawe_qc() -> QCRunResponse:
+    return QCRunResponse(**run_qc_checks())
 
 
 @app.post("/v1/wizard/infer", response_model=WizardInferResponse, tags=["v1"])

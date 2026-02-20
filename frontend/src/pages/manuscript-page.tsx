@@ -41,13 +41,29 @@ export function ManuscriptPage() {
   const setSelectedItem = useAaweStore((state) => state.setSelectedItem)
   const claimMapView = useAaweStore((state) => state.claimMapView)
   const toggleClaimMapView = useAaweStore((state) => state.toggleClaimMapView)
+  const searchQuery = useAaweStore((state) => state.searchQuery)
 
   const sectionSlug = normalizeSection(section)
   const sectionTitle = sectionDisplayNames[sectionSlug]
-  const paragraphs = useMemo(
-    () => manuscriptParagraphs.filter((paragraph) => paragraph.section === sectionSlug),
-    [sectionSlug],
-  )
+  const normalizedQuery = searchQuery.trim().toLowerCase()
+  const paragraphs = useMemo(() => {
+    const sectionParagraphs = manuscriptParagraphs.filter((paragraph) => paragraph.section === sectionSlug)
+    if (!normalizedQuery) {
+      return sectionParagraphs
+    }
+    return sectionParagraphs.filter((paragraph) => {
+      const text = [
+        paragraph.id,
+        paragraph.heading,
+        paragraph.tag,
+        paragraph.text,
+        ...paragraph.evidenceAnchors.map((anchor) => `${anchor.id} ${anchor.label} ${anchor.source}`),
+      ]
+        .join(' ')
+        .toLowerCase()
+      return text.includes(normalizedQuery)
+    })
+  }, [normalizedQuery, sectionSlug])
 
   return (
     <PageFrame
@@ -69,9 +85,13 @@ export function ManuscriptPage() {
       {paragraphs.length === 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">No paragraph cards yet</CardTitle>
+            <CardTitle className="text-sm">
+              {normalizedQuery ? 'No paragraph cards match search' : 'No paragraph cards yet'}
+            </CardTitle>
             <CardDescription>
-              This section is scaffolded. Populate paragraph cards as drafting starts.
+              {normalizedQuery
+                ? 'Try a different query or clear search to view all paragraph cards.'
+                : 'This section is scaffolded. Populate paragraph cards as drafting starts.'}
             </CardDescription>
           </CardHeader>
         </Card>

@@ -284,6 +284,22 @@ def test_v1_aawe_selection_insight_returns_404_for_missing_item(monkeypatch) -> 
     }
 
 
+def test_v1_run_aawe_qc_returns_summary(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    with TestClient(app) as client:
+        response = client.post("/v1/aawe/qc/run")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_findings"] > 0
+    assert payload["high_severity_count"] >= 0
+    assert payload["medium_severity_count"] >= 0
+    assert payload["low_severity_count"] >= 0
+    assert len(payload["issues"]) >= 1
+    assert payload["issues"][0]["severity"] in {"high", "medium", "low"}
+
+
 def test_v1_create_and_list_project_manuscripts(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
 

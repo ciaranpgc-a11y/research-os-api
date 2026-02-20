@@ -21,6 +21,7 @@ type AaweStore = {
   leftPanelOpen: boolean
   claimMapView: boolean
   theme: UiTheme
+  searchQuery: string
   setSelectedItem: (item: SelectionItem) => void
   clearSelection: () => void
   setRightPanelOpen: (open: boolean) => void
@@ -28,6 +29,7 @@ type AaweStore = {
   toggleClaimMapView: () => void
   setTheme: (theme: UiTheme) => void
   toggleTheme: () => void
+  setSearchQuery: (value: string) => void
 }
 
 export const useAaweStore = create<AaweStore>((set) => ({
@@ -36,6 +38,7 @@ export const useAaweStore = create<AaweStore>((set) => ({
   leftPanelOpen: false,
   claimMapView: false,
   theme: getInitialTheme(),
+  searchQuery: "",
   setSelectedItem: (item) => {
     set({ selectedItem: item, rightPanelOpen: item !== null })
   },
@@ -56,5 +59,8 @@ export const useAaweStore = create<AaweStore>((set) => ({
   },
   toggleTheme: () => {
     set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' }))
+  },
+  setSearchQuery: (value) => {
+    set({ searchQuery: value })
   },
 }))
