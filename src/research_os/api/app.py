@@ -29,6 +29,8 @@ from research_os.api.schemas import (
     GenerationEstimateResponse,
     GenerationJobRetryRequest,
     GenerationJobResponse,
+    GroundedDraftRequest,
+    GroundedDraftResponse,
     HealthResponse,
     JournalOptionResponse,
     QCRunResponse,
@@ -92,6 +94,10 @@ from research_os.services.generation_job_service import (
     serialize_generation_job,
 )
 from research_os.services.claim_linker_service import suggest_claim_links
+from research_os.services.grounded_draft_service import (
+    GroundedDraftGenerationError,
+    generate_grounded_section_draft,
+)
 from research_os.services.insight_service import (
     SelectionInsightNotFoundError,
     get_selection_insight,
@@ -123,6 +129,10 @@ NOT_FOUND_RESPONSES = {
 
 CONFLICT_RESPONSES = {
     409: {"model": ErrorResponse},
+}
+
+BAD_REQUEST_RESPONSES = {
+    400: {"model": ErrorResponse},
 }
 
 @asynccontextmanager
@@ -190,7 +200,7 @@ async def handle_unexpected_exception(request: Request, exc: Exception) -> JSONR
 
 
 def _build_error_response(exc: Exception) -> JSONResponse:
-    if isinstance(exc, ManuscriptGenerationError):
+    if isinstance(exc, (ManuscriptGenerationError, GroundedDraftGenerationError)):
         return JSONResponse(
             status_code=502,
             content={
@@ -233,6 +243,19 @@ def _build_conflict_response(detail: str) -> JSONResponse:
             "error": {
                 "message": "Conflict",
                 "type": "conflict",
+                "detail": detail,
+            }
+        },
+    )
+
+
+def _build_bad_request_response(detail: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=400,
+        content={
+            "error": {
+                "message": "Bad request",
+                "type": "bad_request",
                 "detail": detail,
             }
         },
@@ -322,6 +345,65 @@ def v1_plan_aawe_sections(request: SectionPlanRequest) -> SectionPlanResponse:
         sections=request.sections,
     )
     return SectionPlanResponse(**payload)
+
+
+@app.post(
+    "/v1/aawe/draft/grounded",
+    response_model=GroundedDraftResponse,
+    responses=ERROR_RESPONSES | NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_generate_aawe_grounded_draft(
+    request: GroundedDraftRequest,
+) -> GroundedDraftResponse | JSONResponse:
+    if request.generation_mode == "targeted" and not (
+        request.target_instruction or ""
+    ).strip():
+        return _build_bad_request_response(
+            "target_instruction is required when generation_mode is 'targeted'."
+        )
+
+    payload = generate_grounded_section_draft(
+        section=request.section,
+        notes_context=request.notes_context,
+        style_profile=request.style_profile,
+        generation_mode=request.generation_mode,
+        plan_objective=request.plan_objective,
+        must_include=request.must_include,
+        evidence_links=[link.model_dump() for link in request.evidence_links],
+        citation_ids=request.citation_ids,
+        target_instruction=request.target_instruction,
+        locked_text=request.locked_text,
+        model=request.model or "gpt-4.1-mini",
+    )
+
+    persisted = False
+    manuscript_payload: ManuscriptResponse | None = None
+    if request.persist_to_manuscript:
+        project_id = (request.project_id or "").strip()
+        manuscript_id = (request.manuscript_id or "").strip()
+        if not project_id or not manuscript_id:
+            return _build_bad_request_response(
+                (
+                    "project_id and manuscript_id are required when "
+                    "persist_to_manuscript is true."
+                )
+            )
+        try:
+            manuscript = update_project_manuscript_sections(
+                project_id=project_id,
+                manuscript_id=manuscript_id,
+                sections={payload["section"]: payload["draft"]},
+            )
+        except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
+            return _build_not_found_response(str(exc))
+        persisted = True
+        manuscript_payload = ManuscriptResponse.model_validate(manuscript)
+
+    response_payload = dict(payload)
+    response_payload["persisted"] = persisted
+    response_payload["manuscript"] = manuscript_payload
+    return GroundedDraftResponse(**response_payload)
 
 
 @app.post(

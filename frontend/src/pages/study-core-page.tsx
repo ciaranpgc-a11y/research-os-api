@@ -16,6 +16,7 @@ import {
   exportReferencePack,
   fetchGenerationJob,
   fetchJournalOptions,
+  generateGroundedDraft,
   planSections,
   retryGeneration,
   runClaimLinker,
@@ -24,11 +25,21 @@ import { manuscriptParagraphs } from '@/mock/manuscript'
 import { resultObjects } from '@/mock/results'
 import { PageFrame } from '@/pages/page-frame'
 import { useAaweStore } from '@/store/use-aawe-store'
-import type { ClaimLinkSuggestion, GenerationEstimate, GenerationJobPayload, JournalOption, SectionPlanPayload } from '@/types/study-core'
+import type {
+  ClaimLinkSuggestion,
+  GenerationEstimate,
+  GenerationJobPayload,
+  GroundedDraftEvidenceLinkInput,
+  GroundedDraftPayload,
+  JournalOption,
+  SectionPlanPayload,
+} from '@/types/study-core'
 
 type RunContext = { projectId: string; manuscriptId: string }
 
 const CONTEXT_KEY = 'aawe-run-context'
+const GROUNDED_DRAFT_PREFS_KEY = 'aawe-grounded-draft-prefs'
+const GROUNDED_DRAFT_OUTPUTS_KEY = 'aawe-grounded-draft-outputs'
 const SECTIONS = ['introduction', 'methods', 'results', 'discussion']
 
 function parseOptionalNumber(value: string): number | null {
@@ -55,21 +66,25 @@ function downloadText(filename: string, content: string, type: string) {
   window.URL.revokeObjectURL(url)
 }
 
+function loadStoredValue<T>(key: string, fallback: T): T {
+  const raw = window.localStorage.getItem(key)
+  if (!raw) {
+    return fallback
+  }
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
+}
+
 export function StudyCorePage() {
   const navigate = useNavigate()
   const setSelectedItem = useAaweStore((state) => state.setSelectedItem)
   const setRightPanelOpen = useAaweStore((state) => state.setRightPanelOpen)
 
   const [journals, setJournals] = useState<JournalOption[]>([])
-  const [runContext, setRunContext] = useState<RunContext | null>(() => {
-    const raw = window.localStorage.getItem(CONTEXT_KEY)
-    if (!raw) return null
-    try {
-      return JSON.parse(raw) as RunContext
-    } catch {
-      return null
-    }
-  })
+  const [runContext, setRunContext] = useState<RunContext | null>(() => loadStoredValue<RunContext | null>(CONTEXT_KEY, null))
   const [targetJournal, setTargetJournal] = useState('generic-original')
   const [projectTitle, setProjectTitle] = useState('AAWE Manuscript Workspace')
   const [answers, setAnswers] = useState({
@@ -87,10 +102,33 @@ export function StudyCorePage() {
   const [dailyBudgetUsd, setDailyBudgetUsd] = useState('0.25')
   const [referenceStyle, setReferenceStyle] = useState<'vancouver' | 'ama'>('vancouver')
   const [minConfidence, setMinConfidence] = useState<'high' | 'medium' | 'low'>('medium')
+  const [styleProfile, setStyleProfile] = useState<'technical' | 'concise' | 'narrative_review'>(() => {
+    const payload = loadStoredValue<{ styleProfile?: 'technical' | 'concise' | 'narrative_review' }>(GROUNDED_DRAFT_PREFS_KEY, {})
+    return payload.styleProfile ?? 'technical'
+  })
+  const [generationMode, setGenerationMode] = useState<'full' | 'targeted'>(() => {
+    const payload = loadStoredValue<{ generationMode?: 'full' | 'targeted' }>(GROUNDED_DRAFT_PREFS_KEY, {})
+    return payload.generationMode ?? 'full'
+  })
+  const [draftSection, setDraftSection] = useState<string>(() => {
+    const payload = loadStoredValue<{ draftSection?: string }>(GROUNDED_DRAFT_PREFS_KEY, {})
+    return payload.draftSection ?? 'introduction'
+  })
+  const [targetInstruction, setTargetInstruction] = useState(() => {
+    const payload = loadStoredValue<{ targetInstruction?: string }>(GROUNDED_DRAFT_PREFS_KEY, {})
+    return payload.targetInstruction ?? ''
+  })
+  const [persistGroundedDrafts, setPersistGroundedDrafts] = useState(() => {
+    const payload = loadStoredValue<{ persistGroundedDrafts?: boolean }>(GROUNDED_DRAFT_PREFS_KEY, {})
+    return payload.persistGroundedDrafts ?? true
+  })
 
   const [plan, setPlan] = useState<SectionPlanPayload | null>(null)
   const [estimate, setEstimate] = useState<GenerationEstimate | null>(null)
   const [links, setLinks] = useState<ClaimLinkSuggestion[]>([])
+  const [groundedDrafts, setGroundedDrafts] = useState<Record<string, GroundedDraftPayload>>(() =>
+    loadStoredValue<Record<string, GroundedDraftPayload>>(GROUNDED_DRAFT_OUTPUTS_KEY, {}),
+  )
   const [activeJob, setActiveJob] = useState<GenerationJobPayload | null>(null)
   const [busy, setBusy] = useState<string>('')
   const [status, setStatus] = useState('')
@@ -104,6 +142,18 @@ export function StudyCorePage() {
     [selectedSections],
   )
 
+  const claimSectionById = useMemo(() => {
+    const pairs = manuscriptParagraphs.map((paragraph) => [paragraph.id, paragraph.section] as const)
+    return Object.fromEntries(pairs) as Record<string, string>
+  }, [])
+
+  const planItemBySection = useMemo(() => {
+    if (!plan) {
+      return {} as Record<string, SectionPlanPayload['items'][number]>
+    }
+    return Object.fromEntries(plan.items.map((item) => [item.section, item])) as Record<string, SectionPlanPayload['items'][number]>
+  }, [plan])
+
   useEffect(() => {
     void fetchJournalOptions()
       .then((payload) => {
@@ -116,9 +166,38 @@ export function StudyCorePage() {
   }, [targetJournal])
 
   useEffect(() => {
-    if (!runContext) return
+    if (!runContext) {
+      window.localStorage.removeItem(CONTEXT_KEY)
+      return
+    }
     window.localStorage.setItem(CONTEXT_KEY, JSON.stringify(runContext))
   }, [runContext])
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      GROUNDED_DRAFT_PREFS_KEY,
+      JSON.stringify({
+        styleProfile,
+        generationMode,
+        draftSection,
+        targetInstruction,
+        persistGroundedDrafts,
+      }),
+    )
+  }, [draftSection, generationMode, persistGroundedDrafts, styleProfile, targetInstruction])
+
+  useEffect(() => {
+    window.localStorage.setItem(GROUNDED_DRAFT_OUTPUTS_KEY, JSON.stringify(groundedDrafts))
+  }, [groundedDrafts])
+
+  useEffect(() => {
+    if (selectedSections.length === 0) {
+      return
+    }
+    if (!selectedSections.includes(draftSection)) {
+      setDraftSection(selectedSections[0])
+    }
+  }, [draftSection, selectedSections])
 
   useEffect(() => {
     if (!activeJob || !isActive(activeJob)) return
@@ -250,6 +329,74 @@ export function StudyCorePage() {
     }
   }
 
+  const buildEvidenceLinksForSection = (section: string): GroundedDraftEvidenceLinkInput[] =>
+    links
+      .filter((suggestion) => claimSectionById[suggestion.claim_id] === section)
+      .map((suggestion) => ({
+        claim_id: suggestion.claim_id,
+        claim_heading: suggestion.claim_heading,
+        result_id: suggestion.result_id,
+        confidence: suggestion.confidence,
+        rationale: suggestion.rationale,
+        suggested_anchor_label: suggestion.suggested_anchor_label,
+      }))
+
+  const onGenerateGrounded = async () => {
+    const sections = generationMode === 'targeted' ? [draftSection] : selectedSections.length > 0 ? selectedSections : [draftSection]
+    if (sections.length === 0) {
+      setError('Select at least one section.')
+      return
+    }
+    if (generationMode === 'targeted' && !targetInstruction.trim()) {
+      setError('Target instruction is required for targeted generation.')
+      return
+    }
+    if (persistGroundedDrafts && !runContext) {
+      setError('Create run context first if you want to persist generated drafts.')
+      return
+    }
+
+    setBusy('grounded')
+    setError('')
+    setStatus('')
+    try {
+      const nextDrafts = { ...groundedDrafts }
+      let unsupportedTotal = 0
+      let persistedCount = 0
+
+      for (const section of sections) {
+        const planItem = planItemBySection[section]
+        const payload = await generateGroundedDraft({
+          section,
+          notesContext,
+          styleProfile,
+          generationMode,
+          planObjective: planItem?.objective ?? null,
+          mustInclude: planItem?.must_include ?? [],
+          evidenceLinks: buildEvidenceLinksForSection(section),
+          targetInstruction: generationMode === 'targeted' ? targetInstruction : null,
+          lockedText: generationMode === 'targeted' ? groundedDrafts[section]?.draft ?? null : null,
+          persistToManuscript: persistGroundedDrafts,
+          projectId: runContext?.projectId ?? null,
+          manuscriptId: runContext?.manuscriptId ?? null,
+        })
+        nextDrafts[section] = payload
+        unsupportedTotal += payload.unsupported_sentences.length
+        if (payload.persisted) {
+          persistedCount += 1
+        }
+      }
+
+      setGroundedDrafts(nextDrafts)
+      const savedText = persistGroundedDrafts ? ` Saved ${persistedCount} section(s) to manuscript.` : ''
+      setStatus(`Generated grounded draft output for ${sections.length} section(s).${savedText} Unsupported sentences flagged: ${unsupportedTotal}.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not generate grounded drafts.')
+    } finally {
+      setBusy('')
+    }
+  }
+
   const onLink = async () => {
     setBusy('link')
     setError('')
@@ -355,6 +502,81 @@ export function StudyCorePage() {
             </div>
             {estimate ? <p className="text-xs text-muted-foreground">Estimated cost: ${estimate.estimated_cost_usd_low.toFixed(4)}-${estimate.estimated_cost_usd_high.toFixed(4)}.</p> : null}
             {activeJob ? <><Separator /><div className="flex flex-wrap items-center justify-between gap-2 text-xs"><span>{activeJob.id.slice(0, 8)} | {activeJob.status} | {activeJob.progress_percent}% | {activeJob.current_section ?? 'n/a'}</span><div className="flex gap-2"><Button size="sm" variant="outline" onClick={onCancel} disabled={!isActive(activeJob) || busy === 'cancel'}>Cancel</Button><Button size="sm" variant="outline" onClick={onRetry} disabled={(activeJob.status !== 'failed' && activeJob.status !== 'cancelled') || busy === 'retry'}>Retry</Button></div></div></> : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-base">Grounded Draft Generator</CardTitle><CardDescription>Generate section text from plan + evidence links with style control and targeted regeneration.</CardDescription></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-4">
+              <select className="h-9 rounded-md border border-border bg-background px-3 text-sm" value={draftSection} onChange={(event) => setDraftSection(event.target.value)}>
+                {(selectedSections.length > 0 ? selectedSections : SECTIONS).map((section) => <option key={section} value={section}>{section}</option>)}
+              </select>
+              <select className="h-9 rounded-md border border-border bg-background px-3 text-sm" value={styleProfile} onChange={(event) => setStyleProfile(event.target.value as 'technical' | 'concise' | 'narrative_review')}>
+                <option value="technical">technical</option>
+                <option value="concise">concise</option>
+                <option value="narrative_review">narrative review</option>
+              </select>
+              <select className="h-9 rounded-md border border-border bg-background px-3 text-sm" value={generationMode} onChange={(event) => setGenerationMode(event.target.value as 'full' | 'targeted')}>
+                <option value="full">full run</option>
+                <option value="targeted">targeted regen</option>
+              </select>
+              <label className="flex items-center gap-2 rounded-md border border-border px-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={persistGroundedDrafts}
+                  onChange={(event) => setPersistGroundedDrafts(event.target.checked)}
+                />
+                persist to manuscript
+              </label>
+            </div>
+
+            {generationMode === 'targeted' ? (
+              <Input
+                value={targetInstruction}
+                onChange={(event) => setTargetInstruction(event.target.value)}
+                placeholder="Targeted instruction: e.g. tighten limitations language in paragraph 2"
+              />
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" onClick={onGenerateGrounded} disabled={busy === 'grounded'}>
+                {busy === 'grounded' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}
+                Generate Grounded Draft
+              </Button>
+              <Badge variant="secondary">
+                {generationMode === 'targeted' ? 'Single section pass' : `${selectedSections.length} sections selected`}
+              </Badge>
+              <Badge variant="outline">evidence links: {links.length}</Badge>
+            </div>
+
+            <div className="space-y-2">
+              {(selectedSections.length > 0 ? selectedSections : SECTIONS)
+                .filter((section) => Boolean(groundedDrafts[section]))
+                .map((section) => (
+                  <div key={section} className="space-y-1 rounded-md border border-border p-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <span>{section}</span>
+                      <span>
+                        {groundedDrafts[section].style_profile} | {groundedDrafts[section].generation_mode} | unsupported {groundedDrafts[section].unsupported_sentences.length}
+                      </span>
+                    </div>
+                    <textarea
+                      className="min-h-28 w-full rounded-md border border-border bg-background px-3 py-2 text-xs"
+                      value={groundedDrafts[section].draft}
+                      onChange={(event) =>
+                        setGroundedDrafts((current) => ({
+                          ...current,
+                          [section]: {
+                            ...current[section],
+                            draft: event.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+                ))}
+            </div>
           </CardContent>
         </Card>
 

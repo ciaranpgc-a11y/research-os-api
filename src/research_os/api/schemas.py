@@ -300,6 +300,50 @@ class SectionPlanResponse(BaseModel):
     total_estimated_cost_usd_high: float
 
 
+class GroundedDraftEvidenceLinkRequest(BaseModel):
+    claim_id: str = ""
+    claim_heading: str = ""
+    result_id: str = ""
+    confidence: Literal["high", "medium", "low"] = "medium"
+    rationale: str = ""
+    suggested_anchor_label: str = ""
+
+
+class GroundedDraftRequest(BaseModel):
+    section: str
+    notes_context: str
+    style_profile: Literal["technical", "concise", "narrative_review"] = "technical"
+    generation_mode: Literal["full", "targeted"] = "full"
+    plan_objective: str | None = None
+    must_include: list[str] = Field(default_factory=list)
+    evidence_links: list[GroundedDraftEvidenceLinkRequest] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    target_instruction: str | None = None
+    locked_text: str | None = None
+    model: str | None = None
+    persist_to_manuscript: bool = False
+    project_id: str | None = None
+    manuscript_id: str | None = None
+
+
+class GroundedDraftPassResponse(BaseModel):
+    name: str
+    content: str
+
+
+class GroundedDraftResponse(BaseModel):
+    section: str
+    style_profile: Literal["technical", "concise", "narrative_review"]
+    generation_mode: Literal["full", "targeted"]
+    draft: str
+    passes: list[GroundedDraftPassResponse] = Field(default_factory=list)
+    evidence_anchor_labels: list[str] = Field(default_factory=list)
+    citation_ids: list[str] = Field(default_factory=list)
+    unsupported_sentences: list[str] = Field(default_factory=list)
+    persisted: bool = False
+    manuscript: ManuscriptResponse | None = None
+
+
 class ClaimLinkerRequest(BaseModel):
     claim_ids: list[str] | None = None
     min_confidence: Literal["high", "medium", "low"] = "low"

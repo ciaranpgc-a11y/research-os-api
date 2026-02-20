@@ -471,6 +471,153 @@ def test_v1_plan_aawe_sections_returns_section_plan(monkeypatch) -> None:
     assert payload["total_estimated_cost_usd_high"] >= payload["total_estimated_cost_usd_low"]
 
 
+def test_v1_generate_aawe_grounded_draft_returns_generated_payload(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    def _mock_grounded_draft(**kwargs) -> dict[str, object]:
+        assert kwargs["section"] == "results"
+        assert kwargs["style_profile"] == "concise"
+        assert kwargs["generation_mode"] == "targeted"
+        assert kwargs["target_instruction"] == "Tighten causal language."
+        return {
+            "section": "results",
+            "style_profile": "concise",
+            "generation_mode": "targeted",
+            "draft": "Revised results text [E1].",
+            "passes": [
+                {"name": "targeted_edit", "content": "Revised draft [E1]."},
+                {"name": "polish", "content": "Revised results text [E1]."},
+            ],
+            "evidence_anchor_labels": ["Primary adjusted model output"],
+            "citation_ids": ["CIT-001"],
+            "unsupported_sentences": [],
+        }
+
+    monkeypatch.setattr(
+        "research_os.api.app.generate_grounded_section_draft",
+        _mock_grounded_draft,
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/aawe/draft/grounded",
+            json={
+                "section": "results",
+                "notes_context": "Primary endpoint favored intervention arm.",
+                "style_profile": "concise",
+                "generation_mode": "targeted",
+                "plan_objective": "Summarize adjusted primary result.",
+                "must_include": ["Adjusted effect estimate"],
+                "evidence_links": [
+                    {
+                        "claim_id": "results-p1",
+                        "claim_heading": "Primary Endpoint Signal",
+                        "result_id": "RES-001",
+                        "confidence": "high",
+                        "rationale": "Claim maps to adjusted Cox output.",
+                        "suggested_anchor_label": "Primary adjusted model output",
+                    }
+                ],
+                "citation_ids": ["CIT-001"],
+                "target_instruction": "Tighten causal language.",
+                "locked_text": "Previous section draft [E1].",
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["section"] == "results"
+    assert payload["style_profile"] == "concise"
+    assert payload["generation_mode"] == "targeted"
+    assert payload["persisted"] is False
+    assert payload["draft"] == "Revised results text [E1]."
+    assert payload["citation_ids"] == ["CIT-001"]
+    assert payload["manuscript"] is None
+
+
+def test_v1_generate_aawe_grounded_draft_returns_400_for_missing_target_instruction(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/aawe/draft/grounded",
+            json={
+                "section": "discussion",
+                "notes_context": "Interpretation notes.",
+                "generation_mode": "targeted",
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": {
+            "message": "Bad request",
+            "type": "bad_request",
+            "detail": "target_instruction is required when generation_mode is 'targeted'.",
+        }
+    }
+
+
+def test_v1_generate_aawe_grounded_draft_persists_section_when_requested(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        "research_os.api.app.generate_grounded_section_draft",
+        lambda **_: {
+            "section": "methods",
+            "style_profile": "technical",
+            "generation_mode": "full",
+            "draft": "Methods draft with anchors [E1] [CIT-003].",
+            "passes": [{"name": "polish", "content": "Methods draft with anchors [E1] [CIT-003]."}],
+            "evidence_anchor_labels": ["Adjusted denominator compatibility"],
+            "citation_ids": ["CIT-003"],
+            "unsupported_sentences": [],
+        },
+    )
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={"title": "Grounded Draft Project", "target_journal": "ehj"},
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "grounded-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+
+        draft_response = client.post(
+            "/v1/aawe/draft/grounded",
+            json={
+                "section": "methods",
+                "notes_context": "Eligibility logic and adjusted model design.",
+                "persist_to_manuscript": True,
+                "project_id": project_id,
+                "manuscript_id": manuscript_id,
+            },
+        )
+        manuscript_fetch = client.get(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}"
+        )
+
+    assert draft_response.status_code == 200
+    payload = draft_response.json()
+    assert payload["persisted"] is True
+    assert payload["manuscript"]["id"] == manuscript_id
+    assert payload["manuscript"]["sections"]["methods"] == "Methods draft with anchors [E1] [CIT-003]."
+
+    assert manuscript_fetch.status_code == 200
+    assert (
+        manuscript_fetch.json()["sections"]["methods"]
+        == "Methods draft with anchors [E1] [CIT-003]."
+    )
+
+
 def test_v1_link_aawe_claims_returns_filtered_suggestions(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 

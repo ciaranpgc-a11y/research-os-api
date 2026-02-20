@@ -3,6 +3,8 @@ import type { ApiErrorPayload } from '@/types/insight'
 import type {
   ClaimLinkerPayload,
   GenerationEstimate,
+  GroundedDraftEvidenceLinkInput,
+  GroundedDraftPayload,
   GenerationJobPayload,
   JournalOption,
   ManuscriptRecord,
@@ -104,6 +106,63 @@ export async function runClaimLinker(input: {
     throw new Error(await parseApiError(response, `Claim linker failed (${response.status})`))
   }
   return (await response.json()) as ClaimLinkerPayload
+}
+
+export async function generateGroundedDraft(input: {
+  section: string
+  notesContext: string
+  styleProfile: 'technical' | 'concise' | 'narrative_review'
+  generationMode: 'full' | 'targeted'
+  planObjective: string | null
+  mustInclude: string[]
+  evidenceLinks: GroundedDraftEvidenceLinkInput[]
+  targetInstruction: string | null
+  lockedText: string | null
+  persistToManuscript: boolean
+  projectId: string | null
+  manuscriptId: string | null
+}): Promise<GroundedDraftPayload> {
+  const response = await fetch(`${API_BASE_URL}/v1/aawe/draft/grounded`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      section: input.section,
+      notes_context: input.notesContext,
+      style_profile: input.styleProfile,
+      generation_mode: input.generationMode,
+      plan_objective: input.planObjective,
+      must_include: input.mustInclude,
+      evidence_links: input.evidenceLinks,
+      target_instruction: input.targetInstruction,
+      locked_text: input.lockedText,
+      persist_to_manuscript: input.persistToManuscript,
+      project_id: input.projectId,
+      manuscript_id: input.manuscriptId,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Grounded draft generation failed (${response.status})`))
+  }
+  return (await response.json()) as GroundedDraftPayload
+}
+
+export async function updateManuscriptSections(input: {
+  projectId: string
+  manuscriptId: string
+  sections: Record<string, string>
+}): Promise<ManuscriptRecord> {
+  const response = await fetch(
+    `${API_BASE_URL}/v1/projects/${encodeURIComponent(input.projectId)}/manuscripts/${encodeURIComponent(input.manuscriptId)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sections: input.sections }),
+    },
+  )
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Manuscript save failed (${response.status})`))
+  }
+  return (await response.json()) as ManuscriptRecord
 }
 
 export async function enqueueGeneration(input: {
@@ -240,4 +299,3 @@ export async function fetchProject(projectId: string): Promise<ProjectRecord | n
   const projects = (await response.json()) as ProjectRecord[]
   return projects.find((project) => project.id === projectId) ?? null
 }
-

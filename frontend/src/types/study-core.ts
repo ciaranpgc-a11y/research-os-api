@@ -121,3 +121,29 @@ export type GenerationJobPayload = {
   estimated_cost_usd_high: number
 }
 
+export type GroundedDraftEvidenceLinkInput = {
+  claim_id: string
+  claim_heading: string
+  result_id: string
+  confidence: 'high' | 'medium' | 'low'
+  rationale: string
+  suggested_anchor_label: string
+}
+
+export type GroundedDraftPass = {
+  name: string
+  content: string
+}
+
+export type GroundedDraftPayload = {
+  section: string
+  style_profile: 'technical' | 'concise' | 'narrative_review'
+  generation_mode: 'full' | 'targeted'
+  draft: string
+  passes: GroundedDraftPass[]
+  evidence_anchor_labels: string[]
+  citation_ids: string[]
+  unsupported_sentences: string[]
+  persisted: boolean
+  manuscript: ManuscriptRecord | null
+}
