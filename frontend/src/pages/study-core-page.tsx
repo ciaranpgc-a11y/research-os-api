@@ -109,7 +109,7 @@ export function StudyCorePage() {
     interpretationMode: '',
   })
 
-  const [guardrailsEnabled, setGuardrailsEnabled] = useState(true)
+  const [guardrailsEnabled] = useState(true)
   const [runRecommendations, setRunRecommendations] = useState<RunRecommendations>({
     conservativeWithLimitations: true,
     uncertaintyInResults: false,
@@ -424,7 +424,6 @@ export function StudyCorePage() {
         <Step1Panel
           summary={contextValues.researchObjective}
           researchType={contextValues.studyArchitecture}
-          guardrailsEnabled={guardrailsEnabled}
           onReplaceSummary={(value) =>
             setContextValues((current) => ({
               ...current,
@@ -437,7 +436,6 @@ export function StudyCorePage() {
               studyArchitecture: value,
             }))
           }
-          onGuardrailsChange={setGuardrailsEnabled}
         />
       )
     }

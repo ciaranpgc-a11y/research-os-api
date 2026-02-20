@@ -57,7 +57,6 @@ export function StudyCoreStepper({
                 <p className="break-words text-sm font-medium leading-snug">
                   Step {step.id}: {step.title}
                 </p>
-                <p className="break-words text-xs leading-tight text-muted-foreground">{step.helper}</p>
               </div>
             </Button>
           )

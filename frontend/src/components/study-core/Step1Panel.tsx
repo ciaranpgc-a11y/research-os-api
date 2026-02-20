@@ -5,20 +5,20 @@ import { Button } from '@/components/ui/button'
 type Step1PanelProps = {
   summary: string
   researchType: string
-  guardrailsEnabled: boolean
   onReplaceSummary: (value: string) => void
   onApplyResearchType: (value: string) => void
-  onGuardrailsChange: (value: boolean) => void
 }
 
 const ACTION_BUTTON_CLASS = 'bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500'
 const OUTLINE_ACTION_BUTTON_CLASS =
   'border-emerald-200 text-emerald-700 hover:bg-emerald-50 focus-visible:ring-emerald-500'
+const SUMMARY_RECOMMENDATION_CARD_CLASS = 'space-y-2 rounded-md border border-emerald-200 bg-emerald-50/40 p-3'
+const RESEARCH_TYPE_RECOMMENDATION_CARD_CLASS = 'space-y-2 rounded-md border border-sky-200 bg-sky-50/40 p-3'
 
 const DEFAULT_SUMMARY_OPTIONS = [
-  'In this retrospective observational cohort, describe the clinical problem, study methods, and key observed results with uncertainty.',
-  'Evaluate associations between imaging markers and outcomes using conservative associative interpretation.',
-  'Summarise cohort characteristics, analytic methods, and the primary estimate with confidence intervals.',
+  'In this retrospective observational cohort, summarise the clinical problem, methods, and key observed results with uncertainty.',
+  'Describe the population, imaging method, endpoint, and analytic approach using associative interpretation.',
+  'State the primary estimate with uncertainty, and keep the interpretation non-causal.',
 ]
 
 type ResearchTypeRecommendation = {
@@ -120,6 +120,44 @@ function detectEndpoint(summaryText: string): string {
   return 'the primary study endpoint'
 }
 
+function detectPopulation(summaryText: string): string {
+  if (hasAny(summaryText, ['pulmonary hypertension', 'ph cohort'])) {
+    return 'a pulmonary hypertension cohort'
+  }
+  if (hasAny(summaryText, ['heart failure'])) {
+    return 'a heart failure cohort'
+  }
+  if (hasAny(summaryText, ['registry'])) {
+    return 'a registry cohort'
+  }
+  if (hasAny(summaryText, ['patients', 'adults', 'participants', 'cohort'])) {
+    return 'the study cohort'
+  }
+  return 'the target cohort'
+}
+
+function detectMethodStrategy(summaryText: string, researchType: string): string {
+  if (hasAny(summaryText, ['multivariable', 'adjusted', 'regression'])) {
+    return 'multivariable adjusted analyses'
+  }
+  if (hasAny(summaryText, ['diagnostic', 'sensitivity', 'specificity', 'auc', 'roc'])) {
+    return 'diagnostic performance analysis'
+  }
+  if (hasAny(summaryText, ['survival', 'time-to-event', 'hazard ratio'])) {
+    return 'time-to-event modelling'
+  }
+  if (hasAny(summaryText, ['machine learning', 'deep learning', 'radiomics', 'ai model'])) {
+    return 'model-based analysis with explicit validation'
+  }
+  if (researchType.includes('diagnostic')) {
+    return 'diagnostic performance analysis'
+  }
+  if (researchType.includes('prognostic')) {
+    return 'prognostic modelling'
+  }
+  return 'pre-specified observational modelling'
+}
+
 function hasQuantifiedResult(summaryText: string): boolean {
   return (
     /\b\d+(\.\d+)?\s*%/.test(summaryText) ||
@@ -135,17 +173,19 @@ function buildSummaryOptions(summary: string, researchType: string): string[] {
   const normalized = trimmed.replace(/\s+/g, ' ').replace(/\.$/, '')
   const summaryText = normalized.toLowerCase()
   const clinicalProblem = detectClinicalProblem(summaryText)
+  const population = detectPopulation(summaryText)
   const imagingMethod = detectImagingMethod(summaryText)
   const endpoint = detectEndpoint(summaryText)
   const design = researchType.trim() ? researchType.trim().toLowerCase() : 'retrospective observational cohort'
+  const methods = detectMethodStrategy(summaryText, design)
   const resultsLine = hasQuantifiedResult(summaryText)
-    ? 'Keep the key observed estimates and uncertainty explicit in the final draft.'
-    : 'Add key effect estimates and uncertainty once results are available.'
+    ? 'Report the primary estimate with uncertainty and keep interpretation associative.'
+    : 'Add the primary estimate with uncertainty when results are available.'
 
   return [
-    `Assess ${normalized}, using associative interpretation and explicit limitations.`,
-    `In this ${design}, we address ${clinicalProblem} using ${imagingMethod}. We estimate associations with ${endpoint} and report uncertainty.`,
-    `Summary objective: evaluate ${clinicalProblem} in a ${design} with ${imagingMethod}. ${resultsLine}`,
+    `In this ${design}, we address ${clinicalProblem} in ${population}. We use ${imagingMethod} and ${methods} to evaluate ${endpoint}.`,
+    `Objective summary: ${normalized}. Clarify study design, analytic method, and uncertainty around the primary estimate.`,
+    `Evaluate associations between ${imagingMethod}-derived findings and ${endpoint} in ${population} with ${clinicalProblem}. ${resultsLine}`,
   ]
     .map((line) => (line.endsWith('.') ? line : `${line}.`))
     .slice(0, 3)
@@ -348,10 +388,8 @@ function researchTypeSuggestion(researchType: string, summary: string): Research
 export function Step1Panel({
   summary,
   researchType,
-  guardrailsEnabled,
   onReplaceSummary,
   onApplyResearchType,
-  onGuardrailsChange,
 }: Step1PanelProps) {
   const [generatedSummaryOptions, setGeneratedSummaryOptions] = useState<string[]>([])
   const [generatedResearchType, setGeneratedResearchType] = useState<ResearchTypeRecommendation | null>(null)
@@ -371,6 +409,19 @@ export function Step1Panel({
     setGeneratedKey(currentKey)
   }
 
+  const onApplySummary = (option: string) => {
+    onReplaceSummary(option)
+    setGeneratedSummaryOptions((current) => current.filter((candidate) => candidate !== option))
+  }
+
+  const onApplyResearchTypeSuggestion = () => {
+    if (!generatedResearchType) {
+      return
+    }
+    onApplyResearchType(generatedResearchType.value)
+    setGeneratedResearchType(null)
+  }
+
   const onToggleRefinements = () => {
     if (refinementsEnabled) {
       setRefinementsEnabled(false)
@@ -382,7 +433,7 @@ export function Step1Panel({
 
   return (
     <aside className="space-y-3 rounded-lg border border-border bg-card p-3">
-      <h3 className="text-sm font-semibold">Framing Recommendations</h3>
+      <h3 className="text-sm font-semibold">Research Recommendations</h3>
 
       <div className="space-y-2 rounded-md border border-border bg-background p-3">
         <p className="text-sm font-medium">Refinement controls</p>
@@ -407,15 +458,15 @@ export function Step1Panel({
         {refinementsEnabled && isStale ? <p className="text-xs text-muted-foreground">Summary changed. Refresh refinements.</p> : null}
       </div>
 
-      {refinementsEnabled && hasGenerated ? (
-        <div className="space-y-2 rounded-md border border-border bg-background p-3">
+      {refinementsEnabled && generatedSummaryOptions.length > 0 ? (
+        <div className={SUMMARY_RECOMMENDATION_CARD_CLASS}>
           <p className="text-sm font-medium">Summary refinement</p>
           <p className="text-xs text-muted-foreground">Choose a tighter summary rewrite.</p>
           <div className="space-y-2">
             {generatedSummaryOptions.slice(0, 3).map((option) => (
-              <div key={option} className="rounded border border-border/70 p-2">
-                <p className="text-xs text-muted-foreground">{option}</p>
-                <Button size="sm" className={`mt-2 ${ACTION_BUTTON_CLASS}`} onClick={() => onReplaceSummary(option)}>
+              <div key={option} className="rounded border border-emerald-200 bg-white/80 p-2">
+                <p className="text-xs text-slate-700">{option}</p>
+                <Button size="sm" className={`mt-2 ${ACTION_BUTTON_CLASS}`} onClick={() => onApplySummary(option)}>
                   Replace summary
                 </Button>
               </div>
@@ -424,28 +475,22 @@ export function Step1Panel({
         </div>
       ) : null}
 
-      {refinementsEnabled && hasGenerated && generatedResearchType ? (
-        <div className="space-y-2 rounded-md border border-border bg-background p-3">
+      {refinementsEnabled && generatedResearchType ? (
+        <div className={RESEARCH_TYPE_RECOMMENDATION_CARD_CLASS}>
           <p className="text-sm font-medium">Research type suggestion</p>
-          <p className="text-xs text-muted-foreground">{generatedResearchType.reason}</p>
-          <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={() => onApplyResearchType(generatedResearchType.value)}>
+          <p className="text-xs text-slate-700">{generatedResearchType.reason}</p>
+          <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyResearchTypeSuggestion}>
             Apply suggested research type
           </Button>
         </div>
       ) : null}
 
-      <div className="space-y-2 rounded-md border border-border bg-background p-3">
-        <p className="text-sm font-medium">Conservative drafting guardrails</p>
-        <p className="text-xs text-muted-foreground">Associative inference enforced and limitations language required.</p>
-        <Button
-          size="sm"
-          variant={guardrailsEnabled ? 'default' : 'outline'}
-          className={guardrailsEnabled ? ACTION_BUTTON_CLASS : OUTLINE_ACTION_BUTTON_CLASS}
-          onClick={() => onGuardrailsChange(!guardrailsEnabled)}
-        >
-          {guardrailsEnabled ? 'Guardrails enabled' : 'Enable guardrails'}
-        </Button>
-      </div>
+      {refinementsEnabled && hasGenerated && generatedSummaryOptions.length === 0 && !generatedResearchType ? (
+        <div className="rounded-md border border-border bg-background p-3">
+          <p className="text-sm font-medium">No pending recommendations</p>
+          <p className="text-xs text-muted-foreground">Applied suggestions are removed automatically. Use Refresh to generate new options.</p>
+        </div>
+      ) : null}
     </aside>
   )
 }

@@ -54,14 +54,22 @@ export const RESEARCH_TYPE_OPTIONS = [
 
 export const INTERPRETATION_MODE_OPTIONS = [
   'Descriptive phenotype characterization',
+  'Descriptive epidemiology and prevalence patterning',
   'Associative risk or prognostic inference',
+  'Adjusted association interpretation (multivariable)',
+  'Time-to-event prognostic interpretation',
   'Diagnostic performance interpretation',
+  'Incremental diagnostic value interpretation',
   'Predictive model development interpretation',
+  'Predictive model internal validation interpretation',
   'Predictive model external validation interpretation',
   'Comparative effectiveness interpretation (non-causal)',
+  'Treatment-response heterogeneity exploration (non-causal)',
   'Hypothesis-generating mechanistic interpretation',
+  'Pathophysiologic plausibility interpretation',
   'Replication or confirmatory association interpretation',
   'Safety and feasibility characterization',
+  'Implementation and workflow feasibility interpretation',
 ] as const
 
 export function mergeJournalOptions(apiJournals: JournalOption[]): JournalOption[] {
