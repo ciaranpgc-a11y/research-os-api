@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import './App.css'
 
 type HealthState = 'checking' | 'ok' | 'error'
+type UiTheme = 'dark' | 'light'
 
 type ApiErrorPayload = {
   error: {
@@ -110,6 +111,8 @@ type WizardFieldConfig = {
   options?: string[]
 }
 
+type WorkspaceSectionId = 'quick-studio' | 'single-studio' | 'setup-wizard' | 'advanced-workspace'
+
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? 'http://127.0.0.1:8000'
 
@@ -141,6 +144,12 @@ const ESTIMATE_SECTION_OUTPUT_TOKEN_RANGES: Record<string, [number, number]> = {
 }
 
 const SECTION_DRAFT_OPTIONS = ['title', 'abstract', 'introduction', 'methods', 'results', 'discussion', 'conclusion']
+const WORKSPACE_SECTIONS: Array<{ id: WorkspaceSectionId; label: string }> = [
+  { id: 'quick-studio', label: 'Quick Draft Studio' },
+  { id: 'single-studio', label: 'Single-Section Generator' },
+  { id: 'setup-wizard', label: 'Project Setup Wizard' },
+  { id: 'advanced-workspace', label: 'Advanced Workspace' },
+]
 const GENERATION_HISTORY_FILTER_OPTIONS: Array<{ value: GenerationHistoryFilter; label: string }> = [
   { value: 'all', label: 'All statuses' },
   { value: 'queued', label: 'Queued' },
@@ -442,6 +451,19 @@ function App() {
   const [isLoadingGenerationHistory, setIsLoadingGenerationHistory] = useState(false)
   const [generationHistoryError, setGenerationHistoryError] = useState('')
   const [generationHistoryFilter, setGenerationHistoryFilter] = useState<GenerationHistoryFilter>('all')
+  const [uiTheme, setUiTheme] = useState<UiTheme>(() => {
+    if (typeof window === 'undefined') {
+      return 'dark'
+    }
+    const savedTheme = window.localStorage.getItem('research-os-ui-theme')
+    if (savedTheme === 'dark' || savedTheme === 'light') {
+      return savedTheme
+    }
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+  })
+  const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false)
+  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false)
+  const [activeWorkspaceSection, setActiveWorkspaceSection] = useState<WorkspaceSectionId>('quick-studio')
 
   const canSubmit = useMemo(
     () => notes.trim().length > 0 && draftSection.trim().length > 0 && !isSubmitting,
@@ -736,6 +758,14 @@ function App() {
   }, [quickGenerationNotes, quickGenerationSections])
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    window.localStorage.setItem('research-os-ui-theme', uiTheme)
+    document.documentElement.style.colorScheme = uiTheme
+  }, [uiTheme])
+
+  useEffect(() => {
     const checkHealth = async () => {
       try {
         const response = await fetch(`${API_BASE_URL}/v1/health`)
@@ -776,6 +806,77 @@ function App() {
     loadJournals()
     loadProjects()
   }, [loadProjects])
+
+  useEffect(() => {
+    const sectionIds = WORKSPACE_SECTIONS.map((section) => section.id)
+    const syncFromHash = () => {
+      const hashValue = window.location.hash.replace('#', '')
+      if (sectionIds.includes(hashValue as WorkspaceSectionId)) {
+        setActiveWorkspaceSection(hashValue as WorkspaceSectionId)
+      }
+    }
+
+    const sectionElements = sectionIds
+      .map((sectionId) => document.getElementById(sectionId))
+      .filter((element): element is HTMLElement => element !== null)
+
+    const setActiveFromScroll = () => {
+      const viewportGuide = window.innerHeight * 0.34
+      let candidate: WorkspaceSectionId = WORKSPACE_SECTIONS[0].id
+      for (const element of sectionElements) {
+        if (element.getBoundingClientRect().top <= viewportGuide) {
+          candidate = element.id as WorkspaceSectionId
+        }
+      }
+      setActiveWorkspaceSection(candidate)
+    }
+
+    syncFromHash()
+    window.addEventListener('hashchange', syncFromHash)
+
+    if (sectionElements.length === 0) {
+      return () => {
+        window.removeEventListener('hashchange', syncFromHash)
+      }
+    }
+
+    if (typeof window.IntersectionObserver === 'undefined') {
+      setActiveFromScroll()
+      window.addEventListener('scroll', setActiveFromScroll, { passive: true })
+      return () => {
+        window.removeEventListener('scroll', setActiveFromScroll)
+        window.removeEventListener('hashchange', syncFromHash)
+      }
+    }
+
+    const visibility = new Map<WorkspaceSectionId, number>()
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const sectionId = entry.target.id as WorkspaceSectionId
+          visibility.set(sectionId, entry.isIntersecting ? entry.intersectionRatio : 0)
+        }
+        const mostVisible = [...visibility.entries()].sort((a, b) => b[1] - a[1])[0]
+        if (mostVisible && mostVisible[1] > 0) {
+          setActiveWorkspaceSection(mostVisible[0])
+        }
+      },
+      {
+        rootMargin: '-18% 0px -56% 0px',
+        threshold: [0, 0.2, 0.4, 0.6, 0.8, 1],
+      },
+    )
+
+    for (const element of sectionElements) {
+      visibility.set(element.id as WorkspaceSectionId, 0)
+      observer.observe(element)
+    }
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('hashchange', syncFromHash)
+    }
+  }, [])
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -1578,50 +1679,92 @@ function App() {
   }
 
   return (
-    <main className="page">
+    <main className={`page page-${uiTheme}`}>
       <div className="aurora" />
-      <div className="app-shell">
-        <aside className="sidebar left-sidebar">
-          <div className="sidebar-section">
-            <h3>Workspace</h3>
-            <a className="side-link" href="#quick-studio">
-              Quick Draft Studio
-            </a>
-            <a className="side-link" href="#single-studio">
-              Single-Section Generator
-            </a>
-            <a className="side-link" href="#setup-wizard">
-              Project Setup Wizard
-            </a>
-            <a className="side-link" href="#advanced-workspace">
-              Advanced Workspace
-            </a>
+      <div
+        className={`app-shell ${isLeftSidebarCollapsed ? 'left-collapsed' : ''} ${
+          isRightSidebarCollapsed ? 'right-collapsed' : ''
+        }`}
+      >
+        <aside className={`sidebar left-sidebar ${isLeftSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+          <div className="sidebar-actions">
+            <button
+              type="button"
+              className="sidebar-toggle"
+              onClick={() => setIsLeftSidebarCollapsed((current) => !current)}
+              aria-expanded={!isLeftSidebarCollapsed}
+              aria-label={isLeftSidebarCollapsed ? 'Expand workspace sidebar' : 'Collapse workspace sidebar'}
+            >
+              {isLeftSidebarCollapsed ? 'Open' : 'Collapse'}
+            </button>
+            <button
+              type="button"
+              className="sidebar-toggle"
+              onClick={() => setUiTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+              aria-label={uiTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            >
+              {uiTheme === 'dark' ? 'Light' : 'Dark'}
+            </button>
           </div>
-          <div className="sidebar-section">
-            <h3>Session</h3>
-            <p className="sidebar-kv">
-              <span>API</span>
-              <strong>{healthText}</strong>
-            </p>
-            <p className="sidebar-kv">
-              <span>Last request</span>
-              <code>{requestId || '—'}</code>
-            </p>
-          </div>
-          <div className="sidebar-section">
-            <h3>Usage tip</h3>
-            <p className="sidebar-note">
-              Use Quick Draft Studio for rapid generation, then move into Advanced Workspace only when you need branch
-              management, snapshots, or async jobs.
-            </p>
-          </div>
+          {isLeftSidebarCollapsed ? (
+            <div className="sidebar-section sidebar-collapsed-hint">
+              <p className="sidebar-note">Quick nav hidden.</p>
+              <p className="sidebar-note">
+                Active: {WORKSPACE_SECTIONS.find((section) => section.id === activeWorkspaceSection)?.label}
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="sidebar-section">
+                <h3>Workspace</h3>
+                {WORKSPACE_SECTIONS.map((section) => (
+                  <a
+                    key={section.id}
+                    className={`side-link ${activeWorkspaceSection === section.id ? 'active' : ''}`}
+                    href={`#${section.id}`}
+                    onClick={() => setActiveWorkspaceSection(section.id)}
+                  >
+                    {section.label}
+                  </a>
+                ))}
+              </div>
+              <div className="sidebar-section">
+                <h3>Session</h3>
+                <p className="sidebar-kv">
+                  <span>API</span>
+                  <strong>{healthText}</strong>
+                </p>
+                <p className="sidebar-kv">
+                  <span>Last request</span>
+                  <code>{requestId || '-'}</code>
+                </p>
+              </div>
+              <div className="sidebar-section">
+                <h3>Usage tip</h3>
+                <p className="sidebar-note">
+                  Use Quick Draft Studio for rapid generation, then move into Advanced Workspace only when you need
+                  branch management, snapshots, or async jobs.
+                </p>
+              </div>
+            </>
+          )}
         </aside>
         <section className="panel">
         <header className="panel-header">
           <p className="eyebrow">Research OS</p>
           <h1>Research Drafting Console</h1>
           <p className="subhead">Generate manuscript drafts fast, then use projects only when you need structured workflows.</p>
-          <span className={`health-chip health-${health}`}>{healthText}</span>
+          <div className="panel-header-meta">
+            <span className={`health-chip health-${health}`}>{healthText}</span>
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={() => setUiTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+              aria-label={uiTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            >
+              {uiTheme === 'dark' ? 'Switch to Light' : 'Switch to Dark'}
+            </button>
+          </div>
         </header>
 
         <section className="section-block" id="quick-studio">
@@ -2390,58 +2533,82 @@ function App() {
           )}
         </section>
         </section>
-        <aside className="sidebar right-sidebar">
-          <div className="sidebar-section">
-            <h3>Quick Studio</h3>
-            <p className="sidebar-kv">
-              <span>Sections selected</span>
-              <strong>{quickGenerationSections.length}</strong>
-            </p>
-            <p className="sidebar-kv">
-              <span>Drafts ready</span>
-              <strong>{quickDraftReadyCount}</strong>
-            </p>
-            <p className="sidebar-kv">
-              <span>Est. high cost</span>
-              <strong>{formatUsd(quickGenerationEstimate.estimatedCostUsdHigh)}</strong>
-            </p>
+        <aside className={`sidebar right-sidebar ${isRightSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+          <div className="sidebar-actions">
+            <button
+              type="button"
+              className="sidebar-toggle"
+              onClick={() => setIsRightSidebarCollapsed((current) => !current)}
+              aria-expanded={!isRightSidebarCollapsed}
+              aria-label={isRightSidebarCollapsed ? 'Expand context sidebar' : 'Collapse context sidebar'}
+            >
+              {isRightSidebarCollapsed ? 'Open' : 'Collapse'}
+            </button>
           </div>
-          <div className="sidebar-section">
-            <h3>Project Context</h3>
-            <p className="sidebar-kv">
-              <span>Projects</span>
-              <strong>{projects.length}</strong>
-            </p>
-            <p className="sidebar-kv">
-              <span>Manuscripts</span>
-              <strong>{manuscripts.length}</strong>
-            </p>
-            <p className="sidebar-note">
-              {selectedProject ? `Selected project: ${selectedProject.title}` : 'No project selected.'}
-            </p>
-            {selectedManuscript && <p className="sidebar-note">Branch: {selectedManuscript.branch_name}</p>}
-          </div>
-          <div className="sidebar-section">
-            <h3>Generation Status</h3>
-            {activeGenerationJob ? (
-              <>
+          {isRightSidebarCollapsed ? (
+            <div className="sidebar-section sidebar-collapsed-hint">
+              <p className="sidebar-note">Status summary</p>
+              <p className="sidebar-note">
+                {activeGenerationJob
+                  ? `Job ${humanizeIdentifier(activeGenerationJob.status)} (${activeGenerationJob.progress_percent}%)`
+                  : 'No active generation job.'}
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="sidebar-section">
+                <h3>Quick Studio</h3>
                 <p className="sidebar-kv">
-                  <span>Status</span>
-                  <strong>{humanizeIdentifier(activeGenerationJob.status)}</strong>
+                  <span>Sections selected</span>
+                  <strong>{quickGenerationSections.length}</strong>
                 </p>
                 <p className="sidebar-kv">
-                  <span>Progress</span>
-                  <strong>{activeGenerationJob.progress_percent}%</strong>
+                  <span>Drafts ready</span>
+                  <strong>{quickDraftReadyCount}</strong>
                 </p>
                 <p className="sidebar-kv">
                   <span>Est. high cost</span>
-                  <strong>{formatUsd(activeGenerationJob.estimated_cost_usd_high)}</strong>
+                  <strong>{formatUsd(quickGenerationEstimate.estimatedCostUsdHigh)}</strong>
                 </p>
-              </>
-            ) : (
-              <p className="sidebar-note">No active async generation job.</p>
-            )}
-          </div>
+              </div>
+              <div className="sidebar-section">
+                <h3>Project Context</h3>
+                <p className="sidebar-kv">
+                  <span>Projects</span>
+                  <strong>{projects.length}</strong>
+                </p>
+                <p className="sidebar-kv">
+                  <span>Manuscripts</span>
+                  <strong>{manuscripts.length}</strong>
+                </p>
+                <p className="sidebar-note">
+                  {selectedProject ? `Selected project: ${selectedProject.title}` : 'No project selected.'}
+                </p>
+                {selectedManuscript && <p className="sidebar-note">Branch: {selectedManuscript.branch_name}</p>}
+              </div>
+              <div className="sidebar-section">
+                <h3>Generation Status</h3>
+                {activeGenerationJob ? (
+                  <>
+                    <p className="sidebar-kv">
+                      <span>Status</span>
+                      <strong>{humanizeIdentifier(activeGenerationJob.status)}</strong>
+                    </p>
+                    <p className="sidebar-kv">
+                      <span>Progress</span>
+                      <strong>{activeGenerationJob.progress_percent}%</strong>
+                    </p>
+                    <p className="sidebar-kv">
+                      <span>Est. high cost</span>
+                      <strong>{formatUsd(activeGenerationJob.estimated_cost_usd_high)}</strong>
+                    </p>
+                  </>
+                ) : (
+                  <p className="sidebar-note">No active async generation job.</p>
+                )}
+              </div>
+            </>
+          )}
         </aside>
       </div>
       <section className="api-hint">
