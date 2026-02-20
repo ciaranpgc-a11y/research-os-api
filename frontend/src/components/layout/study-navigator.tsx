@@ -1,67 +1,40 @@
 import { Link, NavLink } from 'react-router-dom'
 
+import { NAV_GROUPS, type NavGroup, type NavItem } from '@/components/navigation/nav-config'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 
-type NavItem = {
-  label: string
-  to: string
-}
-
-const projectItems: NavItem[] = [
-  { label: 'Overview', to: '/overview' },
-  { label: 'Study Core', to: '/study-core' },
-  { label: 'Results', to: '/results' },
-  { label: 'Literature', to: '/literature' },
-  { label: 'Journal Targeting', to: '/journal-targeting' },
-  { label: 'QC Dashboard', to: '/qc' },
-]
-
-const manuscriptItems: NavItem[] = [
-  { label: 'Title', to: '/manuscript/title' },
-  { label: 'Abstract', to: '/manuscript/abstract' },
-  { label: 'Introduction', to: '/manuscript/introduction' },
-  { label: 'Methods', to: '/manuscript/methods' },
-  { label: 'Results', to: '/manuscript/results' },
-  { label: 'Discussion', to: '/manuscript/discussion' },
-  { label: 'Limitations', to: '/manuscript/limitations' },
-  { label: 'Conclusion', to: '/manuscript/conclusion' },
-  { label: 'Figures', to: '/manuscript/figures' },
-  { label: 'Tables', to: '/manuscript/tables' },
-]
-
-const advancedItems: NavItem[] = [
-  { label: 'Claim Map', to: '/claim-map' },
-  { label: 'Version History', to: '/versions' },
-  { label: 'Audit Log', to: '/audit' },
-  { label: 'Inference Rules', to: '/inference-rules' },
-  { label: 'Agent Logs', to: '/agent-logs' },
-]
-
 type StudyNavigatorProps = {
   onNavigate?: () => void
 }
 
-function Group({ title, items, onNavigate }: { title: string; items: NavItem[]; onNavigate?: () => void }) {
+function Group({ group, onNavigate }: { group: NavGroup; onNavigate?: () => void }) {
+  const itemIndent = group.title === 'MANUSCRIPT' ? 'pl-3' : ''
   return (
-    <section className="space-y-2">
-      <p className="px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+    <section className="space-y-2.5">
+      <p className="px-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{group.title}</p>
       <nav className="space-y-1">
-        {items.map((item) => (
+        {group.items.map((item: NavItem) => (
           <NavLink
-            key={item.to}
-            to={item.to}
+            key={item.path}
+            to={item.path}
             onClick={onNavigate}
             className={({ isActive }) =>
               cn(
-                'block rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
-                isActive && 'bg-accent text-accent-foreground',
+                'group flex items-center justify-between rounded-md border-l-2 border-transparent px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-accent-foreground',
+                itemIndent,
+                isActive && 'border-l-primary bg-accent/80 text-accent-foreground',
               )
             }
           >
-            {item.label}
+            <span>{item.label}</span>
+            {item.badge ? (
+              <Badge variant="secondary" className="h-5 min-w-5 px-1 text-[10px] font-medium">
+                {item.badge}
+              </Badge>
+            ) : null}
           </NavLink>
         ))}
       </nav>
@@ -83,12 +56,13 @@ export function StudyNavigator({ onNavigate }: StudyNavigatorProps) {
         </Link>
       </div>
       <ScrollArea className="flex-1">
-        <div className="space-y-4 p-3">
-          <Group title="Project" items={projectItems} onNavigate={onNavigate} />
-          <Separator />
-          <Group title="Manuscript" items={manuscriptItems} onNavigate={onNavigate} />
-          <Separator />
-          <Group title="Advanced" items={advancedItems} onNavigate={onNavigate} />
+        <div className="space-y-3 p-3">
+          {NAV_GROUPS.map((group, index) => (
+            <div key={group.title} className="space-y-3">
+              <Group group={group} onNavigate={onNavigate} />
+              {index < NAV_GROUPS.length - 1 ? <Separator /> : null}
+            </div>
+          ))}
         </div>
       </ScrollArea>
     </aside>

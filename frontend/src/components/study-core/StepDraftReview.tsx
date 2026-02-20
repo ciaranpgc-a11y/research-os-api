@@ -170,8 +170,8 @@ export function StepDraftReview({
             onChange={(event) => onStyleProfileChange(event.target.value as 'technical' | 'concise' | 'narrative_review')}
           >
             <option value="technical">technical</option>
-            <option value="concise">concise</option>
             <option value="narrative_review">clinical</option>
+            <option value="concise">concise</option>
           </select>
           <Badge variant="outline">Accepted sections: {acceptedSectionKeys.length}</Badge>
         </div>
@@ -221,4 +221,3 @@ export function StepDraftReview({
     </Card>
   )
 }
-
