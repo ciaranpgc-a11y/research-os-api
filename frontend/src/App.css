@@ -81,6 +81,16 @@
   color: #ff9e9e;
 }
 
+.chip-inline {
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid rgba(255, 191, 140, 0.6);
+  color: #ffd6b3;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
 .section-block {
   margin-top: 1.35rem;
   padding-top: 1.2rem;
@@ -247,6 +257,16 @@
 
 .compact {
   padding: 0.7rem 0.8rem;
+}
+
+.quick-draft-list {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.quick-draft-card {
+  margin-top: 0;
 }
 
 .trace {

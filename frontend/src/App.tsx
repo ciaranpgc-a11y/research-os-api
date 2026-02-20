@@ -328,7 +328,48 @@ function getFilenameFromContentDisposition(
   return fallback
 }
 
+function buildDraftMarkdown(
+  sectionOrder: string[],
+  drafts: Record<string, string>,
+  title = 'Quick Manuscript Draft',
+): string {
+  const lines: string[] = []
+  lines.push(`# ${title}`)
+  lines.push('')
+  for (const section of sectionOrder) {
+    const content = (drafts[section] ?? '').trim()
+    if (!content) {
+      continue
+    }
+    lines.push(`## ${humanizeIdentifier(section)}`)
+    lines.push('')
+    lines.push(content)
+    lines.push('')
+  }
+  if (lines.length <= 2) {
+    lines.push('_No section drafts generated yet._')
+    lines.push('')
+  }
+  return `${lines.join('\n').trim()}\n`
+}
+
 function App() {
+  const [quickGenerationNotes, setQuickGenerationNotes] = useState('')
+  const [quickGenerationSections, setQuickGenerationSections] = useState<string[]>([
+    'title',
+    'abstract',
+    'methods',
+    'results',
+    'discussion',
+  ])
+  const [quickGenerationDrafts, setQuickGenerationDrafts] = useState<Record<string, string>>({})
+  const [quickGenerationProgressPercent, setQuickGenerationProgressPercent] = useState(0)
+  const [quickGenerationCurrentSection, setQuickGenerationCurrentSection] = useState('')
+  const [isGeneratingQuickDrafts, setIsGeneratingQuickDrafts] = useState(false)
+  const [quickGenerationError, setQuickGenerationError] = useState('')
+  const [quickGenerationSuccess, setQuickGenerationSuccess] = useState('')
+  const [isExportingQuickDrafts, setIsExportingQuickDrafts] = useState(false)
+  const [isCopyingQuickDrafts, setIsCopyingQuickDrafts] = useState(false)
   const [notes, setNotes] = useState('')
   const [methods, setMethods] = useState('')
   const [draftSection, setDraftSection] = useState('methods')
@@ -410,6 +451,29 @@ function App() {
     () => projectTitle.trim().length > 0 && targetJournal.trim().length > 0 && !isBootstrapping,
     [isBootstrapping, projectTitle, targetJournal],
   )
+  const quickGenerationEstimate = useMemo(
+    () => estimateGenerationCostRange(quickGenerationSections, quickGenerationNotes),
+    [quickGenerationNotes, quickGenerationSections],
+  )
+  const quickDraftSectionOrder = useMemo(
+    () => SECTION_DRAFT_OPTIONS.filter((section) => quickGenerationSections.includes(section)),
+    [quickGenerationSections],
+  )
+  const canGenerateQuickDrafts = useMemo(
+    () =>
+      quickGenerationNotes.trim().length > 0 &&
+      quickGenerationSections.length > 0 &&
+      !isGeneratingQuickDrafts,
+    [isGeneratingQuickDrafts, quickGenerationNotes, quickGenerationSections.length],
+  )
+  const hasQuickGenerationDrafts = useMemo(
+    () =>
+      quickDraftSectionOrder.some((section) => {
+        const draft = quickGenerationDrafts[section] ?? ''
+        return draft.trim().length > 0
+      }),
+    [quickDraftSectionOrder, quickGenerationDrafts],
+  )
   const dynamicQuestionIds = useMemo(() => {
     if (!wizardInference) {
       return new Set<string>()
@@ -435,6 +499,124 @@ function App() {
       ...current,
       [fieldId]: value,
     }))
+  }
+
+  const toggleQuickGenerationSection = (section: string) => {
+    setQuickGenerationSections((current) => {
+      if (current.includes(section)) {
+        return current.filter((item) => item !== section)
+      }
+      return [...current, section]
+    })
+  }
+
+  const selectAllQuickGenerationSections = () => {
+    setQuickGenerationSections([...SECTION_DRAFT_OPTIONS])
+  }
+
+  const clearQuickGenerationSections = () => {
+    setQuickGenerationSections([])
+  }
+
+  const generateQuickDrafts = async () => {
+    if (!canGenerateQuickDrafts) {
+      return
+    }
+    const orderedSections = SECTION_DRAFT_OPTIONS.filter((section) =>
+      quickGenerationSections.includes(section),
+    )
+    if (orderedSections.length === 0) {
+      return
+    }
+
+    setIsGeneratingQuickDrafts(true)
+    setQuickGenerationError('')
+    setQuickGenerationSuccess('')
+    setQuickGenerationProgressPercent(0)
+    setQuickGenerationCurrentSection('')
+    const nextDrafts = { ...quickGenerationDrafts }
+
+    try {
+      for (const [index, section] of orderedSections.entries()) {
+        setQuickGenerationCurrentSection(section)
+        const response = await fetch(`${API_BASE_URL}/v1/draft/section`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            section,
+            notes: quickGenerationNotes.trim(),
+          }),
+        })
+        const returnedRequestId = response.headers.get('X-Request-ID') ?? ''
+        if (returnedRequestId) {
+          setRequestId(returnedRequestId)
+        }
+        if (!response.ok) {
+          throw new Error(await readApiErrorMessage(response, `Could not generate ${section} draft`))
+        }
+        const payload = (await response.json()) as { section: string; draft: string }
+        nextDrafts[payload.section] = payload.draft
+        setQuickGenerationDrafts({ ...nextDrafts })
+        setQuickGenerationProgressPercent(Math.round(((index + 1) / orderedSections.length) * 100))
+      }
+      setQuickGenerationSuccess(`Generated ${orderedSections.length} sections in quick mode.`)
+      setQuickGenerationError('')
+    } catch (error) {
+      setQuickGenerationError(error instanceof Error ? error.message : 'Could not generate quick drafts')
+    } finally {
+      setIsGeneratingQuickDrafts(false)
+      setQuickGenerationCurrentSection('')
+    }
+  }
+
+  const exportQuickDraftsMarkdown = async () => {
+    if (!hasQuickGenerationDrafts || isExportingQuickDrafts) {
+      return
+    }
+    setIsExportingQuickDrafts(true)
+    setQuickGenerationError('')
+    try {
+      const markdown = buildDraftMarkdown(quickDraftSectionOrder, quickGenerationDrafts)
+      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
+      const timestamp = new Date().toISOString().replace(/[^\d]/g, '').slice(0, 12)
+      const filename = `quick-manuscript-draft-${timestamp}.md`
+      const url = window.URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = filename
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      window.URL.revokeObjectURL(url)
+      setQuickGenerationSuccess(`Downloaded ${filename}.`)
+    } catch (error) {
+      setQuickGenerationError(error instanceof Error ? error.message : 'Could not export quick drafts')
+    } finally {
+      setIsExportingQuickDrafts(false)
+    }
+  }
+
+  const copyQuickDraftsToClipboard = async () => {
+    if (!hasQuickGenerationDrafts || isCopyingQuickDrafts) {
+      return
+    }
+    if (!navigator.clipboard) {
+      setQuickGenerationError('Clipboard is not available in this browser context.')
+      return
+    }
+    setIsCopyingQuickDrafts(true)
+    setQuickGenerationError('')
+    try {
+      const markdown = buildDraftMarkdown(quickDraftSectionOrder, quickGenerationDrafts)
+      await navigator.clipboard.writeText(markdown)
+      setQuickGenerationSuccess('Copied quick drafts to clipboard.')
+    } catch (error) {
+      setQuickGenerationError(error instanceof Error ? error.message : 'Could not copy quick drafts')
+    } finally {
+      setIsCopyingQuickDrafts(false)
+    }
   }
 
   const loadProjects = useCallback(async () => {
@@ -539,6 +721,11 @@ function App() {
       setIsLoadingGenerationHistory(false)
     }
   }, [])
+
+  useEffect(() => {
+    setQuickGenerationError('')
+    setQuickGenerationSuccess('')
+  }, [quickGenerationNotes, quickGenerationSections])
 
   useEffect(() => {
     const checkHealth = async () => {
@@ -1394,7 +1581,100 @@ function App() {
         </header>
 
         <section className="section-block">
-          <h2>Section Draft Studio</h2>
+          <div className="section-heading">
+            <h2>Quick Manuscript Generation</h2>
+            <span className="chip-inline">No project needed</span>
+          </div>
+          <p className="section-note">
+            Primary workflow: generate multiple manuscript sections directly from your notes without creating or uploading
+            a manuscript.
+          </p>
+          <div className="section-toggle-grid">
+            {SECTION_DRAFT_OPTIONS.map((section) => (
+              <label key={`quick-${section}`} className="section-toggle">
+                <input
+                  type="checkbox"
+                  checked={quickGenerationSections.includes(section)}
+                  onChange={() => toggleQuickGenerationSection(section)}
+                  disabled={isGeneratingQuickDrafts}
+                />
+                <span>{humanizeIdentifier(section)}</span>
+              </label>
+            ))}
+          </div>
+          <div className="inline-actions">
+            <button type="button" className="ghost-button" onClick={selectAllQuickGenerationSections}>
+              Select All
+            </button>
+            <button type="button" className="ghost-button" onClick={clearQuickGenerationSections}>
+              Clear
+            </button>
+          </div>
+          <div className="field-grid">
+            <label className="wide">
+              Shared notes for selected sections
+              <textarea
+                rows={8}
+                value={quickGenerationNotes}
+                onChange={(event) => setQuickGenerationNotes(event.target.value)}
+                placeholder="Paste or type your key trial notes once; drafts will be generated for each selected section."
+              />
+            </label>
+          </div>
+          <p className="muted">
+            Estimate: {formatUsd(quickGenerationEstimate.estimatedCostUsdLow)} -{' '}
+            {formatUsd(quickGenerationEstimate.estimatedCostUsdHigh)} ({quickGenerationEstimate.estimatedInputTokens} input
+            tokens, {quickGenerationEstimate.estimatedOutputTokensLow} - {quickGenerationEstimate.estimatedOutputTokensHigh}{' '}
+            output tokens)
+          </p>
+          <div className="button-row">
+            <button type="button" onClick={generateQuickDrafts} disabled={!canGenerateQuickDrafts}>
+              {isGeneratingQuickDrafts ? 'Generating...' : 'Generate Selected Sections'}
+            </button>
+            <button type="button" className="ghost-button" onClick={exportQuickDraftsMarkdown} disabled={!hasQuickGenerationDrafts || isExportingQuickDrafts}>
+              {isExportingQuickDrafts ? 'Exporting...' : 'Export Markdown'}
+            </button>
+            <button type="button" className="ghost-button" onClick={copyQuickDraftsToClipboard} disabled={!hasQuickGenerationDrafts || isCopyingQuickDrafts}>
+              {isCopyingQuickDrafts ? 'Copying...' : 'Copy All'}
+            </button>
+          </div>
+          {isGeneratingQuickDrafts && (
+            <p className="muted">
+              Generating {quickGenerationCurrentSection ? humanizeIdentifier(quickGenerationCurrentSection) : 'drafts'}...{' '}
+              {quickGenerationProgressPercent}%
+            </p>
+          )}
+          {quickGenerationError && (
+            <section className="result error compact">
+              <p>{quickGenerationError}</p>
+            </section>
+          )}
+          {quickGenerationSuccess && (
+            <section className="result success compact">
+              <p>{quickGenerationSuccess}</p>
+            </section>
+          )}
+          {hasQuickGenerationDrafts && (
+            <div className="quick-draft-list">
+              {quickDraftSectionOrder.map((section) => {
+                const draft = (quickGenerationDrafts[section] ?? '').trim()
+                if (!draft) {
+                  return null
+                }
+                return (
+                  <section key={`quick-draft-${section}`} className="result success quick-draft-card">
+                    <h3>{humanizeIdentifier(section)}</h3>
+                    <pre>{draft}</pre>
+                  </section>
+                )
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="section-block">
+          <h2>Single Section Draft Studio</h2>
+          <p className="section-note">Optional: generate one section at a time.</p>
           <form onSubmit={onSubmit} className="composer">
             <label htmlFor="draft-section">Section</label>
             <select
@@ -1636,6 +1916,9 @@ function App() {
               {isLoadingProjects ? 'Refreshing...' : 'Refresh'}
             </button>
           </div>
+          <p className="section-note">
+            Optional advanced workflow: manage manuscript branches, async generation jobs, snapshots, and exports.
+          </p>
 
           {projectsError && (
             <section className="result error compact">
