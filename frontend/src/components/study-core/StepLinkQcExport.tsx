@@ -262,14 +262,16 @@ export function StepLinkQcExport({
                     <div className="mt-2 flex gap-2">
                       <Button
                         size="sm"
-                        variant={decision === 'accepted' ? 'default' : 'outline'}
+                        variant={decision === 'accepted' ? 'secondary' : 'outline'}
+                        className={decision === 'accepted' ? '' : 'text-muted-foreground hover:text-foreground'}
                         onClick={() => setSuggestionDecisions((current) => ({ ...current, [decisionKey]: 'accepted' }))}
                       >
                         Accept
                       </Button>
                       <Button
                         size="sm"
-                        variant={decision === 'rejected' ? 'default' : 'outline'}
+                        variant={decision === 'rejected' ? 'secondary' : 'outline'}
+                        className={decision === 'rejected' ? '' : 'text-muted-foreground hover:text-foreground'}
                         onClick={() => setSuggestionDecisions((current) => ({ ...current, [decisionKey]: 'rejected' }))}
                       >
                         Reject

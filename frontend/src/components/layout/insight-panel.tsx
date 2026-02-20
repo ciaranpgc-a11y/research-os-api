@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { AlertTriangle, BookOpen, FlaskConical, Loader2, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, BookOpen, FlaskConical, Lightbulb, Loader2, ShieldCheck } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
@@ -341,6 +341,18 @@ function buildSectionOutlines(selectedSections: string[], outlinePlan: OutlinePl
 
 function renderStepOneIntelligence(researchObjective: string, selectedSections: string[], requiredReady: boolean) {
   const objectiveKeywords = extractObjectiveKeywords(researchObjective)
+  const objectiveWordCount = researchObjective.trim().split(/\s+/).filter(Boolean).length
+  const guidance: string[] = []
+  if (objectiveWordCount < 12) {
+    guidance.push('Expand the objective to include population, intervention/exposure, and expected direction.')
+  }
+  if (selectedSections.length < 4) {
+    guidance.push('Add all core sections before planning to avoid an imbalanced manuscript skeleton.')
+  }
+  if (guidance.length === 0) {
+    guidance.push('Frame quality looks healthy for moving to section planning.')
+  }
+
   return (
     <div className="space-y-3">
       <DiagnosticCard title="Frame readiness" description="Checks whether Step 1 has enough structure for planning.">
@@ -353,6 +365,14 @@ function renderStepOneIntelligence(researchObjective: string, selectedSections: 
       <DiagnosticCard title="Section setup" description="Current section selection for upcoming planning.">
         <p>{selectedSections.length} section(s) currently selected.</p>
       </DiagnosticCard>
+      <DiagnosticCard title="AI suggestions" description="Suggested edits before moving to Step 2.">
+        {guidance.map((item) => (
+          <div key={item} className="flex items-start gap-2 rounded-md border border-border px-2 py-1">
+            <Lightbulb className="mt-0.5 h-3.5 w-3.5 text-amber-600" />
+            <span>{item}</span>
+          </div>
+        ))}
+      </DiagnosticCard>
     </div>
   )
 }
@@ -361,22 +381,108 @@ function renderStepThreeIntelligence({
   selectedSections,
   planBuilt,
   jobStatus,
+  runConfiguration,
 }: {
   selectedSections: string[]
   planBuilt: boolean
   jobStatus: 'idle' | 'running' | 'succeeded' | 'failed'
+  runConfiguration: {
+    generationBrief: string
+    temperature: number
+    reasoningEffort: 'low' | 'medium' | 'high'
+    maxCostUsd: string
+    dailyBudgetUsd: string
+    hasEstimate: boolean
+  }
 }) {
+  const briefWordCount = runConfiguration.generationBrief.trim().split(/\s+/).filter(Boolean).length
+  const flags: Array<{ level: 'warn' | 'info'; text: string }> = []
+
+  if (!planBuilt) {
+    flags.push({ level: 'warn', text: 'Plan is not built. Complete Step 2 first.' })
+  }
+  if (selectedSections.length === 0) {
+    flags.push({ level: 'warn', text: 'No sections selected for generation.' })
+  }
+  if (!runConfiguration.generationBrief.trim()) {
+    flags.push({ level: 'warn', text: 'Generation brief is empty.' })
+  } else if (briefWordCount < 20) {
+    flags.push({ level: 'warn', text: 'Generation brief is too short; add objective and data context.' })
+  } else if (briefWordCount < 40) {
+    flags.push({ level: 'info', text: 'Generation brief is usable but can be more specific.' })
+  }
+  if (!runConfiguration.hasEstimate && jobStatus !== 'running' && jobStatus !== 'succeeded') {
+    flags.push({ level: 'info', text: 'Cost estimate has not been run yet.' })
+  }
+
+  const maxCost = Number(runConfiguration.maxCostUsd)
+  const dailyBudget = Number(runConfiguration.dailyBudgetUsd)
+  const costInputValid =
+    (runConfiguration.maxCostUsd.trim() === '' || Number.isFinite(maxCost)) &&
+    (runConfiguration.dailyBudgetUsd.trim() === '' || Number.isFinite(dailyBudget))
+
+  const aiSuggestions: string[] = []
+  if (runConfiguration.temperature > 0.7) {
+    aiSuggestions.push('Lower temperature towards 0.2-0.4 for tighter technical prose.')
+  }
+  if (runConfiguration.reasoningEffort === 'low' && selectedSections.length >= 4) {
+    aiSuggestions.push('Use medium reasoning effort when generating multiple sections at once.')
+  }
+  if (briefWordCount < 30) {
+    aiSuggestions.push('Add one line per section describing expected evidence and tone.')
+  }
+  if (!runConfiguration.hasEstimate) {
+    aiSuggestions.push('Run estimate before generation to catch budget issues early.')
+  }
+  if (aiSuggestions.length === 0) {
+    aiSuggestions.push('Run setup is balanced. Continue with generation and monitor job status.')
+  }
+
+  const phaseSummary =
+    jobStatus === 'running'
+      ? 'Generation is active. Focus on monitoring progress and wait for completion before editing prompts.'
+      : jobStatus === 'succeeded'
+        ? 'Generation finished. Move to Step 4 and accept or regenerate each section.'
+        : jobStatus === 'failed'
+          ? 'Last run failed. Inspect pre-flight flags, adjust brief/parameters, then retry.'
+          : 'Pre-run stage. Finalise brief and budget before launching.'
+
   return (
     <div className="space-y-3">
-      <DiagnosticCard title="Run prerequisites" description="Generation prerequisites before launching or retrying runs.">
+      <DiagnosticCard title="Run prerequisites" description="Checks before launching or retrying generation.">
         <p>Plan status: {planBuilt ? 'Built' : 'Not built'}</p>
         <p>Selected sections: {selectedSections.length}</p>
+        <p>Estimate ready: {runConfiguration.hasEstimate ? 'Yes' : 'No'}</p>
+        <p>Budget inputs: {costInputValid ? 'Valid' : 'Needs correction'}</p>
       </DiagnosticCard>
-      <DiagnosticCard title="Job monitor" description="Current generation job state from the wizard store.">
-        <p>Status: {jobStatus}</p>
-        <p className="text-muted-foreground">
-          {jobStatus === 'running' ? 'Generation is active.' : 'No active generation process.'}
-        </p>
+
+      <DiagnosticCard title="Generation brief quality" description="Prompt strength signals from the current brief.">
+        <p>Brief length: {briefWordCount} word(s)</p>
+        <p>Reasoning effort: {runConfiguration.reasoningEffort}</p>
+        <p>Temperature: {runConfiguration.temperature.toFixed(1)}</p>
+      </DiagnosticCard>
+
+      <DiagnosticCard title="Timed flags" description="Context-aware alerts based on current run phase.">
+        <p>{phaseSummary}</p>
+        {flags.length === 0 ? (
+          <p className="text-emerald-600">No blocking flags detected.</p>
+        ) : (
+          flags.map((flag) => (
+            <div key={flag.text} className="flex items-start gap-2 rounded-md border border-border px-2 py-1">
+              <AlertTriangle className={flag.level === 'warn' ? 'mt-0.5 h-3.5 w-3.5 text-amber-600' : 'mt-0.5 h-3.5 w-3.5 text-muted-foreground'} />
+              <span className={flag.level === 'warn' ? 'text-amber-700' : 'text-muted-foreground'}>{flag.text}</span>
+            </div>
+          ))
+        )}
+      </DiagnosticCard>
+
+      <DiagnosticCard title="AI suggestions" description="Next best actions to improve generation reliability.">
+        {aiSuggestions.map((suggestion) => (
+          <div key={suggestion} className="flex items-start gap-2 rounded-md border border-border px-2 py-1">
+            <Lightbulb className="mt-0.5 h-3.5 w-3.5 text-amber-600" />
+            <span>{suggestion}</span>
+          </div>
+        ))}
       </DiagnosticCard>
     </div>
   )
@@ -452,9 +558,28 @@ function renderStepTwoPlanIntelligence({
         continue
       }
       redundancies.push(
-        `${toTitleCaseSection(left.section)} ↔ ${toTitleCaseSection(right.section)}: "${left.text}"`,
+        `${toTitleCaseSection(left.section)} <-> ${toTitleCaseSection(right.section)}: "${left.text}"`,
       )
     }
+  }
+
+  const weakAlignmentCount = alignmentBySection.filter((section) => !section.reflected).length
+  const underSpecifiedCount = depthBySection.filter((section) => section.underSpecified).length
+  const aiSuggestions: string[] = []
+  if (missingCoreSections.length > 0) {
+    aiSuggestions.push(`Add missing core sections: ${missingCoreSections.map((section) => toTitleCaseSection(section)).join(', ')}.`)
+  }
+  if (weakAlignmentCount > 0) {
+    aiSuggestions.push('Rewrite weak sections so each reflects the objective signal.')
+  }
+  if (underSpecifiedCount > 0) {
+    aiSuggestions.push('Expand sparse sections to at least two bullets each.')
+  }
+  if (redundancies.length > 0) {
+    aiSuggestions.push('Merge or separate overlapping bullets to reduce redundancy.')
+  }
+  if (aiSuggestions.length === 0) {
+    aiSuggestions.push('Plan coherence looks strong for Step 3 generation.')
   }
 
   return (
@@ -476,7 +601,7 @@ function renderStepTwoPlanIntelligence({
             <div key={section.name} className="flex items-center justify-between rounded-md border border-border px-2 py-1">
               <span>{toTitleCaseSection(section.name)}</span>
               <span className={section.reflected ? 'text-emerald-600' : 'text-amber-600'}>
-                {section.reflected ? '✔ Objective reflected' : '⚠ Weak alignment'} ({section.overlapCount} keyword matches)
+                {section.reflected ? 'Objective reflected' : 'Weak alignment'} ({section.overlapCount} keyword matches)
               </span>
             </div>
           ))
@@ -512,6 +637,15 @@ function renderStepTwoPlanIntelligence({
           </div>
         )}
       </DiagnosticCard>
+
+      <DiagnosticCard title="AI suggestions" description="Prioritised edits before moving to Step 3.">
+        {aiSuggestions.map((suggestion) => (
+          <div key={suggestion} className="flex items-start gap-2 rounded-md border border-border px-2 py-1">
+            <Lightbulb className="mt-0.5 h-3.5 w-3.5 text-amber-600" />
+            <span>{suggestion}</span>
+          </div>
+        ))}
+      </DiagnosticCard>
     </div>
   )
 }
@@ -525,6 +659,7 @@ export function InsightPanel() {
   const outlinePlan = useStudyCoreWizardStore((state) => state.outlinePlan)
   const planStatus = useStudyCoreWizardStore((state) => state.planStatus)
   const jobStatus = useStudyCoreWizardStore((state) => state.jobStatus)
+  const runConfiguration = useStudyCoreWizardStore((state) => state.runConfiguration)
 
   const [apiInsight, setApiInsight] = useState<SelectionInsight | null>(null)
   const [loadingInsight, setLoadingInsight] = useState(false)
@@ -564,7 +699,7 @@ export function InsightPanel() {
       return 'Checks on research frame completeness before planning.'
     }
     if (currentStep === 3) {
-      return 'Run-focused diagnostics while generation controls are active.'
+      return 'Run-focused diagnostics, pre-flight flags, and next actions for Step 3.'
     }
     return 'Evidence, QC, derivation, and citations are synchronized to your current selection.'
   }, [currentStep, onStudyCoreRoute])
@@ -695,6 +830,7 @@ export function InsightPanel() {
                 selectedSections,
                 planBuilt: planStatus === 'built',
                 jobStatus,
+                runConfiguration,
               })
             : null}
         </div>
@@ -702,3 +838,4 @@ export function InsightPanel() {
     </aside>
   )
 }
+

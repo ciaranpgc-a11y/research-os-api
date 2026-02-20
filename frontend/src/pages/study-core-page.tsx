@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { RunSummaryBar } from '@/components/study-core/RunSummaryBar'
+import { RunEntryPanel } from '@/components/study-core/RunEntryPanel'
 import { StepContext, type ContextFormValues } from '@/components/study-core/StepContext'
 import { StepDraftReview } from '@/components/study-core/StepDraftReview'
 import { StepLinkQcExport } from '@/components/study-core/StepLinkQcExport'
 import { StepPlan } from '@/components/study-core/StepPlan'
 import { StepRun } from '@/components/study-core/StepRun'
 import { StudyCoreStepper, type WizardStepItem } from '@/components/study-core/StudyCoreStepper'
-import { computeReadinessScore } from '@/lib/readiness-score'
 import { fetchJournalOptions } from '@/lib/study-core-api'
 import { useStudyCoreWizardStore, type WizardStep } from '@/store/use-study-core-wizard-store'
 import type {
@@ -23,13 +23,19 @@ type RunContext = { projectId: string; manuscriptId: string }
 const CONTEXT_KEY = 'aawe-run-context'
 const CORE_SECTIONS = ['introduction', 'methods', 'results', 'discussion']
 
-function buildNotesContext(values: ContextFormValues): string {
-  return [
-    `research_objective: ${values.researchObjective}`,
-    `study_type: ${values.studyType}`,
-    `primary_data_source: ${values.primaryDataSource}`,
-    `primary_analytical_claim: ${values.primaryAnalyticalClaim}`,
-  ].join('\n')
+function buildGenerationBrief(values: ContextFormValues, sections: string[]): string {
+  const lines = [
+    values.researchObjective.trim() ? `Objective: ${values.researchObjective.trim()}` : '',
+    values.studyType.trim() ? `Study type: ${values.studyType.trim()}` : '',
+    values.primaryDataSource.trim() ? `Primary data source: ${values.primaryDataSource.trim()}` : '',
+    values.primaryAnalyticalClaim.trim() ? `Primary analytical claim: ${values.primaryAnalyticalClaim.trim()}` : '',
+    sections.length > 0
+      ? `Priority sections: ${sections
+          .map((section) => section.charAt(0).toUpperCase() + section.slice(1))
+          .join(', ')}`
+      : '',
+  ]
+  return lines.filter(Boolean).join('\n')
 }
 
 function readStoredRunContext(): RunContext | null {
@@ -45,10 +51,10 @@ function readStoredRunContext(): RunContext | null {
 }
 
 const STEP_ITEMS: WizardStepItem[] = [
-  { id: 1, title: 'Research Frame', helper: 'Set a new frame or import existing draft text.' },
-  { id: 2, title: 'Plan Sections', helper: 'Choose sections and build a plan.' },
-  { id: 3, title: 'Run Generation', helper: 'Estimate and run draft generation.' },
-  { id: 4, title: 'Draft Review', helper: 'Accept or regenerate sections.' },
+  { id: 1, title: 'Research Frame', helper: 'Define the core frame for a new manuscript run.' },
+  { id: 2, title: 'Plan Sections', helper: 'Choose sections and refine an outline.' },
+  { id: 3, title: 'Run Generation', helper: 'Estimate cost and run generation.' },
+  { id: 4, title: 'Draft Review', helper: 'Accept or regenerate section drafts.' },
   { id: 5, title: 'Link + QC + Export', helper: 'Link evidence, run QC, then export.' },
 ]
 
@@ -59,9 +65,6 @@ export function StudyCorePage() {
   const jobStatus = useStudyCoreWizardStore((state) => state.jobStatus)
   const acceptedSections = useStudyCoreWizardStore((state) => state.acceptedSections)
   const qcStatus = useStudyCoreWizardStore((state) => state.qcStatus)
-  const contextFields = useStudyCoreWizardStore((state) => state.contextFields)
-  const readinessSections = useStudyCoreWizardStore((state) => state.selectedSections)
-  const qcSeverityCounts = useStudyCoreWizardStore((state) => state.qcSeverityCounts)
   const devOverride = useStudyCoreWizardStore((state) => state.devOverride)
   const setCurrentStep = useStudyCoreWizardStore((state) => state.setCurrentStep)
   const setContextStatus = useStudyCoreWizardStore((state) => state.setContextStatus)
@@ -73,6 +76,7 @@ export function StudyCorePage() {
   const setWizardSections = useStudyCoreWizardStore((state) => state.setSelectedSections)
   const setOutlinePlan = useStudyCoreWizardStore((state) => state.setOutlinePlan)
   const setQcSeverityCounts = useStudyCoreWizardStore((state) => state.setQcSeverityCounts)
+  const setRunConfiguration = useStudyCoreWizardStore((state) => state.setRunConfiguration)
   const canNavigateToStep = useStudyCoreWizardStore((state) => state.canNavigateToStep)
 
   const [journals, setJournals] = useState<JournalOption[]>([])
@@ -87,7 +91,8 @@ export function StudyCorePage() {
   })
 
   const [selectedSections, setSelectedSections] = useState<string[]>(CORE_SECTIONS)
-  const [notesContext, setNotesContext] = useState(buildNotesContext(contextValues))
+  const [generationBrief, setGenerationBrief] = useState(buildGenerationBrief(contextValues, CORE_SECTIONS))
+  const [generationBriefTouched, setGenerationBriefTouched] = useState(false)
   const [temperature, setTemperature] = useState(0.3)
   const [reasoningEffort, setReasoningEffort] = useState<'low' | 'medium' | 'high'>('medium')
   const [maxCostUsd, setMaxCostUsd] = useState('0.08')
@@ -146,6 +151,11 @@ export function StudyCorePage() {
     return completed
   }, [acceptedSections, contextStatus, jobStatus, planStatus, qcStatus])
 
+  const suggestedBrief = useMemo(
+    () => buildGenerationBrief(contextValues, selectedSections),
+    [contextValues, selectedSections],
+  )
+
   useEffect(() => {
     void fetchJournalOptions()
       .then((payload) => {
@@ -170,6 +180,13 @@ export function StudyCorePage() {
   }, [runContext, setContextStatus])
 
   useEffect(() => {
+    if (generationBriefTouched) {
+      return
+    }
+    setGenerationBrief(suggestedBrief)
+  }, [generationBriefTouched, suggestedBrief])
+
+  useEffect(() => {
     setAcceptedSections(acceptedSectionKeys.length)
   }, [acceptedSectionKeys, setAcceptedSections])
 
@@ -185,20 +202,26 @@ export function StudyCorePage() {
     setOutlinePlan(plan)
   }, [plan, setOutlinePlan])
 
-  const readinessScore = useMemo(
-    () =>
-      computeReadinessScore({
-        contextFields,
-        planStatus,
-        selectedSections: readinessSections,
-        acceptedSections,
-        qcStatus,
-        qcSeverityCounts,
-      }),
-    [acceptedSections, contextFields, planStatus, qcSeverityCounts, qcStatus, readinessSections],
-  )
+  useEffect(() => {
+    setRunConfiguration({
+      generationBrief,
+      temperature,
+      reasoningEffort,
+      maxCostUsd,
+      dailyBudgetUsd,
+      hasEstimate: Boolean(estimatePreview),
+    })
+  }, [
+    dailyBudgetUsd,
+    estimatePreview,
+    generationBrief,
+    maxCostUsd,
+    reasoningEffort,
+    setRunConfiguration,
+    temperature,
+  ])
 
-  const onContextSaved = (
+  const applyContextPayload = (
     payload: {
       projectId: string
       manuscriptId: string
@@ -210,14 +233,23 @@ export function StudyCorePage() {
   ) => {
     const shouldAdvanceToPlan = options?.advanceToPlan ?? true
     setRunContext({ projectId: payload.projectId, manuscriptId: payload.manuscriptId })
+    const nextSections = payload.recommendedSections.length > 0 ? payload.recommendedSections : selectedSections
     if (payload.recommendedSections.length > 0) {
       setSelectedSections(payload.recommendedSections)
     }
-    setNotesContext(buildNotesContext(contextValues))
+    setGenerationBrief(buildGenerationBrief(contextValues, nextSections))
+    setGenerationBriefTouched(false)
     setContextStatus('saved')
     if (shouldAdvanceToPlan) {
       setCurrentStep(2)
     }
+  }
+
+  const markDraftSeededFlowReady = (sections: string[]) => {
+    setSelectedSections(sections)
+    setPlan((current) => current ?? { sections: sections.map((section) => ({ name: section, bullets: [] })) })
+    setPlanStatus('built')
+    setJobStatus('succeeded')
   }
 
   const onPlanChange = (nextPlan: OutlinePlanState | null) => {
@@ -259,7 +291,7 @@ export function StudyCorePage() {
     if (contextStatus === 'empty') {
       return {
         label: 'Set context',
-        nextActionText: 'Complete Step 1 to initialize a project and manuscript run context.',
+        nextActionText: 'Complete Step 1 to initialise a project and manuscript run context.',
         onAction: () => setCurrentStep(1),
       }
     }
@@ -313,7 +345,7 @@ export function StudyCorePage() {
     }
     return {
       label: 'Run QC',
-      nextActionText: 'QC has warnings or failures. Open Step 5 to review checklist cards and choose export mode.',
+      nextActionText: 'QC has warnings or failures. Open Step 5 to review checks and choose export mode.',
       onAction: () => setCurrentStep(5),
     }
   }, [acceptedSections, contextStatus, jobStatus, planStatus, primaryExportAction, qcStatus, setCurrentStep])
@@ -334,22 +366,7 @@ export function StudyCorePage() {
             }))
           }
           onTargetJournalChange={setTargetJournal}
-          onContextSaved={onContextSaved}
-          onDraftImported={({ sections, draftsBySection: importedDrafts }) => {
-            setDraftsBySection((current) => ({ ...current, ...importedDrafts }))
-            setSelectedSections(sections)
-            setCurrentStep(4)
-          }}
-          onRefineLoaded={({ section, text }) => {
-            setDraftsBySection((current) => ({ ...current, [section]: text }))
-            setSelectedSections((current) => {
-              if (current.includes(section)) {
-                return current
-              }
-              return [...current, section]
-            })
-            setCurrentStep(4)
-          }}
+          onContextSaved={(payload) => applyContextPayload(payload, { advanceToPlan: true })}
           onStatus={setStatus}
           onError={setError}
         />
@@ -362,7 +379,7 @@ export function StudyCorePage() {
           targetJournal={targetJournal}
           answers={answers}
           selectedSections={selectedSections}
-          notesContext={notesContext}
+          generationBrief={generationBrief}
           plan={plan}
           estimatePreview={estimatePreview}
           onSectionsChange={setSelectedSections}
@@ -379,14 +396,18 @@ export function StudyCorePage() {
         <StepRun
           runContext={runContext}
           selectedSections={selectedSections}
-          notesContext={notesContext}
+          generationBrief={generationBrief}
+          suggestedBrief={suggestedBrief}
           temperature={temperature}
           reasoningEffort={reasoningEffort}
           maxCostUsd={maxCostUsd}
           dailyBudgetUsd={dailyBudgetUsd}
           estimate={estimatePreview}
           activeJob={activeJob}
-          onNotesContextChange={setNotesContext}
+          onGenerationBriefChange={(value) => {
+            setGenerationBriefTouched(true)
+            setGenerationBrief(value)
+          }}
           onTemperatureChange={setTemperature}
           onReasoningEffortChange={setReasoningEffort}
           onMaxCostChange={setMaxCostUsd}
@@ -405,7 +426,7 @@ export function StudyCorePage() {
         <StepDraftReview
           runContext={runContext}
           selectedSections={selectedSections}
-          notesContext={notesContext}
+          generationBrief={generationBrief}
           styleProfile={styleProfile}
           draftsBySection={draftsBySection}
           acceptedSectionKeys={acceptedSectionKeys}
@@ -441,13 +462,34 @@ export function StudyCorePage() {
         <p className="text-sm text-muted-foreground">Follow a guided 5-step workflow to move from setup through export with progressive disclosure.</p>
       </header>
 
+      <RunEntryPanel
+        runContext={runContext}
+        targetJournal={targetJournal}
+        contextValues={contextValues}
+        onOpenStepOne={() => setCurrentStep(1)}
+        onContextEstablished={(payload) => {
+          applyContextPayload(payload, { advanceToPlan: false })
+        }}
+        onDraftImported={({ sections, draftsBySection: importedDrafts }) => {
+          setDraftsBySection((current) => ({ ...current, ...importedDrafts }))
+          markDraftSeededFlowReady(sections)
+          setCurrentStep(4)
+        }}
+        onRefineLoaded={({ section, text }) => {
+          setDraftsBySection((current) => ({ ...current, [section]: text }))
+          markDraftSeededFlowReady([section])
+          setCurrentStep(4)
+        }}
+        onStatus={setStatus}
+        onError={setError}
+      />
+
       <RunSummaryBar
         contextStatus={contextStatus}
         planStatus={planStatus}
         jobStatus={jobStatus}
         acceptedSections={acceptedSections}
         qcStatus={qcStatus}
-        readinessScore={readinessScore}
         primaryActionLabel={summaryState.label}
         nextActionText={summaryState.nextActionText}
         onPrimaryAction={summaryState.onAction}

@@ -1,4 +1,4 @@
-import { Loader2, Play, RotateCcw, Square, Info } from 'lucide-react'
+import { AlertTriangle, Info, Loader2, Play, RotateCcw, Square } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -20,14 +20,15 @@ type RunContext = { projectId: string; manuscriptId: string } | null
 type StepRunProps = {
   runContext: RunContext
   selectedSections: string[]
-  notesContext: string
+  generationBrief: string
+  suggestedBrief: string
   temperature: number
   reasoningEffort: 'low' | 'medium' | 'high'
   maxCostUsd: string
   dailyBudgetUsd: string
   estimate: GenerationEstimate | null
   activeJob: GenerationJobPayload | null
-  onNotesContextChange: (value: string) => void
+  onGenerationBriefChange: (value: string) => void
   onTemperatureChange: (value: number) => void
   onReasoningEffortChange: (value: 'low' | 'medium' | 'high') => void
   onMaxCostChange: (value: string) => void
@@ -37,6 +38,11 @@ type StepRunProps = {
   onJobStatusChange: (value: 'idle' | 'running' | 'succeeded' | 'failed') => void
   onStatus: (message: string) => void
   onError: (message: string) => void
+}
+
+type RunFlag = {
+  tone: 'warn' | 'info'
+  text: string
 }
 
 function parseOptionalNumber(value: string): number | null {
@@ -72,17 +78,48 @@ function formatTimestamp(value: string | null): string {
   return parsed.toLocaleString()
 }
 
+function computeRunFlags({
+  hasContext,
+  selectedSections,
+  generationBrief,
+  estimate,
+}: {
+  hasContext: boolean
+  selectedSections: string[]
+  generationBrief: string
+  estimate: GenerationEstimate | null
+}): RunFlag[] {
+  const flags: RunFlag[] = []
+  if (!hasContext) {
+    flags.push({ tone: 'warn', text: 'Context is not saved. Complete Step 1 before running generation.' })
+  }
+  if (selectedSections.length === 0) {
+    flags.push({ tone: 'warn', text: 'No sections selected. Build a section plan in Step 2 first.' })
+  }
+  const briefWords = generationBrief.trim().split(/\s+/).filter(Boolean).length
+  if (briefWords < 20) {
+    flags.push({ tone: 'warn', text: 'Generation brief is sparse. Add objective, data source, and expected output detail.' })
+  } else if (briefWords < 40) {
+    flags.push({ tone: 'info', text: 'Generation brief is usable but could be more specific for stronger output control.' })
+  }
+  if (!estimate) {
+    flags.push({ tone: 'info', text: 'Run cost is not estimated yet. Use Estimate cost before launching.' })
+  }
+  return flags
+}
+
 export function StepRun({
   runContext,
   selectedSections,
-  notesContext,
+  generationBrief,
+  suggestedBrief,
   temperature,
   reasoningEffort,
   maxCostUsd,
   dailyBudgetUsd,
   estimate,
   activeJob,
-  onNotesContextChange,
+  onGenerationBriefChange,
   onTemperatureChange,
   onReasoningEffortChange,
   onMaxCostChange,
@@ -122,7 +159,7 @@ export function StepRun({
   }, [activeJob, onJobStatusChange])
 
   const explainTemperature = 'Lower values keep writing steadier; higher values allow more variation.'
-  const explainReasoning = 'Higher effort spends more reasoning budget to refine structure and phrasing.'
+  const explainReasoning = 'Higher effort spends more reasoning budget to improve structure and phrasing.'
 
   const summaryBadge = useMemo(() => {
     if (!activeJob) {
@@ -135,6 +172,17 @@ export function StepRun({
     )
   }, [activeJob])
 
+  const runFlags = useMemo(
+    () =>
+      computeRunFlags({
+        hasContext: Boolean(runContext),
+        selectedSections,
+        generationBrief,
+        estimate,
+      }),
+    [estimate, generationBrief, runContext, selectedSections],
+  )
+
   const onEstimateCost = async () => {
     if (selectedSections.length === 0) {
       return
@@ -145,7 +193,7 @@ export function StepRun({
     try {
       const payload = await estimateGeneration({
         sections: selectedSections,
-        notesContext: `${notesContext}\nrun_temperature: ${temperature}\nreasoning_effort: ${reasoningEffort}`,
+        notesContext: `${generationBrief}\nrun_temperature: ${temperature}\nreasoning_effort: ${reasoningEffort}`,
       })
       onEstimateChange(payload)
       onStatus(`Estimated high-side cost: $${payload.estimated_cost_usd_high.toFixed(4)}.`)
@@ -177,6 +225,10 @@ export function StepRun({
       setInlineError('Select at least one section in Step 2 before running generation.')
       return
     }
+    if (!generationBrief.trim()) {
+      setInlineError('Generation brief cannot be empty.')
+      return
+    }
 
     setBusy('run')
     onError('')
@@ -185,7 +237,7 @@ export function StepRun({
         projectId: runContext.projectId,
         manuscriptId: runContext.manuscriptId,
         sections: selectedSections,
-        notesContext: `${notesContext}\nrun_temperature: ${temperature}\nreasoning_effort: ${reasoningEffort}`,
+        notesContext: `${generationBrief}\nrun_temperature: ${temperature}\nreasoning_effort: ${reasoningEffort}`,
         maxEstimatedCostUsd: maxCost,
         projectDailyBudgetUsd: dailyBudget,
       })
@@ -238,20 +290,59 @@ export function StepRun({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Step 3: Estimate + Run Generation</CardTitle>
-        <CardDescription>Estimate expected cost, then run generation and monitor job status in one place.</CardDescription>
+        <CardTitle className="text-base">Step 3: Estimate and Run Generation</CardTitle>
+        <CardDescription>Set run parameters, estimate spend, and launch generation from one panel.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">Set run parameters, estimate the cost, then launch generation for the selected sections.</p>
+        <p className="text-sm text-muted-foreground">Use the generation brief to tell the model exactly what to prioritise in this run.</p>
 
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-muted-foreground">Notes context</label>
+        <div className="rounded-md border border-border/70 bg-muted/20 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-medium text-muted-foreground">Generation brief</p>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => onGenerationBriefChange(suggestedBrief)}
+              >
+                Use suggested brief
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => onGenerationBriefChange('')}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Include objective, data source, section priorities, and any wording constraints.
+          </p>
           <textarea
-            className="min-h-24 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-            value={notesContext}
-            onChange={(event) => onNotesContextChange(event.target.value)}
+            className="mt-2 min-h-28 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            value={generationBrief}
+            onChange={(event) => onGenerationBriefChange(event.target.value)}
+            placeholder={'Objective: ...\nData source: ...\nPriority sections: ...\nConstraints: ...'}
           />
         </div>
+
+        {runFlags.length > 0 ? (
+          <div className="space-y-2 rounded-md border border-border/70 bg-muted/20 p-3 text-xs">
+            <p className="font-medium">Pre-flight flags</p>
+            {runFlags.map((flag) => (
+              <div
+                key={flag.text}
+                className={flag.tone === 'warn' ? 'flex items-start gap-2 text-amber-700' : 'flex items-start gap-2 text-muted-foreground'}
+              >
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{flag.text}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
@@ -312,7 +403,7 @@ export function StepRun({
         {attemptedRun && inlineError ? <p className="text-xs text-destructive">{inlineError}</p> : null}
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={onEstimateCost} disabled={busy === 'estimate'}>
+          <Button variant="outline" className="text-muted-foreground hover:text-foreground" onClick={onEstimateCost} disabled={busy === 'estimate'}>
             {busy === 'estimate' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
             Estimate cost
           </Button>
@@ -364,4 +455,3 @@ export function StepRun({
     </Card>
   )
 }
-

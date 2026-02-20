@@ -14,7 +14,7 @@ type RunContext = { projectId: string; manuscriptId: string } | null
 type StepDraftReviewProps = {
   runContext: RunContext
   selectedSections: string[]
-  notesContext: string
+  generationBrief: string
   styleProfile: 'technical' | 'concise' | 'narrative_review'
   draftsBySection: Record<string, string>
   acceptedSectionKeys: string[]
@@ -43,7 +43,7 @@ function evidenceCountForSection(section: string, links: ClaimLinkSuggestion[]):
 export function StepDraftReview({
   runContext,
   selectedSections,
-  notesContext,
+  generationBrief,
   styleProfile,
   draftsBySection,
   acceptedSectionKeys,
@@ -96,7 +96,7 @@ export function StepDraftReview({
     try {
       const payload = await generateGroundedDraft({
         section,
-        notesContext,
+        notesContext: generationBrief,
         styleProfile,
         generationMode: 'full',
         planObjective: null,

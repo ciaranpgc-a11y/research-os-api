@@ -29,7 +29,7 @@ type StepPlanProps = {
   targetJournal: string
   answers: Record<string, string>
   selectedSections: string[]
-  notesContext: string
+  generationBrief: string
   plan: OutlinePlanState | null
   estimatePreview: GenerationEstimate | null
   onSectionsChange: (sections: string[]) => void
@@ -166,7 +166,7 @@ export function StepPlan({
   targetJournal,
   answers,
   selectedSections,
-  notesContext,
+  generationBrief,
   plan,
   estimatePreview,
   onSectionsChange,
@@ -238,7 +238,7 @@ export function StepPlan({
     try {
       const payload = await estimateGeneration({
         sections: selectedSections,
-        notesContext,
+        notesContext: generationBrief,
       })
       onEstimateChange(payload)
       onStatus(`Estimate preview ready (high-side $${payload.estimated_cost_usd_high.toFixed(4)}).`)
@@ -310,7 +310,12 @@ export function StepPlan({
               <Button
                 key={section}
                 size="sm"
-                variant={selectedSections.includes(section) ? 'default' : 'outline'}
+                variant="outline"
+                className={
+                  selectedSections.includes(section)
+                    ? 'border-border bg-muted text-foreground hover:bg-muted/80'
+                    : 'text-muted-foreground hover:text-foreground'
+                }
                 onClick={() => onSectionsChange(toggleSection(section, selectedSections))}
               >
                 {titleCaseSection(section)}
@@ -326,7 +331,12 @@ export function StepPlan({
               <Button
                 key={section}
                 size="sm"
-                variant={selectedSections.includes(section) ? 'default' : 'outline'}
+                variant="outline"
+                className={
+                  selectedSections.includes(section)
+                    ? 'border-border bg-muted text-foreground hover:bg-muted/80'
+                    : 'text-muted-foreground hover:text-foreground'
+                }
                 onClick={() => onSectionsChange(toggleSection(section, selectedSections))}
               >
                 {titleCaseSection(section)}
@@ -496,4 +506,3 @@ export function StepPlan({
     </Card>
   )
 }
-

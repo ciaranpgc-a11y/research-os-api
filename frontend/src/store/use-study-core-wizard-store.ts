@@ -18,6 +18,15 @@ export type QcSeverityCounts = {
   medium: number
   low: number
 }
+export type RunReasoningEffort = 'low' | 'medium' | 'high'
+export type RunConfigurationState = {
+  generationBrief: string
+  temperature: number
+  reasoningEffort: RunReasoningEffort
+  maxCostUsd: string
+  dailyBudgetUsd: string
+  hasEstimate: boolean
+}
 
 const DEFAULT_CONTEXT_READINESS_FIELDS: ContextReadinessFields = {
   projectTitle: '',
@@ -33,6 +42,15 @@ const DEFAULT_QC_SEVERITY_COUNTS: QcSeverityCounts = {
   low: 0,
 }
 
+const DEFAULT_RUN_CONFIGURATION: RunConfigurationState = {
+  generationBrief: '',
+  temperature: 0.3,
+  reasoningEffort: 'medium',
+  maxCostUsd: '0.08',
+  dailyBudgetUsd: '0.25',
+  hasEstimate: false,
+}
+
 type WizardStore = {
   currentStep: WizardStep
   contextStatus: ContextStatus
@@ -44,6 +62,7 @@ type WizardStore = {
   selectedSections: string[]
   outlinePlan: OutlinePlanState | null
   qcSeverityCounts: QcSeverityCounts
+  runConfiguration: RunConfigurationState
   devOverride: boolean
   setCurrentStep: (step: WizardStep) => void
   setContextStatus: (status: ContextStatus) => void
@@ -55,6 +74,7 @@ type WizardStore = {
   setSelectedSections: (sections: string[]) => void
   setOutlinePlan: (plan: OutlinePlanState | null) => void
   setQcSeverityCounts: (counts: QcSeverityCounts) => void
+  setRunConfiguration: (value: Partial<RunConfigurationState>) => void
   canNavigateToStep: (targetStep: WizardStep) => boolean
   resetWizard: () => void
 }
@@ -80,6 +100,7 @@ export const useStudyCoreWizardStore = create<WizardStore>((set, get) => ({
   selectedSections: ['introduction', 'methods', 'results', 'discussion'],
   outlinePlan: null,
   qcSeverityCounts: DEFAULT_QC_SEVERITY_COUNTS,
+  runConfiguration: DEFAULT_RUN_CONFIGURATION,
   devOverride: import.meta.env.DEV,
   setCurrentStep: (step) => set({ currentStep: clampStep(step) }),
   setContextStatus: (status) => set({ contextStatus: status }),
@@ -98,6 +119,13 @@ export const useStudyCoreWizardStore = create<WizardStore>((set, get) => ({
         low: Math.max(0, counts.low),
       },
     }),
+  setRunConfiguration: (value) =>
+    set((state) => ({
+      runConfiguration: {
+        ...state.runConfiguration,
+        ...value,
+      },
+    })),
   canNavigateToStep: (targetStep) => {
     const state = get()
     if (state.devOverride) {
@@ -141,5 +169,6 @@ export const useStudyCoreWizardStore = create<WizardStore>((set, get) => ({
       selectedSections: ['introduction', 'methods', 'results', 'discussion'],
       outlinePlan: null,
       qcSeverityCounts: DEFAULT_QC_SEVERITY_COUNTS,
+      runConfiguration: DEFAULT_RUN_CONFIGURATION,
     }),
 }))
