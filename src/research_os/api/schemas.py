@@ -256,3 +256,77 @@ class ClaimCitationUpdateRequest(BaseModel):
 class CitationExportRequest(BaseModel):
     citation_ids: list[str] | None = None
     claim_id: str | None = None
+
+
+class GenerationEstimateRequest(BaseModel):
+    sections: list[str] | None = None
+    notes_context: str
+    model: str | None = None
+
+
+class GenerationEstimateResponse(BaseModel):
+    pricing_model: str
+    estimated_input_tokens: int
+    estimated_output_tokens_low: int
+    estimated_output_tokens_high: int
+    estimated_cost_usd_low: float
+    estimated_cost_usd_high: float
+
+
+class SectionPlanRequest(BaseModel):
+    target_journal: str = "generic-original"
+    answers: dict[str, str] = Field(default_factory=dict)
+    sections: list[str] | None = None
+
+
+class SectionPlanItemResponse(BaseModel):
+    section: str
+    objective: str
+    must_include: list[str] = Field(default_factory=list)
+    evidence_expectations: list[str] = Field(default_factory=list)
+    qc_focus: list[str] = Field(default_factory=list)
+    target_words_low: int
+    target_words_high: int
+    estimated_cost_usd_low: float
+    estimated_cost_usd_high: float
+
+
+class SectionPlanResponse(BaseModel):
+    inferred_study_type: str
+    inferred_primary_endpoint_type: str
+    recommended_sections: list[str] = Field(default_factory=list)
+    items: list[SectionPlanItemResponse] = Field(default_factory=list)
+    total_estimated_cost_usd_low: float
+    total_estimated_cost_usd_high: float
+
+
+class ClaimLinkerRequest(BaseModel):
+    claim_ids: list[str] | None = None
+    min_confidence: Literal["high", "medium", "low"] = "low"
+
+
+class ClaimLinkSuggestionResponse(BaseModel):
+    claim_id: str
+    claim_heading: str
+    result_id: str
+    result_type: str
+    confidence: Literal["high", "medium", "low"]
+    rationale: str
+    suggested_anchor_label: str
+
+
+class ClaimLinkerResponse(BaseModel):
+    run_id: str
+    generated_at: datetime
+    suggestions: list[ClaimLinkSuggestionResponse] = Field(default_factory=list)
+
+
+class QCGatedExportRequest(BaseModel):
+    include_empty: bool = False
+
+
+class ReferencePackRequest(BaseModel):
+    style: Literal["vancouver", "ama"] = "vancouver"
+    claim_ids: list[str] | None = None
+    citation_ids: list[str] | None = None
+    include_urls: bool = True

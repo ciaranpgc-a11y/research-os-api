@@ -14,6 +14,8 @@ from fastapi.responses import PlainTextResponse
 
 from research_os.config import get_openai_api_key
 from research_os.api.schemas import (
+    ClaimLinkerRequest,
+    ClaimLinkerResponse,
     CitationExportRequest,
     CitationRecordResponse,
     ClaimCitationStateResponse,
@@ -23,6 +25,8 @@ from research_os.api.schemas import (
     DraftSectionRequest,
     DraftSectionSuccessResponse,
     ErrorResponse,
+    GenerationEstimateRequest,
+    GenerationEstimateResponse,
     GenerationJobRetryRequest,
     GenerationJobResponse,
     HealthResponse,
@@ -38,6 +42,10 @@ from research_os.api.schemas import (
     ManuscriptResponse,
     ProjectCreateRequest,
     ProjectResponse,
+    QCGatedExportRequest,
+    ReferencePackRequest,
+    SectionPlanRequest,
+    SectionPlanResponse,
     WizardBootstrapRequest,
     WizardBootstrapResponse,
     WizardInferRequest,
@@ -46,6 +54,7 @@ from research_os.api.schemas import (
 from research_os.services.citation_service import (
     CitationRecordNotFoundError,
     export_citation_references,
+    export_reference_pack,
     get_claim_citation_state,
     list_citation_records,
     set_claim_citations,
@@ -75,17 +84,20 @@ from research_os.services.generation_job_service import (
     GenerationJobNotFoundError,
     GenerationJobStateError,
     cancel_generation_job,
+    estimate_generation_cost,
     enqueue_generation_job,
     get_generation_job_record,
     list_generation_jobs_for_manuscript,
     retry_generation_job,
     serialize_generation_job,
 )
+from research_os.services.claim_linker_service import suggest_claim_links
 from research_os.services.insight_service import (
     SelectionInsightNotFoundError,
     get_selection_insight,
 )
 from research_os.services.qc_service import run_qc_checks
+from research_os.services.section_planning_service import build_section_plan
 from research_os.services.manuscript_service import (
     ManuscriptGenerationError,
     draft_methods_from_notes,
@@ -282,6 +294,49 @@ def v1_run_aawe_qc() -> QCRunResponse:
     return QCRunResponse(**run_qc_checks())
 
 
+@app.post(
+    "/v1/aawe/generation/estimate",
+    response_model=GenerationEstimateResponse,
+    tags=["v1"],
+)
+def v1_estimate_aawe_generation(
+    request: GenerationEstimateRequest,
+) -> GenerationEstimateResponse:
+    payload = estimate_generation_cost(
+        sections=request.sections,
+        notes_context=request.notes_context,
+        model=request.model or "gpt-4.1-mini",
+    )
+    return GenerationEstimateResponse(**payload)
+
+
+@app.post(
+    "/v1/aawe/plan/sections",
+    response_model=SectionPlanResponse,
+    tags=["v1"],
+)
+def v1_plan_aawe_sections(request: SectionPlanRequest) -> SectionPlanResponse:
+    payload = build_section_plan(
+        target_journal=request.target_journal,
+        answers=request.answers,
+        sections=request.sections,
+    )
+    return SectionPlanResponse(**payload)
+
+
+@app.post(
+    "/v1/aawe/linker/claims",
+    response_model=ClaimLinkerResponse,
+    tags=["v1"],
+)
+def v1_link_aawe_claims(request: ClaimLinkerRequest) -> ClaimLinkerResponse:
+    payload = suggest_claim_links(
+        claim_ids=request.claim_ids,
+        min_confidence=request.min_confidence,
+    )
+    return ClaimLinkerResponse(**payload)
+
+
 @app.get("/v1/aawe/citations", response_model=list[CitationRecordResponse], tags=["v1"])
 def v1_list_aawe_citations(
     q: str = Query(default="", max_length=200),
@@ -342,6 +397,31 @@ def v1_export_aawe_citations(
         filename, body = export_citation_references(
             citation_ids=request.citation_ids,
             claim_id=request.claim_id,
+        )
+        return PlainTextResponse(
+            content=body,
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except CitationRecordNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.post(
+    "/v1/aawe/references/pack",
+    response_model=None,
+    responses=NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_export_aawe_reference_pack(
+    request: ReferencePackRequest,
+) -> PlainTextResponse | JSONResponse:
+    try:
+        filename, body = export_reference_pack(
+            style=request.style,
+            claim_ids=request.claim_ids,
+            citation_ids=request.citation_ids,
+            include_urls=request.include_urls,
         )
         return PlainTextResponse(
             content=body,
@@ -554,6 +634,43 @@ def v1_export_manuscript_markdown(
             project_id=project_id,
             manuscript_id=manuscript_id,
             include_empty_sections=include_empty,
+        )
+        return PlainTextResponse(
+            content=markdown,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.post(
+    "/v1/aawe/projects/{project_id}/manuscripts/{manuscript_id}/export/markdown",
+    response_model=None,
+    responses=NOT_FOUND_RESPONSES | CONFLICT_RESPONSES,
+    tags=["v1"],
+)
+def v1_qc_gated_export_manuscript_markdown(
+    project_id: str,
+    manuscript_id: str,
+    request: QCGatedExportRequest,
+) -> PlainTextResponse | JSONResponse:
+    qc_payload = run_qc_checks()
+    high_severity_count = int(qc_payload.get("high_severity_count", 0))
+    if high_severity_count > 0:
+        return _build_conflict_response(
+            (
+                "QC gate blocked export: "
+                f"{high_severity_count} high-severity issue(s) remain. "
+                "Resolve high-severity findings before export."
+            )
+        )
+
+    try:
+        filename, markdown = export_project_manuscript_markdown(
+            project_id=project_id,
+            manuscript_id=manuscript_id,
+            include_empty_sections=request.include_empty,
         )
         return PlainTextResponse(
             content=markdown,

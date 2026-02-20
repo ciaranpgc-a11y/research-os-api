@@ -423,6 +423,174 @@ def test_v1_aawe_selection_insight_reflects_claim_citation_updates(monkeypatch) 
     assert any("1 citation slot still open." == note for note in payload["qc"])
 
 
+def test_v1_estimate_aawe_generation_returns_cost_projection(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/aawe/generation/estimate",
+            json={
+                "sections": ["methods", "results"],
+                "notes_context": "HF cohort with adjusted Cox and logistic models.",
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["pricing_model"] == "gpt-4.1-mini"
+    assert payload["estimated_cost_usd_high"] >= payload["estimated_cost_usd_low"]
+    assert payload["estimated_output_tokens_high"] >= payload["estimated_output_tokens_low"]
+
+
+def test_v1_plan_aawe_sections_returns_section_plan(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/aawe/plan/sections",
+            json={
+                "target_journal": "ehj",
+                "answers": {
+                    "disease_focus": "Heart failure",
+                    "population": "Adults with index HF admission",
+                    "primary_outcome": "90-day readmission",
+                    "analysis_summary": "Adjusted Cox with calibration checks.",
+                    "key_findings": "Lower readmission with intervention.",
+                    "manuscript_goal": "generate_full_manuscript",
+                    "data_source": "manual_entry",
+                },
+                "sections": ["introduction", "methods", "results"],
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["inferred_study_type"] in {"observational", "cohort"}
+    assert len(payload["items"]) == 3
+    assert payload["items"][0]["section"] == "introduction"
+    assert payload["total_estimated_cost_usd_high"] >= payload["total_estimated_cost_usd_low"]
+
+
+def test_v1_link_aawe_claims_returns_filtered_suggestions(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/aawe/linker/claims",
+            json={
+                "claim_ids": ["results-p1", "discussion-p1"],
+                "min_confidence": "medium",
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["run_id"].startswith("lnk-")
+    claim_ids = {item["claim_id"] for item in payload["suggestions"]}
+    assert claim_ids == {"results-p1", "discussion-p1"}
+
+
+def test_v1_export_aawe_reference_pack_returns_ama_style(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    _set_citation_state(monkeypatch)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/aawe/references/pack",
+            json={
+                "style": "ama",
+                "claim_ids": ["results-p1"],
+                "include_urls": False,
+            },
+        )
+
+    assert response.status_code == 200
+    assert "attachment; filename=\"aawe-reference-pack-ama.txt\"" in response.headers.get(
+        "content-disposition",
+        "",
+    )
+    assert "- Style: AMA" in response.text
+    assert "TRIPOD+AI: Updated reporting guidance for clinical prediction models." in response.text
+
+
+def test_v1_qc_gated_export_markdown_blocks_on_high_severity(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "research_os.api.app.run_qc_checks",
+        lambda: {
+            "run_id": "qc-run-1",
+            "generated_at": "2026-02-20T20:00:00Z",
+            "total_findings": 2,
+            "high_severity_count": 1,
+            "medium_severity_count": 1,
+            "low_severity_count": 0,
+            "issues": [],
+        },
+    )
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={"title": "QC Gated Export Project", "target_journal": "ehj"},
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "qc-gated"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        export_response = client.post(
+            f"/v1/aawe/projects/{project_id}/manuscripts/{manuscript_id}/export/markdown",
+            json={"include_empty": False},
+        )
+
+    assert export_response.status_code == 409
+    assert export_response.json()["error"]["type"] == "conflict"
+    assert "QC gate blocked export" in export_response.json()["error"]["detail"]
+
+
+def test_v1_qc_gated_export_markdown_returns_markdown_when_qc_passes(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "research_os.api.app.run_qc_checks",
+        lambda: {
+            "run_id": "qc-run-2",
+            "generated_at": "2026-02-20T20:00:00Z",
+            "total_findings": 0,
+            "high_severity_count": 0,
+            "medium_severity_count": 0,
+            "low_severity_count": 0,
+            "issues": [],
+        },
+    )
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={"title": "QC Pass Export Project", "target_journal": "ehj"},
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "qc-pass"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        client.patch(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}",
+            json={"sections": {"methods": "Methods content for gated export."}},
+        )
+        export_response = client.post(
+            f"/v1/aawe/projects/{project_id}/manuscripts/{manuscript_id}/export/markdown",
+            json={"include_empty": False},
+        )
+
+    assert export_response.status_code == 200
+    assert "# QC Pass Export Project" in export_response.text
+    assert "Methods content for gated export." in export_response.text
+
+
 def test_v1_create_and_list_project_manuscripts(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
 
