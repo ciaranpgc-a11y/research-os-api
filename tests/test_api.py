@@ -674,6 +674,75 @@ def test_v1_synthesize_title_abstract_persists_to_manuscript(
     assert sections["abstract"] == payload["abstract"]
 
 
+def test_v1_generate_submission_pack_returns_cover_letter_and_bullets(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "research_os.api.app.build_submission_pack",
+        lambda **_: {
+            "run_id": "spk-test1234",
+            "generated_at": "2026-02-20T20:00:00Z",
+            "target_journal": "ehj",
+            "style_profile": "technical",
+            "cover_letter": "Please consider our manuscript for publication.",
+            "key_points": [
+                "Intervention reduced 90-day readmission risk.",
+                "Adjusted models remained stable.",
+                "Sensitivity checks were directionally consistent.",
+            ],
+            "highlights": [
+                "Real-world heart failure cohort.",
+                "Primary endpoint retained after adjustment.",
+                "Findings align with contemporary evidence.",
+            ],
+            "plain_language_summary": "Patients receiving intervention had fewer readmissions.",
+        },
+    )
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={"title": "Submission Pack Project", "target_journal": "ehj"},
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "submission-pack-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        patch_response = client.patch(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}",
+            json={
+                "sections": {
+                    "introduction": "Heart failure readmission burden remains high.",
+                    "methods": "Adults were modeled with adjusted Cox analysis.",
+                    "results": "Readmission risk was lower with intervention.",
+                    "discussion": "Findings were robust in sensitivity checks.",
+                }
+            },
+        )
+        assert patch_response.status_code == 200
+
+        response = client.post(
+            f"/v1/aawe/projects/{project_id}/manuscripts/{manuscript_id}/submission-pack",
+            json={
+                "style_profile": "technical",
+                "include_plain_language_summary": True,
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["run_id"] == "spk-test1234"
+    assert payload["target_journal"] == "ehj"
+    assert payload["style_profile"] == "technical"
+    assert "Please consider our manuscript" in payload["cover_letter"]
+    assert len(payload["key_points"]) == 3
+    assert len(payload["highlights"]) == 3
+    assert "fewer readmissions" in payload["plain_language_summary"]
+
+
 def test_v1_cross_section_consistency_check_returns_issue_summary(
     monkeypatch, tmp_path
 ) -> None:

@@ -7,6 +7,7 @@ import type {
   GenerationEstimate,
   ParagraphConstraint,
   ParagraphRegenerationPayload,
+  SubmissionPackPayload,
   GroundedDraftEvidenceLinkInput,
   GroundedDraftPayload,
   GenerationJobPayload,
@@ -174,6 +175,29 @@ export async function synthesizeTitleAbstract(input: {
     throw new Error(await parseApiError(response, `Title/abstract synthesis failed (${response.status})`))
   }
   return (await response.json()) as TitleAbstractPayload
+}
+
+export async function generateSubmissionPack(input: {
+  projectId: string
+  manuscriptId: string
+  styleProfile: 'technical' | 'concise' | 'narrative_review'
+  includePlainLanguageSummary: boolean
+}): Promise<SubmissionPackPayload> {
+  const response = await fetch(
+    `${API_BASE_URL}/v1/aawe/projects/${encodeURIComponent(input.projectId)}/manuscripts/${encodeURIComponent(input.manuscriptId)}/submission-pack`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        style_profile: input.styleProfile,
+        include_plain_language_summary: input.includePlainLanguageSummary,
+      }),
+    },
+  )
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Submission pack generation failed (${response.status})`))
+  }
+  return (await response.json()) as SubmissionPackPayload
 }
 
 export async function runConsistencyCheck(input: {

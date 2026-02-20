@@ -18,6 +18,7 @@ import {
   fetchGenerationJob,
   fetchJournalOptions,
   generateGroundedDraft,
+  generateSubmissionPack,
   planSections,
   regenerateParagraph,
   retryGeneration,
@@ -41,6 +42,7 @@ import type {
   ParagraphConstraint,
   ParagraphRegenerationPayload,
   SectionPlanPayload,
+  SubmissionPackPayload,
   TitleAbstractPayload,
 } from '@/types/study-core'
 
@@ -134,6 +136,8 @@ export function StudyCorePage() {
   })
   const [synthesisMaxWords, setSynthesisMaxWords] = useState('220')
   const [synthesizedDraft, setSynthesizedDraft] = useState<TitleAbstractPayload | null>(null)
+  const [includePlainLanguageSummary, setIncludePlainLanguageSummary] = useState(true)
+  const [submissionPack, setSubmissionPack] = useState<SubmissionPackPayload | null>(null)
   const [consistencyReport, setConsistencyReport] = useState<ConsistencyCheckPayload | null>(null)
   const [includeLowConsistencySeverity, setIncludeLowConsistencySeverity] = useState(false)
   const [paragraphSection, setParagraphSection] = useState('introduction')
@@ -486,6 +490,63 @@ export function StudyCorePage() {
     }
   }
 
+  const onGenerateSubmissionPack = async () => {
+    if (!runContext) {
+      setError('Create run context first.')
+      return
+    }
+    setBusy('submission-pack')
+    setError('')
+    setStatus('')
+    try {
+      const payload = await generateSubmissionPack({
+        projectId: runContext.projectId,
+        manuscriptId: runContext.manuscriptId,
+        styleProfile,
+        includePlainLanguageSummary,
+      })
+      setSubmissionPack(payload)
+      setStatus(`Submission pack generated (${payload.style_profile}).`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not generate submission pack.')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const onDownloadSubmissionPack = () => {
+    if (!submissionPack) {
+      return
+    }
+    const lines: string[] = []
+    lines.push('# Submission Pack')
+    lines.push('')
+    lines.push(`- Run: ${submissionPack.run_id}`)
+    lines.push(`- Target journal: ${submissionPack.target_journal}`)
+    lines.push(`- Style profile: ${submissionPack.style_profile}`)
+    lines.push('')
+    lines.push('## Cover Letter')
+    lines.push('')
+    lines.push(submissionPack.cover_letter)
+    lines.push('')
+    lines.push('## Key Points')
+    lines.push('')
+    submissionPack.key_points.forEach((point, index) => lines.push(`${index + 1}. ${point}`))
+    lines.push('')
+    lines.push('## Highlights')
+    lines.push('')
+    submissionPack.highlights.forEach((point, index) => lines.push(`${index + 1}. ${point}`))
+    lines.push('')
+    if (submissionPack.plain_language_summary.trim()) {
+      lines.push('## Plain-Language Summary')
+      lines.push('')
+      lines.push(submissionPack.plain_language_summary)
+      lines.push('')
+    }
+    const filename = `submission-pack-${submissionPack.run_id}.md`
+    downloadText(filename, lines.join('\n'), 'text/markdown;charset=utf-8')
+  }
+
   const onRunConsistency = async () => {
     if (!runContext) {
       setError('Create run context first.')
@@ -769,19 +830,31 @@ export function StudyCorePage() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle className="text-base">Synthesis + Consistency + Paragraph Controls</CardTitle><CardDescription>Generate title/abstract, run cross-section consistency checks, and regenerate individual paragraphs.</CardDescription></CardHeader>
+          <CardHeader><CardTitle className="text-base">Synthesis + Consistency + Paragraph Controls</CardTitle><CardDescription>Generate title/abstract and submission pack, run cross-section consistency checks, and regenerate individual paragraphs.</CardDescription></CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-4">
               <Input value={synthesisMaxWords} onChange={(event) => setSynthesisMaxWords(event.target.value)} />
               <Button variant="outline" onClick={onSynthesizeTitleAbstract} disabled={busy === 'synthesize' || !runContext}>
                 {busy === 'synthesize' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}
                 Synthesize Title + Abstract
+              </Button>
+              <Button variant="outline" onClick={onGenerateSubmissionPack} disabled={busy === 'submission-pack' || !runContext}>
+                {busy === 'submission-pack' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}
+                Generate Submission Pack
               </Button>
               <label className="flex items-center gap-2 rounded-md border border-border px-3 text-sm">
                 <input type="checkbox" checked={includeLowConsistencySeverity} onChange={(event) => setIncludeLowConsistencySeverity(event.target.checked)} />
                 include low severity
               </label>
             </div>
+            <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
+              <input
+                type="checkbox"
+                checked={includePlainLanguageSummary}
+                onChange={(event) => setIncludePlainLanguageSummary(event.target.checked)}
+              />
+              include plain-language summary in submission pack
+            </label>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={onRunConsistency} disabled={busy === 'consistency' || !runContext}>
                 {busy === 'consistency' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
@@ -799,6 +872,26 @@ export function StudyCorePage() {
                 <p>{synthesizedDraft.title}</p>
                 <p className="font-medium">Abstract</p>
                 <p>{synthesizedDraft.abstract}</p>
+              </div>
+            ) : null}
+            {submissionPack ? (
+              <div className="space-y-1 rounded-md border border-border p-2 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium">Submission Pack</p>
+                  <Button size="sm" variant="outline" onClick={onDownloadSubmissionPack}>Download</Button>
+                </div>
+                <p className="font-medium">Cover Letter</p>
+                <p>{submissionPack.cover_letter}</p>
+                <p className="font-medium">Key Points</p>
+                {submissionPack.key_points.map((point, index) => <p key={`kp-${index}`}>{index + 1}. {point}</p>)}
+                <p className="font-medium">Highlights</p>
+                {submissionPack.highlights.map((point, index) => <p key={`hl-${index}`}>{index + 1}. {point}</p>)}
+                {submissionPack.plain_language_summary ? (
+                  <>
+                    <p className="font-medium">Plain-Language Summary</p>
+                    <p>{submissionPack.plain_language_summary}</p>
+                  </>
+                ) : null}
               </div>
             ) : null}
             {consistencyReport ? (

@@ -54,6 +54,8 @@ from research_os.api.schemas import (
     ReferencePackRequest,
     SectionPlanRequest,
     SectionPlanResponse,
+    SubmissionPackRequest,
+    SubmissionPackResponse,
     TitleAbstractSynthesisRequest,
     TitleAbstractSynthesisResponse,
     WizardBootstrapRequest,
@@ -81,6 +83,7 @@ from research_os.services.project_service import (
     create_manuscript_snapshot,
     create_manuscript_for_project,
     create_project_record,
+    get_project_record,
     get_project_manuscript,
     list_manuscript_snapshots,
     list_project_manuscripts,
@@ -120,6 +123,10 @@ from research_os.services.paragraph_regeneration_service import (
 )
 from research_os.services.qc_service import run_qc_checks
 from research_os.services.section_planning_service import build_section_plan
+from research_os.services.submission_pack_service import (
+    SubmissionPackGenerationError,
+    build_submission_pack,
+)
 from research_os.services.manuscript_service import (
     ManuscriptGenerationError,
     draft_methods_from_notes,
@@ -227,6 +234,7 @@ def _build_error_response(exc: Exception) -> JSONResponse:
             GroundedDraftGenerationError,
             TitleAbstractSynthesisError,
             ParagraphRegenerationError,
+            SubmissionPackGenerationError,
         ),
     ):
         return JSONResponse(
@@ -592,6 +600,33 @@ def v1_regenerate_section_paragraph(
         persisted=persisted,
         manuscript=manuscript_payload,
     )
+
+
+@app.post(
+    "/v1/aawe/projects/{project_id}/manuscripts/{manuscript_id}/submission-pack",
+    response_model=SubmissionPackResponse,
+    responses=ERROR_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_generate_submission_pack(
+    project_id: str,
+    manuscript_id: str,
+    request: SubmissionPackRequest,
+) -> SubmissionPackResponse | JSONResponse:
+    try:
+        project = get_project_record(project_id)
+        manuscript = get_project_manuscript(project_id, manuscript_id)
+    except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+
+    payload = build_submission_pack(
+        sections=dict(manuscript.sections or {}),
+        target_journal=project.target_journal,
+        style_profile=request.style_profile,
+        include_plain_language_summary=request.include_plain_language_summary,
+        model=request.model or "gpt-4.1-mini",
+    )
+    return SubmissionPackResponse(**payload)
 
 
 @app.post(

@@ -209,3 +209,14 @@ export type CitationAutofillPayload = {
   generated_at: string
   updated_claims: ClaimCitationAutofillState[]
 }
+
+export type SubmissionPackPayload = {
+  run_id: string
+  generated_at: string
+  target_journal: string
+  style_profile: 'technical' | 'concise' | 'narrative_review'
+  cover_letter: string
+  key_points: string[]
+  highlights: string[]
+  plain_language_summary: string
+}

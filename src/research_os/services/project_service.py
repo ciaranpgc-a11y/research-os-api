@@ -130,6 +130,16 @@ def list_project_records() -> list[Project]:
         return projects
 
 
+def get_project_record(project_id: str) -> Project:
+    create_all_tables()
+    with session_scope() as session:
+        project = session.get(Project, project_id)
+        if project is None:
+            raise ProjectNotFoundError(f"Project '{project_id}' was not found.")
+        session.expunge(project)
+        return project
+
+
 def create_manuscript_for_project(
     *,
     project_id: str,

@@ -437,6 +437,23 @@ class CitationAutofillResponse(BaseModel):
     updated_claims: list[ClaimCitationAutofillStateResponse] = Field(default_factory=list)
 
 
+class SubmissionPackRequest(BaseModel):
+    style_profile: Literal["technical", "concise", "narrative_review"] = "technical"
+    include_plain_language_summary: bool = True
+    model: str | None = None
+
+
+class SubmissionPackResponse(BaseModel):
+    run_id: str
+    generated_at: datetime
+    target_journal: str
+    style_profile: Literal["technical", "concise", "narrative_review"]
+    cover_letter: str
+    key_points: list[str] = Field(default_factory=list)
+    highlights: list[str] = Field(default_factory=list)
+    plain_language_summary: str = ""
+
+
 class ClaimLinkerRequest(BaseModel):
     claim_ids: list[str] | None = None
     min_confidence: Literal["high", "medium", "low"] = "low"
