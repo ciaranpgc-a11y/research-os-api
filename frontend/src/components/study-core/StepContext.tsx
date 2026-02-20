@@ -4,23 +4,9 @@ import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { INTERPRETATION_MODE_OPTIONS, RESEARCH_TYPE_OPTIONS } from '@/lib/research-frame-options'
 import { bootstrapRunContext } from '@/lib/study-core-api'
 import type { JournalOption } from '@/types/study-core'
-
-const STUDY_ARCHITECTURE_OPTIONS = [
-  'Retrospective observational',
-  'Prospective observational',
-  'Registry',
-  'Case series',
-  'Methodological/technical',
-] as const
-
-const INTERPRETATION_MODE_OPTIONS = [
-  'Descriptive',
-  'Associative',
-  'Hypothesis-generating mechanistic',
-  'Confirmatory',
-] as const
 
 export type ContextFormValues = {
   projectTitle: string
@@ -66,10 +52,10 @@ export function StepContext({
       nextErrors.projectTitle = 'Project title is required.'
     }
     if (!values.studyArchitecture.trim()) {
-      nextErrors.studyArchitecture = 'Study architecture is required.'
+      nextErrors.studyArchitecture = 'Research type is required.'
     }
     if (!values.researchObjective.trim()) {
-      nextErrors.researchObjective = 'Core research objective is required.'
+      nextErrors.researchObjective = 'Core objective summary is required.'
     }
     return nextErrors
   }, [values.projectTitle, values.researchObjective, values.studyArchitecture])
@@ -114,13 +100,13 @@ export function StepContext({
   }
 
   return (
-    <div className="space-y-4 rounded-lg border border-border bg-card p-4">
+    <div className="space-y-5 rounded-lg border border-border bg-card p-5">
       <div className="space-y-1">
         <h2 className="text-base font-semibold">Step 1: Research Frame</h2>
         <p className="text-sm text-muted-foreground">Define the inferential contract before section planning.</p>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-2">
         <div className="space-y-1">
           <Label htmlFor="context-project-title">Project title</Label>
           <Input
@@ -149,17 +135,17 @@ export function StepContext({
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-2">
         <div className="space-y-1">
-          <Label htmlFor="context-study-architecture">Study architecture</Label>
+          <Label htmlFor="context-study-architecture">Research type</Label>
           <select
             id="context-study-architecture"
             className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
             value={values.studyArchitecture}
             onChange={(event) => onValueChange('studyArchitecture', event.target.value)}
           >
-            <option value="">Select architecture</option>
-            {STUDY_ARCHITECTURE_OPTIONS.map((option) => (
+            <option value="">Select research type</option>
+            {RESEARCH_TYPE_OPTIONS.map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>
@@ -187,11 +173,11 @@ export function StepContext({
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="context-research-objective">Core objective</Label>
+        <Label htmlFor="context-research-objective">Core objective summary</Label>
         <textarea
           id="context-research-objective"
-          className="min-h-28 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-          placeholder="State the objective in one sentence with population and endpoint."
+          className="min-h-44 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+          placeholder="Summarize the research in 2-4 sentences: population, imaging modality, endpoint, and interpretation scope."
           value={values.researchObjective}
           onChange={(event) => onValueChange('researchObjective', event.target.value)}
         />

@@ -2,10 +2,10 @@ import { Button } from '@/components/ui/button'
 
 type Step1PanelProps = {
   objective: string
-  studyArchitecture: string
+  researchType: string
   guardrailsEnabled: boolean
   onReplaceObjective: (value: string) => void
-  onApplyArchitecture: (value: string) => void
+  onApplyResearchType: (value: string) => void
   onGuardrailsChange: (value: boolean) => void
 }
 
@@ -27,35 +27,43 @@ function buildObjectiveOptions(objective: string): string[] {
   ]
 }
 
-function architectureSuggestion(studyArchitecture: string, objective: string): string | null {
-  const architecture = studyArchitecture.toLowerCase()
+function researchTypeSuggestion(researchType: string, objective: string): string | null {
+  const currentType = researchType.toLowerCase()
   const objectiveText = objective.toLowerCase()
-  const cohortLikeObjective =
-    objectiveText.includes('cohort') ||
-    objectiveText.includes('association') ||
-    objectiveText.includes('adjusted') ||
-    objectiveText.includes('risk') ||
-    objectiveText.includes('outcome')
+  const imagingObjective =
+    objectiveText.includes('imaging') ||
+    objectiveText.includes('cmr') ||
+    objectiveText.includes('echo') ||
+    objectiveText.includes('ct') ||
+    objectiveText.includes('mri')
+  const diagnosticObjective =
+    objectiveText.includes('diagnostic') ||
+    objectiveText.includes('sensitivity') ||
+    objectiveText.includes('specificity') ||
+    objectiveText.includes('auc')
 
-  if (!architecture) {
-    return 'Retrospective observational'
+  if (!currentType) {
+    return imagingObjective ? 'Cross-sectional imaging biomarker study' : 'Retrospective observational cohort'
   }
-  if (cohortLikeObjective && architecture !== 'retrospective observational') {
-    return 'Retrospective observational'
+  if (diagnosticObjective && !currentType.includes('diagnostic')) {
+    return 'Diagnostic accuracy imaging study'
+  }
+  if (imagingObjective && !currentType.includes('imaging')) {
+    return 'Cross-sectional imaging biomarker study'
   }
   return null
 }
 
 export function Step1Panel({
   objective,
-  studyArchitecture,
+  researchType,
   guardrailsEnabled,
   onReplaceObjective,
-  onApplyArchitecture,
+  onApplyResearchType,
   onGuardrailsChange,
 }: Step1PanelProps) {
   const objectiveOptions = buildObjectiveOptions(objective)
-  const suggestedArchitecture = architectureSuggestion(studyArchitecture, objective)
+  const suggestedResearchType = researchTypeSuggestion(researchType, objective)
 
   return (
     <aside className="space-y-3 rounded-lg border border-border bg-card p-3">
@@ -76,12 +84,12 @@ export function Step1Panel({
         </div>
       </div>
 
-      {suggestedArchitecture ? (
+      {suggestedResearchType ? (
         <div className="space-y-2 rounded-md border border-border bg-background p-3">
-          <p className="text-sm font-medium">Architecture suggestion</p>
-          <p className="text-xs text-muted-foreground">Objective wording fits {suggestedArchitecture.toLowerCase()} best.</p>
-          <Button size="sm" onClick={() => onApplyArchitecture(suggestedArchitecture)}>
-            Apply suggested architecture
+          <p className="text-sm font-medium">Research type suggestion</p>
+          <p className="text-xs text-muted-foreground">Objective wording fits {suggestedResearchType.toLowerCase()} best.</p>
+          <Button size="sm" onClick={() => onApplyResearchType(suggestedResearchType)}>
+            Apply suggested research type
           </Button>
         </div>
       ) : null}

@@ -8,6 +8,7 @@ import { StepPlan } from '@/components/study-core/StepPlan'
 import { StepRun } from '@/components/study-core/StepRun'
 import { StudyCoreStepper, type WizardStepItem } from '@/components/study-core/StudyCoreStepper'
 import { Input } from '@/components/ui/input'
+import { CURATED_CARDIOLOGY_IMAGING_JOURNALS, mergeJournalOptions } from '@/lib/research-frame-options'
 import { fetchJournalOptions } from '@/lib/study-core-api'
 import { useStudyCoreWizardStore, type WizardStep } from '@/store/use-study-core-wizard-store'
 import type {
@@ -32,7 +33,7 @@ const CORE_SECTIONS = ['introduction', 'methods', 'results', 'discussion']
 function buildGenerationBrief(values: ContextFormValues, sections: string[], guardrailsEnabled: boolean): string {
   const lines = [
     values.researchObjective.trim() ? `Objective: ${values.researchObjective.trim()}` : '',
-    values.studyArchitecture.trim() ? `Architecture: ${values.studyArchitecture.trim()}` : '',
+    values.studyArchitecture.trim() ? `Research type: ${values.studyArchitecture.trim()}` : '',
     values.interpretationMode.trim() ? `Interpretation mode: ${values.interpretationMode.trim()}` : '',
     sections.length > 0
       ? `Priority sections: ${sections
@@ -85,8 +86,8 @@ export function StudyCorePage() {
   const setRunConfiguration = useStudyCoreWizardStore((state) => state.setRunConfiguration)
   const canNavigateToStep = useStudyCoreWizardStore((state) => state.canNavigateToStep)
 
-  const [journals, setJournals] = useState<JournalOption[]>([])
-  const [targetJournal, setTargetJournal] = useState('generic-original')
+  const [journals, setJournals] = useState<JournalOption[]>(CURATED_CARDIOLOGY_IMAGING_JOURNALS)
+  const [targetJournal, setTargetJournal] = useState('jacc-cardiovascular-imaging')
   const [runContext, setRunContext] = useState<RunContext | null>(() => readStoredRunContext())
   const [contextValues, setContextValues] = useState<ContextFormValues>({
     projectTitle: 'AAWE Research Workspace',
@@ -166,15 +167,20 @@ export function StudyCorePage() {
   useEffect(() => {
     void fetchJournalOptions()
       .then((payload) => {
-        setJournals(payload)
-        if (!payload.some((journal) => journal.slug === targetJournal)) {
-          setTargetJournal(payload[0]?.slug ?? 'generic-original')
+        const merged = mergeJournalOptions(payload)
+        setJournals(merged)
+        if (!merged.some((journal) => journal.slug === targetJournal)) {
+          setTargetJournal(merged[0]?.slug ?? 'jacc-cardiovascular-imaging')
         }
       })
       .catch((loadError) => {
-        setError(loadError instanceof Error ? loadError.message : 'Could not load journals.')
+        setJournals(CURATED_CARDIOLOGY_IMAGING_JOURNALS)
+        if (!CURATED_CARDIOLOGY_IMAGING_JOURNALS.some((journal) => journal.slug === targetJournal)) {
+          setTargetJournal(CURATED_CARDIOLOGY_IMAGING_JOURNALS[0]?.slug ?? 'jacc-cardiovascular-imaging')
+        }
+        setError(loadError instanceof Error ? `${loadError.message} Using curated cardiology and imaging journals.` : 'Using curated cardiology and imaging journals.')
       })
-  }, [targetJournal])
+  }, [])
 
   useEffect(() => {
     if (!runContext) {
@@ -329,30 +335,6 @@ export function StudyCorePage() {
     setStatus('Workspace saved locally.')
   }
 
-  const onEntryNew = () => {
-    setCurrentStep(1)
-  }
-
-  const onEntryContinue = () => {
-    if (acceptedSections > 0 || Object.keys(draftsBySection).length > 0) {
-      setCurrentStep(4)
-      return
-    }
-    if (planStatus === 'built') {
-      setCurrentStep(3)
-      return
-    }
-    if (contextStatus === 'saved') {
-      setCurrentStep(2)
-      return
-    }
-    setCurrentStep(1)
-  }
-
-  const onEntryRefine = () => {
-    setCurrentStep(4)
-  }
-
   const renderActiveStep = () => {
     if (currentStep === 1) {
       return (
@@ -464,7 +446,7 @@ export function StudyCorePage() {
       return (
         <Step1Panel
           objective={contextValues.researchObjective}
-          studyArchitecture={contextValues.studyArchitecture}
+          researchType={contextValues.studyArchitecture}
           guardrailsEnabled={guardrailsEnabled}
           onReplaceObjective={(value) =>
             setContextValues((current) => ({
@@ -472,7 +454,7 @@ export function StudyCorePage() {
               researchObjective: value,
             }))
           }
-          onApplyArchitecture={(value) =>
+          onApplyResearchType={(value) =>
             setContextValues((current) => ({
               ...current,
               studyArchitecture: value,
@@ -523,27 +505,7 @@ export function StudyCorePage() {
         </div>
       </header>
 
-      <div className="inline-flex rounded-md border border-border bg-background p-1">
-        <button type="button" onClick={onEntryNew} className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground">
-          New
-        </button>
-        <button
-          type="button"
-          onClick={onEntryContinue}
-          className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-        >
-          Continue
-        </button>
-        <button
-          type="button"
-          onClick={onEntryRefine}
-          className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-        >
-          Refine
-        </button>
-      </div>
-
-      <div className={showRightPanel ? 'grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_320px]' : 'grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]'}>
+      <div className={showRightPanel ? 'grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)_280px]' : 'grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)]'}>
         <StudyCoreStepper
           steps={STEP_ITEMS}
           currentStep={currentStep}
