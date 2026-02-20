@@ -564,6 +564,15 @@
   color: #edf1fb;
 }
 
+.inline-fields select {
+  border-radius: 10px;
+  border: 1px solid rgba(240, 138, 69, 0.35);
+  padding: 0.55rem 0.65rem;
+  font: inherit;
+  background: rgba(11, 16, 23, 0.9);
+  color: #edf1fb;
+}
+
 .inline-actions button {
   border: 0;
   border-radius: 11px;

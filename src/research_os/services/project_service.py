@@ -40,6 +40,10 @@ class ManuscriptSnapshotNotFoundError(RuntimeError):
     """Raised when a snapshot cannot be located for the given manuscript."""
 
 
+class ManuscriptSnapshotRestoreModeError(RuntimeError):
+    """Raised when snapshot restore mode is invalid."""
+
+
 def _utc_timestamp_label() -> str:
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
     return f"Snapshot {timestamp}"
@@ -271,6 +275,8 @@ def restore_manuscript_snapshot(
     project_id: str,
     manuscript_id: str,
     snapshot_id: str,
+    restore_mode: str = "replace",
+    sections: list[str] | None = None,
 ) -> Manuscript:
     create_all_tables()
     with session_scope() as session:
@@ -302,7 +308,24 @@ def restore_manuscript_snapshot(
                 )
             )
 
-        manuscript.sections = dict(snapshot.sections or {})
+        normalized_mode = restore_mode.strip().lower()
+        if normalized_mode not in {"replace", "merge"}:
+            raise ManuscriptSnapshotRestoreModeError(
+                (
+                    "Snapshot restore mode must be either 'replace' or 'merge' "
+                    f"(received '{restore_mode}')."
+                )
+            )
+
+        snapshot_sections = _select_snapshot_sections(
+            dict(snapshot.sections or {}), sections
+        )
+        if normalized_mode == "replace":
+            manuscript.sections = snapshot_sections
+        else:
+            merged_sections = dict(manuscript.sections or {})
+            merged_sections.update(snapshot_sections)
+            manuscript.sections = merged_sections
         manuscript.status = "draft"
         session.flush()
         session.refresh(manuscript)

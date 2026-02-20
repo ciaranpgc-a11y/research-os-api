@@ -67,6 +67,8 @@ type ManuscriptSnapshotResponse = {
   created_at: string
 }
 
+type SnapshotRestoreMode = 'replace' | 'merge'
+
 type GenerationJobResponse = {
   id: string
   project_id: string
@@ -361,6 +363,8 @@ function App() {
   const [restoringSnapshotId, setRestoringSnapshotId] = useState('')
   const [snapshotsError, setSnapshotsError] = useState('')
   const [snapshotSuccess, setSnapshotSuccess] = useState('')
+  const [snapshotRestoreMode, setSnapshotRestoreMode] = useState<SnapshotRestoreMode>('replace')
+  const [snapshotRestoreSectionsInput, setSnapshotRestoreSectionsInput] = useState('')
   const [fullGenerationNotesContext, setFullGenerationNotesContext] = useState('')
   const [fullGenerationSections, setFullGenerationSections] = useState<string[]>([])
   const [fullGenerationMaxCostUsd, setFullGenerationMaxCostUsd] = useState('')
@@ -595,6 +599,8 @@ function App() {
     setSnapshotsError('')
     setSnapshotSuccess('')
     setSnapshotLabel('')
+    setSnapshotRestoreMode('replace')
+    setSnapshotRestoreSectionsInput('')
     setFullGenerationError('')
     setFullGenerationSuccess('')
     setFullGenerationNotesContext('')
@@ -1054,6 +1060,7 @@ function App() {
     setSnapshotSuccess('')
     setRestoringSnapshotId(snapshot.id)
     try {
+      const parsedSections = parseSections(snapshotRestoreSectionsInput)
       const response = await fetch(
         `${API_BASE_URL}/v1/projects/${selectedProject.id}/manuscripts/${selectedManuscript.id}/snapshots/${snapshot.id}/restore`,
         {
@@ -1061,6 +1068,10 @@ function App() {
           headers: {
             'Content-Type': 'application/json',
           },
+          body: JSON.stringify({
+            mode: snapshotRestoreMode,
+            sections: parsedSections,
+          }),
         },
       )
       if (!response.ok) {
@@ -1705,6 +1716,29 @@ function App() {
                           >
                             {isLoadingSnapshots ? 'Refreshing...' : 'Refresh'}
                           </button>
+                        </div>
+                        <div className="inline-fields">
+                          <label>
+                            Restore mode
+                            <select
+                              value={snapshotRestoreMode}
+                              onChange={(event) => setSnapshotRestoreMode(event.target.value as SnapshotRestoreMode)}
+                              disabled={Boolean(restoringSnapshotId)}
+                            >
+                              <option value="replace">Replace manuscript with snapshot selection</option>
+                              <option value="merge">Merge snapshot selection into current manuscript</option>
+                            </select>
+                          </label>
+                          <label>
+                            Sections to restore (optional, comma-separated)
+                            <input
+                              type="text"
+                              value={snapshotRestoreSectionsInput}
+                              onChange={(event) => setSnapshotRestoreSectionsInput(event.target.value)}
+                              placeholder="e.g. methods, results"
+                              disabled={Boolean(restoringSnapshotId)}
+                            />
+                          </label>
                         </div>
                         {snapshotsError && <p>{snapshotsError}</p>}
                         {snapshotSuccess && <p>{snapshotSuccess}</p>}

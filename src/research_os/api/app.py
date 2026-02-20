@@ -24,6 +24,7 @@ from research_os.api.schemas import (
     ManuscriptCreateRequest,
     ManuscriptGenerateRequest,
     ManuscriptSnapshotCreateRequest,
+    ManuscriptSnapshotRestoreRequest,
     ManuscriptSnapshotResponse,
     ManuscriptSectionsUpdateRequest,
     ManuscriptResponse,
@@ -39,6 +40,7 @@ from research_os.services.project_service import (
     ManuscriptBranchConflictError,
     ManuscriptNotFoundError,
     ManuscriptSnapshotNotFoundError,
+    ManuscriptSnapshotRestoreModeError,
     ProjectNotFoundError,
     create_manuscript_snapshot,
     create_manuscript_for_project,
@@ -394,19 +396,23 @@ def v1_create_manuscript_snapshot(
 @app.post(
     "/v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots/{snapshot_id}/restore",
     response_model=ManuscriptResponse,
-    responses=NOT_FOUND_RESPONSES,
+    responses=NOT_FOUND_RESPONSES | CONFLICT_RESPONSES,
     tags=["v1"],
 )
 def v1_restore_manuscript_snapshot(
     project_id: str,
     manuscript_id: str,
     snapshot_id: str,
+    request: ManuscriptSnapshotRestoreRequest | None = None,
 ) -> ManuscriptResponse | JSONResponse:
     try:
+        restore_request = request or ManuscriptSnapshotRestoreRequest()
         manuscript = restore_manuscript_snapshot(
             project_id=project_id,
             manuscript_id=manuscript_id,
             snapshot_id=snapshot_id,
+            restore_mode=restore_request.mode,
+            sections=restore_request.sections,
         )
         return ManuscriptResponse.model_validate(manuscript)
     except (
@@ -415,6 +421,8 @@ def v1_restore_manuscript_snapshot(
         ManuscriptSnapshotNotFoundError,
     ) as exc:
         return _build_not_found_response(str(exc))
+    except ManuscriptSnapshotRestoreModeError as exc:
+        return _build_conflict_response(str(exc))
 
 
 @app.post(

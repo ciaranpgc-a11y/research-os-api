@@ -469,6 +469,113 @@ def test_v1_restore_snapshot_returns_404_for_missing_snapshot(
     assert response.json()["error"]["type"] == "not_found"
 
 
+def test_v1_restore_snapshot_merge_mode_and_section_filter(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Snapshot Merge Project",
+                "target_journal": "ehj",
+            },
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "snapshot-merge-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+
+        client.patch(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}",
+            json={
+                "sections": {
+                    "methods": "methods baseline",
+                    "results": "results baseline",
+                    "discussion": "discussion baseline",
+                }
+            },
+        )
+        snapshot_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots",
+            json={
+                "label": "Merge baseline",
+                "include_sections": ["methods", "results"],
+            },
+        )
+        snapshot_id = snapshot_response.json()["id"]
+
+        client.patch(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}",
+            json={
+                "sections": {
+                    "methods": "methods current",
+                    "results": "results current",
+                    "discussion": "discussion current",
+                }
+            },
+        )
+        restore_response = client.post(
+            (
+                f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots/"
+                f"{snapshot_id}/restore"
+            ),
+            json={
+                "mode": "merge",
+                "sections": ["methods"],
+            },
+        )
+
+    assert snapshot_response.status_code == 200
+    assert restore_response.status_code == 200
+    restored_sections = restore_response.json()["sections"]
+    assert restored_sections["methods"] == "methods baseline"
+    assert restored_sections["results"] == "results current"
+    assert restored_sections["discussion"] == "discussion current"
+
+
+def test_v1_restore_snapshot_returns_409_for_invalid_mode(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Snapshot Invalid Mode Project",
+                "target_journal": "jacc",
+            },
+        )
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "snapshot-invalid-mode-branch"},
+        )
+        manuscript_id = manuscript_response.json()["id"]
+        snapshot_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots",
+            json={"label": "Any snapshot"},
+        )
+        snapshot_id = snapshot_response.json()["id"]
+        response = client.post(
+            (
+                f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots/"
+                f"{snapshot_id}/restore"
+            ),
+            json={"mode": "invalid-mode"},
+        )
+
+    assert snapshot_response.status_code == 200
+    assert response.status_code == 409
+    assert response.json()["error"]["type"] == "conflict"
+    assert "replace" in response.json()["error"]["detail"]
+    assert "merge" in response.json()["error"]["detail"]
+
+
 def test_v1_generate_manuscript_job_completes_and_updates_sections(
     monkeypatch, tmp_path
 ) -> None:

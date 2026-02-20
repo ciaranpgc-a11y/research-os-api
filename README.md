@@ -59,6 +59,7 @@ Primary versioned routes:
 
 `/v1/generation-jobs/{job_id}` responses include estimated token and USD cost ranges for planning.
 Generation enqueue and retry requests can include `max_estimated_cost_usd` and `project_daily_budget_usd` guardrails.
+Snapshot restore requests support `mode` (`replace` or `merge`) and optional `sections` filters.
 
 Compatibility routes:
 - `GET /health`

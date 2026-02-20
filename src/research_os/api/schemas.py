@@ -78,6 +78,11 @@ class ManuscriptSnapshotCreateRequest(BaseModel):
     include_sections: list[str] | None = None
 
 
+class ManuscriptSnapshotRestoreRequest(BaseModel):
+    mode: str = "replace"
+    sections: list[str] | None = None
+
+
 class ManuscriptGenerateRequest(BaseModel):
     sections: list[str] | None = None
     notes_context: str
