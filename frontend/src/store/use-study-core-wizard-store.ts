@@ -9,9 +9,8 @@ export type QcStatus = 'idle' | 'pass' | 'warn' | 'fail'
 export type ContextReadinessFields = {
   projectTitle: string
   researchObjective: string
-  primaryDataSource: string
-  studyType: string
-  primaryAnalyticalClaim: string
+  studyArchitecture: string
+  interpretationMode: string
 }
 export type QcSeverityCounts = {
   high: number
@@ -31,9 +30,8 @@ export type RunConfigurationState = {
 const DEFAULT_CONTEXT_READINESS_FIELDS: ContextReadinessFields = {
   projectTitle: '',
   researchObjective: '',
-  primaryDataSource: '',
-  studyType: '',
-  primaryAnalyticalClaim: '',
+  studyArchitecture: '',
+  interpretationMode: '',
 }
 
 const DEFAULT_QC_SEVERITY_COUNTS: QcSeverityCounts = {
