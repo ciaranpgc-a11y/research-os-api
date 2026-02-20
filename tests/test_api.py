@@ -17,12 +17,10 @@ def _wait_for_job_terminal_status(
     client: TestClient, job_id: str, timeout_seconds: float = 5.0
 ):
     deadline = time.monotonic() + timeout_seconds
-    last_payload = None
     while time.monotonic() < deadline:
         response = client.get(f"/v1/generation-jobs/{job_id}")
         assert response.status_code == 200
         payload = response.json()
-        last_payload = payload
         if payload["status"] in {"completed", "failed", "cancelled"}:
             return payload
         time.sleep(0.05)
