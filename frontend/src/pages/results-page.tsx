@@ -1,16 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
-import { FileSpreadsheet, Loader2, Plus, Trash2, UploadCloud } from 'lucide-react'
+import { FileSpreadsheet, Loader2, Plus, UploadCloud } from 'lucide-react'
 
+import { AddColumnModal } from '@/components/data-workspace/AddColumnModal'
+import { TableHeader } from '@/components/data-workspace/TableHeader'
+import { TableTabs } from '@/components/data-workspace/TableTabs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PageFrame } from '@/pages/page-frame'
 import { useDataWorkspaceStore } from '@/store/use-data-workspace-store'
-import type { DataAsset, SheetData, WorkingTable } from '@/types/data-workspace'
+import type {
+  DataAsset,
+  SheetData,
+  WorkingTable,
+  WorkingTableColumnMeta,
+  WorkingTableMetadata,
+} from '@/types/data-workspace'
 
 const MAX_PREVIEW_ROWS = 50
 
@@ -67,9 +75,7 @@ function toSheetData(name: string, matrix: unknown[][]): SheetData {
   }
   const headerRaw = (matrix[0] ?? []).map((value) => String(value ?? '').trim())
   const maxColumns = Math.max(headerRaw.length, ...matrix.map((row) => row.length))
-  const columns = dedupeColumns(
-    Array.from({ length: maxColumns }, (_, index) => headerRaw[index] || `Column ${index + 1}`),
-  )
+  const columns = dedupeColumns(Array.from({ length: maxColumns }, (_, index) => headerRaw[index] || `Column ${index + 1}`))
   const rows = matrix.slice(1).map((row) =>
     columns.reduce<Record<string, string>>((accumulator, column, columnIndex) => {
       accumulator[column] = String(row[columnIndex] ?? '')
@@ -80,6 +86,48 @@ function toSheetData(name: string, matrix: unknown[][]): SheetData {
     name,
     columns,
     rows,
+  }
+}
+
+function defaultMetadata(): WorkingTableMetadata {
+  return {
+    tableType: 'Working table',
+    description: '',
+    provenance: '',
+    conventions: '',
+    lastEditedAt: new Date().toISOString(),
+  }
+}
+
+function defaultColumnMeta(columns: string[]): Record<string, WorkingTableColumnMeta> {
+  return columns.reduce<Record<string, WorkingTableColumnMeta>>((accumulator, column) => {
+    accumulator[column] = { dataType: 'text' }
+    return accumulator
+  }, {})
+}
+
+function normalizeWorkingTable(table: WorkingTable): WorkingTable {
+  const meta = table.columnMeta ?? {}
+  const normalizedMeta = table.columns.reduce<Record<string, WorkingTableColumnMeta>>((accumulator, column) => {
+    accumulator[column] = meta[column] ?? { dataType: 'text' }
+    return accumulator
+  }, {})
+  return {
+    ...table,
+    metadata: {
+      ...defaultMetadata(),
+      ...table.metadata,
+      lastEditedAt: table.metadata?.lastEditedAt || new Date().toISOString(),
+    },
+    columnMeta: normalizedMeta,
+    footnotes: table.footnotes ?? [],
+    abbreviations: table.abbreviations ?? [],
+    rows: table.rows.map((row) =>
+      table.columns.reduce<Record<string, string>>((accumulator, column) => {
+        accumulator[column] = row[column] ?? ''
+        return accumulator
+      }, {}),
+    ),
   }
 }
 
@@ -123,28 +171,22 @@ async function parseDataAsset(file: File): Promise<DataAsset> {
   }
 }
 
-function uniqueName(base: string, existing: string[]): string {
-  const trimmed = base.trim() || 'Column'
-  if (!existing.includes(trimmed)) {
-    return trimmed
+function stampTable(table: WorkingTable): WorkingTable {
+  const normalized = normalizeWorkingTable(table)
+  return {
+    ...normalized,
+    metadata: {
+      ...defaultMetadata(),
+      ...(normalized.metadata ?? {}),
+      lastEditedAt: new Date().toISOString(),
+    },
   }
-  let suffix = 2
-  while (existing.includes(`${trimmed} ${suffix}`)) {
-    suffix += 1
-  }
-  return `${trimmed} ${suffix}`
-}
-
-function toOrderedRow(columns: string[], row: Record<string, string>): Record<string, string> {
-  return columns.reduce<Record<string, string>>((accumulator, column) => {
-    accumulator[column] = row[column] ?? ''
-    return accumulator
-  }, {})
 }
 
 export function ResultsPage() {
   const dataAssets = useDataWorkspaceStore((state) => state.dataAssets)
   const workingTables = useDataWorkspaceStore((state) => state.workingTables)
+  const manuscriptTables = useDataWorkspaceStore((state) => state.manuscriptTables)
   const addDataAsset = useDataWorkspaceStore((state) => state.addDataAsset)
   const createWorkingTableFromSheet = useDataWorkspaceStore((state) => state.createWorkingTableFromSheet)
   const createWorkingTable = useDataWorkspaceStore((state) => state.createWorkingTable)
@@ -159,7 +201,7 @@ export function ResultsPage() {
   const [isDragActive, setIsDragActive] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const [status, setStatus] = useState('')
-  const [newColumnName, setNewColumnName] = useState('')
+  const [addColumnOpen, setAddColumnOpen] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -175,10 +217,7 @@ export function ResultsPage() {
     setSelectedAssetId(dataAssets[0].id)
   }, [dataAssets, selectedAssetId])
 
-  const selectedAsset = useMemo(
-    () => dataAssets.find((asset) => asset.id === selectedAssetId) ?? null,
-    [dataAssets, selectedAssetId],
-  )
+  const selectedAsset = useMemo(() => dataAssets.find((asset) => asset.id === selectedAssetId) ?? null, [dataAssets, selectedAssetId])
 
   useEffect(() => {
     if (!selectedAsset) {
@@ -209,10 +248,25 @@ export function ResultsPage() {
     return selectedAsset.sheets.find((sheet) => sheet.name === selectedSheetName) ?? selectedAsset.sheets[0] ?? null
   }, [selectedAsset, selectedSheetName])
 
-  const selectedWorkingTable = useMemo(
+  const selectedWorkingTableRaw = useMemo(
     () => workingTables.find((table) => table.id === selectedWorkingTableId) ?? null,
     [selectedWorkingTableId, workingTables],
   )
+
+  const selectedWorkingTable = useMemo(
+    () => (selectedWorkingTableRaw ? normalizeWorkingTable(selectedWorkingTableRaw) : null),
+    [selectedWorkingTableRaw],
+  )
+
+  useEffect(() => {
+    if (!selectedWorkingTableRaw) {
+      return
+    }
+    const normalized = normalizeWorkingTable(selectedWorkingTableRaw)
+    if (JSON.stringify(normalized) !== JSON.stringify(selectedWorkingTableRaw)) {
+      setWorkingTable(normalized)
+    }
+  }, [selectedWorkingTableRaw, setWorkingTable])
 
   const previewRows = useMemo(() => selectedSheet?.rows.slice(0, MAX_PREVIEW_ROWS) ?? [], [selectedSheet])
 
@@ -258,18 +312,15 @@ export function ResultsPage() {
     setStatus(`Promoted ${selectedSheet.name} to Working Tables.`)
   }
 
-  const updateWorkingTable = (table: WorkingTable) => {
-    setWorkingTable({
-      ...table,
-      rows: table.rows.map((row) => toOrderedRow(table.columns, row)),
-    })
-  }
-
   const onCreateWorkingTable = () => {
     const id = createWorkingTable()
     setSelectedWorkingTableId(id)
     setActiveTab('working')
-    setStatus('Created a blank working table.')
+    setStatus('Created a new working table.')
+  }
+
+  const onUpdateWorkingTable = (table: WorkingTable) => {
+    setWorkingTable(stampTable(table))
   }
 
   const onAddRow = () => {
@@ -280,94 +331,42 @@ export function ResultsPage() {
       accumulator[column] = ''
       return accumulator
     }, {})
-    updateWorkingTable({
+    onUpdateWorkingTable({
       ...selectedWorkingTable,
       rows: [...selectedWorkingTable.rows, blankRow],
     })
   }
 
-  const onRemoveRow = (rowIndex: number) => {
+  const onAddColumn = (payload: { name: string; meta: WorkingTableColumnMeta }) => {
     if (!selectedWorkingTable) {
       return
     }
-    updateWorkingTable({
+    onUpdateWorkingTable({
       ...selectedWorkingTable,
-      rows: selectedWorkingTable.rows.filter((_, index) => index !== rowIndex),
+      columns: [...selectedWorkingTable.columns, payload.name],
+      rows: selectedWorkingTable.rows.map((row) => ({ ...row, [payload.name]: '' })),
+      columnMeta: {
+        ...defaultColumnMeta(selectedWorkingTable.columns),
+        ...(selectedWorkingTable.columnMeta ?? {}),
+        [payload.name]: payload.meta,
+      },
     })
   }
 
-  const onAddColumn = () => {
+  const onClearRows = () => {
     if (!selectedWorkingTable) {
       return
     }
-    const columnName = uniqueName(
-      newColumnName || `Column ${selectedWorkingTable.columns.length + 1}`,
-      selectedWorkingTable.columns,
-    )
-    const nextColumns = [...selectedWorkingTable.columns, columnName]
-    const nextRows = selectedWorkingTable.rows.map((row) => ({ ...row, [columnName]: '' }))
-    updateWorkingTable({
+    onUpdateWorkingTable({
       ...selectedWorkingTable,
-      columns: nextColumns,
-      rows: nextRows,
-    })
-    setNewColumnName('')
-  }
-
-  const onRemoveColumn = (columnIndex: number) => {
-    if (!selectedWorkingTable || selectedWorkingTable.columns.length <= 1) {
-      return
-    }
-    const removedColumn = selectedWorkingTable.columns[columnIndex]
-    const nextColumns = selectedWorkingTable.columns.filter((_, index) => index !== columnIndex)
-    const nextRows = selectedWorkingTable.rows.map((row) =>
-      nextColumns.reduce<Record<string, string>>((accumulator, column) => {
-        accumulator[column] = column === removedColumn ? '' : row[column] ?? ''
-        return accumulator
-      }, {}),
-    )
-    updateWorkingTable({
-      ...selectedWorkingTable,
-      columns: nextColumns,
-      rows: nextRows,
-    })
-  }
-
-  const onRenameColumn = (columnIndex: number, nextNameRaw: string) => {
-    if (!selectedWorkingTable) {
-      return
-    }
-    const oldColumns = [...selectedWorkingTable.columns]
-    const nextName = uniqueName(nextNameRaw || `Column ${columnIndex + 1}`, oldColumns.filter((_, index) => index !== columnIndex))
-    const nextColumns = oldColumns.map((column, index) => (index === columnIndex ? nextName : column))
-    const nextRows = selectedWorkingTable.rows.map((row) =>
-      nextColumns.reduce<Record<string, string>>((accumulator, column, index) => {
-        const sourceColumn = oldColumns[index]
-        accumulator[column] = row[sourceColumn] ?? ''
-        return accumulator
-      }, {}),
-    )
-    updateWorkingTable({
-      ...selectedWorkingTable,
-      columns: nextColumns,
-      rows: nextRows,
-    })
-  }
-
-  const onUpdateCell = (rowIndex: number, column: string, value: string) => {
-    if (!selectedWorkingTable) {
-      return
-    }
-    updateWorkingTable({
-      ...selectedWorkingTable,
-      rows: selectedWorkingTable.rows.map((row, index) => (index === rowIndex ? { ...row, [column]: value } : row)),
+      rows: [],
     })
   }
 
   return (
     <PageFrame
       title="Data Library"
-      description="Upload spreadsheets, inspect sheets, and promote research materials into editable working tables."
+      description="Upload spreadsheets, preview sheets, and curate research-grade working table objects."
     >
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'uploads' | 'working')}>
         <TabsList>
@@ -412,6 +411,7 @@ export function ResultsPage() {
                   </div>
                 </div>
               </button>
+
               <input
                 ref={fileInputRef}
                 type="file"
@@ -462,7 +462,7 @@ export function ResultsPage() {
                       >
                         <p className="font-medium">{asset.name}</p>
                         <p className="text-muted-foreground">
-                          {asset.kind.toUpperCase()} • {new Date(asset.uploadedAt).toLocaleString()}
+                          {asset.kind.toUpperCase()} | {new Date(asset.uploadedAt).toLocaleString()}
                         </p>
                         <p className="text-muted-foreground">{asset.sheets.length} sheet(s)</p>
                       </button>
@@ -549,14 +549,14 @@ export function ResultsPage() {
 
         <TabsContent value="working" className="space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">Edit promoted tables with inline row and column controls.</p>
+            <p className="text-sm text-muted-foreground">Manage structured working table objects for downstream drafting and exports.</p>
             <Button size="sm" onClick={onCreateWorkingTable}>
               <Plus className="mr-1 h-4 w-4" />
               New working table
             </Button>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <div className="grid gap-3 lg:grid-cols-[280px_minmax(0,1fr)]">
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Working Tables</CardTitle>
@@ -566,121 +566,47 @@ export function ResultsPage() {
                 {workingTables.length === 0 ? (
                   <p className="text-xs text-muted-foreground">Promote a sheet or create a blank table.</p>
                 ) : (
-                  workingTables.map((table) => (
-                    <button
-                      key={table.id}
-                      type="button"
-                      className={`w-full rounded-md border px-3 py-2 text-left text-xs ${
-                        selectedWorkingTableId === table.id ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'
-                      }`}
-                      onClick={() => setSelectedWorkingTableId(table.id)}
-                    >
-                      <p className="font-medium">{table.name}</p>
-                      <p className="text-muted-foreground">
-                        {table.columns.length} columns • {table.rows.length} rows
-                      </p>
-                    </button>
-                  ))
+                  workingTables.map((table) => {
+                    const normalized = normalizeWorkingTable(table)
+                    return (
+                      <button
+                        key={normalized.id}
+                        type="button"
+                        className={`w-full rounded-md border px-3 py-2 text-left text-xs ${
+                          selectedWorkingTableId === normalized.id ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'
+                        }`}
+                        onClick={() => setSelectedWorkingTableId(normalized.id)}
+                      >
+                        <p className="font-medium">{normalized.name}</p>
+                        <p className="text-muted-foreground">
+                          {normalized.metadata?.tableType || 'Working table'} | {normalized.columns.length} columns | {normalized.rows.length} rows
+                        </p>
+                      </button>
+                    )
+                  })
                 )}
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <CardTitle className="text-sm">{selectedWorkingTable?.name ?? 'Working Table Editor'}</CardTitle>
-                    <CardDescription>Update cells, rows, and columns in place.</CardDescription>
-                  </div>
-                  {selectedWorkingTable ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        removeWorkingTable(selectedWorkingTable.id)
-                        setStatus('Working table removed.')
-                      }}
-                    >
-                      <Trash2 className="mr-1 h-4 w-4" />
-                      Remove table
-                    </Button>
-                  ) : null}
-                </div>
+                <CardTitle className="text-sm">{selectedWorkingTable?.name ?? 'Working Table Editor'}</CardTitle>
+                <CardDescription>Research-grade editor for table object metadata, grid, notes, and diagnostics.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {!selectedWorkingTable ? (
-                  <p className="text-xs text-muted-foreground">Select a working table to begin editing.</p>
+                  <p className="text-xs text-muted-foreground">Select a working table to start editing.</p>
                 ) : (
                   <>
-                    <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_220px_auto_auto]">
-                      <Input
-                        value={selectedWorkingTable.name}
-                        onChange={(event) => updateWorkingTable({ ...selectedWorkingTable, name: event.target.value })}
-                        placeholder="Working table name"
-                      />
-                      <Input
-                        value={newColumnName}
-                        onChange={(event) => setNewColumnName(event.target.value)}
-                        placeholder="New column name"
-                      />
-                      <Button variant="outline" onClick={onAddColumn}>
-                        Add column
-                      </Button>
-                      <Button variant="outline" onClick={onAddRow}>
-                        Add row
-                      </Button>
-                    </div>
-
-                    <ScrollArea className="h-[420px] rounded-md border border-border">
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-muted/60">
-                          <tr>
-                            <th className="border-b border-border px-2 py-1 text-left">#</th>
-                            {selectedWorkingTable.columns.map((column, columnIndex) => (
-                              <th key={column} className="border-b border-border px-2 py-1">
-                                <div className="flex items-center gap-1">
-                                  <Input
-                                    value={column}
-                                    onChange={(event) => onRenameColumn(columnIndex, event.target.value)}
-                                    className="h-7 text-xs"
-                                  />
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => onRemoveColumn(columnIndex)}
-                                    disabled={selectedWorkingTable.columns.length <= 1}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                </div>
-                              </th>
-                            ))}
-                            <th className="border-b border-border px-2 py-1 text-right">Row</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedWorkingTable.rows.map((row, rowIndex) => (
-                            <tr key={`${selectedWorkingTable.id}-row-${rowIndex}`} className="odd:bg-muted/20">
-                              <td className="border-b border-border/70 px-2 py-1 text-muted-foreground">{rowIndex + 1}</td>
-                              {selectedWorkingTable.columns.map((column) => (
-                                <td key={`${rowIndex}-${column}`} className="border-b border-border/70 px-2 py-1">
-                                  <Input
-                                    value={row[column] ?? ''}
-                                    onChange={(event) => onUpdateCell(rowIndex, column, event.target.value)}
-                                    className="h-7 text-xs"
-                                  />
-                                </td>
-                              ))}
-                              <td className="border-b border-border/70 px-2 py-1 text-right">
-                                <Button size="sm" variant="ghost" onClick={() => onRemoveRow(rowIndex)}>
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </ScrollArea>
+                    <TableHeader
+                      table={selectedWorkingTable}
+                      onUpdateTable={onUpdateWorkingTable}
+                      onOpenAddColumn={() => setAddColumnOpen(true)}
+                      onAddRow={onAddRow}
+                      onClearRows={onClearRows}
+                      onRemoveTable={() => removeWorkingTable(selectedWorkingTable.id)}
+                    />
+                    <TableTabs table={selectedWorkingTable} onUpdateTable={onUpdateWorkingTable} onOpenAddColumn={() => setAddColumnOpen(true)} />
                   </>
                 )}
               </CardContent>
@@ -695,8 +621,15 @@ export function ResultsPage() {
           Files: {dataAssets.length}
         </Badge>
         <Badge variant="outline">Working tables: {workingTables.length}</Badge>
+        <Badge variant="outline">Manuscript tables: {manuscriptTables.length}</Badge>
       </div>
+
+      <AddColumnModal
+        open={addColumnOpen}
+        onOpenChange={setAddColumnOpen}
+        existingColumns={selectedWorkingTable?.columns ?? []}
+        onAddColumn={onAddColumn}
+      />
     </PageFrame>
   )
 }
-

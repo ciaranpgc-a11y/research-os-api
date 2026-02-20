@@ -1,7 +1,14 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
-import type { DataAsset, ManuscriptTable, SheetData, WorkingTable } from '@/types/data-workspace'
+import type {
+  DataAsset,
+  ManuscriptTable,
+  SheetData,
+  WorkingTable,
+  WorkingTableColumnMeta,
+  WorkingTableMetadata,
+} from '@/types/data-workspace'
 
 type DataWorkspaceStore = {
   dataAssets: DataAsset[]
@@ -38,6 +45,17 @@ function dedupeName(name: string, existingNames: string[]): string {
 
 function buildWorkingTableFromSheet(assetName: string, sheet: SheetData, existingNames: string[]): WorkingTable {
   const baseName = dedupeName(`${assetName} - ${sheet.name}`, existingNames)
+  const columnMeta = sheet.columns.reduce<Record<string, WorkingTableColumnMeta>>((accumulator, column) => {
+    accumulator[column] = { dataType: 'text' }
+    return accumulator
+  }, {})
+  const metadata: WorkingTableMetadata = {
+    tableType: 'Imported worksheet',
+    description: '',
+    provenance: `${assetName} / ${sheet.name}`,
+    conventions: '',
+    lastEditedAt: new Date().toISOString(),
+  }
   return {
     id: createId('worktable'),
     name: baseName,
@@ -48,18 +66,37 @@ function buildWorkingTableFromSheet(assetName: string, sheet: SheetData, existin
         return accumulator
       }, {}),
     ),
+    metadata,
+    columnMeta,
+    footnotes: [],
+    abbreviations: [],
   }
 }
 
 function buildBlankWorkingTable(name: string, existingNames: string[]): WorkingTable {
+  const columns = ['Column 1', 'Column 2', 'Column 3']
+  const columnMeta = columns.reduce<Record<string, WorkingTableColumnMeta>>((accumulator, column) => {
+    accumulator[column] = { dataType: 'text' }
+    return accumulator
+  }, {})
   return {
     id: createId('worktable'),
     name: dedupeName(name, existingNames),
-    columns: ['Column 1', 'Column 2', 'Column 3'],
+    columns,
     rows: [
       { 'Column 1': '', 'Column 2': '', 'Column 3': '' },
       { 'Column 1': '', 'Column 2': '', 'Column 3': '' },
     ],
+    metadata: {
+      tableType: 'Working table',
+      description: '',
+      provenance: '',
+      conventions: '',
+      lastEditedAt: new Date().toISOString(),
+    },
+    columnMeta,
+    footnotes: [],
+    abbreviations: [],
   }
 }
 
@@ -165,4 +202,3 @@ export const useDataWorkspaceStore = create<DataWorkspaceStore>()(
     },
   ),
 )
-

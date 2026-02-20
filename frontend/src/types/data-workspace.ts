@@ -4,6 +4,27 @@ export type SheetData = {
   rows: Record<string, string>[]
 }
 
+export type WorkingTableColumnType = 'text' | 'number' | 'integer' | 'boolean' | 'date'
+
+export type WorkingTableColumnMeta = {
+  dataType: WorkingTableColumnType
+  unit?: string
+  roleTag?: string
+}
+
+export type WorkingTableMetadata = {
+  tableType: string
+  description: string
+  provenance: string
+  conventions: string
+  lastEditedAt: string
+}
+
+export type WorkingTableAbbreviation = {
+  short: string
+  long: string
+}
+
 export type DataAsset = {
   id: string
   name: string
@@ -17,6 +38,10 @@ export type WorkingTable = {
   name: string
   columns: string[]
   rows: Record<string, string>[]
+  metadata?: WorkingTableMetadata
+  columnMeta?: Record<string, WorkingTableColumnMeta>
+  footnotes?: string[]
+  abbreviations?: WorkingTableAbbreviation[]
 }
 
 export type ManuscriptTable = {
@@ -27,4 +52,3 @@ export type ManuscriptTable = {
   columns: string[]
   rows: string[][]
 }
-
