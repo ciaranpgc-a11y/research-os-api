@@ -1,72 +1,100 @@
-# Local Development
+# Research OS
 
-Install:
-  python -m pip install -e ".[dev]"
+Research OS provides:
+- A FastAPI backend for manuscript drafting + project/manuscript state.
+- A React frontend for methods drafting and project bootstrap wizard flows.
 
-Run tests:
-  python -m pytest -q
+## Local Development
+
+Backend install:
+```bash
+python -m pip install -e ".[dev]"
+```
+
+Backend test:
+```bash
+python -m pytest -q
+```
 
 Run API locally:
-  python -m uvicorn research_os.api.app:app --reload
+```bash
+python -m uvicorn research_os.api.app:app --reload
+```
 
-Health check:
-  curl http://127.0.0.1:8000/health
+Frontend dev:
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-PowerShell-safe POST example:
-  curl.exe --% -X POST http://127.0.0.1:8000/draft/methods -H "Content-Type: application/json" -d "{\"notes\":\"test\"}"
+Optional frontend API base override (PowerShell):
+```powershell
+$env:VITE_API_BASE_URL="http://127.0.0.1:8000"
+```
 
-# Deploy to Render
+## API Surface
 
-1. Connect the GitHub repository in Render.
-2. Render reads `render.yaml` and creates:
-   - `research-os-api` (Docker web service)
-   - `research-os-ui` (static site from `frontend/`)
-3. Set `OPENAI_API_KEY` in the Render dashboard environment variables for `research-os-api`.
-4. Deploy both services.
+Primary versioned routes:
+- `GET /v1/health`
+- `GET /v1/journals`
+- `POST /v1/wizard/infer`
+- `POST /v1/wizard/bootstrap`
+- `GET /v1/projects`
+- `POST /v1/projects`
+- `GET /v1/projects/{project_id}/manuscripts`
+- `POST /v1/projects/{project_id}/manuscripts`
+- `POST /v1/draft/methods`
 
-Health check endpoint:
-  /v1/health
+Compatibility routes:
+- `GET /health`
+- `POST /draft/methods`
 
-Expected startup behavior:
-  The service fails fast during startup if OPENAI_API_KEY is missing.
+### Quick checks
 
-UI/API wiring:
-  `research-os-ui` uses `VITE_API_BASE_URL=https://research-os-api.onrender.com`
-  API CORS is controlled by `CORS_ALLOW_ORIGINS`.
+Health:
+```bash
+curl http://127.0.0.1:8000/v1/health
+```
 
-# Production notes
+PowerShell-safe methods draft request:
+```powershell
+curl.exe --% -X POST http://127.0.0.1:8000/v1/draft/methods -H "Content-Type: application/json" -d "{\"notes\":\"test notes\"}"
+```
 
-- Use at least 1 worker only.
-- Keep reload off in production (Docker CMD already runs uvicorn without --reload).
-- No `.env` file is required in production; Render env vars supply OPENAI_API_KEY.
+PowerShell-safe wizard infer request:
+```powershell
+curl.exe --% -X POST http://127.0.0.1:8000/v1/wizard/infer -H "Content-Type: application/json" -d "{\"target_journal\":\"ehj\",\"answers\":{\"disease_focus\":\"Heart failure\",\"population\":\"Adults\"}}"
+```
+
+## Deploy to Render
+
+`render.yaml` provisions:
+- `research-os-api` (Docker web service)
+- `research-os-ui` (static site from `frontend/`)
+
+Required API environment variables:
+- `OPENAI_API_KEY` (must be set; API fails startup if missing)
+
+Recommended API environment variables:
+- `CORS_ALLOW_ORIGINS` (comma-separated origins for frontend access)
+- `DATABASE_URL` (defaults to local SQLite when absent)
+
+Frontend environment variables:
+- `VITE_API_BASE_URL` should point to the API service URL.
+
+## Docker
+
+Build:
+```bash
+docker build -t research-os-api .
+```
+
+Run:
+```bash
+docker run --rm -p 8000:8000 -e OPENAI_API_KEY=YOUR_KEY research-os-api
+```
 
 ## Logging
-This service emits structured JSON logs including request_id and duration.
-Each response includes X-Request-ID header for traceability.
 
-# Docker
-
-Docker build:
-  docker build -t research-os-api .
-
-Docker run (requires OPENAI_API_KEY):
-  docker run --rm -p 8000:8000 -e OPENAI_API_KEY=YOUR_KEY research-os-api
-
-Health check:
-  curl http://127.0.0.1:8000/health
-
-PowerShell-safe POST example:
-  curl.exe --% -X POST http://127.0.0.1:8000/draft/methods -H "Content-Type: application/json" -d "{\"notes\":\"test\"}"
-
-# UI (frontend)
-
-From `frontend/`:
-  npm install
-  npm run dev
-
-Optional API base override:
-  set VITE_API_BASE_URL=http://127.0.0.1:8000
-
-The UI calls:
-  GET /v1/health
-  POST /v1/draft/methods
+The API emits structured JSON logs and attaches `X-Request-ID` to responses for traceability.
