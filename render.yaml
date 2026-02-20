@@ -5,9 +5,9 @@ services:
     healthCheckPath: /v1/health
     envVars:
       - key: OPENAI_API_KEY
-        value: ""
+        sync: false
       - key: CORS_ALLOW_ORIGINS
-        value: http://localhost:5173,https://research-os-ui.onrender.com
+        value: http://localhost:5173,https://research-os-ui-achk.onrender.com,https://research-os-ui.onrender.com
   - name: research-os-ui
     type: web
     runtime: static
