@@ -43,7 +43,7 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: 'REVIEW & SYSTEM',
+    title: 'GOVERNANCE',
     items: [
       { label: 'Journal Targeting', path: '/journal-targeting' },
       { label: 'Claim Map', path: '/claim-map' },
