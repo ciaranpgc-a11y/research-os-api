@@ -240,6 +240,37 @@ def test_v1_journals_returns_presets(monkeypatch, tmp_path) -> None:
     assert {"slug", "display_name", "default_voice"}.issubset(payload[0].keys())
 
 
+def test_v1_aawe_selection_insight_returns_claim_payload(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    with TestClient(app) as client:
+        response = client.get("/v1/aawe/insights/claim/intro-p1")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selection_type"] == "claim"
+    assert payload["item_id"] == "intro-p1"
+    assert payload["title"] == "Clinical Burden"
+    assert len(payload["evidence"]) >= 1
+    assert len(payload["citations"]) >= 1
+
+
+def test_v1_aawe_selection_insight_returns_404_for_missing_item(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    with TestClient(app) as client:
+        response = client.get("/v1/aawe/insights/result/missing-id")
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": {
+            "message": "Resource not found",
+            "type": "not_found",
+            "detail": "No insight payload found for result 'missing-id'.",
+        }
+    }
+
+
 def test_v1_create_and_list_project_manuscripts(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
 

@@ -18,6 +18,7 @@ import { useAaweStore } from '@/store/use-aawe-store'
 
 function App() {
   const clearSelection = useAaweStore((state) => state.clearSelection)
+  const theme = useAaweStore((state) => state.theme)
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -30,6 +31,12 @@ function App() {
       window.removeEventListener('keydown', onKeyDown)
     }
   }, [clearSelection])
+
+  useEffect(() => {
+    const root = document.documentElement
+    root.classList.toggle('dark', theme === 'dark')
+    window.localStorage.setItem('aawe-theme', theme)
+  }, [theme])
 
   return (
     <Routes>

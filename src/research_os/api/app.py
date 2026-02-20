@@ -2,6 +2,7 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from typing import Literal
 from uuid import uuid4
 
 from fastapi import FastAPI
@@ -22,6 +23,7 @@ from research_os.api.schemas import (
     GenerationJobResponse,
     HealthResponse,
     JournalOptionResponse,
+    SelectionInsightResponse,
     ManuscriptCreateRequest,
     ManuscriptGenerateRequest,
     ManuscriptSnapshotCreateRequest,
@@ -66,6 +68,10 @@ from research_os.services.generation_job_service import (
     list_generation_jobs_for_manuscript,
     retry_generation_job,
     serialize_generation_job,
+)
+from research_os.services.insight_service import (
+    SelectionInsightNotFoundError,
+    get_selection_insight,
 )
 from research_os.services.manuscript_service import (
     ManuscriptGenerationError,
@@ -239,6 +245,23 @@ def v1_health_check() -> HealthResponse:
 @app.get("/v1/journals", response_model=list[JournalOptionResponse], tags=["v1"])
 def v1_list_journal_presets() -> list[JournalOptionResponse]:
     return [JournalOptionResponse(**preset) for preset in JOURNAL_PRESETS]
+
+
+@app.get(
+    "/v1/aawe/insights/{selection_type}/{item_id}",
+    response_model=SelectionInsightResponse,
+    responses=NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_get_aawe_selection_insight(
+    selection_type: Literal["claim", "result", "qc"],
+    item_id: str,
+) -> SelectionInsightResponse | JSONResponse:
+    try:
+        payload = get_selection_insight(selection_type, item_id)
+        return SelectionInsightResponse(**payload)
+    except SelectionInsightNotFoundError as exc:
+        return _build_not_found_response(str(exc))
 
 
 @app.post("/v1/wizard/infer", response_model=WizardInferResponse, tags=["v1"])

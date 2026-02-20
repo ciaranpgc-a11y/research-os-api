@@ -1,8 +1,9 @@
-import { Menu, PanelRight, Search } from 'lucide-react'
+import { Menu, Moon, PanelRight, Search, Sun } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useAaweStore } from '@/store/use-aawe-store'
 
 type TopBarProps = {
   onOpenLeftNav: () => void
@@ -10,6 +11,9 @@ type TopBarProps = {
 }
 
 export function TopBar({ onOpenLeftNav, onOpenRightPanel }: TopBarProps) {
+  const theme = useAaweStore((state) => state.theme)
+  const toggleTheme = useAaweStore((state) => state.toggleTheme)
+
   return (
     <header className="flex h-14 items-center gap-3 border-b border-border bg-card/80 px-3 backdrop-blur nav:px-4">
       <div className="flex items-center gap-2">
@@ -36,6 +40,17 @@ export function TopBar({ onOpenLeftNav, onOpenRightPanel }: TopBarProps) {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        <TooltipProvider delayDuration={100}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="icon" onClick={toggleTheme}>
+                {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                <span className="sr-only">Toggle theme</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <Button variant="outline" size="sm">
           Export
         </Button>

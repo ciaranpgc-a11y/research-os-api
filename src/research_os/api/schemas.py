@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -181,3 +182,30 @@ class GenerationJobResponse(BaseModel):
     estimated_cost_usd_high: float
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class InsightEvidenceResponse(BaseModel):
+    id: str
+    label: str
+    source: str
+    confidence: str | None = None
+
+
+class InsightDerivationResponse(BaseModel):
+    dataset: str
+    population_filter: str
+    model: str
+    covariates: list[str] = Field(default_factory=list)
+    validation_checks: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class SelectionInsightResponse(BaseModel):
+    selection_type: Literal["claim", "result", "qc"]
+    item_id: str
+    title: str
+    summary: str
+    evidence: list[InsightEvidenceResponse] = Field(default_factory=list)
+    qc: list[str] = Field(default_factory=list)
+    derivation: InsightDerivationResponse
+    citations: list[str] = Field(default_factory=list)
