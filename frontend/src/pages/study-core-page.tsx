@@ -35,6 +35,8 @@ function buildGenerationBrief(values: ContextFormValues, sections: string[], gua
     values.researchObjective.trim() ? `Objective: ${values.researchObjective.trim()}` : '',
     values.studyArchitecture.trim() ? `Research type: ${values.studyArchitecture.trim()}` : '',
     values.interpretationMode.trim() ? `Interpretation mode: ${values.interpretationMode.trim()}` : '',
+    values.recommendedArticleType.trim() ? `Recommended article type: ${values.recommendedArticleType.trim()}` : '',
+    values.recommendedWordLength.trim() ? `Recommended word length: ${values.recommendedWordLength.trim()}` : '',
     sections.length > 0
       ? `Priority sections: ${sections
           .map((section) => section.charAt(0).toUpperCase() + section.slice(1))
@@ -67,6 +69,8 @@ function buildResearchFrameSignature(values: ContextFormValues, targetJournal: s
     researchObjective: values.researchObjective.trim(),
     studyArchitecture: values.studyArchitecture.trim(),
     interpretationMode: values.interpretationMode.trim(),
+    recommendedArticleType: values.recommendedArticleType.trim(),
+    recommendedWordLength: values.recommendedWordLength.trim(),
     targetJournal: targetJournal.trim(),
   })
 }
@@ -107,6 +111,8 @@ export function StudyCorePage() {
     researchObjective: '',
     studyArchitecture: '',
     interpretationMode: '',
+    recommendedArticleType: '',
+    recommendedWordLength: '',
   })
 
   const [guardrailsEnabled] = useState(true)
@@ -142,6 +148,8 @@ export function StudyCorePage() {
     () => ({
       study_type: contextValues.studyArchitecture,
       research_objective: contextValues.researchObjective,
+      recommended_article_type: contextValues.recommendedArticleType,
+      recommended_word_length: contextValues.recommendedWordLength,
       primary_data_source: 'manual_input',
       primary_analytical_claim: contextValues.interpretationMode || 'Associative',
       analysis_summary: contextValues.interpretationMode ? `Interpretation mode: ${contextValues.interpretationMode}` : 'Interpretation mode: Associative',
@@ -151,7 +159,13 @@ export function StudyCorePage() {
       manuscript_goal: 'generate_full_manuscript',
       data_source: 'manual_entry',
     }),
-    [contextValues.interpretationMode, contextValues.researchObjective, contextValues.studyArchitecture],
+    [
+      contextValues.interpretationMode,
+      contextValues.recommendedArticleType,
+      contextValues.recommendedWordLength,
+      contextValues.researchObjective,
+      contextValues.studyArchitecture,
+    ],
   )
 
   const suggestedBrief = useMemo(
@@ -231,14 +245,14 @@ export function StudyCorePage() {
   }, [acceptedSectionKeys, setAcceptedSections])
 
   useEffect(() => {
-    setContextFields({
-      projectTitle: contextValues.projectTitle,
-      researchObjective: contextValues.researchObjective,
-      studyArchitecture: contextValues.studyArchitecture,
-      interpretationMode: contextValues.interpretationMode,
-      studyType: contextValues.studyArchitecture,
-      primaryAnalyticalClaim: contextValues.interpretationMode,
-    })
+      setContextFields({
+        projectTitle: contextValues.projectTitle,
+        researchObjective: contextValues.researchObjective,
+        studyArchitecture: contextValues.studyArchitecture,
+        interpretationMode: contextValues.interpretationMode,
+        studyType: contextValues.studyArchitecture,
+        primaryAnalyticalClaim: contextValues.interpretationMode,
+      })
   }, [contextValues, setContextFields])
 
   useEffect(() => {
@@ -424,6 +438,10 @@ export function StudyCorePage() {
         <Step1Panel
           summary={contextValues.researchObjective}
           researchType={contextValues.studyArchitecture}
+          interpretationMode={contextValues.interpretationMode}
+          targetJournal={targetJournal}
+          currentArticleType={contextValues.recommendedArticleType}
+          currentWordLength={contextValues.recommendedWordLength}
           onReplaceSummary={(value) =>
             setContextValues((current) => ({
               ...current,
@@ -434,6 +452,18 @@ export function StudyCorePage() {
             setContextValues((current) => ({
               ...current,
               studyArchitecture: value,
+            }))
+          }
+          onApplyArticleType={(value) =>
+            setContextValues((current) => ({
+              ...current,
+              recommendedArticleType: value,
+            }))
+          }
+          onApplyWordLength={(value) =>
+            setContextValues((current) => ({
+              ...current,
+              recommendedWordLength: value,
             }))
           }
         />

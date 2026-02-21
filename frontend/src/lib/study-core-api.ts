@@ -15,6 +15,7 @@ import type {
   JournalOption,
   ManuscriptRecord,
   ProjectRecord,
+  ResearchOverviewSuggestionsPayload,
   SectionPlanPayload,
   TitleAbstractPayload,
   WizardBootstrapPayload,
@@ -95,6 +96,28 @@ export async function planSections(input: {
     throw new Error(await parseApiError(response, `Section planning failed (${response.status})`))
   }
   return (await response.json()) as SectionPlanPayload
+}
+
+export async function fetchResearchOverviewSuggestions(input: {
+  targetJournal: string
+  researchType: string
+  interpretationMode: string
+  summaryOfResearch: string
+}): Promise<ResearchOverviewSuggestionsPayload> {
+  const response = await fetch(`${API_BASE_URL}/v1/aawe/research-overview/suggestions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      target_journal: input.targetJournal,
+      research_type: input.researchType,
+      interpretation_mode: input.interpretationMode,
+      summary_of_research: input.summaryOfResearch,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Research overview suggestions failed (${response.status})`))
+  }
+  return (await response.json()) as ResearchOverviewSuggestionsPayload
 }
 
 export async function runClaimLinker(input: {

@@ -38,6 +38,8 @@ from research_os.api.schemas import (
     HealthResponse,
     JournalOptionResponse,
     QCRunResponse,
+    ResearchOverviewSuggestionsRequest,
+    ResearchOverviewSuggestionsResponse,
     SelectionInsightResponse,
     ManuscriptCreateRequest,
     ManuscriptGenerateRequest,
@@ -123,6 +125,9 @@ from research_os.services.paragraph_regeneration_service import (
 )
 from research_os.services.qc_service import run_qc_checks
 from research_os.services.section_planning_service import build_section_plan
+from research_os.services.research_overview_suggestions_service import (
+    generate_research_overview_suggestions,
+)
 from research_os.services.submission_pack_service import (
     SubmissionPackGenerationError,
     build_submission_pack,
@@ -381,6 +386,24 @@ def v1_plan_aawe_sections(request: SectionPlanRequest) -> SectionPlanResponse:
         sections=request.sections,
     )
     return SectionPlanResponse(**payload)
+
+
+@app.post(
+    "/v1/aawe/research-overview/suggestions",
+    response_model=ResearchOverviewSuggestionsResponse,
+    tags=["v1"],
+)
+def v1_research_overview_suggestions(
+    request: ResearchOverviewSuggestionsRequest,
+) -> ResearchOverviewSuggestionsResponse:
+    payload = generate_research_overview_suggestions(
+        target_journal=request.target_journal,
+        research_type=request.research_type,
+        interpretation_mode=request.interpretation_mode,
+        summary_of_research=request.summary_of_research,
+        preferred_model=request.model or "gpt-5.2",
+    )
+    return ResearchOverviewSuggestionsResponse(**payload)
 
 
 @app.post(

@@ -12,6 +12,8 @@ export type ContextFormValues = {
   projectTitle: string
   studyArchitecture: string
   interpretationMode: string
+  recommendedArticleType: string
+  recommendedWordLength: string
   researchObjective: string
 }
 
@@ -32,10 +34,19 @@ const SECONDARY_ACTION_BUTTON_CLASS =
   'border-emerald-200 text-emerald-700 hover:bg-emerald-50 focus-visible:ring-emerald-500'
 
 function buildAnalysisSummary(values: ContextFormValues): string {
+  const parts: string[] = []
   if (!values.interpretationMode.trim()) {
-    return 'Interpretation mode: Associative'
+    parts.push('Interpretation mode: Associative')
+  } else {
+    parts.push(`Interpretation mode: ${values.interpretationMode.trim()}`)
   }
-  return `Interpretation mode: ${values.interpretationMode.trim()}`
+  if (values.recommendedArticleType.trim()) {
+    parts.push(`Recommended article type: ${values.recommendedArticleType.trim()}`)
+  }
+  if (values.recommendedWordLength.trim()) {
+    parts.push(`Recommended word length: ${values.recommendedWordLength.trim()}`)
+  }
+  return parts.join(' | ')
 }
 
 export function StepContext({
@@ -179,6 +190,8 @@ export function StepContext({
         answers: {
           study_type: values.studyArchitecture,
           research_objective: values.researchObjective,
+          recommended_article_type: values.recommendedArticleType,
+          recommended_word_length: values.recommendedWordLength,
           primary_data_source: 'manual_input',
           primary_analytical_claim: values.interpretationMode || 'Associative',
           analysis_summary: analysisSummary,
@@ -269,6 +282,26 @@ export function StepContext({
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="space-y-1">
+        <Label htmlFor="context-recommended-article-type">Recommended article type</Label>
+        <Input
+          id="context-recommended-article-type"
+          value={values.recommendedArticleType}
+          placeholder="Auto-populated from journal guidance"
+          onChange={(event) => onValueChange('recommendedArticleType', event.target.value)}
+        />
+      </div>
+
+      <div className="space-y-1">
+        <Label htmlFor="context-recommended-word-length">Recommended word length</Label>
+        <Input
+          id="context-recommended-word-length"
+          value={values.recommendedWordLength}
+          placeholder="Auto-populated from journal guidance"
+          onChange={(event) => onValueChange('recommendedWordLength', event.target.value)}
+        />
       </div>
 
       <div className="space-y-2">

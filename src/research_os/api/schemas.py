@@ -300,6 +300,29 @@ class SectionPlanResponse(BaseModel):
     total_estimated_cost_usd_high: float
 
 
+class ResearchOverviewSuggestionsRequest(BaseModel):
+    target_journal: str
+    research_type: str
+    interpretation_mode: str = ""
+    summary_of_research: str
+    model: str | None = None
+
+
+class TextRecommendationResponse(BaseModel):
+    value: str
+    rationale: str
+
+
+class ResearchOverviewSuggestionsResponse(BaseModel):
+    summary_refinements: list[str] = Field(default_factory=list)
+    research_type_suggestion: TextRecommendationResponse | None = None
+    article_type_recommendation: TextRecommendationResponse | None = None
+    word_length_recommendation: TextRecommendationResponse | None = None
+    guidance_suggestions: list[str] = Field(default_factory=list)
+    source_urls: list[str] = Field(default_factory=list)
+    model_used: str
+
+
 class GroundedDraftEvidenceLinkRequest(BaseModel):
     claim_id: str = ""
     claim_heading: str = ""

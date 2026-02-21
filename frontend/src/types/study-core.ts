@@ -230,3 +230,18 @@ export type SubmissionPackPayload = {
   highlights: string[]
   plain_language_summary: string
 }
+
+export type TextRecommendation = {
+  value: string
+  rationale: string
+}
+
+export type ResearchOverviewSuggestionsPayload = {
+  summary_refinements: string[]
+  research_type_suggestion: TextRecommendation | null
+  article_type_recommendation: TextRecommendation | null
+  word_length_recommendation: TextRecommendation | null
+  guidance_suggestions: string[]
+  source_urls: string[]
+  model_used: string
+}
