@@ -380,6 +380,7 @@ export function Step1Panel({
   const [showSummaryDiff, setShowSummaryDiff] = useState(false)
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
   const [appliedSectionOpen, setAppliedSectionOpen] = useState(false)
+  const [ignoredSectionOpen, setIgnoredSectionOpen] = useState(false)
   const applyTimersRef = useRef<number[]>([])
 
   useEffect(() => {
@@ -491,24 +492,24 @@ export function Step1Panel({
     isSummaryApplied,
   ])
 
-  const ignoredCount = useMemo(() => {
-    let count = 0
+  const ignoredKeys = useMemo(() => {
+    const keys: SuggestionKey[] = []
     if (ignoredState.summary && summarySuggestion && !isSummaryApplied) {
-      count += 1
+      keys.push('summary')
     }
     if (ignoredState.researchCategory && researchCategorySuggestion && !isResearchCategoryApplied) {
-      count += 1
+      keys.push('researchCategory')
     }
     if (ignoredState.researchType && researchTypeSuggestion && !isResearchTypeApplied) {
-      count += 1
+      keys.push('researchType')
     }
     if (ignoredState.interpretationMode && interpretationSuggestion && !isInterpretationModeApplied) {
-      count += 1
+      keys.push('interpretationMode')
     }
     if (ignoredState.journal && shouldShowJournalApplyButton) {
-      count += 1
+      keys.push('journal')
     }
-    return count
+    return keys
   }, [
     ignoredState.interpretationMode,
     ignoredState.journal,
@@ -525,6 +526,7 @@ export function Step1Panel({
     shouldShowJournalApplyButton,
     summarySuggestion,
   ])
+  const ignoredCount = ignoredKeys.length
 
   useEffect(() => {
     setIgnoredState(readIgnoredStateForKey(currentKey))
@@ -581,6 +583,12 @@ export function Step1Panel({
       setAppliedSectionOpen(false)
     }
   }, [appliedKeys.length, appliedSectionOpen])
+
+  useEffect(() => {
+    if (ignoredKeys.length === 0 && ignoredSectionOpen) {
+      setIgnoredSectionOpen(false)
+    }
+  }, [ignoredKeys.length, ignoredSectionOpen])
 
   const generateSuggestions = async () => {
     if (!summary.trim()) {
@@ -798,6 +806,15 @@ export function Step1Panel({
   const onIgnoreSuggestion = (key: AppliedKey) => {
     setIgnoredState((current) => {
       const next = { ...current, [key]: true }
+      persistIgnoredStateForKey(currentKey, next)
+      return next
+    })
+    setIgnoredSectionOpen(true)
+  }
+
+  const onRestoreIgnoredSuggestion = (key: AppliedKey) => {
+    setIgnoredState((current) => {
+      const next = { ...current, [key]: false }
       persistIgnoredStateForKey(currentKey, next)
       return next
     })
@@ -1169,6 +1186,100 @@ export function Step1Panel({
     return null
   }
 
+  const renderIgnoredCard = (key: SuggestionKey) => {
+    const restoreControl = (
+      <Button
+        size="sm"
+        variant="outline"
+        className={IGNORE_BUTTON_CLASS}
+        onClick={() => onRestoreIgnoredSuggestion(key)}
+        disabled={loading}
+      >
+        Restore
+      </Button>
+    )
+
+    if (key === 'summary' && summarySuggestion) {
+      return (
+        <div key="ignored-summary" className={SUMMARY_CARD_CLASS}>
+          <p className="text-sm font-semibold text-emerald-900">Summary of research refinement</p>
+          <p className="text-xs text-emerald-900">Ignored for now.</p>
+          <div className="rounded border border-emerald-300 bg-white p-2">
+            <p className="text-xs text-emerald-950">{summarySuggestion}</p>
+          </div>
+          <div className="flex justify-end">{restoreControl}</div>
+        </div>
+      )
+    }
+
+    if (key === 'researchCategory' && researchCategorySuggestion) {
+      return (
+        <div key="ignored-category" className={RESEARCH_CATEGORY_CARD_CLASS}>
+          <p className="text-sm font-semibold text-violet-900">Research category suggestion</p>
+          <p className="text-xs text-violet-900">
+            Recommended category: <span className="font-semibold">{researchCategorySuggestion.value}</span>
+          </p>
+          <p className="text-xs text-violet-900">{researchCategorySuggestion.rationale}</p>
+          <div className="flex justify-end">{restoreControl}</div>
+        </div>
+      )
+    }
+
+    if (key === 'researchType' && researchTypeSuggestion) {
+      return (
+        <div key="ignored-type" className={RESEARCH_TYPE_CARD_CLASS}>
+          <p className="text-sm font-semibold text-sky-900">Research type suggestion</p>
+          <p className="text-xs text-sky-900">
+            Recommended type: <span className="font-semibold">{researchTypeSuggestion.value}</span>
+          </p>
+          <p className="text-xs text-sky-900">{researchTypeSuggestion.rationale}</p>
+          <div className="flex justify-end">{restoreControl}</div>
+        </div>
+      )
+    }
+
+    if (key === 'interpretationMode' && interpretationSuggestion) {
+      return (
+        <div key="ignored-interpretation" className={INTERPRETATION_CARD_CLASS}>
+          <p className="text-sm font-semibold text-cyan-900">Interpretation mode suggestion</p>
+          <p className="text-xs text-cyan-900">
+            Recommended mode: <span className="font-semibold">{interpretationSuggestion.value}</span>
+          </p>
+          <p className="text-xs text-cyan-900">{interpretationSuggestion.rationale}</p>
+          <div className="flex justify-end">{restoreControl}</div>
+        </div>
+      )
+    }
+
+    if (key === 'journal') {
+      return (
+        <div key="ignored-journal" className={JOURNAL_CARD_CLASS}>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-amber-900">Journal recommendation</p>
+            {journalProvenance ? (
+              <span className={`rounded border px-1.5 py-0.5 text-[11px] font-medium ${journalProvenance.className}`}>
+                {journalProvenance.label}
+              </span>
+            ) : null}
+          </div>
+          {articleSuggestion ? (
+            <p className="text-xs text-amber-900">
+              Article type: <span className="font-semibold">{articleSuggestion.value}</span>
+            </p>
+          ) : null}
+          {wordLengthSuggestion ? (
+            <p className="text-xs text-amber-900">
+              Recommended word length: <span className="font-semibold">{wordLengthSuggestion.value}</span>
+            </p>
+          ) : null}
+          <div className="flex justify-end">{restoreControl}</div>
+        </div>
+      )
+    }
+
+    return null
+  }
+
   return (
     <aside className="space-y-3 rounded-lg border border-border bg-card p-3">
       <h3 className="text-sm font-semibold">Research Overview Suggestions</h3>
@@ -1246,23 +1357,36 @@ export function Step1Panel({
               {hiddenPendingCount} additional action{hiddenPendingCount > 1 ? 's' : ''} hidden. Apply or refresh to reprioritise.
             </p>
           ) : null}
-          {ignoredCount > 0 ? (
-            <div className="flex items-center justify-between rounded-md border border-slate-300 bg-slate-50 px-2 py-2">
-              <p className="text-xs text-slate-700">
-                {ignoredCount} suggestion{ignoredCount > 1 ? 's' : ''} ignored.
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                className={IGNORE_BUTTON_CLASS}
-                onClick={onRestoreIgnoredSuggestions}
-                disabled={loading}
-              >
-                Restore ignored
-              </Button>
-            </div>
-          ) : null}
         </div>
+      ) : null}
+
+      {refinementsEnabled ? (
+        <details
+          className="rounded-md border border-border/80 bg-muted/15 p-3"
+          open={ignoredSectionOpen && ignoredCount > 0}
+          onToggle={(event) => setIgnoredSectionOpen((event.currentTarget as HTMLDetailsElement).open)}
+        >
+          <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Ignored suggestions ({ignoredCount})
+          </summary>
+          <div className="mt-3 space-y-2">
+            {ignoredCount === 0 ? <p className="text-xs text-muted-foreground">No ignored suggestions.</p> : null}
+            {ignoredKeys.map((key) => renderIgnoredCard(key))}
+            {ignoredCount > 1 ? (
+              <div className="flex justify-end pt-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={IGNORE_BUTTON_CLASS}
+                  onClick={onRestoreIgnoredSuggestions}
+                  disabled={loading}
+                >
+                  Restore all ignored
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        </details>
       ) : null}
 
       {refinementsEnabled ? (
