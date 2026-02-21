@@ -236,7 +236,6 @@ export function StudyCorePage() {
 
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
-  const [journalRecommendationsLocked, setJournalRecommendationsLocked] = useState(false)
 
   const applySectionPatch = useCallback((sectionName: string, bulletsToInsert: string[]) => {
     const cleanedBullets = bulletsToInsert.map((bullet) => bullet.trim()).filter(Boolean)
@@ -486,7 +485,6 @@ export function StudyCorePage() {
           values={contextValues}
           targetJournal={targetJournal}
           journals={journals}
-          journalRecommendationsLocked={journalRecommendationsLocked}
           onValueChange={(field, value) =>
             setContextValues((current) => ({
               ...current,
@@ -502,7 +500,6 @@ export function StudyCorePage() {
             }))
             setGuardrailsEnabled(enableConservativeGuardrails)
           }}
-          onUnlockJournalRecommendations={() => setJournalRecommendationsLocked(false)}
           onStatus={setStatus}
           onError={setError}
         />
@@ -669,7 +666,6 @@ export function StudyCorePage() {
               recommendedWordLength: value,
             }))
           }
-          onJournalRecommendationsLockedChange={setJournalRecommendationsLocked}
         />
       )
     }

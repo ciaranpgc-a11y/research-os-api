@@ -20,7 +20,6 @@ type Step1PanelProps = {
   onApplyInterpretationMode: (value: string) => void
   onApplyArticleType: (value: string) => void
   onApplyWordLength: (value: string) => void
-  onJournalRecommendationsLockedChange: (locked: boolean) => void
 }
 
 const ACTION_BUTTON_CLASS = 'bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500'
@@ -225,7 +224,6 @@ export function Step1Panel({
   onApplyInterpretationMode,
   onApplyArticleType,
   onApplyWordLength,
-  onJournalRecommendationsLockedChange,
 }: Step1PanelProps) {
   const [refinementsEnabled, setRefinementsEnabled] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -396,7 +394,6 @@ export function Step1Panel({
 
   const refreshSuggestions = async () => {
     setRefinementsEnabled(true)
-    onJournalRecommendationsLockedChange(false)
     setAppliedState({
       summary: false,
       researchCategory: false,
@@ -467,11 +464,10 @@ export function Step1Panel({
     if (wordLengthRecommendation?.value) {
       onApplyWordLength(wordLengthRecommendation.value)
     }
-    onJournalRecommendationsLockedChange(true)
     markApplied('journal')
   }
 
-  const applyDisabled = isStale || loading
+  const applyDisabled = loading
   const pendingToRender = pendingKeys.slice(0, 3)
   const hiddenPendingCount = Math.max(0, pendingKeys.length - pendingToRender.length)
 

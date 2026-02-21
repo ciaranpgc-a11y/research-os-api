@@ -1,4 +1,4 @@
-import { ExternalLink, Loader2, LockOpen, Mic, Save, Square } from 'lucide-react'
+import { ExternalLink, Loader2, Mic, Save, Square } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -29,12 +29,10 @@ type StepContextProps = {
   values: ContextFormValues
   targetJournal: string
   journals: JournalOption[]
-  journalRecommendationsLocked: boolean
   onValueChange: (field: keyof ContextFormValues, value: string) => void
   onTargetJournalChange: (value: string) => void
   onContextSaved: (payload: { projectId: string; manuscriptId: string; recommendedSections: string[] }) => void
   onStudyTypeDefaultsResolved: (defaults: { interpretationMode: string; enableConservativeGuardrails: boolean }) => void
-  onUnlockJournalRecommendations?: () => void
   onStatus: (message: string) => void
   onError: (message: string) => void
 }
@@ -64,12 +62,10 @@ export function StepContext({
   values,
   targetJournal,
   journals,
-  journalRecommendationsLocked,
   onValueChange,
   onTargetJournalChange,
   onContextSaved,
   onStudyTypeDefaultsResolved,
-  onUnlockJournalRecommendations,
   onStatus,
   onError,
 }: StepContextProps) {
@@ -251,18 +247,6 @@ export function StepContext({
     }
   }
 
-  const onUnlockJournalFields = () => {
-    if (!onUnlockJournalRecommendations) {
-      return
-    }
-    onUnlockJournalRecommendations()
-    onStatus('Journal recommendations unlocked for editing.')
-  }
-
-  const lockStatusText = journalRecommendationsLocked
-    ? 'Journal recommendations are locked after apply.'
-    : 'Journal recommendation fields are editable.'
-
   return (
     <div className="space-y-6 rounded-lg border border-border bg-card p-6">
       <div className="space-y-1">
@@ -290,11 +274,11 @@ export function StepContext({
             <p className="text-sm">{values.interpretationMode || 'Not set'}</p>
           </div>
           <div className="rounded-md border border-border/70 bg-background p-2">
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Article type</p>
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Recommended article type</p>
             <p className="text-sm">{values.recommendedArticleType || 'Not set'}</p>
           </div>
           <div className="rounded-md border border-border/70 bg-background p-2">
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Target word length</p>
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Recommended word length</p>
             <p className="text-sm">{values.recommendedWordLength || 'Not set'}</p>
           </div>
         </div>
@@ -404,47 +388,6 @@ export function StepContext({
                 </option>
               ))}
             </select>
-          </div>
-        </div>
-      </section>
-
-      <section className="space-y-4 rounded-md border border-border/80 p-4">
-        <div className="space-y-1">
-          <h3 className="text-sm font-semibold">Publication fit</h3>
-          <p className="text-xs text-muted-foreground">Use these fields for journal-aligned article type and target length.</p>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 bg-muted/20 px-3 py-2">
-          <p className="text-xs text-muted-foreground">{lockStatusText}</p>
-          {journalRecommendationsLocked && onUnlockJournalRecommendations ? (
-            <Button type="button" size="sm" variant="outline" onClick={onUnlockJournalFields}>
-              <LockOpen className="mr-1 h-3.5 w-3.5" />
-              Unlock journal fields
-            </Button>
-          ) : null}
-        </div>
-
-        <div className="grid gap-4 xl:grid-cols-2">
-          <div className="space-y-1">
-            <Label htmlFor="context-recommended-article-type">Recommended article type</Label>
-            <Input
-              id="context-recommended-article-type"
-              value={values.recommendedArticleType}
-              placeholder="Suggested after AI review"
-              onChange={(event) => onValueChange('recommendedArticleType', event.target.value)}
-              disabled={journalRecommendationsLocked}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <Label htmlFor="context-recommended-word-length">Recommended word length</Label>
-            <Input
-              id="context-recommended-word-length"
-              value={values.recommendedWordLength}
-              placeholder="Suggested after AI review"
-              onChange={(event) => onValueChange('recommendedWordLength', event.target.value)}
-              disabled={journalRecommendationsLocked}
-            />
           </div>
         </div>
       </section>
