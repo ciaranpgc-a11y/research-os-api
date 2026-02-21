@@ -28,6 +28,7 @@ type StepContextProps = {
   values: ContextFormValues
   targetJournal: string
   journals: JournalOption[]
+  journalRecommendationsLocked: boolean
   onValueChange: (field: keyof ContextFormValues, value: string) => void
   onTargetJournalChange: (value: string) => void
   onContextSaved: (payload: { projectId: string; manuscriptId: string; recommendedSections: string[] }) => void
@@ -61,6 +62,7 @@ export function StepContext({
   values,
   targetJournal,
   journals,
+  journalRecommendationsLocked,
   onValueChange,
   onTargetJournalChange,
   onContextSaved,
@@ -104,20 +106,11 @@ export function StepContext({
 
   const errors = useMemo(() => {
     const nextErrors: Record<string, string> = {}
-    if (!values.projectTitle.trim()) {
-      nextErrors.projectTitle = 'Proposed project title is required.'
-    }
-    if (!values.researchCategory.trim()) {
-      nextErrors.researchCategory = 'Research category is required.'
-    }
-    if (!values.studyArchitecture.trim()) {
-      nextErrors.studyArchitecture = 'Research type is required.'
-    }
     if (!values.researchObjective.trim()) {
       nextErrors.researchObjective = 'Summary of research is required.'
     }
     return nextErrors
-  }, [values.projectTitle, values.researchCategory, values.researchObjective, values.studyArchitecture])
+  }, [values.researchObjective])
 
   const researchCategories = useMemo(() => getResearchTypeTaxonomy(true), [])
   const studyTypeOptions = useMemo(
@@ -217,7 +210,7 @@ export function StepContext({
     try {
       const analysisSummary = buildAnalysisSummary(values)
       const payload = await bootstrapRunContext({
-        title: values.projectTitle,
+        title: values.projectTitle.trim() || 'Untitled research overview',
         targetJournal,
         answers: {
           study_type: values.studyArchitecture,
@@ -360,7 +353,11 @@ export function StepContext({
           value={values.recommendedArticleType}
           placeholder="Auto-populated from journal guidance"
           onChange={(event) => onValueChange('recommendedArticleType', event.target.value)}
+          disabled={journalRecommendationsLocked}
         />
+        {journalRecommendationsLocked ? (
+          <p className="text-xs text-muted-foreground">Locked after applying recommendation. Refresh suggestions to unlock.</p>
+        ) : null}
       </div>
 
       <div className="space-y-1">
@@ -370,7 +367,11 @@ export function StepContext({
           value={values.recommendedWordLength}
           placeholder="Auto-populated from journal guidance"
           onChange={(event) => onValueChange('recommendedWordLength', event.target.value)}
+          disabled={journalRecommendationsLocked}
         />
+        {journalRecommendationsLocked ? (
+          <p className="text-xs text-muted-foreground">Locked after applying recommendation. Refresh suggestions to unlock.</p>
+        ) : null}
       </div>
 
       <div className="space-y-2">

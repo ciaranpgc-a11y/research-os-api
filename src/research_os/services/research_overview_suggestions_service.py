@@ -187,6 +187,57 @@ _KEYWORD_PATTERN = re.compile(
     r"manuscript|abstract|figure|table|references|instructions)\b",
     re.IGNORECASE,
 )
+_WORD_TOKEN_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9\-]*")
+_NUMBER_PATTERN = re.compile(r"\b\d+(?:\.\d+)?%?\b")
+_ACRONYM_PATTERN = re.compile(r"\b[A-Z]{2,}\b")
+_INSTRUCTION_START_PATTERN = re.compile(
+    r"^(add|include|report|state|specify|clarify|ensure|consider|use|avoid|keep|highlight|describe|outline|mention)\b",
+    re.IGNORECASE,
+)
+_INSTRUCTION_INLINE_PATTERN = re.compile(
+    r"\b(you should|should|must|need to|needs to|please|consider)\b",
+    re.IGNORECASE,
+)
+_CAUSAL_REPLACEMENTS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\bleads to\b", re.IGNORECASE), "is associated with"),
+    (re.compile(r"\bled to\b", re.IGNORECASE), "was associated with"),
+    (re.compile(r"\bcauses\b", re.IGNORECASE), "is associated with"),
+    (re.compile(r"\bcause\b", re.IGNORECASE), "be associated with"),
+    (re.compile(r"\bcaused\b", re.IGNORECASE), "was associated with"),
+    (re.compile(r"\bimproves\b", re.IGNORECASE), "is associated with improved"),
+    (re.compile(r"\bimproved\b", re.IGNORECASE), "was associated with improved"),
+    (re.compile(r"\breduces\b", re.IGNORECASE), "is associated with lower"),
+    (re.compile(r"\breduced\b", re.IGNORECASE), "was associated with lower"),
+    (re.compile(r"\bincreases\b", re.IGNORECASE), "is associated with higher"),
+    (re.compile(r"\bincreased\b", re.IGNORECASE), "was associated with higher"),
+)
+_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "in",
+    "into",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "that",
+    "the",
+    "their",
+    "this",
+    "to",
+    "was",
+    "were",
+    "with",
+}
 
 
 def _html_to_candidate_lines(html: str) -> list[str]:
@@ -268,6 +319,70 @@ def _ask_model(prompt: str, preferred_model: str) -> tuple[str, str]:
         return fallback_response.output_text, FALLBACK_MODEL
 
 
+def _combine_model_labels(primary: str, secondary: str) -> str:
+    first = primary.strip()
+    second = secondary.strip()
+    if not first:
+        return second
+    if not second:
+        return first
+    if first == second:
+        return first
+    return f"{first},{second}"
+
+
+def _generate_summary_refinement(
+    *,
+    summary_of_research: str,
+    research_type: str,
+    interpretation_mode: str,
+    preferred_model: str,
+) -> tuple[list[str], str]:
+    summary = _normalize_summary_text(summary_of_research)
+    if not summary:
+        return [], preferred_model
+
+    prompt = f"""
+You are an academic editor. Rewrite the research summary for clarity, flow, and precision.
+
+Inputs:
+- research_type: {research_type}
+- interpretation_mode: {interpretation_mode}
+- summary_of_research: {summary}
+
+Rules:
+- Keep all factual content from summary_of_research.
+- Do not add new facts, numbers, outcomes, methods, or claims.
+- Improve wording only.
+- Use 2-4 sentences.
+- Avoid bullet points and instruction language.
+- For observational framing, keep claims associative and non-causal.
+
+Return JSON only:
+{{
+  "summary_refinement": "string"
+}}
+""".strip()
+
+    raw_output, model_used = _ask_model(prompt, preferred_model=preferred_model)
+    candidates: list[str] = []
+    try:
+        parsed = json.loads(_strip_json_fences(raw_output))
+        value = parsed.get("summary_refinement")
+        if isinstance(value, str):
+            candidates.append(value)
+    except Exception:
+        pass
+    candidates.append(_strip_json_fences(raw_output))
+
+    sanitized = _sanitize_summary_refinements(
+        _coerce_str_list(candidates, max_items=2),
+        summary,
+        max_items=1,
+    )
+    return sanitized, model_used
+
+
 def _coerce_str_list(value: Any, max_items: int = 3) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -302,121 +417,163 @@ def _coerce_recommendation(value: Any) -> dict[str, str] | None:
     }
 
 
-def _normalize_summary(summary_of_research: str) -> str:
-    normalized = re.sub(r"\s+", " ", summary_of_research).strip()
-    if normalized and not re.search(r"[.!?]$", normalized):
+def _normalize_summary_text(text: str) -> str:
+    normalized = re.sub(r"\s+", " ", text).strip()
+    if not normalized:
+        return ""
+    if normalized[-1] not in ".!?":
         normalized = f"{normalized}."
     return normalized
 
 
-def _split_sentences(text: str) -> list[str]:
-    chunks = [chunk.strip() for chunk in re.split(r"(?<=[.!?])\s+", text) if chunk.strip()]
-    return chunks
+def _coerce_to_associative_language(text: str) -> str:
+    if not text:
+        return text
+    rewritten = text
+    for pattern, replacement in _CAUSAL_REPLACEMENTS:
+        rewritten = pattern.sub(replacement, rewritten)
+    return rewritten
 
 
-def _content_words(text: str) -> set[str]:
-    return set(re.findall(r"\b[a-z]{4,}\b", text.lower()))
-
-
-def _number_tokens(text: str) -> set[str]:
-    return set(re.findall(r"\b\d+(?:\.\d+)?%?\b", text))
+def _content_tokens(text: str) -> set[str]:
+    tokens = {
+        token.lower()
+        for token in _WORD_TOKEN_PATTERN.findall(text)
+        if len(token) > 2 and token.lower() not in _STOPWORDS
+    }
+    return tokens
 
 
 def _looks_like_instruction(text: str) -> bool:
-    return bool(
-        re.match(
-            r"^\s*(add|include|report|clarify|ensure|state|use|specify|consider|"
-            r"highlight|emphasize|emphasise)\b",
-            text.strip(),
-            flags=re.IGNORECASE,
-        )
-    )
+    stripped = text.strip()
+    lowered = stripped.lower()
+    if _INSTRUCTION_START_PATTERN.search(stripped):
+        return True
+    if _INSTRUCTION_INLINE_PATTERN.search(lowered):
+        return True
+    if "\n-" in stripped or "\n*" in stripped:
+        return True
+    return False
 
 
-def _is_non_fabricating_rewrite(candidate: str, source_summary: str) -> bool:
-    candidate_text = candidate.strip()
-    source_text = source_summary.strip()
-    if not candidate_text or not source_text:
+def _normalize_rewrite_candidate(candidate: str) -> str:
+    normalized = candidate.strip()
+    normalized = re.sub(r"^[\-\*\d\.\)\s]+", "", normalized).strip()
+    normalized = re.sub(r"\s+", " ", normalized)
+    return _normalize_summary_text(normalized)
+
+
+def _is_valid_summary_rewrite(candidate: str, source_summary: str) -> bool:
+    if not candidate:
         return False
-    if _looks_like_instruction(candidate_text):
+    if len(candidate) < 30:
+        return False
+    if _looks_like_instruction(candidate):
         return False
 
-    source_numbers = _number_tokens(source_text)
-    candidate_numbers = _number_tokens(candidate_text)
+    source_numbers = set(_NUMBER_PATTERN.findall(source_summary))
+    candidate_numbers = set(_NUMBER_PATTERN.findall(candidate))
     if not candidate_numbers.issubset(source_numbers):
         return False
 
-    source_words = _content_words(source_text)
-    candidate_words = _content_words(candidate_text)
-    if not candidate_words:
+    source_acronyms = set(_ACRONYM_PATTERN.findall(source_summary))
+    candidate_acronyms = set(_ACRONYM_PATTERN.findall(candidate))
+    if not candidate_acronyms.issubset(source_acronyms):
         return False
-    overlap = len(source_words.intersection(candidate_words))
-    overlap_ratio = overlap / max(1, len(candidate_words))
-    return overlap_ratio >= 0.55
+
+    source_tokens = _content_tokens(source_summary)
+    candidate_tokens = _content_tokens(candidate)
+    if not source_tokens:
+        return False
+    if not candidate_tokens:
+        return False
+
+    overlap = len(source_tokens.intersection(candidate_tokens)) / max(1, len(source_tokens))
+    new_token_ratio = len(candidate_tokens.difference(source_tokens)) / max(
+        1, len(candidate_tokens)
+    )
+    if overlap < 0.3:
+        return False
+    if new_token_ratio > 0.6:
+        return False
+    return True
 
 
-def _filter_non_fabricating_refinements(
-    candidates: list[str], source_summary: str
+def _sanitize_summary_refinements(
+    candidates: list[str], source_summary: str, max_items: int = 1
 ) -> list[str]:
-    filtered: list[str] = []
+    cleaned_summary = _normalize_summary_text(source_summary)
+    if not cleaned_summary:
+        return []
+
+    accepted: list[str] = []
     seen: set[str] = set()
-    for candidate in candidates:
-        cleaned = re.sub(r"\s+", " ", candidate).strip()
-        if not cleaned:
+    for raw_candidate in candidates:
+        candidate = _normalize_rewrite_candidate(raw_candidate)
+        if not _is_valid_summary_rewrite(candidate, cleaned_summary):
             continue
-        key = cleaned.lower()
+        key = candidate.lower()
         if key in seen:
             continue
-        if not _is_non_fabricating_rewrite(cleaned, source_summary):
-            continue
         seen.add(key)
-        filtered.append(cleaned)
-        if len(filtered) >= 3:
+        accepted.append(candidate)
+        if len(accepted) >= max_items:
             break
-    return filtered
+    return accepted
+
+
+def _merge_unique_strings(primary: list[str], fallback: list[str], max_items: int = 3) -> list[str]:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for source in (primary, fallback):
+        for item in source:
+            key = item.strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            merged.append(item.strip())
+            if len(merged) >= max_items:
+                return merged
+    return merged
 
 
 def _fallback_summary_refinements(
-    summary_of_research: str,
+    summary_of_research: str, research_type: str, interpretation_mode: str
 ) -> list[str]:
-    normalized = _normalize_summary(summary_of_research)
-    if not normalized:
+    summary = _normalize_summary_text(summary_of_research)
+    if not summary:
         return []
 
-    sentences = _split_sentences(normalized)
-    option_one = normalized
-
-    if len(sentences) > 1:
-        option_two = " ".join(sentences[1:] + sentences[:1])
-        option_three = " ".join(
-            sentence if sentence.endswith(".") else f"{sentence}."
-            for sentence in sentences
-        )
+    design = research_type.strip()
+    if design and design.lower() not in summary.lower():
+        with_design = f"{design}: {summary[0].lower()}{summary[1:]}" if len(summary) > 1 else f"{design}: {summary.lower()}"
     else:
-        option_two = normalized
-        option_three = normalized
+        with_design = summary
 
-    unique: list[str] = []
-    seen: set[str] = set()
-    for option in [option_one, option_two, option_three]:
-        key = option.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(option)
-    while len(unique) < 3:
-        unique.append(option_one)
-    return unique[:3]
+    associative = _coerce_to_associative_language(summary)
+    mode = interpretation_mode.strip().lower()
+    if "confirmatory" not in mode:
+        associative = _coerce_to_associative_language(associative)
+
+    fallback_candidates = [summary, associative, _normalize_summary_text(with_design)]
+    return _merge_unique_strings(
+        _sanitize_summary_refinements(fallback_candidates, summary),
+        [summary],
+        max_items=1,
+    )
 
 
 def _fallback_payload(
     summary_of_research: str,
     research_type: str,
+    interpretation_mode: str,
     fetched_urls: list[str],
     model_used: str,
 ) -> dict[str, object]:
     return {
-        "summary_refinements": _fallback_summary_refinements(summary_of_research),
+        "summary_refinements": _fallback_summary_refinements(
+            summary_of_research, research_type, interpretation_mode
+        ),
         "research_type_suggestion": None,
         "article_type_recommendation": {
             "value": "Original Research",
@@ -445,6 +602,12 @@ def generate_research_overview_suggestions(
     preferred_model: str = PREFERRED_MODEL,
 ) -> dict[str, object]:
     fetched_urls, guidance_excerpt = _fetch_journal_guidance(target_journal)
+    summary_editor_refinements, summary_editor_model = _generate_summary_refinement(
+        summary_of_research=summary_of_research,
+        research_type=research_type,
+        interpretation_mode=interpretation_mode,
+        preferred_model=preferred_model,
+    )
 
     prompt = f"""
 You are helping draft a rigorous manuscript plan for a small retrospective observational cardiovascular/imaging study.
@@ -461,7 +624,7 @@ Journal guidance excerpt:
 
 Return JSON only with this exact schema:
 {{
-  "summary_refinements": ["string", "string", "string"],
+  "summary_refinements": ["string"],
   "research_type_suggestion": {{"value": "string", "rationale": "string"}} | null,
   "article_type_recommendation": {{"value": "string", "rationale": "string"}} | null,
   "word_length_recommendation": {{"value": "string", "rationale": "string"}} | null,
@@ -469,11 +632,10 @@ Return JSON only with this exact schema:
 }}
 
 Rules:
-- summary_refinements must be three rewritten versions of summary_of_research only.
-- Do not introduce any new facts, methods, outcomes, populations, devices, biomarkers, statistics, or numbers.
-- Preserve all factual details already present in summary_of_research.
-- If a detail is missing in summary_of_research, keep it missing; do not fill gaps.
-- Keep each rewrite as a polished manuscript summary (not instructions or bullet-point advice).
+- Provide exactly 1 summary_refinement.
+- summary_refinements must be full rewritten versions of summary_of_research, each as 2-4 sentences.
+- Do not add new facts, endpoints, sample sizes, methods, or results not already present in the inputs.
+- Do not write instructions to the user (no "add/include/report/specify/clarify/ensure").
 - Keep causal language out for observational framing.
 - For article_type_recommendation and word_length_recommendation, prioritize explicit journal requirements from excerpt.
 - If explicit limits are absent, provide best-fit ranges and state that limits should be verified at submission.
@@ -481,19 +643,25 @@ Rules:
 """.strip()
 
     raw_output, model_used = _ask_model(prompt, preferred_model=preferred_model)
+    combined_model_used = _combine_model_labels(summary_editor_model, model_used)
 
     try:
         parsed = json.loads(_strip_json_fences(raw_output))
-        raw_summary_refinements = _coerce_str_list(
-            parsed.get("summary_refinements"), max_items=5
+        summary_refinements = _sanitize_summary_refinements(
+            _coerce_str_list(parsed.get("summary_refinements"), max_items=3),
+            summary_of_research,
+            max_items=1,
         )
-        summary_refinements = _filter_non_fabricating_refinements(
-            raw_summary_refinements, source_summary=summary_of_research
+        fallback_refinements = _fallback_summary_refinements(
+            summary_of_research, research_type, interpretation_mode
         )
         guidance_suggestions = _coerce_str_list(parsed.get("guidance_suggestions"), max_items=3)
         payload = {
-            "summary_refinements": summary_refinements
-            or _fallback_summary_refinements(summary_of_research),
+            "summary_refinements": _merge_unique_strings(
+                summary_editor_refinements + summary_refinements,
+                fallback_refinements,
+                max_items=1,
+            ),
             "research_type_suggestion": _coerce_recommendation(
                 parsed.get("research_type_suggestion")
             ),
@@ -510,15 +678,16 @@ Rules:
                 "Keep Discussion claims associative and include limitations explicitly.",
             ],
             "source_urls": fetched_urls,
-            "model_used": model_used,
+            "model_used": combined_model_used,
         }
 
         if not payload["article_type_recommendation"] or not payload["word_length_recommendation"]:
             fallback = _fallback_payload(
                 summary_of_research=summary_of_research,
                 research_type=research_type,
+                interpretation_mode=interpretation_mode,
                 fetched_urls=fetched_urls,
-                model_used=model_used,
+                model_used=combined_model_used,
             )
             if not payload["article_type_recommendation"]:
                 payload["article_type_recommendation"] = fallback["article_type_recommendation"]
@@ -526,9 +695,16 @@ Rules:
                 payload["word_length_recommendation"] = fallback["word_length_recommendation"]
         return payload
     except Exception:
-        return _fallback_payload(
+        fallback_payload = _fallback_payload(
             summary_of_research=summary_of_research,
             research_type=research_type,
+            interpretation_mode=interpretation_mode,
             fetched_urls=fetched_urls,
-            model_used=model_used,
+            model_used=combined_model_used,
         )
+        fallback_payload["summary_refinements"] = _merge_unique_strings(
+            summary_editor_refinements,
+            fallback_payload.get("summary_refinements", []),
+            max_items=1,
+        )
+        return fallback_payload

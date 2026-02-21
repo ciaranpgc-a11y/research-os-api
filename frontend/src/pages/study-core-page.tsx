@@ -66,19 +66,12 @@ function readStoredRunContext(): RunContext | null {
 }
 
 function isResearchFrameComplete(values: ContextFormValues): boolean {
-  return Boolean(values.projectTitle.trim() && values.studyArchitecture.trim() && values.researchObjective.trim())
+  return Boolean(values.researchObjective.trim())
 }
 
-function buildResearchFrameSignature(values: ContextFormValues, targetJournal: string): string {
+function buildResearchFrameSignature(values: ContextFormValues): string {
   return JSON.stringify({
-    projectTitle: values.projectTitle.trim(),
     researchObjective: values.researchObjective.trim(),
-    researchCategory: values.researchCategory.trim(),
-    studyArchitecture: values.studyArchitecture.trim(),
-    interpretationMode: values.interpretationMode.trim(),
-    recommendedArticleType: values.recommendedArticleType.trim(),
-    recommendedWordLength: values.recommendedWordLength.trim(),
-    targetJournal: targetJournal.trim(),
   })
 }
 
@@ -151,6 +144,7 @@ export function StudyCorePage() {
 
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const [journalRecommendationsLocked, setJournalRecommendationsLocked] = useState(false)
 
   const answers = useMemo(
     () => ({
@@ -183,8 +177,8 @@ export function StudyCorePage() {
     [contextValues, guardrailsEnabled, selectedSections],
   )
   const currentResearchFrameSignature = useMemo(
-    () => buildResearchFrameSignature(contextValues, targetJournal),
-    [contextValues, targetJournal],
+    () => buildResearchFrameSignature(contextValues),
+    [contextValues],
   )
   const researchFrameComplete = useMemo(() => isResearchFrameComplete(contextValues), [contextValues])
   const researchFrameSaved = useMemo(
@@ -310,6 +304,7 @@ export function StudyCorePage() {
     setGenerationBriefTouched(false)
     setSavedResearchFrameSignature(currentResearchFrameSignature)
     window.localStorage.setItem(RESEARCH_FRAME_SIGNATURE_KEY, currentResearchFrameSignature)
+    setCurrentStep(2)
   }
 
   const onPlanChange = (nextPlan: OutlinePlanState | null) => {
@@ -345,6 +340,7 @@ export function StudyCorePage() {
           values={contextValues}
           targetJournal={targetJournal}
           journals={journals}
+          journalRecommendationsLocked={journalRecommendationsLocked}
           onValueChange={(field, value) =>
             setContextValues((current) => ({
               ...current,
@@ -490,6 +486,7 @@ export function StudyCorePage() {
               recommendedWordLength: value,
             }))
           }
+          onJournalRecommendationsLockedChange={setJournalRecommendationsLocked}
         />
       )
     }
