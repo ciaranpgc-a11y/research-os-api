@@ -302,22 +302,111 @@ def _coerce_recommendation(value: Any) -> dict[str, str] | None:
     }
 
 
-def _fallback_summary_refinements(
-    summary_of_research: str, research_type: str
+def _normalize_summary(summary_of_research: str) -> str:
+    normalized = re.sub(r"\s+", " ", summary_of_research).strip()
+    if normalized and not re.search(r"[.!?]$", normalized):
+        normalized = f"{normalized}."
+    return normalized
+
+
+def _split_sentences(text: str) -> list[str]:
+    chunks = [chunk.strip() for chunk in re.split(r"(?<=[.!?])\s+", text) if chunk.strip()]
+    return chunks
+
+
+def _content_words(text: str) -> set[str]:
+    return set(re.findall(r"\b[a-z]{4,}\b", text.lower()))
+
+
+def _number_tokens(text: str) -> set[str]:
+    return set(re.findall(r"\b\d+(?:\.\d+)?%?\b", text))
+
+
+def _looks_like_instruction(text: str) -> bool:
+    return bool(
+        re.match(
+            r"^\s*(add|include|report|clarify|ensure|state|use|specify|consider|"
+            r"highlight|emphasize|emphasise)\b",
+            text.strip(),
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _is_non_fabricating_rewrite(candidate: str, source_summary: str) -> bool:
+    candidate_text = candidate.strip()
+    source_text = source_summary.strip()
+    if not candidate_text or not source_text:
+        return False
+    if _looks_like_instruction(candidate_text):
+        return False
+
+    source_numbers = _number_tokens(source_text)
+    candidate_numbers = _number_tokens(candidate_text)
+    if not candidate_numbers.issubset(source_numbers):
+        return False
+
+    source_words = _content_words(source_text)
+    candidate_words = _content_words(candidate_text)
+    if not candidate_words:
+        return False
+    overlap = len(source_words.intersection(candidate_words))
+    overlap_ratio = overlap / max(1, len(candidate_words))
+    return overlap_ratio >= 0.55
+
+
+def _filter_non_fabricating_refinements(
+    candidates: list[str], source_summary: str
 ) -> list[str]:
-    summary = summary_of_research.strip().rstrip(".")
-    if not summary:
-        return [
-            "Summarise the clinical problem, cohort, and imaging method in the first sentence.",
-            "State the primary endpoint and model strategy in the second sentence.",
-            "Report the primary estimate with uncertainty and keep interpretation associative.",
-        ]
-    design = research_type.strip().lower() or "retrospective observational cohort"
-    return [
-        f"In this {design}, {summary}. Clarify population, endpoint, and model strategy.",
-        f"{summary}. Add the primary estimate with uncertainty in the final sentence.",
-        f"{summary}. Keep interpretation non-causal and include a clear limitations statement.",
-    ]
+    filtered: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        cleaned = re.sub(r"\s+", " ", candidate).strip()
+        if not cleaned:
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        if not _is_non_fabricating_rewrite(cleaned, source_summary):
+            continue
+        seen.add(key)
+        filtered.append(cleaned)
+        if len(filtered) >= 3:
+            break
+    return filtered
+
+
+def _fallback_summary_refinements(
+    summary_of_research: str,
+) -> list[str]:
+    normalized = _normalize_summary(summary_of_research)
+    if not normalized:
+        return []
+
+    sentences = _split_sentences(normalized)
+    option_one = normalized
+
+    if len(sentences) > 1:
+        option_two = " ".join(sentences[1:] + sentences[:1])
+        option_three = " ".join(
+            sentence if sentence.endswith(".") else f"{sentence}."
+            for sentence in sentences
+        )
+    else:
+        option_two = normalized
+        option_three = normalized
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for option in [option_one, option_two, option_three]:
+        key = option.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(option)
+    while len(unique) < 3:
+        unique.append(option_one)
+    return unique[:3]
 
 
 def _fallback_payload(
@@ -327,9 +416,7 @@ def _fallback_payload(
     model_used: str,
 ) -> dict[str, object]:
     return {
-        "summary_refinements": _fallback_summary_refinements(
-            summary_of_research, research_type
-        ),
+        "summary_refinements": _fallback_summary_refinements(summary_of_research),
         "research_type_suggestion": None,
         "article_type_recommendation": {
             "value": "Original Research",
@@ -382,7 +469,11 @@ Return JSON only with this exact schema:
 }}
 
 Rules:
-- summary_refinements must be specific and actionable, each in 1-2 sentences.
+- summary_refinements must be three rewritten versions of summary_of_research only.
+- Do not introduce any new facts, methods, outcomes, populations, devices, biomarkers, statistics, or numbers.
+- Preserve all factual details already present in summary_of_research.
+- If a detail is missing in summary_of_research, keep it missing; do not fill gaps.
+- Keep each rewrite as a polished manuscript summary (not instructions or bullet-point advice).
 - Keep causal language out for observational framing.
 - For article_type_recommendation and word_length_recommendation, prioritize explicit journal requirements from excerpt.
 - If explicit limits are absent, provide best-fit ranges and state that limits should be verified at submission.
@@ -393,11 +484,16 @@ Rules:
 
     try:
         parsed = json.loads(_strip_json_fences(raw_output))
-        summary_refinements = _coerce_str_list(parsed.get("summary_refinements"), max_items=3)
+        raw_summary_refinements = _coerce_str_list(
+            parsed.get("summary_refinements"), max_items=5
+        )
+        summary_refinements = _filter_non_fabricating_refinements(
+            raw_summary_refinements, source_summary=summary_of_research
+        )
         guidance_suggestions = _coerce_str_list(parsed.get("guidance_suggestions"), max_items=3)
         payload = {
             "summary_refinements": summary_refinements
-            or _fallback_summary_refinements(summary_of_research, research_type),
+            or _fallback_summary_refinements(summary_of_research),
             "research_type_suggestion": _coerce_recommendation(
                 parsed.get("research_type_suggestion")
             ),
