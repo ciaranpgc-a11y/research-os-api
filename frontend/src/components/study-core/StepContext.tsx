@@ -1,4 +1,4 @@
-import { ExternalLink, Loader2, Mic, Save, Square } from 'lucide-react'
+import { ExternalLink, Loader2, Mic, RotateCcw, Save, Square } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -389,10 +389,38 @@ export function StepContext({
     onStatus(`Interpretation mode realigned to ${studyTypeDefaults.defaultInterpretationMode}.`)
   }
 
+  const onResetResearchOverview = () => {
+    onValueChange('projectTitle', '')
+    onTargetJournalChange('')
+    onValueChange('researchCategory', '')
+    onValueChange('studyArchitecture', '')
+    onValueChange('interpretationMode', '')
+    onValueChange('recommendedArticleType', '')
+    onValueChange('recommendedWordLength', '')
+    onValueChange('researchObjective', '')
+    onStudyTypeDefaultsResolved({
+      interpretationMode: '',
+      enableConservativeGuardrails: true,
+    })
+    setAttemptedSubmit(false)
+    onStatus('Research overview reset.')
+  }
+
   return (
     <div className="space-y-6 rounded-lg border border-border bg-card p-6">
-      <div className="space-y-1">
+      <div className="flex items-center justify-between gap-3">
         <h2 className="text-base font-semibold">Step 1: Research overview</h2>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="border-slate-300 text-slate-700 hover:bg-slate-100"
+          onClick={onResetResearchOverview}
+          disabled={saving}
+        >
+          <RotateCcw className="mr-1 h-3.5 w-3.5" />
+          Reset
+        </Button>
       </div>
 
       <section className="space-y-2 rounded-md border border-border/80 bg-muted/20 p-3">
