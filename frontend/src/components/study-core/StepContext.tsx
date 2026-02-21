@@ -1,4 +1,4 @@
-import { Loader2, Mic, Save, Square } from 'lucide-react'
+import { ExternalLink, Loader2, Mic, Save, Square } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,7 @@ import {
   INTERPRETATION_MODE_OPTIONS,
   getCategoryForStudyType,
   getResearchTypeTaxonomy,
+  getJournalSubmissionGuidanceUrl,
   getStudyTypeDefaults,
   getStudyTypesForCategory,
 } from '@/lib/research-frame-options'
@@ -117,6 +118,7 @@ export function StepContext({
     () => getStudyTypesForCategory(values.researchCategory, true),
     [values.researchCategory],
   )
+  const submissionGuidanceUrl = useMemo(() => getJournalSubmissionGuidanceUrl(targetJournal), [targetJournal])
 
   useEffect(() => {
     if (!values.studyArchitecture.trim()) {
@@ -259,7 +261,20 @@ export function StepContext({
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="context-target-journal">Working target journal</Label>
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor="context-target-journal">Working target journal</Label>
+          {submissionGuidanceUrl ? (
+            <a
+              href={submissionGuidanceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
+            >
+              Submission guide
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          ) : null}
+        </div>
         <select
           id="context-target-journal"
           className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
@@ -330,23 +345,6 @@ export function StepContext({
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="context-interpretation-mode">Interpretation mode (optional)</Label>
-        <select
-          id="context-interpretation-mode"
-          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
-          value={values.interpretationMode}
-          onChange={(event) => onValueChange('interpretationMode', event.target.value)}
-        >
-          <option value="">Select interpretation mode</option>
-          {INTERPRETATION_MODE_OPTIONS.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="space-y-1">
         <Label htmlFor="context-recommended-article-type">Recommended article type</Label>
         <Input
           id="context-recommended-article-type"
@@ -398,6 +396,26 @@ export function StepContext({
         />
         {!speechSupported ? <p className="text-xs text-muted-foreground">Speech to text is not available in this browser.</p> : null}
         {attemptedSubmit && errors.researchObjective ? <p className="text-xs text-destructive">{errors.researchObjective}</p> : null}
+      </div>
+
+      <div className="space-y-1">
+        <Label htmlFor="context-interpretation-mode">Interpretation mode (optional)</Label>
+        <select
+          id="context-interpretation-mode"
+          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+          value={values.interpretationMode}
+          onChange={(event) => onValueChange('interpretationMode', event.target.value)}
+        >
+          <option value="">Select interpretation mode</option>
+          {INTERPRETATION_MODE_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-muted-foreground">
+          AI suggestion uses journal, research category, study type, article type, and summary.
+        </p>
       </div>
 
       <Button className={PRIMARY_ACTION_BUTTON_CLASS} onClick={() => void onSaveContext()} disabled={saving}>

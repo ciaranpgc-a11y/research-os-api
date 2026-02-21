@@ -302,7 +302,9 @@ class SectionPlanResponse(BaseModel):
 
 class ResearchOverviewSuggestionsRequest(BaseModel):
     target_journal: str
+    research_category: str = ""
     research_type: str
+    article_type: str = ""
     interpretation_mode: str = ""
     summary_of_research: str
     model: str | None = None
@@ -316,6 +318,7 @@ class TextRecommendationResponse(BaseModel):
 class ResearchOverviewSuggestionsResponse(BaseModel):
     summary_refinements: list[str] = Field(default_factory=list)
     research_type_suggestion: TextRecommendationResponse | None = None
+    interpretation_mode_recommendation: TextRecommendationResponse | None = None
     article_type_recommendation: TextRecommendationResponse | None = None
     word_length_recommendation: TextRecommendationResponse | None = None
     guidance_suggestions: list[str] = Field(default_factory=list)

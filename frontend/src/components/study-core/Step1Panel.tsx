@@ -6,13 +6,14 @@ import type { ResearchOverviewSuggestionsPayload } from '@/types/study-core'
 
 type Step1PanelProps = {
   summary: string
+  researchCategory: string
   researchType: string
   interpretationMode: string
   targetJournal: string
   currentArticleType: string
-  currentWordLength: string
   onReplaceSummary: (value: string) => void
   onApplyResearchType: (value: string) => void
+  onApplyInterpretationMode: (value: string) => void
   onApplyArticleType: (value: string) => void
   onApplyWordLength: (value: string) => void
   onJournalRecommendationsLockedChange: (locked: boolean) => void
@@ -23,49 +24,19 @@ const OUTLINE_ACTION_BUTTON_CLASS =
   'border-emerald-300 text-emerald-800 hover:bg-emerald-100 focus-visible:ring-emerald-500'
 const SUMMARY_CARD_CLASS = 'space-y-2 rounded-md border border-emerald-400 bg-emerald-100 p-3'
 const RESEARCH_TYPE_CARD_CLASS = 'space-y-2 rounded-md border border-sky-400 bg-sky-100 p-3'
+const INTERPRETATION_CARD_CLASS = 'space-y-2 rounded-md border border-cyan-400 bg-cyan-100 p-3'
 const JOURNAL_CARD_CLASS = 'space-y-2 rounded-md border border-amber-400 bg-amber-100 p-3'
-
-function applyAutopopulate(
-  payload: ResearchOverviewSuggestionsPayload,
-  currentArticleType: string,
-  currentWordLength: string,
-  onApplyArticleType: (value: string) => void,
-  onApplyWordLength: (value: string) => void,
-): { payload: ResearchOverviewSuggestionsPayload; applied: boolean } {
-  let articleRecommendation = payload.article_type_recommendation
-  let wordLengthRecommendation = payload.word_length_recommendation
-  let applied = false
-
-  if (articleRecommendation?.value && !currentArticleType.trim()) {
-    onApplyArticleType(articleRecommendation.value)
-    articleRecommendation = null
-    applied = true
-  }
-  if (wordLengthRecommendation?.value && !currentWordLength.trim()) {
-    onApplyWordLength(wordLengthRecommendation.value)
-    wordLengthRecommendation = null
-    applied = true
-  }
-
-  return {
-    payload: {
-      ...payload,
-      article_type_recommendation: articleRecommendation,
-      word_length_recommendation: wordLengthRecommendation,
-    },
-    applied,
-  }
-}
 
 export function Step1Panel({
   summary,
+  researchCategory,
   researchType,
   interpretationMode,
   targetJournal,
   currentArticleType,
-  currentWordLength,
   onReplaceSummary,
   onApplyResearchType,
+  onApplyInterpretationMode,
   onApplyArticleType,
   onApplyWordLength,
   onJournalRecommendationsLockedChange,
@@ -78,14 +49,17 @@ export function Step1Panel({
 
   const currentKey = useMemo(
     () =>
-      `${summary.trim().toLowerCase()}::${researchType.trim().toLowerCase()}::${interpretationMode
+      `${summary.trim().toLowerCase()}::${researchCategory.trim().toLowerCase()}::${researchType
+        .trim()
+        .toLowerCase()}::${currentArticleType.trim().toLowerCase()}::${interpretationMode
         .trim()
         .toLowerCase()}::${targetJournal.trim().toLowerCase()}`,
-    [interpretationMode, researchType, summary, targetJournal],
+    [currentArticleType, interpretationMode, researchCategory, researchType, summary, targetJournal],
   )
   const hasGenerated = generatedKey.length > 0
   const isStale = hasGenerated && generatedKey !== currentKey
   const summaryOptions = suggestions?.summary_refinements.slice(0, 1) ?? []
+  const hasInterpretationRecommendation = Boolean(suggestions?.interpretation_mode_recommendation)
   const hasJournalRecommendation = Boolean(suggestions?.article_type_recommendation || suggestions?.word_length_recommendation)
 
   const generateSuggestions = async () => {
@@ -97,21 +71,13 @@ export function Step1Panel({
     try {
       const response = await fetchResearchOverviewSuggestions({
         targetJournal,
+        researchCategory,
         researchType,
+        articleType: currentArticleType,
         interpretationMode,
         summaryOfResearch: summary,
       })
-      const autopopulateResult = applyAutopopulate(
-        response,
-        currentArticleType,
-        currentWordLength,
-        onApplyArticleType,
-        onApplyWordLength,
-      )
-      if (autopopulateResult.applied) {
-        onJournalRecommendationsLockedChange(true)
-      }
-      setSuggestions(autopopulateResult.payload)
+      setSuggestions(response)
       setGeneratedKey(currentKey)
     } catch (error) {
       setRequestError(error instanceof Error ? error.message : 'Could not generate suggestions.')
@@ -157,6 +123,23 @@ export function Step1Panel({
       return {
         ...current,
         research_type_suggestion: null,
+      }
+    })
+  }
+
+  const onApplyInterpretationModeSuggestion = () => {
+    const recommendation = suggestions?.interpretation_mode_recommendation
+    if (!recommendation) {
+      return
+    }
+    onApplyInterpretationMode(recommendation.value)
+    setSuggestions((current) => {
+      if (!current) {
+        return current
+      }
+      return {
+        ...current,
+        interpretation_mode_recommendation: null,
       }
     })
   }
@@ -234,9 +217,28 @@ export function Step1Panel({
       {refinementsEnabled && suggestions?.research_type_suggestion ? (
         <div className={RESEARCH_TYPE_CARD_CLASS}>
           <p className="text-sm font-medium text-sky-900">Research type suggestion</p>
+          <p className="text-xs text-sky-900">
+            Recommended research type: <span className="font-semibold">{suggestions.research_type_suggestion.value}</span>
+          </p>
           <p className="text-xs text-sky-900">{suggestions.research_type_suggestion.rationale}</p>
           <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyResearchTypeSuggestion}>
             Apply suggested research type
+          </Button>
+        </div>
+      ) : null}
+
+      {refinementsEnabled && hasInterpretationRecommendation ? (
+        <div className={INTERPRETATION_CARD_CLASS}>
+          <p className="text-sm font-medium text-cyan-900">Interpretation mode suggestion</p>
+          <p className="text-xs text-cyan-900">
+            Recommended interpretation mode:{' '}
+            <span className="font-semibold">{suggestions?.interpretation_mode_recommendation?.value}</span>
+          </p>
+          {suggestions?.interpretation_mode_recommendation?.rationale ? (
+            <p className="text-xs text-cyan-900">{suggestions.interpretation_mode_recommendation.rationale}</p>
+          ) : null}
+          <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyInterpretationModeSuggestion}>
+            Apply interpretation mode
           </Button>
         </div>
       ) : null}
@@ -268,6 +270,7 @@ export function Step1Panel({
       hasGenerated &&
       summaryOptions.length === 0 &&
       !suggestions?.research_type_suggestion &&
+      !hasInterpretationRecommendation &&
       !hasJournalRecommendation ? (
         <div className="rounded-md border border-border bg-background p-3">
           <p className="text-sm font-medium">No pending suggestions</p>

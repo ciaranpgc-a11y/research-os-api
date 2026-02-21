@@ -398,7 +398,9 @@ def v1_research_overview_suggestions(
 ) -> ResearchOverviewSuggestionsResponse:
     payload = generate_research_overview_suggestions(
         target_journal=request.target_journal,
+        research_category=request.research_category,
         research_type=request.research_type,
+        article_type=request.article_type,
         interpretation_mode=request.interpretation_mode,
         summary_of_research=request.summary_of_research,
         preferred_model=request.model or "gpt-5.2",

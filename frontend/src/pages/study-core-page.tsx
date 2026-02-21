@@ -451,11 +451,11 @@ export function StudyCorePage() {
       return (
         <Step1Panel
           summary={contextValues.researchObjective}
+          researchCategory={contextValues.researchCategory}
           researchType={contextValues.studyArchitecture}
           interpretationMode={contextValues.interpretationMode}
           targetJournal={targetJournal}
           currentArticleType={contextValues.recommendedArticleType}
-          currentWordLength={contextValues.recommendedWordLength}
           onReplaceSummary={(value) =>
             setContextValues((current) => ({
               ...current,
@@ -473,6 +473,12 @@ export function StudyCorePage() {
               }))
               setGuardrailsEnabled(defaults.enableConservativeGuardrails)
             }
+          }
+          onApplyInterpretationMode={(value) =>
+            setContextValues((current) => ({
+              ...current,
+              interpretationMode: value,
+            }))
           }
           onApplyArticleType={(value) =>
             setContextValues((current) => ({

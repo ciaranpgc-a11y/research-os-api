@@ -99,6 +99,62 @@ export const CURATED_CARDIOLOGY_IMAGING_JOURNALS: JournalOption[] = [
   { slug: 'bmj-open', display_name: 'BMJ Open', default_voice: 'technical' },
 ]
 
+const JOURNAL_SUBMISSION_GUIDANCE_URLS: Record<string, string> = {
+  'pulmonary-circulation': 'https://journals.sagepub.com/home/pul',
+  'american-journal-respiratory-critical-care-medicine':
+    'https://www.atsjournals.org/action/showAuthorGuidelines?journalCode=ajrccm',
+  'european-respiratory-journal': 'https://erj.ersjournals.com/site/misc/ifora.xhtml',
+  chest: 'https://journal.chestnet.org/content/authorinfo',
+  'journal-heart-lung-transplantation': 'https://www.jhltonline.org/content/authorinfo',
+  respiration: 'https://karger.com/res/pages/instructions-for-authors',
+  'erj-open-research': 'https://openres.ersjournals.com/site/misc/ifora.xhtml',
+  'advances-pulmonary-hypertension': 'https://www.phaonlineuniv.org/journal',
+  'journal-of-cardiovascular-magnetic-resonance': 'https://jcmr-online.biomedcentral.com/submission-guidelines',
+  'jacc-cardiovascular-imaging': 'https://www.jacc.org/journal/jcmg/for-authors',
+  'circulation-cardiovascular-imaging': 'https://www.ahajournals.org/journal/circimaging/pages/instructions-for-authors',
+  'european-heart-journal-cardiovascular-imaging': 'https://academic.oup.com/ehjcimaging/pages/General_Instructions',
+  'magnetic-resonance-in-medicine': 'https://onlinelibrary.wiley.com/page/journal/15222594/homepage/forauthors.html',
+  'european-radiology': 'https://www.springer.com/journal/330/submission-guidelines',
+  radiology: 'https://pubs.rsna.org/page/radiology/author-center',
+  'insights-into-imaging': 'https://insightsimaging.springeropen.com/submission-guidelines',
+  'european-heart-journal': 'https://academic.oup.com/eurheartj/pages/General_Instructions',
+  circulation: 'https://www.ahajournals.org/journal/circ/pages/instructions-for-authors',
+  jacc: 'https://www.jacc.org/journal/jacc/for-authors',
+  heart: 'https://heart.bmj.com/pages/authors/',
+  'european-journal-heart-failure': 'https://academic.oup.com/eurjhf/pages/General_Instructions',
+  'circulation-heart-failure': 'https://www.ahajournals.org/journal/circheartfailure/pages/instructions-for-authors',
+  'esc-heart-failure': 'https://onlinelibrary.wiley.com/page/journal/20555922/homepage/forauthors.html',
+  'international-journal-cardiology': 'https://www.journals.elsevier.com/international-journal-of-cardiology/publish/guide-for-authors',
+  'clinical-research-in-cardiology': 'https://www.springer.com/journal/392/submission-guidelines',
+  'american-journal-cardiology': 'https://www.ajconline.org/content/authorinfo',
+  cardiology: 'https://karger.com/crd/pages/instructions-for-authors',
+  'jacc-heart-failure': 'https://www.jacc.org/journal/jchf/for-authors',
+  'journal-cardiac-failure': 'https://www.onlinejcf.com/content/authorinfo',
+  'european-journal-preventive-cardiology': 'https://academic.oup.com/eurjpc/pages/General_Instructions',
+  'frontiers-cardiovascular-medicine': 'https://www.frontiersin.org/journals/cardiovascular-medicine#for-authors',
+  'open-heart': 'https://openheart.bmj.com/pages/authors/',
+  'cardiovascular-research': 'https://academic.oup.com/cardiovascres/pages/General_Instructions',
+  'basic-research-in-cardiology': 'https://www.springer.com/journal/395/submission-guidelines',
+  'circulation-research': 'https://www.ahajournals.org/journal/res/pages/instructions-for-authors',
+  'journal-american-heart-association': 'https://www.ahajournals.org/journal/jaha/pages/instructions-for-authors',
+  'scientific-reports': 'https://www.nature.com/srep/author-instructions',
+  'frontiers-physiology': 'https://www.frontiersin.org/journals/physiology#for-authors',
+  'physiological-reports': 'https://physoc.onlinelibrary.wiley.com/hub/journal/2051817x/about/author-guidelines',
+  'journal-thoracic-disease': 'https://jtd.amegroups.org/pages/view/author-instructions',
+  'bmc-pulmonary-medicine': 'https://bmcpulmmed.biomedcentral.com/submission-guidelines',
+  'lancet-respiratory-medicine': 'https://www.thelancet.com/journals/lanres/for-authors',
+  thorax: 'https://thorax.bmj.com/pages/authors/',
+  'american-journal-physiology-lung-cellular-molecular-physiology': 'https://journals.physiology.org/journal/ajplung',
+  respirology: 'https://onlinelibrary.wiley.com/page/journal/14401843/homepage/forauthors.html',
+  'respiratory-research': 'https://respiratory-research.biomedcentral.com/submission-guidelines',
+  'respiratory-medicine': 'https://www.journals.elsevier.com/respiratory-medicine/publish/guide-for-authors',
+  'journal-nuclear-cardiology': 'https://www.springer.com/journal/12350/submission-guidelines',
+  'american-heart-journal': 'https://www.sciencedirect.com/journal/american-heart-journal/publish/guide-for-authors',
+  'nature-reviews-cardiology': 'https://www.nature.com/nrcardio/for-authors-and-referees',
+  'plos-one': 'https://journals.plos.org/plosone/s/submission-guidelines',
+  'bmj-open': 'https://bmjopen.bmj.com/pages/authors/',
+}
+
 export const RESEARCH_TYPE_OPTIONS = [
   'Retrospective single-centre cohort',
   'Retrospective multi-centre cohort',
@@ -306,6 +362,14 @@ export const INTERPRETATION_MODE_OPTIONS = [
   'Safety and feasibility characterization',
   'Implementation and workflow feasibility interpretation',
 ] as const
+
+export function getJournalSubmissionGuidanceUrl(journalSlug: string): string | null {
+  const key = journalSlug.trim()
+  if (!key) {
+    return null
+  }
+  return JOURNAL_SUBMISSION_GUIDANCE_URLS[key] ?? null
+}
 
 export function mergeJournalOptions(apiJournals: JournalOption[]): JournalOption[] {
   const bySlug = new Map<string, JournalOption>()

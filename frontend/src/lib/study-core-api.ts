@@ -100,7 +100,9 @@ export async function planSections(input: {
 
 export async function fetchResearchOverviewSuggestions(input: {
   targetJournal: string
+  researchCategory: string
   researchType: string
+  articleType: string
   interpretationMode: string
   summaryOfResearch: string
 }): Promise<ResearchOverviewSuggestionsPayload> {
@@ -109,7 +111,9 @@ export async function fetchResearchOverviewSuggestions(input: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       target_journal: input.targetJournal,
+      research_category: input.researchCategory,
       research_type: input.researchType,
+      article_type: input.articleType,
       interpretation_mode: input.interpretationMode,
       summary_of_research: input.summaryOfResearch,
     }),
