@@ -30,12 +30,10 @@ export function StudyCoreStepper({
   devOverride,
 }: StudyCoreStepperProps) {
   return (
-    <aside className="space-y-3 rounded-lg border border-border bg-card p-3">
-      <div className="space-y-1">
-        <p className="text-sm font-semibold">Run Steps</p>
-      </div>
+    <section className="space-y-3 rounded-lg border border-border/80 bg-card p-3">
+      <p className="text-sm font-semibold">Run Steps</p>
 
-      <div className="space-y-2">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
         {steps.map((step) => {
           const isCompleted = completedSteps.includes(step.id)
           const isInProgress = !isCompleted && inProgressSteps.includes(step.id)
@@ -46,10 +44,11 @@ export function StudyCoreStepper({
               key={step.id}
               variant="ghost"
               className={cn(
-                'h-auto w-full items-start justify-start whitespace-normal rounded-md border border-transparent px-2 py-2 text-left',
+                'h-auto w-full items-start justify-start whitespace-normal rounded-md border px-3 py-2 text-left',
                 isActive && 'border-border bg-accent',
+                isCompleted && !isActive && 'border-emerald-200 bg-emerald-50/40',
                 isInProgress && !isActive && 'border-amber-200 bg-amber-50/40',
-                !canAccess && !isCompleted && 'opacity-60',
+                !canAccess && !isCompleted && !isInProgress && 'border-transparent opacity-60',
               )}
               onClick={() => onStepSelect(step.id)}
               disabled={!canAccess}
@@ -76,6 +75,6 @@ export function StudyCoreStepper({
       {devOverride ? (
         <p className="text-[11px] text-muted-foreground">Dev mode override is active: forward step navigation is unlocked.</p>
       ) : null}
-    </aside>
+    </section>
   )
 }

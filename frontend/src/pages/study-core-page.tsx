@@ -758,38 +758,36 @@ export function StudyCorePage() {
         </div>
       </header>
 
+      <StudyCoreStepper
+        steps={STEP_ITEMS}
+        currentStep={currentStep}
+        completedSteps={completedSteps}
+        inProgressSteps={inProgressSteps}
+        canNavigateToStep={(step) => {
+          if (step === 2 && currentStep === 1) {
+            return true
+          }
+          return canNavigateToStep(step)
+        }}
+        onStepSelect={(step) => {
+          if (step === 2 && currentStep === 1 && !researchFrameSaved) {
+            setContextSaveRequestId((current) => current + 1)
+            return
+          }
+          if (canNavigateToStep(step)) {
+            setCurrentStep(step)
+          }
+        }}
+        devOverride={devOverride}
+      />
+
       <div
         className={
           showRightPanel
-            ? 'grid items-start gap-4 xl:grid-cols-[280px_minmax(0,1.2fr)_360px]'
-            : 'grid items-start gap-4 xl:grid-cols-[280px_minmax(0,1fr)]'
+            ? 'grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_360px]'
+            : 'grid items-start gap-4'
         }
       >
-        <div className="rounded-lg border border-border/80 bg-card p-2">
-          <StudyCoreStepper
-            steps={STEP_ITEMS}
-            currentStep={currentStep}
-            completedSteps={completedSteps}
-            inProgressSteps={inProgressSteps}
-            canNavigateToStep={(step) => {
-              if (step === 2 && currentStep === 1) {
-                return true
-              }
-              return canNavigateToStep(step)
-            }}
-            onStepSelect={(step) => {
-              if (step === 2 && currentStep === 1 && !researchFrameSaved) {
-                setContextSaveRequestId((current) => current + 1)
-                return
-              }
-              if (canNavigateToStep(step)) {
-                setCurrentStep(step)
-              }
-            }}
-            devOverride={devOverride}
-          />
-        </div>
-
         <div className="rounded-lg border border-border/80 bg-background p-2">
           <div key={currentStep} className="wizard-step-transition space-y-3">
             {renderActiveStep()}
