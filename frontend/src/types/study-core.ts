@@ -265,3 +265,17 @@ export type PlanClarificationQuestionsPayload = {
   questions: PlanClarificationQuestion[]
   model_used: string
 }
+
+export type PlanClarificationHistoryItem = {
+  prompt: string
+  answer: 'yes' | 'no'
+  comment: string
+}
+
+export type PlanClarificationNextQuestionPayload = {
+  question: PlanClarificationQuestion | null
+  completed: boolean
+  asked_count: number
+  max_questions: number
+  model_used: string
+}

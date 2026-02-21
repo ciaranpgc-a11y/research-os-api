@@ -48,6 +48,8 @@ from research_os.api.schemas import (
     ManuscriptSnapshotResponse,
     ManuscriptSectionsUpdateRequest,
     ManuscriptResponse,
+    PlanClarificationNextQuestionRequest,
+    PlanClarificationNextQuestionResponse,
     PlanClarificationQuestionsRequest,
     PlanClarificationQuestionsResponse,
     ParagraphRegenerationRequest,
@@ -128,6 +130,7 @@ from research_os.services.paragraph_regeneration_service import (
 from research_os.services.qc_service import run_qc_checks
 from research_os.services.section_planning_service import build_section_plan
 from research_os.services.plan_clarification_service import (
+    generate_next_plan_clarification_question,
     generate_plan_clarification_questions,
 )
 from research_os.services.research_overview_suggestions_service import (
@@ -436,6 +439,31 @@ def v1_plan_aawe_clarification_questions(
         preferred_model=request.model or "gpt-5.2",
     )
     return PlanClarificationQuestionsResponse(**payload)
+
+
+@app.post(
+    "/v1/aawe/plan/clarification-question/next",
+    response_model=PlanClarificationNextQuestionResponse,
+    tags=["v1"],
+)
+def v1_plan_aawe_next_clarification_question(
+    request: PlanClarificationNextQuestionRequest,
+) -> PlanClarificationNextQuestionResponse:
+    payload = generate_next_plan_clarification_question(
+        project_title=request.project_title,
+        target_journal=request.target_journal,
+        target_journal_label=request.target_journal_label,
+        research_category=request.research_category,
+        study_type=request.study_type,
+        interpretation_mode=request.interpretation_mode,
+        article_type=request.article_type,
+        word_length=request.word_length,
+        summary_of_research=request.summary_of_research,
+        history=[item.model_dump() for item in request.history],
+        max_questions=request.max_questions,
+        preferred_model=request.model or "gpt-5.2",
+    )
+    return PlanClarificationNextQuestionResponse(**payload)
 
 
 @app.post(

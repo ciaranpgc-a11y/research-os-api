@@ -306,6 +306,12 @@ class PlanClarificationQuestionResponse(BaseModel):
     rationale: str
 
 
+class PlanClarificationHistoryItemRequest(BaseModel):
+    prompt: str
+    answer: Literal["yes", "no"]
+    comment: str = ""
+
+
 class PlanClarificationQuestionsRequest(BaseModel):
     project_title: str = ""
     target_journal: str = ""
@@ -321,6 +327,29 @@ class PlanClarificationQuestionsRequest(BaseModel):
 
 class PlanClarificationQuestionsResponse(BaseModel):
     questions: list[PlanClarificationQuestionResponse] = Field(default_factory=list)
+    model_used: str
+
+
+class PlanClarificationNextQuestionRequest(BaseModel):
+    project_title: str = ""
+    target_journal: str = ""
+    target_journal_label: str = ""
+    research_category: str = ""
+    study_type: str = ""
+    interpretation_mode: str = ""
+    article_type: str = ""
+    word_length: str = ""
+    summary_of_research: str = ""
+    history: list[PlanClarificationHistoryItemRequest] = Field(default_factory=list)
+    max_questions: int = 10
+    model: str | None = None
+
+
+class PlanClarificationNextQuestionResponse(BaseModel):
+    question: PlanClarificationQuestionResponse | None = None
+    completed: bool
+    asked_count: int
+    max_questions: int
     model_used: str
 
 

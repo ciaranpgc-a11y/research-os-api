@@ -13,6 +13,8 @@ import type {
   GroundedDraftPayload,
   GenerationJobPayload,
   JournalOption,
+  PlanClarificationHistoryItem,
+  PlanClarificationNextQuestionPayload,
   PlanClarificationQuestionsPayload,
   ManuscriptRecord,
   ProjectRecord,
@@ -129,6 +131,42 @@ export async function fetchPlanClarificationQuestions(input: {
     throw new Error(await parseApiError(response, `Clarification questions failed (${response.status})`))
   }
   return (await response.json()) as PlanClarificationQuestionsPayload
+}
+
+export async function fetchNextPlanClarificationQuestion(input: {
+  projectTitle: string
+  targetJournal: string
+  targetJournalLabel: string
+  researchCategory: string
+  studyType: string
+  interpretationMode: string
+  articleType: string
+  wordLength: string
+  summaryOfResearch: string
+  history: PlanClarificationHistoryItem[]
+  maxQuestions?: number
+}): Promise<PlanClarificationNextQuestionPayload> {
+  const response = await fetch(`${API_BASE_URL}/v1/aawe/plan/clarification-question/next`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      project_title: input.projectTitle,
+      target_journal: input.targetJournal,
+      target_journal_label: input.targetJournalLabel,
+      research_category: input.researchCategory,
+      study_type: input.studyType,
+      interpretation_mode: input.interpretationMode,
+      article_type: input.articleType,
+      word_length: input.wordLength,
+      summary_of_research: input.summaryOfResearch,
+      history: input.history,
+      max_questions: input.maxQuestions ?? 10,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Next clarification question failed (${response.status})`))
+  }
+  return (await response.json()) as PlanClarificationNextQuestionPayload
 }
 
 export async function fetchResearchOverviewSuggestions(input: {

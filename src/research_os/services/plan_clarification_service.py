@@ -310,3 +310,258 @@ def generate_plan_clarification_questions(
         "questions": final_questions,
         "model_used": _merge_model_labels(first_model, second_model),
     }
+
+
+def _normalise_history(history: list[dict[str, str]]) -> list[dict[str, str]]:
+    cleaned: list[dict[str, str]] = []
+    seen_prompts: set[str] = set()
+    for item in history:
+        prompt = _normalise_prompt(str(item.get("prompt", "")).strip())
+        answer = str(item.get("answer", "")).strip().lower()
+        if not prompt or answer not in {"yes", "no"}:
+            continue
+        key = prompt.lower()
+        if key in seen_prompts:
+            continue
+        seen_prompts.add(key)
+        cleaned.append(
+            {
+                "prompt": prompt,
+                "answer": answer,
+                "comment": str(item.get("comment", "")).strip(),
+            }
+        )
+    return cleaned
+
+
+def _format_history(history: list[dict[str, str]]) -> str:
+    if not history:
+        return "None yet."
+    lines: list[str] = []
+    for index, item in enumerate(history, start=1):
+        comment = item.get("comment", "").strip()
+        if comment:
+            lines.append(
+                f"{index}. Q: {item['prompt']} | A: {item['answer'].upper()} | Comment: {comment}"
+            )
+        else:
+            lines.append(f"{index}. Q: {item['prompt']} | A: {item['answer'].upper()}")
+    return "\n".join(lines)
+
+
+def _format_no_history_prompts(history: list[dict[str, str]]) -> str:
+    no_prompts = [item["prompt"] for item in history if item.get("answer") == "no"]
+    if not no_prompts:
+        return "None."
+    return "\n".join(f"- {prompt}" for prompt in no_prompts)
+
+
+def _coerce_single_question(
+    parsed_payload: Any,
+    *,
+    context_tokens: set[str],
+    existing_prompts: set[str],
+    next_index: int,
+) -> dict[str, str] | None:
+    if not isinstance(parsed_payload, dict):
+        return None
+    raw_question = parsed_payload.get("question")
+    if raw_question is None and "prompt" in parsed_payload:
+        raw_question = parsed_payload
+    if not isinstance(raw_question, dict):
+        return None
+
+    prompt = _normalise_prompt(str(raw_question.get("prompt", "")).strip())
+    if not prompt:
+        return None
+    if prompt.lower() in existing_prompts:
+        return None
+    if not _is_contextual(prompt, context_tokens):
+        return None
+
+    rationale = re.sub(r"\s+", " ", str(raw_question.get("rationale", "")).strip())
+    if not rationale:
+        rationale = "Clarifies a key planning decision before section generation."
+    question_id = str(raw_question.get("id", "")).strip() or _normalise_id(next_index, prompt)
+    return {"id": question_id, "prompt": prompt, "rationale": rationale}
+
+
+def _build_next_question_prompt(
+    *,
+    project_title: str,
+    target_journal: str,
+    target_journal_label: str,
+    research_category: str,
+    study_type: str,
+    interpretation_mode: str,
+    article_type: str,
+    word_length: str,
+    summary_of_research: str,
+    max_questions: int,
+    history: list[dict[str, str]],
+) -> str:
+    missing_fields = [
+        label
+        for label, value in (
+            ("project_title", project_title),
+            ("target_journal", target_journal_label or target_journal),
+            ("research_category", research_category),
+            ("study_type", study_type),
+            ("interpretation_mode", interpretation_mode),
+            ("article_type", article_type),
+            ("word_length", word_length),
+        )
+        if not value.strip()
+    ]
+    missing_block = ", ".join(missing_fields) if missing_fields else "none"
+    history_block = _format_history(history)
+    no_answers_block = _format_no_history_prompts(history)
+    remaining = max(0, max_questions - len(history))
+    return f"""
+You are generating the next single clarification question for manuscript planning.
+This is an adaptive sequence; each prior answer must influence the next question choice.
+
+Context:
+- project_title: {project_title}
+- target_journal_slug: {target_journal}
+- target_journal_label: {target_journal_label}
+- research_category: {research_category}
+- study_type: {study_type}
+- interpretation_mode: {interpretation_mode}
+- article_type: {article_type}
+- target_word_length: {word_length}
+- summary_of_research: {summary_of_research}
+- missing_fields: {missing_block}
+- asked_so_far: {len(history)}
+- max_questions: {max_questions}
+- remaining_slots: {remaining}
+
+Question/answer history:
+{history_block}
+
+Questions answered NO (avoid repeating these themes unless critical):
+{no_answers_block}
+
+Rules:
+- Return exactly one new yes/no question.
+- Question must start with one of: Should, Is, Are, Do, Does, Can.
+- The question must be specific to this manuscript context.
+- Do not repeat prior questions.
+- If the user answered NO to a theme, move to a different unresolved uncertainty.
+- Prefer the highest-impact unresolved decision for plan quality.
+- Keep rationale to one sentence.
+- Use British English.
+- Return valid JSON only.
+
+Return JSON:
+{{
+  "question": {{
+    "id": "string",
+    "prompt": "string",
+    "rationale": "string"
+  }}
+}}
+""".strip()
+
+
+def generate_next_plan_clarification_question(
+    *,
+    project_title: str,
+    target_journal: str,
+    target_journal_label: str,
+    research_category: str,
+    study_type: str,
+    interpretation_mode: str,
+    article_type: str,
+    word_length: str,
+    summary_of_research: str,
+    history: list[dict[str, str]],
+    max_questions: int = 10,
+    preferred_model: str = PREFERRED_MODEL,
+) -> dict[str, object]:
+    safe_max_questions = max(1, min(max_questions, 20))
+    cleaned_history = _normalise_history(history)
+    asked_count = len(cleaned_history)
+    if asked_count >= safe_max_questions:
+        return {
+            "question": None,
+            "completed": True,
+            "asked_count": asked_count,
+            "max_questions": safe_max_questions,
+            "model_used": preferred_model,
+        }
+
+    context_tokens = _content_tokens(
+        project_title,
+        target_journal_label,
+        research_category,
+        study_type,
+        interpretation_mode,
+        article_type,
+        word_length,
+        summary_of_research,
+    )
+    existing_prompts = {item["prompt"].strip().lower() for item in cleaned_history}
+    base_prompt = _build_next_question_prompt(
+        project_title=project_title,
+        target_journal=target_journal,
+        target_journal_label=target_journal_label,
+        research_category=research_category,
+        study_type=study_type,
+        interpretation_mode=interpretation_mode,
+        article_type=article_type,
+        word_length=word_length,
+        summary_of_research=summary_of_research,
+        max_questions=safe_max_questions,
+        history=cleaned_history,
+    )
+
+    first_output, first_model = _ask_model(base_prompt, preferred_model=preferred_model)
+    first_parsed = json.loads(_extract_json_object(first_output))
+    question = _coerce_single_question(
+        first_parsed,
+        context_tokens=context_tokens,
+        existing_prompts=existing_prompts,
+        next_index=asked_count,
+    )
+    second_model = ""
+    if question is None:
+        repair_prompt = f"""
+Your prior output did not produce a valid new question.
+Generate exactly one valid replacement question using the same context.
+Avoid these already asked prompts:
+{_format_history(cleaned_history)}
+
+Return JSON only:
+{{
+  "question": {{
+    "id": "string",
+    "prompt": "string",
+    "rationale": "string"
+  }}
+}}
+""".strip()
+        second_output, second_model = _ask_model(
+            f"{base_prompt}\n\n{repair_prompt}",
+            preferred_model=preferred_model,
+        )
+        second_parsed = json.loads(_extract_json_object(second_output))
+        question = _coerce_single_question(
+            second_parsed,
+            context_tokens=context_tokens,
+            existing_prompts=existing_prompts,
+            next_index=asked_count,
+        )
+
+    if question is None:
+        raise ValueError(
+            "AI could not generate a valid contextual next question. Refresh and retry."
+        )
+
+    return {
+        "question": question,
+        "completed": False,
+        "asked_count": asked_count,
+        "max_questions": safe_max_questions,
+        "model_used": _merge_model_labels(first_model, second_model),
+    }

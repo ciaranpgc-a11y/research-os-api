@@ -1,10 +1,10 @@
 import { Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { RecommendationCard } from '@/components/study-core/RecommendationCard'
 import { Button } from '@/components/ui/button'
 import type { PlanRecommendation } from '@/lib/analyze-plan'
-import { fetchPlanClarificationQuestions } from '@/lib/study-core-api'
+import { fetchNextPlanClarificationQuestion } from '@/lib/study-core-api'
 import type { PlanClarificationQuestion, Step2ClarificationResponse } from '@/types/study-core'
 
 type PlanningContext = {
@@ -27,51 +27,40 @@ type Step2PanelProps = {
   onClarificationResponsesChange: (responses: Step2ClarificationResponse[]) => void
 }
 
-function sanitiseQuestions(rawQuestions: PlanClarificationQuestion[]): PlanClarificationQuestion[] {
-  const cleaned: PlanClarificationQuestion[] = []
-  const seenPrompts = new Set<string>()
-  for (const item of rawQuestions) {
-    const prompt = item.prompt.trim().replace(/\s+/g, ' ')
-    if (!prompt) {
-      continue
-    }
-    const normalizedPrompt = prompt.endsWith('?') ? prompt : `${prompt}?`
-    const startsWithYesNo = /^(should|is|are|do|does|can)\b/i.test(normalizedPrompt)
-    if (!startsWithYesNo) {
-      continue
-    }
-    const key = normalizedPrompt.toLowerCase()
-    if (seenPrompts.has(key)) {
-      continue
-    }
-    seenPrompts.add(key)
-    cleaned.push({
-      id: item.id.trim() || `q${cleaned.length + 1}`,
-      prompt: normalizedPrompt,
-      rationale: item.rationale.trim() || 'Clarifies planning intent before section generation.',
-    })
-    if (cleaned.length >= 10) {
-      break
-    }
-  }
-  return cleaned
+const MAX_QUESTIONS = 10
+
+function toHistory(responses: Step2ClarificationResponse[]) {
+  return responses
+    .filter((item): item is Step2ClarificationResponse & { answer: 'yes' | 'no' } => item.answer === 'yes' || item.answer === 'no')
+    .map((item) => ({
+      prompt: item.prompt.trim(),
+      answer: item.answer,
+      comment: item.comment.trim(),
+    }))
 }
 
-function mapResponsesToQuestions(
-  questions: PlanClarificationQuestion[],
-  currentResponses: Step2ClarificationResponse[],
+function upsertResponse(
+  responses: Step2ClarificationResponse[],
+  question: PlanClarificationQuestion,
+  answer: 'yes' | 'no',
+  comment: string,
 ): Step2ClarificationResponse[] {
-  const byId = new Map(currentResponses.map((item) => [item.id, item]))
-  const byPrompt = new Map(currentResponses.map((item) => [item.prompt.trim().toLowerCase(), item]))
-  return questions.map((question) => {
-    const existing = byId.get(question.id) ?? byPrompt.get(question.prompt.trim().toLowerCase())
-    return {
-      id: question.id,
-      prompt: question.prompt,
-      answer: existing?.answer ?? '',
-      comment: existing?.comment ?? '',
-    }
-  })
+  const next = [...responses]
+  const index = next.findIndex(
+    (item) => item.id === question.id || item.prompt.trim().toLowerCase() === question.prompt.trim().toLowerCase(),
+  )
+  const record: Step2ClarificationResponse = {
+    id: question.id,
+    prompt: question.prompt,
+    answer,
+    comment: comment.trim(),
+  }
+  if (index >= 0) {
+    next[index] = record
+  } else {
+    next.push(record)
+  }
+  return next
 }
 
 export function Step2Panel({
@@ -81,19 +70,33 @@ export function Step2Panel({
   clarificationResponses,
   onClarificationResponsesChange,
 }: Step2PanelProps) {
-  const [questions, setQuestions] = useState<PlanClarificationQuestion[]>([])
-  const [loadingQuestions, setLoadingQuestions] = useState(false)
-  const [questionsError, setQuestionsError] = useState('')
+  const [currentQuestion, setCurrentQuestion] = useState<PlanClarificationQuestion | null>(null)
+  const [draftAnswer, setDraftAnswer] = useState<'yes' | 'no' | ''>('')
+  const [draftComment, setDraftComment] = useState('')
+  const [loadingQuestion, setLoadingQuestion] = useState(false)
+  const [questionError, setQuestionError] = useState('')
   const [modelUsed, setModelUsed] = useState('')
-  const [refreshNonce, setRefreshNonce] = useState(0)
+  const [completed, setCompleted] = useState(false)
+  const [questionLimit, setQuestionLimit] = useState(MAX_QUESTIONS)
 
-  useEffect(() => {
-    let cancelled = false
-    const loadQuestions = async () => {
-      setLoadingQuestions(true)
-      setQuestionsError('')
+  const answeredHistory = useMemo(() => toHistory(clarificationResponses), [clarificationResponses])
+  const answeredCount = answeredHistory.length
+
+  const loadNextQuestion = useCallback(
+    async (sourceResponses: Step2ClarificationResponse[]) => {
+      const history = toHistory(sourceResponses)
+      if (history.length >= MAX_QUESTIONS) {
+        setCompleted(true)
+        setCurrentQuestion(null)
+        setDraftAnswer('')
+        setDraftComment('')
+        return
+      }
+
+      setLoadingQuestion(true)
+      setQuestionError('')
       try {
-        const payload = await fetchPlanClarificationQuestions({
+        const payload = await fetchNextPlanClarificationQuestion({
           projectTitle: planningContext.projectTitle,
           targetJournal: planningContext.targetJournal,
           targetJournalLabel: planningContext.targetJournalLabel,
@@ -103,136 +106,135 @@ export function Step2Panel({
           articleType: planningContext.articleType,
           wordLength: planningContext.wordLength,
           summaryOfResearch: planningContext.summary,
+          history,
+          maxQuestions: MAX_QUESTIONS,
         })
-        if (cancelled) {
-          return
-        }
-        const nextQuestions = sanitiseQuestions(payload.questions)
-        if (nextQuestions.length === 0) {
-          throw new Error('AI did not return usable clarification questions.')
-        }
-        setQuestions(nextQuestions)
+
         setModelUsed(payload.model_used)
-      } catch (error) {
-        if (cancelled) {
+        setQuestionLimit(payload.max_questions || MAX_QUESTIONS)
+        setCompleted(payload.completed)
+
+        if (!payload.question) {
+          setCurrentQuestion(null)
+          setDraftAnswer('')
+          setDraftComment('')
           return
         }
+
+        const nextQuestion = payload.question
+        setCurrentQuestion(nextQuestion)
+
+        const existing = sourceResponses.find(
+          (item) => item.id === nextQuestion.id || item.prompt.trim().toLowerCase() === nextQuestion.prompt.trim().toLowerCase(),
+        )
+        setDraftAnswer(existing?.answer ?? '')
+        setDraftComment(existing?.comment ?? '')
+      } catch (error) {
+        setCurrentQuestion(null)
+        setCompleted(false)
         setModelUsed('')
-        setQuestionsError(
+        setQuestionError(
           error instanceof Error
-            ? `${error.message} Please refresh questions.`
-            : 'Could not generate AI clarification questions. Please refresh questions.',
+            ? `${error.message} Click Refresh question to retry.`
+            : 'Could not generate the next AI question. Click Refresh question to retry.',
         )
       } finally {
-        if (!cancelled) {
-          setLoadingQuestions(false)
-        }
+        setLoadingQuestion(false)
       }
-    }
-
-    void loadQuestions()
-    return () => {
-      cancelled = true
-    }
-  }, [
-    planningContext.articleType,
-    planningContext.interpretationMode,
-    planningContext.projectTitle,
-    planningContext.researchCategory,
-    planningContext.studyType,
-    planningContext.summary,
-    planningContext.targetJournal,
-    planningContext.targetJournalLabel,
-    planningContext.wordLength,
-    refreshNonce,
-  ])
+    },
+    [planningContext.articleType, planningContext.interpretationMode, planningContext.projectTitle, planningContext.researchCategory, planningContext.studyType, planningContext.summary, planningContext.targetJournal, planningContext.targetJournalLabel, planningContext.wordLength],
+  )
 
   useEffect(() => {
-    if (questions.length === 0) {
+    void loadNextQuestion(clarificationResponses)
+  }, [loadNextQuestion])
+
+  const onAnswerAndContinue = async () => {
+    if (!currentQuestion || (draftAnswer !== 'yes' && draftAnswer !== 'no')) {
       return
     }
-    const next = mapResponsesToQuestions(questions, clarificationResponses)
-    const hasChanged =
-      next.length !== clarificationResponses.length ||
-      next.some((item, index) => {
-        const current = clarificationResponses[index]
-        return !current || current.id !== item.id || current.prompt !== item.prompt || current.answer !== item.answer || current.comment !== item.comment
-      })
-    if (hasChanged) {
-      onClarificationResponsesChange(next)
-    }
-  }, [clarificationResponses, onClarificationResponsesChange, questions])
-
-  const updateResponse = (id: string, patch: Partial<Step2ClarificationResponse>) => {
-    const next = clarificationResponses.map((item) => (item.id === id ? { ...item, ...patch } : item))
-    onClarificationResponsesChange(next)
+    const nextResponses = upsertResponse(clarificationResponses, currentQuestion, draftAnswer, draftComment)
+    onClarificationResponsesChange(nextResponses)
+    await loadNextQuestion(nextResponses)
   }
 
   return (
     <aside className="space-y-3 rounded-lg border border-border bg-card p-3">
       <h3 className="text-sm font-semibold">Plan setup questions</h3>
       <div className="space-y-2 rounded-md border border-border/80 bg-muted/20 p-3">
-        <div className="flex flex-wrap gap-2">
+        <p className="text-xs text-muted-foreground">
+          AI asks one question at a time and adapts to each answer to improve the final plan.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             variant="outline"
             className="border-emerald-300 text-emerald-800 hover:bg-emerald-50"
-            onClick={() => setRefreshNonce((value) => value + 1)}
-            disabled={loadingQuestions}
+            onClick={() => void loadNextQuestion(clarificationResponses)}
+            disabled={loadingQuestion}
           >
-            {loadingQuestions ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-            {questions.length > 0 ? 'Refresh questions' : 'Generate AI questions'}
+            {loadingQuestion ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+            Refresh question
           </Button>
+          <span className="text-xs text-muted-foreground">
+            Completed: {answeredCount}/{questionLimit}
+          </span>
         </div>
         {modelUsed ? <p className="text-[11px] text-muted-foreground">Model: {modelUsed}</p> : null}
-        {questionsError ? <p className="text-xs text-amber-700">{questionsError}</p> : null}
-        {!hasPlan ? <p className="text-xs text-emerald-700">Complete these first to improve first-pass plan quality.</p> : null}
+        {questionError ? <p className="text-xs text-amber-700">{questionError}</p> : null}
       </div>
 
-      {questions.length === 0 ? (
-        <p className="rounded-md border border-border bg-background p-3 text-sm text-muted-foreground">
-          No AI questions loaded yet.
+      {completed ? (
+        <p className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">
+          Clarification sequence completed. Proceed to scaffold or Generate Plan.
         </p>
-      ) : (
-        <div className="max-h-[460px] space-y-2 overflow-y-auto pr-1">
-          {questions.map((question, index) => {
-            const response = clarificationResponses.find((item) => item.id === question.id)
-            const answer = response?.answer ?? ''
-            const comment = response?.comment ?? ''
-            return (
-              <div key={question.id} className="rounded-md border border-border/80 bg-background p-2">
-                <p className="text-xs font-semibold text-slate-900">
-                  {index + 1}. {question.prompt}
-                </p>
-                <p className="mt-1 text-[11px] text-muted-foreground">{question.rationale}</p>
-                <div className="mt-2 flex gap-2">
-                  <Button
-                    size="sm"
-                    variant={answer === 'yes' ? 'default' : 'outline'}
-                    className={answer === 'yes' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
-                    onClick={() => updateResponse(question.id, { answer: 'yes', prompt: question.prompt })}
-                  >
-                    Yes
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={answer === 'no' ? 'default' : 'outline'}
-                    className={answer === 'no' ? 'bg-slate-700 hover:bg-slate-800' : ''}
-                    onClick={() => updateResponse(question.id, { answer: 'no', prompt: question.prompt })}
-                  >
-                    No
-                  </Button>
-                </div>
-                <textarea
-                  className="mt-2 min-h-14 w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs"
-                  placeholder="Optional comment"
-                  value={comment}
-                  onChange={(event) => updateResponse(question.id, { comment: event.target.value, prompt: question.prompt })}
-                />
-              </div>
-            )
-          })}
+      ) : currentQuestion ? (
+        <div className="space-y-2 rounded-md border border-border/80 bg-background p-3">
+          <p className="text-xs font-semibold text-slate-900">
+            Question {Math.min(answeredCount + 1, questionLimit)} of {questionLimit}
+          </p>
+          <p className="text-sm font-medium text-slate-900">{currentQuestion.prompt}</p>
+          <p className="text-xs text-muted-foreground">{currentQuestion.rationale}</p>
+
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant={draftAnswer === 'yes' ? 'default' : 'outline'}
+              className={draftAnswer === 'yes' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+              onClick={() => setDraftAnswer('yes')}
+            >
+              Yes
+            </Button>
+            <Button
+              size="sm"
+              variant={draftAnswer === 'no' ? 'default' : 'outline'}
+              className={draftAnswer === 'no' ? 'bg-slate-700 hover:bg-slate-800' : ''}
+              onClick={() => setDraftAnswer('no')}
+            >
+              No
+            </Button>
+          </div>
+
+          <textarea
+            className="min-h-16 w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs"
+            placeholder="Optional comment"
+            value={draftComment}
+            onChange={(event) => setDraftComment(event.target.value)}
+          />
+
+          <Button
+            size="sm"
+            className="bg-emerald-600 text-white hover:bg-emerald-700"
+            onClick={() => void onAnswerAndContinue()}
+            disabled={loadingQuestion || (draftAnswer !== 'yes' && draftAnswer !== 'no')}
+          >
+            Save answer and next question
+          </Button>
         </div>
+      ) : (
+        <p className="rounded-md border border-border bg-background p-3 text-sm text-muted-foreground">
+          No active question. Refresh question to continue.
+        </p>
       )}
 
       <h3 className="text-sm font-semibold">Plan fixes</h3>
