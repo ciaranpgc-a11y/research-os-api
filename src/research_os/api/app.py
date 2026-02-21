@@ -187,19 +187,20 @@ async def app_lifespan(_: FastAPI):
 
 app = FastAPI(title="Research OS API", version="0.1.0", lifespan=app_lifespan)
 
-cors_allow_origins = os.getenv(
-    "CORS_ALLOW_ORIGINS",
-    (
-        "http://localhost:5173,"
-        "http://127.0.0.1:5173,"
-        "http://localhost:4173,"
-        "http://127.0.0.1:4173,"
-        "https://research-os-ui.onrender.com"
-    ),
-)
-allow_origins = [
-    origin.strip() for origin in cors_allow_origins.split(",") if origin.strip()
+default_allow_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+    "https://research-os-ui.onrender.com",
 ]
+configured_allow_origins = os.getenv("CORS_ALLOW_ORIGINS", "")
+allow_origins = list(default_allow_origins)
+for origin in configured_allow_origins.split(","):
+    value = origin.strip()
+    if not value or value in allow_origins:
+        continue
+    allow_origins.append(value)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
@@ -412,11 +413,12 @@ def v1_plan_aawe_sections(request: SectionPlanRequest) -> SectionPlanResponse:
 def v1_research_overview_suggestions(
     request: ResearchOverviewSuggestionsRequest,
 ) -> ResearchOverviewSuggestionsResponse:
+    study_type_options = getattr(request, "study_type_options", None) or []
     payload = generate_research_overview_suggestions(
         target_journal=request.target_journal,
         research_category=request.research_category,
         research_type=request.research_type,
-        study_type_options=request.study_type_options,
+        study_type_options=study_type_options,
         article_type=request.article_type,
         interpretation_mode=request.interpretation_mode,
         summary_of_research=request.summary_of_research,

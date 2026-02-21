@@ -123,7 +123,9 @@ export async function fetchResearchOverviewSuggestions(input: {
       }),
     })
   } catch {
-    throw new Error(`Could not reach API at ${API_BASE_URL}. Start backend service and retry.`)
+    throw new Error(
+      `Could not reach API at ${API_BASE_URL}. Start backend service or check CORS origin (prefer http://localhost:5173).`,
+    )
   }
   if (!response.ok) {
     throw new Error(await parseApiError(response, `Research overview suggestions failed (${response.status})`))
