@@ -405,6 +405,7 @@ export function Step1Panel({
   const [revertSnapshots, setRevertSnapshots] = useState<Partial<Record<AppliedKey, RevertSnapshot>>>({})
   const [appliedSectionOpen, setAppliedSectionOpen] = useState(false)
   const [ignoredSectionOpen, setIgnoredSectionOpen] = useState(false)
+  const [syncGeneratedKeyAfterApply, setSyncGeneratedKeyAfterApply] = useState(false)
   const applyTimersRef = useRef<number[]>([])
 
   useEffect(() => {
@@ -428,7 +429,7 @@ export function Step1Panel({
     [currentArticleType, currentWordLength, interpretationMode, researchCategory, researchType, summary, targetJournal],
   )
   const hasGenerated = generatedKey.length > 0
-  const isStale = hasGenerated && generatedKey !== currentKey
+  const isStale = hasGenerated && generatedKey !== currentKey && !syncGeneratedKeyAfterApply
   const summarySuggestion = suggestions?.summary_refinements[0] ?? ''
 
   const normalize = (value: string) => value.trim().toLowerCase()
@@ -566,6 +567,14 @@ export function Step1Panel({
     setShowSummaryDiff(false)
   }, [currentKey])
 
+  useEffect(() => {
+    if (!syncGeneratedKeyAfterApply) {
+      return
+    }
+    setGeneratedKey(currentKey)
+    setSyncGeneratedKeyAfterApply(false)
+  }, [currentKey, syncGeneratedKeyAfterApply])
+
   const appliedKeys = useMemo(() => {
     const keys: SuggestionKey[] = []
     if (summarySuggestion && isSummaryApplied) {
@@ -652,6 +661,7 @@ export function Step1Panel({
         },
       })
     }
+    setSyncGeneratedKeyAfterApply(true)
     markApplied('journal')
     return true
   }
@@ -758,6 +768,7 @@ export function Step1Panel({
         delete next[key]
         return next
       })
+      setSyncGeneratedKeyAfterApply(true)
       setUndoStack((current) => {
         for (let index = current.length - 1; index >= 0; index -= 1) {
           if (current[index].key === key) {
@@ -781,6 +792,7 @@ export function Step1Panel({
       return current
     })
     selected.undo()
+    setSyncGeneratedKeyAfterApply(true)
   }
 
   const onApplySummary = (option: string) => {
@@ -788,17 +800,7 @@ export function Step1Panel({
     if (normalize(previousSummary) === normalize(option)) {
       return
     }
-    setGeneratedKey(
-      buildSuggestionContextKey({
-        summary: option,
-        researchCategory,
-        researchType,
-        interpretationMode,
-        targetJournal,
-        articleType: currentArticleType,
-        wordLength: currentWordLength,
-      }),
-    )
+    setSyncGeneratedKeyAfterApply(true)
     setRevertSnapshots((current) => ({ ...current, summary: { summary: previousSummary } }))
     pushUndoEntry({
       key: 'summary',
@@ -838,6 +840,7 @@ export function Step1Panel({
       },
     })
     onApplyResearchType(recommendation.value)
+    setSyncGeneratedKeyAfterApply(true)
     markApplied('researchType')
   }
 
@@ -870,6 +873,7 @@ export function Step1Panel({
       },
     })
     onApplyResearchCategory(recommendation.value)
+    setSyncGeneratedKeyAfterApply(true)
     markApplied('researchCategory')
   }
 
@@ -892,6 +896,7 @@ export function Step1Panel({
       undo: () => onApplyInterpretationMode(previousInterpretationMode),
     })
     onApplyInterpretationMode(recommendation.value)
+    setSyncGeneratedKeyAfterApply(true)
     markApplied('interpretationMode')
   }
 
