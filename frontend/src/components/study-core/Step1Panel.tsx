@@ -529,7 +529,6 @@ export function Step1Panel({
   useEffect(() => {
     setIgnoredState(readIgnoredStateForKey(currentKey))
     setAppliedState(buildEmptySuggestionState())
-    setUndoStack([])
     setShowSummaryDiff(false)
   }, [currentKey])
 
@@ -587,6 +586,7 @@ export function Step1Panel({
     if (!summary.trim()) {
       return
     }
+    setUndoStack([])
     setLoading(true)
     setRequestError('')
     try {
