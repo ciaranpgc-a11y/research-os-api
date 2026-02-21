@@ -26,14 +26,16 @@ type Step1PanelProps = {
 const ACTION_BUTTON_CLASS = 'bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500'
 const OUTLINE_ACTION_BUTTON_CLASS =
   'border-emerald-300 text-emerald-800 hover:bg-emerald-100 focus-visible:ring-emerald-500'
-const SUMMARY_CARD_CLASS = 'space-y-2 rounded-md border border-emerald-300 bg-gradient-to-br from-emerald-50 to-emerald-100 p-3 shadow-sm'
-const RESEARCH_CATEGORY_CARD_CLASS = 'space-y-2 rounded-md border border-indigo-300 bg-gradient-to-br from-indigo-50 to-indigo-100 p-3 shadow-sm'
-const RESEARCH_TYPE_CARD_CLASS = 'space-y-2 rounded-md border border-sky-300 bg-gradient-to-br from-sky-50 to-sky-100 p-3 shadow-sm'
-const INTERPRETATION_CARD_CLASS = 'space-y-2 rounded-md border border-cyan-300 bg-gradient-to-br from-cyan-50 to-cyan-100 p-3 shadow-sm'
-const JOURNAL_CARD_CLASS = 'space-y-2 rounded-md border border-amber-300 bg-gradient-to-br from-amber-50 to-amber-100 p-3 shadow-sm'
-const CARD_TRANSITION_CLASS = 'transition-all duration-500 ease-out'
+const SUMMARY_CARD_CLASS = 'space-y-2 rounded-md border border-emerald-400 bg-emerald-50 p-3 shadow-sm'
+const RESEARCH_CATEGORY_CARD_CLASS = 'space-y-2 rounded-md border border-violet-400 bg-violet-50 p-3 shadow-sm'
+const RESEARCH_TYPE_CARD_CLASS = 'space-y-2 rounded-md border border-sky-400 bg-sky-50 p-3 shadow-sm'
+const INTERPRETATION_CARD_CLASS = 'space-y-2 rounded-md border border-cyan-400 bg-cyan-50 p-3 shadow-sm'
+const JOURNAL_CARD_CLASS = 'space-y-2 rounded-md border border-amber-400 bg-amber-50 p-3 shadow-sm'
+const APPLIED_CARD_CLASS = 'space-y-1 rounded-md border border-slate-300 bg-slate-50 p-3'
+const CARD_TRANSITION_CLASS = 'transition-all duration-300 ease-out'
 
 type AppliedKey = 'summary' | 'researchCategory' | 'researchType' | 'interpretationMode' | 'journal'
+type SuggestionKey = AppliedKey
 
 function inferOfflineResearchCategory(summary: string, currentValue: string): string {
   const normalizedCurrent = currentValue.trim()
@@ -292,6 +294,68 @@ export function Step1Panel({
   const shouldShowJournalApplyButton = Boolean(
     (articleSuggestion && !isArticleTypeApplied) || (wordLengthSuggestion && !isWordLengthApplied),
   )
+  const hasAnyJournalRecommendation = Boolean(articleSuggestion || wordLengthSuggestion)
+  const isJournalApplied = hasAnyJournalRecommendation && !shouldShowJournalApplyButton
+
+  const pendingKeys = useMemo(() => {
+    const keys: SuggestionKey[] = []
+    if (summarySuggestion && !isSummaryApplied) {
+      keys.push('summary')
+    }
+    if (researchCategorySuggestion && !isResearchCategoryApplied) {
+      keys.push('researchCategory')
+    }
+    if (researchTypeSuggestion && !isResearchTypeApplied) {
+      keys.push('researchType')
+    }
+    if (interpretationSuggestion && !isInterpretationModeApplied) {
+      keys.push('interpretationMode')
+    }
+    if (shouldShowJournalApplyButton) {
+      keys.push('journal')
+    }
+    return keys
+  }, [
+    interpretationSuggestion,
+    isInterpretationModeApplied,
+    isResearchCategoryApplied,
+    isResearchTypeApplied,
+    researchCategorySuggestion,
+    researchTypeSuggestion,
+    shouldShowJournalApplyButton,
+    summarySuggestion,
+    isSummaryApplied,
+  ])
+
+  const appliedKeys = useMemo(() => {
+    const keys: SuggestionKey[] = []
+    if (summarySuggestion && isSummaryApplied) {
+      keys.push('summary')
+    }
+    if (researchCategorySuggestion && isResearchCategoryApplied) {
+      keys.push('researchCategory')
+    }
+    if (researchTypeSuggestion && isResearchTypeApplied) {
+      keys.push('researchType')
+    }
+    if (interpretationSuggestion && isInterpretationModeApplied) {
+      keys.push('interpretationMode')
+    }
+    if (isJournalApplied) {
+      keys.push('journal')
+    }
+    return keys
+  }, [
+    interpretationSuggestion,
+    isInterpretationModeApplied,
+    isJournalApplied,
+    isResearchCategoryApplied,
+    isResearchTypeApplied,
+    researchCategorySuggestion,
+    researchTypeSuggestion,
+    summarySuggestion,
+    isSummaryApplied,
+  ])
 
   const generateSuggestions = async () => {
     if (!summary.trim()) {
@@ -333,6 +397,13 @@ export function Step1Panel({
   const refreshSuggestions = async () => {
     setRefinementsEnabled(true)
     onJournalRecommendationsLockedChange(false)
+    setAppliedState({
+      summary: false,
+      researchCategory: false,
+      researchType: false,
+      interpretationMode: false,
+      journal: false,
+    })
     await generateSuggestions()
   }
 
@@ -400,6 +471,167 @@ export function Step1Panel({
     markApplied('journal')
   }
 
+  const applyDisabled = isStale || loading
+  const pendingToRender = pendingKeys.slice(0, 3)
+  const hiddenPendingCount = Math.max(0, pendingKeys.length - pendingToRender.length)
+
+  const suggestionCardPulseClass = (key: AppliedKey, colourClass: string) =>
+    `${colourClass} ${CARD_TRANSITION_CLASS} ${
+      appliedState[key] ? 'ring-2 ring-offset-1 shadow-md -translate-y-0.5' : ''
+    }`
+
+  const renderPendingCard = (key: SuggestionKey) => {
+    if (key === 'summary') {
+      return (
+        <div key="pending-summary" className={suggestionCardPulseClass('summary', SUMMARY_CARD_CLASS)}>
+          <p className="text-sm font-semibold text-emerald-900">Summary of research refinement</p>
+          <div className="rounded border border-emerald-300 bg-white p-2">
+            <p className="text-xs text-emerald-950">{summarySuggestion}</p>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-emerald-900">{isStale ? 'Inputs changed. Refresh before applying.' : 'Direct rewrite only; no new claims added.'}</p>
+            <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={() => onApplySummary(summarySuggestion)} disabled={applyDisabled}>
+              Replace summary
+            </Button>
+          </div>
+        </div>
+      )
+    }
+
+    if (key === 'researchCategory' && researchCategorySuggestion) {
+      return (
+        <div key="pending-category" className={suggestionCardPulseClass('researchCategory', RESEARCH_CATEGORY_CARD_CLASS)}>
+          <p className="text-sm font-semibold text-violet-900">Research category suggestion</p>
+          <p className="text-xs text-violet-900">
+            Recommended category: <span className="font-semibold">{researchCategorySuggestion.value}</span>
+          </p>
+          <p className="text-xs text-violet-900">{researchCategorySuggestion.rationale}</p>
+          <div className="flex items-center justify-end">
+            <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyResearchCategorySuggestion} disabled={applyDisabled}>
+              Apply research category
+            </Button>
+          </div>
+        </div>
+      )
+    }
+
+    if (key === 'researchType' && researchTypeSuggestion) {
+      return (
+        <div key="pending-type" className={suggestionCardPulseClass('researchType', RESEARCH_TYPE_CARD_CLASS)}>
+          <p className="text-sm font-semibold text-sky-900">Research type suggestion</p>
+          <p className="text-xs text-sky-900">
+            Recommended type: <span className="font-semibold">{researchTypeSuggestion.value}</span>
+          </p>
+          <p className="text-xs text-sky-900">{researchTypeSuggestion.rationale}</p>
+          <div className="flex items-center justify-end">
+            <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyResearchTypeSuggestion} disabled={applyDisabled}>
+              Apply suggested type
+            </Button>
+          </div>
+        </div>
+      )
+    }
+
+    if (key === 'interpretationMode' && interpretationSuggestion) {
+      return (
+        <div key="pending-interpretation" className={suggestionCardPulseClass('interpretationMode', INTERPRETATION_CARD_CLASS)}>
+          <p className="text-sm font-semibold text-cyan-900">Interpretation mode suggestion</p>
+          <p className="text-xs text-cyan-900">
+            Recommended mode: <span className="font-semibold">{interpretationSuggestion.value}</span>
+          </p>
+          <p className="text-xs text-cyan-900">{interpretationSuggestion.rationale}</p>
+          <div className="flex items-center justify-end">
+            <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyInterpretationModeSuggestion} disabled={applyDisabled}>
+              Apply interpretation mode
+            </Button>
+          </div>
+        </div>
+      )
+    }
+
+    if (key === 'journal') {
+      return (
+        <div key="pending-journal" className={suggestionCardPulseClass('journal', JOURNAL_CARD_CLASS)}>
+          <p className="text-sm font-semibold text-amber-900">Journal recommendation</p>
+          {articleSuggestion ? (
+            <div className="rounded border border-amber-300 bg-white p-2">
+              <p className="text-xs font-medium text-amber-950">Article type</p>
+              <p className="text-xs text-amber-900">{articleSuggestion.value}</p>
+            </div>
+          ) : null}
+          {wordLengthSuggestion ? (
+            <div className="rounded border border-amber-300 bg-white p-2">
+              <p className="text-xs font-medium text-amber-950">Recommended word length</p>
+              <p className="text-xs text-amber-900">{wordLengthSuggestion.value}</p>
+            </div>
+          ) : null}
+          <div className="flex items-center justify-end">
+            <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyJournalRecommendation} disabled={applyDisabled}>
+              Apply journal recommendation
+            </Button>
+          </div>
+        </div>
+      )
+    }
+
+    return null
+  }
+
+  const renderAppliedCard = (key: SuggestionKey) => {
+    if (key === 'summary') {
+      return (
+        <div key="applied-summary" className={APPLIED_CARD_CLASS}>
+          <p className="text-sm font-medium text-slate-900">Summary refinement</p>
+          <p className="text-xs text-slate-700">Current summary matches the suggested rewrite.</p>
+        </div>
+      )
+    }
+    if (key === 'researchCategory' && researchCategorySuggestion) {
+      return (
+        <div key="applied-category" className={APPLIED_CARD_CLASS}>
+          <p className="text-sm font-medium text-slate-900">Research category</p>
+          <p className="text-xs text-slate-700">
+            Correct category selected: <span className="font-semibold">{researchCategorySuggestion.value}</span>
+          </p>
+          <p className="text-xs text-slate-700">{researchCategorySuggestion.rationale}</p>
+        </div>
+      )
+    }
+    if (key === 'researchType' && researchTypeSuggestion) {
+      return (
+        <div key="applied-type" className={APPLIED_CARD_CLASS}>
+          <p className="text-sm font-medium text-slate-900">Research type</p>
+          <p className="text-xs text-slate-700">
+            Correct type selected: <span className="font-semibold">{researchTypeSuggestion.value}</span>
+          </p>
+          <p className="text-xs text-slate-700">{researchTypeSuggestion.rationale}</p>
+        </div>
+      )
+    }
+    if (key === 'interpretationMode' && interpretationSuggestion) {
+      return (
+        <div key="applied-interpretation" className={APPLIED_CARD_CLASS}>
+          <p className="text-sm font-medium text-slate-900">Interpretation mode</p>
+          <p className="text-xs text-slate-700">
+            Correct mode selected: <span className="font-semibold">{interpretationSuggestion.value}</span>
+          </p>
+          <p className="text-xs text-slate-700">{interpretationSuggestion.rationale}</p>
+        </div>
+      )
+    }
+    if (key === 'journal') {
+      return (
+        <div key="applied-journal" className={APPLIED_CARD_CLASS}>
+          <p className="text-sm font-medium text-slate-900">Journal recommendation</p>
+          {articleSuggestion ? <p className="text-xs text-slate-700">Article type set: {articleSuggestion.value}</p> : null}
+          {wordLengthSuggestion ? <p className="text-xs text-slate-700">Word length set: {wordLengthSuggestion.value}</p> : null}
+          <p className="text-xs text-slate-700">Values are aligned with current recommendations.</p>
+        </div>
+      )
+    }
+    return null
+  }
+
   return (
     <aside className="space-y-3 rounded-lg border border-border bg-card p-3">
       <h3 className="text-sm font-semibold">Research Overview Suggestions</h3>
@@ -432,188 +664,62 @@ export function Step1Panel({
       </div>
 
       {refinementsEnabled ? (
-        <div
-          className={`${SUMMARY_CARD_CLASS} ${CARD_TRANSITION_CLASS} ${
-            appliedState.summary ? 'ring-2 ring-emerald-300 shadow-md' : ''
-          }`}
-        >
-          <p className="text-sm font-medium text-emerald-900">Summary of research refinement</p>
-          {loading && !hasGenerated ? <p className="text-xs text-emerald-900">Generating rewrite...</p> : null}
-          {!loading && !summarySuggestion ? <p className="text-xs text-emerald-900">No summary rewrite returned. Use Refresh suggestions.</p> : null}
-          {summarySuggestion ? (
-            <div className="rounded border border-emerald-300 bg-white p-2">
-              <p className="text-xs text-emerald-950">{summarySuggestion}</p>
-              {isSummaryApplied ? (
-                <p className="mt-2 text-xs text-emerald-900">Current summary already matches the suggested refinement.</p>
-              ) : (
-                <Button size="sm" className={`mt-2 ${ACTION_BUTTON_CLASS}`} onClick={() => onApplySummary(summarySuggestion)}>
-                  Replace summary
-                </Button>
-              )}
-            </div>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pending actions</p>
+            {loading ? <p className="text-xs text-muted-foreground">Generating...</p> : null}
+          </div>
+          {!hasGenerated && !loading ? (
+            <p className="rounded-md border border-border/70 bg-muted/20 px-2 py-2 text-xs text-muted-foreground">
+              Click Refresh suggestions to generate recommendations.
+            </p>
+          ) : null}
+          {hasGenerated && pendingToRender.length === 0 && !loading ? (
+            <p className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-2 text-xs text-emerald-900">
+              No pending actions. Current selections align with suggestions.
+            </p>
+          ) : null}
+          {pendingToRender.map((key) => renderPendingCard(key))}
+          {hiddenPendingCount > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              {hiddenPendingCount} additional action{hiddenPendingCount > 1 ? 's' : ''} hidden. Apply or refresh to reprioritise.
+            </p>
           ) : null}
         </div>
       ) : null}
 
       {refinementsEnabled ? (
-        <div
-          className={`${RESEARCH_CATEGORY_CARD_CLASS} ${CARD_TRANSITION_CLASS} ${
-            appliedState.researchCategory ? 'ring-2 ring-indigo-300 shadow-md' : ''
-          }`}
-        >
-          <p className="text-sm font-medium text-indigo-900">Research category suggestion</p>
-          {loading && !hasGenerated ? <p className="text-xs text-indigo-900">Generating research category suggestion...</p> : null}
-          {!loading && !researchCategorySuggestion ? (
-            <p className="text-xs text-indigo-900">No research category suggestion returned. Use Refresh suggestions.</p>
-          ) : null}
-          {researchCategorySuggestion && isResearchCategoryApplied ? (
-            <>
-              <p className="text-xs text-indigo-900">
-                Correct research category selected: <span className="font-semibold">{researchCategorySuggestion.value}</span>
-              </p>
-              <p className="text-xs text-indigo-900">Appropriate because: {researchCategorySuggestion.rationale}</p>
-            </>
-          ) : null}
-          {researchCategorySuggestion && !isResearchCategoryApplied ? (
-            <>
-              <p className="text-xs text-indigo-900">
-                Recommended research category: <span className="font-semibold">{researchCategorySuggestion.value}</span>
-              </p>
-              <p className="text-xs text-indigo-900">{researchCategorySuggestion.rationale}</p>
-              <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyResearchCategorySuggestion}>
-                Apply research category
-              </Button>
-            </>
-          ) : null}
-        </div>
+        <details className="rounded-md border border-border/80 bg-muted/15 p-3">
+          <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Applied suggestions ({appliedKeys.length})
+          </summary>
+          <div className="mt-3 space-y-2">
+            {appliedKeys.length === 0 ? <p className="text-xs text-muted-foreground">No suggestions applied yet.</p> : null}
+            {appliedKeys.map((key) => renderAppliedCard(key))}
+          </div>
+        </details>
       ) : null}
 
       {refinementsEnabled ? (
-        <div
-          className={`${RESEARCH_TYPE_CARD_CLASS} ${CARD_TRANSITION_CLASS} ${
-            appliedState.researchType ? 'ring-2 ring-sky-300 shadow-md' : ''
-          }`}
-        >
-          <p className="text-sm font-medium text-sky-900">Research type suggestion</p>
-          {loading && !hasGenerated ? <p className="text-xs text-sky-900">Generating research type suggestion...</p> : null}
-          {!loading && !researchTypeSuggestion ? (
-            <p className="text-xs text-sky-900">No research type suggestion returned. Use Refresh suggestions.</p>
-          ) : null}
-          {researchTypeSuggestion && isResearchTypeApplied ? (
-            <>
-              <p className="text-xs text-sky-900">
-                Correct research type selected: <span className="font-semibold">{researchTypeSuggestion.value}</span>
-              </p>
-              <p className="text-xs text-sky-900">Appropriate because: {researchTypeSuggestion.rationale}</p>
-            </>
-          ) : null}
-          {researchTypeSuggestion && !isResearchTypeApplied ? (
-            <>
-              <p className="text-xs text-sky-900">
-                Recommended research type: <span className="font-semibold">{researchTypeSuggestion.value}</span>
-              </p>
-              <p className="text-xs text-sky-900">{researchTypeSuggestion.rationale}</p>
-              <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyResearchTypeSuggestion}>
-                Apply suggested research type
-              </Button>
-            </>
-          ) : null}
-        </div>
-      ) : null}
-
-      {refinementsEnabled ? (
-        <div
-          className={`${INTERPRETATION_CARD_CLASS} ${CARD_TRANSITION_CLASS} ${
-            appliedState.interpretationMode ? 'ring-2 ring-cyan-300 shadow-md' : ''
-          }`}
-        >
-          <p className="text-sm font-medium text-cyan-900">Interpretation mode suggestion</p>
-          {loading && !hasGenerated ? <p className="text-xs text-cyan-900">Generating interpretation mode suggestion...</p> : null}
-          {!loading && !interpretationSuggestion ? (
-            <p className="text-xs text-cyan-900">No interpretation mode suggestion returned. Use Refresh suggestions.</p>
-          ) : null}
-          {interpretationSuggestion && isInterpretationModeApplied ? (
-            <>
-              <p className="text-xs text-cyan-900">
-                Correct interpretation mode selected:{' '}
-                <span className="font-semibold">{suggestions?.interpretation_mode_recommendation?.value}</span>
-              </p>
-              {suggestions?.interpretation_mode_recommendation?.rationale ? (
-                <p className="text-xs text-cyan-900">Appropriate because: {suggestions.interpretation_mode_recommendation.rationale}</p>
-              ) : null}
-            </>
-          ) : null}
-          {interpretationSuggestion && !isInterpretationModeApplied ? (
-            <>
-              <p className="text-xs text-cyan-900">
-                Recommended interpretation mode:{' '}
-                <span className="font-semibold">{suggestions?.interpretation_mode_recommendation?.value}</span>
-              </p>
-              {suggestions?.interpretation_mode_recommendation?.rationale ? (
-                <p className="text-xs text-cyan-900">{suggestions.interpretation_mode_recommendation.rationale}</p>
-              ) : null}
-              <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyInterpretationModeSuggestion}>
-                Apply interpretation mode
-              </Button>
-            </>
-          ) : null}
-        </div>
-      ) : null}
-
-      {refinementsEnabled ? (
-        <div
-          className={`${JOURNAL_CARD_CLASS} ${CARD_TRANSITION_CLASS} ${
-            appliedState.journal ? 'ring-2 ring-amber-300 shadow-md' : ''
-          }`}
-        >
-          <p className="text-sm font-medium text-amber-900">Journal recommendation</p>
-          {loading && !hasGenerated ? <p className="text-xs text-amber-900">Generating journal recommendations...</p> : null}
-          {articleSuggestion ? (
-            <div className="rounded border border-amber-300 bg-white p-2">
-              <p className="text-xs font-medium text-amber-950">Article type</p>
-              <p className="text-xs text-amber-900">{articleSuggestion.value}</p>
-              <p className="mt-1 text-xs text-amber-900">{articleSuggestion.rationale}</p>
-              <p className="mt-1 text-xs text-amber-900">
-                {isArticleTypeApplied ? 'Correct article type selected.' : 'Update required to match recommendation.'}
-              </p>
-            </div>
-          ) : (
-            !loading && (
-              <p className="text-xs text-amber-900">
-                {targetJournal.trim()
-                  ? 'No article type recommendation returned yet. Refresh suggestions.'
-                  : 'Select a working target journal to generate an article type recommendation.'}
-              </p>
-            )
-          )}
-          {wordLengthSuggestion ? (
-            <div className="rounded border border-amber-300 bg-white p-2">
-              <p className="text-xs font-medium text-amber-950">Recommended word length</p>
-              <p className="text-xs text-amber-900">{wordLengthSuggestion.value}</p>
-              <p className="mt-1 text-xs text-amber-900">{wordLengthSuggestion.rationale}</p>
-              <p className="mt-1 text-xs text-amber-900">
-                {isWordLengthApplied ? 'Correct word length selected.' : 'Update required to match recommendation.'}
-              </p>
-            </div>
-          ) : (
-            !loading && (
-              <p className="text-xs text-amber-900">
-                {targetJournal.trim()
-                  ? 'No word length recommendation returned yet. Refresh suggestions.'
-                  : 'Select a working target journal to generate a word length recommendation.'}
-              </p>
-            )
-          )}
-          {shouldShowJournalApplyButton ? (
-            <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyJournalRecommendation}>
-              Apply journal recommendations
-            </Button>
-          ) : articleSuggestion || wordLengthSuggestion ? (
-            <p className="text-xs text-amber-900">Journal recommendations are already applied.</p>
-          ) : (
-            !loading && <p className="text-xs text-amber-900">No journal recommendations returned. Use Refresh suggestions.</p>
-          )}
-        </div>
+        <details className="rounded-md border border-border/80 bg-muted/10 p-3">
+          <summary className="cursor-pointer text-sm font-medium">Details</summary>
+          <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+            <p>Model: {suggestions?.model_used || 'Not available'}</p>
+            <p>API endpoint: {API_BASE_URL}</p>
+            {suggestions?.source_urls?.length ? (
+              <div>
+                <p>Source links:</p>
+                <div className="space-y-0.5">
+                  {suggestions.source_urls.slice(0, 4).map((url) => (
+                    <p key={url} className="break-all">
+                      {url}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </details>
       ) : null}
     </aside>
   )

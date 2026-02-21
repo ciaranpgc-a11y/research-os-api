@@ -38,7 +38,9 @@ type RunRecommendations = {
 const CONTEXT_KEY = 'aawe-run-context'
 const RESEARCH_FRAME_SIGNATURE_KEY = 'aawe-research-frame-signature'
 const CORE_SECTIONS = ['introduction', 'methods', 'results', 'discussion', 'conclusion']
-const KNOWN_STUDY_TYPES = getResearchTypeTaxonomy(true).flatMap((item) => [...item.studyTypes])
+const RESEARCH_TAXONOMY = getResearchTypeTaxonomy(true)
+const KNOWN_STUDY_TYPES = RESEARCH_TAXONOMY.flatMap((item) => [...item.studyTypes])
+const KNOWN_RESEARCH_CATEGORIES = RESEARCH_TAXONOMY.map((item) => item.category)
 
 function normalizeSelectionLabel(value: string): string {
   return value
@@ -48,14 +50,14 @@ function normalizeSelectionLabel(value: string): string {
     .replace(/\s+/g, ' ')
 }
 
-function resolveSuggestedStudyType(rawSuggestion: string): string {
+function resolveSuggestedStudyType(rawSuggestion: string): { studyType: string; category: string | null } {
   const suggestion = normalizeSelectionLabel(rawSuggestion)
   if (!suggestion) {
-    return ''
+    return { studyType: '', category: null }
   }
   const exact = KNOWN_STUDY_TYPES.find((candidate) => normalizeSelectionLabel(candidate) === suggestion)
   if (exact) {
-    return exact
+    return { studyType: exact, category: getCategoryForStudyType(exact, true) }
   }
 
   const contained = KNOWN_STUDY_TYPES.find((candidate) => {
@@ -63,7 +65,38 @@ function resolveSuggestedStudyType(rawSuggestion: string): string {
     return normalizedCandidate.includes(suggestion) || suggestion.includes(normalizedCandidate)
   })
   if (contained) {
-    return contained
+    return { studyType: contained, category: getCategoryForStudyType(contained, true) }
+  }
+
+  const keywordFallbacks: Array<{ trigger: string[]; studyType: string }> = [
+    { trigger: ['literature', 'review'], studyType: 'Narrative literature synthesis study' },
+    { trigger: ['narrative', 'synthesis'], studyType: 'Narrative literature synthesis study' },
+    { trigger: ['scoping', 'review'], studyType: 'Scoping evidence synthesis study' },
+    { trigger: ['diagnostic', 'accuracy'], studyType: 'Diagnostic accuracy imaging study' },
+    { trigger: ['retrospective', 'single'], studyType: 'Retrospective single-centre cohort' },
+    { trigger: ['retrospective', 'multi'], studyType: 'Retrospective multi-centre cohort' },
+    { trigger: ['prospective', 'cohort'], studyType: 'Prospective observational cohort' },
+    { trigger: ['case', 'series'], studyType: 'Case series' },
+    { trigger: ['haemodynamic', 'integration'], studyType: 'Imaging-haemodynamic integration study' },
+    { trigger: ['hemodynamic', 'integration'], studyType: 'Imaging-haemodynamic integration study' },
+  ]
+  for (const fallback of keywordFallbacks) {
+    if (!fallback.trigger.every((token) => suggestion.includes(token))) {
+      continue
+    }
+    if (!KNOWN_STUDY_TYPES.includes(fallback.studyType)) {
+      continue
+    }
+    return { studyType: fallback.studyType, category: getCategoryForStudyType(fallback.studyType, true) }
+  }
+
+  const matchingCategory = KNOWN_RESEARCH_CATEGORIES.find((category) => {
+    const normalisedCategory = normalizeSelectionLabel(category)
+    return suggestion.includes(normalisedCategory) || normalisedCategory.includes(suggestion)
+  })
+  if (matchingCategory) {
+    const firstStudyType = getStudyTypesForCategory(matchingCategory, true)[0] ?? ''
+    return { studyType: firstStudyType, category: matchingCategory }
   }
 
   const targetTokens = new Set(suggestion.split(' ').filter(Boolean))
@@ -89,9 +122,9 @@ function resolveSuggestedStudyType(rawSuggestion: string): string {
     }
   }
   if (bestCandidate && bestScore >= 0.5) {
-    return bestCandidate
+    return { studyType: bestCandidate, category: getCategoryForStudyType(bestCandidate, true) }
   }
-  return ''
+  return { studyType: '', category: null }
 }
 
 function buildGenerationBrief(values: ContextFormValues, sections: string[], guardrailsEnabled: boolean): string {
@@ -469,6 +502,7 @@ export function StudyCorePage() {
             }))
             setGuardrailsEnabled(enableConservativeGuardrails)
           }}
+          onUnlockJournalRecommendations={() => setJournalRecommendationsLocked(false)}
           onStatus={setStatus}
           onError={setError}
         />
@@ -599,16 +633,19 @@ export function StudyCorePage() {
           }
           onApplyResearchType={(value) =>
             {
-              const resolvedStudyType = resolveSuggestedStudyType(value)
-              if (!resolvedStudyType) {
+              const resolvedSelection = resolveSuggestedStudyType(value)
+              if (!resolvedSelection.studyType) {
                 setError('Suggested research type could not be mapped to a selectable study type. Refresh suggestions.')
                 return
               }
-              const defaults = getStudyTypeDefaults(resolvedStudyType)
+              const defaults = getStudyTypeDefaults(resolvedSelection.studyType)
               setContextValues((current) => ({
                 ...current,
-                researchCategory: getCategoryForStudyType(resolvedStudyType, true) ?? current.researchCategory,
-                studyArchitecture: resolvedStudyType,
+                researchCategory:
+                  resolvedSelection.category ??
+                  getCategoryForStudyType(resolvedSelection.studyType, true) ??
+                  current.researchCategory,
+                studyArchitecture: resolvedSelection.studyType,
                 interpretationMode: defaults.defaultInterpretationMode,
               }))
               setGuardrailsEnabled(defaults.enableConservativeGuardrails)
@@ -663,7 +700,13 @@ export function StudyCorePage() {
         </div>
       </header>
 
-      <div className={showRightPanel ? 'grid items-start gap-4 xl:grid-cols-[250px_minmax(0,1fr)_340px]' : 'grid items-start gap-4 xl:grid-cols-[250px_minmax(0,1fr)]'}>
+      <div
+        className={
+          showRightPanel
+            ? 'grid items-start gap-4 xl:grid-cols-[280px_minmax(0,1.2fr)_360px]'
+            : 'grid items-start gap-4 xl:grid-cols-[280px_minmax(0,1fr)]'
+        }
+      >
         <div className="rounded-lg border border-border/80 bg-card p-2">
           <StudyCoreStepper
             steps={STEP_ITEMS}

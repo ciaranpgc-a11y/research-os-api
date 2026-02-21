@@ -1,4 +1,4 @@
-import { ExternalLink, Loader2, Mic, Save, Square } from 'lucide-react'
+import { ExternalLink, Loader2, LockOpen, Mic, Save, Square } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -34,6 +34,7 @@ type StepContextProps = {
   onTargetJournalChange: (value: string) => void
   onContextSaved: (payload: { projectId: string; manuscriptId: string; recommendedSections: string[] }) => void
   onStudyTypeDefaultsResolved: (defaults: { interpretationMode: string; enableConservativeGuardrails: boolean }) => void
+  onUnlockJournalRecommendations?: () => void
   onStatus: (message: string) => void
   onError: (message: string) => void
 }
@@ -68,6 +69,7 @@ export function StepContext({
   onTargetJournalChange,
   onContextSaved,
   onStudyTypeDefaultsResolved,
+  onUnlockJournalRecommendations,
   onStatus,
   onError,
 }: StepContextProps) {
@@ -122,6 +124,10 @@ export function StepContext({
     [values.researchCategory],
   )
   const submissionGuidanceUrl = useMemo(() => getJournalSubmissionGuidanceUrl(targetJournal), [targetJournal])
+  const selectedJournalLabel = useMemo(
+    () => journals.find((journal) => journal.slug === targetJournal)?.display_name ?? '',
+    [journals, targetJournal],
+  )
 
   useEffect(() => {
     if (!values.studyArchitecture.trim()) {
@@ -168,7 +174,7 @@ export function StepContext({
       const recognition = new SpeechRecognitionCtor()
       recognition.continuous = true
       recognition.interimResults = false
-      recognition.lang = 'en-US'
+      recognition.lang = 'en-GB'
       recognition.onresult = (event: any) => {
         let transcript = ''
         for (let index = event.resultIndex; index < event.results.length; index += 1) {
@@ -245,185 +251,251 @@ export function StepContext({
     }
   }
 
+  const onUnlockJournalFields = () => {
+    if (!onUnlockJournalRecommendations) {
+      return
+    }
+    onUnlockJournalRecommendations()
+    onStatus('Journal recommendations unlocked for editing.')
+  }
+
+  const lockStatusText = journalRecommendationsLocked
+    ? 'Journal recommendations are locked after apply.'
+    : 'Journal recommendation fields are editable.'
+
   return (
-    <div className="space-y-5 rounded-lg border border-border bg-card p-6">
+    <div className="space-y-6 rounded-lg border border-border bg-card p-6">
       <div className="space-y-1">
         <h2 className="text-base font-semibold">Step 1: Research overview</h2>
         <p className="text-sm text-muted-foreground">Capture the study overview before section planning.</p>
       </div>
 
-      <div className="space-y-1">
-        <Label htmlFor="context-project-title">Proposed project title</Label>
-        <Input
-          id="context-project-title"
-          value={values.projectTitle}
-          placeholder="e.g., Pulmonary Hypertension Cohort"
-          onChange={(event) => onValueChange('projectTitle', event.target.value)}
-        />
-      </div>
+      <section className="space-y-2 rounded-md border border-border/80 bg-muted/20 p-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Research frame snapshot</p>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="rounded-md border border-border/70 bg-background p-2">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Target journal</p>
+            <p className="text-sm">{selectedJournalLabel || 'Not set'}</p>
+          </div>
+          <div className="rounded-md border border-border/70 bg-background p-2">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Research category</p>
+            <p className="text-sm">{values.researchCategory || 'Not set'}</p>
+          </div>
+          <div className="rounded-md border border-border/70 bg-background p-2">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Study type</p>
+            <p className="text-sm">{values.studyArchitecture || 'Not set'}</p>
+          </div>
+          <div className="rounded-md border border-border/70 bg-background p-2">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Interpretation mode</p>
+            <p className="text-sm">{values.interpretationMode || 'Not set'}</p>
+          </div>
+          <div className="rounded-md border border-border/70 bg-background p-2">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Article type</p>
+            <p className="text-sm">{values.recommendedArticleType || 'Not set'}</p>
+          </div>
+          <div className="rounded-md border border-border/70 bg-background p-2">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Target word length</p>
+            <p className="text-sm">{values.recommendedWordLength || 'Not set'}</p>
+          </div>
+        </div>
+      </section>
 
-      <div className="space-y-1">
-        <div className="flex items-center justify-between gap-2">
-          <Label htmlFor="context-target-journal">Working target journal</Label>
-          {submissionGuidanceUrl ? (
-            <a
-              href={submissionGuidanceUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
+      <section className="space-y-4 rounded-md border border-border/80 p-4">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold">Study setup</h3>
+          <p className="text-xs text-muted-foreground">Define core framing variables before generation.</p>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-2">
+          <div className="space-y-1 xl:col-span-2">
+            <Label htmlFor="context-project-title">Proposed project title</Label>
+            <Input
+              id="context-project-title"
+              value={values.projectTitle}
+              placeholder="e.g., Pulmonary Hypertension Cohort"
+              onChange={(event) => onValueChange('projectTitle', event.target.value)}
+            />
+          </div>
+
+          <div className="space-y-1 xl:col-span-2">
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="context-target-journal">Working target journal</Label>
+              {submissionGuidanceUrl ? (
+                <a
+                  href={submissionGuidanceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                >
+                  Submission guide
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              ) : null}
+            </div>
+            <select
+              id="context-target-journal"
+              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+              value={targetJournal}
+              onChange={(event) => onTargetJournalChange(event.target.value)}
             >
-              Submission guide
-              <ExternalLink className="h-3 w-3" />
-            </a>
+              <option value="">Select working target journal</option>
+              {journals.map((journal) => (
+                <option key={journal.slug} value={journal.slug}>
+                  {journal.display_name}
+                </option>
+              ))}
+            </select>
+            {attemptedSubmit && errors.targetJournal ? <p className="text-xs text-destructive">{errors.targetJournal}</p> : null}
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="context-research-category">Research category</Label>
+            <select
+              id="context-research-category"
+              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+              value={values.researchCategory}
+              onChange={(event) => {
+                const nextCategory = event.target.value
+                onValueChange('researchCategory', nextCategory)
+                if (values.studyArchitecture && !getStudyTypesForCategory(nextCategory, true).includes(values.studyArchitecture)) {
+                  onValueChange('studyArchitecture', '')
+                  if (values.interpretationMode) {
+                    onValueChange('interpretationMode', '')
+                  }
+                }
+              }}
+            >
+              <option value="">Select research category</option>
+              {researchCategories.map((option) => (
+                <option key={option.category} value={option.category}>
+                  {option.category}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="context-study-architecture">Study type</Label>
+            <select
+              id="context-study-architecture"
+              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+              value={values.studyArchitecture}
+              onChange={(event) => {
+                const nextStudyType = event.target.value
+                onValueChange('studyArchitecture', nextStudyType)
+                if (!nextStudyType) {
+                  return
+                }
+                const defaults = getStudyTypeDefaults(nextStudyType)
+                if (!values.interpretationMode.trim()) {
+                  onValueChange('interpretationMode', defaults.defaultInterpretationMode)
+                }
+                onStudyTypeDefaultsResolved({
+                  interpretationMode: defaults.defaultInterpretationMode,
+                  enableConservativeGuardrails: defaults.enableConservativeGuardrails,
+                })
+              }}
+              disabled={!values.researchCategory.trim()}
+            >
+              <option value="">{values.researchCategory ? 'Select study type' : 'Select research category first'}</option>
+              {studyTypeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-md border border-border/80 p-4">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold">Publication fit</h3>
+          <p className="text-xs text-muted-foreground">Use these fields for journal-aligned article type and target length.</p>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 bg-muted/20 px-3 py-2">
+          <p className="text-xs text-muted-foreground">{lockStatusText}</p>
+          {journalRecommendationsLocked && onUnlockJournalRecommendations ? (
+            <Button type="button" size="sm" variant="outline" onClick={onUnlockJournalFields}>
+              <LockOpen className="mr-1 h-3.5 w-3.5" />
+              Unlock journal fields
+            </Button>
           ) : null}
         </div>
-        <select
-          id="context-target-journal"
-          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
-          value={targetJournal}
-          onChange={(event) => onTargetJournalChange(event.target.value)}
-        >
-          <option value="">Select working target journal</option>
-          {journals.map((journal) => (
-            <option key={journal.slug} value={journal.slug}>
-              {journal.display_name}
-            </option>
-          ))}
-        </select>
-        {attemptedSubmit && errors.targetJournal ? <p className="text-xs text-destructive">{errors.targetJournal}</p> : null}
-      </div>
 
-      <div className="space-y-1">
-        <Label htmlFor="context-research-category">Research category</Label>
-        <select
-          id="context-research-category"
-          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
-          value={values.researchCategory}
-          onChange={(event) => {
-            const nextCategory = event.target.value
-            onValueChange('researchCategory', nextCategory)
-            if (values.studyArchitecture && !getStudyTypesForCategory(nextCategory, true).includes(values.studyArchitecture)) {
-              onValueChange('studyArchitecture', '')
-              if (values.interpretationMode) {
-                onValueChange('interpretationMode', '')
-              }
-            }
-          }}
-        >
-          <option value="">Select research category</option>
-          {researchCategories.map((option) => (
-            <option key={option.category} value={option.category}>
-              {option.category}
-            </option>
-          ))}
-        </select>
-      </div>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <div className="space-y-1">
+            <Label htmlFor="context-recommended-article-type">Recommended article type</Label>
+            <Input
+              id="context-recommended-article-type"
+              value={values.recommendedArticleType}
+              placeholder="Suggested after AI review"
+              onChange={(event) => onValueChange('recommendedArticleType', event.target.value)}
+              disabled={journalRecommendationsLocked}
+            />
+          </div>
 
-      <div className="space-y-1">
-        <Label htmlFor="context-study-architecture">Study type</Label>
-        <select
-          id="context-study-architecture"
-          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
-          value={values.studyArchitecture}
-          onChange={(event) => {
-            const nextStudyType = event.target.value
-            onValueChange('studyArchitecture', nextStudyType)
-            if (!nextStudyType) {
-              return
-            }
-            const defaults = getStudyTypeDefaults(nextStudyType)
-            if (!values.interpretationMode.trim()) {
-              onValueChange('interpretationMode', defaults.defaultInterpretationMode)
-            }
-            onStudyTypeDefaultsResolved({
-              interpretationMode: defaults.defaultInterpretationMode,
-              enableConservativeGuardrails: defaults.enableConservativeGuardrails,
-            })
-          }}
-          disabled={!values.researchCategory.trim()}
-        >
-          <option value="">{values.researchCategory ? 'Select study type' : 'Select research category first'}</option>
-          {studyTypeOptions.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="space-y-1">
-        <Label htmlFor="context-recommended-article-type">Recommended article type</Label>
-        <Input
-          id="context-recommended-article-type"
-          value={values.recommendedArticleType}
-          placeholder="Suggested after AI review"
-          onChange={(event) => onValueChange('recommendedArticleType', event.target.value)}
-          disabled={journalRecommendationsLocked}
-        />
-        {journalRecommendationsLocked ? (
-          <p className="text-xs text-muted-foreground">Locked after applying recommendation. Refresh suggestions to unlock.</p>
-        ) : null}
-      </div>
-
-      <div className="space-y-1">
-        <Label htmlFor="context-recommended-word-length">Recommended word length</Label>
-        <Input
-          id="context-recommended-word-length"
-          value={values.recommendedWordLength}
-          placeholder="Suggested after AI review"
-          onChange={(event) => onValueChange('recommendedWordLength', event.target.value)}
-          disabled={journalRecommendationsLocked}
-        />
-        {journalRecommendationsLocked ? (
-          <p className="text-xs text-muted-foreground">Locked after applying recommendation. Refresh suggestions to unlock.</p>
-        ) : null}
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Label htmlFor="context-research-objective">Summary of research</Label>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className={SECONDARY_ACTION_BUTTON_CLASS}
-            onClick={onToggleSpeechToText}
-            disabled={!speechSupported}
-          >
-            {isListening ? <Square className="mr-1 h-3.5 w-3.5" /> : <Mic className="mr-1 h-3.5 w-3.5" />}
-            {isListening ? 'Stop speech input' : 'Speech to text'}
-          </Button>
+          <div className="space-y-1">
+            <Label htmlFor="context-recommended-word-length">Recommended word length</Label>
+            <Input
+              id="context-recommended-word-length"
+              value={values.recommendedWordLength}
+              placeholder="Suggested after AI review"
+              onChange={(event) => onValueChange('recommendedWordLength', event.target.value)}
+              disabled={journalRecommendationsLocked}
+            />
+          </div>
         </div>
-        <textarea
-          id="context-research-objective"
-          className="min-h-56 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-          placeholder="Summarise the research in 2-4 sentences. Provide information on the clinical problem, methods used, and the key results from the data (if available)."
-          value={values.researchObjective}
-          onChange={(event) => onValueChange('researchObjective', event.target.value)}
-        />
-        {!speechSupported ? <p className="text-xs text-muted-foreground">Speech to text is not available in this browser.</p> : null}
-        {attemptedSubmit && errors.researchObjective ? <p className="text-xs text-destructive">{errors.researchObjective}</p> : null}
-      </div>
+      </section>
 
-      <div className="space-y-1">
-        <Label htmlFor="context-interpretation-mode">Interpretation mode (optional)</Label>
-        <select
-          id="context-interpretation-mode"
-          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
-          value={values.interpretationMode}
-          onChange={(event) => onValueChange('interpretationMode', event.target.value)}
-        >
-          <option value="">Select interpretation mode</option>
-          {INTERPRETATION_MODE_OPTIONS.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-        <p className="text-xs text-muted-foreground">
-          AI suggestion uses journal, research category, study type, article type, and summary.
-        </p>
-      </div>
+      <section className="space-y-4 rounded-md border border-border/80 p-4">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label htmlFor="context-research-objective">Summary of research</Label>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className={SECONDARY_ACTION_BUTTON_CLASS}
+              onClick={onToggleSpeechToText}
+              disabled={!speechSupported}
+            >
+              {isListening ? <Square className="mr-1 h-3.5 w-3.5" /> : <Mic className="mr-1 h-3.5 w-3.5" />}
+              {isListening ? 'Stop speech input' : 'Speech to text'}
+            </Button>
+          </div>
+          <textarea
+            id="context-research-objective"
+            className="min-h-72 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            placeholder="Summarise the research in 2-4 sentences. Provide information on the clinical problem, methods used, and the key results from the data (if available)."
+            value={values.researchObjective}
+            onChange={(event) => onValueChange('researchObjective', event.target.value)}
+          />
+          {!speechSupported ? <p className="text-xs text-muted-foreground">Speech to text is not available in this browser.</p> : null}
+          {attemptedSubmit && errors.researchObjective ? <p className="text-xs text-destructive">{errors.researchObjective}</p> : null}
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="context-interpretation-mode">Interpretation mode (optional)</Label>
+          <select
+            id="context-interpretation-mode"
+            className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+            value={values.interpretationMode}
+            onChange={(event) => onValueChange('interpretationMode', event.target.value)}
+          >
+            <option value="">Select interpretation mode</option>
+            {INTERPRETATION_MODE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            AI suggestion uses journal, research category, study type, article type, and summary.
+          </p>
+        </div>
+      </section>
 
       <Button className={PRIMARY_ACTION_BUTTON_CLASS} onClick={() => void onSaveContext()} disabled={saving}>
         {saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />}
