@@ -30,6 +30,7 @@ type StepContextProps = {
   values: ContextFormValues
   targetJournal: string
   journals: JournalOption[]
+  saveRequestId?: number
   onValueChange: (field: keyof ContextFormValues, value: string) => void
   onTargetJournalChange: (value: string) => void
   onContextSaved: (payload: { projectId: string; manuscriptId: string; recommendedSections: string[] }) => void
@@ -42,6 +43,28 @@ const PRIMARY_ACTION_BUTTON_CLASS =
   'bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500'
 const SECONDARY_ACTION_BUTTON_CLASS =
   'border-emerald-200 text-emerald-700 hover:bg-emerald-50 focus-visible:ring-emerald-500'
+const SUMMARY_HELPER_CHIPS: Array<{ id: string; label: string; text: string }> = [
+  {
+    id: 'clinical-problem',
+    label: 'Clinical problem',
+    text: 'Clinical problem: [state the clinical context and unmet need].',
+  },
+  {
+    id: 'design-methods',
+    label: 'Design/methods',
+    text: 'Design and methods: [state study design, modality, cohort, and analytical approach].',
+  },
+  {
+    id: 'key-findings',
+    label: 'Key findings',
+    text: 'Key findings: [state the main result(s) and uncertainty, if available].',
+  },
+  {
+    id: 'interpretation-scope',
+    label: 'Interpretation scope',
+    text: 'Interpretation scope: [state associative interpretation and key limitations].',
+  },
+]
 
 function buildAnalysisSummary(values: ContextFormValues): string {
   const parts: string[] = []
@@ -63,6 +86,7 @@ export function StepContext({
   values,
   targetJournal,
   journals,
+  saveRequestId,
   onValueChange,
   onTargetJournalChange,
   onContextSaved,
@@ -75,6 +99,7 @@ export function StepContext({
   const [isListening, setIsListening] = useState(false)
   const recognitionRef = useRef<any | null>(null)
   const summaryValueRef = useRef(values.researchObjective)
+  const lastExternalSaveRequestRef = useRef<number>(saveRequestId ?? 0)
 
   const speechSupported = useMemo(() => {
     if (typeof window === 'undefined') {
@@ -125,6 +150,14 @@ export function StepContext({
   const selectedJournalLabel = useMemo(
     () => journals.find((journal) => journal.slug === targetJournal)?.display_name ?? '',
     [journals, targetJournal],
+  )
+  const studyTypeDefaults = useMemo(
+    () => (values.studyArchitecture.trim() ? getStudyTypeDefaults(values.studyArchitecture) : null),
+    [values.studyArchitecture],
+  )
+  const interpretationRealignValue = studyTypeDefaults?.defaultInterpretationMode ?? ''
+  const needsInterpretationRealign = Boolean(
+    studyTypeDefaults && values.interpretationMode.trim() !== interpretationRealignValue,
   )
 
   useEffect(() => {
@@ -209,6 +242,9 @@ export function StepContext({
   }
 
   const onSaveContext = async () => {
+    if (saving) {
+      return
+    }
     setAttemptedSubmit(true)
     if (Object.keys(errors).length > 0) {
       return
@@ -247,6 +283,40 @@ export function StepContext({
     } finally {
       setSaving(false)
     }
+  }
+
+  useEffect(() => {
+    if (saveRequestId === undefined) {
+      return
+    }
+    if (saveRequestId <= lastExternalSaveRequestRef.current) {
+      return
+    }
+    lastExternalSaveRequestRef.current = saveRequestId
+    void onSaveContext()
+  }, [saveRequestId])
+
+  const onInsertSummaryHelper = (helperText: string) => {
+    const current = values.researchObjective.trim()
+    const normalizedCurrent = current.toLowerCase()
+    const normalizedHelper = helperText.toLowerCase()
+    if (normalizedCurrent.includes(normalizedHelper)) {
+      return
+    }
+    const next = current ? `${current}\n${helperText}` : helperText
+    onValueChange('researchObjective', next)
+  }
+
+  const onRealignInterpretationMode = () => {
+    if (!studyTypeDefaults) {
+      return
+    }
+    onValueChange('interpretationMode', studyTypeDefaults.defaultInterpretationMode)
+    onStudyTypeDefaultsResolved({
+      interpretationMode: studyTypeDefaults.defaultInterpretationMode,
+      enableConservativeGuardrails: studyTypeDefaults.enableConservativeGuardrails,
+    })
+    onStatus(`Interpretation mode realigned to ${studyTypeDefaults.defaultInterpretationMode}.`)
   }
 
   return (
@@ -413,6 +483,20 @@ export function StepContext({
               {isListening ? 'Stop speech input' : 'Speech to text'}
             </Button>
           </div>
+          <div className="flex flex-wrap gap-2">
+            {SUMMARY_HELPER_CHIPS.map((helper) => (
+              <Button
+                key={helper.id}
+                type="button"
+                size="sm"
+                variant="outline"
+                className="border-slate-300 text-slate-700 hover:bg-slate-100"
+                onClick={() => onInsertSummaryHelper(helper.text)}
+              >
+                {helper.label}
+              </Button>
+            ))}
+          </div>
           <textarea
             id="context-research-objective"
             className="min-h-72 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
@@ -425,7 +509,20 @@ export function StepContext({
         </div>
 
         <div className="space-y-1">
-          <Label htmlFor="context-interpretation-mode">Interpretation mode (optional)</Label>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label htmlFor="context-interpretation-mode">Interpretation mode (optional)</Label>
+            {needsInterpretationRealign ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="border-cyan-300 text-cyan-800 hover:bg-cyan-50"
+                onClick={onRealignInterpretationMode}
+              >
+                Realign interpretation mode
+              </Button>
+            ) : null}
+          </div>
           <select
             id="context-interpretation-mode"
             className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"

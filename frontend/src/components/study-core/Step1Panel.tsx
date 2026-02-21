@@ -20,6 +20,7 @@ type Step1PanelProps = {
   onApplyInterpretationMode: (value: string) => void
   onApplyArticleType: (value: string) => void
   onApplyWordLength: (value: string) => void
+  onSaveAndContinue?: () => void
 }
 
 const ACTION_BUTTON_CLASS = 'bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500'
@@ -40,6 +41,95 @@ const CARD_TRANSITION_CLASS = 'transition-all duration-300 ease-out'
 
 type AppliedKey = 'summary' | 'researchCategory' | 'researchType' | 'interpretationMode' | 'journal'
 type SuggestionKey = AppliedKey
+type SuggestionProvenance = {
+  label: 'Live journal guidance' | 'Fallback estimate'
+  className: string
+}
+
+const IGNORED_SUGGESTIONS_SESSION_KEY = 'aawe-step1-ignored-suggestions'
+const SUGGESTION_KEYS: AppliedKey[] = ['summary', 'researchCategory', 'researchType', 'interpretationMode', 'journal']
+
+function buildEmptySuggestionState(): Record<AppliedKey, boolean> {
+  return {
+    summary: false,
+    researchCategory: false,
+    researchType: false,
+    interpretationMode: false,
+    journal: false,
+  }
+}
+
+function serialiseIgnoredState(state: Record<AppliedKey, boolean>): AppliedKey[] {
+  return SUGGESTION_KEYS.filter((key) => state[key])
+}
+
+function deserialiseIgnoredState(keys: unknown): Record<AppliedKey, boolean> {
+  const state = buildEmptySuggestionState()
+  if (!Array.isArray(keys)) {
+    return state
+  }
+  for (const key of keys) {
+    if (typeof key === 'string' && SUGGESTION_KEYS.includes(key as AppliedKey)) {
+      state[key as AppliedKey] = true
+    }
+  }
+  return state
+}
+
+function readIgnoredStateForKey(storageKey: string): Record<AppliedKey, boolean> {
+  if (typeof window === 'undefined') {
+    return buildEmptySuggestionState()
+  }
+  try {
+    const raw = window.sessionStorage.getItem(IGNORED_SUGGESTIONS_SESSION_KEY)
+    if (!raw) {
+      return buildEmptySuggestionState()
+    }
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    return deserialiseIgnoredState(parsed[storageKey])
+  } catch {
+    return buildEmptySuggestionState()
+  }
+}
+
+function persistIgnoredStateForKey(storageKey: string, state: Record<AppliedKey, boolean>) {
+  if (typeof window === 'undefined') {
+    return
+  }
+  try {
+    const raw = window.sessionStorage.getItem(IGNORED_SUGGESTIONS_SESSION_KEY)
+    const parsed: Record<string, unknown> = raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
+    const serialised = serialiseIgnoredState(state)
+    if (serialised.length === 0) {
+      delete parsed[storageKey]
+    } else {
+      parsed[storageKey] = serialised
+    }
+    window.sessionStorage.setItem(IGNORED_SUGGESTIONS_SESSION_KEY, JSON.stringify(parsed))
+  } catch {
+    // no-op
+  }
+}
+
+function diffHighlightTokens(currentText: string, suggestedText: string): Array<{ value: string; changed: boolean }> {
+  const normalise = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '')
+  const currentSet = new Set(
+    currentText
+      .split(/\s+/)
+      .map((token) => normalise(token))
+      .filter(Boolean),
+  )
+  return suggestedText.split(/(\s+)/).map((token) => {
+    if (/^\s+$/.test(token)) {
+      return { value: token, changed: false }
+    }
+    const clean = normalise(token)
+    if (!clean) {
+      return { value: token, changed: false }
+    }
+    return { value: token, changed: !currentSet.has(clean) }
+  })
+}
 
 function inferOfflineArticleType(summary: string, currentValue: string): string {
   const current = currentValue.trim()
@@ -273,26 +363,16 @@ export function Step1Panel({
   onApplyInterpretationMode,
   onApplyArticleType,
   onApplyWordLength,
+  onSaveAndContinue,
 }: Step1PanelProps) {
   const [refinementsEnabled, setRefinementsEnabled] = useState(false)
   const [loading, setLoading] = useState(false)
   const [requestError, setRequestError] = useState('')
   const [suggestions, setSuggestions] = useState<ResearchOverviewSuggestionsPayload | null>(null)
   const [generatedKey, setGeneratedKey] = useState('')
-  const [appliedState, setAppliedState] = useState<Record<AppliedKey, boolean>>({
-    summary: false,
-    researchCategory: false,
-    researchType: false,
-    interpretationMode: false,
-    journal: false,
-  })
-  const [ignoredState, setIgnoredState] = useState<Record<AppliedKey, boolean>>({
-    summary: false,
-    researchCategory: false,
-    researchType: false,
-    interpretationMode: false,
-    journal: false,
-  })
+  const [appliedState, setAppliedState] = useState<Record<AppliedKey, boolean>>(buildEmptySuggestionState)
+  const [ignoredState, setIgnoredState] = useState<Record<AppliedKey, boolean>>(buildEmptySuggestionState)
+  const [showSummaryDiff, setShowSummaryDiff] = useState(false)
   const applyTimersRef = useRef<number[]>([])
 
   useEffect(() => {
@@ -306,8 +386,10 @@ export function Step1Panel({
     () =>
       `${summary.trim().toLowerCase()}::${researchCategory.trim().toLowerCase()}::${researchType
         .trim()
-        .toLowerCase()}::${targetJournal.trim().toLowerCase()}`,
-    [researchCategory, researchType, summary, targetJournal],
+        .toLowerCase()}::${interpretationMode.trim().toLowerCase()}::${targetJournal
+        .trim()
+        .toLowerCase()}::${currentArticleType.trim().toLowerCase()}::${currentWordLength.trim().toLowerCase()}`,
+    [currentArticleType, currentWordLength, interpretationMode, researchCategory, researchType, summary, targetJournal],
   )
   const hasGenerated = generatedKey.length > 0
   const isStale = hasGenerated && generatedKey !== currentKey
@@ -350,6 +432,22 @@ export function Step1Panel({
   )
   const hasAnyJournalRecommendation = Boolean(articleSuggestion || wordLengthSuggestion)
   const isJournalApplied = hasAnyJournalRecommendation && !shouldShowJournalApplyButton
+  const journalProvenance: SuggestionProvenance | null = useMemo(() => {
+    if (!suggestions && !requestError) {
+      return null
+    }
+    const isLive = Boolean(suggestions?.source_urls?.length) && !(suggestions?.model_used || '').includes('offline')
+    if (isLive) {
+      return {
+        label: 'Live journal guidance',
+        className: 'border-emerald-300 bg-emerald-100 text-emerald-900',
+      }
+    }
+    return {
+      label: 'Fallback estimate',
+      className: 'border-amber-300 bg-amber-100 text-amber-900',
+    }
+  }, [requestError, suggestions])
 
   const pendingKeys = useMemo(() => {
     const keys: SuggestionKey[] = []
@@ -421,6 +519,11 @@ export function Step1Panel({
     summarySuggestion,
   ])
 
+  useEffect(() => {
+    setIgnoredState(readIgnoredStateForKey(currentKey))
+    setAppliedState(buildEmptySuggestionState())
+  }, [currentKey])
+
   const appliedKeys = useMemo(() => {
     const keys: SuggestionKey[] = []
     if (summarySuggestion && isSummaryApplied) {
@@ -490,20 +593,7 @@ export function Step1Panel({
 
   const refreshSuggestions = async () => {
     setRefinementsEnabled(true)
-    setAppliedState({
-      summary: false,
-      researchCategory: false,
-      researchType: false,
-      interpretationMode: false,
-      journal: false,
-    })
-    setIgnoredState({
-      summary: false,
-      researchCategory: false,
-      researchType: false,
-      interpretationMode: false,
-      journal: false,
-    })
+    setAppliedState(buildEmptySuggestionState())
     await generateSuggestions()
   }
 
@@ -519,7 +609,11 @@ export function Step1Panel({
   }
 
   const markApplied = (key: AppliedKey) => {
-    setIgnoredState((current) => ({ ...current, [key]: false }))
+    setIgnoredState((current) => {
+      const next = { ...current, [key]: false }
+      persistIgnoredStateForKey(currentKey, next)
+      return next
+    })
     setAppliedState((current) => ({ ...current, [key]: true }))
     const timerId = window.setTimeout(() => {
       setAppliedState((current) => ({ ...current, [key]: false }))
@@ -572,12 +666,43 @@ export function Step1Panel({
   }
 
   const onIgnoreSuggestion = (key: AppliedKey) => {
-    setIgnoredState((current) => ({ ...current, [key]: true }))
+    setIgnoredState((current) => {
+      const next = { ...current, [key]: true }
+      persistIgnoredStateForKey(currentKey, next)
+      return next
+    })
+  }
+
+  const onRestoreIgnoredSuggestions = () => {
+    const next = buildEmptySuggestionState()
+    setIgnoredState(next)
+    persistIgnoredStateForKey(currentKey, next)
+  }
+
+  const onApplyAllPending = () => {
+    if (loading || pendingKeys.length === 0) {
+      return
+    }
+    if (pendingKeys.includes('summary') && summarySuggestion) {
+      onApplySummary(summarySuggestion)
+    }
+    if (pendingKeys.includes('researchType')) {
+      onApplyResearchTypeSuggestion()
+    } else if (pendingKeys.includes('researchCategory')) {
+      onApplyResearchCategorySuggestion()
+    }
+    if (pendingKeys.includes('interpretationMode')) {
+      onApplyInterpretationModeSuggestion()
+    }
+    if (pendingKeys.includes('journal')) {
+      onApplyJournalRecommendation()
+    }
   }
 
   const applyDisabled = loading
   const pendingToRender = pendingKeys.slice(0, 3)
   const hiddenPendingCount = Math.max(0, pendingKeys.length - pendingToRender.length)
+  const canSaveAndContinue = Boolean(refinementsEnabled && hasGenerated && pendingKeys.length === 0 && summary.trim())
 
   const suggestionCardPulseClass = (key: AppliedKey, colourClass: string) =>
     `${colourClass} ${CARD_TRANSITION_CLASS} ${
@@ -599,6 +724,15 @@ export function Step1Panel({
                 size="sm"
                 variant="outline"
                 className={IGNORE_BUTTON_CLASS}
+                onClick={() => setShowSummaryDiff((current) => !current)}
+                disabled={loading}
+              >
+                {showSummaryDiff ? 'Hide preview' : 'Preview changes'}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className={IGNORE_BUTTON_CLASS}
                 onClick={() => onIgnoreSuggestion('summary')}
                 disabled={loading}
               >
@@ -609,6 +743,27 @@ export function Step1Panel({
               </Button>
             </div>
           </div>
+          {showSummaryDiff ? (
+            <div className="space-y-2 rounded border border-emerald-300 bg-white p-2">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-900">Current</p>
+                <p className="text-xs text-emerald-950">{summary}</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-900">Suggested</p>
+                <p className="text-xs text-emerald-950">
+                  {diffHighlightTokens(summary, summarySuggestion).map((token, index) => (
+                    <span
+                      key={`summary-diff-${index}`}
+                      className={token.changed ? 'rounded bg-emerald-200 px-0.5' : ''}
+                    >
+                      {token.value}
+                    </span>
+                  ))}
+                </p>
+              </div>
+            </div>
+          ) : null}
         </div>
       )
     }
@@ -694,7 +849,14 @@ export function Step1Panel({
     if (key === 'journal') {
       return (
         <div key="pending-journal" className={suggestionCardPulseClass('journal', JOURNAL_CARD_CLASS)}>
-          <p className="text-sm font-semibold text-amber-900">Journal recommendation</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-amber-900">Journal recommendation</p>
+            {journalProvenance ? (
+              <span className={`rounded border px-1.5 py-0.5 text-[11px] font-medium ${journalProvenance.className}`}>
+                {journalProvenance.label}
+              </span>
+            ) : null}
+          </div>
           {articleSuggestion ? (
             <div className="rounded border border-amber-300 bg-white p-2">
               <p className="text-xs font-medium text-amber-950">Article type</p>
@@ -773,7 +935,14 @@ export function Step1Panel({
     if (key === 'journal') {
       return (
         <div key="applied-journal" className={APPLIED_JOURNAL_CARD_CLASS}>
-          <p className="text-sm font-medium text-slate-900">Journal recommendation</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium text-slate-900">Journal recommendation</p>
+            {journalProvenance ? (
+              <span className={`rounded border px-1.5 py-0.5 text-[11px] font-medium ${journalProvenance.className}`}>
+                {journalProvenance.label}
+              </span>
+            ) : null}
+          </div>
           {articleSuggestion ? <p className="text-xs text-slate-700">Article type set: {articleSuggestion.value}</p> : null}
           {wordLengthSuggestion ? <p className="text-xs text-slate-700">Word length set: {wordLengthSuggestion.value}</p> : null}
           <p className="text-xs text-slate-700">Values are aligned with current recommendations.</p>
@@ -818,7 +987,14 @@ export function Step1Panel({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pending actions</p>
-            {loading ? <p className="text-xs text-muted-foreground">Generating...</p> : null}
+            <div className="flex items-center gap-2">
+              {pendingKeys.length > 0 ? (
+                <Button size="sm" variant="outline" className={IGNORE_BUTTON_CLASS} onClick={onApplyAllPending} disabled={loading}>
+                  Apply all
+                </Button>
+              ) : null}
+              {loading ? <p className="text-xs text-muted-foreground">Generating...</p> : null}
+            </div>
           </div>
           {!hasGenerated && !loading ? (
             <p className="rounded-md border border-border/70 bg-muted/20 px-2 py-2 text-xs text-muted-foreground">
@@ -845,20 +1021,17 @@ export function Step1Panel({
                 size="sm"
                 variant="outline"
                 className={IGNORE_BUTTON_CLASS}
-                onClick={() =>
-                  setIgnoredState({
-                    summary: false,
-                    researchCategory: false,
-                    researchType: false,
-                    interpretationMode: false,
-                    journal: false,
-                  })
-                }
+                onClick={onRestoreIgnoredSuggestions}
                 disabled={loading}
               >
                 Restore ignored
               </Button>
             </div>
+          ) : null}
+          {canSaveAndContinue && onSaveAndContinue ? (
+            <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onSaveAndContinue} disabled={loading}>
+              Save and continue
+            </Button>
           ) : null}
         </div>
       ) : null}

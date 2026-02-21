@@ -233,6 +233,7 @@ export function StudyCorePage() {
   const [savedResearchFrameSignature, setSavedResearchFrameSignature] = useState<string | null>(() =>
     window.localStorage.getItem(RESEARCH_FRAME_SIGNATURE_KEY),
   )
+  const [contextSaveRequestId, setContextSaveRequestId] = useState(0)
 
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
@@ -485,6 +486,7 @@ export function StudyCorePage() {
           values={contextValues}
           targetJournal={targetJournal}
           journals={journals}
+          saveRequestId={contextSaveRequestId}
           onValueChange={(field, value) =>
             setContextValues((current) => ({
               ...current,
@@ -666,6 +668,7 @@ export function StudyCorePage() {
               recommendedWordLength: value,
             }))
           }
+          onSaveAndContinue={() => setContextSaveRequestId((current) => current + 1)}
         />
       )
     }
