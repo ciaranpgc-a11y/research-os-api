@@ -1,20 +1,12 @@
-import { Loader2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { Loader2, Mic, Square } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { getJournalQualityScore, getJournalQualityStars } from '@/lib/research-frame-options'
 import { planSections } from '@/lib/study-core-api'
-import type {
-  OutlinePlanSection,
-  OutlinePlanState,
-  SectionPlanItem,
-  SectionPlanPayload,
-  Step2ClarificationResponse,
-} from '@/types/study-core'
+import type { OutlinePlanSection, OutlinePlanState, SectionPlanItem, SectionPlanPayload, Step2ClarificationResponse } from '@/types/study-core'
 
 const DEFAULT_PLAN_SECTIONS = ['introduction', 'methods', 'results', 'discussion', 'conclusion'] as const
-
-type RefinementMode = 'regenerate' | 'tighten' | 'specificity' | 'mechanistic'
 
 type StepPlanProps = {
   targetJournal: string
@@ -30,44 +22,13 @@ type StepPlanProps = {
     summary: string
   }
   selectedSections: string[]
-  generationBrief: string
   plan: OutlinePlanState | null
+  aiPlanSummary: string
   clarificationResponses: Step2ClarificationResponse[]
-  mechanisticRelevant: boolean
   onSectionsChange: (sections: string[]) => void
   onPlanChange: (plan: OutlinePlanState | null) => void
   onStatus: (message: string) => void
   onError: (message: string) => void
-}
-
-const REFINEMENT_CONFIG: Record<
-  RefinementMode,
-  {
-    label: string
-    overwrite: boolean
-    instruction: string
-  }
-> = {
-  regenerate: {
-    label: 'Regenerate section',
-    overwrite: true,
-    instruction: 'Regenerate this section outline from scratch for a retrospective observational manuscript.',
-  },
-  tighten: {
-    label: 'Tighten language',
-    overwrite: true,
-    instruction: 'Rewrite bullets to be shorter, precise, and non-redundant.',
-  },
-  specificity: {
-    label: 'Increase specificity',
-    overwrite: false,
-    instruction: 'Add concrete analytical details, variable definitions, and reporting expectations.',
-  },
-  mechanistic: {
-    label: 'Add mechanistic framing',
-    overwrite: false,
-    instruction: 'Add mechanistic hypotheses and ensure they are clearly labeled as hypotheses.',
-  },
 }
 
 function titleCaseSection(section: string): string {
@@ -121,10 +82,6 @@ function hasSectionOrderChanged(current: OutlinePlanState, selectedSections: str
     return true
   }
   return selectedSections.some((section, index) => current.sections[index]?.name !== section)
-}
-
-function mergeBullets(existing: string[], additions: string[]): string[] {
-  return dedupeBullets([...existing, ...additions])
 }
 
 function getJournalTileClass(score: 2 | 3 | 4 | 5 | null): string {
@@ -203,7 +160,7 @@ function sectionContextBullets(
       context.summary ? `State the research focus directly: ${context.summary}` : '',
       context.researchCategory ? `Frame the manuscript as: ${context.researchCategory}.` : '',
       context.interpretationMode ? `Set interpretation scope as: ${context.interpretationMode}.` : '',
-      clarificationNotes ? `Apply these planning clarifications: ${clarificationNotes}.` : '',
+      clarificationNotes ? `Integrate these planning clarifications: ${clarificationNotes}.` : '',
     ])
   }
   if (section === 'methods') {
@@ -230,7 +187,7 @@ function sectionContextBullets(
     }
     return dedupeBullets([
       'Report primary estimate for the main endpoint.',
-      'Report uncertainty for each primary estimate (for example 95% CI).',
+      'Report uncertainty for each primary estimate.',
       'Report sensitivity analysis findings.',
     ])
   }
@@ -239,6 +196,12 @@ function sectionContextBullets(
       'Interpret findings within the defined non-causal scope.',
       'State key limitations and alternative explanations.',
       'Define implications for practice and next-step validation work.',
+    ])
+  }
+  if (section === 'conclusion') {
+    return dedupeBullets([
+      'State the principal conclusion aligned to reported results only.',
+      'Avoid causal claims and over-interpretation.',
     ])
   }
   return []
@@ -257,22 +220,34 @@ function buildContextScaffold(
   }
 }
 
+function sectionTextFromBullets(bullets: string[]): string {
+  return bullets.join('\n')
+}
+
+function bulletsFromSectionText(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+}
+
 export function StepPlan({
   targetJournal,
   answers,
   planningContext,
   selectedSections,
   plan,
+  aiPlanSummary,
   clarificationResponses,
-  mechanisticRelevant,
   onSectionsChange,
   onPlanChange,
   onStatus,
   onError,
 }: StepPlanProps) {
   const [busy, setBusy] = useState<'plan' | ''>('')
-  const [refineBusyKey, setRefineBusyKey] = useState('')
-
+  const [listeningSection, setListeningSection] = useState<string | null>(null)
+  const recognitionRef = useRef<any | null>(null)
+  const listeningSectionRef = useRef<string | null>(null)
   const orderedSections = useMemo(() => [...DEFAULT_PLAN_SECTIONS], [])
   const clarificationNotes = useMemo(() => buildClarificationNotes(clarificationResponses), [clarificationResponses])
   const journalStars = useMemo(
@@ -287,6 +262,48 @@ export function StepPlan({
     () => getWordLengthTileClass(getWordLengthScaleScore(planningContext.wordLength)),
     [planningContext.wordLength],
   )
+  const speechSupported = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return false
+    }
+    const speechWindow = window as Window & {
+      SpeechRecognition?: new () => any
+      webkitSpeechRecognition?: new () => any
+    }
+    return Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition)
+  }, [])
+  const fallbackPlanSummary = useMemo(() => {
+    if (!plan || plan.sections.length === 0) {
+      return ''
+    }
+    const byName = new Map(plan.sections.map((section) => [section.name.toLowerCase(), section]))
+    const parts: string[] = []
+    for (const sectionName of orderedSections) {
+      const section = byName.get(sectionName)
+      if (!section) {
+        continue
+      }
+      const firstLine = section.bullets.find((item) => item.trim())
+      if (!firstLine) {
+        continue
+      }
+      parts.push(`${titleCaseSection(sectionName)}: ${firstLine.replace(/\.+$/, '')}.`)
+    }
+    return parts.join(' ')
+  }, [orderedSections, plan])
+
+  useEffect(() => {
+    return () => {
+      if (!recognitionRef.current) {
+        return
+      }
+      try {
+        recognitionRef.current.stop()
+      } catch {
+        // no-op
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const current = selectedSections.join('|').toLowerCase()
@@ -318,6 +335,88 @@ export function StepPlan({
     })
   }
 
+  const appendSpeechTranscriptToSection = (sectionName: string, transcript: string) => {
+    updateSection(sectionName, (current) => {
+      const existing = sectionTextFromBullets(current.bullets)
+      const nextText = existing.trim() ? `${existing}\n${transcript}` : transcript
+      return {
+        ...current,
+        bullets: bulletsFromSectionText(nextText),
+      }
+    })
+  }
+
+  const onToggleSpeechToText = (sectionName: string) => {
+    onError('')
+    if (!speechSupported) {
+      onError('Speech-to-text is not supported in this browser.')
+      return
+    }
+
+    if (listeningSection === sectionName) {
+      try {
+        recognitionRef.current?.stop()
+      } catch {
+        // no-op
+      }
+      listeningSectionRef.current = null
+      setListeningSection(null)
+      return
+    }
+
+    const speechWindow = window as Window & {
+      SpeechRecognition?: new () => any
+      webkitSpeechRecognition?: new () => any
+    }
+
+    if (!recognitionRef.current) {
+      const SpeechRecognitionCtor = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition
+      if (!SpeechRecognitionCtor) {
+        onError('Speech-to-text is not supported in this browser.')
+        return
+      }
+      const recognition = new SpeechRecognitionCtor()
+      recognition.continuous = true
+      recognition.interimResults = false
+      recognition.lang = 'en-GB'
+      recognition.onresult = (event: any) => {
+        let transcript = ''
+        for (let index = event.resultIndex; index < event.results.length; index += 1) {
+          const result = event.results[index]
+          if (result?.isFinal && result[0]?.transcript) {
+            transcript += `${result[0].transcript} `
+          }
+        }
+        const cleaned = transcript.trim()
+        const targetSection = listeningSectionRef.current
+        if (!cleaned || !targetSection) {
+          return
+        }
+        appendSpeechTranscriptToSection(targetSection, cleaned)
+      }
+      recognition.onerror = () => {
+        setListeningSection(null)
+        listeningSectionRef.current = null
+        onError('Speech-to-text input failed. Try again.')
+      }
+      recognition.onend = () => {
+        setListeningSection(null)
+        listeningSectionRef.current = null
+      }
+      recognitionRef.current = recognition
+    }
+
+    try {
+      listeningSectionRef.current = sectionName
+      recognitionRef.current.start()
+      setListeningSection(sectionName)
+    } catch {
+      listeningSectionRef.current = null
+      setListeningSection(null)
+      onError('Speech-to-text could not start. Try again.')
+    }
+  }
+
   const onGeneratePlan = async () => {
     setBusy('plan')
     onError('')
@@ -339,76 +438,16 @@ export function StepPlan({
     }
   }
 
-  const onRefineSection = async (sectionName: string, mode: RefinementMode) => {
-    if (!plan) {
-      return
-    }
-    const section = plan.sections.find((item) => item.name === sectionName)
-    if (!section) {
-      return
-    }
-    if (mode === 'mechanistic' && !mechanisticRelevant) {
-      return
-    }
-    setRefineBusyKey(`${sectionName}:${mode}`)
-    onError('')
-    try {
-      const config = REFINEMENT_CONFIG[mode]
-      const payload = await planSections({
-        targetJournal: targetJournal.trim() || 'generic-original',
-        answers: {
-          ...answers,
-          clarification_notes: clarificationNotes,
-          outline_refinement_mode: mode,
-          outline_refinement_instruction: config.instruction,
-          outline_current_bullets: section.bullets.join('\n'),
-        },
-        sections: [sectionName],
-      })
-      const nextSectionItem = payload.items.find((item) => item.section.toLowerCase() === sectionName.toLowerCase())
-      const aiBullets = bulletsFromPlanItem(nextSectionItem)
-      const nextBullets = config.overwrite ? aiBullets : mergeBullets(section.bullets, aiBullets)
-      updateSection(sectionName, (current) => ({ ...current, bullets: nextBullets }))
-      onStatus(`${titleCaseSection(sectionName)} plan updated.`)
-    } catch (error) {
-      onError(error instanceof Error ? error.message : `Could not update ${titleCaseSection(sectionName)}.`)
-    } finally {
-      setRefineBusyKey('')
-    }
-  }
-
   const onBuildContextScaffold = () => {
     onPlanChange(buildContextScaffold(orderedSections, planningContext, clarificationNotes))
-    onStatus('Context scaffold created from Step 1 framing. Refine or regenerate sections as needed.')
+    onStatus('Context scaffold created from Step 1 framing.')
   }
-
-  const planNarrativeSummary = useMemo(() => {
-    if (!plan || plan.sections.length === 0) {
-      return ''
-    }
-    const sectionOrder = ['introduction', 'methods', 'results', 'discussion', 'conclusion']
-    const byName = new Map(plan.sections.map((section) => [section.name.toLowerCase(), section]))
-    const fragments: string[] = []
-    for (const sectionName of sectionOrder) {
-      const section = byName.get(sectionName)
-      if (!section) {
-        continue
-      }
-      const anchor = section.bullets.find((bullet) => bullet.trim()) || ''
-      if (!anchor) {
-        continue
-      }
-      const cleanAnchor = anchor.trim().replace(/\.+$/, '')
-      fragments.push(`${titleCaseSection(sectionName)}: ${cleanAnchor}.`)
-    }
-    return fragments.join(' ')
-  }, [plan])
 
   return (
     <div className="space-y-4 rounded-lg border border-border bg-card p-4">
       <div className="space-y-1">
         <h2 className="text-base font-semibold">Step 2: Plan Sections</h2>
-        <p className="text-sm text-muted-foreground">Generate the outline from Step 1 context and edit section bullets inline.</p>
+        <p className="text-sm text-muted-foreground">Generate the outline from Step 1 context and edit one section text box at a time.</p>
       </div>
 
       <div className="space-y-2 rounded-md border border-border/80 bg-muted/20 p-3">
@@ -467,106 +506,48 @@ export function StepPlan({
           <div className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
             <p className="text-[11px] uppercase tracking-wide text-emerald-900">AI manuscript plan summary</p>
             <p className="mt-1 text-sm text-emerald-950">
-              {planNarrativeSummary || 'Generate the plan to view an AI summary of manuscript structure.'}
+              {(aiPlanSummary || '').trim() || fallbackPlanSummary || 'Complete clarifying questions and generate plan to produce a summary.'}
             </p>
           </div>
 
           <div className="space-y-3">
-            {plan.sections.map((section) => {
-              const sectionBusy = refineBusyKey.startsWith(`${section.name}:`)
+            {orderedSections.map((sectionName) => {
+              const section = plan.sections.find((item) => item.name === sectionName)
+              const textValue = section ? sectionTextFromBullets(section.bullets) : ''
+              const listening = listeningSection === sectionName
               return (
-                <div key={section.name} className="space-y-2 rounded-md border border-border/80 p-3">
+                <div key={sectionName} className="space-y-2 rounded-md border border-border/80 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-semibold">{titleCaseSection(section.name)}</p>
-                    <div className="flex flex-wrap gap-1">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={sectionBusy}
-                        onClick={() => void onRefineSection(section.name, 'regenerate')}
-                      >
-                        {refineBusyKey === `${section.name}:regenerate` ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-                        Regenerate section
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={sectionBusy} onClick={() => void onRefineSection(section.name, 'tighten')}>
-                        {refineBusyKey === `${section.name}:tighten` ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-                        Tighten language
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={sectionBusy}
-                        onClick={() => void onRefineSection(section.name, 'specificity')}
-                      >
-                        {refineBusyKey === `${section.name}:specificity` ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-                        Increase specificity
-                      </Button>
-                      {mechanisticRelevant ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={sectionBusy}
-                          onClick={() => void onRefineSection(section.name, 'mechanistic')}
-                        >
-                          {refineBusyKey === `${section.name}:mechanistic` ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-                          Add mechanistic framing
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    {section.bullets.length === 0 ? <p className="text-sm text-muted-foreground">No bullets yet for this section.</p> : null}
-                    {section.bullets.map((bullet, index) => (
-                      <div key={`${section.name}-${index}`} className="rounded border border-border/60 p-2">
-                        <div className="flex items-start gap-2">
-                          <span className="pt-2 text-[11px] text-muted-foreground">{index + 1}.</span>
-                          <textarea
-                            className="min-h-16 flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-xs"
-                            value={bullet}
-                            onChange={(event) => {
-                              const value = event.target.value
-                              updateSection(section.name, (current) => ({
-                                ...current,
-                                bullets: current.bullets.map((item, itemIndex) => (itemIndex === index ? value : item)),
-                              }))
-                            }}
-                          />
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() =>
-                              updateSection(section.name, (current) => ({
-                                ...current,
-                                bullets: current.bullets.filter((_, itemIndex) => itemIndex !== index),
-                              }))
-                            }
-                          >
-                            Remove
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                    <p className="text-sm font-semibold">{titleCaseSection(sectionName)}</p>
                     <Button
+                      type="button"
                       size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        updateSection(section.name, (current) => ({
-                          ...current,
-                          bullets: [...current.bullets, ''],
-                        }))
-                      }
+                      variant="outline"
+                      className="border-emerald-300 text-emerald-800 hover:bg-emerald-50"
+                      onClick={() => onToggleSpeechToText(sectionName)}
+                      disabled={!speechSupported}
                     >
-                      + Add bullet
+                      {listening ? <Square className="mr-1 h-3.5 w-3.5" /> : <Mic className="mr-1 h-3.5 w-3.5" />}
+                      {listening ? 'Stop speech input' : 'Speech to text'}
                     </Button>
                   </div>
+                  <textarea
+                    className="min-h-28 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                    value={textValue}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      updateSection(sectionName, (current) => ({
+                        ...current,
+                        bullets: bulletsFromSectionText(value),
+                      }))
+                    }}
+                  />
                 </div>
               )
             })}
           </div>
         </div>
       ) : null}
-
     </div>
   )
 }

@@ -28,6 +28,35 @@ STOPWORDS = {
     "word",
     "length",
 }
+RESEARCH_CATEGORY_OPTIONS = (
+    "Observational Clinical Cohort",
+    "Imaging Biomarker Study",
+    "Prognostic / Risk Modelling",
+    "Diagnostic Study",
+    "Reproducibility / Technical Validation",
+    "Multimodality Integration",
+    "AI / Radiomics",
+    "Methodological / Analytical",
+)
+INTERPRETATION_MODE_OPTIONS = (
+    "Descriptive phenotype characterization",
+    "Descriptive epidemiology and prevalence patterning",
+    "Associative risk or prognostic inference",
+    "Adjusted association interpretation (multivariable)",
+    "Time-to-event prognostic interpretation",
+    "Diagnostic performance interpretation",
+    "Incremental diagnostic value interpretation",
+    "Predictive model development interpretation",
+    "Predictive model internal validation interpretation",
+    "Predictive model external validation interpretation",
+    "Comparative effectiveness interpretation (non-causal)",
+    "Treatment-response heterogeneity exploration (non-causal)",
+    "Hypothesis-generating mechanistic interpretation",
+    "Pathophysiologic plausibility interpretation",
+    "Replication or confirmatory association interpretation",
+    "Safety and feasibility characterization",
+    "Implementation and workflow feasibility interpretation",
+)
 
 
 def _strip_json_fences(raw_text: str) -> str:
@@ -253,6 +282,62 @@ def _safe_bool(value: Any, default: bool = False) -> bool:
     return default
 
 
+def _normalise_choice_label(value: str) -> str:
+    normalized = value.strip().lower()
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _resolve_canonical_option(raw_choice: str, options: list[str]) -> str:
+    normalized_choice = _normalise_choice_label(raw_choice)
+    if not normalized_choice:
+        return ""
+
+    for option in options:
+        if _normalise_choice_label(option) == normalized_choice:
+            return option
+
+    for option in options:
+        normalized_option = _normalise_choice_label(option)
+        if not normalized_option:
+            continue
+        if normalized_option in normalized_choice or normalized_choice in normalized_option:
+            return option
+
+    choice_tokens = set(normalized_choice.split(" "))
+    best_option = ""
+    best_score = 0.0
+    for option in options:
+        option_tokens = set(_normalise_choice_label(option).split(" "))
+        if not option_tokens:
+            continue
+        overlap = len(choice_tokens.intersection(option_tokens))
+        recall = overlap / max(1, len(choice_tokens))
+        precision = overlap / max(1, len(option_tokens))
+        score = (recall + precision) / 2
+        if score > best_score:
+            best_score = score
+            best_option = option
+    if best_option and best_score >= 0.55:
+        return best_option
+    return ""
+
+
+def _clean_study_type_options(options: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for option in options:
+        text = str(option).strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(text)
+    return cleaned
+
+
 def generate_plan_clarification_questions(
     *,
     project_title: str,
@@ -407,6 +492,54 @@ def _coerce_single_question(
     return {"id": question_id, "prompt": prompt, "rationale": rationale}
 
 
+def _coerce_updated_fields(
+    payload: Any,
+    *,
+    current_summary: str,
+    current_research_category: str,
+    current_study_type: str,
+    current_interpretation_mode: str,
+    current_article_type: str,
+    current_word_length: str,
+    study_type_options: list[str],
+) -> dict[str, str]:
+    if not isinstance(payload, dict):
+        payload = {}
+    summary_candidate = re.sub(
+        r"\s+", " ", str(payload.get("summary_of_research", "")).strip()
+    )
+    if len(summary_candidate) < 20:
+        summary_candidate = current_summary.strip()
+
+    category_options = list(RESEARCH_CATEGORY_OPTIONS)
+    research_category = _resolve_canonical_option(
+        str(payload.get("research_category", "")), category_options
+    ) or current_research_category.strip()
+
+    resolved_study_type = _resolve_canonical_option(
+        str(payload.get("study_type", "")),
+        study_type_options,
+    )
+    study_type = resolved_study_type or current_study_type.strip()
+
+    interpretation_mode = _resolve_canonical_option(
+        str(payload.get("interpretation_mode", "")),
+        list(INTERPRETATION_MODE_OPTIONS),
+    ) or current_interpretation_mode.strip()
+
+    article_type = str(payload.get("article_type", "")).strip() or current_article_type.strip()
+    word_length = str(payload.get("word_length", "")).strip() or current_word_length.strip()
+
+    return {
+        "summary_of_research": summary_candidate,
+        "research_category": research_category,
+        "study_type": study_type,
+        "interpretation_mode": interpretation_mode,
+        "article_type": article_type,
+        "word_length": word_length,
+    }
+
+
 def _build_next_question_prompt(
     *,
     project_title: str,
@@ -418,6 +551,7 @@ def _build_next_question_prompt(
     article_type: str,
     word_length: str,
     summary_of_research: str,
+    study_type_options: list[str],
     max_questions: int,
     history: list[dict[str, str]],
 ) -> str:
@@ -438,6 +572,9 @@ def _build_next_question_prompt(
     history_block = _format_history(history)
     no_answers_block = _format_no_history_prompts(history)
     remaining = max(0, max_questions - len(history))
+    study_type_block = "\n".join(f"- {item}" for item in study_type_options) or "- none supplied"
+    research_category_block = "\n".join(f"- {item}" for item in RESEARCH_CATEGORY_OPTIONS)
+    interpretation_mode_block = "\n".join(f"- {item}" for item in INTERPRETATION_MODE_OPTIONS)
     return f"""
 You are generating the next single clarification question for manuscript planning.
 This is an adaptive sequence; each prior answer must influence the next question choice.
@@ -463,6 +600,15 @@ Question/answer history:
 Questions answered NO (avoid repeating these themes unless critical):
 {no_answers_block}
 
+Allowed research categories:
+{research_category_block}
+
+Allowed study types (choose from this list for updates):
+{study_type_block}
+
+Allowed interpretation modes:
+{interpretation_mode_block}
+
 Rules:
 - Return exactly one new yes/no question.
 - Question must start with one of: Should, Is, Are, Do, Does, Can.
@@ -472,15 +618,31 @@ Rules:
 - Prefer the highest-impact unresolved decision for plan quality.
 - Keep rationale to one sentence.
 - Use British English.
+- Update the summary_of_research after incorporating the full history.
+- The updated summary must be factual, non-fabricated, and more specific than the prior summary.
+- Provide an AI manuscript plan summary that describes planned Introduction, Methods, Results, Discussion, and Conclusion.
 - Return valid JSON only.
 
 Return JSON:
 {{
+  "updated_fields": {{
+    "summary_of_research": "string",
+    "research_category": "string",
+    "study_type": "string",
+    "interpretation_mode": "string",
+    "article_type": "string",
+    "word_length": "string"
+  }},
+  "manuscript_plan_summary": "string",
+  "ready_for_plan": true | false,
+  "confidence_percent": 0-100 integer,
+  "additional_questions_for_full_confidence": non-negative integer,
+  "advice": "string",
   "question": {{
     "id": "string",
     "prompt": "string",
     "rationale": "string"
-  }}
+  }} | null
 }}
 """.strip()
 
@@ -496,6 +658,7 @@ def generate_next_plan_clarification_question(
     article_type: str,
     word_length: str,
     summary_of_research: str,
+    study_type_options: list[str],
     history: list[dict[str, str]],
     max_questions: int = 10,
     force_next_question: bool = False,
@@ -504,6 +667,10 @@ def generate_next_plan_clarification_question(
     safe_max_questions = max(1, min(max_questions, 20))
     hard_limit = 30
     cleaned_history = _normalise_history(history)
+    cleaned_study_type_options = _clean_study_type_options(study_type_options)
+    if current_study_type := study_type.strip():
+        if current_study_type not in cleaned_study_type_options:
+            cleaned_study_type_options.append(current_study_type)
     asked_count = len(cleaned_history)
     if asked_count >= hard_limit:
         return {
@@ -513,6 +680,15 @@ def generate_next_plan_clarification_question(
             "confidence_percent": 100,
             "additional_questions_for_full_confidence": 0,
             "advice": "Maximum clarification depth reached. Proceed to plan generation.",
+            "updated_fields": {
+                "summary_of_research": summary_of_research.strip(),
+                "research_category": research_category.strip(),
+                "study_type": study_type.strip(),
+                "interpretation_mode": interpretation_mode.strip(),
+                "article_type": article_type.strip(),
+                "word_length": word_length.strip(),
+            },
+            "manuscript_plan_summary": "",
             "asked_count": asked_count,
             "max_questions": safe_max_questions,
             "model_used": preferred_model,
@@ -539,6 +715,7 @@ def generate_next_plan_clarification_question(
         article_type=article_type,
         word_length=word_length,
         summary_of_research=summary_of_research,
+        study_type_options=cleaned_study_type_options,
         max_questions=safe_max_questions,
         history=cleaned_history,
     )
@@ -549,6 +726,15 @@ In addition to the next question logic, assess plan-readiness now.
 
 Return JSON only with this schema:
 {{
+  "updated_fields": {{
+    "summary_of_research": "string",
+    "research_category": "string",
+    "study_type": "string",
+    "interpretation_mode": "string",
+    "article_type": "string",
+    "word_length": "string"
+  }},
+  "manuscript_plan_summary": "string",
   "ready_for_plan": true | false,
   "confidence_percent": 0-100 integer,
   "additional_questions_for_full_confidence": non-negative integer,
@@ -567,6 +753,8 @@ Rules:
 - confidence_percent reflects current plan-readiness from available context and history.
 - additional_questions_for_full_confidence should estimate how many more targeted questions are needed for 100% confidence.
 - Keep advice concise and actionable.
+- updated_fields.summary_of_research must integrate the latest answer history without fabricating data.
+- manuscript_plan_summary must describe the planned Introduction, Methods, Results, Discussion, and Conclusion.
 
 force_next_question: {"true" if force_next_question else "false"}
 """.strip()
@@ -589,6 +777,26 @@ force_next_question: {"true" if force_next_question else "false"}
             "Proceed to plan generation."
             if ready_for_plan
             else "Answer the next clarification question to improve plan quality."
+        )
+
+    updated_fields = _coerce_updated_fields(
+        first_parsed.get("updated_fields"),
+        current_summary=summary_of_research,
+        current_research_category=research_category,
+        current_study_type=study_type,
+        current_interpretation_mode=interpretation_mode,
+        current_article_type=article_type,
+        current_word_length=word_length,
+        study_type_options=cleaned_study_type_options,
+    )
+    manuscript_plan_summary = re.sub(
+        r"\s+",
+        " ",
+        str(first_parsed.get("manuscript_plan_summary", "")).strip(),
+    )
+    if len(manuscript_plan_summary) < 24:
+        manuscript_plan_summary = (
+            "The plan will structure the manuscript across Introduction, Methods, Results, Discussion, and Conclusion using the clarified context."
         )
 
     question = None
@@ -648,6 +856,8 @@ Return JSON only:
         "confidence_percent": confidence_percent,
         "additional_questions_for_full_confidence": additional_questions_for_full_confidence,
         "advice": advice,
+        "updated_fields": updated_fields,
+        "manuscript_plan_summary": manuscript_plan_summary,
         "asked_count": asked_count,
         "max_questions": safe_max_questions,
         "model_used": _merge_model_labels(first_model, second_model),

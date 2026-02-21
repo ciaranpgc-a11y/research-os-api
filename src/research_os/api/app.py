@@ -459,6 +459,7 @@ def v1_plan_aawe_next_clarification_question(
         article_type=request.article_type,
         word_length=request.word_length,
         summary_of_research=request.summary_of_research,
+        study_type_options=request.study_type_options,
         history=[item.model_dump() for item in request.history],
         max_questions=request.max_questions,
         force_next_question=request.force_next_question,

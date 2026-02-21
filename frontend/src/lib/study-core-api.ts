@@ -143,6 +143,7 @@ export async function fetchNextPlanClarificationQuestion(input: {
   articleType: string
   wordLength: string
   summaryOfResearch: string
+  studyTypeOptions?: string[]
   history: PlanClarificationHistoryItem[]
   maxQuestions?: number
   forceNextQuestion?: boolean
@@ -160,6 +161,7 @@ export async function fetchNextPlanClarificationQuestion(input: {
       article_type: input.articleType,
       word_length: input.wordLength,
       summary_of_research: input.summaryOfResearch,
+      study_type_options: input.studyTypeOptions ?? [],
       history: input.history,
       max_questions: input.maxQuestions ?? 10,
       force_next_question: input.forceNextQuestion ?? false,

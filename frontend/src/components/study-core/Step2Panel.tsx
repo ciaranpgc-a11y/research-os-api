@@ -1,9 +1,7 @@
 import { Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { RecommendationCard } from '@/components/study-core/RecommendationCard'
 import { Button } from '@/components/ui/button'
-import type { PlanRecommendation } from '@/lib/analyze-plan'
 import { fetchNextPlanClarificationQuestion } from '@/lib/study-core-api'
 import type { PlanClarificationQuestion, Step2ClarificationResponse } from '@/types/study-core'
 
@@ -12,6 +10,7 @@ type PlanningContext = {
   targetJournal: string
   targetJournalLabel: string
   researchCategory: string
+  studyTypeOptions: string[]
   studyType: string
   interpretationMode: string
   articleType: string
@@ -20,11 +19,18 @@ type PlanningContext = {
 }
 
 type Step2PanelProps = {
-  hasPlan: boolean
-  recommendations: PlanRecommendation[]
   planningContext: PlanningContext
   clarificationResponses: Step2ClarificationResponse[]
   onClarificationResponsesChange: (responses: Step2ClarificationResponse[]) => void
+  onApplyAdaptiveUpdates: (updates: {
+    summaryOfResearch: string
+    researchCategory: string
+    studyType: string
+    interpretationMode: string
+    articleType: string
+    wordLength: string
+    manuscriptPlanSummary: string
+  }) => void
 }
 
 const MAX_QUESTIONS = 10
@@ -64,11 +70,10 @@ function upsertResponse(
 }
 
 export function Step2Panel({
-  hasPlan,
-  recommendations,
   planningContext,
   clarificationResponses,
   onClarificationResponsesChange,
+  onApplyAdaptiveUpdates,
 }: Step2PanelProps) {
   const [currentQuestion, setCurrentQuestion] = useState<PlanClarificationQuestion | null>(null)
   const [draftAnswer, setDraftAnswer] = useState<'yes' | 'no' | ''>('')
@@ -79,7 +84,6 @@ export function Step2Panel({
   const [completed, setCompleted] = useState(false)
   const [readyForPlan, setReadyForPlan] = useState(false)
   const [confidencePercent, setConfidencePercent] = useState(0)
-  const [additionalForFullConfidence, setAdditionalForFullConfidence] = useState(0)
   const [readinessAdvice, setReadinessAdvice] = useState('')
   const [questionLimit, setQuestionLimit] = useState(MAX_QUESTIONS)
 
@@ -103,6 +107,7 @@ export function Step2Panel({
           articleType: planningContext.articleType,
           wordLength: planningContext.wordLength,
           summaryOfResearch: planningContext.summary,
+          studyTypeOptions: planningContext.studyTypeOptions,
           history,
           maxQuestions: MAX_QUESTIONS,
           forceNextQuestion: options?.forceNextQuestion ?? false,
@@ -117,8 +122,18 @@ export function Step2Panel({
         setCompleted(payload.completed)
         setReadyForPlan(payload.ready_for_plan)
         setConfidencePercent(Math.max(0, Math.min(100, payload.confidence_percent || 0)))
-        setAdditionalForFullConfidence(Math.max(0, payload.additional_questions_for_full_confidence || 0))
         setReadinessAdvice(payload.advice || '')
+        if (payload.updated_fields || payload.manuscript_plan_summary) {
+          onApplyAdaptiveUpdates({
+            summaryOfResearch: payload.updated_fields?.summary_of_research ?? '',
+            researchCategory: payload.updated_fields?.research_category ?? '',
+            studyType: payload.updated_fields?.study_type ?? '',
+            interpretationMode: payload.updated_fields?.interpretation_mode ?? '',
+            articleType: payload.updated_fields?.article_type ?? '',
+            wordLength: payload.updated_fields?.word_length ?? '',
+            manuscriptPlanSummary: payload.manuscript_plan_summary ?? '',
+          })
+        }
 
         if (!payload.question) {
           setCurrentQuestion(null)
@@ -140,7 +155,6 @@ export function Step2Panel({
         setCompleted(false)
         setReadyForPlan(false)
         setConfidencePercent(0)
-        setAdditionalForFullConfidence(0)
         setReadinessAdvice('')
         setModelUsed('')
         setQuestionError(
@@ -152,12 +166,24 @@ export function Step2Panel({
         setLoadingQuestion(false)
       }
     },
-    [planningContext.articleType, planningContext.interpretationMode, planningContext.projectTitle, planningContext.researchCategory, planningContext.studyType, planningContext.summary, planningContext.targetJournal, planningContext.targetJournalLabel, planningContext.wordLength],
+    [
+      onApplyAdaptiveUpdates,
+      planningContext.articleType,
+      planningContext.interpretationMode,
+      planningContext.projectTitle,
+      planningContext.researchCategory,
+      planningContext.studyType,
+      planningContext.studyTypeOptions,
+      planningContext.summary,
+      planningContext.targetJournal,
+      planningContext.targetJournalLabel,
+      planningContext.wordLength,
+    ],
   )
 
   useEffect(() => {
     void loadNextQuestion(clarificationResponses)
-  }, [loadNextQuestion])
+  }, [])
 
   const onAnswerAndContinue = async () => {
     if (!currentQuestion || (draftAnswer !== 'yes' && draftAnswer !== 'no')) {
@@ -192,7 +218,7 @@ export function Step2Panel({
         </div>
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">AI confidence</span>
+            <span className="text-xs text-muted-foreground">AI confidence to generate a robust manuscript plan</span>
             <span className="text-xs font-medium text-slate-700">{confidencePercent}%</span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded bg-slate-200">
@@ -204,12 +230,6 @@ export function Step2Panel({
             />
           </div>
           {readinessAdvice ? <p className="text-xs text-muted-foreground">{readinessAdvice}</p> : null}
-          {additionalForFullConfidence > 0 ? (
-            <p className="text-xs text-muted-foreground">
-              {additionalForFullConfidence} more question{additionalForFullConfidence > 1 ? 's' : ''} estimated for 100%
-              confidence.
-            </p>
-          ) : null}
         </div>
         {modelUsed ? <p className="text-[11px] text-muted-foreground">Model: {modelUsed}</p> : null}
         {questionError ? <p className="text-xs text-amber-700">{questionError}</p> : null}
@@ -222,17 +242,15 @@ export function Step2Panel({
               ? 'AI considers the context ready for plan generation.'
               : 'Clarification sequence paused. You can continue with more targeted questions.'}
           </p>
-          {additionalForFullConfidence > 0 ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="border-emerald-300 text-emerald-800 hover:bg-emerald-100"
-              onClick={() => void loadNextQuestion(clarificationResponses, { forceNextQuestion: true })}
-              disabled={loadingQuestion}
-            >
-              Ask another targeted question
-            </Button>
-          ) : null}
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+            onClick={() => void loadNextQuestion(clarificationResponses, { forceNextQuestion: true })}
+            disabled={loadingQuestion}
+          >
+            Continue with more questions
+          </Button>
         </div>
       ) : currentQuestion ? (
         <div className="space-y-2 rounded-md border border-border/80 bg-background p-3">
@@ -288,31 +306,9 @@ export function Step2Panel({
             onClick={() => void loadNextQuestion(clarificationResponses, { forceNextQuestion: true })}
             disabled={loadingQuestion}
           >
-            Ask next targeted question
+            Continue with more questions
           </Button>
         </div>
-      )}
-
-      <h3 className="text-sm font-semibold">Plan fixes</h3>
-      {!hasPlan ? (
-        <p className="rounded-md border border-border bg-background p-3 text-sm text-muted-foreground">
-          Generate or scaffold a plan, then apply targeted fixes here.
-        </p>
-      ) : recommendations.length === 0 ? (
-        <p className="rounded-md border border-border bg-background p-3 text-sm text-muted-foreground">
-          Plan looks coherent. Proceed to draft generation.
-        </p>
-      ) : (
-        recommendations.slice(0, 3).map((recommendation) => (
-          <RecommendationCard
-            key={recommendation.title}
-            title={recommendation.title}
-            rationale={recommendation.rationale}
-            actionLabel="Insert recommended bullets"
-            onApply={recommendation.applyPatch}
-            optionalPreview={recommendation.optionalPreview}
-          />
-        ))
       )}
     </aside>
   )

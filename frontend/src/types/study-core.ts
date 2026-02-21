@@ -279,6 +279,15 @@ export type PlanClarificationNextQuestionPayload = {
   confidence_percent: number
   additional_questions_for_full_confidence: number
   advice: string
+  updated_fields?: {
+    summary_of_research: string
+    research_category: string
+    study_type: string
+    interpretation_mode: string
+    article_type: string
+    word_length: string
+  } | null
+  manuscript_plan_summary: string
   asked_count: number
   max_questions: number
   model_used: string

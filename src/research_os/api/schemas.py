@@ -340,10 +340,20 @@ class PlanClarificationNextQuestionRequest(BaseModel):
     article_type: str = ""
     word_length: str = ""
     summary_of_research: str = ""
+    study_type_options: list[str] = Field(default_factory=list)
     history: list[PlanClarificationHistoryItemRequest] = Field(default_factory=list)
     max_questions: int = 10
     force_next_question: bool = False
     model: str | None = None
+
+
+class PlanClarificationFieldUpdatesResponse(BaseModel):
+    summary_of_research: str = ""
+    research_category: str = ""
+    study_type: str = ""
+    interpretation_mode: str = ""
+    article_type: str = ""
+    word_length: str = ""
 
 
 class PlanClarificationNextQuestionResponse(BaseModel):
@@ -353,6 +363,8 @@ class PlanClarificationNextQuestionResponse(BaseModel):
     confidence_percent: int = Field(default=0, ge=0, le=100)
     additional_questions_for_full_confidence: int = Field(default=0, ge=0)
     advice: str = ""
+    updated_fields: PlanClarificationFieldUpdatesResponse | None = None
+    manuscript_plan_summary: str = ""
     asked_count: int
     max_questions: int
     model_used: str

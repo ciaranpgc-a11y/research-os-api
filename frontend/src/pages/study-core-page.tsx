@@ -9,7 +9,6 @@ import { StepPlan } from '@/components/study-core/StepPlan'
 import { StepRun } from '@/components/study-core/StepRun'
 import { StudyCoreStepper, type WizardStepItem } from '@/components/study-core/StudyCoreStepper'
 import { Input } from '@/components/ui/input'
-import { analyzePlan } from '@/lib/analyze-plan'
 import {
   CURATED_CARDIOLOGY_IMAGING_JOURNALS,
   getCategoryForStudyType,
@@ -227,6 +226,7 @@ export function StudyCorePage() {
 
   const [plan, setPlan] = useState<OutlinePlanState | null>(null)
   const [clarificationResponses, setClarificationResponses] = useState<Step2ClarificationResponse[]>([])
+  const [aiManuscriptPlanSummary, setAiManuscriptPlanSummary] = useState('')
   const [estimatePreview, setEstimatePreview] = useState<GenerationEstimate | null>(null)
   const [activeJob, setActiveJob] = useState<GenerationJobPayload | null>(null)
   const [links, setLinks] = useState<ClaimLinkSuggestion[]>([])
@@ -243,40 +243,6 @@ export function StudyCorePage() {
     () => journals.find((journal) => journal.slug === targetJournal)?.display_name ?? targetJournal,
     [journals, targetJournal],
   )
-
-  const applySectionPatch = useCallback((sectionName: string, bulletsToInsert: string[]) => {
-    const cleanedBullets = bulletsToInsert.map((bullet) => bullet.trim()).filter(Boolean)
-    if (cleanedBullets.length === 0) {
-      return
-    }
-    setPlan((current) => {
-      if (!current) {
-        return current
-      }
-      const sectionKey = sectionName.toLowerCase()
-      const sectionIndex = current.sections.findIndex((section) => section.name.toLowerCase() === sectionKey)
-      if (sectionIndex === -1) {
-        return {
-          ...current,
-          sections: [...current.sections, { name: sectionKey, bullets: cleanedBullets }],
-        }
-      }
-      const existingSection = current.sections[sectionIndex]
-      const deduped = [...existingSection.bullets]
-      for (const bullet of cleanedBullets) {
-        if (!deduped.some((item) => item.trim().toLowerCase() === bullet.toLowerCase())) {
-          deduped.push(bullet)
-        }
-      }
-      return {
-        ...current,
-        sections: current.sections.map((section, index) =>
-          index === sectionIndex ? { ...section, bullets: deduped } : section,
-        ),
-      }
-    })
-    setStatus(`${sectionName.charAt(0).toUpperCase()}${sectionName.slice(1)} plan updated from recommendations.`)
-  }, [])
 
   const answers = useMemo(
     () => ({
@@ -307,27 +273,6 @@ export function StudyCorePage() {
   const suggestedBrief = useMemo(
     () => buildGenerationBrief(contextValues, selectedSections, guardrailsEnabled),
     [contextValues, guardrailsEnabled, selectedSections],
-  )
-  const planRecommendations = useMemo(
-    () =>
-      analyzePlan({
-        objective: contextValues.researchObjective,
-        researchCategory: contextValues.researchCategory,
-        studyType: contextValues.studyArchitecture,
-        articleType: contextValues.recommendedArticleType,
-        interpretationMode: contextValues.interpretationMode,
-        plan,
-        applySectionPatch,
-      }),
-    [
-      applySectionPatch,
-      contextValues.interpretationMode,
-      contextValues.recommendedArticleType,
-      contextValues.researchCategory,
-      contextValues.researchObjective,
-      contextValues.studyArchitecture,
-      plan,
-    ],
   )
   const step1StudyTypeOptions = useMemo(() => [...KNOWN_STUDY_TYPES], [])
   const currentResearchFrameSignature = useMemo(
@@ -509,6 +454,67 @@ export function StudyCorePage() {
     })
   }
 
+  const onApplyAdaptiveStep2Updates = useCallback(
+    (updates: {
+      summaryOfResearch: string
+      researchCategory: string
+      studyType: string
+      interpretationMode: string
+      articleType: string
+      wordLength: string
+      manuscriptPlanSummary: string
+    }) => {
+      if (updates.manuscriptPlanSummary.trim()) {
+        setAiManuscriptPlanSummary(updates.manuscriptPlanSummary.trim())
+      }
+      setContextValues((current) => {
+        let nextCategory = current.researchCategory
+        let nextStudyType = current.studyArchitecture
+        let nextInterpretation = current.interpretationMode
+
+        if (updates.researchCategory.trim()) {
+          nextCategory = updates.researchCategory.trim()
+        }
+
+        if (updates.studyType.trim()) {
+          const resolvedStudyType = resolveSuggestedStudyType(updates.studyType.trim())
+          if (resolvedStudyType.studyType) {
+            nextStudyType = resolvedStudyType.studyType
+            if (resolvedStudyType.category) {
+              nextCategory = resolvedStudyType.category
+            }
+            const defaults = getStudyTypeDefaults(resolvedStudyType.studyType)
+            setGuardrailsEnabled(defaults.enableConservativeGuardrails)
+          }
+        }
+
+        const allowedTypesForCategory = getStudyTypesForCategory(nextCategory, true)
+        if (nextStudyType && allowedTypesForCategory.length > 0 && !allowedTypesForCategory.includes(nextStudyType)) {
+          nextStudyType = ''
+        }
+
+        if (updates.interpretationMode.trim()) {
+          nextInterpretation = updates.interpretationMode.trim()
+        } else if (nextStudyType) {
+          const defaults = getStudyTypeDefaults(nextStudyType)
+          nextInterpretation = defaults.defaultInterpretationMode
+          setGuardrailsEnabled(defaults.enableConservativeGuardrails)
+        }
+
+        return {
+          ...current,
+          researchObjective: updates.summaryOfResearch.trim() || current.researchObjective,
+          researchCategory: nextCategory,
+          studyArchitecture: nextStudyType,
+          interpretationMode: nextInterpretation,
+          recommendedArticleType: updates.articleType.trim() || current.recommendedArticleType,
+          recommendedWordLength: updates.wordLength.trim() || current.recommendedWordLength,
+        }
+      })
+    },
+    [],
+  )
+
   const renderActiveStep = () => {
     if (currentStep === 1) {
       return (
@@ -554,10 +560,9 @@ export function StudyCorePage() {
             summary: contextValues.researchObjective,
           }}
           selectedSections={selectedSections}
-          generationBrief={generationBrief}
           plan={plan}
+          aiPlanSummary={aiManuscriptPlanSummary}
           clarificationResponses={clarificationResponses}
-          mechanisticRelevant={contextValues.interpretationMode.toLowerCase().includes('mechanistic')}
           onSectionsChange={setSelectedSections}
           onPlanChange={onPlanChange}
           onStatus={setStatus}
@@ -711,13 +716,12 @@ export function StudyCorePage() {
     if (currentStep === 2) {
       return (
         <Step2Panel
-          hasPlan={Boolean(plan)}
-          recommendations={planRecommendations}
           planningContext={{
             projectTitle: contextValues.projectTitle,
             targetJournal,
             targetJournalLabel,
             researchCategory: contextValues.researchCategory,
+            studyTypeOptions: step1StudyTypeOptions,
             studyType: contextValues.studyArchitecture,
             interpretationMode: contextValues.interpretationMode,
             articleType: contextValues.recommendedArticleType,
@@ -726,6 +730,7 @@ export function StudyCorePage() {
           }}
           clarificationResponses={clarificationResponses}
           onClarificationResponsesChange={setClarificationResponses}
+          onApplyAdaptiveUpdates={onApplyAdaptiveStep2Updates}
         />
       )
     }
