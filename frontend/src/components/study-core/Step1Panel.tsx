@@ -72,6 +72,22 @@ function buildEmptySuggestionState(): Record<AppliedKey, boolean> {
   }
 }
 
+function buildSuggestionContextKey(input: {
+  summary: string
+  researchCategory: string
+  researchType: string
+  interpretationMode: string
+  targetJournal: string
+  articleType: string
+  wordLength: string
+}): string {
+  return `${input.summary.trim().toLowerCase()}::${input.researchCategory.trim().toLowerCase()}::${input.researchType
+    .trim()
+    .toLowerCase()}::${input.interpretationMode.trim().toLowerCase()}::${input.targetJournal
+    .trim()
+    .toLowerCase()}::${input.articleType.trim().toLowerCase()}::${input.wordLength.trim().toLowerCase()}`
+}
+
 function serialiseIgnoredState(state: Record<AppliedKey, boolean>): AppliedKey[] {
   return SUGGESTION_KEYS.filter((key) => state[key])
 }
@@ -390,6 +406,7 @@ export function Step1Panel({
   const [appliedSectionOpen, setAppliedSectionOpen] = useState(false)
   const [ignoredSectionOpen, setIgnoredSectionOpen] = useState(false)
   const applyTimersRef = useRef<number[]>([])
+  const lastAutoRefreshJournalRef = useRef('')
 
   useEffect(() => {
     return () => {
@@ -400,11 +417,15 @@ export function Step1Panel({
 
   const currentKey = useMemo(
     () =>
-      `${summary.trim().toLowerCase()}::${researchCategory.trim().toLowerCase()}::${researchType
-        .trim()
-        .toLowerCase()}::${interpretationMode.trim().toLowerCase()}::${targetJournal
-        .trim()
-        .toLowerCase()}::${currentArticleType.trim().toLowerCase()}::${currentWordLength.trim().toLowerCase()}`,
+      buildSuggestionContextKey({
+        summary,
+        researchCategory,
+        researchType,
+        interpretationMode,
+        targetJournal,
+        articleType: currentArticleType,
+        wordLength: currentWordLength,
+      }),
     [currentArticleType, currentWordLength, interpretationMode, researchCategory, researchType, summary, targetJournal],
   )
   const hasGenerated = generatedKey.length > 0
@@ -594,12 +615,54 @@ export function Step1Panel({
     setIgnoredSectionOpen(false)
   }, [ignoredKeys.length])
 
-  const generateSuggestions = async () => {
+  const applyJournalRecommendationValues = (
+    articleValue?: string | null,
+    wordLengthValue?: string | null,
+    options?: { recordUndo?: boolean },
+  ): boolean => {
+    const nextArticleValue = articleValue?.trim() ?? ''
+    const nextWordLengthValue = wordLengthValue?.trim() ?? ''
+    const previousArticleType = currentArticleType
+    const previousWordLength = currentWordLength
+    const articleChanged = Boolean(nextArticleValue && normalize(nextArticleValue) !== normalize(previousArticleType))
+    const wordLengthChanged = Boolean(nextWordLengthValue && normalize(nextWordLengthValue) !== normalize(previousWordLength))
+    if (!articleChanged && !wordLengthChanged) {
+      return false
+    }
+    if (nextArticleValue) {
+      onApplyArticleType(nextArticleValue)
+    }
+    if (nextWordLengthValue) {
+      onApplyWordLength(nextWordLengthValue)
+    }
+    setRevertSnapshots((current) => ({
+      ...current,
+      journal: { articleType: previousArticleType, wordLength: previousWordLength },
+    }))
+    if (options?.recordUndo ?? true) {
+      pushUndoEntry({
+        key: 'journal',
+        label: 'Journal recommendation apply',
+        undo: () => {
+          onApplyArticleType(previousArticleType)
+          onApplyWordLength(previousWordLength)
+        },
+      })
+    }
+    markApplied('journal')
+    return true
+  }
+
+  const generateSuggestions = async (options?: { resetHistory?: boolean; autoApplyJournal?: boolean }) => {
+    const resetHistory = options?.resetHistory ?? true
+    const autoApplyJournal = options?.autoApplyJournal ?? false
     if (!summary.trim()) {
       return
     }
-    setUndoStack([])
-    setRevertSnapshots({})
+    if (resetHistory) {
+      setUndoStack([])
+      setRevertSnapshots({})
+    }
     setLoading(true)
     setRequestError('')
     try {
@@ -613,7 +676,24 @@ export function Step1Panel({
         summaryOfResearch: summary,
       })
       setSuggestions(response)
-      setGeneratedKey(currentKey)
+      let nextGeneratedKey = currentKey
+      if (autoApplyJournal) {
+        const nextArticleType = response.article_type_recommendation?.value?.trim() || currentArticleType
+        const nextWordLength = response.word_length_recommendation?.value?.trim() || currentWordLength
+        applyJournalRecommendationValues(response.article_type_recommendation?.value, response.word_length_recommendation?.value, {
+          recordUndo: false,
+        })
+        nextGeneratedKey = buildSuggestionContextKey({
+          summary,
+          researchCategory,
+          researchType,
+          interpretationMode,
+          targetJournal,
+          articleType: nextArticleType,
+          wordLength: nextWordLength,
+        })
+      }
+      setGeneratedKey(nextGeneratedKey)
     } catch (error) {
       const fallback = buildOfflineSuggestions({
         summary,
@@ -625,13 +705,46 @@ export function Step1Panel({
         wordLength: currentWordLength,
       })
       setSuggestions(fallback)
-      setGeneratedKey(currentKey)
+      let nextGeneratedKey = currentKey
+      if (autoApplyJournal) {
+        const nextArticleType = fallback.article_type_recommendation?.value?.trim() || currentArticleType
+        const nextWordLength = fallback.word_length_recommendation?.value?.trim() || currentWordLength
+        applyJournalRecommendationValues(fallback.article_type_recommendation?.value, fallback.word_length_recommendation?.value, {
+          recordUndo: false,
+        })
+        nextGeneratedKey = buildSuggestionContextKey({
+          summary,
+          researchCategory,
+          researchType,
+          interpretationMode,
+          targetJournal,
+          articleType: nextArticleType,
+          wordLength: nextWordLength,
+        })
+      }
+      setGeneratedKey(nextGeneratedKey)
       const message = error instanceof Error ? error.message : 'Could not generate suggestions.'
       setRequestError(`${message} Showing provisional offline suggestions. Endpoint: ${API_BASE_URL}`)
     } finally {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    const trimmedJournal = targetJournal.trim()
+    if (!trimmedJournal) {
+      lastAutoRefreshJournalRef.current = ''
+      return
+    }
+    if (!summary.trim() || loading) {
+      return
+    }
+    if (lastAutoRefreshJournalRef.current === trimmedJournal) {
+      return
+    }
+    lastAutoRefreshJournalRef.current = trimmedJournal
+    void generateSuggestions({ resetHistory: false, autoApplyJournal: true })
+  }, [loading, summary, targetJournal])
 
   const refreshSuggestions = async () => {
     setRefinementsEnabled(true)
@@ -823,34 +936,7 @@ export function Step1Panel({
   }
 
   const onApplyJournalRecommendation = () => {
-    const articleRecommendation = articleSuggestion
-    const wordLengthRecommendation = wordLengthSuggestion
-    const previousArticleType = currentArticleType
-    const previousWordLength = currentWordLength
-    if (articleRecommendation?.value) {
-      onApplyArticleType(articleRecommendation.value)
-    }
-    if (wordLengthRecommendation?.value) {
-      onApplyWordLength(wordLengthRecommendation.value)
-    }
-    if (
-      (articleRecommendation?.value && normalize(articleRecommendation.value) !== normalize(previousArticleType)) ||
-      (wordLengthRecommendation?.value && normalize(wordLengthRecommendation.value) !== normalize(previousWordLength))
-    ) {
-      setRevertSnapshots((current) => ({
-        ...current,
-        journal: { articleType: previousArticleType, wordLength: previousWordLength },
-      }))
-      pushUndoEntry({
-        key: 'journal',
-        label: 'Journal recommendation apply',
-        undo: () => {
-          onApplyArticleType(previousArticleType)
-          onApplyWordLength(previousWordLength)
-        },
-      })
-    }
-    markApplied('journal')
+    applyJournalRecommendationValues(articleSuggestion?.value, wordLengthSuggestion?.value, { recordUndo: true })
   }
 
   const onIgnoreSuggestion = (key: AppliedKey) => {
