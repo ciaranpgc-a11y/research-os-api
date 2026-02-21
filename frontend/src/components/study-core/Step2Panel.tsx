@@ -77,21 +77,18 @@ export function Step2Panel({
   const [questionError, setQuestionError] = useState('')
   const [modelUsed, setModelUsed] = useState('')
   const [completed, setCompleted] = useState(false)
+  const [readyForPlan, setReadyForPlan] = useState(false)
+  const [confidencePercent, setConfidencePercent] = useState(0)
+  const [additionalForFullConfidence, setAdditionalForFullConfidence] = useState(0)
+  const [readinessAdvice, setReadinessAdvice] = useState('')
   const [questionLimit, setQuestionLimit] = useState(MAX_QUESTIONS)
 
   const answeredHistory = useMemo(() => toHistory(clarificationResponses), [clarificationResponses])
   const answeredCount = answeredHistory.length
 
   const loadNextQuestion = useCallback(
-    async (sourceResponses: Step2ClarificationResponse[]) => {
+    async (sourceResponses: Step2ClarificationResponse[], options?: { forceNextQuestion?: boolean }) => {
       const history = toHistory(sourceResponses)
-      if (history.length >= MAX_QUESTIONS) {
-        setCompleted(true)
-        setCurrentQuestion(null)
-        setDraftAnswer('')
-        setDraftComment('')
-        return
-      }
 
       setLoadingQuestion(true)
       setQuestionError('')
@@ -108,11 +105,20 @@ export function Step2Panel({
           summaryOfResearch: planningContext.summary,
           history,
           maxQuestions: MAX_QUESTIONS,
+          forceNextQuestion: options?.forceNextQuestion ?? false,
         })
 
         setModelUsed(payload.model_used)
-        setQuestionLimit(payload.max_questions || MAX_QUESTIONS)
+        const dynamicLimit = Math.max(
+          payload.max_questions || MAX_QUESTIONS,
+          (payload.asked_count || 0) + Math.max(payload.additional_questions_for_full_confidence || 0, 0),
+        )
+        setQuestionLimit(dynamicLimit)
         setCompleted(payload.completed)
+        setReadyForPlan(payload.ready_for_plan)
+        setConfidencePercent(Math.max(0, Math.min(100, payload.confidence_percent || 0)))
+        setAdditionalForFullConfidence(Math.max(0, payload.additional_questions_for_full_confidence || 0))
+        setReadinessAdvice(payload.advice || '')
 
         if (!payload.question) {
           setCurrentQuestion(null)
@@ -132,6 +138,10 @@ export function Step2Panel({
       } catch (error) {
         setCurrentQuestion(null)
         setCompleted(false)
+        setReadyForPlan(false)
+        setConfidencePercent(0)
+        setAdditionalForFullConfidence(0)
+        setReadinessAdvice('')
         setModelUsed('')
         setQuestionError(
           error instanceof Error
@@ -180,18 +190,55 @@ export function Step2Panel({
             Completed: {answeredCount}/{questionLimit}
           </span>
         </div>
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">AI confidence</span>
+            <span className="text-xs font-medium text-slate-700">{confidencePercent}%</span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded bg-slate-200">
+            <div
+              className={`h-full transition-all ${
+                confidencePercent >= 85 ? 'bg-emerald-500' : confidencePercent >= 60 ? 'bg-amber-500' : 'bg-rose-500'
+              }`}
+              style={{ width: `${confidencePercent}%` }}
+            />
+          </div>
+          {readinessAdvice ? <p className="text-xs text-muted-foreground">{readinessAdvice}</p> : null}
+          {additionalForFullConfidence > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              {additionalForFullConfidence} more question{additionalForFullConfidence > 1 ? 's' : ''} estimated for 100%
+              confidence.
+            </p>
+          ) : null}
+        </div>
         {modelUsed ? <p className="text-[11px] text-muted-foreground">Model: {modelUsed}</p> : null}
         {questionError ? <p className="text-xs text-amber-700">{questionError}</p> : null}
       </div>
 
       {completed ? (
-        <p className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">
-          Clarification sequence completed. Proceed to scaffold or Generate Plan.
-        </p>
+        <div className="space-y-2 rounded-md border border-emerald-300 bg-emerald-50 p-3">
+          <p className="text-sm text-emerald-900">
+            {readyForPlan
+              ? 'AI considers the context ready for plan generation.'
+              : 'Clarification sequence paused. You can continue with more targeted questions.'}
+          </p>
+          {additionalForFullConfidence > 0 ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+              onClick={() => void loadNextQuestion(clarificationResponses, { forceNextQuestion: true })}
+              disabled={loadingQuestion}
+            >
+              Ask another targeted question
+            </Button>
+          ) : null}
+        </div>
       ) : currentQuestion ? (
         <div className="space-y-2 rounded-md border border-border/80 bg-background p-3">
           <p className="text-xs font-semibold text-slate-900">
-            Question {Math.min(answeredCount + 1, questionLimit)} of {questionLimit}
+            Question {Math.min(answeredCount + 1, Math.max(questionLimit, answeredCount + 1))} of{' '}
+            {Math.max(questionLimit, answeredCount + 1)}
           </p>
           <p className="text-sm font-medium text-slate-900">{currentQuestion.prompt}</p>
           <p className="text-xs text-muted-foreground">{currentQuestion.rationale}</p>
@@ -232,9 +279,18 @@ export function Step2Panel({
           </Button>
         </div>
       ) : (
-        <p className="rounded-md border border-border bg-background p-3 text-sm text-muted-foreground">
-          No active question. Refresh question to continue.
-        </p>
+        <div className="space-y-2 rounded-md border border-border bg-background p-3">
+          <p className="text-sm text-muted-foreground">No active question.</p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+            onClick={() => void loadNextQuestion(clarificationResponses, { forceNextQuestion: true })}
+            disabled={loadingQuestion}
+          >
+            Ask next targeted question
+          </Button>
+        </div>
       )}
 
       <h3 className="text-sm font-semibold">Plan fixes</h3>

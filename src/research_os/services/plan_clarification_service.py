@@ -232,6 +232,27 @@ def _merge_model_labels(*labels: str) -> str:
     return ",".join(deduped)
 
 
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def _safe_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "yes", "1"}:
+            return True
+        if lowered in {"false", "no", "0"}:
+            return False
+    if isinstance(value, (int, float)):
+        return value != 0
+    return default
+
+
 def generate_plan_clarification_questions(
     *,
     project_title: str,
@@ -477,15 +498,21 @@ def generate_next_plan_clarification_question(
     summary_of_research: str,
     history: list[dict[str, str]],
     max_questions: int = 10,
+    force_next_question: bool = False,
     preferred_model: str = PREFERRED_MODEL,
 ) -> dict[str, object]:
     safe_max_questions = max(1, min(max_questions, 20))
+    hard_limit = 30
     cleaned_history = _normalise_history(history)
     asked_count = len(cleaned_history)
-    if asked_count >= safe_max_questions:
+    if asked_count >= hard_limit:
         return {
             "question": None,
             "completed": True,
+            "ready_for_plan": True,
+            "confidence_percent": 100,
+            "additional_questions_for_full_confidence": 0,
+            "advice": "Maximum clarification depth reached. Proceed to plan generation.",
             "asked_count": asked_count,
             "max_questions": safe_max_questions,
             "model_used": preferred_model,
@@ -515,17 +542,67 @@ def generate_next_plan_clarification_question(
         max_questions=safe_max_questions,
         history=cleaned_history,
     )
+    readiness_prompt = f"""
+{base_prompt}
 
-    first_output, first_model = _ask_model(base_prompt, preferred_model=preferred_model)
+In addition to the next question logic, assess plan-readiness now.
+
+Return JSON only with this schema:
+{{
+  "ready_for_plan": true | false,
+  "confidence_percent": 0-100 integer,
+  "additional_questions_for_full_confidence": non-negative integer,
+  "advice": "string",
+  "question": {{
+    "id": "string",
+    "prompt": "string",
+    "rationale": "string"
+  }} | null
+}}
+
+Rules:
+- If ready_for_plan is true and force_next_question is false, set question to null.
+- If ready_for_plan is false, question is required.
+- If force_next_question is true, question is required unless hard limit reached.
+- confidence_percent reflects current plan-readiness from available context and history.
+- additional_questions_for_full_confidence should estimate how many more targeted questions are needed for 100% confidence.
+- Keep advice concise and actionable.
+
+force_next_question: {"true" if force_next_question else "false"}
+""".strip()
+
+    first_output, first_model = _ask_model(readiness_prompt, preferred_model=preferred_model)
     first_parsed = json.loads(_extract_json_object(first_output))
-    question = _coerce_single_question(
-        first_parsed,
-        context_tokens=context_tokens,
-        existing_prompts=existing_prompts,
-        next_index=asked_count,
+    ready_for_plan = _safe_bool(first_parsed.get("ready_for_plan"), default=False)
+    confidence_percent = _safe_int(first_parsed.get("confidence_percent", 0), default=0)
+    confidence_percent = max(0, min(100, confidence_percent))
+    additional_questions_for_full_confidence = _safe_int(
+        first_parsed.get("additional_questions_for_full_confidence", 0),
+        default=0,
     )
+    additional_questions_for_full_confidence = max(
+        0, additional_questions_for_full_confidence
+    )
+    advice = re.sub(r"\s+", " ", str(first_parsed.get("advice", "")).strip())
+    if not advice:
+        advice = (
+            "Proceed to plan generation."
+            if ready_for_plan
+            else "Answer the next clarification question to improve plan quality."
+        )
+
+    question = None
+    should_return_question = force_next_question or not ready_for_plan
+    if should_return_question:
+        question = _coerce_single_question(
+            first_parsed,
+            context_tokens=context_tokens,
+            existing_prompts=existing_prompts,
+            next_index=asked_count,
+        )
+
     second_model = ""
-    if question is None:
+    if should_return_question and question is None:
         repair_prompt = f"""
 Your prior output did not produce a valid new question.
 Generate exactly one valid replacement question using the same context.
@@ -542,7 +619,7 @@ Return JSON only:
 }}
 """.strip()
         second_output, second_model = _ask_model(
-            f"{base_prompt}\n\n{repair_prompt}",
+            f"{readiness_prompt}\n\n{repair_prompt}",
             preferred_model=preferred_model,
         )
         second_parsed = json.loads(_extract_json_object(second_output))
@@ -553,14 +630,24 @@ Return JSON only:
             next_index=asked_count,
         )
 
-    if question is None:
+    if should_return_question and question is None:
         raise ValueError(
             "AI could not generate a valid contextual next question. Refresh and retry."
         )
 
+    completed = ready_for_plan and not force_next_question
+    if not ready_for_plan:
+        completed = False
+    if force_next_question and question is not None:
+        completed = False
+
     return {
         "question": question,
-        "completed": False,
+        "completed": completed,
+        "ready_for_plan": ready_for_plan,
+        "confidence_percent": confidence_percent,
+        "additional_questions_for_full_confidence": additional_questions_for_full_confidence,
+        "advice": advice,
         "asked_count": asked_count,
         "max_questions": safe_max_questions,
         "model_used": _merge_model_labels(first_model, second_model),

@@ -461,6 +461,7 @@ def v1_plan_aawe_next_clarification_question(
         summary_of_research=request.summary_of_research,
         history=[item.model_dump() for item in request.history],
         max_questions=request.max_questions,
+        force_next_question=request.force_next_question,
         preferred_model=request.model or "gpt-5.2",
     )
     return PlanClarificationNextQuestionResponse(**payload)

@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -272,7 +272,6 @@ export function StepPlan({
 }: StepPlanProps) {
   const [busy, setBusy] = useState<'plan' | ''>('')
   const [refineBusyKey, setRefineBusyKey] = useState('')
-  const [activeSectionName, setActiveSectionName] = useState<string>(DEFAULT_PLAN_SECTIONS[0])
 
   const orderedSections = useMemo(() => [...DEFAULT_PLAN_SECTIONS], [])
   const clarificationNotes = useMemo(() => buildClarificationNotes(clarificationResponses), [clarificationResponses])
@@ -310,16 +309,6 @@ export function StepPlan({
     })
   }, [onPlanChange, orderedSections, plan])
 
-  useEffect(() => {
-    if (!plan || plan.sections.length === 0) {
-      return
-    }
-    if (plan.sections.some((section) => section.name === activeSectionName)) {
-      return
-    }
-    setActiveSectionName(plan.sections[0].name)
-  }, [activeSectionName, plan])
-
   const updateSection = (sectionName: string, updater: (section: OutlinePlanSection) => OutlinePlanSection) => {
     if (!plan) {
       return
@@ -342,7 +331,6 @@ export function StepPlan({
         sections: orderedSections,
       })
       onPlanChange(toOutlinePlan(payload, orderedSections))
-      setActiveSectionName(orderedSections[0])
       onStatus(`Generated plan for ${payload.items.length} section(s).`)
     } catch (error) {
       onError(error instanceof Error ? error.message : 'Could not generate plan.')
@@ -391,9 +379,30 @@ export function StepPlan({
 
   const onBuildContextScaffold = () => {
     onPlanChange(buildContextScaffold(orderedSections, planningContext, clarificationNotes))
-    setActiveSectionName(orderedSections[0])
     onStatus('Context scaffold created from Step 1 framing. Refine or regenerate sections as needed.')
   }
+
+  const planNarrativeSummary = useMemo(() => {
+    if (!plan || plan.sections.length === 0) {
+      return ''
+    }
+    const sectionOrder = ['introduction', 'methods', 'results', 'discussion', 'conclusion']
+    const byName = new Map(plan.sections.map((section) => [section.name.toLowerCase(), section]))
+    const fragments: string[] = []
+    for (const sectionName of sectionOrder) {
+      const section = byName.get(sectionName)
+      if (!section) {
+        continue
+      }
+      const anchor = section.bullets.find((bullet) => bullet.trim()) || ''
+      if (!anchor) {
+        continue
+      }
+      const cleanAnchor = anchor.trim().replace(/\.+$/, '')
+      fragments.push(`${titleCaseSection(sectionName)}: ${cleanAnchor}.`)
+    }
+    return fragments.join(' ')
+  }, [plan])
 
   return (
     <div className="space-y-4 rounded-lg border border-border bg-card p-4">
@@ -455,51 +464,20 @@ export function StepPlan({
 
       {plan ? (
         <div className="space-y-3 rounded-md border border-border p-3">
-          <div className="flex flex-wrap gap-2">
-            {plan.sections.map((section) => (
-              <Button
-                key={section.name}
-                size="sm"
-                variant="outline"
-                className={section.name === activeSectionName ? 'border-border bg-muted text-foreground' : ''}
-                onClick={() => setActiveSectionName(section.name)}
-              >
-                {titleCaseSection(section.name)}
-              </Button>
-            ))}
+          <div className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-emerald-900">AI manuscript plan summary</p>
+            <p className="mt-1 text-sm text-emerald-950">
+              {planNarrativeSummary || 'Generate the plan to view an AI summary of manuscript structure.'}
+            </p>
           </div>
 
-          {plan.sections
-            .filter((section) => section.name === activeSectionName)
-            .map((section) => {
+          <div className="space-y-3">
+            {plan.sections.map((section) => {
               const sectionBusy = refineBusyKey.startsWith(`${section.name}:`)
-              const sectionIndex = plan.sections.findIndex((entry) => entry.name === section.name)
-              const hasPrevious = sectionIndex > 0
-              const hasNext = sectionIndex < plan.sections.length - 1
               return (
                 <div key={section.name} className="space-y-2 rounded-md border border-border/80 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        disabled={!hasPrevious}
-                        onClick={() => setActiveSectionName(plan.sections[sectionIndex - 1].name)}
-                        aria-label="Previous section"
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-                      <p className="text-sm font-semibold">{titleCaseSection(section.name)}</p>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        disabled={!hasNext}
-                        onClick={() => setActiveSectionName(plan.sections[sectionIndex + 1].name)}
-                        aria-label="Next section"
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <p className="text-sm font-semibold">{titleCaseSection(section.name)}</p>
                     <div className="flex flex-wrap gap-1">
                       <Button
                         size="sm"
@@ -585,6 +563,7 @@ export function StepPlan({
                 </div>
               )
             })}
+          </div>
         </div>
       ) : null}
 

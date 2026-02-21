@@ -342,12 +342,17 @@ class PlanClarificationNextQuestionRequest(BaseModel):
     summary_of_research: str = ""
     history: list[PlanClarificationHistoryItemRequest] = Field(default_factory=list)
     max_questions: int = 10
+    force_next_question: bool = False
     model: str | None = None
 
 
 class PlanClarificationNextQuestionResponse(BaseModel):
     question: PlanClarificationQuestionResponse | None = None
     completed: bool
+    ready_for_plan: bool
+    confidence_percent: int = Field(default=0, ge=0, le=100)
+    additional_questions_for_full_confidence: int = Field(default=0, ge=0)
+    advice: str = ""
     asked_count: int
     max_questions: int
     model_used: str

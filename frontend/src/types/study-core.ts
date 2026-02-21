@@ -275,6 +275,10 @@ export type PlanClarificationHistoryItem = {
 export type PlanClarificationNextQuestionPayload = {
   question: PlanClarificationQuestion | null
   completed: boolean
+  ready_for_plan: boolean
+  confidence_percent: number
+  additional_questions_for_full_confidence: number
+  advice: string
   asked_count: number
   max_questions: number
   model_used: string

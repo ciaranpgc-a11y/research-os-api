@@ -145,6 +145,7 @@ export async function fetchNextPlanClarificationQuestion(input: {
   summaryOfResearch: string
   history: PlanClarificationHistoryItem[]
   maxQuestions?: number
+  forceNextQuestion?: boolean
 }): Promise<PlanClarificationNextQuestionPayload> {
   const response = await fetch(`${API_BASE_URL}/v1/aawe/plan/clarification-question/next`, {
     method: 'POST',
@@ -161,6 +162,7 @@ export async function fetchNextPlanClarificationQuestion(input: {
       summary_of_research: input.summaryOfResearch,
       history: input.history,
       max_questions: input.maxQuestions ?? 10,
+      force_next_question: input.forceNextQuestion ?? false,
     }),
   })
   if (!response.ok) {
