@@ -134,6 +134,12 @@ export function Step1Panel({
     }
   }
 
+  const refreshSuggestions = async () => {
+    setRefinementsEnabled(true)
+    onJournalRecommendationsLockedChange(false)
+    await generateSuggestions()
+  }
+
   const onToggleRefinements = async () => {
     if (refinementsEnabled) {
       setRefinementsEnabled(false)
@@ -200,22 +206,22 @@ export function Step1Panel({
           <Button className={ACTION_BUTTON_CLASS} size="sm" onClick={() => void onToggleRefinements()} disabled={!summary.trim() || loading}>
             {refinementsEnabled ? 'Hide suggestions' : 'Show suggestions'}
           </Button>
-          {refinementsEnabled ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className={OUTLINE_ACTION_BUTTON_CLASS}
-              onClick={() => {
-                onJournalRecommendationsLockedChange(false)
-                void generateSuggestions()
-              }}
-              disabled={!summary.trim() || loading}
-            >
-              {loading ? 'Refreshing...' : 'Refresh'}
-            </Button>
-          ) : null}
+          <Button
+            size="sm"
+            variant="outline"
+            className={OUTLINE_ACTION_BUTTON_CLASS}
+            onClick={() => void refreshSuggestions()}
+            disabled={!summary.trim() || loading}
+          >
+            {loading ? 'Refreshing...' : 'Refresh suggestions'}
+          </Button>
         </div>
         {!summary.trim() ? <p className="text-xs text-muted-foreground">Add a summary of research to enable suggestions.</p> : null}
+        {summary.trim() && !targetJournal.trim() ? (
+          <p className="text-xs text-muted-foreground">
+            Select a working target journal for journal-specific article type and word length recommendations.
+          </p>
+        ) : null}
         {refinementsEnabled && isStale ? <p className="text-xs text-muted-foreground">Inputs changed. Refresh suggestions.</p> : null}
         {requestError ? <p className="text-xs text-destructive">{requestError}</p> : null}
       </div>
@@ -334,7 +340,13 @@ export function Step1Panel({
               </p>
             </div>
           ) : (
-            !loading && <p className="text-xs text-amber-900">No article type recommendation returned.</p>
+            !loading && (
+              <p className="text-xs text-amber-900">
+                {targetJournal.trim()
+                  ? 'No article type recommendation returned yet. Refresh suggestions.'
+                  : 'Select a working target journal to generate an article type recommendation.'}
+              </p>
+            )
           )}
           {wordLengthSuggestion ? (
             <div className="rounded border border-amber-300 bg-white p-2">
@@ -346,7 +358,13 @@ export function Step1Panel({
               </p>
             </div>
           ) : (
-            !loading && <p className="text-xs text-amber-900">No word length recommendation returned.</p>
+            !loading && (
+              <p className="text-xs text-amber-900">
+                {targetJournal.trim()
+                  ? 'No word length recommendation returned yet. Refresh suggestions.'
+                  : 'Select a working target journal to generate a word length recommendation.'}
+              </p>
+            )
           )}
           {shouldShowJournalApplyButton ? (
             <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyJournalRecommendation}>

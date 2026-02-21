@@ -13,7 +13,6 @@ import {
   getCategoryForStudyType,
   getResearchTypeTaxonomy,
   getStudyTypeDefaults,
-  getStudyTypesForCategory,
   mergeJournalOptions,
 } from '@/lib/research-frame-options'
 import { fetchJournalOptions } from '@/lib/study-core-api'
@@ -161,10 +160,10 @@ export function StudyCorePage() {
   const canNavigateToStep = useStudyCoreWizardStore((state) => state.canNavigateToStep)
 
   const [journals, setJournals] = useState<JournalOption[]>(CURATED_CARDIOLOGY_IMAGING_JOURNALS)
-  const [targetJournal, setTargetJournal] = useState('jacc-cardiovascular-imaging')
+  const [targetJournal, setTargetJournal] = useState('')
   const [runContext, setRunContext] = useState<RunContext | null>(() => readStoredRunContext())
   const [contextValues, setContextValues] = useState<ContextFormValues>({
-    projectTitle: 'AAWE Research Workspace',
+    projectTitle: '',
     researchCategory: '',
     researchObjective: '',
     studyArchitecture: '',
@@ -233,12 +232,7 @@ export function StudyCorePage() {
     () => buildGenerationBrief(contextValues, selectedSections, guardrailsEnabled),
     [contextValues, guardrailsEnabled, selectedSections],
   )
-  const step1StudyTypeOptions = useMemo(() => {
-    if (contextValues.researchCategory.trim()) {
-      return getStudyTypesForCategory(contextValues.researchCategory, true)
-    }
-    return [...KNOWN_STUDY_TYPES]
-  }, [contextValues.researchCategory])
+  const step1StudyTypeOptions = useMemo(() => [...KNOWN_STUDY_TYPES], [])
   const currentResearchFrameSignature = useMemo(
     () => buildResearchFrameSignature(contextValues),
     [contextValues],
@@ -273,18 +267,18 @@ export function StudyCorePage() {
       .then((payload) => {
         const merged = mergeJournalOptions(payload)
         setJournals(merged)
-        if (!merged.some((journal) => journal.slug === targetJournal)) {
-          setTargetJournal(merged[0]?.slug ?? 'jacc-cardiovascular-imaging')
+        if (targetJournal && !merged.some((journal) => journal.slug === targetJournal)) {
+          setTargetJournal('')
         }
       })
       .catch((loadError) => {
         setJournals(CURATED_CARDIOLOGY_IMAGING_JOURNALS)
-        if (!CURATED_CARDIOLOGY_IMAGING_JOURNALS.some((journal) => journal.slug === targetJournal)) {
-          setTargetJournal(CURATED_CARDIOLOGY_IMAGING_JOURNALS[0]?.slug ?? 'jacc-cardiovascular-imaging')
+        if (targetJournal && !CURATED_CARDIOLOGY_IMAGING_JOURNALS.some((journal) => journal.slug === targetJournal)) {
+          setTargetJournal('')
         }
         setError(loadError instanceof Error ? `${loadError.message} Using curated cardiology and imaging journals.` : 'Using curated cardiology and imaging journals.')
       })
-  }, [])
+  }, [targetJournal])
 
   useEffect(() => {
     if (!runContext) {

@@ -107,11 +107,14 @@ export function StepContext({
 
   const errors = useMemo(() => {
     const nextErrors: Record<string, string> = {}
+    if (!targetJournal.trim()) {
+      nextErrors.targetJournal = 'Working target journal is required.'
+    }
     if (!values.researchObjective.trim()) {
       nextErrors.researchObjective = 'Summary of research is required.'
     }
     return nextErrors
-  }, [values.researchObjective])
+  }, [targetJournal, values.researchObjective])
 
   const researchCategories = useMemo(() => getResearchTypeTaxonomy(true), [])
   const studyTypeOptions = useMemo(
@@ -280,12 +283,14 @@ export function StepContext({
           value={targetJournal}
           onChange={(event) => onTargetJournalChange(event.target.value)}
         >
+          <option value="">Select working target journal</option>
           {journals.map((journal) => (
             <option key={journal.slug} value={journal.slug}>
               {journal.display_name}
             </option>
           ))}
         </select>
+        {attemptedSubmit && errors.targetJournal ? <p className="text-xs text-destructive">{errors.targetJournal}</p> : null}
       </div>
 
       <div className="space-y-1">
@@ -351,7 +356,7 @@ export function StepContext({
         <Input
           id="context-recommended-article-type"
           value={values.recommendedArticleType}
-          placeholder="Auto-populated from journal guidance"
+          placeholder="Suggested after AI review"
           onChange={(event) => onValueChange('recommendedArticleType', event.target.value)}
           disabled={journalRecommendationsLocked}
         />
@@ -365,7 +370,7 @@ export function StepContext({
         <Input
           id="context-recommended-word-length"
           value={values.recommendedWordLength}
-          placeholder="Auto-populated from journal guidance"
+          placeholder="Suggested after AI review"
           onChange={(event) => onValueChange('recommendedWordLength', event.target.value)}
           disabled={journalRecommendationsLocked}
         />

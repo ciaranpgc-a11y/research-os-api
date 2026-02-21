@@ -583,27 +583,91 @@ def _extract_word_length_hint_from_excerpt(guidance_excerpt: str) -> str | None:
     return None
 
 
+def _infer_article_type_from_context(
+    *, research_category: str, research_type: str, article_type: str, summary_of_research: str
+) -> str:
+    current = article_type.strip()
+    if current:
+        return current
+
+    context = " ".join(
+        [
+            research_category.strip().lower(),
+            research_type.strip().lower(),
+            summary_of_research.strip().lower(),
+        ]
+    )
+    if "case series" in context:
+        return "Case Series"
+    if "case-control" in context or "case control" in context:
+        return "Original Research Article (Case-Control Study)"
+    if "diagnostic" in context or "accuracy" in context:
+        return "Original Research Article (Diagnostic Study)"
+    if "brief report" in context or "brief communication" in context:
+        return "Brief Report"
+    if "letter" in context:
+        return "Letter"
+    if "technical note" in context:
+        return "Technical Note"
+    if "review" in context:
+        return "Review Article"
+    return "Original Research Article"
+
+
 def _fallback_article_type_recommendation(
-    guidance_excerpt: str, research_type: str
-) -> dict[str, str] | None:
+    *,
+    guidance_excerpt: str,
+    research_category: str,
+    research_type: str,
+    article_type: str,
+    summary_of_research: str,
+) -> dict[str, str]:
     hint = _extract_article_type_hint_from_excerpt(guidance_excerpt)
-    if not hint and research_type.strip():
-        hint = "Original Research Article"
-    if not hint:
-        return None
+    if hint:
+        return {
+            "value": hint,
+            "rationale": "Derived from available submission guidance text; verify the exact article category before submission.",
+        }
+
+    inferred = _infer_article_type_from_context(
+        research_category=research_category,
+        research_type=research_type,
+        article_type=article_type,
+        summary_of_research=summary_of_research,
+    )
     return {
-        "value": hint,
-        "rationale": "Derived from available submission guidance text; verify exact article category before submission.",
+        "value": inferred,
+        "rationale": "Provisional recommendation from research framing when explicit journal wording was unavailable; verify at submission.",
     }
 
 
-def _fallback_word_length_recommendation(guidance_excerpt: str) -> dict[str, str] | None:
+def _fallback_word_length_for_article_type(article_type_value: str) -> str:
+    lowered = article_type_value.strip().lower()
+    if "letter" in lowered:
+        return "600-1,000 words (provisional; verify at submission)"
+    if "brief" in lowered or "short" in lowered or "rapid" in lowered:
+        return "1,500-2,500 words (provisional; verify at submission)"
+    if "case series" in lowered or "case report" in lowered:
+        return "1,500-3,000 words (provisional; verify at submission)"
+    if "technical note" in lowered:
+        return "2,000-3,000 words (provisional; verify at submission)"
+    if "review" in lowered:
+        return "4,500-6,500 words (provisional; verify at submission)"
+    return "3,000-4,500 words (provisional; verify at submission)"
+
+
+def _fallback_word_length_recommendation(
+    *, guidance_excerpt: str, article_type_value: str
+) -> dict[str, str]:
     hint = _extract_word_length_hint_from_excerpt(guidance_excerpt)
-    if not hint:
-        return None
+    if hint:
+        return {
+            "value": hint,
+            "rationale": "Extracted from submission guidance wording; confirm the final limit for the selected article type.",
+        }
     return {
-        "value": hint,
-        "rationale": "Extracted from submission guidance wording; confirm final limit for the selected article type.",
+        "value": _fallback_word_length_for_article_type(article_type_value),
+        "rationale": "Provisional range from article type when explicit journal limits were unavailable; verify at submission.",
     }
 
 
@@ -617,11 +681,25 @@ def _generate_journal_format_recommendations(
     summary_of_research: str,
     guidance_excerpt: str,
     preferred_model: str,
-) -> tuple[dict[str, str] | None, dict[str, str] | None, str]:
+) -> tuple[dict[str, str], dict[str, str], str]:
     if not guidance_excerpt.strip():
         return (
-            _fallback_article_type_recommendation(guidance_excerpt, research_type),
-            _fallback_word_length_recommendation(guidance_excerpt),
+            _fallback_article_type_recommendation(
+                guidance_excerpt=guidance_excerpt,
+                research_category=research_category,
+                research_type=research_type,
+                article_type=article_type,
+                summary_of_research=summary_of_research,
+            ),
+            _fallback_word_length_recommendation(
+                guidance_excerpt=guidance_excerpt,
+                article_type_value=_infer_article_type_from_context(
+                    research_category=research_category,
+                    research_type=research_type,
+                    article_type=article_type,
+                    summary_of_research=summary_of_research,
+                ),
+            ),
             preferred_model,
         )
 
@@ -664,17 +742,32 @@ Rules:
         )
         if article_recommendation is None:
             article_recommendation = _fallback_article_type_recommendation(
-                guidance_excerpt, research_type
+                guidance_excerpt=guidance_excerpt,
+                research_category=research_category,
+                research_type=research_type,
+                article_type=article_type,
+                summary_of_research=summary_of_research,
             )
         if word_length_recommendation is None:
             word_length_recommendation = _fallback_word_length_recommendation(
-                guidance_excerpt
+                guidance_excerpt=guidance_excerpt,
+                article_type_value=article_recommendation["value"],
             )
         return article_recommendation, word_length_recommendation, model_used
     except Exception:
+        fallback_article = _fallback_article_type_recommendation(
+            guidance_excerpt=guidance_excerpt,
+            research_category=research_category,
+            research_type=research_type,
+            article_type=article_type,
+            summary_of_research=summary_of_research,
+        )
         return (
-            _fallback_article_type_recommendation(guidance_excerpt, research_type),
-            _fallback_word_length_recommendation(guidance_excerpt),
+            fallback_article,
+            _fallback_word_length_recommendation(
+                guidance_excerpt=guidance_excerpt,
+                article_type_value=fallback_article["value"],
+            ),
             model_used,
         )
 
@@ -787,6 +880,83 @@ def _coerce_study_type_recommendation(
         return None
     recommendation["value"] = resolved_value
     return recommendation
+
+
+def _fallback_study_type_recommendation(
+    *,
+    allowed_study_types: list[str],
+    research_category: str,
+    research_type: str,
+    summary_of_research: str,
+) -> dict[str, str] | None:
+    if not allowed_study_types:
+        return None
+
+    selected = _resolve_canonical_option(research_type, allowed_study_types)
+    if selected:
+        return {
+            "value": selected,
+            "rationale": "Matches the current study framing and taxonomy selection.",
+        }
+
+    category_defaults = {
+        "Observational Clinical Cohort": "Retrospective single-centre cohort",
+        "Imaging Biomarker Study": "Cross-sectional imaging biomarker study",
+        "Prognostic / Risk Modelling": "Prognostic imaging model development",
+        "Diagnostic Study": "Diagnostic accuracy imaging study",
+        "Reproducibility / Technical Validation": "Inter-reader reproducibility study",
+        "Multimodality Integration": "Imaging-haemodynamic integration study",
+        "AI / Radiomics": "AI imaging model development",
+        "Methodological / Analytical": "Statistical methodology application study",
+    }
+    category_default = category_defaults.get(research_category.strip())
+    if category_default:
+        resolved_category_default = _resolve_canonical_option(
+            category_default, allowed_study_types
+        )
+        if resolved_category_default:
+            return {
+                "value": resolved_category_default,
+                "rationale": "Best default for the selected research category when no precise subtype was detected.",
+            }
+
+    summary_lower = summary_of_research.strip().lower()
+    heuristics: tuple[tuple[str, str], ...] = (
+        ("retrospective", "Retrospective single-centre cohort"),
+        ("prospective", "Prospective observational cohort"),
+        ("registry", "Registry-based analysis"),
+        ("case-control", "Case-control study"),
+        ("case control", "Case-control study"),
+        ("case series", "Case series"),
+        ("diagnostic", "Diagnostic accuracy imaging study"),
+        ("accuracy", "Diagnostic accuracy imaging study"),
+        ("reproducibility", "Inter-reader reproducibility study"),
+        ("repeatability", "Intra-observer repeatability study"),
+        ("haemodynamic", "Imaging-haemodynamic integration study"),
+        ("hemodynamic", "Imaging-haemodynamic integration study"),
+        ("biomarker", "Imaging-biomarker integration study"),
+        ("prognostic", "Prognostic imaging model development"),
+        ("validation", "Prognostic model external validation"),
+        ("ai", "AI imaging model development"),
+        ("radiomics", "Radiomics signature development study"),
+        ("segmentation", "Automated segmentation validation study"),
+        ("harmonisation", "Measurement harmonisation study"),
+        ("harmonization", "Measurement harmonisation study"),
+    )
+    for keyword, candidate in heuristics:
+        if keyword not in summary_lower:
+            continue
+        resolved = _resolve_canonical_option(candidate, allowed_study_types)
+        if resolved:
+            return {
+                "value": resolved,
+                "rationale": "Selected from summary terminology and aligned to the available study-type taxonomy.",
+            }
+
+    return {
+        "value": allowed_study_types[0],
+        "rationale": "Defaulted to the first canonical study type; refine manually if needed.",
+    }
 
 
 def _coerce_interpretation_mode_recommendation(value: Any) -> dict[str, str] | None:
@@ -938,6 +1108,12 @@ def generate_research_overview_suggestions(
     allowed_study_types = _clean_option_list(study_type_options)
     if research_type.strip():
         allowed_study_types = _clean_option_list([*allowed_study_types, research_type])
+    fallback_study_type_recommendation = _fallback_study_type_recommendation(
+        allowed_study_types=allowed_study_types,
+        research_category=research_category,
+        research_type=research_type,
+        summary_of_research=summary_of_research,
+    )
 
     summary_editor_refinements, summary_editor_model = _generate_summary_refinement(
         summary_of_research=summary_of_research,
@@ -1013,6 +1189,7 @@ Rules:
         model_used=combined_model_used,
         summary_refinements=summary_editor_refinements,
     )
+    base_payload["research_type_suggestion"] = fallback_study_type_recommendation
     base_payload["article_type_recommendation"] = journal_article_recommendation
     base_payload["word_length_recommendation"] = journal_word_length_recommendation
 
@@ -1035,16 +1212,12 @@ Rules:
         )
         payload["research_type_suggestion"] = _coerce_study_type_recommendation(
             parsed.get("research_type_suggestion"), allowed_study_types
-        )
+        ) or fallback_study_type_recommendation
         payload["interpretation_mode_recommendation"] = _coerce_interpretation_mode_recommendation(
             parsed.get("interpretation_mode_recommendation")
         )
-        payload["article_type_recommendation"] = journal_article_recommendation or _coerce_recommendation(
-            parsed.get("article_type_recommendation")
-        )
-        payload["word_length_recommendation"] = journal_word_length_recommendation or _coerce_recommendation(
-            parsed.get("word_length_recommendation")
-        )
+        payload["article_type_recommendation"] = journal_article_recommendation
+        payload["word_length_recommendation"] = journal_word_length_recommendation
         payload["guidance_suggestions"] = guidance_suggestions
         return payload
     except Exception:
