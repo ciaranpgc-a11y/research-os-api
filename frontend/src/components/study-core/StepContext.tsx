@@ -354,7 +354,6 @@ export function StepContext({
     <div className="space-y-6 rounded-lg border border-border bg-card p-6">
       <div className="space-y-1">
         <h2 className="text-base font-semibold">Step 1: Research overview</h2>
-        <p className="text-sm text-muted-foreground">Capture the study overview before section planning.</p>
       </div>
 
       <section className="space-y-2 rounded-md border border-border/80 bg-muted/20 p-3">
@@ -523,7 +522,7 @@ export function StepContext({
           </div>
           <textarea
             id="context-research-objective"
-            className="min-h-72 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            className="min-h-48 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
             placeholder="Summarise the research in 2-4 sentences. Provide information on the clinical problem, methods used, and the key results from the data (if available)."
             value={values.researchObjective}
             onChange={(event) => onValueChange('researchObjective', event.target.value)}

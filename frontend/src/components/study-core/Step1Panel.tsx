@@ -20,7 +20,6 @@ type Step1PanelProps = {
   onApplyInterpretationMode: (value: string) => void
   onApplyArticleType: (value: string) => void
   onApplyWordLength: (value: string) => void
-  onSaveAndContinue?: () => void
 }
 
 const ACTION_BUTTON_CLASS = 'bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500'
@@ -368,7 +367,6 @@ export function Step1Panel({
   onApplyInterpretationMode,
   onApplyArticleType,
   onApplyWordLength,
-  onSaveAndContinue,
 }: Step1PanelProps) {
   const [refinementsEnabled, setRefinementsEnabled] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -849,7 +847,6 @@ export function Step1Panel({
   const applyDisabled = loading
   const pendingToRender = pendingKeys.slice(0, 3)
   const hiddenPendingCount = Math.max(0, pendingKeys.length - pendingToRender.length)
-  const canSaveAndContinue = Boolean(refinementsEnabled && hasGenerated && pendingKeys.length === 0 && summary.trim())
   const primaryAction = useMemo(() => {
     if (!summary.trim()) {
       return null
@@ -868,23 +865,14 @@ export function Step1Panel({
         disabled: loading,
       }
     }
-    if (canSaveAndContinue && onSaveAndContinue) {
-      return {
-        label: 'Save and continue',
-        onClick: onSaveAndContinue,
-        disabled: loading,
-      }
-    }
     return {
       label: loading ? 'Refreshing...' : 'Refresh suggestions',
       onClick: () => void refreshSuggestions(),
       disabled: loading,
     }
   }, [
-    canSaveAndContinue,
     loading,
     onApplyAllPending,
-    onSaveAndContinue,
     pendingKeys.length,
     refinementsEnabled,
     summary,
@@ -1282,7 +1270,7 @@ export function Step1Panel({
 
   return (
     <aside className="space-y-3 rounded-lg border border-border bg-card p-3">
-      <h3 className="text-sm font-semibold">Research Overview Suggestions</h3>
+      <h3 className="text-sm font-semibold">Research overview suggestions</h3>
 
       <div className="space-y-2 rounded-md border border-slate-300 bg-slate-100 p-3">
         <p className="text-sm font-medium">Suggestion controls</p>
