@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { Step1Panel } from '@/components/study-core/Step1Panel'
+import { Step2Panel } from '@/components/study-core/Step2Panel'
 import { StepContext, type ContextFormValues } from '@/components/study-core/StepContext'
 import { StepDraftReview } from '@/components/study-core/StepDraftReview'
 import { StepLinkQcExport } from '@/components/study-core/StepLinkQcExport'
@@ -8,6 +9,7 @@ import { StepPlan } from '@/components/study-core/StepPlan'
 import { StepRun } from '@/components/study-core/StepRun'
 import { StudyCoreStepper, type WizardStepItem } from '@/components/study-core/StudyCoreStepper'
 import { Input } from '@/components/ui/input'
+import { analyzePlan } from '@/lib/analyze-plan'
 import {
   CURATED_CARDIOLOGY_IMAGING_JOURNALS,
   getCategoryForStudyType,
@@ -203,6 +205,40 @@ export function StudyCorePage() {
   const [error, setError] = useState('')
   const [journalRecommendationsLocked, setJournalRecommendationsLocked] = useState(false)
 
+  const applySectionPatch = useCallback((sectionName: string, bulletsToInsert: string[]) => {
+    const cleanedBullets = bulletsToInsert.map((bullet) => bullet.trim()).filter(Boolean)
+    if (cleanedBullets.length === 0) {
+      return
+    }
+    setPlan((current) => {
+      if (!current) {
+        return current
+      }
+      const sectionKey = sectionName.toLowerCase()
+      const sectionIndex = current.sections.findIndex((section) => section.name.toLowerCase() === sectionKey)
+      if (sectionIndex === -1) {
+        return {
+          ...current,
+          sections: [...current.sections, { name: sectionKey, bullets: cleanedBullets }],
+        }
+      }
+      const existingSection = current.sections[sectionIndex]
+      const deduped = [...existingSection.bullets]
+      for (const bullet of cleanedBullets) {
+        if (!deduped.some((item) => item.trim().toLowerCase() === bullet.toLowerCase())) {
+          deduped.push(bullet)
+        }
+      }
+      return {
+        ...current,
+        sections: current.sections.map((section, index) =>
+          index === sectionIndex ? { ...section, bullets: deduped } : section,
+        ),
+      }
+    })
+    setStatus(`${sectionName.charAt(0).toUpperCase()}${sectionName.slice(1)} plan updated from recommendations.`)
+  }, [])
+
   const answers = useMemo(
     () => ({
       study_type: contextValues.studyArchitecture,
@@ -232,6 +268,27 @@ export function StudyCorePage() {
   const suggestedBrief = useMemo(
     () => buildGenerationBrief(contextValues, selectedSections, guardrailsEnabled),
     [contextValues, guardrailsEnabled, selectedSections],
+  )
+  const planRecommendations = useMemo(
+    () =>
+      analyzePlan({
+        objective: contextValues.researchObjective,
+        researchCategory: contextValues.researchCategory,
+        studyType: contextValues.studyArchitecture,
+        articleType: contextValues.recommendedArticleType,
+        interpretationMode: contextValues.interpretationMode,
+        plan,
+        applySectionPatch,
+      }),
+    [
+      applySectionPatch,
+      contextValues.interpretationMode,
+      contextValues.recommendedArticleType,
+      contextValues.researchCategory,
+      contextValues.researchObjective,
+      contextValues.studyArchitecture,
+      plan,
+    ],
   )
   const step1StudyTypeOptions = useMemo(() => [...KNOWN_STUDY_TYPES], [])
   const currentResearchFrameSignature = useMemo(
@@ -425,6 +482,15 @@ export function StudyCorePage() {
         <StepPlan
           targetJournal={targetJournal}
           answers={answers}
+          planningContext={{
+            targetJournal,
+            researchCategory: contextValues.researchCategory,
+            studyType: contextValues.studyArchitecture,
+            interpretationMode: contextValues.interpretationMode,
+            articleType: contextValues.recommendedArticleType,
+            wordLength: contextValues.recommendedWordLength,
+            summary: contextValues.researchObjective,
+          }}
           selectedSections={selectedSections}
           generationBrief={generationBrief}
           plan={plan}
@@ -572,10 +638,14 @@ export function StudyCorePage() {
         />
       )
     }
+    if (currentStep === 2) {
+      return <Step2Panel hasPlan={Boolean(plan)} recommendations={planRecommendations} />
+    }
     return null
   }
 
-  const showRightPanel = currentStep === 1 && contextValues.researchObjective.trim().length > 0
+  const showRightPanel =
+    (currentStep === 1 && contextValues.researchObjective.trim().length > 0) || currentStep === 2
 
   return (
     <section className="space-y-4">

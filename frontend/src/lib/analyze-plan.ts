@@ -9,6 +9,10 @@ export type PlanRecommendation = {
 
 type AnalyzePlanState = {
   objective: string
+  researchCategory: string
+  studyType: string
+  articleType: string
+  interpretationMode: string
   plan: OutlinePlanState | null
   applySectionPatch: (section: string, bulletsToInsert: string[]) => void
 }
@@ -66,6 +70,25 @@ const METHOD_REQUIREMENTS: Requirement[] = [
   },
 ]
 
+const REVIEW_METHOD_REQUIREMENTS: Requirement[] = [
+  {
+    keywords: ['search', 'database', 'sources', 'identification strategy'],
+    bullet: 'Define literature search sources, strategy, and timeframe.',
+  },
+  {
+    keywords: ['inclusion', 'exclusion', 'eligibility'],
+    bullet: 'Define evidence inclusion and exclusion criteria.',
+  },
+  {
+    keywords: ['selection', 'screening', 'reviewer'],
+    bullet: 'Describe screening and study-selection process.',
+  },
+  {
+    keywords: ['extraction', 'data charting', 'synthesis'],
+    bullet: 'Specify data extraction and evidence synthesis approach.',
+  },
+]
+
 function findSection(plan: OutlinePlanState | null, sectionName: string): OutlinePlanSection | null {
   if (!plan) {
     return null
@@ -95,15 +118,23 @@ function objectiveTerms(objective: string): string[] {
 
 export function analyzePlan(state: AnalyzePlanState): PlanRecommendation[] {
   const recommendations: PlanRecommendation[] = []
+  const isReviewFraming =
+    state.articleType.toLowerCase().includes('review') ||
+    state.studyType.toLowerCase().includes('synthesis') ||
+    state.researchCategory.toLowerCase().includes('methodological') ||
+    state.objective.toLowerCase().includes('literature review')
   const methods = findSection(state.plan, 'methods')
   const methodsText = sectionText(methods)
-  const missingMethodItems = METHOD_REQUIREMENTS.filter((requirement) => !hasAnyKeyword(methodsText, requirement.keywords))
+  const methodRequirements = isReviewFraming ? REVIEW_METHOD_REQUIREMENTS : METHOD_REQUIREMENTS
+  const missingMethodItems = methodRequirements.filter((requirement) => !hasAnyKeyword(methodsText, requirement.keywords))
 
   if (missingMethodItems.length > 0) {
     const bulletsToInsert = missingMethodItems.map((item) => item.bullet)
     recommendations.push({
       title: 'Methods essentials are missing.',
-      rationale: 'Design, eligibility, endpoints, modeling, missing data, and sensitivity details are required for reproducibility.',
+      rationale: isReviewFraming
+        ? 'Review manuscripts still require explicit search, selection, and synthesis methods.'
+        : 'Design, eligibility, endpoints, modeling, missing data, and sensitivity details are required for reproducibility.',
       optionalPreview: bulletsToInsert.map((bullet) => `+ Methods: ${bullet}`).join('\n'),
       applyPatch: () => {
         state.applySectionPatch('methods', bulletsToInsert)
@@ -131,7 +162,7 @@ export function analyzePlan(state: AnalyzePlanState): PlanRecommendation[] {
     'p value',
   ])
 
-  if (!hasEstimate || !hasUncertainty) {
+  if (!isReviewFraming && (!hasEstimate || !hasUncertainty)) {
     const bulletsToInsert = [
       !hasEstimate ? 'Report the primary estimate for the main endpoint.' : '',
       !hasUncertainty ? 'Report uncertainty for each primary estimate (for example 95% CI).' : '',
@@ -169,6 +200,37 @@ export function analyzePlan(state: AnalyzePlanState): PlanRecommendation[] {
         state.applySectionPatch('discussion', bulletsToInsert)
       },
     })
+  }
+
+  const interpretationLower = state.interpretationMode.toLowerCase()
+  const requiresAssociativeLanguage =
+    interpretationLower.includes('associative') ||
+    interpretationLower.includes('non-causal') ||
+    interpretationLower.includes('descriptive')
+  if (requiresAssociativeLanguage && state.plan) {
+    const combinedText = state.plan.sections.map((section) => sectionText(section)).join(' ')
+    const hasCausalPhrasing = hasAnyKeyword(combinedText, [
+      'causal',
+      'causes',
+      'caused',
+      'cause',
+      'leads to',
+      'effect of',
+      'drives',
+    ])
+    if (hasCausalPhrasing) {
+      const bulletsToInsert = [
+        'Use associative wording only and avoid causal phrasing unless explicitly justified.',
+      ]
+      recommendations.push({
+        title: 'Interpretation wording is inconsistent.',
+        rationale: 'Current interpretation mode requires non-causal phrasing across the plan.',
+        optionalPreview: bulletsToInsert.map((bullet) => `+ Discussion: ${bullet}`).join('\n'),
+        applyPatch: () => {
+          state.applySectionPatch('discussion', bulletsToInsert)
+        },
+      })
+    }
   }
 
   const objective = state.objective.trim()

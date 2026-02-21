@@ -18,6 +18,15 @@ type RefinementMode = 'regenerate' | 'tighten' | 'specificity' | 'mechanistic'
 type StepPlanProps = {
   targetJournal: string
   answers: Record<string, string>
+  planningContext: {
+    targetJournal: string
+    researchCategory: string
+    studyType: string
+    interpretationMode: string
+    articleType: string
+    wordLength: string
+    summary: string
+  }
   selectedSections: string[]
   generationBrief: string
   plan: OutlinePlanState | null
@@ -124,9 +133,76 @@ function mergeBullets(existing: string[], additions: string[]): string[] {
   return dedupeBullets([...existing, ...additions])
 }
 
+function sectionContextBullets(
+  section: string,
+  context: StepPlanProps['planningContext'],
+): string[] {
+  const isReview =
+    context.articleType.toLowerCase().includes('review') ||
+    context.studyType.toLowerCase().includes('synthesis') ||
+    context.summary.toLowerCase().includes('literature review')
+
+  if (section === 'introduction') {
+    return dedupeBullets([
+      context.summary ? `State the research focus directly: ${context.summary}` : '',
+      context.researchCategory ? `Frame the manuscript as: ${context.researchCategory}.` : '',
+      context.interpretationMode ? `Set interpretation scope as: ${context.interpretationMode}.` : '',
+    ])
+  }
+  if (section === 'methods') {
+    if (isReview) {
+      return dedupeBullets([
+        'Define literature identification approach, sources, and date range.',
+        'Define inclusion and exclusion criteria for evidence selection.',
+        'Specify evidence extraction and synthesis method.',
+      ])
+    }
+    return dedupeBullets([
+      context.studyType ? `Specify study design as: ${context.studyType}.` : 'Specify study design and study period.',
+      'Define inclusion and exclusion criteria.',
+      'Define primary and secondary endpoints.',
+      'Specify modelling strategy, covariate adjustment, and missing-data handling.',
+    ])
+  }
+  if (section === 'results') {
+    if (isReview) {
+      return dedupeBullets([
+        'Summarise included evidence characteristics and thematic findings.',
+        'Report consistency, heterogeneity, and uncertainty in the evidence base.',
+      ])
+    }
+    return dedupeBullets([
+      'Report primary estimate for the main endpoint.',
+      'Report uncertainty for each primary estimate (for example 95% CI).',
+      'Report sensitivity analysis findings.',
+    ])
+  }
+  if (section === 'discussion') {
+    return dedupeBullets([
+      'Interpret findings within the defined non-causal scope.',
+      'State key limitations and alternative explanations.',
+      'Define implications for practice and next-step validation work.',
+    ])
+  }
+  return []
+}
+
+function buildContextScaffold(
+  sections: string[],
+  context: StepPlanProps['planningContext'],
+): OutlinePlanState {
+  return {
+    sections: sections.map((section) => ({
+      name: section,
+      bullets: sectionContextBullets(section, context),
+    })),
+  }
+}
+
 export function StepPlan({
   targetJournal,
   answers,
+  planningContext,
   selectedSections,
   generationBrief,
   plan,
@@ -176,7 +252,7 @@ export function StepPlan({
     onError('')
     try {
       const payload = await planSections({
-        targetJournal,
+        targetJournal: targetJournal.trim() || 'generic-original',
         answers,
         sections: selectedSections,
       })
@@ -225,7 +301,7 @@ export function StepPlan({
     try {
       const config = REFINEMENT_CONFIG[mode]
       const payload = await planSections({
-        targetJournal,
+        targetJournal: targetJournal.trim() || 'generic-original',
         answers: {
           ...answers,
           outline_refinement_mode: mode,
@@ -246,11 +322,30 @@ export function StepPlan({
     }
   }
 
+  const onBuildContextScaffold = () => {
+    if (selectedSections.length === 0) {
+      setAttemptedSubmit(true)
+      return
+    }
+    onPlanChange(buildContextScaffold(selectedSections, planningContext))
+    onStatus('Context scaffold created from Step 1 framing. Refine or regenerate sections as needed.')
+  }
+
   return (
     <div className="space-y-4 rounded-lg border border-border bg-card p-4">
       <div className="space-y-1">
         <h2 className="text-base font-semibold">Step 2: Plan Sections</h2>
         <p className="text-sm text-muted-foreground">Select sections, generate the outline, and edit inline.</p>
+      </div>
+
+      <div className="rounded-md border border-border/80 bg-muted/20 p-3 text-xs text-muted-foreground">
+        <p>
+          Context in use: {planningContext.targetJournal || 'No journal selected'} |{' '}
+          {planningContext.researchCategory || 'No research category'} | {planningContext.studyType || 'No study type'}
+        </p>
+        <p>
+          Article type: {planningContext.articleType || 'Not set'} | Target length: {planningContext.wordLength || 'Not set'}
+        </p>
       </div>
 
       <div className="space-y-2">
@@ -276,10 +371,15 @@ export function StepPlan({
 
       {hasSelectionError ? <p className="text-xs text-destructive">Select at least one section before generating the plan.</p> : null}
 
-      <Button onClick={onGeneratePlan} disabled={busy === 'plan'}>
-        {busy === 'plan' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
-        Generate Plan
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" onClick={onBuildContextScaffold} disabled={busy !== ''}>
+          Build contextual scaffold
+        </Button>
+        <Button onClick={onGeneratePlan} disabled={busy === 'plan'}>
+          {busy === 'plan' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+          Generate Plan
+        </Button>
+      </div>
 
       {plan ? (
         <div className="space-y-3 rounded-md border border-border p-3">
