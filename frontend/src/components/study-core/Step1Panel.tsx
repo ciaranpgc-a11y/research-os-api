@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { API_BASE_URL } from '@/lib/api'
 import { fetchResearchOverviewSuggestions } from '@/lib/study-core-api'
 import type { ResearchOverviewSuggestionsPayload } from '@/types/study-core'
 
@@ -31,6 +32,112 @@ const JOURNAL_CARD_CLASS = 'space-y-2 rounded-md border border-amber-300 bg-grad
 const CARD_TRANSITION_CLASS = 'transition-all duration-500 ease-out'
 
 type AppliedKey = 'summary' | 'researchType' | 'interpretationMode' | 'journal'
+
+function inferOfflineStudyType(studyTypeOptions: string[], summary: string, currentValue: string): string {
+  const lowerSummary = summary.toLowerCase()
+  const candidates = [...studyTypeOptions]
+  if (currentValue.trim()) {
+    candidates.unshift(currentValue.trim())
+  }
+  const uniqueCandidates = Array.from(new Set(candidates))
+
+  const matchByKeyword = (keywords: string[]) =>
+    uniqueCandidates.find((option) => keywords.every((keyword) => option.toLowerCase().includes(keyword)))
+
+  if (lowerSummary.includes('haemodynamic') || lowerSummary.includes('hemodynamic')) {
+    const integrated = matchByKeyword(['haemodynamic', 'integration']) || matchByKeyword(['hemodynamic', 'integration'])
+    if (integrated) {
+      return integrated
+    }
+  }
+  if (lowerSummary.includes('diagnostic') || lowerSummary.includes('accuracy')) {
+    const diagnostic = uniqueCandidates.find((option) => option.toLowerCase().includes('diagnostic'))
+    if (diagnostic) {
+      return diagnostic
+    }
+  }
+  if (lowerSummary.includes('prognostic') || lowerSummary.includes('risk')) {
+    const prognostic = uniqueCandidates.find((option) => option.toLowerCase().includes('prognostic'))
+    if (prognostic) {
+      return prognostic
+    }
+  }
+  if (lowerSummary.includes('retrospective')) {
+    const retrospective = uniqueCandidates.find((option) => option.toLowerCase().includes('retrospective'))
+    if (retrospective) {
+      return retrospective
+    }
+  }
+  if (lowerSummary.includes('prospective')) {
+    const prospective = uniqueCandidates.find((option) => option.toLowerCase().includes('prospective'))
+    if (prospective) {
+      return prospective
+    }
+  }
+  if (lowerSummary.includes('case series')) {
+    const caseSeries = uniqueCandidates.find((option) => option.toLowerCase().includes('case series'))
+    if (caseSeries) {
+      return caseSeries
+    }
+  }
+  return uniqueCandidates[0] ?? ''
+}
+
+function inferOfflineInterpretationMode(summary: string): string {
+  const lowerSummary = summary.toLowerCase()
+  if (lowerSummary.includes('diagnostic') || lowerSummary.includes('accuracy')) {
+    return 'Diagnostic performance interpretation'
+  }
+  if (lowerSummary.includes('prognostic') || lowerSummary.includes('survival') || lowerSummary.includes('time-to-event')) {
+    return 'Time-to-event prognostic interpretation'
+  }
+  if (lowerSummary.includes('mechanistic') || lowerSummary.includes('pathophysiolog')) {
+    return 'Hypothesis-generating mechanistic interpretation'
+  }
+  return 'Associative risk or prognostic inference'
+}
+
+function buildOfflineSuggestions(input: {
+  summary: string
+  researchType: string
+  studyTypeOptions: string[]
+  interpretationMode: string
+  articleType: string
+  wordLength: string
+}): ResearchOverviewSuggestionsPayload {
+  const normalizedSummary = input.summary.trim()
+  const offlineStudyType = inferOfflineStudyType(input.studyTypeOptions, normalizedSummary, input.researchType)
+  const offlineInterpretationMode = input.interpretationMode.trim() || inferOfflineInterpretationMode(normalizedSummary)
+  const offlineArticleType = input.articleType.trim() || 'Original Research Article'
+  const offlineWordLength = input.wordLength.trim() || '3,000-4,500 words (provisional; verify at submission)'
+
+  return {
+    summary_refinements: normalizedSummary ? [normalizedSummary] : [],
+    research_type_suggestion: offlineStudyType
+      ? {
+          value: offlineStudyType,
+          rationale: 'Provisional offline recommendation based on summary terms and available study-type options.',
+        }
+      : null,
+    interpretation_mode_recommendation: offlineInterpretationMode
+      ? {
+          value: offlineInterpretationMode,
+          rationale: 'Provisional offline recommendation from summary wording.',
+        }
+      : null,
+    article_type_recommendation: {
+      value: offlineArticleType,
+      rationale: 'Provisional offline recommendation used because the live API is unavailable.',
+    },
+    word_length_recommendation: {
+      value: offlineWordLength,
+      rationale: 'Provisional offline recommendation used because the live API is unavailable.',
+    },
+    guidance_suggestions: [],
+    source_urls: [],
+    model_used: 'offline-fallback',
+  }
+}
 
 export function Step1Panel({
   summary,
@@ -128,7 +235,18 @@ export function Step1Panel({
       setSuggestions(response)
       setGeneratedKey(currentKey)
     } catch (error) {
-      setRequestError(error instanceof Error ? error.message : 'Could not generate suggestions.')
+      const fallback = buildOfflineSuggestions({
+        summary,
+        researchType,
+        studyTypeOptions,
+        interpretationMode,
+        articleType: currentArticleType,
+        wordLength: currentWordLength,
+      })
+      setSuggestions(fallback)
+      setGeneratedKey(currentKey)
+      const message = error instanceof Error ? error.message : 'Could not generate suggestions.'
+      setRequestError(`${message} Showing provisional offline suggestions. Endpoint: ${API_BASE_URL}`)
     } finally {
       setLoading(false)
     }
@@ -234,7 +352,7 @@ export function Step1Panel({
         >
           <p className="text-sm font-medium text-emerald-900">Summary of research refinement</p>
           {loading && !hasGenerated ? <p className="text-xs text-emerald-900">Generating rewrite...</p> : null}
-          {!loading && !summarySuggestion ? <p className="text-xs text-emerald-900">No summary rewrite returned. Use Refresh.</p> : null}
+          {!loading && !summarySuggestion ? <p className="text-xs text-emerald-900">No summary rewrite returned. Use Refresh suggestions.</p> : null}
           {summarySuggestion ? (
             <div className="rounded border border-emerald-300 bg-white p-2">
               <p className="text-xs text-emerald-950">{summarySuggestion}</p>
@@ -259,7 +377,7 @@ export function Step1Panel({
           <p className="text-sm font-medium text-sky-900">Research type suggestion</p>
           {loading && !hasGenerated ? <p className="text-xs text-sky-900">Generating research type suggestion...</p> : null}
           {!loading && !researchTypeSuggestion ? (
-            <p className="text-xs text-sky-900">No research type suggestion returned. Use Refresh.</p>
+            <p className="text-xs text-sky-900">No research type suggestion returned. Use Refresh suggestions.</p>
           ) : null}
           {researchTypeSuggestion && isResearchTypeApplied ? (
             <>
@@ -292,7 +410,7 @@ export function Step1Panel({
           <p className="text-sm font-medium text-cyan-900">Interpretation mode suggestion</p>
           {loading && !hasGenerated ? <p className="text-xs text-cyan-900">Generating interpretation mode suggestion...</p> : null}
           {!loading && !interpretationSuggestion ? (
-            <p className="text-xs text-cyan-900">No interpretation mode suggestion returned. Use Refresh.</p>
+            <p className="text-xs text-cyan-900">No interpretation mode suggestion returned. Use Refresh suggestions.</p>
           ) : null}
           {interpretationSuggestion && isInterpretationModeApplied ? (
             <>
@@ -373,7 +491,7 @@ export function Step1Panel({
           ) : articleSuggestion || wordLengthSuggestion ? (
             <p className="text-xs text-amber-900">Journal recommendations are already applied.</p>
           ) : (
-            !loading && <p className="text-xs text-amber-900">No journal recommendations returned. Use Refresh.</p>
+            !loading && <p className="text-xs text-amber-900">No journal recommendations returned. Use Refresh suggestions.</p>
           )}
         </div>
       ) : null}

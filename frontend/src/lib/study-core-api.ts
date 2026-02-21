@@ -107,19 +107,24 @@ export async function fetchResearchOverviewSuggestions(input: {
   interpretationMode: string
   summaryOfResearch: string
 }): Promise<ResearchOverviewSuggestionsPayload> {
-  const response = await fetch(`${API_BASE_URL}/v1/aawe/research-overview/suggestions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      target_journal: input.targetJournal,
-      research_category: input.researchCategory,
-      research_type: input.researchType,
-      study_type_options: input.studyTypeOptions,
-      article_type: input.articleType,
-      interpretation_mode: input.interpretationMode,
-      summary_of_research: input.summaryOfResearch,
-    }),
-  })
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}/v1/aawe/research-overview/suggestions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        target_journal: input.targetJournal,
+        research_category: input.researchCategory,
+        research_type: input.researchType,
+        study_type_options: input.studyTypeOptions,
+        article_type: input.articleType,
+        interpretation_mode: input.interpretationMode,
+        summary_of_research: input.summaryOfResearch,
+      }),
+    })
+  } catch {
+    throw new Error(`Could not reach API at ${API_BASE_URL}. Start backend service and retry.`)
+  }
   if (!response.ok) {
     throw new Error(await parseApiError(response, `Research overview suggestions failed (${response.status})`))
   }
