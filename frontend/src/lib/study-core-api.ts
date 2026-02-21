@@ -100,7 +100,9 @@ export async function planSections(input: {
 }
 
 export async function fetchPlanClarificationQuestions(input: {
+  projectTitle: string
   targetJournal: string
+  targetJournalLabel: string
   researchCategory: string
   studyType: string
   interpretationMode: string
@@ -112,7 +114,9 @@ export async function fetchPlanClarificationQuestions(input: {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      project_title: input.projectTitle,
       target_journal: input.targetJournal,
+      target_journal_label: input.targetJournalLabel,
       research_category: input.researchCategory,
       study_type: input.studyType,
       interpretation_mode: input.interpretationMode,

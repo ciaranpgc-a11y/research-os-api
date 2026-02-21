@@ -307,7 +307,9 @@ class PlanClarificationQuestionResponse(BaseModel):
 
 
 class PlanClarificationQuestionsRequest(BaseModel):
+    project_title: str = ""
     target_journal: str = ""
+    target_journal_label: str = ""
     research_category: str = ""
     study_type: str = ""
     interpretation_mode: str = ""

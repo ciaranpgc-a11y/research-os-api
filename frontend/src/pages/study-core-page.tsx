@@ -714,6 +714,7 @@ export function StudyCorePage() {
           hasPlan={Boolean(plan)}
           recommendations={planRecommendations}
           planningContext={{
+            projectTitle: contextValues.projectTitle,
             targetJournal,
             targetJournalLabel,
             researchCategory: contextValues.researchCategory,

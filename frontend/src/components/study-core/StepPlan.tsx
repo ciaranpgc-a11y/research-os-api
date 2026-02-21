@@ -2,14 +2,14 @@ import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { getJournalQualityScore } from '@/lib/research-frame-options'
-import { estimateGeneration, planSections } from '@/lib/study-core-api'
+import { getJournalQualityScore, getJournalQualityStars } from '@/lib/research-frame-options'
+import { planSections } from '@/lib/study-core-api'
 import type {
-  GenerationEstimate,
   OutlinePlanSection,
   OutlinePlanState,
   SectionPlanItem,
   SectionPlanPayload,
+  Step2ClarificationResponse,
 } from '@/types/study-core'
 
 const DEFAULT_PLAN_SECTIONS = ['introduction', 'methods', 'results', 'discussion', 'conclusion'] as const
@@ -32,11 +32,10 @@ type StepPlanProps = {
   selectedSections: string[]
   generationBrief: string
   plan: OutlinePlanState | null
-  estimatePreview: GenerationEstimate | null
+  clarificationResponses: Step2ClarificationResponse[]
   mechanisticRelevant: boolean
   onSectionsChange: (sections: string[]) => void
   onPlanChange: (plan: OutlinePlanState | null) => void
-  onEstimateChange: (estimate: GenerationEstimate | null) => void
   onStatus: (message: string) => void
   onError: (message: string) => void
 }
@@ -128,7 +127,7 @@ function mergeBullets(existing: string[], additions: string[]): string[] {
   return dedupeBullets([...existing, ...additions])
 }
 
-function getScaledTileClass(score: 2 | 3 | 4 | 5 | null): string {
+function getJournalTileClass(score: 2 | 3 | 4 | 5 | null): string {
   const baseClass = 'rounded-md border p-2'
   if (score === null) {
     return `${baseClass} border-border/70 bg-background`
@@ -153,21 +152,46 @@ function getWordLengthScaleScore(value: string): 2 | 3 | 4 | 5 | null {
     return null
   }
   const upperBound = Math.max(...numbers)
-  if (upperBound <= 2500) {
-    return 2
-  }
-  if (upperBound <= 4500) {
-    return 4
-  }
-  if (upperBound <= 6500) {
+  if (upperBound < 1500) {
     return 5
   }
-  return 3
+  if (upperBound <= 4000) {
+    return 3
+  }
+  return 2
+}
+
+function getWordLengthTileClass(score: 2 | 3 | 4 | 5 | null): string {
+  const baseClass = 'rounded-md border p-2'
+  if (score === null) {
+    return `${baseClass} border-border/70 bg-background`
+  }
+  if (score >= 5) {
+    return `${baseClass} border-emerald-300 bg-emerald-50/70`
+  }
+  if (score >= 3) {
+    return `${baseClass} border-amber-300 bg-amber-50/65`
+  }
+  return `${baseClass} border-rose-300 bg-rose-50/70`
+}
+
+function buildClarificationNotes(responses: Step2ClarificationResponse[]): string {
+  const answered = responses.filter((item) => item.answer)
+  if (answered.length === 0) {
+    return ''
+  }
+  return answered
+    .map((item) => {
+      const comment = item.comment.trim()
+      return comment ? `${item.prompt} -> ${item.answer.toUpperCase()} (${comment})` : `${item.prompt} -> ${item.answer.toUpperCase()}`
+    })
+    .join(' | ')
 }
 
 function sectionContextBullets(
   section: string,
   context: StepPlanProps['planningContext'],
+  clarificationNotes: string,
 ): string[] {
   const isReview =
     context.articleType.toLowerCase().includes('review') ||
@@ -179,6 +203,7 @@ function sectionContextBullets(
       context.summary ? `State the research focus directly: ${context.summary}` : '',
       context.researchCategory ? `Frame the manuscript as: ${context.researchCategory}.` : '',
       context.interpretationMode ? `Set interpretation scope as: ${context.interpretationMode}.` : '',
+      clarificationNotes ? `Apply these planning clarifications: ${clarificationNotes}.` : '',
     ])
   }
   if (section === 'methods') {
@@ -222,11 +247,12 @@ function sectionContextBullets(
 function buildContextScaffold(
   sections: string[],
   context: StepPlanProps['planningContext'],
+  clarificationNotes: string,
 ): OutlinePlanState {
   return {
     sections: sections.map((section) => ({
       name: section,
-      bullets: sectionContextBullets(section, context),
+      bullets: sectionContextBullets(section, context, clarificationNotes),
     })),
   }
 }
@@ -236,27 +262,30 @@ export function StepPlan({
   answers,
   planningContext,
   selectedSections,
-  generationBrief,
   plan,
-  estimatePreview,
+  clarificationResponses,
   mechanisticRelevant,
   onSectionsChange,
   onPlanChange,
-  onEstimateChange,
   onStatus,
   onError,
 }: StepPlanProps) {
-  const [busy, setBusy] = useState<'plan' | 'estimate' | ''>('')
+  const [busy, setBusy] = useState<'plan' | ''>('')
   const [refineBusyKey, setRefineBusyKey] = useState('')
   const [activeSectionName, setActiveSectionName] = useState<string>(DEFAULT_PLAN_SECTIONS[0])
 
   const orderedSections = useMemo(() => [...DEFAULT_PLAN_SECTIONS], [])
+  const clarificationNotes = useMemo(() => buildClarificationNotes(clarificationResponses), [clarificationResponses])
+  const journalStars = useMemo(
+    () => (planningContext.targetJournal ? getJournalQualityStars(planningContext.targetJournal) : ''),
+    [planningContext.targetJournal],
+  )
   const journalTileClass = useMemo(
-    () => getScaledTileClass(planningContext.targetJournal ? getJournalQualityScore(planningContext.targetJournal) : null),
+    () => getJournalTileClass(planningContext.targetJournal ? getJournalQualityScore(planningContext.targetJournal) : null),
     [planningContext.targetJournal],
   )
   const wordLengthTileClass = useMemo(
-    () => getScaledTileClass(getWordLengthScaleScore(planningContext.wordLength)),
+    () => getWordLengthTileClass(getWordLengthScaleScore(planningContext.wordLength)),
     [planningContext.wordLength],
   )
 
@@ -306,7 +335,10 @@ export function StepPlan({
     try {
       const payload = await planSections({
         targetJournal: targetJournal.trim() || 'generic-original',
-        answers,
+        answers: {
+          ...answers,
+          clarification_notes: clarificationNotes,
+        },
         sections: orderedSections,
       })
       onPlanChange(toOutlinePlan(payload, orderedSections))
@@ -314,23 +346,6 @@ export function StepPlan({
       onStatus(`Generated plan for ${payload.items.length} section(s).`)
     } catch (error) {
       onError(error instanceof Error ? error.message : 'Could not generate plan.')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  const onEstimatePreview = async () => {
-    setBusy('estimate')
-    onError('')
-    try {
-      const payload = await estimateGeneration({
-        sections: orderedSections,
-        notesContext: generationBrief,
-      })
-      onEstimateChange(payload)
-      onStatus(`Estimate preview ready (high-side $${payload.estimated_cost_usd_high.toFixed(4)}).`)
-    } catch (error) {
-      onError(error instanceof Error ? error.message : 'Could not estimate generation.')
     } finally {
       setBusy('')
     }
@@ -355,6 +370,7 @@ export function StepPlan({
         targetJournal: targetJournal.trim() || 'generic-original',
         answers: {
           ...answers,
+          clarification_notes: clarificationNotes,
           outline_refinement_mode: mode,
           outline_refinement_instruction: config.instruction,
           outline_current_bullets: section.bullets.join('\n'),
@@ -374,7 +390,7 @@ export function StepPlan({
   }
 
   const onBuildContextScaffold = () => {
-    onPlanChange(buildContextScaffold(orderedSections, planningContext))
+    onPlanChange(buildContextScaffold(orderedSections, planningContext, clarificationNotes))
     setActiveSectionName(orderedSections[0])
     onStatus('Context scaffold created from Step 1 framing. Refine or regenerate sections as needed.')
   }
@@ -387,11 +403,18 @@ export function StepPlan({
       </div>
 
       <div className="space-y-2 rounded-md border border-border/80 bg-muted/20 p-3">
-        <p className="text-xs font-medium text-muted-foreground">Step 1 Context</p>
+        <p className="text-xs font-medium text-muted-foreground">
+          Introduction, Methods, Results, Discussion, Conclusion overview
+        </p>
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           <div className={journalTileClass}>
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Target journal</p>
             <p className="text-sm">{planningContext.targetJournalLabel || planningContext.targetJournal || 'Not set'}</p>
+            {journalStars ? (
+              <p className="text-xs text-muted-foreground">
+                Journal standard: <span className="font-medium text-slate-700">{journalStars}</span>
+              </p>
+            ) : null}
           </div>
           <div className="rounded-md border border-border/70 bg-background p-2">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Research category</p>
@@ -565,22 +588,6 @@ export function StepPlan({
         </div>
       ) : null}
 
-      <details className="rounded-md border border-border/70 bg-muted/20 p-3">
-        <summary className="cursor-pointer text-sm font-medium">Details</summary>
-        <div className="mt-3 space-y-2">
-          <Button variant="outline" size="sm" onClick={() => void onEstimatePreview()} disabled={busy === 'estimate'}>
-            {busy === 'estimate' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
-            Refresh estimate preview
-          </Button>
-          {estimatePreview ? (
-            <p className="text-xs text-muted-foreground">
-              Estimated cost range: ${estimatePreview.estimated_cost_usd_low.toFixed(4)}-${estimatePreview.estimated_cost_usd_high.toFixed(4)}
-            </p>
-          ) : (
-            <p className="text-xs text-muted-foreground">No estimate preview yet.</p>
-          )}
-        </div>
-      </details>
     </div>
   )
 }

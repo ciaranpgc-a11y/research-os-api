@@ -424,7 +424,9 @@ def v1_plan_aawe_clarification_questions(
     request: PlanClarificationQuestionsRequest,
 ) -> PlanClarificationQuestionsResponse:
     payload = generate_plan_clarification_questions(
+        project_title=request.project_title,
         target_journal=request.target_journal,
+        target_journal_label=request.target_journal_label,
         research_category=request.research_category,
         study_type=request.study_type,
         interpretation_mode=request.interpretation_mode,
