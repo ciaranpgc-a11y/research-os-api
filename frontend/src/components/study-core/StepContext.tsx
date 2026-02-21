@@ -66,6 +66,14 @@ const SUMMARY_HELPER_CHIPS: Array<{ id: string; label: string; text: string }> =
   },
 ]
 
+function normalizeHelperText(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 function buildAnalysisSummary(values: ContextFormValues): string {
   const parts: string[] = []
   if (!values.interpretationMode.trim()) {
@@ -159,6 +167,16 @@ export function StepContext({
   const needsInterpretationRealign = Boolean(
     studyTypeDefaults && values.interpretationMode.trim() !== interpretationRealignValue,
   )
+  const activeSummaryHelperIds = useMemo(() => {
+    const summaryLower = values.researchObjective.toLowerCase()
+    const ids = new Set<string>()
+    for (const helper of SUMMARY_HELPER_CHIPS) {
+      if (summaryLower.includes(helper.text.toLowerCase())) {
+        ids.add(helper.id)
+      }
+    }
+    return ids
+  }, [values.researchObjective])
 
   useEffect(() => {
     if (!values.studyArchitecture.trim()) {
@@ -296,14 +314,27 @@ export function StepContext({
     void onSaveContext()
   }, [saveRequestId])
 
-  const onInsertSummaryHelper = (helperText: string) => {
-    const current = values.researchObjective.trim()
-    const normalizedCurrent = current.toLowerCase()
-    const normalizedHelper = helperText.toLowerCase()
-    if (normalizedCurrent.includes(normalizedHelper)) {
+  const onToggleSummaryHelper = (helperText: string) => {
+    const current = values.researchObjective
+    const normalizedHelper = normalizeHelperText(helperText)
+    const currentLower = current.toLowerCase()
+    const helperLower = helperText.toLowerCase()
+
+    if (currentLower.includes(helperLower)) {
+      const lines = current.split(/\r?\n/)
+      const filteredLines = lines.filter((line) => normalizeHelperText(line) !== normalizedHelper)
+      let next = filteredLines.join('\n')
+      if (next === current) {
+        const inlinePattern = new RegExp(escapeRegExp(helperText), 'gi')
+        next = next.replace(inlinePattern, '')
+      }
+      next = next.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+      onValueChange('researchObjective', next)
       return
     }
-    const next = current ? `${current}\n${helperText}` : helperText
+
+    const trimmedCurrent = current.trim()
+    const next = trimmedCurrent ? `${trimmedCurrent}\n${helperText}` : helperText
     onValueChange('researchObjective', next)
   }
 
@@ -490,10 +521,15 @@ export function StepContext({
                 type="button"
                 size="sm"
                 variant="outline"
-                className="border-slate-300 text-slate-700 hover:bg-slate-100"
-                onClick={() => onInsertSummaryHelper(helper.text)}
+                className={
+                  activeSummaryHelperIds.has(helper.id)
+                    ? 'border-emerald-400 bg-emerald-100 text-emerald-900 hover:bg-emerald-200'
+                    : 'border-slate-300 text-slate-700 hover:bg-slate-100'
+                }
+                onClick={() => onToggleSummaryHelper(helper.text)}
               >
                 {helper.label}
+                {activeSummaryHelperIds.has(helper.id) ? ' (on)' : ''}
               </Button>
             ))}
           </div>
