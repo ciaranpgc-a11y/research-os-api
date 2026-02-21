@@ -454,15 +454,6 @@ def _normalize_summary_text(text: str) -> str:
     return normalized
 
 
-def _coerce_to_associative_language(text: str) -> str:
-    if not text:
-        return text
-    rewritten = text
-    for pattern, replacement in _CAUSAL_REPLACEMENTS:
-        rewritten = pattern.sub(replacement, rewritten)
-    return rewritten
-
-
 def _content_tokens(text: str) -> set[str]:
     tokens = {
         token.lower()
@@ -565,136 +556,19 @@ def _merge_unique_strings(primary: list[str], fallback: list[str], max_items: in
     return merged
 
 
-def _fallback_summary_refinements(
-    summary_of_research: str, research_type: str, interpretation_mode: str
-) -> list[str]:
-    summary = _normalize_summary_text(summary_of_research)
-    if not summary:
-        return []
-
-    design = research_type.strip()
-    if design and design.lower() not in summary.lower():
-        with_design = f"{design}: {summary[0].lower()}{summary[1:]}" if len(summary) > 1 else f"{design}: {summary.lower()}"
-    else:
-        with_design = summary
-
-    associative = _coerce_to_associative_language(summary)
-    mode = interpretation_mode.strip().lower()
-    if "confirmatory" not in mode:
-        associative = _coerce_to_associative_language(associative)
-
-    fallback_candidates = [summary, associative, _normalize_summary_text(with_design)]
-    return _merge_unique_strings(
-        _sanitize_summary_refinements(fallback_candidates, summary),
-        [summary],
-        max_items=1,
-    )
-
-
-def _fallback_interpretation_mode_recommendation(
+def _empty_payload(
     *,
-    research_category: str,
-    research_type: str,
-    article_type: str,
-    summary_of_research: str,
-) -> dict[str, str]:
-    category = research_category.strip().lower()
-    study_type = research_type.strip().lower()
-    article = article_type.strip().lower()
-    summary = summary_of_research.strip().lower()
-
-    mode = "Associative risk or prognostic inference"
-    rationale = (
-        "Selected because this framing is appropriate for observational clinical studies "
-        "without causal claims."
-    )
-
-    diagnostic_cues = ("diagnostic", "classification", "threshold")
-    prognostic_cues = ("prognostic", "risk", "time-to-event", "survival")
-    model_dev_cues = ("model development", "ai imaging model development")
-    model_validation_cues = ("validation", "external validation", "internal validation")
-    mechanistic_cues = ("mechanistic", "pathophysiologic", "haemodynamic integration")
-    reproducibility_cues = ("reproducibility", "repeatability", "inter-reader", "intra-observer")
-
-    if any(cue in study_type or cue in category or cue in article for cue in diagnostic_cues):
-        mode = "Diagnostic performance interpretation"
-        rationale = (
-            "Selected because the chosen research framing is diagnostic and should be interpreted "
-            "as diagnostic performance rather than causation."
-        )
-    elif any(cue in study_type or cue in category or cue in article or cue in summary for cue in model_validation_cues):
-        mode = "Predictive model external validation interpretation"
-        rationale = (
-            "Selected because the study framing indicates model validation, which is best interpreted "
-            "as predictive validation performance."
-        )
-    elif any(cue in study_type or cue in category or cue in article or cue in summary for cue in model_dev_cues):
-        mode = "Predictive model development interpretation"
-        rationale = (
-            "Selected because the study framing indicates model development and should be interpreted "
-            "as predictive model development."
-        )
-    elif any(cue in study_type or cue in category or cue in summary for cue in prognostic_cues):
-        mode = "Time-to-event prognostic interpretation"
-        rationale = (
-            "Selected because the study framing is prognostic/risk-oriented and should be interpreted "
-            "as prognostic association."
-        )
-    elif any(cue in study_type or cue in category or cue in summary for cue in mechanistic_cues):
-        mode = "Hypothesis-generating mechanistic interpretation"
-        rationale = (
-            "Selected because the study framing is mechanistic and should remain hypothesis-generating "
-            "without causal overreach."
-        )
-    elif any(cue in study_type or cue in category or cue in summary for cue in reproducibility_cues):
-        mode = "Replication or confirmatory association interpretation"
-        rationale = (
-            "Selected because the study framing is reproducibility/technical validation and should be "
-            "interpreted as replication or confirmatory performance."
-        )
-
-    if mode not in _INTERPRETATION_MODE_OPTIONS:
-        mode = "Associative risk or prognostic inference"
-        rationale = (
-            "Selected because observational framing is safest interpreted as association/prognosis."
-        )
-
-    return {"value": mode, "rationale": rationale}
-
-
-def _fallback_payload(
-    summary_of_research: str,
-    research_category: str,
-    research_type: str,
-    article_type: str,
-    interpretation_mode: str,
     fetched_urls: list[str],
     model_used: str,
+    summary_refinements: list[str] | None = None,
 ) -> dict[str, object]:
     return {
-        "summary_refinements": _fallback_summary_refinements(
-            summary_of_research, research_type, interpretation_mode
-        ),
+        "summary_refinements": summary_refinements or [],
         "research_type_suggestion": None,
-        "interpretation_mode_recommendation": _fallback_interpretation_mode_recommendation(
-            research_category=research_category,
-            research_type=research_type,
-            article_type=article_type,
-            summary_of_research=summary_of_research,
-        ),
-        "article_type_recommendation": {
-            "value": "Original Research",
-            "rationale": "Default recommendation for observational cohort submissions.",
-        },
-        "word_length_recommendation": {
-            "value": "Abstract 250-300 words; main text 3000-4500 words.",
-            "rationale": "Fallback range pending explicit limits from journal guidance.",
-        },
-        "guidance_suggestions": [
-            "Ensure Methods lists eligibility, endpoints, modelling, and missing-data handling.",
-            "Report the primary estimate with uncertainty in Results.",
-            "Keep Discussion claims aligned to observed associations only.",
-        ],
+        "interpretation_mode_recommendation": None,
+        "article_type_recommendation": None,
+        "word_length_recommendation": None,
+        "guidance_suggestions": [],
         "source_urls": fetched_urls,
         "model_used": model_used,
     }
@@ -758,6 +632,11 @@ Rules:
 
     raw_output, model_used = _ask_model(prompt, preferred_model=preferred_model)
     combined_model_used = _combine_model_labels(summary_editor_model, model_used)
+    base_payload = _empty_payload(
+        fetched_urls=fetched_urls,
+        model_used=combined_model_used,
+        summary_refinements=summary_editor_refinements,
+    )
 
     try:
         parsed = json.loads(_strip_json_fences(raw_output))
@@ -766,74 +645,29 @@ Rules:
             summary_of_research,
             max_items=1,
         )
-        fallback_refinements = _fallback_summary_refinements(
-            summary_of_research, research_type, interpretation_mode
-        )
         guidance_suggestions = _coerce_str_list(parsed.get("guidance_suggestions"), max_items=3)
-        payload = {
-            "summary_refinements": _merge_unique_strings(
-                summary_editor_refinements + summary_refinements,
-                fallback_refinements,
-                max_items=1,
-            ),
-            "research_type_suggestion": _coerce_recommendation(
-                parsed.get("research_type_suggestion")
-            ),
-            "interpretation_mode_recommendation": _coerce_interpretation_mode_recommendation(
-                parsed.get("interpretation_mode_recommendation")
-            ),
-            "article_type_recommendation": _coerce_recommendation(
-                parsed.get("article_type_recommendation")
-            ),
-            "word_length_recommendation": _coerce_recommendation(
-                parsed.get("word_length_recommendation")
-            ),
-            "guidance_suggestions": guidance_suggestions
-            or [
-                "Add the primary estimate and uncertainty to the summary and Results plan.",
-                "Specify eligibility, endpoints, modelling, and sensitivity checks in Methods.",
-                "Keep Discussion claims associative and include limitations explicitly.",
-            ],
-            "source_urls": fetched_urls,
-            "model_used": combined_model_used,
-        }
-
-        if (
-            not payload["interpretation_mode_recommendation"]
-            or not payload["article_type_recommendation"]
-            or not payload["word_length_recommendation"]
-        ):
-            fallback = _fallback_payload(
-                summary_of_research=summary_of_research,
-                research_category=research_category,
-                research_type=research_type,
-                article_type=article_type,
-                interpretation_mode=interpretation_mode,
-                fetched_urls=fetched_urls,
-                model_used=combined_model_used,
-            )
-            if not payload["interpretation_mode_recommendation"]:
-                payload["interpretation_mode_recommendation"] = fallback[
-                    "interpretation_mode_recommendation"
-                ]
-            if not payload["article_type_recommendation"]:
-                payload["article_type_recommendation"] = fallback["article_type_recommendation"]
-            if not payload["word_length_recommendation"]:
-                payload["word_length_recommendation"] = fallback["word_length_recommendation"]
-        return payload
-    except Exception:
-        fallback_payload = _fallback_payload(
-            summary_of_research=summary_of_research,
-            research_category=research_category,
-            research_type=research_type,
-            article_type=article_type,
-            interpretation_mode=interpretation_mode,
+        payload = _empty_payload(
             fetched_urls=fetched_urls,
             model_used=combined_model_used,
+            summary_refinements=_merge_unique_strings(
+                summary_editor_refinements,
+                summary_refinements,
+                max_items=1,
+            ),
         )
-        fallback_payload["summary_refinements"] = _merge_unique_strings(
-            summary_editor_refinements,
-            fallback_payload.get("summary_refinements", []),
-            max_items=1,
+        payload["research_type_suggestion"] = _coerce_recommendation(
+            parsed.get("research_type_suggestion")
         )
-        return fallback_payload
+        payload["interpretation_mode_recommendation"] = _coerce_interpretation_mode_recommendation(
+            parsed.get("interpretation_mode_recommendation")
+        )
+        payload["article_type_recommendation"] = _coerce_recommendation(
+            parsed.get("article_type_recommendation")
+        )
+        payload["word_length_recommendation"] = _coerce_recommendation(
+            parsed.get("word_length_recommendation")
+        )
+        payload["guidance_suggestions"] = guidance_suggestions
+        return payload
+    except Exception:
+        return base_payload
