@@ -114,19 +114,42 @@ function getWordLengthBand(value: string): WordLengthBand {
   return 'standard'
 }
 
-function getWordLengthBoxClass(value: string): string {
+function getScaledTileClass(score: 2 | 3 | 4 | 5 | null): string {
   const baseClass = 'rounded-md border p-2'
-  const band = getWordLengthBand(value)
-  if (band === 'short') {
-    return `${baseClass} border-sky-200 bg-sky-50/70`
+  if (score === null) {
+    return `${baseClass} border-border/70 bg-background`
   }
-  if (band === 'long') {
-    return `${baseClass} border-violet-200 bg-violet-50/70`
+  if (score >= 5) {
+    return `${baseClass} border-emerald-300 bg-emerald-50/70`
+  }
+  if (score >= 4) {
+    return `${baseClass} border-emerald-200 bg-emerald-50/40`
+  }
+  if (score >= 3) {
+    return `${baseClass} border-amber-200 bg-amber-50/40`
+  }
+  return `${baseClass} border-amber-300 bg-amber-50/65`
+}
+
+function getWordLengthScaleScore(value: string): 2 | 3 | 4 | 5 | null {
+  const band = getWordLengthBand(value)
+  if (band === 'unknown') {
+    return null
+  }
+  const numbers = (value.match(/\d[\d,]*/g) ?? [])
+    .map((part) => Number.parseInt(part.replace(/,/g, ''), 10))
+    .filter((part) => Number.isFinite(part))
+  const upperBound = numbers.length > 0 ? Math.max(...numbers) : 0
+  if (band === 'short') {
+    return 2
   }
   if (band === 'standard') {
-    return `${baseClass} border-slate-300 bg-slate-50/70`
+    return 4
   }
-  return `${baseClass} border-border/70 bg-background`
+  if (upperBound <= 6500) {
+    return 5
+  }
+  return 3
 }
 
 export function StepContext({
@@ -193,26 +216,20 @@ export function StepContext({
     [values.researchCategory],
   )
   const submissionGuidanceUrl = useMemo(() => getJournalSubmissionGuidanceUrl(targetJournal), [targetJournal])
-  const wordLengthBoxClass = useMemo(() => getWordLengthBoxClass(values.recommendedWordLength), [values.recommendedWordLength])
+  const wordLengthBoxClass = useMemo(
+    () => getScaledTileClass(getWordLengthScaleScore(values.recommendedWordLength)),
+    [values.recommendedWordLength],
+  )
   const journalQualityScore = useMemo(() => getJournalQualityScore(targetJournal), [targetJournal])
   const journalQualityStars = useMemo(() => getJournalQualityStars(targetJournal), [targetJournal])
   const selectedJournalLabel = useMemo(
     () => journals.find((journal) => journal.slug === targetJournal)?.display_name ?? '',
     [journals, targetJournal],
   )
-  const targetJournalBoxClass = useMemo(() => {
-    const base = 'rounded-md border border-border/70 bg-background p-2'
-    if (!selectedJournalLabel) {
-      return base
-    }
-    if (journalQualityScore >= 5) {
-      return `${base} shadow-md shadow-slate-300/70`
-    }
-    if (journalQualityScore >= 4) {
-      return `${base} shadow-sm shadow-slate-300/60`
-    }
-    return `${base} shadow-sm shadow-slate-200/60`
-  }, [journalQualityScore, selectedJournalLabel])
+  const targetJournalBoxClass = useMemo(
+    () => getScaledTileClass(selectedJournalLabel ? journalQualityScore : null),
+    [journalQualityScore, selectedJournalLabel],
+  )
   const studyTypeDefaults = useMemo(
     () => (values.studyArchitecture.trim() ? getStudyTypeDefaults(values.studyArchitecture) : null),
     [values.studyArchitecture],

@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { getJournalQualityScore } from '@/lib/research-frame-options'
 import { estimateGeneration, planSections } from '@/lib/study-core-api'
 import type {
   GenerationEstimate,
@@ -20,6 +21,7 @@ type StepPlanProps = {
   answers: Record<string, string>
   planningContext: {
     targetJournal: string
+    targetJournalLabel?: string
     researchCategory: string
     studyType: string
     interpretationMode: string
@@ -126,6 +128,43 @@ function mergeBullets(existing: string[], additions: string[]): string[] {
   return dedupeBullets([...existing, ...additions])
 }
 
+function getScaledTileClass(score: 2 | 3 | 4 | 5 | null): string {
+  const baseClass = 'rounded-md border p-2'
+  if (score === null) {
+    return `${baseClass} border-border/70 bg-background`
+  }
+  if (score >= 5) {
+    return `${baseClass} border-emerald-300 bg-emerald-50/70`
+  }
+  if (score >= 4) {
+    return `${baseClass} border-emerald-200 bg-emerald-50/40`
+  }
+  if (score >= 3) {
+    return `${baseClass} border-amber-200 bg-amber-50/40`
+  }
+  return `${baseClass} border-amber-300 bg-amber-50/65`
+}
+
+function getWordLengthScaleScore(value: string): 2 | 3 | 4 | 5 | null {
+  const numbers = (value.match(/\d[\d,]*/g) ?? [])
+    .map((part) => Number.parseInt(part.replace(/,/g, ''), 10))
+    .filter((part) => Number.isFinite(part))
+  if (numbers.length === 0) {
+    return null
+  }
+  const upperBound = Math.max(...numbers)
+  if (upperBound <= 2500) {
+    return 2
+  }
+  if (upperBound <= 4500) {
+    return 4
+  }
+  if (upperBound <= 6500) {
+    return 5
+  }
+  return 3
+}
+
 function sectionContextBullets(
   section: string,
   context: StepPlanProps['planningContext'],
@@ -212,6 +251,14 @@ export function StepPlan({
   const [activeSectionName, setActiveSectionName] = useState<string>(DEFAULT_PLAN_SECTIONS[0])
 
   const orderedSections = useMemo(() => [...DEFAULT_PLAN_SECTIONS], [])
+  const journalTileClass = useMemo(
+    () => getScaledTileClass(planningContext.targetJournal ? getJournalQualityScore(planningContext.targetJournal) : null),
+    [planningContext.targetJournal],
+  )
+  const wordLengthTileClass = useMemo(
+    () => getScaledTileClass(getWordLengthScaleScore(planningContext.wordLength)),
+    [planningContext.wordLength],
+  )
 
   useEffect(() => {
     const current = selectedSections.join('|').toLowerCase()
@@ -342,32 +389,32 @@ export function StepPlan({
       <div className="space-y-2 rounded-md border border-border/80 bg-muted/20 p-3">
         <p className="text-xs font-medium text-muted-foreground">Step 1 Context</p>
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-          <div className="rounded border border-border/80 bg-background p-2">
+          <div className={journalTileClass}>
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Target journal</p>
-            <p className="text-sm">{planningContext.targetJournal || 'Not set'}</p>
+            <p className="text-sm">{planningContext.targetJournalLabel || planningContext.targetJournal || 'Not set'}</p>
           </div>
-          <div className="rounded border border-border/80 bg-background p-2">
+          <div className="rounded-md border border-border/70 bg-background p-2">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Research category</p>
             <p className="text-sm">{planningContext.researchCategory || 'Not set'}</p>
           </div>
-          <div className="rounded border border-border/80 bg-background p-2">
+          <div className="rounded-md border border-border/70 bg-background p-2">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Study type</p>
             <p className="text-sm">{planningContext.studyType || 'Not set'}</p>
           </div>
-          <div className="rounded border border-border/80 bg-background p-2">
+          <div className="rounded-md border border-border/70 bg-background p-2">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Interpretation mode</p>
             <p className="text-sm">{planningContext.interpretationMode || 'Not set'}</p>
           </div>
-          <div className="rounded border border-border/80 bg-background p-2">
+          <div className="rounded-md border border-border/70 bg-background p-2">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Article type</p>
             <p className="text-sm">{planningContext.articleType || 'Not set'}</p>
           </div>
-          <div className="rounded border border-border/80 bg-background p-2">
+          <div className={wordLengthTileClass}>
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Target word length</p>
             <p className="text-sm">{planningContext.wordLength || 'Not set'}</p>
           </div>
         </div>
-        <div className="rounded border border-border/80 bg-background p-2">
+        <div className="rounded-md border border-border/70 bg-background p-2">
           <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Summary of research</p>
           <p className="text-sm">{planningContext.summary || 'Not set'}</p>
         </div>

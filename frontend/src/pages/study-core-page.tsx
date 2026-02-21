@@ -237,6 +237,10 @@ export function StudyCorePage() {
 
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const targetJournalLabel = useMemo(
+    () => journals.find((journal) => journal.slug === targetJournal)?.display_name ?? targetJournal,
+    [journals, targetJournal],
+  )
 
   const applySectionPatch = useCallback((sectionName: string, bulletsToInsert: string[]) => {
     const cleanedBullets = bulletsToInsert.map((bullet) => bullet.trim()).filter(Boolean)
@@ -539,6 +543,7 @@ export function StudyCorePage() {
           answers={answers}
           planningContext={{
             targetJournal,
+            targetJournalLabel,
             researchCategory: contextValues.researchCategory,
             studyType: contextValues.studyArchitecture,
             interpretationMode: contextValues.interpretationMode,
