@@ -667,25 +667,6 @@ export function Step1Panel({
     setUndoStack((current) => [...current, entry].slice(-20))
   }
 
-  const onUndoLastApply = () => {
-    setUndoStack((current) => {
-      if (current.length === 0) {
-        return current
-      }
-      const next = [...current]
-      const last = next.pop()
-      if (last) {
-        last.undo()
-        setRevertSnapshots((currentSnapshots) => {
-          const nextSnapshots = { ...currentSnapshots }
-          delete nextSnapshots[last.key]
-          return nextSnapshots
-        })
-      }
-      return next
-    })
-  }
-
   const onRevertApplied = (key: AppliedKey) => {
     if (loading) {
       return
@@ -935,11 +916,7 @@ export function Step1Panel({
         disabled: loading,
       }
     }
-    return {
-      label: loading ? 'Refreshing...' : 'Refresh suggestions',
-      onClick: () => void refreshSuggestions(),
-      disabled: loading,
-    }
+    return null
   }, [
     loading,
     onApplyAllPending,
@@ -1371,17 +1348,6 @@ export function Step1Panel({
           >
             {loading ? 'Refreshing...' : 'Refresh suggestions'}
           </Button>
-          {undoStack.length > 0 ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className={IGNORE_BUTTON_CLASS}
-              onClick={onUndoLastApply}
-              disabled={loading}
-            >
-              Undo last apply
-            </Button>
-          ) : null}
         </div>
         {!summary.trim() ? <p className="text-xs text-muted-foreground">Add a summary of research to enable suggestions.</p> : null}
         {summary.trim() && !targetJournal.trim() ? (
