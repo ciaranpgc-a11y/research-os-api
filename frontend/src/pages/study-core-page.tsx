@@ -456,6 +456,7 @@ export function StudyCorePage() {
           interpretationMode={contextValues.interpretationMode}
           targetJournal={targetJournal}
           currentArticleType={contextValues.recommendedArticleType}
+          currentWordLength={contextValues.recommendedWordLength}
           onReplaceSummary={(value) =>
             setContextValues((current) => ({
               ...current,

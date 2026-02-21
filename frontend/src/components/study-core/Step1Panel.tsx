@@ -11,6 +11,7 @@ type Step1PanelProps = {
   interpretationMode: string
   targetJournal: string
   currentArticleType: string
+  currentWordLength: string
   onReplaceSummary: (value: string) => void
   onApplyResearchType: (value: string) => void
   onApplyInterpretationMode: (value: string) => void
@@ -34,6 +35,7 @@ export function Step1Panel({
   interpretationMode,
   targetJournal,
   currentArticleType,
+  currentWordLength,
   onReplaceSummary,
   onApplyResearchType,
   onApplyInterpretationMode,
@@ -51,16 +53,47 @@ export function Step1Panel({
     () =>
       `${summary.trim().toLowerCase()}::${researchCategory.trim().toLowerCase()}::${researchType
         .trim()
-        .toLowerCase()}::${currentArticleType.trim().toLowerCase()}::${interpretationMode
+        .toLowerCase()}::${currentArticleType.trim().toLowerCase()}::${currentWordLength
+        .trim()
+        .toLowerCase()}::${interpretationMode
         .trim()
         .toLowerCase()}::${targetJournal.trim().toLowerCase()}`,
-    [currentArticleType, interpretationMode, researchCategory, researchType, summary, targetJournal],
+    [currentArticleType, currentWordLength, interpretationMode, researchCategory, researchType, summary, targetJournal],
   )
   const hasGenerated = generatedKey.length > 0
   const isStale = hasGenerated && generatedKey !== currentKey
   const summaryOptions = suggestions?.summary_refinements.slice(0, 1) ?? []
   const hasInterpretationRecommendation = Boolean(suggestions?.interpretation_mode_recommendation)
   const hasJournalRecommendation = Boolean(suggestions?.article_type_recommendation || suggestions?.word_length_recommendation)
+
+  const normalize = (value: string) => value.trim().toLowerCase()
+  const researchTypeSuggestion = suggestions?.research_type_suggestion
+  const interpretationSuggestion = suggestions?.interpretation_mode_recommendation
+  const articleSuggestion = suggestions?.article_type_recommendation
+  const wordLengthSuggestion = suggestions?.word_length_recommendation
+  const isResearchTypeApplied = Boolean(
+    researchTypeSuggestion &&
+      normalize(researchTypeSuggestion.value) &&
+      normalize(researchTypeSuggestion.value) === normalize(researchType),
+  )
+  const isInterpretationModeApplied = Boolean(
+    interpretationSuggestion &&
+      normalize(interpretationSuggestion.value) &&
+      normalize(interpretationSuggestion.value) === normalize(interpretationMode),
+  )
+  const isArticleTypeApplied = Boolean(
+    articleSuggestion &&
+      normalize(articleSuggestion.value) &&
+      normalize(articleSuggestion.value) === normalize(currentArticleType),
+  )
+  const isWordLengthApplied = Boolean(
+    wordLengthSuggestion &&
+      normalize(wordLengthSuggestion.value) &&
+      normalize(wordLengthSuggestion.value) === normalize(currentWordLength),
+  )
+  const shouldShowJournalApplyButton = Boolean(
+    (articleSuggestion && !isArticleTypeApplied) || (wordLengthSuggestion && !isWordLengthApplied),
+  )
 
   const generateSuggestions = async () => {
     if (!summary.trim()) {
@@ -116,15 +149,6 @@ export function Step1Panel({
       return
     }
     onApplyResearchType(recommendation.value)
-    setSuggestions((current) => {
-      if (!current) {
-        return current
-      }
-      return {
-        ...current,
-        research_type_suggestion: null,
-      }
-    })
   }
 
   const onApplyInterpretationModeSuggestion = () => {
@@ -133,36 +157,17 @@ export function Step1Panel({
       return
     }
     onApplyInterpretationMode(recommendation.value)
-    setSuggestions((current) => {
-      if (!current) {
-        return current
-      }
-      return {
-        ...current,
-        interpretation_mode_recommendation: null,
-      }
-    })
   }
 
   const onApplyJournalRecommendation = () => {
-    const articleRecommendation = suggestions?.article_type_recommendation
-    const wordLengthRecommendation = suggestions?.word_length_recommendation
+    const articleRecommendation = articleSuggestion
+    const wordLengthRecommendation = wordLengthSuggestion
     if (articleRecommendation?.value) {
       onApplyArticleType(articleRecommendation.value)
     }
     if (wordLengthRecommendation?.value) {
       onApplyWordLength(wordLengthRecommendation.value)
     }
-    setSuggestions((current) => {
-      if (!current) {
-        return current
-      }
-      return {
-        ...current,
-        article_type_recommendation: null,
-        word_length_recommendation: null,
-      }
-    })
     onJournalRecommendationsLockedChange(true)
   }
 
@@ -217,52 +222,87 @@ export function Step1Panel({
       {refinementsEnabled && suggestions?.research_type_suggestion ? (
         <div className={RESEARCH_TYPE_CARD_CLASS}>
           <p className="text-sm font-medium text-sky-900">Research type suggestion</p>
-          <p className="text-xs text-sky-900">
-            Recommended research type: <span className="font-semibold">{suggestions.research_type_suggestion.value}</span>
-          </p>
-          <p className="text-xs text-sky-900">{suggestions.research_type_suggestion.rationale}</p>
-          <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyResearchTypeSuggestion}>
-            Apply suggested research type
-          </Button>
+          {isResearchTypeApplied ? (
+            <>
+              <p className="text-xs text-sky-900">
+                Correct research type selected: <span className="font-semibold">{suggestions.research_type_suggestion.value}</span>
+              </p>
+              <p className="text-xs text-sky-900">Appropriate because: {suggestions.research_type_suggestion.rationale}</p>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-sky-900">
+                Recommended research type: <span className="font-semibold">{suggestions.research_type_suggestion.value}</span>
+              </p>
+              <p className="text-xs text-sky-900">{suggestions.research_type_suggestion.rationale}</p>
+              <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyResearchTypeSuggestion}>
+                Apply suggested research type
+              </Button>
+            </>
+          )}
         </div>
       ) : null}
 
       {refinementsEnabled && hasInterpretationRecommendation ? (
         <div className={INTERPRETATION_CARD_CLASS}>
           <p className="text-sm font-medium text-cyan-900">Interpretation mode suggestion</p>
-          <p className="text-xs text-cyan-900">
-            Recommended interpretation mode:{' '}
-            <span className="font-semibold">{suggestions?.interpretation_mode_recommendation?.value}</span>
-          </p>
-          {suggestions?.interpretation_mode_recommendation?.rationale ? (
-            <p className="text-xs text-cyan-900">{suggestions.interpretation_mode_recommendation.rationale}</p>
-          ) : null}
-          <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyInterpretationModeSuggestion}>
-            Apply interpretation mode
-          </Button>
+          {isInterpretationModeApplied ? (
+            <>
+              <p className="text-xs text-cyan-900">
+                Correct interpretation mode selected:{' '}
+                <span className="font-semibold">{suggestions?.interpretation_mode_recommendation?.value}</span>
+              </p>
+              {suggestions?.interpretation_mode_recommendation?.rationale ? (
+                <p className="text-xs text-cyan-900">Appropriate because: {suggestions.interpretation_mode_recommendation.rationale}</p>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-cyan-900">
+                Recommended interpretation mode:{' '}
+                <span className="font-semibold">{suggestions?.interpretation_mode_recommendation?.value}</span>
+              </p>
+              {suggestions?.interpretation_mode_recommendation?.rationale ? (
+                <p className="text-xs text-cyan-900">{suggestions.interpretation_mode_recommendation.rationale}</p>
+              ) : null}
+              <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyInterpretationModeSuggestion}>
+                Apply interpretation mode
+              </Button>
+            </>
+          )}
         </div>
       ) : null}
 
       {refinementsEnabled && hasJournalRecommendation ? (
         <div className={JOURNAL_CARD_CLASS}>
           <p className="text-sm font-medium text-amber-900">Journal recommendation</p>
-          {suggestions?.article_type_recommendation ? (
+          {articleSuggestion ? (
             <div className="rounded border border-amber-300 bg-white p-2">
               <p className="text-xs font-medium text-amber-950">Article type</p>
-              <p className="text-xs text-amber-900">{suggestions.article_type_recommendation.value}</p>
-              <p className="mt-1 text-xs text-amber-900">{suggestions.article_type_recommendation.rationale}</p>
+              <p className="text-xs text-amber-900">{articleSuggestion.value}</p>
+              <p className="mt-1 text-xs text-amber-900">{articleSuggestion.rationale}</p>
+              <p className="mt-1 text-xs text-amber-900">
+                {isArticleTypeApplied ? 'Correct article type selected.' : 'Update required to match recommendation.'}
+              </p>
             </div>
           ) : null}
-          {suggestions?.word_length_recommendation ? (
+          {wordLengthSuggestion ? (
             <div className="rounded border border-amber-300 bg-white p-2">
               <p className="text-xs font-medium text-amber-950">Recommended word length</p>
-              <p className="text-xs text-amber-900">{suggestions.word_length_recommendation.value}</p>
-              <p className="mt-1 text-xs text-amber-900">{suggestions.word_length_recommendation.rationale}</p>
+              <p className="text-xs text-amber-900">{wordLengthSuggestion.value}</p>
+              <p className="mt-1 text-xs text-amber-900">{wordLengthSuggestion.rationale}</p>
+              <p className="mt-1 text-xs text-amber-900">
+                {isWordLengthApplied ? 'Correct word length selected.' : 'Update required to match recommendation.'}
+              </p>
             </div>
           ) : null}
-          <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyJournalRecommendation}>
-            Apply journal recommendations
-          </Button>
+          {shouldShowJournalApplyButton ? (
+            <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyJournalRecommendation}>
+              Apply journal recommendations
+            </Button>
+          ) : (
+            <p className="text-xs text-amber-900">Journal recommendations are already applied.</p>
+          )}
         </div>
       ) : null}
 
@@ -274,7 +314,7 @@ export function Step1Panel({
       !hasJournalRecommendation ? (
         <div className="rounded-md border border-border bg-background p-3">
           <p className="text-sm font-medium">No pending suggestions</p>
-          <p className="text-xs text-muted-foreground">Applied suggestions are removed automatically. Use Refresh to generate new options.</p>
+          <p className="text-xs text-muted-foreground">Use Refresh to generate suggestions.</p>
         </div>
       ) : null}
     </aside>
