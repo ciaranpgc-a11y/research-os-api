@@ -8,7 +8,12 @@ import { StepPlan } from '@/components/study-core/StepPlan'
 import { StepRun } from '@/components/study-core/StepRun'
 import { StudyCoreStepper, type WizardStepItem } from '@/components/study-core/StudyCoreStepper'
 import { Input } from '@/components/ui/input'
-import { CURATED_CARDIOLOGY_IMAGING_JOURNALS, mergeJournalOptions } from '@/lib/research-frame-options'
+import {
+  CURATED_CARDIOLOGY_IMAGING_JOURNALS,
+  getCategoryForStudyType,
+  getStudyTypeDefaults,
+  mergeJournalOptions,
+} from '@/lib/research-frame-options'
 import { fetchJournalOptions } from '@/lib/study-core-api'
 import { useStudyCoreWizardStore, type WizardStep } from '@/store/use-study-core-wizard-store'
 import type {
@@ -33,6 +38,7 @@ const CORE_SECTIONS = ['introduction', 'methods', 'results', 'discussion']
 function buildGenerationBrief(values: ContextFormValues, sections: string[], guardrailsEnabled: boolean): string {
   const lines = [
     values.researchObjective.trim() ? `Objective: ${values.researchObjective.trim()}` : '',
+    values.researchCategory.trim() ? `Research category: ${values.researchCategory.trim()}` : '',
     values.studyArchitecture.trim() ? `Research type: ${values.studyArchitecture.trim()}` : '',
     values.interpretationMode.trim() ? `Interpretation mode: ${values.interpretationMode.trim()}` : '',
     values.recommendedArticleType.trim() ? `Recommended article type: ${values.recommendedArticleType.trim()}` : '',
@@ -67,6 +73,7 @@ function buildResearchFrameSignature(values: ContextFormValues, targetJournal: s
   return JSON.stringify({
     projectTitle: values.projectTitle.trim(),
     researchObjective: values.researchObjective.trim(),
+    researchCategory: values.researchCategory.trim(),
     studyArchitecture: values.studyArchitecture.trim(),
     interpretationMode: values.interpretationMode.trim(),
     recommendedArticleType: values.recommendedArticleType.trim(),
@@ -108,6 +115,7 @@ export function StudyCorePage() {
   const [runContext, setRunContext] = useState<RunContext | null>(() => readStoredRunContext())
   const [contextValues, setContextValues] = useState<ContextFormValues>({
     projectTitle: 'AAWE Research Workspace',
+    researchCategory: '',
     researchObjective: '',
     studyArchitecture: '',
     interpretationMode: '',
@@ -115,7 +123,7 @@ export function StudyCorePage() {
     recommendedWordLength: '',
   })
 
-  const [guardrailsEnabled] = useState(true)
+  const [guardrailsEnabled, setGuardrailsEnabled] = useState(true)
   const [runRecommendations, setRunRecommendations] = useState<RunRecommendations>({
     conservativeWithLimitations: true,
     uncertaintyInResults: false,
@@ -147,6 +155,7 @@ export function StudyCorePage() {
   const answers = useMemo(
     () => ({
       study_type: contextValues.studyArchitecture,
+      study_category: contextValues.researchCategory,
       research_objective: contextValues.researchObjective,
       recommended_article_type: contextValues.recommendedArticleType,
       recommended_word_length: contextValues.recommendedWordLength,
@@ -161,6 +170,7 @@ export function StudyCorePage() {
     }),
     [
       contextValues.interpretationMode,
+      contextValues.researchCategory,
       contextValues.recommendedArticleType,
       contextValues.recommendedWordLength,
       contextValues.researchObjective,
@@ -247,10 +257,11 @@ export function StudyCorePage() {
   useEffect(() => {
       setContextFields({
         projectTitle: contextValues.projectTitle,
-        researchObjective: contextValues.researchObjective,
-        studyArchitecture: contextValues.studyArchitecture,
-        interpretationMode: contextValues.interpretationMode,
-        studyType: contextValues.studyArchitecture,
+      researchObjective: contextValues.researchObjective,
+      researchCategory: contextValues.researchCategory,
+      studyArchitecture: contextValues.studyArchitecture,
+      interpretationMode: contextValues.interpretationMode,
+      studyType: contextValues.studyArchitecture,
         primaryAnalyticalClaim: contextValues.interpretationMode,
       })
   }, [contextValues, setContextFields])
@@ -337,11 +348,18 @@ export function StudyCorePage() {
           onValueChange={(field, value) =>
             setContextValues((current) => ({
               ...current,
-              [field]: value,
+      [field]: value,
             }))
           }
           onTargetJournalChange={setTargetJournal}
           onContextSaved={applyContextPayload}
+          onStudyTypeDefaultsResolved={({ interpretationMode, enableConservativeGuardrails }) => {
+            setContextValues((current) => ({
+              ...current,
+              interpretationMode,
+            }))
+            setGuardrailsEnabled(enableConservativeGuardrails)
+          }}
           onStatus={setStatus}
           onError={setError}
         />
@@ -449,10 +467,16 @@ export function StudyCorePage() {
             }))
           }
           onApplyResearchType={(value) =>
-            setContextValues((current) => ({
-              ...current,
-              studyArchitecture: value,
-            }))
+            {
+              const defaults = getStudyTypeDefaults(value)
+              setContextValues((current) => ({
+                ...current,
+                researchCategory: getCategoryForStudyType(value, true) ?? current.researchCategory,
+                studyArchitecture: value,
+                interpretationMode: defaults.defaultInterpretationMode,
+              }))
+              setGuardrailsEnabled(defaults.enableConservativeGuardrails)
+            }
           }
           onApplyArticleType={(value) =>
             setContextValues((current) => ({

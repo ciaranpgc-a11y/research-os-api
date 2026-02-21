@@ -9,6 +9,7 @@ export type QcStatus = 'idle' | 'pass' | 'warn' | 'fail'
 export type ContextReadinessFields = {
   projectTitle: string
   researchObjective: string
+  researchCategory: string
   studyArchitecture: string
   interpretationMode: string
   studyType: string
@@ -32,6 +33,7 @@ export type RunConfigurationState = {
 const DEFAULT_CONTEXT_READINESS_FIELDS: ContextReadinessFields = {
   projectTitle: '',
   researchObjective: '',
+  researchCategory: '',
   studyArchitecture: '',
   interpretationMode: '',
   studyType: '',

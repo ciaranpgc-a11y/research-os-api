@@ -4,12 +4,19 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { INTERPRETATION_MODE_OPTIONS, RESEARCH_TYPE_OPTIONS } from '@/lib/research-frame-options'
+import {
+  INTERPRETATION_MODE_OPTIONS,
+  getCategoryForStudyType,
+  getResearchTypeTaxonomy,
+  getStudyTypeDefaults,
+  getStudyTypesForCategory,
+} from '@/lib/research-frame-options'
 import { bootstrapRunContext } from '@/lib/study-core-api'
 import type { JournalOption } from '@/types/study-core'
 
 export type ContextFormValues = {
   projectTitle: string
+  researchCategory: string
   studyArchitecture: string
   interpretationMode: string
   recommendedArticleType: string
@@ -24,6 +31,7 @@ type StepContextProps = {
   onValueChange: (field: keyof ContextFormValues, value: string) => void
   onTargetJournalChange: (value: string) => void
   onContextSaved: (payload: { projectId: string; manuscriptId: string; recommendedSections: string[] }) => void
+  onStudyTypeDefaultsResolved: (defaults: { interpretationMode: string; enableConservativeGuardrails: boolean }) => void
   onStatus: (message: string) => void
   onError: (message: string) => void
 }
@@ -56,6 +64,7 @@ export function StepContext({
   onValueChange,
   onTargetJournalChange,
   onContextSaved,
+  onStudyTypeDefaultsResolved,
   onStatus,
   onError,
 }: StepContextProps) {
@@ -98,6 +107,9 @@ export function StepContext({
     if (!values.projectTitle.trim()) {
       nextErrors.projectTitle = 'Proposed project title is required.'
     }
+    if (!values.researchCategory.trim()) {
+      nextErrors.researchCategory = 'Research category is required.'
+    }
     if (!values.studyArchitecture.trim()) {
       nextErrors.studyArchitecture = 'Research type is required.'
     }
@@ -105,7 +117,27 @@ export function StepContext({
       nextErrors.researchObjective = 'Summary of research is required.'
     }
     return nextErrors
-  }, [values.projectTitle, values.researchObjective, values.studyArchitecture])
+  }, [values.projectTitle, values.researchCategory, values.researchObjective, values.studyArchitecture])
+
+  const researchCategories = useMemo(() => getResearchTypeTaxonomy(true), [])
+  const studyTypeOptions = useMemo(
+    () => getStudyTypesForCategory(values.researchCategory, true),
+    [values.researchCategory],
+  )
+
+  useEffect(() => {
+    if (!values.studyArchitecture.trim()) {
+      return
+    }
+    if (values.researchCategory.trim()) {
+      return
+    }
+    const category = getCategoryForStudyType(values.studyArchitecture, true)
+    if (!category) {
+      return
+    }
+    onValueChange('researchCategory', category)
+  }, [onValueChange, values.researchCategory, values.studyArchitecture])
 
   const onToggleSpeechToText = () => {
     onError('')
@@ -250,15 +282,52 @@ export function StepContext({
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="context-study-architecture">Research type</Label>
+        <Label htmlFor="context-research-category">Research category</Label>
+        <select
+          id="context-research-category"
+          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+          value={values.researchCategory}
+          onChange={(event) => {
+            const nextCategory = event.target.value
+            onValueChange('researchCategory', nextCategory)
+            if (values.studyArchitecture && !getStudyTypesForCategory(nextCategory, true).includes(values.studyArchitecture)) {
+              onValueChange('studyArchitecture', '')
+            }
+          }}
+        >
+          <option value="">Select research category</option>
+          {researchCategories.map((option) => (
+            <option key={option.category} value={option.category}>
+              {option.category}
+            </option>
+          ))}
+        </select>
+        {attemptedSubmit && errors.researchCategory ? <p className="text-xs text-destructive">{errors.researchCategory}</p> : null}
+      </div>
+
+      <div className="space-y-1">
+        <Label htmlFor="context-study-architecture">Study type</Label>
         <select
           id="context-study-architecture"
           className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
           value={values.studyArchitecture}
-          onChange={(event) => onValueChange('studyArchitecture', event.target.value)}
+          onChange={(event) => {
+            const nextStudyType = event.target.value
+            onValueChange('studyArchitecture', nextStudyType)
+            if (!nextStudyType) {
+              return
+            }
+            const defaults = getStudyTypeDefaults(nextStudyType)
+            onValueChange('interpretationMode', defaults.defaultInterpretationMode)
+            onStudyTypeDefaultsResolved({
+              interpretationMode: defaults.defaultInterpretationMode,
+              enableConservativeGuardrails: defaults.enableConservativeGuardrails,
+            })
+          }}
+          disabled={!values.researchCategory.trim()}
         >
-          <option value="">Select research type</option>
-          {RESEARCH_TYPE_OPTIONS.map((option) => (
+          <option value="">{values.researchCategory ? 'Select study type' : 'Select research category first'}</option>
+          {studyTypeOptions.map((option) => (
             <option key={option} value={option}>
               {option}
             </option>

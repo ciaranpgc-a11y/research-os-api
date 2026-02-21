@@ -13,77 +13,172 @@ PREFERRED_MODEL = "gpt-5.2"
 FALLBACK_MODEL = "gpt-4.1-mini"
 
 JOURNAL_GUIDANCE_URLS: dict[str, list[str]] = {
-    "circulation": [
-        "https://www.ahajournals.org/journal/circ/pages/instructions-for-authors",
+    "pulmonary-circulation": [
+        "https://journals.sagepub.com/home/pul",
     ],
-    "european-heart-journal": [
-        "https://academic.oup.com/eurheartj/pages/General_Instructions",
+    "american-journal-respiratory-critical-care-medicine": [
+        "https://www.atsjournals.org/action/showAuthorGuidelines?journalCode=ajrccm",
     ],
-    "jacc": [
-        "https://www.jacc.org/journal/jacc/for-authors",
+    "european-respiratory-journal": [
+        "https://erj.ersjournals.com/site/misc/ifora.xhtml",
     ],
-    "jacc-cardiovascular-imaging": [
-        "https://www.jacc.org/journal/jcmg/for-authors",
+    "chest": [
+        "https://journal.chestnet.org/content/authorinfo",
     ],
-    "jacc-heart-failure": [
-        "https://www.jacc.org/journal/jchf/for-authors",
+    "journal-heart-lung-transplantation": [
+        "https://www.jhltonline.org/content/authorinfo",
     ],
-    "jacc-clinical-electrophysiology": [
-        "https://www.jacc.org/journal/jacep/for-authors",
+    "respiration": [
+        "https://karger.com/res/pages/instructions-for-authors",
     ],
-    "heart-bmj": [
-        "https://heart.bmj.com/pages/authors/",
+    "erj-open-research": [
+        "https://openres.ersjournals.com/site/misc/ifora.xhtml",
     ],
-    "ehj-cardiovascular-imaging": [
-        "https://academic.oup.com/ehjcimaging/pages/General_Instructions",
-    ],
-    "international-journal-of-cardiovascular-imaging": [
-        "https://www.springer.com/journal/10554/submission-guidelines",
+    "advances-pulmonary-hypertension": [
+        "https://www.phaonlineuniv.org/journal",
     ],
     "journal-of-cardiovascular-magnetic-resonance": [
         "https://jcmr-online.biomedcentral.com/submission-guidelines",
     ],
-    "journal-of-nuclear-cardiology": [
-        "https://www.springer.com/journal/12350/submission-guidelines",
+    "jacc-cardiovascular-imaging": [
+        "https://www.jacc.org/journal/jcmg/for-authors",
     ],
-    "circ-cardiovascular-imaging": [
+    "circulation-cardiovascular-imaging": [
         "https://www.ahajournals.org/journal/circimaging/pages/instructions-for-authors",
     ],
-    "radiology": [
-        "https://pubs.rsna.org/page/radiology/author-center",
+    "european-heart-journal-cardiovascular-imaging": [
+        "https://academic.oup.com/ehjcimaging/pages/General_Instructions",
     ],
-    "radiology-cardiothoracic-imaging": [
-        "https://pubs.rsna.org/page/rcti/author-center",
+    "magnetic-resonance-in-medicine": [
+        "https://onlinelibrary.wiley.com/page/journal/15222594/homepage/forauthors.html",
     ],
     "european-radiology": [
         "https://www.springer.com/journal/330/submission-guidelines",
     ],
-    "american-journal-of-roentgenology": [
-        "https://www.ajronline.org/page/ajronline/instructions-for-authors",
+    "radiology": [
+        "https://pubs.rsna.org/page/radiology/author-center",
     ],
     "insights-into-imaging": [
         "https://insightsimaging.springeropen.com/submission-guidelines",
     ],
-    "clinical-radiology": [
-        "https://www.journals.elsevier.com/clinical-radiology/publish/guide-for-authors",
+    "european-heart-journal": [
+        "https://academic.oup.com/eurheartj/pages/General_Instructions",
     ],
-    "echocardiography": [
-        "https://onlinelibrary.wiley.com/page/journal/15408175/homepage/forauthors.html",
+    "circulation": [
+        "https://www.ahajournals.org/journal/circ/pages/instructions-for-authors",
     ],
-    "echo-research-practice": [
-        "https://erp.bioscientifica.com/page/for-authors",
+    "jacc": [
+        "https://www.jacc.org/journal/jacc/for-authors",
     ],
-    "cardiovascular-ultrasound": [
-        "https://cardiovascularultrasound.biomedcentral.com/submission-guidelines",
+    "heart": [
+        "https://heart.bmj.com/pages/authors/",
     ],
-    "catheterization-cardiovascular-interventions": [
-        "https://onlinelibrary.wiley.com/page/journal/1522726x/homepage/forauthors.html",
+    "european-journal-heart-failure": [
+        "https://academic.oup.com/eurjhf/pages/General_Instructions",
     ],
-    "heart-rhythm": [
-        "https://www.heartrhythmjournal.com/content/authorinfo",
+    "circulation-heart-failure": [
+        "https://www.ahajournals.org/journal/circheartfailure/pages/instructions-for-authors",
     ],
-    "heart-lung-circulation": [
-        "https://www.journals.elsevier.com/heart-lung-and-circulation/publish/guide-for-authors",
+    "esc-heart-failure": [
+        "https://onlinelibrary.wiley.com/page/journal/20555922/homepage/forauthors.html",
+    ],
+    "international-journal-cardiology": [
+        "https://www.journals.elsevier.com/international-journal-of-cardiology/publish/guide-for-authors",
+    ],
+    "clinical-research-in-cardiology": [
+        "https://www.springer.com/journal/392/submission-guidelines",
+    ],
+    "american-journal-cardiology": [
+        "https://www.ajconline.org/content/authorinfo",
+    ],
+    "cardiology": [
+        "https://karger.com/crd/pages/instructions-for-authors",
+    ],
+    "jacc-heart-failure": [
+        "https://www.jacc.org/journal/jchf/for-authors",
+    ],
+    "journal-cardiac-failure": [
+        "https://www.onlinejcf.com/content/authorinfo",
+    ],
+    "european-journal-preventive-cardiology": [
+        "https://academic.oup.com/eurjpc/pages/General_Instructions",
+    ],
+    "frontiers-cardiovascular-medicine": [
+        "https://www.frontiersin.org/journals/cardiovascular-medicine#for-authors",
+    ],
+    "open-heart": [
+        "https://openheart.bmj.com/pages/authors/",
+    ],
+    "cardiovascular-research": [
+        "https://academic.oup.com/cardiovascres/pages/General_Instructions",
+    ],
+    "basic-research-in-cardiology": [
+        "https://www.springer.com/journal/395/submission-guidelines",
+    ],
+    "circulation-research": [
+        "https://www.ahajournals.org/journal/res/pages/instructions-for-authors",
+    ],
+    "journal-american-heart-association": [
+        "https://www.ahajournals.org/journal/jaha/pages/instructions-for-authors",
+    ],
+    "scientific-reports": [
+        "https://www.nature.com/srep/author-instructions",
+    ],
+    "frontiers-physiology": [
+        "https://www.frontiersin.org/journals/physiology#for-authors",
+    ],
+    "physiological-reports": [
+        "https://physoc.onlinelibrary.wiley.com/hub/journal/2051817x/about/author-guidelines",
+    ],
+    "journal-thoracic-disease": [
+        "https://jtd.amegroups.org/pages/view/author-instructions",
+    ],
+    "bmc-pulmonary-medicine": [
+        "https://bmcpulmmed.biomedcentral.com/submission-guidelines",
+    ],
+    "lancet-respiratory-medicine": [
+        "https://www.thelancet.com/journals/lanres/for-authors",
+    ],
+    "thorax": [
+        "https://thorax.bmj.com/pages/authors/",
+    ],
+    "american-journal-physiology-lung-cellular-molecular-physiology": [
+        "https://journals.physiology.org/journal/ajplung",
+    ],
+    "respirology": [
+        "https://onlinelibrary.wiley.com/page/journal/14401843/homepage/forauthors.html",
+    ],
+    "respiratory-research": [
+        "https://respiratory-research.biomedcentral.com/submission-guidelines",
+    ],
+    "respiratory-medicine": [
+        "https://www.journals.elsevier.com/respiratory-medicine/publish/guide-for-authors",
+    ],
+    "journal-nuclear-cardiology": [
+        "https://www.springer.com/journal/12350/submission-guidelines",
+    ],
+    "american-heart-journal": [
+        "https://www.sciencedirect.com/journal/american-heart-journal/publish/guide-for-authors",
+    ],
+    "nature-reviews-cardiology": [
+        "https://www.nature.com/nrcardio/for-authors-and-referees",
+    ],
+    "plos-one": [
+        "https://journals.plos.org/plosone/s/submission-guidelines",
+    ],
+    "bmj-open": [
+        "https://bmjopen.bmj.com/pages/authors/",
+    ],
+
+    # Backward-compatible aliases
+    "ehj-cardiovascular-imaging": [
+        "https://academic.oup.com/ehjcimaging/pages/General_Instructions",
+    ],
+    "circ-cardiovascular-imaging": [
+        "https://www.ahajournals.org/journal/circimaging/pages/instructions-for-authors",
+    ],
+    "heart-bmj": [
+        "https://heart.bmj.com/pages/authors/",
     ],
 }
 
@@ -341,4 +436,3 @@ Rules:
             fetched_urls=fetched_urls,
             model_used=model_used,
         )
-

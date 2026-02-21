@@ -100,21 +100,192 @@ export const CURATED_CARDIOLOGY_IMAGING_JOURNALS: JournalOption[] = [
 ]
 
 export const RESEARCH_TYPE_OPTIONS = [
-  'Retrospective observational cohort',
+  'Retrospective single-centre cohort',
+  'Retrospective multi-centre cohort',
   'Prospective observational cohort',
-  'Registry-based observational analysis',
-  'Case-control observational study',
+  'Registry-based analysis',
+  'Case-control study',
   'Case series',
   'Cross-sectional imaging biomarker study',
+  'Longitudinal imaging biomarker study',
+  'Imaging-outcome association study',
+  'Mechanistic imaging study',
+  'Prognostic imaging model development',
+  'Prognostic model validation',
+  'Incremental prognostic value study',
+  'Imaging + biomarker integrated model',
   'Diagnostic accuracy imaging study',
-  'Prognostic imaging model study',
-  'Imaging reproducibility and inter-reader variability study',
-  'Imaging protocol optimization study',
-  'Radiomics or AI imaging model development',
-  'Radiomics or AI imaging model external validation',
-  'Multimodality imaging comparative study',
-  'Methodological or technical validation study',
+  'Diagnostic threshold optimisation study',
+  'Phenotype classification study',
+  'Inter-reader reproducibility study',
+  'Intra-observer repeatability study',
+  'Imaging protocol optimisation study',
+  'Quantification method comparison study',
+  'Imaging-haemodynamic integration study',
+  'Imaging-biomarker integration study',
+  'Imaging-exercise physiology integration study',
+  'Multimodality imaging comparison study',
+  'AI imaging model development',
+  'AI imaging model external validation',
+  'Automated segmentation validation study',
+  'Statistical methodology application study',
+  'Measurement harmonisation study',
+  'Data integration methodology study',
 ] as const
+
+export type ResearchCategoryOption = {
+  category: string
+  studyTypes: readonly string[]
+}
+
+const BASE_RESEARCH_TYPE_TAXONOMY: readonly ResearchCategoryOption[] = [
+  {
+    category: 'Observational Clinical Cohort',
+    studyTypes: [
+      'Retrospective single-centre cohort',
+      'Retrospective multi-centre cohort',
+      'Prospective observational cohort',
+      'Registry-based analysis',
+      'Case-control study',
+      'Case series',
+    ],
+  },
+  {
+    category: 'Imaging Biomarker Study',
+    studyTypes: [
+      'Cross-sectional imaging biomarker study',
+      'Longitudinal imaging biomarker study',
+      'Imaging-outcome association study',
+      'Mechanistic imaging study',
+    ],
+  },
+  {
+    category: 'Prognostic / Risk Modelling',
+    studyTypes: [
+      'Prognostic imaging model development',
+      'Prognostic model validation',
+      'Incremental prognostic value study',
+      'Imaging + biomarker integrated model',
+    ],
+  },
+  {
+    category: 'Diagnostic Study',
+    studyTypes: [
+      'Diagnostic accuracy imaging study',
+      'Diagnostic threshold optimisation study',
+      'Phenotype classification study',
+    ],
+  },
+  {
+    category: 'Reproducibility / Technical Validation',
+    studyTypes: [
+      'Inter-reader reproducibility study',
+      'Intra-observer repeatability study',
+      'Imaging protocol optimisation study',
+      'Quantification method comparison study',
+    ],
+  },
+  {
+    category: 'Multimodality Integration',
+    studyTypes: [
+      'Imaging-haemodynamic integration study',
+      'Imaging-biomarker integration study',
+      'Imaging-exercise physiology integration study',
+      'Multimodality imaging comparison study',
+    ],
+  },
+  {
+    category: 'AI / Radiomics',
+    studyTypes: [
+      'AI imaging model development',
+      'AI imaging model external validation',
+      'Automated segmentation validation study',
+    ],
+  },
+  {
+    category: 'Methodological / Analytical',
+    studyTypes: [
+      'Statistical methodology application study',
+      'Measurement harmonisation study',
+      'Data integration methodology study',
+    ],
+  },
+] as const
+
+export function getResearchTypeTaxonomy(enableAiRadiomics = true): ResearchCategoryOption[] {
+  return BASE_RESEARCH_TYPE_TAXONOMY.filter((entry) => enableAiRadiomics || entry.category !== 'AI / Radiomics').map((entry) => ({
+    category: entry.category,
+    studyTypes: [...entry.studyTypes],
+  }))
+}
+
+export type StudyTypeDefaults = {
+  defaultInterpretationMode: (typeof INTERPRETATION_MODE_OPTIONS)[number]
+  enableConservativeGuardrails: boolean
+}
+
+const DEFAULT_INTERPRETATION_MODE: (typeof INTERPRETATION_MODE_OPTIONS)[number] = 'Associative risk or prognostic inference'
+const RETROSPECTIVE_GUARDRAIL_STUDY_TYPES = new Set([
+  'Retrospective single-centre cohort',
+  'Retrospective multi-centre cohort',
+  'Registry-based analysis',
+  'Case-control study',
+  'Case series',
+])
+
+const STUDY_TYPE_DEFAULT_MODES: Record<string, (typeof INTERPRETATION_MODE_OPTIONS)[number]> = {
+  'Retrospective single-centre cohort': 'Associative risk or prognostic inference',
+  'Retrospective multi-centre cohort': 'Associative risk or prognostic inference',
+  'Prospective observational cohort': 'Associative risk or prognostic inference',
+  'Registry-based analysis': 'Associative risk or prognostic inference',
+  'Case-control study': 'Associative risk or prognostic inference',
+  'Case series': 'Descriptive phenotype characterization',
+  'Cross-sectional imaging biomarker study': 'Associative risk or prognostic inference',
+  'Longitudinal imaging biomarker study': 'Associative risk or prognostic inference',
+  'Imaging-outcome association study': 'Associative risk or prognostic inference',
+  'Mechanistic imaging study': 'Hypothesis-generating mechanistic interpretation',
+  'Prognostic imaging model development': 'Predictive model development interpretation',
+  'Prognostic model validation': 'Predictive model external validation interpretation',
+  'Incremental prognostic value study': 'Time-to-event prognostic interpretation',
+  'Imaging + biomarker integrated model': 'Predictive model development interpretation',
+  'Diagnostic accuracy imaging study': 'Diagnostic performance interpretation',
+  'Diagnostic threshold optimisation study': 'Incremental diagnostic value interpretation',
+  'Phenotype classification study': 'Predictive model development interpretation',
+  'Inter-reader reproducibility study': 'Replication or confirmatory association interpretation',
+  'Intra-observer repeatability study': 'Replication or confirmatory association interpretation',
+  'Imaging protocol optimisation study': 'Implementation and workflow feasibility interpretation',
+  'Quantification method comparison study': 'Replication or confirmatory association interpretation',
+  'Imaging-haemodynamic integration study': 'Associative risk or prognostic inference',
+  'Imaging-biomarker integration study': 'Associative risk or prognostic inference',
+  'Imaging-exercise physiology integration study': 'Hypothesis-generating mechanistic interpretation',
+  'Multimodality imaging comparison study': 'Comparative effectiveness interpretation (non-causal)',
+  'AI imaging model development': 'Predictive model development interpretation',
+  'AI imaging model external validation': 'Predictive model external validation interpretation',
+  'Automated segmentation validation study': 'Predictive model internal validation interpretation',
+  'Statistical methodology application study': 'Replication or confirmatory association interpretation',
+  'Measurement harmonisation study': 'Implementation and workflow feasibility interpretation',
+  'Data integration methodology study': 'Implementation and workflow feasibility interpretation',
+}
+
+export function getStudyTypeDefaults(studyType: string): StudyTypeDefaults {
+  const defaultMode = STUDY_TYPE_DEFAULT_MODES[studyType] ?? DEFAULT_INTERPRETATION_MODE
+  return {
+    defaultInterpretationMode: defaultMode,
+    enableConservativeGuardrails: RETROSPECTIVE_GUARDRAIL_STUDY_TYPES.has(studyType),
+  }
+}
+
+export function getCategoryForStudyType(studyType: string, enableAiRadiomics = true): string | null {
+  const taxonomy = getResearchTypeTaxonomy(enableAiRadiomics)
+  const entry = taxonomy.find((category) => category.studyTypes.includes(studyType))
+  return entry?.category ?? null
+}
+
+export function getStudyTypesForCategory(category: string, enableAiRadiomics = true): string[] {
+  const taxonomy = getResearchTypeTaxonomy(enableAiRadiomics)
+  const entry = taxonomy.find((item) => item.category === category)
+  return entry ? [...entry.studyTypes] : []
+}
 
 export const INTERPRETATION_MODE_OPTIONS = [
   'Descriptive phenotype characterization',
