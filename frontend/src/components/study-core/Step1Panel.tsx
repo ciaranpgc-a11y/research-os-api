@@ -846,9 +846,9 @@ export function Step1Panel({
           <div className="rounded border border-emerald-300 bg-white p-2">
             <p className="text-xs text-emerald-950">{summarySuggestion}</p>
           </div>
-          <div className="flex items-center justify-between gap-2">
+          <div className="space-y-2">
             <p className="text-xs text-emerald-900">{isStale ? 'Inputs changed. Refresh before applying.' : 'Direct rewrite only; no new claims added.'}</p>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
               <Button
                 size="sm"
                 variant="outline"
@@ -911,7 +911,7 @@ export function Step1Panel({
             Recommended category: <span className="font-semibold">{researchCategorySuggestion.value}</span>
           </p>
           <p className="text-xs text-violet-900">{researchCategorySuggestion.rationale}</p>
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button
               size="sm"
               variant="outline"
@@ -943,7 +943,7 @@ export function Step1Panel({
             Recommended type: <span className="font-semibold">{researchTypeSuggestion.value}</span>
           </p>
           <p className="text-xs text-sky-900">{researchTypeSuggestion.rationale}</p>
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button
               size="sm"
               variant="outline"
@@ -975,7 +975,7 @@ export function Step1Panel({
             Recommended mode: <span className="font-semibold">{interpretationSuggestion.value}</span>
           </p>
           <p className="text-xs text-cyan-900">{interpretationSuggestion.rationale}</p>
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button
               size="sm"
               variant="outline"
@@ -1022,7 +1022,7 @@ export function Step1Panel({
               <p className="text-xs text-amber-900">{wordLengthSuggestion.value}</p>
             </div>
           ) : null}
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button
               size="sm"
               variant="outline"
