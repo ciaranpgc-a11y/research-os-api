@@ -529,7 +529,6 @@ export function StepContext({
                 onClick={() => onToggleSummaryHelper(helper.text)}
               >
                 {helper.label}
-                {activeSummaryHelperIds.has(helper.id) ? ' (on)' : ''}
               </Button>
             ))}
           </div>
