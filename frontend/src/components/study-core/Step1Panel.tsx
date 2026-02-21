@@ -406,7 +406,6 @@ export function Step1Panel({
   const [appliedSectionOpen, setAppliedSectionOpen] = useState(false)
   const [ignoredSectionOpen, setIgnoredSectionOpen] = useState(false)
   const applyTimersRef = useRef<number[]>([])
-  const lastAutoRefreshJournalRef = useRef('')
 
   useEffect(() => {
     return () => {
@@ -657,16 +656,10 @@ export function Step1Panel({
     return true
   }
 
-  const generateSuggestions = async (options?: { resetHistory?: boolean; autoApplyJournal?: boolean }) => {
+  const generateSuggestions = async (options?: { resetHistory?: boolean }) => {
     const resetHistory = options?.resetHistory ?? true
-    const autoApplyJournal = options?.autoApplyJournal ?? false
     if (!summary.trim()) {
       return
-    }
-    const trimmedJournal = targetJournal.trim()
-    if (trimmedJournal) {
-      // Prevent journal auto-refresh from re-firing after manual/apply-driven updates.
-      lastAutoRefreshJournalRef.current = trimmedJournal
     }
     if (resetHistory) {
       setUndoStack([])
@@ -685,24 +678,7 @@ export function Step1Panel({
         summaryOfResearch: summary,
       })
       setSuggestions(response)
-      let nextGeneratedKey = currentKey
-      if (autoApplyJournal) {
-        const nextArticleType = response.article_type_recommendation?.value?.trim() || currentArticleType
-        const nextWordLength = response.word_length_recommendation?.value?.trim() || currentWordLength
-        applyJournalRecommendationValues(response.article_type_recommendation?.value, response.word_length_recommendation?.value, {
-          recordUndo: false,
-        })
-        nextGeneratedKey = buildSuggestionContextKey({
-          summary,
-          researchCategory,
-          researchType,
-          interpretationMode,
-          targetJournal,
-          articleType: nextArticleType,
-          wordLength: nextWordLength,
-        })
-      }
-      setGeneratedKey(nextGeneratedKey)
+      setGeneratedKey(currentKey)
     } catch (error) {
       const fallback = buildOfflineSuggestions({
         summary,
@@ -714,46 +690,13 @@ export function Step1Panel({
         wordLength: currentWordLength,
       })
       setSuggestions(fallback)
-      let nextGeneratedKey = currentKey
-      if (autoApplyJournal) {
-        const nextArticleType = fallback.article_type_recommendation?.value?.trim() || currentArticleType
-        const nextWordLength = fallback.word_length_recommendation?.value?.trim() || currentWordLength
-        applyJournalRecommendationValues(fallback.article_type_recommendation?.value, fallback.word_length_recommendation?.value, {
-          recordUndo: false,
-        })
-        nextGeneratedKey = buildSuggestionContextKey({
-          summary,
-          researchCategory,
-          researchType,
-          interpretationMode,
-          targetJournal,
-          articleType: nextArticleType,
-          wordLength: nextWordLength,
-        })
-      }
-      setGeneratedKey(nextGeneratedKey)
+      setGeneratedKey(currentKey)
       const message = error instanceof Error ? error.message : 'Could not generate suggestions.'
       setRequestError(`${message} Showing provisional offline suggestions. Endpoint: ${API_BASE_URL}`)
     } finally {
       setLoading(false)
     }
   }
-
-  useEffect(() => {
-    const trimmedJournal = targetJournal.trim()
-    if (!trimmedJournal) {
-      lastAutoRefreshJournalRef.current = ''
-      return
-    }
-    if (!summary.trim() || loading) {
-      return
-    }
-    if (lastAutoRefreshJournalRef.current === trimmedJournal) {
-      return
-    }
-    lastAutoRefreshJournalRef.current = trimmedJournal
-    void generateSuggestions({ resetHistory: false, autoApplyJournal: true })
-  }, [loading, summary, targetJournal])
 
   const refreshSuggestions = async () => {
     setRefinementsEnabled(true)
@@ -767,9 +710,6 @@ export function Step1Panel({
       return
     }
     setRefinementsEnabled(true)
-    if (!hasGenerated || isStale) {
-      await generateSuggestions()
-    }
   }
 
   const markApplied = (key: AppliedKey) => {
