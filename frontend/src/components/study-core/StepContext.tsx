@@ -90,6 +90,44 @@ function buildAnalysisSummary(values: ContextFormValues): string {
   return parts.join(' | ')
 }
 
+type WordLengthBand = 'short' | 'standard' | 'long' | 'unknown'
+
+function getWordLengthBand(value: string): WordLengthBand {
+  const matches = value.match(/\d[\d,]*/g)
+  if (!matches || matches.length === 0) {
+    return 'unknown'
+  }
+  const numbers = matches
+    .map((part) => Number.parseInt(part.replace(/,/g, ''), 10))
+    .filter((part) => Number.isFinite(part))
+  if (numbers.length === 0) {
+    return 'unknown'
+  }
+  const upperBound = Math.max(...numbers)
+  if (upperBound <= 2500) {
+    return 'short'
+  }
+  if (upperBound >= 5000) {
+    return 'long'
+  }
+  return 'standard'
+}
+
+function getWordLengthBoxClass(value: string): string {
+  const baseClass = 'rounded-md border p-2'
+  const band = getWordLengthBand(value)
+  if (band === 'short') {
+    return `${baseClass} border-sky-200 bg-sky-50/70`
+  }
+  if (band === 'long') {
+    return `${baseClass} border-violet-200 bg-violet-50/70`
+  }
+  if (band === 'standard') {
+    return `${baseClass} border-slate-300 bg-slate-50/70`
+  }
+  return `${baseClass} border-border/70 bg-background`
+}
+
 export function StepContext({
   values,
   targetJournal,
@@ -154,6 +192,7 @@ export function StepContext({
     [values.researchCategory],
   )
   const submissionGuidanceUrl = useMemo(() => getJournalSubmissionGuidanceUrl(targetJournal), [targetJournal])
+  const wordLengthBoxClass = useMemo(() => getWordLengthBoxClass(values.recommendedWordLength), [values.recommendedWordLength])
   const journalQualityStars = useMemo(() => getJournalQualityStars(targetJournal), [targetJournal])
   const selectedJournalLabel = useMemo(
     () => journals.find((journal) => journal.slug === targetJournal)?.display_name ?? '',
@@ -384,7 +423,7 @@ export function StepContext({
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Recommended article type</p>
             <p className="text-sm">{values.recommendedArticleType || 'Not set'}</p>
           </div>
-          <div className="rounded-md border border-border/70 bg-background p-2">
+          <div className={wordLengthBoxClass}>
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Recommended word length</p>
             <p className="text-sm">{values.recommendedWordLength || 'Not set'}</p>
           </div>
