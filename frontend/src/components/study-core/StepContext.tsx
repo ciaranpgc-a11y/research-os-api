@@ -502,17 +502,6 @@ export function StepContext({
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Label htmlFor="context-research-objective">Summary of research</Label>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className={SECONDARY_ACTION_BUTTON_CLASS}
-              onClick={onToggleSpeechToText}
-              disabled={!speechSupported}
-            >
-              {isListening ? <Square className="mr-1 h-3.5 w-3.5" /> : <Mic className="mr-1 h-3.5 w-3.5" />}
-              {isListening ? 'Stop speech input' : 'Speech to text'}
-            </Button>
           </div>
           <div className="flex flex-wrap gap-2">
             {SUMMARY_HELPER_CHIPS.map((helper) => (
@@ -539,6 +528,19 @@ export function StepContext({
             value={values.researchObjective}
             onChange={(event) => onValueChange('researchObjective', event.target.value)}
           />
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className={SECONDARY_ACTION_BUTTON_CLASS}
+              onClick={onToggleSpeechToText}
+              disabled={!speechSupported}
+            >
+              {isListening ? <Square className="mr-1 h-3.5 w-3.5" /> : <Mic className="mr-1 h-3.5 w-3.5" />}
+              {isListening ? 'Stop speech input' : 'Speech to text'}
+            </Button>
+          </div>
           {!speechSupported ? <p className="text-xs text-muted-foreground">Speech to text is not available in this browser.</p> : null}
           {attemptedSubmit && errors.researchObjective ? <p className="text-xs text-destructive">{errors.researchObjective}</p> : null}
         </div>

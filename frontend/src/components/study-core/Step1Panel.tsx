@@ -45,6 +45,10 @@ type SuggestionProvenance = {
   label: 'Live journal guidance' | 'Fallback estimate'
   className: string
 }
+type UndoEntry = {
+  label: string
+  undo: () => void
+}
 
 const IGNORED_SUGGESTIONS_SESSION_KEY = 'aawe-step1-ignored-suggestions'
 const SUGGESTION_KEYS: AppliedKey[] = ['summary', 'researchCategory', 'researchType', 'interpretationMode', 'journal']
@@ -373,6 +377,8 @@ export function Step1Panel({
   const [appliedState, setAppliedState] = useState<Record<AppliedKey, boolean>>(buildEmptySuggestionState)
   const [ignoredState, setIgnoredState] = useState<Record<AppliedKey, boolean>>(buildEmptySuggestionState)
   const [showSummaryDiff, setShowSummaryDiff] = useState(false)
+  const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
+  const [appliedSectionOpen, setAppliedSectionOpen] = useState(false)
   const applyTimersRef = useRef<number[]>([])
 
   useEffect(() => {
@@ -522,6 +528,8 @@ export function Step1Panel({
   useEffect(() => {
     setIgnoredState(readIgnoredStateForKey(currentKey))
     setAppliedState(buildEmptySuggestionState())
+    setUndoStack([])
+    setShowSummaryDiff(false)
   }, [currentKey])
 
   const appliedKeys = useMemo(() => {
@@ -553,6 +561,12 @@ export function Step1Panel({
     summarySuggestion,
     isSummaryApplied,
   ])
+
+  useEffect(() => {
+    if (appliedKeys.length === 0 && appliedSectionOpen) {
+      setAppliedSectionOpen(false)
+    }
+  }, [appliedKeys.length, appliedSectionOpen])
 
   const generateSuggestions = async () => {
     if (!summary.trim()) {
@@ -621,7 +635,33 @@ export function Step1Panel({
     applyTimersRef.current.push(timerId)
   }
 
+  const pushUndoEntry = (entry: UndoEntry) => {
+    setUndoStack((current) => [...current, entry].slice(-20))
+  }
+
+  const onUndoLastApply = () => {
+    setUndoStack((current) => {
+      if (current.length === 0) {
+        return current
+      }
+      const next = [...current]
+      const last = next.pop()
+      if (last) {
+        last.undo()
+      }
+      return next
+    })
+  }
+
   const onApplySummary = (option: string) => {
+    const previousSummary = summary
+    if (normalize(previousSummary) === normalize(option)) {
+      return
+    }
+    pushUndoEntry({
+      label: 'Summary rewrite',
+      undo: () => onReplaceSummary(previousSummary),
+    })
     onReplaceSummary(option)
     markApplied('summary')
   }
@@ -631,6 +671,20 @@ export function Step1Panel({
     if (!recommendation) {
       return
     }
+    const previousResearchType = researchType
+    const previousResearchCategory = researchCategory
+    const previousInterpretationMode = interpretationMode
+    if (normalize(previousResearchType) === normalize(recommendation.value)) {
+      return
+    }
+    pushUndoEntry({
+      label: 'Research type update',
+      undo: () => {
+        onApplyResearchCategory(previousResearchCategory)
+        onApplyResearchType(previousResearchType)
+        onApplyInterpretationMode(previousInterpretationMode)
+      },
+    })
     onApplyResearchType(recommendation.value)
     markApplied('researchType')
   }
@@ -640,6 +694,20 @@ export function Step1Panel({
     if (!recommendation) {
       return
     }
+    const previousResearchCategory = researchCategory
+    const previousResearchType = researchType
+    const previousInterpretationMode = interpretationMode
+    if (normalize(previousResearchCategory) === normalize(recommendation.value)) {
+      return
+    }
+    pushUndoEntry({
+      label: 'Research category update',
+      undo: () => {
+        onApplyResearchCategory(previousResearchCategory)
+        onApplyResearchType(previousResearchType)
+        onApplyInterpretationMode(previousInterpretationMode)
+      },
+    })
     onApplyResearchCategory(recommendation.value)
     markApplied('researchCategory')
   }
@@ -649,6 +717,14 @@ export function Step1Panel({
     if (!recommendation) {
       return
     }
+    const previousInterpretationMode = interpretationMode
+    if (normalize(previousInterpretationMode) === normalize(recommendation.value)) {
+      return
+    }
+    pushUndoEntry({
+      label: 'Interpretation mode update',
+      undo: () => onApplyInterpretationMode(previousInterpretationMode),
+    })
     onApplyInterpretationMode(recommendation.value)
     markApplied('interpretationMode')
   }
@@ -656,11 +732,25 @@ export function Step1Panel({
   const onApplyJournalRecommendation = () => {
     const articleRecommendation = articleSuggestion
     const wordLengthRecommendation = wordLengthSuggestion
+    const previousArticleType = currentArticleType
+    const previousWordLength = currentWordLength
     if (articleRecommendation?.value) {
       onApplyArticleType(articleRecommendation.value)
     }
     if (wordLengthRecommendation?.value) {
       onApplyWordLength(wordLengthRecommendation.value)
+    }
+    if (
+      (articleRecommendation?.value && normalize(articleRecommendation.value) !== normalize(previousArticleType)) ||
+      (wordLengthRecommendation?.value && normalize(wordLengthRecommendation.value) !== normalize(previousWordLength))
+    ) {
+      pushUndoEntry({
+        label: 'Journal recommendation apply',
+        undo: () => {
+          onApplyArticleType(previousArticleType)
+          onApplyWordLength(previousWordLength)
+        },
+      })
     }
     markApplied('journal')
   }
@@ -703,6 +793,45 @@ export function Step1Panel({
   const pendingToRender = pendingKeys.slice(0, 3)
   const hiddenPendingCount = Math.max(0, pendingKeys.length - pendingToRender.length)
   const canSaveAndContinue = Boolean(refinementsEnabled && hasGenerated && pendingKeys.length === 0 && summary.trim())
+  const primaryAction = useMemo(() => {
+    if (!summary.trim()) {
+      return null
+    }
+    if (!refinementsEnabled) {
+      return {
+        label: 'Show suggestions',
+        onClick: () => void onToggleRefinements(),
+        disabled: loading,
+      }
+    }
+    if (pendingKeys.length > 0) {
+      return {
+        label: 'Apply all',
+        onClick: onApplyAllPending,
+        disabled: loading,
+      }
+    }
+    if (canSaveAndContinue && onSaveAndContinue) {
+      return {
+        label: 'Save and continue',
+        onClick: onSaveAndContinue,
+        disabled: loading,
+      }
+    }
+    return {
+      label: loading ? 'Refreshing...' : 'Refresh suggestions',
+      onClick: () => void refreshSuggestions(),
+      disabled: loading,
+    }
+  }, [
+    canSaveAndContinue,
+    loading,
+    onApplyAllPending,
+    onSaveAndContinue,
+    pendingKeys.length,
+    refinementsEnabled,
+    summary,
+  ])
 
   const suggestionCardPulseClass = (key: AppliedKey, colourClass: string) =>
     `${colourClass} ${CARD_TRANSITION_CLASS} ${
@@ -738,7 +867,13 @@ export function Step1Panel({
               >
                 Ignore
               </Button>
-              <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={() => onApplySummary(summarySuggestion)} disabled={applyDisabled}>
+              <Button
+                size="sm"
+                variant="outline"
+                className={OUTLINE_ACTION_BUTTON_CLASS}
+                onClick={() => onApplySummary(summarySuggestion)}
+                disabled={applyDisabled}
+              >
                 Replace summary
               </Button>
             </div>
@@ -786,7 +921,13 @@ export function Step1Panel({
             >
               Ignore
             </Button>
-            <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyResearchCategorySuggestion} disabled={applyDisabled}>
+            <Button
+              size="sm"
+              variant="outline"
+              className={OUTLINE_ACTION_BUTTON_CLASS}
+              onClick={onApplyResearchCategorySuggestion}
+              disabled={applyDisabled}
+            >
               Apply research category
             </Button>
           </div>
@@ -812,7 +953,13 @@ export function Step1Panel({
             >
               Ignore
             </Button>
-            <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyResearchTypeSuggestion} disabled={applyDisabled}>
+            <Button
+              size="sm"
+              variant="outline"
+              className={OUTLINE_ACTION_BUTTON_CLASS}
+              onClick={onApplyResearchTypeSuggestion}
+              disabled={applyDisabled}
+            >
               Apply suggested type
             </Button>
           </div>
@@ -838,7 +985,13 @@ export function Step1Panel({
             >
               Ignore
             </Button>
-            <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyInterpretationModeSuggestion} disabled={applyDisabled}>
+            <Button
+              size="sm"
+              variant="outline"
+              className={OUTLINE_ACTION_BUTTON_CLASS}
+              onClick={onApplyInterpretationModeSuggestion}
+              disabled={applyDisabled}
+            >
               Apply interpretation mode
             </Button>
           </div>
@@ -879,7 +1032,13 @@ export function Step1Panel({
             >
               Ignore
             </Button>
-            <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyJournalRecommendation} disabled={applyDisabled}>
+            <Button
+              size="sm"
+              variant="outline"
+              className={OUTLINE_ACTION_BUTTON_CLASS}
+              onClick={onApplyJournalRecommendation}
+              disabled={applyDisabled}
+            >
               Apply journal recommendation
             </Button>
           </div>
@@ -960,9 +1119,22 @@ export function Step1Panel({
         <p className="text-sm font-medium">Suggestion controls</p>
         <p className="text-xs text-slate-600">Generate AI suggestions on demand.</p>
         <div className="flex flex-wrap items-center gap-2">
-          <Button className={ACTION_BUTTON_CLASS} size="sm" onClick={() => void onToggleRefinements()} disabled={!summary.trim() || loading}>
-            {refinementsEnabled ? 'Hide suggestions' : 'Show suggestions'}
-          </Button>
+          {primaryAction ? (
+            <Button className={ACTION_BUTTON_CLASS} size="sm" onClick={primaryAction.onClick} disabled={primaryAction.disabled}>
+              {primaryAction.label}
+            </Button>
+          ) : null}
+          {refinementsEnabled ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className={OUTLINE_ACTION_BUTTON_CLASS}
+              onClick={() => void onToggleRefinements()}
+              disabled={loading}
+            >
+              Hide suggestions
+            </Button>
+          ) : null}
           <Button
             size="sm"
             variant="outline"
@@ -972,6 +1144,17 @@ export function Step1Panel({
           >
             {loading ? 'Refreshing...' : 'Refresh suggestions'}
           </Button>
+          {undoStack.length > 0 ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className={IGNORE_BUTTON_CLASS}
+              onClick={onUndoLastApply}
+              disabled={loading}
+            >
+              Undo last apply
+            </Button>
+          ) : null}
         </div>
         {!summary.trim() ? <p className="text-xs text-muted-foreground">Add a summary of research to enable suggestions.</p> : null}
         {summary.trim() && !targetJournal.trim() ? (
@@ -987,14 +1170,7 @@ export function Step1Panel({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pending actions</p>
-            <div className="flex items-center gap-2">
-              {pendingKeys.length > 0 ? (
-                <Button size="sm" variant="outline" className={IGNORE_BUTTON_CLASS} onClick={onApplyAllPending} disabled={loading}>
-                  Apply all
-                </Button>
-              ) : null}
-              {loading ? <p className="text-xs text-muted-foreground">Generating...</p> : null}
-            </div>
+            {loading ? <p className="text-xs text-muted-foreground">Generating...</p> : null}
           </div>
           {!hasGenerated && !loading ? (
             <p className="rounded-md border border-border/70 bg-muted/20 px-2 py-2 text-xs text-muted-foreground">
@@ -1028,16 +1204,15 @@ export function Step1Panel({
               </Button>
             </div>
           ) : null}
-          {canSaveAndContinue && onSaveAndContinue ? (
-            <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onSaveAndContinue} disabled={loading}>
-              Save and continue
-            </Button>
-          ) : null}
         </div>
       ) : null}
 
       {refinementsEnabled ? (
-        <details className="rounded-md border border-border/80 bg-muted/15 p-3">
+        <details
+          className="rounded-md border border-border/80 bg-muted/15 p-3"
+          open={appliedSectionOpen && appliedKeys.length > 0}
+          onToggle={(event) => setAppliedSectionOpen((event.currentTarget as HTMLDetailsElement).open)}
+        >
           <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Applied suggestions ({appliedKeys.length})
           </summary>

@@ -632,6 +632,13 @@ export function StudyCorePage() {
           }
           onApplyResearchType={(value) =>
             {
+              if (!value.trim()) {
+                setContextValues((current) => ({
+                  ...current,
+                  studyArchitecture: '',
+                }))
+                return
+              }
               const resolvedSelection = resolveSuggestedStudyType(value)
               if (!resolvedSelection.studyType) {
                 setError('Suggested research type could not be mapped to a selectable study type. Refresh suggestions.')
