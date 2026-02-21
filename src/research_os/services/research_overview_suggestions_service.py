@@ -275,6 +275,16 @@ _INTERPRETATION_MODE_OPTIONS = (
     "Safety and feasibility characterization",
     "Implementation and workflow feasibility interpretation",
 )
+_RESEARCH_CATEGORY_OPTIONS = (
+    "Observational Clinical Cohort",
+    "Imaging Biomarker Study",
+    "Prognostic / Risk Modelling",
+    "Diagnostic Study",
+    "Reproducibility / Technical Validation",
+    "Multimodality Integration",
+    "AI / Radiomics",
+    "Methodological / Analytical",
+)
 _ARTICLE_TYPE_HINTS: tuple[tuple[str, str], ...] = (
     ("original research", "Original Research Article"),
     ("original article", "Original Research Article"),
@@ -882,6 +892,93 @@ def _coerce_study_type_recommendation(
     return recommendation
 
 
+def _coerce_research_category_recommendation(value: Any) -> dict[str, str] | None:
+    recommendation = _coerce_recommendation(value)
+    if not recommendation:
+        return None
+    resolved_value = _resolve_canonical_option(
+        recommendation["value"], list(_RESEARCH_CATEGORY_OPTIONS)
+    )
+    if not resolved_value:
+        return None
+    recommendation["value"] = resolved_value
+    return recommendation
+
+
+def _fallback_research_category_recommendation(
+    *,
+    research_category: str,
+    research_type: str,
+    article_type: str,
+    summary_of_research: str,
+) -> dict[str, str]:
+    resolved_existing = _resolve_canonical_option(
+        research_category, list(_RESEARCH_CATEGORY_OPTIONS)
+    )
+    if resolved_existing:
+        return {
+            "value": resolved_existing,
+            "rationale": "Matches the currently selected research category.",
+        }
+
+    summary_lower = summary_of_research.strip().lower()
+    research_type_lower = research_type.strip().lower()
+    article_type_lower = article_type.strip().lower()
+    combined = f"{summary_lower} {research_type_lower} {article_type_lower}"
+
+    heuristics: tuple[tuple[tuple[str, ...], str, str], ...] = (
+        (
+            ("literature review", "narrative review", "review article", "scoping review"),
+            "Methodological / Analytical",
+            "The summary is framed as evidence synthesis rather than primary cohort data collection.",
+        ),
+        (
+            ("diagnostic", "accuracy", "sensitivity", "specificity", "roc"),
+            "Diagnostic Study",
+            "The summary emphasises diagnostic performance framing.",
+        ),
+        (
+            ("prognostic", "risk model", "prediction model", "survival", "time-to-event"),
+            "Prognostic / Risk Modelling",
+            "The summary is centred on prognosis or risk prediction.",
+        ),
+        (
+            ("reproducibility", "repeatability", "inter-reader", "intra-observer", "test-retest"),
+            "Reproducibility / Technical Validation",
+            "The summary focuses on technical repeatability or measurement reliability.",
+        ),
+        (
+            ("ai", "radiomics", "segmentation model", "machine learning"),
+            "AI / Radiomics",
+            "The summary references AI or radiomics methods.",
+        ),
+        (
+            ("haemodynamic integration", "hemodynamic integration", "multimodality", "integration study"),
+            "Multimodality Integration",
+            "The summary describes integration across modalities or linked physiological datasets.",
+        ),
+        (
+            ("biomarker", "cross-sectional", "longitudinal imaging", "mechanistic imaging"),
+            "Imaging Biomarker Study",
+            "The summary focuses on imaging-derived biomarker characterization.",
+        ),
+        (
+            ("retrospective", "prospective", "cohort", "registry", "case-control", "case series"),
+            "Observational Clinical Cohort",
+            "The summary describes an observational clinical cohort design.",
+        ),
+    )
+
+    for keywords, category, rationale in heuristics:
+        if any(keyword in combined for keyword in keywords):
+            return {"value": category, "rationale": rationale}
+
+    return {
+        "value": "Observational Clinical Cohort",
+        "rationale": "Defaulted to observational cohort framing; refine if the study is primarily methodological.",
+    }
+
+
 def _fallback_study_type_recommendation(
     *,
     allowed_study_types: list[str],
@@ -907,7 +1004,7 @@ def _fallback_study_type_recommendation(
         "Reproducibility / Technical Validation": "Inter-reader reproducibility study",
         "Multimodality Integration": "Imaging-haemodynamic integration study",
         "AI / Radiomics": "AI imaging model development",
-        "Methodological / Analytical": "Statistical methodology application study",
+        "Methodological / Analytical": "Narrative literature synthesis study",
     }
     category_default = category_defaults.get(research_category.strip())
     if category_default:
@@ -922,6 +1019,10 @@ def _fallback_study_type_recommendation(
 
     summary_lower = summary_of_research.strip().lower()
     heuristics: tuple[tuple[str, str], ...] = (
+        ("literature review", "Narrative literature synthesis study"),
+        ("narrative review", "Narrative literature synthesis study"),
+        ("scoping review", "Scoping evidence synthesis study"),
+        ("review article", "Narrative literature synthesis study"),
         ("retrospective", "Retrospective single-centre cohort"),
         ("prospective", "Prospective observational cohort"),
         ("registry", "Registry-based analysis"),
@@ -1083,6 +1184,7 @@ def _empty_payload(
 ) -> dict[str, object]:
     return {
         "summary_refinements": summary_refinements or [],
+        "research_category_suggestion": None,
         "research_type_suggestion": None,
         "interpretation_mode_recommendation": None,
         "article_type_recommendation": None,
@@ -1108,11 +1210,20 @@ def generate_research_overview_suggestions(
     allowed_study_types = _clean_option_list(study_type_options)
     if research_type.strip():
         allowed_study_types = _clean_option_list([*allowed_study_types, research_type])
-    fallback_study_type_recommendation = _fallback_study_type_recommendation(
-        allowed_study_types=allowed_study_types,
+    fallback_research_category_recommendation = _fallback_research_category_recommendation(
         research_category=research_category,
         research_type=research_type,
+        article_type=article_type,
         summary_of_research=summary_of_research,
+    )
+    fallback_study_type_recommendation = _fallback_study_type_recommendation(
+        allowed_study_types=allowed_study_types,
+        research_category=fallback_research_category_recommendation["value"],
+        research_type=research_type,
+        summary_of_research=summary_of_research,
+    )
+    allowed_research_category_block = "\n".join(
+        f"- {option}" for option in _RESEARCH_CATEGORY_OPTIONS
     )
 
     summary_editor_refinements, summary_editor_model = _generate_summary_refinement(
@@ -1158,6 +1269,7 @@ Journal guidance excerpt:
 Return JSON only with this exact schema:
 {{
   "summary_refinements": ["string"],
+  "research_category_suggestion": {{"value": "string", "rationale": "string"}} | null,
   "research_type_suggestion": {{"value": "string", "rationale": "string"}} | null,
   "interpretation_mode_recommendation": {{"value": "string", "rationale": "string"}} | null,
   "article_type_recommendation": {{"value": "string", "rationale": "string"}} | null,
@@ -1165,11 +1277,15 @@ Return JSON only with this exact schema:
   "guidance_suggestions": ["string", "string", "string"]
 }}
 
+Allowed research categories (choose exactly one for research_category_suggestion.value):
+{allowed_research_category_block}
+
 Rules:
 - Provide exactly 1 summary_refinement.
 - summary_refinements must be full rewritten versions of summary_of_research, each as 2-4 sentences.
 - Do not add new facts, endpoints, sample sizes, methods, or results not already present in the inputs.
 - Do not write instructions to the user (no "add/include/report/specify/clarify/ensure").
+- research_category_suggestion.value must be exactly one allowed research category listed above.
 - research_type_suggestion.value must be exactly one canonical study type listed above.
 - interpretation_mode_recommendation.value must be one of:
   {", ".join(_INTERPRETATION_MODE_OPTIONS)}
@@ -1189,6 +1305,7 @@ Rules:
         model_used=combined_model_used,
         summary_refinements=summary_editor_refinements,
     )
+    base_payload["research_category_suggestion"] = fallback_research_category_recommendation
     base_payload["research_type_suggestion"] = fallback_study_type_recommendation
     base_payload["article_type_recommendation"] = journal_article_recommendation
     base_payload["word_length_recommendation"] = journal_word_length_recommendation
@@ -1210,6 +1327,9 @@ Rules:
                 max_items=1,
             ),
         )
+        payload["research_category_suggestion"] = _coerce_research_category_recommendation(
+            parsed.get("research_category_suggestion")
+        ) or fallback_research_category_recommendation
         payload["research_type_suggestion"] = _coerce_study_type_recommendation(
             parsed.get("research_type_suggestion"), allowed_study_types
         ) or fallback_study_type_recommendation

@@ -238,6 +238,7 @@ export type TextRecommendation = {
 
 export type ResearchOverviewSuggestionsPayload = {
   summary_refinements: string[]
+  research_category_suggestion: TextRecommendation | null
   research_type_suggestion: TextRecommendation | null
   interpretation_mode_recommendation: TextRecommendation | null
   article_type_recommendation: TextRecommendation | null

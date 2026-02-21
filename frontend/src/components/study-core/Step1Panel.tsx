@@ -15,6 +15,7 @@ type Step1PanelProps = {
   currentArticleType: string
   currentWordLength: string
   onReplaceSummary: (value: string) => void
+  onApplyResearchCategory: (value: string) => void
   onApplyResearchType: (value: string) => void
   onApplyInterpretationMode: (value: string) => void
   onApplyArticleType: (value: string) => void
@@ -26,12 +27,60 @@ const ACTION_BUTTON_CLASS = 'bg-emerald-600 text-white hover:bg-emerald-700 focu
 const OUTLINE_ACTION_BUTTON_CLASS =
   'border-emerald-300 text-emerald-800 hover:bg-emerald-100 focus-visible:ring-emerald-500'
 const SUMMARY_CARD_CLASS = 'space-y-2 rounded-md border border-emerald-300 bg-gradient-to-br from-emerald-50 to-emerald-100 p-3 shadow-sm'
+const RESEARCH_CATEGORY_CARD_CLASS = 'space-y-2 rounded-md border border-indigo-300 bg-gradient-to-br from-indigo-50 to-indigo-100 p-3 shadow-sm'
 const RESEARCH_TYPE_CARD_CLASS = 'space-y-2 rounded-md border border-sky-300 bg-gradient-to-br from-sky-50 to-sky-100 p-3 shadow-sm'
 const INTERPRETATION_CARD_CLASS = 'space-y-2 rounded-md border border-cyan-300 bg-gradient-to-br from-cyan-50 to-cyan-100 p-3 shadow-sm'
 const JOURNAL_CARD_CLASS = 'space-y-2 rounded-md border border-amber-300 bg-gradient-to-br from-amber-50 to-amber-100 p-3 shadow-sm'
 const CARD_TRANSITION_CLASS = 'transition-all duration-500 ease-out'
 
-type AppliedKey = 'summary' | 'researchType' | 'interpretationMode' | 'journal'
+type AppliedKey = 'summary' | 'researchCategory' | 'researchType' | 'interpretationMode' | 'journal'
+
+function inferOfflineResearchCategory(summary: string, currentValue: string): string {
+  const normalizedCurrent = currentValue.trim()
+  if (normalizedCurrent) {
+    return normalizedCurrent
+  }
+  const lowerSummary = summary.toLowerCase()
+  if (
+    lowerSummary.includes('literature review') ||
+    lowerSummary.includes('narrative review') ||
+    lowerSummary.includes('scoping review') ||
+    lowerSummary.includes('review article')
+  ) {
+    return 'Methodological / Analytical'
+  }
+  if (lowerSummary.includes('diagnostic') || lowerSummary.includes('accuracy')) {
+    return 'Diagnostic Study'
+  }
+  if (lowerSummary.includes('prognostic') || lowerSummary.includes('risk model')) {
+    return 'Prognostic / Risk Modelling'
+  }
+  if (
+    lowerSummary.includes('reproducibility') ||
+    lowerSummary.includes('repeatability') ||
+    lowerSummary.includes('inter-reader')
+  ) {
+    return 'Reproducibility / Technical Validation'
+  }
+  if (
+    lowerSummary.includes('haemodynamic integration') ||
+    lowerSummary.includes('hemodynamic integration') ||
+    lowerSummary.includes('multimodality')
+  ) {
+    return 'Multimodality Integration'
+  }
+  if (lowerSummary.includes('ai') || lowerSummary.includes('radiomics')) {
+    return 'AI / Radiomics'
+  }
+  if (
+    lowerSummary.includes('cross-sectional') ||
+    lowerSummary.includes('longitudinal imaging') ||
+    lowerSummary.includes('biomarker')
+  ) {
+    return 'Imaging Biomarker Study'
+  }
+  return 'Observational Clinical Cohort'
+}
 
 function inferOfflineStudyType(studyTypeOptions: string[], summary: string, currentValue: string): string {
   const lowerSummary = summary.toLowerCase()
@@ -48,6 +97,18 @@ function inferOfflineStudyType(studyTypeOptions: string[], summary: string, curr
     const integrated = matchByKeyword(['haemodynamic', 'integration']) || matchByKeyword(['hemodynamic', 'integration'])
     if (integrated) {
       return integrated
+    }
+  }
+  if (
+    lowerSummary.includes('literature review') ||
+    lowerSummary.includes('narrative review') ||
+    lowerSummary.includes('scoping review') ||
+    lowerSummary.includes('review article')
+  ) {
+    const reviewStudy =
+      matchByKeyword(['narrative', 'literature', 'synthesis']) || matchByKeyword(['scoping', 'evidence', 'synthesis'])
+    if (reviewStudy) {
+      return reviewStudy
     }
   }
   if (lowerSummary.includes('diagnostic') || lowerSummary.includes('accuracy')) {
@@ -99,6 +160,7 @@ function inferOfflineInterpretationMode(summary: string): string {
 
 function buildOfflineSuggestions(input: {
   summary: string
+  researchCategory: string
   researchType: string
   studyTypeOptions: string[]
   interpretationMode: string
@@ -106,6 +168,7 @@ function buildOfflineSuggestions(input: {
   wordLength: string
 }): ResearchOverviewSuggestionsPayload {
   const normalizedSummary = input.summary.trim()
+  const offlineResearchCategory = inferOfflineResearchCategory(normalizedSummary, input.researchCategory)
   const offlineStudyType = inferOfflineStudyType(input.studyTypeOptions, normalizedSummary, input.researchType)
   const offlineInterpretationMode = input.interpretationMode.trim() || inferOfflineInterpretationMode(normalizedSummary)
   const offlineArticleType = input.articleType.trim() || 'Original Research Article'
@@ -113,6 +176,12 @@ function buildOfflineSuggestions(input: {
 
   return {
     summary_refinements: normalizedSummary ? [normalizedSummary] : [],
+    research_category_suggestion: offlineResearchCategory
+      ? {
+          value: offlineResearchCategory,
+          rationale: 'Provisional offline recommendation based on summary framing.',
+        }
+      : null,
     research_type_suggestion: offlineStudyType
       ? {
           value: offlineStudyType,
@@ -149,6 +218,7 @@ export function Step1Panel({
   currentArticleType,
   currentWordLength,
   onReplaceSummary,
+  onApplyResearchCategory,
   onApplyResearchType,
   onApplyInterpretationMode,
   onApplyArticleType,
@@ -162,6 +232,7 @@ export function Step1Panel({
   const [generatedKey, setGeneratedKey] = useState('')
   const [appliedState, setAppliedState] = useState<Record<AppliedKey, boolean>>({
     summary: false,
+    researchCategory: false,
     researchType: false,
     interpretationMode: false,
     journal: false,
@@ -187,11 +258,17 @@ export function Step1Panel({
   const summarySuggestion = suggestions?.summary_refinements[0] ?? ''
 
   const normalize = (value: string) => value.trim().toLowerCase()
+  const researchCategorySuggestion = suggestions?.research_category_suggestion
   const researchTypeSuggestion = suggestions?.research_type_suggestion
   const interpretationSuggestion = suggestions?.interpretation_mode_recommendation
   const articleSuggestion = suggestions?.article_type_recommendation
   const wordLengthSuggestion = suggestions?.word_length_recommendation
   const isSummaryApplied = Boolean(summarySuggestion && normalize(summarySuggestion) === normalize(summary))
+  const isResearchCategoryApplied = Boolean(
+    researchCategorySuggestion &&
+      normalize(researchCategorySuggestion.value) &&
+      normalize(researchCategorySuggestion.value) === normalize(researchCategory),
+  )
   const isResearchTypeApplied = Boolean(
     researchTypeSuggestion &&
       normalize(researchTypeSuggestion.value) &&
@@ -237,6 +314,7 @@ export function Step1Panel({
     } catch (error) {
       const fallback = buildOfflineSuggestions({
         summary,
+        researchCategory,
         researchType,
         studyTypeOptions,
         interpretationMode,
@@ -289,6 +367,15 @@ export function Step1Panel({
     }
     onApplyResearchType(recommendation.value)
     markApplied('researchType')
+  }
+
+  const onApplyResearchCategorySuggestion = () => {
+    const recommendation = suggestions?.research_category_suggestion
+    if (!recommendation) {
+      return
+    }
+    onApplyResearchCategory(recommendation.value)
+    markApplied('researchCategory')
   }
 
   const onApplyInterpretationModeSuggestion = () => {
@@ -364,6 +451,39 @@ export function Step1Panel({
                 </Button>
               )}
             </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {refinementsEnabled ? (
+        <div
+          className={`${RESEARCH_CATEGORY_CARD_CLASS} ${CARD_TRANSITION_CLASS} ${
+            appliedState.researchCategory ? 'ring-2 ring-indigo-300 shadow-md' : ''
+          }`}
+        >
+          <p className="text-sm font-medium text-indigo-900">Research category suggestion</p>
+          {loading && !hasGenerated ? <p className="text-xs text-indigo-900">Generating research category suggestion...</p> : null}
+          {!loading && !researchCategorySuggestion ? (
+            <p className="text-xs text-indigo-900">No research category suggestion returned. Use Refresh suggestions.</p>
+          ) : null}
+          {researchCategorySuggestion && isResearchCategoryApplied ? (
+            <>
+              <p className="text-xs text-indigo-900">
+                Correct research category selected: <span className="font-semibold">{researchCategorySuggestion.value}</span>
+              </p>
+              <p className="text-xs text-indigo-900">Appropriate because: {researchCategorySuggestion.rationale}</p>
+            </>
+          ) : null}
+          {researchCategorySuggestion && !isResearchCategoryApplied ? (
+            <>
+              <p className="text-xs text-indigo-900">
+                Recommended research category: <span className="font-semibold">{researchCategorySuggestion.value}</span>
+              </p>
+              <p className="text-xs text-indigo-900">{researchCategorySuggestion.rationale}</p>
+              <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyResearchCategorySuggestion}>
+                Apply research category
+              </Button>
+            </>
           ) : null}
         </div>
       ) : null}

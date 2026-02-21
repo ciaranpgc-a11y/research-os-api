@@ -12,6 +12,7 @@ import {
   CURATED_CARDIOLOGY_IMAGING_JOURNALS,
   getCategoryForStudyType,
   getResearchTypeTaxonomy,
+  getStudyTypesForCategory,
   getStudyTypeDefaults,
   mergeJournalOptions,
 } from '@/lib/research-frame-options'
@@ -520,6 +521,17 @@ export function StudyCorePage() {
               ...current,
               researchObjective: value,
             }))
+          }
+          onApplyResearchCategory={(value) =>
+            setContextValues((current) => {
+              const nextStudyTypes = getStudyTypesForCategory(value, true)
+              const canKeepCurrentStudyType = nextStudyTypes.includes(current.studyArchitecture)
+              return {
+                ...current,
+                researchCategory: value,
+                studyArchitecture: canKeepCurrentStudyType ? current.studyArchitecture : '',
+              }
+            })
           }
           onApplyResearchType={(value) =>
             {

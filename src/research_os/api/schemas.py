@@ -304,6 +304,7 @@ class ResearchOverviewSuggestionsRequest(BaseModel):
     target_journal: str
     research_category: str = ""
     research_type: str
+    study_type_options: list[str] = Field(default_factory=list)
     article_type: str = ""
     interpretation_mode: str = ""
     summary_of_research: str
@@ -317,6 +318,7 @@ class TextRecommendationResponse(BaseModel):
 
 class ResearchOverviewSuggestionsResponse(BaseModel):
     summary_refinements: list[str] = Field(default_factory=list)
+    research_category_suggestion: TextRecommendationResponse | None = None
     research_type_suggestion: TextRecommendationResponse | None = None
     interpretation_mode_recommendation: TextRecommendationResponse | None = None
     article_type_recommendation: TextRecommendationResponse | None = None

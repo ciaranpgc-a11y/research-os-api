@@ -255,6 +255,8 @@ const BASE_RESEARCH_TYPE_TAXONOMY: readonly ResearchCategoryOption[] = [
   {
     category: 'Methodological / Analytical',
     studyTypes: [
+      'Narrative literature synthesis study',
+      'Scoping evidence synthesis study',
       'Statistical methodology application study',
       'Missing data strategy evaluation study',
       'Confounding adjustment strategy comparison study',
@@ -329,6 +331,8 @@ const RETROSPECTIVE_GUARDRAIL_STUDY_TYPES = new Set([
 
 const STUDY_TYPE_DEFAULT_MODES: Record<string, InterpretationModeOption> = {
   'Case series': 'Descriptive phenotype characterization',
+  'Narrative literature synthesis study': 'Pathophysiologic plausibility interpretation',
+  'Scoping evidence synthesis study': 'Descriptive epidemiology and prevalence patterning',
   'Mechanistic imaging study': 'Hypothesis-generating mechanistic interpretation',
   'Prognostic model internal validation': 'Predictive model internal validation interpretation',
   'Prognostic model external validation': 'Predictive model external validation interpretation',
