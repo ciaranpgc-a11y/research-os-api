@@ -487,6 +487,9 @@ export function Step1Panel({
   }, [requestError, suggestions])
 
   const pendingKeys = useMemo(() => {
+    if (isStale) {
+      return []
+    }
     const keys: SuggestionKey[] = []
     if (summarySuggestion && !isSummaryApplied && !ignoredState.summary) {
       keys.push('summary')
@@ -519,6 +522,7 @@ export function Step1Panel({
     shouldShowJournalApplyButton,
     summarySuggestion,
     isSummaryApplied,
+    isStale,
   ])
 
   const ignoredKeys = useMemo(() => {
@@ -1455,9 +1459,14 @@ export function Step1Panel({
               Click Refresh suggestions to generate recommendations.
             </p>
           ) : null}
-          {hasGenerated && pendingToRender.length === 0 && !loading ? (
+          {hasGenerated && pendingToRender.length === 0 && !loading && !isStale ? (
             <p className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-2 text-xs text-emerald-900">
               No pending actions. Current selections align with suggestions.
+            </p>
+          ) : null}
+          {hasGenerated && isStale && !loading ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-xs text-amber-900">
+              Suggestions are out of date after recent edits. Refresh suggestions to continue.
             </p>
           ) : null}
           {pendingToRender.map((key) => renderPendingCard(key))}

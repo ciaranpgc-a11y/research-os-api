@@ -1,9 +1,10 @@
-import { ExternalLink, Loader2, Mic, RotateCcw, Save, Square } from 'lucide-react'
+import { CircleHelp, ExternalLink, Loader2, Mic, RotateCcw, Save, Square } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   INTERPRETATION_MODE_OPTIONS,
   getCategoryForStudyType,
@@ -150,6 +151,38 @@ function getWordLengthScaleScore(value: string): 2 | 3 | 4 | 5 | null {
     return 5
   }
   return 3
+}
+
+function FieldHintLabel({
+  htmlFor,
+  label,
+  hint,
+}: {
+  htmlFor: string
+  label: string
+  hint: string
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <Label htmlFor={htmlFor}>{label}</Label>
+      <TooltipProvider delayDuration={120}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className="inline-flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+              aria-label={`${label} guidance`}
+            >
+              <CircleHelp className="h-3.5 w-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-[320px] text-xs leading-relaxed">
+            {hint}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  )
 }
 
 export function StepContext({
@@ -536,7 +569,11 @@ export function StepContext({
           </div>
 
           <div className="space-y-1">
-            <Label htmlFor="context-research-category">Research category</Label>
+            <FieldHintLabel
+              htmlFor="context-research-category"
+              label="Research category"
+              hint="Pick the broad study family first. Example: observational patient datasets usually fit Observational Clinical Cohort or Imaging Biomarker Study; evidence synthesis fits Methodological / Analytical."
+            />
             <select
               id="context-research-category"
               className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
@@ -562,7 +599,11 @@ export function StepContext({
           </div>
 
           <div className="space-y-1">
-            <Label htmlFor="context-study-architecture">Study type</Label>
+            <FieldHintLabel
+              htmlFor="context-study-architecture"
+              label="Study type"
+              hint="Choose the specific design inside the selected category. Examples: Retrospective single-centre cohort, Cross-sectional imaging biomarker study, Narrative literature synthesis study."
+            />
             <select
               id="context-study-architecture"
               className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
@@ -644,7 +685,11 @@ export function StepContext({
 
         <div className="space-y-1">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <Label htmlFor="context-interpretation-mode">Interpretation mode (optional)</Label>
+            <FieldHintLabel
+              htmlFor="context-interpretation-mode"
+              label="Interpretation mode (optional)"
+              hint="Choose how claims are framed. Use descriptive/associative for observational work, diagnostic framing for accuracy studies, and predictive framing for prognostic model studies."
+            />
             {needsInterpretationRealign ? (
               <Button
                 type="button"
