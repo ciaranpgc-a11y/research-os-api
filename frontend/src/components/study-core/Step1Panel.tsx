@@ -46,6 +46,7 @@ type SuggestionProvenance = {
   className: string
 }
 type UndoEntry = {
+  key: AppliedKey
   label: string
   undo: () => void
 }
@@ -562,6 +563,20 @@ export function Step1Panel({
     isSummaryApplied,
   ])
 
+  const latestUndoByKey = useMemo(() => {
+    const map: Partial<Record<AppliedKey, UndoEntry>> = {}
+    for (let index = undoStack.length - 1; index >= 0; index -= 1) {
+      const entry = undoStack[index]
+      if (!map[entry.key]) {
+        map[entry.key] = entry
+      }
+      if (Object.keys(map).length === SUGGESTION_KEYS.length) {
+        break
+      }
+    }
+    return map
+  }, [undoStack])
+
   useEffect(() => {
     if (appliedKeys.length === 0 && appliedSectionOpen) {
       setAppliedSectionOpen(false)
@@ -629,6 +644,7 @@ export function Step1Panel({
       return next
     })
     setAppliedState((current) => ({ ...current, [key]: true }))
+    setAppliedSectionOpen(true)
     const timerId = window.setTimeout(() => {
       setAppliedState((current) => ({ ...current, [key]: false }))
     }, 850)
@@ -653,12 +669,32 @@ export function Step1Panel({
     })
   }
 
+  const onRevertApplied = (key: AppliedKey) => {
+    if (loading) {
+      return
+    }
+    const selected = latestUndoByKey[key]
+    if (!selected) {
+      return
+    }
+    setUndoStack((current) => {
+      for (let index = current.length - 1; index >= 0; index -= 1) {
+        if (current[index] === selected) {
+          return [...current.slice(0, index), ...current.slice(index + 1)]
+        }
+      }
+      return current
+    })
+    selected.undo()
+  }
+
   const onApplySummary = (option: string) => {
     const previousSummary = summary
     if (normalize(previousSummary) === normalize(option)) {
       return
     }
     pushUndoEntry({
+      key: 'summary',
       label: 'Summary rewrite',
       undo: () => onReplaceSummary(previousSummary),
     })
@@ -678,6 +714,7 @@ export function Step1Panel({
       return
     }
     pushUndoEntry({
+      key: 'researchType',
       label: 'Research type update',
       undo: () => {
         onApplyResearchCategory(previousResearchCategory)
@@ -701,6 +738,7 @@ export function Step1Panel({
       return
     }
     pushUndoEntry({
+      key: 'researchCategory',
       label: 'Research category update',
       undo: () => {
         onApplyResearchCategory(previousResearchCategory)
@@ -722,6 +760,7 @@ export function Step1Panel({
       return
     }
     pushUndoEntry({
+      key: 'interpretationMode',
       label: 'Interpretation mode update',
       undo: () => onApplyInterpretationMode(previousInterpretationMode),
     })
@@ -745,6 +784,7 @@ export function Step1Panel({
       (wordLengthRecommendation?.value && normalize(wordLengthRecommendation.value) !== normalize(previousWordLength))
     ) {
       pushUndoEntry({
+        key: 'journal',
         label: 'Journal recommendation apply',
         undo: () => {
           onApplyArticleType(previousArticleType)
@@ -1050,11 +1090,25 @@ export function Step1Panel({
   }
 
   const renderAppliedCard = (key: SuggestionKey) => {
+    const hasRevert = Boolean(latestUndoByKey[key])
+    const revertControl = hasRevert ? (
+      <Button
+        size="sm"
+        variant="outline"
+        className={IGNORE_BUTTON_CLASS}
+        onClick={() => onRevertApplied(key)}
+        disabled={loading}
+      >
+        Revert
+      </Button>
+    ) : null
+
     if (key === 'summary') {
       return (
         <div key="applied-summary" className={APPLIED_SUMMARY_CARD_CLASS}>
           <p className="text-sm font-medium text-slate-900">Summary refinement</p>
           <p className="text-xs text-slate-700">Current summary matches the suggested rewrite.</p>
+          {revertControl}
         </div>
       )
     }
@@ -1066,6 +1120,7 @@ export function Step1Panel({
             Correct category selected: <span className="font-semibold">{researchCategorySuggestion.value}</span>
           </p>
           <p className="text-xs text-slate-700">{researchCategorySuggestion.rationale}</p>
+          {revertControl}
         </div>
       )
     }
@@ -1077,6 +1132,7 @@ export function Step1Panel({
             Correct type selected: <span className="font-semibold">{researchTypeSuggestion.value}</span>
           </p>
           <p className="text-xs text-slate-700">{researchTypeSuggestion.rationale}</p>
+          {revertControl}
         </div>
       )
     }
@@ -1088,6 +1144,7 @@ export function Step1Panel({
             Correct mode selected: <span className="font-semibold">{interpretationSuggestion.value}</span>
           </p>
           <p className="text-xs text-slate-700">{interpretationSuggestion.rationale}</p>
+          {revertControl}
         </div>
       )
     }
@@ -1105,6 +1162,7 @@ export function Step1Panel({
           {articleSuggestion ? <p className="text-xs text-slate-700">Article type set: {articleSuggestion.value}</p> : null}
           {wordLengthSuggestion ? <p className="text-xs text-slate-700">Word length set: {wordLengthSuggestion.value}</p> : null}
           <p className="text-xs text-slate-700">Values are aligned with current recommendations.</p>
+          {revertControl}
         </div>
       )
     }
