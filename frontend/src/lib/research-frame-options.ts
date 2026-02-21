@@ -155,6 +155,46 @@ const JOURNAL_SUBMISSION_GUIDANCE_URLS: Record<string, string> = {
   'bmj-open': 'https://bmjopen.bmj.com/pages/authors/',
 }
 
+const JOURNAL_QUALITY_SCORE: Record<string, 2 | 3 | 4 | 5> = {
+  'lancet-respiratory-medicine': 5,
+  'nature-reviews-cardiology': 5,
+  'european-heart-journal': 5,
+  circulation: 5,
+  jacc: 5,
+  'american-journal-respiratory-critical-care-medicine': 5,
+  radiology: 5,
+  'jacc-cardiovascular-imaging': 5,
+  'circulation-cardiovascular-imaging': 5,
+
+  'european-heart-journal-cardiovascular-imaging': 4,
+  'journal-of-cardiovascular-magnetic-resonance': 4,
+  'european-respiratory-journal': 4,
+  chest: 4,
+  thorax: 4,
+  'journal-heart-lung-transplantation': 4,
+  heart: 4,
+  'european-journal-heart-failure': 4,
+  'circulation-heart-failure': 4,
+  'jacc-heart-failure': 4,
+  'circulation-research': 4,
+  'cardiovascular-research': 4,
+  'journal-american-heart-association': 4,
+  'journal-nuclear-cardiology': 4,
+
+  'scientific-reports': 3,
+  'plos-one': 3,
+  'bmj-open': 3,
+  'frontiers-cardiovascular-medicine': 3,
+  'frontiers-physiology': 3,
+  'respiratory-research': 3,
+  'bmc-pulmonary-medicine': 3,
+  'esc-heart-failure': 3,
+  'open-heart': 3,
+  'insights-into-imaging': 3,
+
+  'advances-pulmonary-hypertension': 2,
+}
+
 export type ResearchCategoryOption = {
   category: string
   studyTypes: readonly string[]
@@ -388,6 +428,11 @@ export function getJournalSubmissionGuidanceUrl(journalSlug: string): string | n
     return null
   }
   return JOURNAL_SUBMISSION_GUIDANCE_URLS[key] ?? null
+}
+
+export function getJournalQualityStars(journalSlug: string): string {
+  const score = JOURNAL_QUALITY_SCORE[journalSlug.trim()] ?? 3
+  return `${'★'.repeat(score)}${'☆'.repeat(5 - score)} (${score}/5)`
 }
 
 export function mergeJournalOptions(apiJournals: JournalOption[]): JournalOption[] {

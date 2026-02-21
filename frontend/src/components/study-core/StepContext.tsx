@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import {
   INTERPRETATION_MODE_OPTIONS,
   getCategoryForStudyType,
+  getJournalQualityStars,
   getResearchTypeTaxonomy,
   getJournalSubmissionGuidanceUrl,
   getStudyTypeDefaults,
@@ -120,6 +121,7 @@ export function StepContext({
     [values.researchCategory],
   )
   const submissionGuidanceUrl = useMemo(() => getJournalSubmissionGuidanceUrl(targetJournal), [targetJournal])
+  const journalQualityStars = useMemo(() => getJournalQualityStars(targetJournal), [targetJournal])
   const selectedJournalLabel = useMemo(
     () => journals.find((journal) => journal.slug === targetJournal)?.display_name ?? '',
     [journals, targetJournal],
@@ -260,6 +262,11 @@ export function StepContext({
           <div className="rounded-md border border-border/70 bg-background p-2">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Target journal</p>
             <p className="text-sm">{selectedJournalLabel || 'Not set'}</p>
+            {selectedJournalLabel ? (
+              <p className="text-xs text-muted-foreground">
+                Journal standard: <span className="font-medium text-slate-700">{journalQualityStars}</span>
+              </p>
+            ) : null}
           </div>
           <div className="rounded-md border border-border/70 bg-background p-2">
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Research category</p>
@@ -287,7 +294,6 @@ export function StepContext({
       <section className="space-y-4 rounded-md border border-border/80 p-4">
         <div className="space-y-1">
           <h3 className="text-sm font-semibold">Study setup</h3>
-          <p className="text-xs text-muted-foreground">Define core framing variables before generation.</p>
         </div>
 
         <div className="grid gap-4 xl:grid-cols-2">
@@ -296,7 +302,6 @@ export function StepContext({
             <Input
               id="context-project-title"
               value={values.projectTitle}
-              placeholder="e.g., Pulmonary Hypertension Cohort"
               onChange={(event) => onValueChange('projectTitle', event.target.value)}
             />
           </div>

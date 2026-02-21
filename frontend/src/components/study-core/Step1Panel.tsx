@@ -30,7 +30,11 @@ const RESEARCH_CATEGORY_CARD_CLASS = 'space-y-2 rounded-md border border-violet-
 const RESEARCH_TYPE_CARD_CLASS = 'space-y-2 rounded-md border border-sky-400 bg-sky-50 p-3 shadow-sm'
 const INTERPRETATION_CARD_CLASS = 'space-y-2 rounded-md border border-cyan-400 bg-cyan-50 p-3 shadow-sm'
 const JOURNAL_CARD_CLASS = 'space-y-2 rounded-md border border-amber-400 bg-amber-50 p-3 shadow-sm'
-const APPLIED_CARD_CLASS = 'space-y-1 rounded-md border border-slate-300 bg-slate-50 p-3'
+const APPLIED_SUMMARY_CARD_CLASS = 'space-y-1 rounded-md border border-emerald-300 bg-emerald-50 p-3'
+const APPLIED_CATEGORY_CARD_CLASS = 'space-y-1 rounded-md border border-violet-300 bg-violet-50 p-3'
+const APPLIED_TYPE_CARD_CLASS = 'space-y-1 rounded-md border border-sky-300 bg-sky-50 p-3'
+const APPLIED_INTERPRETATION_CARD_CLASS = 'space-y-1 rounded-md border border-cyan-300 bg-cyan-50 p-3'
+const APPLIED_JOURNAL_CARD_CLASS = 'space-y-1 rounded-md border border-amber-300 bg-amber-50 p-3'
 const CARD_TRANSITION_CLASS = 'transition-all duration-300 ease-out'
 
 type AppliedKey = 'summary' | 'researchCategory' | 'researchType' | 'interpretationMode' | 'journal'
@@ -576,7 +580,7 @@ export function Step1Panel({
   const renderAppliedCard = (key: SuggestionKey) => {
     if (key === 'summary') {
       return (
-        <div key="applied-summary" className={APPLIED_CARD_CLASS}>
+        <div key="applied-summary" className={APPLIED_SUMMARY_CARD_CLASS}>
           <p className="text-sm font-medium text-slate-900">Summary refinement</p>
           <p className="text-xs text-slate-700">Current summary matches the suggested rewrite.</p>
         </div>
@@ -584,7 +588,7 @@ export function Step1Panel({
     }
     if (key === 'researchCategory' && researchCategorySuggestion) {
       return (
-        <div key="applied-category" className={APPLIED_CARD_CLASS}>
+        <div key="applied-category" className={APPLIED_CATEGORY_CARD_CLASS}>
           <p className="text-sm font-medium text-slate-900">Research category</p>
           <p className="text-xs text-slate-700">
             Correct category selected: <span className="font-semibold">{researchCategorySuggestion.value}</span>
@@ -595,7 +599,7 @@ export function Step1Panel({
     }
     if (key === 'researchType' && researchTypeSuggestion) {
       return (
-        <div key="applied-type" className={APPLIED_CARD_CLASS}>
+        <div key="applied-type" className={APPLIED_TYPE_CARD_CLASS}>
           <p className="text-sm font-medium text-slate-900">Research type</p>
           <p className="text-xs text-slate-700">
             Correct type selected: <span className="font-semibold">{researchTypeSuggestion.value}</span>
@@ -606,7 +610,7 @@ export function Step1Panel({
     }
     if (key === 'interpretationMode' && interpretationSuggestion) {
       return (
-        <div key="applied-interpretation" className={APPLIED_CARD_CLASS}>
+        <div key="applied-interpretation" className={APPLIED_INTERPRETATION_CARD_CLASS}>
           <p className="text-sm font-medium text-slate-900">Interpretation mode</p>
           <p className="text-xs text-slate-700">
             Correct mode selected: <span className="font-semibold">{interpretationSuggestion.value}</span>
@@ -617,7 +621,7 @@ export function Step1Panel({
     }
     if (key === 'journal') {
       return (
-        <div key="applied-journal" className={APPLIED_CARD_CLASS}>
+        <div key="applied-journal" className={APPLIED_JOURNAL_CARD_CLASS}>
           <p className="text-sm font-medium text-slate-900">Journal recommendation</p>
           {articleSuggestion ? <p className="text-xs text-slate-700">Article type set: {articleSuggestion.value}</p> : null}
           {wordLengthSuggestion ? <p className="text-xs text-slate-700">Word length set: {wordLengthSuggestion.value}</p> : null}
@@ -692,28 +696,6 @@ export function Step1Panel({
           <div className="mt-3 space-y-2">
             {appliedKeys.length === 0 ? <p className="text-xs text-muted-foreground">No suggestions applied yet.</p> : null}
             {appliedKeys.map((key) => renderAppliedCard(key))}
-          </div>
-        </details>
-      ) : null}
-
-      {refinementsEnabled ? (
-        <details className="rounded-md border border-border/80 bg-muted/10 p-3">
-          <summary className="cursor-pointer text-sm font-medium">Details</summary>
-          <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-            <p>Model: {suggestions?.model_used || 'Not available'}</p>
-            <p>API endpoint: {API_BASE_URL}</p>
-            {suggestions?.source_urls?.length ? (
-              <div>
-                <p>Source links:</p>
-                <div className="space-y-0.5">
-                  {suggestions.source_urls.slice(0, 4).map((url) => (
-                    <p key={url} className="break-all">
-                      {url}
-                    </p>
-                  ))}
-                </div>
-              </div>
-            ) : null}
           </div>
         </details>
       ) : null}
