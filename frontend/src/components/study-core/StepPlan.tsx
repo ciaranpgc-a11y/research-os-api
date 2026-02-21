@@ -2,13 +2,14 @@ import { Loader2, Mic, Square } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { assessPlanSection, type PlanSectionKey } from '@/lib/plan-section-readiness'
 import { getJournalQualityScore, getJournalQualityStars } from '@/lib/research-frame-options'
-import { editPlanManuscriptSection, planSections } from '@/lib/study-core-api'
+import { planSections } from '@/lib/study-core-api'
 import type { OutlinePlanSection, OutlinePlanState, SectionPlanItem, SectionPlanPayload, Step2ClarificationResponse } from '@/types/study-core'
 
 const DEFAULT_PLAN_SECTIONS = ['introduction', 'methods', 'results', 'discussion', 'conclusion'] as const
-const AI_PLAN_SECTIONS = ['introduction', 'methods', 'results', 'discussion'] as const
-type AiPlanSectionKey = (typeof AI_PLAN_SECTIONS)[number]
+const AI_PLAN_SECTIONS: PlanSectionKey[] = ['introduction', 'methods', 'results', 'discussion']
+const AI_PLAN_SECTION_SET = new Set(AI_PLAN_SECTIONS)
 
 type StepPlanProps = {
   targetJournal: string
@@ -27,10 +28,18 @@ type StepPlanProps = {
   selectedSections: string[]
   plan: OutlinePlanState | null
   aiPlanSummary: string
-  aiPlanSections: Record<AiPlanSectionKey, string>
+  aiPlanSections: Record<PlanSectionKey, string>
+  showAiPlan: boolean
+  activeAiSection: PlanSectionKey | null
   clarificationResponses: Step2ClarificationResponse[]
   onSectionsChange: (sections: string[]) => void
   onPlanChange: (plan: OutlinePlanState | null) => void
+  onAiPlanSectionChange: (section: PlanSectionKey, value: string, source: 'manual' | 'ai' | 'fix') => void
+  onAiPlanSectionSelectionChange: (
+    section: PlanSectionKey,
+    selection: { start: number; end: number; text: string },
+  ) => void
+  onActiveAiSectionChange: (section: PlanSectionKey) => void
   onStatus: (message: string) => void
   onError: (message: string) => void
 }
@@ -235,35 +244,16 @@ function bulletsFromSectionText(value: string): string[] {
     .filter(Boolean)
 }
 
-function createEmptyAiSectionTextMap(): Record<AiPlanSectionKey, string> {
-  return {
-    introduction: '',
-    methods: '',
-    results: '',
-    discussion: '',
-  }
-}
-
-function createEmptyAiSelectionMap(): Record<AiPlanSectionKey, { start: number; end: number; text: string }> {
-  return {
-    introduction: { start: 0, end: 0, text: '' },
-    methods: { start: 0, end: 0, text: '' },
-    results: { start: 0, end: 0, text: '' },
-    discussion: { start: 0, end: 0, text: '' },
-  }
-}
-
-function parseAiPlanSectionsFromSummary(summary: string): Partial<Record<AiPlanSectionKey, string>> {
-  const parsed: Partial<Record<AiPlanSectionKey, string>> = {}
+function parseAiPlanSectionsFromSummary(summary: string): Partial<Record<PlanSectionKey, string>> {
+  const parsed: Partial<Record<PlanSectionKey, string>> = {}
   const compactSummary = summary.trim()
   if (!compactSummary) {
     return parsed
   }
-  const pattern =
-    /(Introduction|Methods|Results|Discussion)\s*:\s*([\s\S]*?)(?=(?:Introduction|Methods|Results|Discussion|Conclusion)\s*:|$)/gi
+  const pattern = /(Introduction|Methods|Results|Discussion)\s*:\s*([\s\S]*?)(?=(?:Introduction|Methods|Results|Discussion|Conclusion)\s*:|$)/gi
   let match: RegExpExecArray | null
   while ((match = pattern.exec(compactSummary)) !== null) {
-    const key = match[1].toLowerCase() as AiPlanSectionKey
+    const key = match[1].toLowerCase() as PlanSectionKey
     const value = match[2].trim()
     if (value) {
       parsed[key] = value
@@ -275,7 +265,7 @@ function parseAiPlanSectionsFromSummary(summary: string): Partial<Record<AiPlanS
   return parsed
 }
 
-function sectionFallbackFromPlan(plan: OutlinePlanState | null, sectionName: string): string {
+function sectionFallbackFromPlan(plan: OutlinePlanState | null, sectionName: PlanSectionKey): string {
   const section = plan?.sections.find((item) => item.name === sectionName)
   if (!section || section.bullets.length === 0) {
     return ''
@@ -283,13 +273,18 @@ function sectionFallbackFromPlan(plan: OutlinePlanState | null, sectionName: str
   return section.bullets.join(' ').trim()
 }
 
-function buildAiPlanSections(
-  aiPlanSections: Record<AiPlanSectionKey, string>,
+function buildDisplayedAiPlanSections(
+  aiPlanSections: Record<PlanSectionKey, string>,
   aiPlanSummary: string,
   plan: OutlinePlanState | null,
-): Record<AiPlanSectionKey, string> {
+): Record<PlanSectionKey, string> {
   const parsed = parseAiPlanSectionsFromSummary(aiPlanSummary)
-  const built = createEmptyAiSectionTextMap()
+  const built: Record<PlanSectionKey, string> = {
+    introduction: '',
+    methods: '',
+    results: '',
+    discussion: '',
+  }
   for (const section of AI_PLAN_SECTIONS) {
     const explicit = aiPlanSections[section]?.trim() || ''
     const fromSummary = parsed[section]?.trim() || ''
@@ -297,6 +292,12 @@ function buildAiPlanSections(
     built[section] = explicit || fromSummary || fromPlan
   }
   return built
+}
+
+function emptyPlanState(sections: string[]): OutlinePlanState {
+  return {
+    sections: sections.map((section) => ({ name: section, bullets: [] })),
+  }
 }
 
 export function StepPlan({
@@ -307,9 +308,14 @@ export function StepPlan({
   plan,
   aiPlanSummary,
   aiPlanSections,
+  showAiPlan,
+  activeAiSection,
   clarificationResponses,
   onSectionsChange,
   onPlanChange,
+  onAiPlanSectionChange,
+  onAiPlanSectionSelectionChange,
+  onActiveAiSectionChange,
   onStatus,
   onError,
 }: StepPlanProps) {
@@ -317,20 +323,6 @@ export function StepPlan({
   const [listeningSection, setListeningSection] = useState<string | null>(null)
   const recognitionRef = useRef<any | null>(null)
   const listeningSectionRef = useRef<string | null>(null)
-  const [aiSectionTexts, setAiSectionTexts] = useState<Record<AiPlanSectionKey, string>>(() =>
-    buildAiPlanSections(aiPlanSections, aiPlanSummary, plan),
-  )
-  const [activeAiEditSection, setActiveAiEditSection] = useState<AiPlanSectionKey | null>(null)
-  const [aiEditInstructionBySection, setAiEditInstructionBySection] = useState<Record<AiPlanSectionKey, string>>(() =>
-    createEmptyAiSectionTextMap(),
-  )
-  const [aiEditSelectionBySection, setAiEditSelectionBySection] = useState<
-    Record<AiPlanSectionKey, { start: number; end: number; text: string }>
-  >(() => createEmptyAiSelectionMap())
-  const [aiEditErrorBySection, setAiEditErrorBySection] = useState<Record<AiPlanSectionKey, string>>(() =>
-    createEmptyAiSectionTextMap(),
-  )
-  const [aiEditBusySection, setAiEditBusySection] = useState<AiPlanSectionKey | null>(null)
   const orderedSections = useMemo(() => [...DEFAULT_PLAN_SECTIONS], [])
   const clarificationNotes = useMemo(() => buildClarificationNotes(clarificationResponses), [clarificationResponses])
   const journalStars = useMemo(
@@ -355,36 +347,9 @@ export function StepPlan({
     }
     return Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition)
   }, [])
-  const fallbackPlanSummary = useMemo(() => {
-    if (!plan || plan.sections.length === 0) {
-      return ''
-    }
-    const byName = new Map(plan.sections.map((section) => [section.name.toLowerCase(), section]))
-    const parts: string[] = []
-    for (const sectionName of orderedSections) {
-      const section = byName.get(sectionName)
-      if (!section) {
-        continue
-      }
-      const firstLine = section.bullets.find((item) => item.trim())
-      if (!firstLine) {
-        continue
-      }
-      parts.push(`${titleCaseSection(sectionName)}: ${firstLine.replace(/\.+$/, '')}.`)
-    }
-    return parts.join(' ')
-  }, [orderedSections, plan])
-  const aiSectionSeed = useMemo(
-    () => buildAiPlanSections(aiPlanSections, aiPlanSummary, plan),
+  const displayedAiSections = useMemo(
+    () => buildDisplayedAiPlanSections(aiPlanSections, aiPlanSummary, plan),
     [aiPlanSections, aiPlanSummary, plan],
-  )
-  const aiSectionSeedSignature = useMemo(() => JSON.stringify(aiSectionSeed), [aiSectionSeed])
-  const hasAiNarrative = useMemo(
-    () =>
-      AI_PLAN_SECTIONS.some((section) => (aiSectionTexts[section] || '').trim().length > 0) ||
-      Boolean((aiPlanSummary || '').trim()) ||
-      Boolean((fallbackPlanSummary || '').trim()),
-    [aiPlanSummary, aiSectionTexts, fallbackPlanSummary],
   )
 
   useEffect(() => {
@@ -399,10 +364,6 @@ export function StepPlan({
       }
     }
   }, [])
-
-  useEffect(() => {
-    setAiSectionTexts(aiSectionSeed)
-  }, [aiSectionSeed, aiSectionSeedSignature])
 
   useEffect(() => {
     const current = selectedSections.join('|').toLowerCase()
@@ -426,11 +387,9 @@ export function StepPlan({
   }, [onPlanChange, orderedSections, plan])
 
   const updateSection = (sectionName: string, updater: (section: OutlinePlanSection) => OutlinePlanSection) => {
-    if (!plan) {
-      return
-    }
+    const base = plan ?? emptyPlanState(orderedSections)
     onPlanChange({
-      sections: plan.sections.map((section) => (section.name === sectionName ? updater(section) : section)),
+      sections: base.sections.map((section) => (section.name === sectionName ? updater(section) : section)),
     })
   }
 
@@ -542,98 +501,15 @@ export function StepPlan({
     onStatus('Context scaffold created from Step 1 framing.')
   }
 
-  const updateAiSectionSelection = (
-    sectionName: AiPlanSectionKey,
-    selectionStart: number,
-    selectionEnd: number,
-    value: string,
-  ) => {
-    const start = Math.max(0, Math.min(selectionStart, value.length))
-    const end = Math.max(start, Math.min(selectionEnd, value.length))
-    const selectedText = start < end ? value.slice(start, end).trim() : ''
-    setAiEditSelectionBySection((current) => ({
-      ...current,
-      [sectionName]: { start, end, text: selectedText },
-    }))
-  }
-
-  const onApplyAiEdit = async (sectionName: AiPlanSectionKey, mode: 'selection' | 'section') => {
-    const editInstruction = aiEditInstructionBySection[sectionName]?.trim() || ''
-    if (!editInstruction) {
-      setAiEditErrorBySection((current) => ({
-        ...current,
-        [sectionName]: 'Add an edit instruction first.',
-      }))
-      return
-    }
-
-    const selectedText = mode === 'selection' ? aiEditSelectionBySection[sectionName]?.text?.trim() || '' : ''
-    if (mode === 'selection' && !selectedText) {
-      setAiEditErrorBySection((current) => ({
-        ...current,
-        [sectionName]: 'Highlight text in this section before using targeted AI edit.',
-      }))
-      return
-    }
-
-    setAiEditBusySection(sectionName)
-    setAiEditErrorBySection((current) => ({ ...current, [sectionName]: '' }))
-    onError('')
-    try {
-      const payload = await editPlanManuscriptSection({
-        section: sectionName,
-        sectionText: aiSectionTexts[sectionName] || '',
-        editInstruction,
-        selectedText,
-        projectTitle: planningContext.projectTitle || 'Untitled project',
-        targetJournalLabel: planningContext.targetJournalLabel || planningContext.targetJournal || '',
-        researchCategory: planningContext.researchCategory,
-        studyType: planningContext.studyType,
-        interpretationMode: planningContext.interpretationMode,
-        articleType: planningContext.articleType,
-        wordLength: planningContext.wordLength,
-        summaryOfResearch: planningContext.summary,
-      })
-      const updatedText = payload.updated_section_text.trim()
-      if (updatedText) {
-        setAiSectionTexts((current) => ({
-          ...current,
-          [sectionName]: updatedText,
-        }))
-        updateSection(sectionName, (current) => ({
-          ...current,
-          bullets: bulletsFromSectionText(updatedText),
-        }))
-      }
-      setAiEditInstructionBySection((current) => ({ ...current, [sectionName]: '' }))
-      setAiEditSelectionBySection((current) => ({
-        ...current,
-        [sectionName]: { start: 0, end: 0, text: '' },
-      }))
-      onStatus(`Updated ${titleCaseSection(sectionName)} plan section with AI edits.`)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'AI plan edit failed.'
-      setAiEditErrorBySection((current) => ({
-        ...current,
-        [sectionName]: message,
-      }))
-      onError(message)
-    } finally {
-      setAiEditBusySection(null)
-    }
-  }
-
   return (
     <div className="space-y-4 rounded-lg border border-border bg-card p-4">
       <div className="space-y-1">
         <h2 className="text-base font-semibold">Step 2: Plan Sections</h2>
-        <p className="text-sm text-muted-foreground">Generate the outline from Step 1 context and edit one section text box at a time.</p>
+        <p className="text-sm text-muted-foreground">Use Step 1 context and clarification answers to build the manuscript plan.</p>
       </div>
 
       <div className="space-y-2 rounded-md border border-border/80 bg-muted/20 p-3">
-        <p className="text-xs font-medium text-muted-foreground">
-          Introduction, Methods, Results, Discussion, Conclusion overview
-        </p>
+        <p className="text-xs font-medium text-muted-foreground">Introduction, Methods, Results, Discussion, Conclusion overview</p>
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           <div className={journalTileClass}>
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Target journal</p>
@@ -681,129 +557,55 @@ export function StepPlan({
         </Button>
       </div>
 
-      {hasAiNarrative ? (
-        <div className="space-y-3 rounded-md border border-emerald-200 bg-emerald-50/40 p-3">
+      {showAiPlan ? (
+        <div className="space-y-3 rounded-md border border-emerald-200 bg-emerald-50/35 p-3">
           <div className="space-y-1">
-            <p className="text-[11px] uppercase tracking-wide text-emerald-900">AI manuscript plan</p>
-            <p className="text-xs text-emerald-900/80">Edit these section plans directly, or highlight text and ask AI for targeted changes.</p>
+            <p className="text-[11px] uppercase tracking-wide text-emerald-900">AI manuscript plan output</p>
+            <p className="text-xs text-emerald-900/80">These four boxes are editable and feed the downstream draft-generation plan.</p>
           </div>
           <div className="grid gap-3 xl:grid-cols-2">
             {AI_PLAN_SECTIONS.map((sectionName) => {
-              const isActive = activeAiEditSection === sectionName
-              const busySection = aiEditBusySection === sectionName
-              const hasSelection = Boolean((aiEditSelectionBySection[sectionName]?.text || '').trim())
+              const textValue = displayedAiSections[sectionName] || ''
+              const sectionAssessment = assessPlanSection(sectionName, textValue, planningContext.summary)
+              const isActive = activeAiSection === sectionName
               return (
-                <div key={sectionName} className="space-y-2 rounded-md border border-emerald-200 bg-background p-3">
-                  <div className="flex items-center justify-between gap-2">
+                <div
+                  key={sectionName}
+                  className={`space-y-2 rounded-md border p-3 ${
+                    isActive ? 'border-emerald-300 bg-emerald-50/40' : 'border-emerald-200 bg-background'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm font-semibold text-emerald-950">{titleCaseSection(sectionName)}</p>
-                    {hasSelection ? <span className="text-[11px] text-emerald-700">Highlighted text selected</span> : null}
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] ${
+                        sectionAssessment.ready ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-900'
+                      }`}
+                    >
+                      {sectionAssessment.ready ? 'Ready' : 'Needs fix'}
+                    </span>
                   </div>
                   <textarea
                     className="min-h-28 w-full rounded-md border border-emerald-200 bg-background px-3 py-2 text-sm"
-                    value={aiSectionTexts[sectionName] || ''}
-                    onFocus={() => setActiveAiEditSection(sectionName)}
-                    onClick={() => setActiveAiEditSection(sectionName)}
-                    onSelect={(event) =>
-                      updateAiSectionSelection(
-                        sectionName,
-                        event.currentTarget.selectionStart ?? 0,
-                        event.currentTarget.selectionEnd ?? 0,
-                        event.currentTarget.value,
-                      )
-                    }
-                    onChange={(event) => {
-                      const value = event.target.value
-                      setAiSectionTexts((current) => ({
-                        ...current,
-                        [sectionName]: value,
-                      }))
-                      updateSection(sectionName, (current) => ({
-                        ...current,
-                        bullets: bulletsFromSectionText(value),
-                      }))
-                    }}
-                  />
-                  {isActive ? (
-                    <div className="space-y-2 rounded-md border border-emerald-100 bg-emerald-50/35 p-2">
-                      <textarea
-                        className="min-h-16 w-full rounded-md border border-emerald-200 bg-background px-2 py-1.5 text-xs"
-                        placeholder="Describe the AI edit for this section."
-                        value={aiEditInstructionBySection[sectionName] || ''}
-                        onChange={(event) =>
-                          setAiEditInstructionBySection((current) => ({
-                            ...current,
-                            [sectionName]: event.target.value,
-                          }))
-                        }
-                      />
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="border-emerald-300 text-emerald-800 hover:bg-emerald-100"
-                          onClick={() => void onApplyAiEdit(sectionName, 'selection')}
-                          disabled={busySection || !hasSelection}
-                        >
-                          {busySection ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-                          Apply to highlighted text
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="bg-emerald-600 text-white hover:bg-emerald-700"
-                          onClick={() => void onApplyAiEdit(sectionName, 'section')}
-                          disabled={busySection}
-                        >
-                          {busySection ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-                          Apply to full section
-                        </Button>
-                      </div>
-                      {aiEditErrorBySection[sectionName] ? (
-                        <p className="text-xs text-rose-700">{aiEditErrorBySection[sectionName]}</p>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">Click inside this box to open AI edit controls.</p>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      ) : null}
-
-      {plan ? (
-        <div className="space-y-3 rounded-md border border-border p-3">
-          <div className="space-y-3">
-            {orderedSections.map((sectionName) => {
-              const section = plan.sections.find((item) => item.name === sectionName)
-              const textValue = section ? sectionTextFromBullets(section.bullets) : ''
-              const listening = listeningSection === sectionName
-              return (
-                <div key={sectionName} className="space-y-2 rounded-md border border-border/80 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-semibold">{titleCaseSection(sectionName)}</p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="border-emerald-300 text-emerald-800 hover:bg-emerald-50"
-                      onClick={() => onToggleSpeechToText(sectionName)}
-                      disabled={!speechSupported}
-                    >
-                      {listening ? <Square className="mr-1 h-3.5 w-3.5" /> : <Mic className="mr-1 h-3.5 w-3.5" />}
-                      {listening ? 'Stop speech input' : 'Speech to text'}
-                    </Button>
-                  </div>
-                  <textarea
-                    className="min-h-28 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                     value={textValue}
+                    onFocus={() => onActiveAiSectionChange(sectionName)}
+                    onClick={() => onActiveAiSectionChange(sectionName)}
+                    onSelect={(event) => {
+                      const value = event.currentTarget.value
+                      const start = Math.max(0, Math.min(event.currentTarget.selectionStart ?? 0, value.length))
+                      const end = Math.max(start, Math.min(event.currentTarget.selectionEnd ?? 0, value.length))
+                      const selectedText = start < end ? value.slice(start, end).trim() : ''
+                      onAiPlanSectionSelectionChange(sectionName, {
+                        start,
+                        end,
+                        text: selectedText,
+                      })
+                    }}
                     onChange={(event) => {
-                      const value = event.target.value
+                      onAiPlanSectionChange(sectionName, event.target.value, 'manual')
                       updateSection(sectionName, (current) => ({
                         ...current,
-                        bullets: bulletsFromSectionText(value),
+                        bullets: bulletsFromSectionText(event.target.value),
                       }))
                     }}
                   />
@@ -812,7 +614,58 @@ export function StepPlan({
             })}
           </div>
         </div>
-      ) : null}
+      ) : (
+        <div className="rounded-md border border-border/80 bg-muted/20 p-3">
+          <p className="text-sm text-muted-foreground">Answer setup questions in the right panel first, then build the AI manuscript plan.</p>
+        </div>
+      )}
+
+      <div className="space-y-3 rounded-md border border-border p-3">
+        <div className="space-y-1">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Section plan for generation</p>
+          <p className="text-xs text-muted-foreground">Introduction, Methods, Results, Discussion, and Conclusion section blueprint.</p>
+        </div>
+        <div className="space-y-3">
+          {orderedSections.map((sectionName) => {
+            const section = plan?.sections.find((item) => item.name === sectionName)
+            const fallbackFromAiPlan =
+              showAiPlan && AI_PLAN_SECTION_SET.has(sectionName as PlanSectionKey)
+                ? displayedAiSections[sectionName as PlanSectionKey]
+                : ''
+            const textValue = section ? sectionTextFromBullets(section.bullets) : fallbackFromAiPlan
+            const listening = listeningSection === sectionName
+            return (
+              <div key={sectionName} className="space-y-2 rounded-md border border-border/80 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">{titleCaseSection(sectionName)}</p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-emerald-300 text-emerald-800 hover:bg-emerald-50"
+                    onClick={() => onToggleSpeechToText(sectionName)}
+                    disabled={!speechSupported}
+                  >
+                    {listening ? <Square className="mr-1 h-3.5 w-3.5" /> : <Mic className="mr-1 h-3.5 w-3.5" />}
+                    {listening ? 'Stop speech input' : 'Speech to text'}
+                  </Button>
+                </div>
+                <textarea
+                  className="min-h-28 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={textValue}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    updateSection(sectionName, (current) => ({
+                      ...current,
+                      bullets: bulletsFromSectionText(value),
+                    }))
+                  }}
+                />
+              </div>
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }

@@ -9,6 +9,7 @@ import { StepPlan } from '@/components/study-core/StepPlan'
 import { StepRun } from '@/components/study-core/StepRun'
 import { StudyCoreStepper, type WizardStepItem } from '@/components/study-core/StudyCoreStepper'
 import { Input } from '@/components/ui/input'
+import type { PlanSectionKey } from '@/lib/plan-section-readiness'
 import {
   CURATED_CARDIOLOGY_IMAGING_JOURNALS,
   getCategoryForStudyType,
@@ -41,6 +42,97 @@ const CORE_SECTIONS = ['introduction', 'methods', 'results', 'discussion', 'conc
 const RESEARCH_TAXONOMY = getResearchTypeTaxonomy(true)
 const KNOWN_STUDY_TYPES = RESEARCH_TAXONOMY.flatMap((item) => [...item.studyTypes])
 const KNOWN_RESEARCH_CATEGORIES = RESEARCH_TAXONOMY.map((item) => item.category)
+
+function createEmptyAiPlanSections(): Record<PlanSectionKey, string> {
+  return {
+    introduction: '',
+    methods: '',
+    results: '',
+    discussion: '',
+  }
+}
+
+function createEmptyAiPlanSelections(): Record<PlanSectionKey, { start: number; end: number; text: string }> {
+  return {
+    introduction: { start: 0, end: 0, text: '' },
+    methods: { start: 0, end: 0, text: '' },
+    results: { start: 0, end: 0, text: '' },
+    discussion: { start: 0, end: 0, text: '' },
+  }
+}
+
+function createEmptyAiPlanHistory(): Record<PlanSectionKey, string[]> {
+  return {
+    introduction: [],
+    methods: [],
+    results: [],
+    discussion: [],
+  }
+}
+
+function titleCaseSection(section: string): string {
+  return section
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function parseAiPlanSectionsFromSummary(summary: string): Partial<Record<PlanSectionKey, string>> {
+  const parsed: Partial<Record<PlanSectionKey, string>> = {}
+  const compact = summary.trim()
+  if (!compact) {
+    return parsed
+  }
+  const pattern =
+    /(Introduction|Methods|Results|Discussion)\s*:\s*([\s\S]*?)(?=(?:Introduction|Methods|Results|Discussion|Conclusion)\s*:|$)/gi
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(compact)) !== null) {
+    const key = match[1].toLowerCase() as PlanSectionKey
+    const value = match[2].trim()
+    if (value) {
+      parsed[key] = value
+    }
+  }
+  if (Object.keys(parsed).length === 0) {
+    parsed.introduction = compact
+  }
+  return parsed
+}
+
+function planSectionFallback(plan: OutlinePlanState | null, section: PlanSectionKey): string {
+  const current = plan?.sections.find((item) => item.name === section)
+  if (!current || current.bullets.length === 0) {
+    return ''
+  }
+  return current.bullets.join(' ').trim()
+}
+
+function resolveAiPlanSections(
+  explicitSections: Record<PlanSectionKey, string>,
+  summary: string,
+  plan: OutlinePlanState | null,
+): Record<PlanSectionKey, string> {
+  const parsed = parseAiPlanSectionsFromSummary(summary)
+  return {
+    introduction: explicitSections.introduction.trim() || parsed.introduction?.trim() || planSectionFallback(plan, 'introduction'),
+    methods: explicitSections.methods.trim() || parsed.methods?.trim() || planSectionFallback(plan, 'methods'),
+    results: explicitSections.results.trim() || parsed.results?.trim() || planSectionFallback(plan, 'results'),
+    discussion: explicitSections.discussion.trim() || parsed.discussion?.trim() || planSectionFallback(plan, 'discussion'),
+  }
+}
+
+function emptyOutlinePlan(): OutlinePlanState {
+  return {
+    sections: CORE_SECTIONS.map((name) => ({ name, bullets: [] })),
+  }
+}
+
+function bulletsFromSectionText(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+}
 
 function normalizeSelectionLabel(value: string): string {
   return value
@@ -227,17 +319,15 @@ export function StudyCorePage() {
   const [plan, setPlan] = useState<OutlinePlanState | null>(null)
   const [clarificationResponses, setClarificationResponses] = useState<Step2ClarificationResponse[]>([])
   const [aiManuscriptPlanSummary, setAiManuscriptPlanSummary] = useState('')
-  const [aiManuscriptPlanSections, setAiManuscriptPlanSections] = useState<{
-    introduction: string
-    methods: string
-    results: string
-    discussion: string
-  }>({
-    introduction: '',
-    methods: '',
-    results: '',
-    discussion: '',
-  })
+  const [aiManuscriptPlanSections, setAiManuscriptPlanSections] = useState<Record<PlanSectionKey, string>>(
+    createEmptyAiPlanSections(),
+  )
+  const [step2PlanVisible, setStep2PlanVisible] = useState(false)
+  const [activeStep2AiSection, setActiveStep2AiSection] = useState<PlanSectionKey | null>(null)
+  const [step2SelectionBySection, setStep2SelectionBySection] = useState<
+    Record<PlanSectionKey, { start: number; end: number; text: string }>
+  >(createEmptyAiPlanSelections())
+  const [step2SectionHistory, setStep2SectionHistory] = useState<Record<PlanSectionKey, string[]>>(createEmptyAiPlanHistory())
   const [estimatePreview, setEstimatePreview] = useState<GenerationEstimate | null>(null)
   const [activeJob, setActiveJob] = useState<GenerationJobPayload | null>(null)
   const [links, setLinks] = useState<ClaimLinkSuggestion[]>([])
@@ -286,6 +376,19 @@ export function StudyCorePage() {
     [contextValues, guardrailsEnabled, selectedSections],
   )
   const step1StudyTypeOptions = useMemo(() => [...KNOWN_STUDY_TYPES], [])
+  const effectiveAiPlanSections = useMemo(
+    () => resolveAiPlanSections(aiManuscriptPlanSections, aiManuscriptPlanSummary, plan),
+    [aiManuscriptPlanSections, aiManuscriptPlanSummary, plan],
+  )
+  const canRevertAiPlanBySection = useMemo(
+    () => ({
+      introduction: step2SectionHistory.introduction.length > 0,
+      methods: step2SectionHistory.methods.length > 0,
+      results: step2SectionHistory.results.length > 0,
+      discussion: step2SectionHistory.discussion.length > 0,
+    }),
+    [step2SectionHistory],
+  )
   const currentResearchFrameSignature = useMemo(
     () => buildResearchFrameSignature(contextValues),
     [contextValues],
@@ -428,12 +531,28 @@ export function StudyCorePage() {
     }))
   }, [guardrailsEnabled])
 
+  useEffect(() => {
+    if (!step2PlanVisible) {
+      return
+    }
+    if (activeStep2AiSection) {
+      return
+    }
+    setActiveStep2AiSection('introduction')
+  }, [activeStep2AiSection, step2PlanVisible])
+
   const applyContextPayload = (payload: { projectId: string; manuscriptId: string; recommendedSections: string[] }) => {
     setRunContext({ projectId: payload.projectId, manuscriptId: payload.manuscriptId })
     const nextSections = [...CORE_SECTIONS]
     setSelectedSections(nextSections)
     setGenerationBrief(buildGenerationBrief(contextValues, nextSections, guardrailsEnabled))
     setGenerationBriefTouched(false)
+    setStep2PlanVisible(false)
+    setActiveStep2AiSection(null)
+    setStep2SelectionBySection(createEmptyAiPlanSelections())
+    setStep2SectionHistory(createEmptyAiPlanHistory())
+    setAiManuscriptPlanSummary('')
+    setAiManuscriptPlanSections(createEmptyAiPlanSections())
     setSavedResearchFrameSignature(currentResearchFrameSignature)
     window.localStorage.setItem(RESEARCH_FRAME_SIGNATURE_KEY, currentResearchFrameSignature)
     setCurrentStep(2)
@@ -490,12 +609,12 @@ export function StudyCorePage() {
         updates.manuscriptPlanSections.results.trim() ||
         updates.manuscriptPlanSections.discussion.trim()
       ) {
-        setAiManuscriptPlanSections({
-          introduction: updates.manuscriptPlanSections.introduction.trim(),
-          methods: updates.manuscriptPlanSections.methods.trim(),
-          results: updates.manuscriptPlanSections.results.trim(),
-          discussion: updates.manuscriptPlanSections.discussion.trim(),
-        })
+        setAiManuscriptPlanSections((current) => ({
+          introduction: updates.manuscriptPlanSections.introduction.trim() || current.introduction,
+          methods: updates.manuscriptPlanSections.methods.trim() || current.methods,
+          results: updates.manuscriptPlanSections.results.trim() || current.results,
+          discussion: updates.manuscriptPlanSections.discussion.trim() || current.discussion,
+        }))
       }
       setContextValues((current) => {
         let nextCategory = current.researchCategory
@@ -543,6 +662,87 @@ export function StudyCorePage() {
       })
     },
     [],
+  )
+
+  const onApplyAiPlanSectionText = useCallback(
+    (section: PlanSectionKey, nextText: string, source: 'manual' | 'ai' | 'fix') => {
+      const trimmed = nextText.trim()
+      if (!trimmed) {
+        return
+      }
+      const previous = effectiveAiPlanSections[section]?.trim() || ''
+      if (trimmed === previous) {
+        return
+      }
+
+      if (source !== 'manual' && previous) {
+        setStep2SectionHistory((current) => ({
+          ...current,
+          [section]: [previous, ...current[section]].slice(0, 20),
+        }))
+      }
+
+      setAiManuscriptPlanSections((current) => ({
+        ...current,
+        [section]: trimmed,
+      }))
+      setPlan((current) => {
+        const base = current ?? emptyOutlinePlan()
+        return {
+          sections: base.sections.map((item) =>
+            item.name === section
+              ? {
+                  ...item,
+                  bullets: bulletsFromSectionText(trimmed),
+                }
+              : item,
+          ),
+        }
+      })
+      setPlanStatus('built')
+      if (source === 'ai') {
+        setStatus(`Updated ${titleCaseSection(section)} with AI edit.`)
+      } else if (source === 'fix') {
+        setStatus(`Applied recommended fix to ${titleCaseSection(section)}.`)
+      }
+    },
+    [effectiveAiPlanSections, setPlanStatus],
+  )
+
+  const onRevertAiPlanSection = useCallback(
+    (section: PlanSectionKey) => {
+      setStep2SectionHistory((current) => {
+        const stack = current[section]
+        if (!stack.length) {
+          return current
+        }
+        const [previous, ...remaining] = stack
+        setAiManuscriptPlanSections((sections) => ({
+          ...sections,
+          [section]: previous,
+        }))
+        setPlan((existing) => {
+          const base = existing ?? emptyOutlinePlan()
+          return {
+            sections: base.sections.map((item) =>
+              item.name === section
+                ? {
+                    ...item,
+                    bullets: bulletsFromSectionText(previous),
+                  }
+                : item,
+            ),
+          }
+        })
+        setPlanStatus('built')
+        setStatus(`Reverted ${titleCaseSection(section)} to previous version.`)
+        return {
+          ...current,
+          [section]: remaining,
+        }
+      })
+    },
+    [setPlanStatus],
   )
 
   const renderActiveStep = () => {
@@ -593,10 +793,20 @@ export function StudyCorePage() {
           selectedSections={selectedSections}
           plan={plan}
           aiPlanSummary={aiManuscriptPlanSummary}
-          aiPlanSections={aiManuscriptPlanSections}
+          aiPlanSections={effectiveAiPlanSections}
+          showAiPlan={step2PlanVisible}
+          activeAiSection={activeStep2AiSection}
           clarificationResponses={clarificationResponses}
           onSectionsChange={setSelectedSections}
           onPlanChange={onPlanChange}
+          onAiPlanSectionChange={onApplyAiPlanSectionText}
+          onAiPlanSectionSelectionChange={(section, selection) =>
+            setStep2SelectionBySection((current) => ({
+              ...current,
+              [section]: selection,
+            }))
+          }
+          onActiveAiSectionChange={setActiveStep2AiSection}
           onStatus={setStatus}
           onError={setError}
         />
@@ -761,6 +971,15 @@ export function StudyCorePage() {
             summary: contextValues.researchObjective,
           }}
           clarificationResponses={clarificationResponses}
+          planVisible={step2PlanVisible}
+          aiPlanSections={effectiveAiPlanSections}
+          activePlanSection={activeStep2AiSection}
+          selectedTextBySection={step2SelectionBySection}
+          canRevertBySection={canRevertAiPlanBySection}
+          onPlanVisibilityChange={setStep2PlanVisible}
+          onActivePlanSectionChange={setActiveStep2AiSection}
+          onApplyAiPlanSectionText={onApplyAiPlanSectionText}
+          onRevertAiPlanSection={onRevertAiPlanSection}
           onClarificationResponsesChange={setClarificationResponses}
           onApplyAdaptiveUpdates={onApplyAdaptiveStep2Updates}
         />
