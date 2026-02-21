@@ -13,6 +13,7 @@ import {
   getCategoryForStudyType,
   getResearchTypeTaxonomy,
   getStudyTypeDefaults,
+  getStudyTypesForCategory,
   mergeJournalOptions,
 } from '@/lib/research-frame-options'
 import { fetchJournalOptions } from '@/lib/study-core-api'
@@ -232,6 +233,12 @@ export function StudyCorePage() {
     () => buildGenerationBrief(contextValues, selectedSections, guardrailsEnabled),
     [contextValues, guardrailsEnabled, selectedSections],
   )
+  const step1StudyTypeOptions = useMemo(() => {
+    if (contextValues.researchCategory.trim()) {
+      return getStudyTypesForCategory(contextValues.researchCategory, true)
+    }
+    return [...KNOWN_STUDY_TYPES]
+  }, [contextValues.researchCategory])
   const currentResearchFrameSignature = useMemo(
     () => buildResearchFrameSignature(contextValues),
     [contextValues],
@@ -509,6 +516,7 @@ export function StudyCorePage() {
           summary={contextValues.researchObjective}
           researchCategory={contextValues.researchCategory}
           researchType={contextValues.studyArchitecture}
+          studyTypeOptions={step1StudyTypeOptions}
           interpretationMode={contextValues.interpretationMode}
           targetJournal={targetJournal}
           currentArticleType={contextValues.recommendedArticleType}
@@ -521,7 +529,11 @@ export function StudyCorePage() {
           }
           onApplyResearchType={(value) =>
             {
-              const resolvedStudyType = resolveSuggestedStudyType(value) || value
+              const resolvedStudyType = resolveSuggestedStudyType(value)
+              if (!resolvedStudyType) {
+                setError('Suggested research type could not be mapped to a selectable study type. Refresh suggestions.')
+                return
+              }
               const defaults = getStudyTypeDefaults(resolvedStudyType)
               setContextValues((current) => ({
                 ...current,

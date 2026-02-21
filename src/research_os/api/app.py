@@ -400,6 +400,7 @@ def v1_research_overview_suggestions(
         target_journal=request.target_journal,
         research_category=request.research_category,
         research_type=request.research_type,
+        study_type_options=request.study_type_options,
         article_type=request.article_type,
         interpretation_mode=request.interpretation_mode,
         summary_of_research=request.summary_of_research,

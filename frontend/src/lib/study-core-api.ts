@@ -102,6 +102,7 @@ export async function fetchResearchOverviewSuggestions(input: {
   targetJournal: string
   researchCategory: string
   researchType: string
+  studyTypeOptions: string[]
   articleType: string
   interpretationMode: string
   summaryOfResearch: string
@@ -113,6 +114,7 @@ export async function fetchResearchOverviewSuggestions(input: {
       target_journal: input.targetJournal,
       research_category: input.researchCategory,
       research_type: input.researchType,
+      study_type_options: input.studyTypeOptions,
       article_type: input.articleType,
       interpretation_mode: input.interpretationMode,
       summary_of_research: input.summaryOfResearch,

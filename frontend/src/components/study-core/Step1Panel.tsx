@@ -8,6 +8,7 @@ type Step1PanelProps = {
   summary: string
   researchCategory: string
   researchType: string
+  studyTypeOptions: string[]
   interpretationMode: string
   targetJournal: string
   currentArticleType: string
@@ -35,6 +36,7 @@ export function Step1Panel({
   summary,
   researchCategory,
   researchType,
+  studyTypeOptions,
   interpretationMode,
   targetJournal,
   currentArticleType,
@@ -118,6 +120,7 @@ export function Step1Panel({
         targetJournal,
         researchCategory,
         researchType,
+        studyTypeOptions,
         articleType: currentArticleType,
         interpretationMode,
         summaryOfResearch: summary,

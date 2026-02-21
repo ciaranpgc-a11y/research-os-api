@@ -4,6 +4,7 @@ import json
 import re
 from html import unescape
 from typing import Any
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -183,8 +184,25 @@ JOURNAL_GUIDANCE_URLS: dict[str, list[str]] = {
 }
 
 _KEYWORD_PATTERN = re.compile(
-    r"\b(author|submission|word|length|limit|article|original|brief report|review|"
-    r"manuscript|abstract|figure|table|references|instructions)\b",
+    r"\b(author|submission|instructions?|guidelines?|guide|word(?:\s+count|\s+limit)?|"
+    r"length|limit|max(?:imum)?|article(?:\s+type)?|original(?:\s+research|\s+article)?|"
+    r"brief(?:\s+report|\s+communication)?|short\s+report|rapid\s+communication|"
+    r"review|letter|technical\s+note|case\s+report|manuscript|main\s+text|abstract|"
+    r"figure|table|references)\b",
+    re.IGNORECASE,
+)
+_GUIDANCE_LINK_PATTERN = re.compile(
+    r"\b(author|authors|submission|instruction|guideline|guide|article|manuscript|"
+    r"word|length|limit|prepare|types?\s+of\s+paper|for\s+authors)\b",
+    re.IGNORECASE,
+)
+_WORD_LIMIT_LINE_PATTERN = re.compile(
+    r"\b(word(?:s)?|word\s*count|length|max(?:imum)?|limit|main text|abstract)\b",
+    re.IGNORECASE,
+)
+_ARTICLE_TYPE_LINE_PATTERN = re.compile(
+    r"\b(original|research article|original article|brief report|brief communication|"
+    r"short report|rapid communication|case report|technical note|review|letter)\b",
     re.IGNORECASE,
 )
 _WORD_TOKEN_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9\-]*")
@@ -257,6 +275,19 @@ _INTERPRETATION_MODE_OPTIONS = (
     "Safety and feasibility characterization",
     "Implementation and workflow feasibility interpretation",
 )
+_ARTICLE_TYPE_HINTS: tuple[tuple[str, str], ...] = (
+    ("original research", "Original Research Article"),
+    ("original article", "Original Research Article"),
+    ("research article", "Original Research Article"),
+    ("brief report", "Brief Report"),
+    ("brief communication", "Brief Communication"),
+    ("short report", "Short Report"),
+    ("rapid communication", "Rapid Communication"),
+    ("case report", "Case Report"),
+    ("technical note", "Technical Note"),
+    ("review", "Review Article"),
+    ("letter", "Letter"),
+)
 
 
 def _html_to_candidate_lines(html: str) -> list[str]:
@@ -271,17 +302,113 @@ def _html_to_candidate_lines(html: str) -> list[str]:
     lines = []
     for raw_line in text.splitlines():
         line = re.sub(r"\s+", " ", raw_line).strip()
-        if len(line) < 40:
+        if len(line) < 24 and not (
+            _KEYWORD_PATTERN.search(line)
+            or _WORD_LIMIT_LINE_PATTERN.search(line)
+            or _NUMBER_PATTERN.search(line)
+        ):
             continue
+        if len(line) > 600:
+            line = line[:600]
         lines.append(line)
     return lines
 
 
 def _extract_relevant_excerpt(html: str) -> str:
     lines = _html_to_candidate_lines(html)
-    keyword_lines = [line for line in lines if _KEYWORD_PATTERN.search(line)]
-    selected = keyword_lines[:120] if keyword_lines else lines[:80]
-    return "\n".join(selected)
+    if not lines:
+        return ""
+
+    selected: list[str] = []
+    for index, line in enumerate(lines):
+        is_relevant = bool(
+            _KEYWORD_PATTERN.search(line)
+            or _WORD_LIMIT_LINE_PATTERN.search(line)
+            or (
+                _NUMBER_PATTERN.search(line)
+                and (
+                    "word" in line.lower()
+                    or "article" in line.lower()
+                    or "abstract" in line.lower()
+                )
+            )
+        )
+        if not is_relevant:
+            continue
+        if index > 0:
+            selected.append(lines[index - 1])
+        selected.append(line)
+        if index + 1 < len(lines):
+            selected.append(lines[index + 1])
+
+    if not selected:
+        selected = lines[:120]
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for line in selected:
+        key = line.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(line)
+        if len(deduped) >= 180:
+            break
+    return "\n".join(deduped)
+
+
+def _normalize_host(value: str) -> str:
+    host = value.strip().lower()
+    if host.startswith("www."):
+        return host[4:]
+    return host
+
+
+def _is_same_site(host_a: str, host_b: str) -> bool:
+    left = _normalize_host(host_a)
+    right = _normalize_host(host_b)
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    return left.endswith(f".{right}") or right.endswith(f".{left}")
+
+
+def _extract_candidate_guidance_links(base_url: str, html: str, limit: int = 2) -> list[str]:
+    parsed_base = urlparse(base_url)
+    base_host = parsed_base.netloc
+    if not base_host:
+        return []
+
+    links: list[str] = []
+    seen: set[str] = set()
+    for match in re.finditer(
+        r'(?is)<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', html
+    ):
+        href = unescape(match.group(1)).strip()
+        if not href or href.startswith("javascript:") or href.startswith("mailto:"):
+            continue
+        anchor_text = re.sub(r"(?is)<[^>]+>", " ", match.group(2))
+        anchor_text = unescape(re.sub(r"\s+", " ", anchor_text)).strip()
+        probe_text = f"{anchor_text} {href}"
+        if not _GUIDANCE_LINK_PATTERN.search(probe_text):
+            continue
+
+        absolute_url = urljoin(base_url, href).split("#", 1)[0]
+        parsed_candidate = urlparse(absolute_url)
+        if parsed_candidate.scheme not in {"http", "https"}:
+            continue
+        if not parsed_candidate.netloc or not _is_same_site(base_host, parsed_candidate.netloc):
+            continue
+
+        if absolute_url in seen:
+            continue
+        seen.add(absolute_url)
+        links.append(absolute_url)
+        if len(links) >= limit:
+            break
+
+    return links
 
 
 def _fetch_journal_guidance(target_journal: str) -> tuple[list[str], str]:
@@ -300,22 +427,42 @@ def _fetch_journal_guidance(target_journal: str) -> tuple[list[str], str]:
         )
     }
 
+    def fetch_page_text(url: str) -> tuple[str | None, str | None]:
+        try:
+            response = client.get(url)
+        except Exception:
+            return None, None
+        if response.status_code >= 400:
+            return None, None
+        content_type = response.headers.get("content-type", "").lower()
+        if "text/html" not in content_type and "application/xhtml+xml" not in content_type:
+            return None, None
+        excerpt = _extract_relevant_excerpt(response.text)
+        if not excerpt:
+            return response.text, None
+        return response.text, excerpt[:5000]
+
     with httpx.Client(timeout=12.0, follow_redirects=True, headers=headers) as client:
-        for url in urls[:2]:
-            try:
-                response = client.get(url)
-            except Exception:
+        queue: list[tuple[str, int]] = [(url, 0) for url in urls[:2]]
+        visited: set[str] = set()
+        while queue and len(fetched_urls) < 4:
+            url, depth = queue.pop(0)
+            if url in visited:
                 continue
-            if response.status_code >= 400:
+            visited.add(url)
+
+            html, excerpt = fetch_page_text(url)
+            if excerpt:
+                fetched_urls.append(url)
+                excerpts.append(f"Source URL: {url}\n{excerpt}")
+
+            if depth >= 1 or not html:
                 continue
-            content_type = response.headers.get("content-type", "").lower()
-            if "text/html" not in content_type and "application/xhtml+xml" not in content_type:
-                continue
-            excerpt = _extract_relevant_excerpt(response.text)
-            if not excerpt:
-                continue
-            fetched_urls.append(url)
-            excerpts.append(f"Source URL: {url}\n{excerpt[:9000]}")
+
+            for linked_url in _extract_candidate_guidance_links(url, html, limit=2):
+                if linked_url in visited:
+                    continue
+                queue.append((linked_url, depth + 1))
 
     return fetched_urls, "\n\n".join(excerpts)
 
@@ -402,6 +549,136 @@ Return JSON only:
     return sanitized, model_used
 
 
+def _extract_article_type_hint_from_excerpt(guidance_excerpt: str) -> str | None:
+    for raw_line in guidance_excerpt.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        lowered = line.lower()
+        if not _ARTICLE_TYPE_LINE_PATTERN.search(lowered):
+            continue
+        for phrase, label in _ARTICLE_TYPE_HINTS:
+            if phrase in lowered:
+                return label
+    return None
+
+
+def _extract_word_length_hint_from_excerpt(guidance_excerpt: str) -> str | None:
+    for raw_line in guidance_excerpt.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if not _WORD_LIMIT_LINE_PATTERN.search(line):
+            continue
+        numeric_tokens = [int(value) for value in re.findall(r"\b\d{2,5}\b", line)]
+        numbers = [value for value in numeric_tokens if 80 <= value <= 15000]
+        if not numbers:
+            continue
+        if len(numbers) >= 2:
+            lower = min(numbers[0], numbers[1])
+            upper = max(numbers[0], numbers[1])
+            if upper - lower >= 100:
+                return f"{lower}-{upper} words (verify final article-specific limit at submission)"
+        return f"Up to {numbers[0]} words (verify final article-specific limit at submission)"
+    return None
+
+
+def _fallback_article_type_recommendation(
+    guidance_excerpt: str, research_type: str
+) -> dict[str, str] | None:
+    hint = _extract_article_type_hint_from_excerpt(guidance_excerpt)
+    if not hint and research_type.strip():
+        hint = "Original Research Article"
+    if not hint:
+        return None
+    return {
+        "value": hint,
+        "rationale": "Derived from available submission guidance text; verify exact article category before submission.",
+    }
+
+
+def _fallback_word_length_recommendation(guidance_excerpt: str) -> dict[str, str] | None:
+    hint = _extract_word_length_hint_from_excerpt(guidance_excerpt)
+    if not hint:
+        return None
+    return {
+        "value": hint,
+        "rationale": "Extracted from submission guidance wording; confirm final limit for the selected article type.",
+    }
+
+
+def _generate_journal_format_recommendations(
+    *,
+    target_journal: str,
+    research_category: str,
+    research_type: str,
+    article_type: str,
+    interpretation_mode: str,
+    summary_of_research: str,
+    guidance_excerpt: str,
+    preferred_model: str,
+) -> tuple[dict[str, str] | None, dict[str, str] | None, str]:
+    if not guidance_excerpt.strip():
+        return (
+            _fallback_article_type_recommendation(guidance_excerpt, research_type),
+            _fallback_word_length_recommendation(guidance_excerpt),
+            preferred_model,
+        )
+
+    prompt = f"""
+You are extracting manuscript format recommendations from journal submission guidance.
+Use the provided guidance excerpt and research context.
+
+Inputs:
+- target_journal_slug: {target_journal}
+- research_category: {research_category}
+- research_type: {research_type}
+- article_type_current: {article_type}
+- interpretation_mode: {interpretation_mode}
+- summary_of_research: {summary_of_research}
+
+Guidance excerpt:
+{guidance_excerpt}
+
+Return JSON only:
+{{
+  "article_type_recommendation": {{"value": "string", "rationale": "string"}} | null,
+  "word_length_recommendation": {{"value": "string", "rationale": "string"}} | null
+}}
+
+Rules:
+- Prefer explicit journal wording for article type and word limits.
+- If explicit limits are missing, provide a best-fit estimate and include "verify at submission" in rationale.
+- Do not fabricate numbers not implied by the guidance.
+- Keep recommendations concise and actionable.
+""".strip()
+
+    raw_output, model_used = _ask_model(prompt, preferred_model=preferred_model)
+    try:
+        parsed = json.loads(_strip_json_fences(raw_output))
+        article_recommendation = _coerce_recommendation(
+            parsed.get("article_type_recommendation")
+        )
+        word_length_recommendation = _coerce_recommendation(
+            parsed.get("word_length_recommendation")
+        )
+        if article_recommendation is None:
+            article_recommendation = _fallback_article_type_recommendation(
+                guidance_excerpt, research_type
+            )
+        if word_length_recommendation is None:
+            word_length_recommendation = _fallback_word_length_recommendation(
+                guidance_excerpt
+            )
+        return article_recommendation, word_length_recommendation, model_used
+    except Exception:
+        return (
+            _fallback_article_type_recommendation(guidance_excerpt, research_type),
+            _fallback_word_length_recommendation(guidance_excerpt),
+            model_used,
+        )
+
+
 def _coerce_str_list(value: Any, max_items: int = 3) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -423,6 +700,65 @@ def _coerce_str_list(value: Any, max_items: int = 3) -> list[str]:
     return cleaned
 
 
+def _clean_option_list(options: list[str], max_items: int = 200) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for option in options:
+        text = str(option).strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(text)
+        if len(cleaned) >= max_items:
+            break
+    return cleaned
+
+
+def _normalize_choice_label(value: str) -> str:
+    normalized = value.strip().lower()
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _resolve_canonical_option(raw_choice: str, options: list[str]) -> str | None:
+    normalized_choice = _normalize_choice_label(raw_choice)
+    if not normalized_choice:
+        return None
+
+    for option in options:
+        if _normalize_choice_label(option) == normalized_choice:
+            return option
+
+    for option in options:
+        normalized_option = _normalize_choice_label(option)
+        if not normalized_option:
+            continue
+        if normalized_option in normalized_choice or normalized_choice in normalized_option:
+            return option
+
+    choice_tokens = set(normalized_choice.split(" "))
+    best_option = ""
+    best_score = 0.0
+    for option in options:
+        option_tokens = set(_normalize_choice_label(option).split(" "))
+        if not option_tokens:
+            continue
+        overlap = len(choice_tokens.intersection(option_tokens))
+        recall = overlap / max(1, len(choice_tokens))
+        precision = overlap / max(1, len(option_tokens))
+        score = (recall + precision) / 2
+        if score > best_score:
+            best_score = score
+            best_option = option
+
+    if best_option and best_score >= 0.55:
+        return best_option
+    return None
+
+
 def _coerce_recommendation(value: Any) -> dict[str, str] | None:
     if not isinstance(value, dict):
         return None
@@ -434,6 +770,23 @@ def _coerce_recommendation(value: Any) -> dict[str, str] | None:
         "value": recommendation,
         "rationale": rationale or "Recommended from journal requirements and study framing.",
     }
+
+
+def _coerce_study_type_recommendation(
+    value: Any, allowed_study_types: list[str]
+) -> dict[str, str] | None:
+    recommendation = _coerce_recommendation(value)
+    if not recommendation:
+        return None
+    if not allowed_study_types:
+        return recommendation
+    resolved_value = _resolve_canonical_option(
+        recommendation["value"], allowed_study_types
+    )
+    if not resolved_value:
+        return None
+    recommendation["value"] = resolved_value
+    return recommendation
 
 
 def _coerce_interpretation_mode_recommendation(value: Any) -> dict[str, str] | None:
@@ -575,18 +928,38 @@ def generate_research_overview_suggestions(
     target_journal: str,
     research_category: str,
     research_type: str,
+    study_type_options: list[str],
     article_type: str,
     interpretation_mode: str,
     summary_of_research: str,
     preferred_model: str = PREFERRED_MODEL,
 ) -> dict[str, object]:
     fetched_urls, guidance_excerpt = _fetch_journal_guidance(target_journal)
+    allowed_study_types = _clean_option_list(study_type_options)
+    if research_type.strip():
+        allowed_study_types = _clean_option_list([*allowed_study_types, research_type])
+
     summary_editor_refinements, summary_editor_model = _generate_summary_refinement(
         summary_of_research=summary_of_research,
         research_type=research_type,
         interpretation_mode=interpretation_mode,
         preferred_model=preferred_model,
     )
+    journal_article_recommendation, journal_word_length_recommendation, journal_model = (
+        _generate_journal_format_recommendations(
+            target_journal=target_journal,
+            research_category=research_category,
+            research_type=research_type,
+            article_type=article_type,
+            interpretation_mode=interpretation_mode,
+            summary_of_research=summary_of_research,
+            guidance_excerpt=guidance_excerpt,
+            preferred_model=preferred_model,
+        )
+    )
+    allowed_study_type_block = "\n".join(
+        f"- {option}" for option in allowed_study_types
+    ) or "- No canonical study types provided."
 
     prompt = f"""
 You are helping draft a rigorous manuscript plan for a small retrospective observational cardiovascular/imaging study.
@@ -599,6 +972,9 @@ Inputs:
 - article_type: {article_type}
 - interpretation_mode: {interpretation_mode}
 - summary_of_research: {summary_of_research}
+
+Canonical study types (choose exactly one for research_type_suggestion.value):
+{allowed_study_type_block}
 
 Journal guidance excerpt:
 {guidance_excerpt or "No guidance text could be fetched from configured URLs."}
@@ -618,6 +994,7 @@ Rules:
 - summary_refinements must be full rewritten versions of summary_of_research, each as 2-4 sentences.
 - Do not add new facts, endpoints, sample sizes, methods, or results not already present in the inputs.
 - Do not write instructions to the user (no "add/include/report/specify/clarify/ensure").
+- research_type_suggestion.value must be exactly one canonical study type listed above.
 - interpretation_mode_recommendation.value must be one of:
   {", ".join(_INTERPRETATION_MODE_OPTIONS)}
 - Keep causal language out for observational framing.
@@ -627,12 +1004,17 @@ Rules:
 """.strip()
 
     raw_output, model_used = _ask_model(prompt, preferred_model=preferred_model)
-    combined_model_used = _combine_model_labels(summary_editor_model, model_used)
+    combined_model_used = _combine_model_labels(
+        _combine_model_labels(summary_editor_model, journal_model),
+        model_used,
+    )
     base_payload = _empty_payload(
         fetched_urls=fetched_urls,
         model_used=combined_model_used,
         summary_refinements=summary_editor_refinements,
     )
+    base_payload["article_type_recommendation"] = journal_article_recommendation
+    base_payload["word_length_recommendation"] = journal_word_length_recommendation
 
     try:
         parsed = json.loads(_strip_json_fences(raw_output))
@@ -651,16 +1033,16 @@ Rules:
                 max_items=1,
             ),
         )
-        payload["research_type_suggestion"] = _coerce_recommendation(
-            parsed.get("research_type_suggestion")
+        payload["research_type_suggestion"] = _coerce_study_type_recommendation(
+            parsed.get("research_type_suggestion"), allowed_study_types
         )
         payload["interpretation_mode_recommendation"] = _coerce_interpretation_mode_recommendation(
             parsed.get("interpretation_mode_recommendation")
         )
-        payload["article_type_recommendation"] = _coerce_recommendation(
+        payload["article_type_recommendation"] = journal_article_recommendation or _coerce_recommendation(
             parsed.get("article_type_recommendation")
         )
-        payload["word_length_recommendation"] = _coerce_recommendation(
+        payload["word_length_recommendation"] = journal_word_length_recommendation or _coerce_recommendation(
             parsed.get("word_length_recommendation")
         )
         payload["guidance_suggestions"] = guidance_suggestions
