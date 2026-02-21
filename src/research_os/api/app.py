@@ -169,9 +169,19 @@ BAD_REQUEST_RESPONSES = {
 
 @asynccontextmanager
 async def app_lifespan(_: FastAPI):
-    # Fail fast during startup to avoid confusing downstream OpenAI runtime errors.
-    # Tests set a dummy OPENAI_API_KEY before creating TestClient.
-    get_openai_api_key()
+    # In local development, allow API startup even if OPENAI_API_KEY is not set so
+    # non-LLM endpoints remain available. Set STRICT_OPENAI_STARTUP=1 to enforce fail-fast.
+    strict_startup = os.getenv("STRICT_OPENAI_STARTUP", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    try:
+        get_openai_api_key()
+    except Exception as exc:
+        if strict_startup:
+            raise
+        logger.warning("openai_api_key_missing_at_startup", extra={"detail": str(exc)})
     yield
 
 
@@ -179,7 +189,13 @@ app = FastAPI(title="Research OS API", version="0.1.0", lifespan=app_lifespan)
 
 cors_allow_origins = os.getenv(
     "CORS_ALLOW_ORIGINS",
-    "http://localhost:5173,https://research-os-ui.onrender.com",
+    (
+        "http://localhost:5173,"
+        "http://127.0.0.1:5173,"
+        "http://localhost:4173,"
+        "http://127.0.0.1:4173,"
+        "https://research-os-ui.onrender.com"
+    ),
 )
 allow_origins = [
     origin.strip() for origin in cors_allow_origins.split(",") if origin.strip()
