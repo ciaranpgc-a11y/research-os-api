@@ -3,15 +3,18 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { getJournalQualityScore, getJournalQualityStars } from '@/lib/research-frame-options'
-import { planSections } from '@/lib/study-core-api'
+import { editPlanManuscriptSection, planSections } from '@/lib/study-core-api'
 import type { OutlinePlanSection, OutlinePlanState, SectionPlanItem, SectionPlanPayload, Step2ClarificationResponse } from '@/types/study-core'
 
 const DEFAULT_PLAN_SECTIONS = ['introduction', 'methods', 'results', 'discussion', 'conclusion'] as const
+const AI_PLAN_SECTIONS = ['introduction', 'methods', 'results', 'discussion'] as const
+type AiPlanSectionKey = (typeof AI_PLAN_SECTIONS)[number]
 
 type StepPlanProps = {
   targetJournal: string
   answers: Record<string, string>
   planningContext: {
+    projectTitle: string
     targetJournal: string
     targetJournalLabel?: string
     researchCategory: string
@@ -24,6 +27,7 @@ type StepPlanProps = {
   selectedSections: string[]
   plan: OutlinePlanState | null
   aiPlanSummary: string
+  aiPlanSections: Record<AiPlanSectionKey, string>
   clarificationResponses: Step2ClarificationResponse[]
   onSectionsChange: (sections: string[]) => void
   onPlanChange: (plan: OutlinePlanState | null) => void
@@ -231,6 +235,70 @@ function bulletsFromSectionText(value: string): string[] {
     .filter(Boolean)
 }
 
+function createEmptyAiSectionTextMap(): Record<AiPlanSectionKey, string> {
+  return {
+    introduction: '',
+    methods: '',
+    results: '',
+    discussion: '',
+  }
+}
+
+function createEmptyAiSelectionMap(): Record<AiPlanSectionKey, { start: number; end: number; text: string }> {
+  return {
+    introduction: { start: 0, end: 0, text: '' },
+    methods: { start: 0, end: 0, text: '' },
+    results: { start: 0, end: 0, text: '' },
+    discussion: { start: 0, end: 0, text: '' },
+  }
+}
+
+function parseAiPlanSectionsFromSummary(summary: string): Partial<Record<AiPlanSectionKey, string>> {
+  const parsed: Partial<Record<AiPlanSectionKey, string>> = {}
+  const compactSummary = summary.trim()
+  if (!compactSummary) {
+    return parsed
+  }
+  const pattern =
+    /(Introduction|Methods|Results|Discussion)\s*:\s*([\s\S]*?)(?=(?:Introduction|Methods|Results|Discussion|Conclusion)\s*:|$)/gi
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(compactSummary)) !== null) {
+    const key = match[1].toLowerCase() as AiPlanSectionKey
+    const value = match[2].trim()
+    if (value) {
+      parsed[key] = value
+    }
+  }
+  if (Object.keys(parsed).length === 0) {
+    parsed.introduction = compactSummary
+  }
+  return parsed
+}
+
+function sectionFallbackFromPlan(plan: OutlinePlanState | null, sectionName: string): string {
+  const section = plan?.sections.find((item) => item.name === sectionName)
+  if (!section || section.bullets.length === 0) {
+    return ''
+  }
+  return section.bullets.join(' ').trim()
+}
+
+function buildAiPlanSections(
+  aiPlanSections: Record<AiPlanSectionKey, string>,
+  aiPlanSummary: string,
+  plan: OutlinePlanState | null,
+): Record<AiPlanSectionKey, string> {
+  const parsed = parseAiPlanSectionsFromSummary(aiPlanSummary)
+  const built = createEmptyAiSectionTextMap()
+  for (const section of AI_PLAN_SECTIONS) {
+    const explicit = aiPlanSections[section]?.trim() || ''
+    const fromSummary = parsed[section]?.trim() || ''
+    const fromPlan = sectionFallbackFromPlan(plan, section)
+    built[section] = explicit || fromSummary || fromPlan
+  }
+  return built
+}
+
 export function StepPlan({
   targetJournal,
   answers,
@@ -238,6 +306,7 @@ export function StepPlan({
   selectedSections,
   plan,
   aiPlanSummary,
+  aiPlanSections,
   clarificationResponses,
   onSectionsChange,
   onPlanChange,
@@ -248,6 +317,20 @@ export function StepPlan({
   const [listeningSection, setListeningSection] = useState<string | null>(null)
   const recognitionRef = useRef<any | null>(null)
   const listeningSectionRef = useRef<string | null>(null)
+  const [aiSectionTexts, setAiSectionTexts] = useState<Record<AiPlanSectionKey, string>>(() =>
+    buildAiPlanSections(aiPlanSections, aiPlanSummary, plan),
+  )
+  const [activeAiEditSection, setActiveAiEditSection] = useState<AiPlanSectionKey | null>(null)
+  const [aiEditInstructionBySection, setAiEditInstructionBySection] = useState<Record<AiPlanSectionKey, string>>(() =>
+    createEmptyAiSectionTextMap(),
+  )
+  const [aiEditSelectionBySection, setAiEditSelectionBySection] = useState<
+    Record<AiPlanSectionKey, { start: number; end: number; text: string }>
+  >(() => createEmptyAiSelectionMap())
+  const [aiEditErrorBySection, setAiEditErrorBySection] = useState<Record<AiPlanSectionKey, string>>(() =>
+    createEmptyAiSectionTextMap(),
+  )
+  const [aiEditBusySection, setAiEditBusySection] = useState<AiPlanSectionKey | null>(null)
   const orderedSections = useMemo(() => [...DEFAULT_PLAN_SECTIONS], [])
   const clarificationNotes = useMemo(() => buildClarificationNotes(clarificationResponses), [clarificationResponses])
   const journalStars = useMemo(
@@ -291,6 +374,18 @@ export function StepPlan({
     }
     return parts.join(' ')
   }, [orderedSections, plan])
+  const aiSectionSeed = useMemo(
+    () => buildAiPlanSections(aiPlanSections, aiPlanSummary, plan),
+    [aiPlanSections, aiPlanSummary, plan],
+  )
+  const aiSectionSeedSignature = useMemo(() => JSON.stringify(aiSectionSeed), [aiSectionSeed])
+  const hasAiNarrative = useMemo(
+    () =>
+      AI_PLAN_SECTIONS.some((section) => (aiSectionTexts[section] || '').trim().length > 0) ||
+      Boolean((aiPlanSummary || '').trim()) ||
+      Boolean((fallbackPlanSummary || '').trim()),
+    [aiPlanSummary, aiSectionTexts, fallbackPlanSummary],
+  )
 
   useEffect(() => {
     return () => {
@@ -304,6 +399,10 @@ export function StepPlan({
       }
     }
   }, [])
+
+  useEffect(() => {
+    setAiSectionTexts(aiSectionSeed)
+  }, [aiSectionSeed, aiSectionSeedSignature])
 
   useEffect(() => {
     const current = selectedSections.join('|').toLowerCase()
@@ -443,6 +542,87 @@ export function StepPlan({
     onStatus('Context scaffold created from Step 1 framing.')
   }
 
+  const updateAiSectionSelection = (
+    sectionName: AiPlanSectionKey,
+    selectionStart: number,
+    selectionEnd: number,
+    value: string,
+  ) => {
+    const start = Math.max(0, Math.min(selectionStart, value.length))
+    const end = Math.max(start, Math.min(selectionEnd, value.length))
+    const selectedText = start < end ? value.slice(start, end).trim() : ''
+    setAiEditSelectionBySection((current) => ({
+      ...current,
+      [sectionName]: { start, end, text: selectedText },
+    }))
+  }
+
+  const onApplyAiEdit = async (sectionName: AiPlanSectionKey, mode: 'selection' | 'section') => {
+    const editInstruction = aiEditInstructionBySection[sectionName]?.trim() || ''
+    if (!editInstruction) {
+      setAiEditErrorBySection((current) => ({
+        ...current,
+        [sectionName]: 'Add an edit instruction first.',
+      }))
+      return
+    }
+
+    const selectedText = mode === 'selection' ? aiEditSelectionBySection[sectionName]?.text?.trim() || '' : ''
+    if (mode === 'selection' && !selectedText) {
+      setAiEditErrorBySection((current) => ({
+        ...current,
+        [sectionName]: 'Highlight text in this section before using targeted AI edit.',
+      }))
+      return
+    }
+
+    setAiEditBusySection(sectionName)
+    setAiEditErrorBySection((current) => ({ ...current, [sectionName]: '' }))
+    onError('')
+    try {
+      const payload = await editPlanManuscriptSection({
+        section: sectionName,
+        sectionText: aiSectionTexts[sectionName] || '',
+        editInstruction,
+        selectedText,
+        projectTitle: planningContext.projectTitle || 'Untitled project',
+        targetJournalLabel: planningContext.targetJournalLabel || planningContext.targetJournal || '',
+        researchCategory: planningContext.researchCategory,
+        studyType: planningContext.studyType,
+        interpretationMode: planningContext.interpretationMode,
+        articleType: planningContext.articleType,
+        wordLength: planningContext.wordLength,
+        summaryOfResearch: planningContext.summary,
+      })
+      const updatedText = payload.updated_section_text.trim()
+      if (updatedText) {
+        setAiSectionTexts((current) => ({
+          ...current,
+          [sectionName]: updatedText,
+        }))
+        updateSection(sectionName, (current) => ({
+          ...current,
+          bullets: bulletsFromSectionText(updatedText),
+        }))
+      }
+      setAiEditInstructionBySection((current) => ({ ...current, [sectionName]: '' }))
+      setAiEditSelectionBySection((current) => ({
+        ...current,
+        [sectionName]: { start: 0, end: 0, text: '' },
+      }))
+      onStatus(`Updated ${titleCaseSection(sectionName)} plan section with AI edits.`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'AI plan edit failed.'
+      setAiEditErrorBySection((current) => ({
+        ...current,
+        [sectionName]: message,
+      }))
+      onError(message)
+    } finally {
+      setAiEditBusySection(null)
+    }
+  }
+
   return (
     <div className="space-y-4 rounded-lg border border-border bg-card p-4">
       <div className="space-y-1">
@@ -501,15 +681,100 @@ export function StepPlan({
         </Button>
       </div>
 
+      {hasAiNarrative ? (
+        <div className="space-y-3 rounded-md border border-emerald-200 bg-emerald-50/40 p-3">
+          <div className="space-y-1">
+            <p className="text-[11px] uppercase tracking-wide text-emerald-900">AI manuscript plan</p>
+            <p className="text-xs text-emerald-900/80">Edit these section plans directly, or highlight text and ask AI for targeted changes.</p>
+          </div>
+          <div className="grid gap-3 xl:grid-cols-2">
+            {AI_PLAN_SECTIONS.map((sectionName) => {
+              const isActive = activeAiEditSection === sectionName
+              const busySection = aiEditBusySection === sectionName
+              const hasSelection = Boolean((aiEditSelectionBySection[sectionName]?.text || '').trim())
+              return (
+                <div key={sectionName} className="space-y-2 rounded-md border border-emerald-200 bg-background p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-emerald-950">{titleCaseSection(sectionName)}</p>
+                    {hasSelection ? <span className="text-[11px] text-emerald-700">Highlighted text selected</span> : null}
+                  </div>
+                  <textarea
+                    className="min-h-28 w-full rounded-md border border-emerald-200 bg-background px-3 py-2 text-sm"
+                    value={aiSectionTexts[sectionName] || ''}
+                    onFocus={() => setActiveAiEditSection(sectionName)}
+                    onClick={() => setActiveAiEditSection(sectionName)}
+                    onSelect={(event) =>
+                      updateAiSectionSelection(
+                        sectionName,
+                        event.currentTarget.selectionStart ?? 0,
+                        event.currentTarget.selectionEnd ?? 0,
+                        event.currentTarget.value,
+                      )
+                    }
+                    onChange={(event) => {
+                      const value = event.target.value
+                      setAiSectionTexts((current) => ({
+                        ...current,
+                        [sectionName]: value,
+                      }))
+                      updateSection(sectionName, (current) => ({
+                        ...current,
+                        bullets: bulletsFromSectionText(value),
+                      }))
+                    }}
+                  />
+                  {isActive ? (
+                    <div className="space-y-2 rounded-md border border-emerald-100 bg-emerald-50/35 p-2">
+                      <textarea
+                        className="min-h-16 w-full rounded-md border border-emerald-200 bg-background px-2 py-1.5 text-xs"
+                        placeholder="Describe the AI edit for this section."
+                        value={aiEditInstructionBySection[sectionName] || ''}
+                        onChange={(event) =>
+                          setAiEditInstructionBySection((current) => ({
+                            ...current,
+                            [sectionName]: event.target.value,
+                          }))
+                        }
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+                          onClick={() => void onApplyAiEdit(sectionName, 'selection')}
+                          disabled={busySection || !hasSelection}
+                        >
+                          {busySection ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+                          Apply to highlighted text
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="bg-emerald-600 text-white hover:bg-emerald-700"
+                          onClick={() => void onApplyAiEdit(sectionName, 'section')}
+                          disabled={busySection}
+                        >
+                          {busySection ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+                          Apply to full section
+                        </Button>
+                      </div>
+                      {aiEditErrorBySection[sectionName] ? (
+                        <p className="text-xs text-rose-700">{aiEditErrorBySection[sectionName]}</p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Click inside this box to open AI edit controls.</p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
+
       {plan ? (
         <div className="space-y-3 rounded-md border border-border p-3">
-          <div className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
-            <p className="text-[11px] uppercase tracking-wide text-emerald-900">AI manuscript plan summary</p>
-            <p className="mt-1 text-sm text-emerald-950">
-              {(aiPlanSummary || '').trim() || fallbackPlanSummary || 'Complete clarifying questions and generate plan to produce a summary.'}
-            </p>
-          </div>
-
           <div className="space-y-3">
             {orderedSections.map((sectionName) => {
               const section = plan.sections.find((item) => item.name === sectionName)

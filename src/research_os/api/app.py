@@ -52,6 +52,8 @@ from research_os.api.schemas import (
     PlanClarificationNextQuestionResponse,
     PlanClarificationQuestionsRequest,
     PlanClarificationQuestionsResponse,
+    PlanSectionEditRequest,
+    PlanSectionEditResponse,
     ParagraphRegenerationRequest,
     ParagraphRegenerationResponse,
     ProjectCreateRequest,
@@ -132,6 +134,7 @@ from research_os.services.section_planning_service import build_section_plan
 from research_os.services.plan_clarification_service import (
     generate_next_plan_clarification_question,
     generate_plan_clarification_questions,
+    revise_manuscript_plan_section,
 )
 from research_os.services.research_overview_suggestions_service import (
     generate_research_overview_suggestions,
@@ -466,6 +469,36 @@ def v1_plan_aawe_next_clarification_question(
         preferred_model=request.model or "gpt-5.2",
     )
     return PlanClarificationNextQuestionResponse(**payload)
+
+
+@app.post(
+    "/v1/aawe/plan/manuscript-section/edit",
+    response_model=PlanSectionEditResponse,
+    responses=BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_plan_aawe_edit_manuscript_section(
+    request: PlanSectionEditRequest,
+) -> PlanSectionEditResponse | JSONResponse:
+    try:
+        payload = revise_manuscript_plan_section(
+            section=request.section,
+            section_text=request.section_text,
+            edit_instruction=request.edit_instruction,
+            selected_text=request.selected_text,
+            project_title=request.project_title,
+            target_journal_label=request.target_journal_label,
+            research_category=request.research_category,
+            study_type=request.study_type,
+            interpretation_mode=request.interpretation_mode,
+            article_type=request.article_type,
+            word_length=request.word_length,
+            summary_of_research=request.summary_of_research,
+            preferred_model=request.model or "gpt-5.2",
+        )
+    except ValueError as exc:
+        return _build_bad_request_response(str(exc))
+    return PlanSectionEditResponse(**payload)
 
 
 @app.post(

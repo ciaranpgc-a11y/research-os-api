@@ -288,7 +288,20 @@ export type PlanClarificationNextQuestionPayload = {
     word_length: string
   } | null
   manuscript_plan_summary: string
+  manuscript_plan_sections: {
+    introduction: string
+    methods: string
+    results: string
+    discussion: string
+  }
   asked_count: number
   max_questions: number
+  model_used: string
+}
+
+export type PlanSectionEditPayload = {
+  section: 'introduction' | 'methods' | 'results' | 'discussion'
+  updated_section_text: string
+  applied_to_selection: boolean
   model_used: string
 }

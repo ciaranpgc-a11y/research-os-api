@@ -356,6 +356,13 @@ class PlanClarificationFieldUpdatesResponse(BaseModel):
     word_length: str = ""
 
 
+class PlanManuscriptSectionsResponse(BaseModel):
+    introduction: str = ""
+    methods: str = ""
+    results: str = ""
+    discussion: str = ""
+
+
 class PlanClarificationNextQuestionResponse(BaseModel):
     question: PlanClarificationQuestionResponse | None = None
     completed: bool
@@ -365,9 +372,35 @@ class PlanClarificationNextQuestionResponse(BaseModel):
     advice: str = ""
     updated_fields: PlanClarificationFieldUpdatesResponse | None = None
     manuscript_plan_summary: str = ""
+    manuscript_plan_sections: PlanManuscriptSectionsResponse = Field(
+        default_factory=PlanManuscriptSectionsResponse
+    )
     asked_count: int
     max_questions: int
     model_used: str
+
+
+class PlanSectionEditRequest(BaseModel):
+    section: Literal["introduction", "methods", "results", "discussion"]
+    section_text: str = ""
+    edit_instruction: str = ""
+    selected_text: str = ""
+    project_title: str = ""
+    target_journal_label: str = ""
+    research_category: str = ""
+    study_type: str = ""
+    interpretation_mode: str = ""
+    article_type: str = ""
+    word_length: str = ""
+    summary_of_research: str = ""
+    model: str | None = None
+
+
+class PlanSectionEditResponse(BaseModel):
+    section: Literal["introduction", "methods", "results", "discussion"]
+    updated_section_text: str
+    applied_to_selection: bool = False
+    model_used: str = ""
 
 
 class ResearchOverviewSuggestionsRequest(BaseModel):

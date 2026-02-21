@@ -57,6 +57,13 @@ INTERPRETATION_MODE_OPTIONS = (
     "Safety and feasibility characterization",
     "Implementation and workflow feasibility interpretation",
 )
+PLAN_SECTION_KEYS = ("introduction", "methods", "results", "discussion")
+PLAN_SECTION_FALLBACKS = {
+    "introduction": "Define the clinical context, evidence gap, and manuscript objective.",
+    "methods": "Specify the design, evidence approach, analysis logic, and key methodological constraints.",
+    "results": "Summarise principal findings and uncertainty framing without adding unsupported claims.",
+    "discussion": "Interpret findings conservatively, state limitations, and define practical implications.",
+}
 
 
 def _strip_json_fences(raw_text: str) -> str:
@@ -286,6 +293,33 @@ def _normalise_choice_label(value: str) -> str:
     normalized = value.strip().lower()
     normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
     return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _clean_compact_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _fallback_manuscript_plan_sections(summary: str) -> dict[str, str]:
+    fallback = dict(PLAN_SECTION_FALLBACKS)
+    compact_summary = _clean_compact_text(summary)
+    if compact_summary:
+        fallback["introduction"] = compact_summary
+    return fallback
+
+
+def _coerce_manuscript_plan_sections(
+    payload: Any, *, fallback_summary: str
+) -> dict[str, str]:
+    fallback = _fallback_manuscript_plan_sections(fallback_summary)
+    if not isinstance(payload, dict):
+        return fallback
+    coerced: dict[str, str] = {}
+    for key in PLAN_SECTION_KEYS:
+        candidate = _clean_compact_text(str(payload.get(key, "")))
+        if len(candidate) < 16:
+            candidate = fallback[key]
+        coerced[key] = candidate
+    return coerced
 
 
 def _resolve_canonical_option(raw_choice: str, options: list[str]) -> str:
@@ -634,6 +668,12 @@ Return JSON:
     "word_length": "string"
   }},
   "manuscript_plan_summary": "string",
+  "manuscript_plan_sections": {{
+    "introduction": "string",
+    "methods": "string",
+    "results": "string",
+    "discussion": "string"
+  }},
   "ready_for_plan": true | false,
   "confidence_percent": 0-100 integer,
   "additional_questions_for_full_confidence": non-negative integer,
@@ -673,6 +713,7 @@ def generate_next_plan_clarification_question(
             cleaned_study_type_options.append(current_study_type)
     asked_count = len(cleaned_history)
     if asked_count >= hard_limit:
+        fallback_sections = _fallback_manuscript_plan_sections(summary_of_research)
         return {
             "question": None,
             "completed": True,
@@ -689,6 +730,7 @@ def generate_next_plan_clarification_question(
                 "word_length": word_length.strip(),
             },
             "manuscript_plan_summary": "",
+            "manuscript_plan_sections": fallback_sections,
             "asked_count": asked_count,
             "max_questions": safe_max_questions,
             "model_used": preferred_model,
@@ -735,6 +777,12 @@ Return JSON only with this schema:
     "word_length": "string"
   }},
   "manuscript_plan_summary": "string",
+  "manuscript_plan_sections": {{
+    "introduction": "string",
+    "methods": "string",
+    "results": "string",
+    "discussion": "string"
+  }},
   "ready_for_plan": true | false,
   "confidence_percent": 0-100 integer,
   "additional_questions_for_full_confidence": non-negative integer,
@@ -755,6 +803,7 @@ Rules:
 - Keep advice concise and actionable.
 - updated_fields.summary_of_research must integrate the latest answer history without fabricating data.
 - manuscript_plan_summary must describe the planned Introduction, Methods, Results, Discussion, and Conclusion.
+- manuscript_plan_sections must provide concise planning text for introduction, methods, results, and discussion.
 
 force_next_question: {"true" if force_next_question else "false"}
 """.strip()
@@ -798,6 +847,10 @@ force_next_question: {"true" if force_next_question else "false"}
         manuscript_plan_summary = (
             "The plan will structure the manuscript across Introduction, Methods, Results, Discussion, and Conclusion using the clarified context."
         )
+    manuscript_plan_sections = _coerce_manuscript_plan_sections(
+        first_parsed.get("manuscript_plan_sections"),
+        fallback_summary=manuscript_plan_summary,
+    )
 
     question = None
     should_return_question = force_next_question or not ready_for_plan
@@ -858,7 +911,104 @@ Return JSON only:
         "advice": advice,
         "updated_fields": updated_fields,
         "manuscript_plan_summary": manuscript_plan_summary,
+        "manuscript_plan_sections": manuscript_plan_sections,
         "asked_count": asked_count,
         "max_questions": safe_max_questions,
         "model_used": _merge_model_labels(first_model, second_model),
+    }
+
+
+def _normalise_plan_section_key(value: str) -> str:
+    normalized = _normalise_choice_label(value)
+    return normalized.replace(" ", "_")
+
+
+def revise_manuscript_plan_section(
+    *,
+    section: str,
+    section_text: str,
+    edit_instruction: str,
+    selected_text: str,
+    project_title: str,
+    target_journal_label: str,
+    research_category: str,
+    study_type: str,
+    interpretation_mode: str,
+    article_type: str,
+    word_length: str,
+    summary_of_research: str,
+    preferred_model: str = PREFERRED_MODEL,
+) -> dict[str, object]:
+    normalised_section = _normalise_plan_section_key(section)
+    if normalised_section not in PLAN_SECTION_KEYS:
+        raise ValueError(
+            "section must be one of introduction, methods, results, or discussion."
+        )
+
+    current_text = _clean_compact_text(section_text)
+    instruction = _clean_compact_text(edit_instruction)
+    selected = _clean_compact_text(selected_text)
+    if not instruction:
+        raise ValueError("edit_instruction is required.")
+
+    if not current_text:
+        current_text = PLAN_SECTION_FALLBACKS.get(
+            normalised_section,
+            "Define this section plan using the available study context.",
+        )
+
+    selection_block = (
+        f"- selected_text_to_edit: {selected}\n"
+        if selected
+        else "- selected_text_to_edit: none\n"
+    )
+    focus_rule = (
+        "Apply the edit primarily to the selected text while preserving the rest of the section."
+        if selected
+        else "Apply the edit to the full section text."
+    )
+
+    prompt = f"""
+You are editing one section of an AI manuscript plan in Step 2.
+Return revised section planning text only; do not draft manuscript prose.
+
+Context:
+- project_title: {project_title}
+- target_journal_label: {target_journal_label}
+- research_category: {research_category}
+- study_type: {study_type}
+- interpretation_mode: {interpretation_mode}
+- article_type: {article_type}
+- target_word_length: {word_length}
+- summary_of_research: {summary_of_research}
+- section: {normalised_section}
+- current_section_text: {current_text}
+{selection_block}- user_edit_instruction: {instruction}
+
+Rules:
+- Keep all content factual and anchored to the provided context.
+- Do not fabricate new data, results, effect sizes, or sample details.
+- Use British English.
+- Keep the output concise and planning-focused.
+- Preserve valid existing content unless the instruction requires change.
+- {focus_rule}
+- Return valid JSON only.
+
+Return JSON:
+{{
+  "updated_section_text": "string"
+}}
+""".strip()
+
+    raw_output, model_used = _ask_model(prompt, preferred_model=preferred_model)
+    parsed = json.loads(_extract_json_object(raw_output))
+    revised_text = _clean_compact_text(str(parsed.get("updated_section_text", "")))
+    if len(revised_text) < 20:
+        revised_text = current_text
+
+    return {
+        "section": normalised_section,
+        "updated_section_text": revised_text,
+        "applied_to_selection": bool(selected),
+        "model_used": model_used,
     }

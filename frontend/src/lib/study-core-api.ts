@@ -16,6 +16,7 @@ import type {
   PlanClarificationHistoryItem,
   PlanClarificationNextQuestionPayload,
   PlanClarificationQuestionsPayload,
+  PlanSectionEditPayload,
   ManuscriptRecord,
   ProjectRecord,
   ResearchOverviewSuggestionsPayload,
@@ -171,6 +172,44 @@ export async function fetchNextPlanClarificationQuestion(input: {
     throw new Error(await parseApiError(response, `Next clarification question failed (${response.status})`))
   }
   return (await response.json()) as PlanClarificationNextQuestionPayload
+}
+
+export async function editPlanManuscriptSection(input: {
+  section: 'introduction' | 'methods' | 'results' | 'discussion'
+  sectionText: string
+  editInstruction: string
+  selectedText: string
+  projectTitle: string
+  targetJournalLabel: string
+  researchCategory: string
+  studyType: string
+  interpretationMode: string
+  articleType: string
+  wordLength: string
+  summaryOfResearch: string
+}): Promise<PlanSectionEditPayload> {
+  const response = await fetch(`${API_BASE_URL}/v1/aawe/plan/manuscript-section/edit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      section: input.section,
+      section_text: input.sectionText,
+      edit_instruction: input.editInstruction,
+      selected_text: input.selectedText,
+      project_title: input.projectTitle,
+      target_journal_label: input.targetJournalLabel,
+      research_category: input.researchCategory,
+      study_type: input.studyType,
+      interpretation_mode: input.interpretationMode,
+      article_type: input.articleType,
+      word_length: input.wordLength,
+      summary_of_research: input.summaryOfResearch,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Plan section edit failed (${response.status})`))
+  }
+  return (await response.json()) as PlanSectionEditPayload
 }
 
 export async function fetchResearchOverviewSuggestions(input: {

@@ -227,6 +227,17 @@ export function StudyCorePage() {
   const [plan, setPlan] = useState<OutlinePlanState | null>(null)
   const [clarificationResponses, setClarificationResponses] = useState<Step2ClarificationResponse[]>([])
   const [aiManuscriptPlanSummary, setAiManuscriptPlanSummary] = useState('')
+  const [aiManuscriptPlanSections, setAiManuscriptPlanSections] = useState<{
+    introduction: string
+    methods: string
+    results: string
+    discussion: string
+  }>({
+    introduction: '',
+    methods: '',
+    results: '',
+    discussion: '',
+  })
   const [estimatePreview, setEstimatePreview] = useState<GenerationEstimate | null>(null)
   const [activeJob, setActiveJob] = useState<GenerationJobPayload | null>(null)
   const [links, setLinks] = useState<ClaimLinkSuggestion[]>([])
@@ -463,9 +474,28 @@ export function StudyCorePage() {
       articleType: string
       wordLength: string
       manuscriptPlanSummary: string
+      manuscriptPlanSections: {
+        introduction: string
+        methods: string
+        results: string
+        discussion: string
+      }
     }) => {
       if (updates.manuscriptPlanSummary.trim()) {
         setAiManuscriptPlanSummary(updates.manuscriptPlanSummary.trim())
+      }
+      if (
+        updates.manuscriptPlanSections.introduction.trim() ||
+        updates.manuscriptPlanSections.methods.trim() ||
+        updates.manuscriptPlanSections.results.trim() ||
+        updates.manuscriptPlanSections.discussion.trim()
+      ) {
+        setAiManuscriptPlanSections({
+          introduction: updates.manuscriptPlanSections.introduction.trim(),
+          methods: updates.manuscriptPlanSections.methods.trim(),
+          results: updates.manuscriptPlanSections.results.trim(),
+          discussion: updates.manuscriptPlanSections.discussion.trim(),
+        })
       }
       setContextValues((current) => {
         let nextCategory = current.researchCategory
@@ -550,6 +580,7 @@ export function StudyCorePage() {
           targetJournal={targetJournal}
           answers={answers}
           planningContext={{
+            projectTitle: contextValues.projectTitle,
             targetJournal,
             targetJournalLabel,
             researchCategory: contextValues.researchCategory,
@@ -562,6 +593,7 @@ export function StudyCorePage() {
           selectedSections={selectedSections}
           plan={plan}
           aiPlanSummary={aiManuscriptPlanSummary}
+          aiPlanSections={aiManuscriptPlanSections}
           clarificationResponses={clarificationResponses}
           onSectionsChange={setSelectedSections}
           onPlanChange={onPlanChange}

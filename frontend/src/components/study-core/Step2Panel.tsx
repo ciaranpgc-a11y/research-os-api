@@ -30,6 +30,12 @@ type Step2PanelProps = {
     articleType: string
     wordLength: string
     manuscriptPlanSummary: string
+    manuscriptPlanSections: {
+      introduction: string
+      methods: string
+      results: string
+      discussion: string
+    }
   }) => void
 }
 
@@ -123,7 +129,7 @@ export function Step2Panel({
         setReadyForPlan(payload.ready_for_plan)
         setConfidencePercent(Math.max(0, Math.min(100, payload.confidence_percent || 0)))
         setReadinessAdvice(payload.advice || '')
-        if (payload.updated_fields || payload.manuscript_plan_summary) {
+        if (payload.updated_fields || payload.manuscript_plan_summary || payload.manuscript_plan_sections) {
           onApplyAdaptiveUpdates({
             summaryOfResearch: payload.updated_fields?.summary_of_research ?? '',
             researchCategory: payload.updated_fields?.research_category ?? '',
@@ -132,6 +138,12 @@ export function Step2Panel({
             articleType: payload.updated_fields?.article_type ?? '',
             wordLength: payload.updated_fields?.word_length ?? '',
             manuscriptPlanSummary: payload.manuscript_plan_summary ?? '',
+            manuscriptPlanSections: payload.manuscript_plan_sections ?? {
+              introduction: '',
+              methods: '',
+              results: '',
+              discussion: '',
+            },
           })
         }
 
