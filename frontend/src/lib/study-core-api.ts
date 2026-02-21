@@ -123,8 +123,9 @@ export async function fetchResearchOverviewSuggestions(input: {
       }),
     })
   } catch {
+    const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'unknown-origin'
     throw new Error(
-      `Could not reach API at ${API_BASE_URL}. Start backend service or check CORS origin (prefer http://localhost:5173).`,
+      `Could not reach API at ${API_BASE_URL}. Current UI origin: ${currentOrigin}. Start backend service or allow this origin in CORS.`,
     )
   }
   if (!response.ok) {
