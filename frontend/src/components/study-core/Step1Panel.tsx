@@ -50,6 +50,15 @@ type UndoEntry = {
   undo: () => void
 }
 
+type RevertSnapshot = {
+  summary?: string
+  researchCategory?: string
+  researchType?: string
+  interpretationMode?: string
+  articleType?: string
+  wordLength?: string
+}
+
 const IGNORED_SUGGESTIONS_SESSION_KEY = 'aawe-step1-ignored-suggestions'
 const SUGGESTION_KEYS: AppliedKey[] = ['summary', 'researchCategory', 'researchType', 'interpretationMode', 'journal']
 
@@ -377,6 +386,7 @@ export function Step1Panel({
   const [ignoredState, setIgnoredState] = useState<Record<AppliedKey, boolean>>(buildEmptySuggestionState)
   const [showSummaryDiff, setShowSummaryDiff] = useState(false)
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
+  const [revertSnapshots, setRevertSnapshots] = useState<Partial<Record<AppliedKey, RevertSnapshot>>>({})
   const [appliedSectionOpen, setAppliedSectionOpen] = useState(false)
   const [ignoredSectionOpen, setIgnoredSectionOpen] = useState(false)
   const applyTimersRef = useRef<number[]>([])
@@ -577,22 +587,19 @@ export function Step1Panel({
   }, [undoStack])
 
   useEffect(() => {
-    if (appliedKeys.length === 0 && appliedSectionOpen) {
-      setAppliedSectionOpen(false)
-    }
-  }, [appliedKeys.length, appliedSectionOpen])
+    setAppliedSectionOpen(false)
+  }, [appliedKeys.length])
 
   useEffect(() => {
-    if (ignoredKeys.length === 0 && ignoredSectionOpen) {
-      setIgnoredSectionOpen(false)
-    }
-  }, [ignoredKeys.length, ignoredSectionOpen])
+    setIgnoredSectionOpen(false)
+  }, [ignoredKeys.length])
 
   const generateSuggestions = async () => {
     if (!summary.trim()) {
       return
     }
     setUndoStack([])
+    setRevertSnapshots({})
     setLoading(true)
     setRequestError('')
     try {
@@ -650,7 +657,6 @@ export function Step1Panel({
       return next
     })
     setAppliedState((current) => ({ ...current, [key]: true }))
-    setAppliedSectionOpen(true)
     const timerId = window.setTimeout(() => {
       setAppliedState((current) => ({ ...current, [key]: false }))
     }, 850)
@@ -670,6 +676,11 @@ export function Step1Panel({
       const last = next.pop()
       if (last) {
         last.undo()
+        setRevertSnapshots((currentSnapshots) => {
+          const nextSnapshots = { ...currentSnapshots }
+          delete nextSnapshots[last.key]
+          return nextSnapshots
+        })
       }
       return next
     })
@@ -677,6 +688,41 @@ export function Step1Panel({
 
   const onRevertApplied = (key: AppliedKey) => {
     if (loading) {
+      return
+    }
+    const snapshot = revertSnapshots[key]
+    if (snapshot) {
+      if (snapshot.summary !== undefined) {
+        onReplaceSummary(snapshot.summary)
+      }
+      if (snapshot.researchCategory !== undefined) {
+        onApplyResearchCategory(snapshot.researchCategory)
+      }
+      if (snapshot.researchType !== undefined) {
+        onApplyResearchType(snapshot.researchType)
+      }
+      if (snapshot.interpretationMode !== undefined) {
+        onApplyInterpretationMode(snapshot.interpretationMode)
+      }
+      if (snapshot.articleType !== undefined) {
+        onApplyArticleType(snapshot.articleType)
+      }
+      if (snapshot.wordLength !== undefined) {
+        onApplyWordLength(snapshot.wordLength)
+      }
+      setRevertSnapshots((current) => {
+        const next = { ...current }
+        delete next[key]
+        return next
+      })
+      setUndoStack((current) => {
+        for (let index = current.length - 1; index >= 0; index -= 1) {
+          if (current[index].key === key) {
+            return [...current.slice(0, index), ...current.slice(index + 1)]
+          }
+        }
+        return current
+      })
       return
     }
     const selected = latestUndoByKey[key]
@@ -699,6 +745,7 @@ export function Step1Panel({
     if (normalize(previousSummary) === normalize(option)) {
       return
     }
+    setRevertSnapshots((current) => ({ ...current, summary: { summary: previousSummary } }))
     pushUndoEntry({
       key: 'summary',
       label: 'Summary rewrite',
@@ -719,6 +766,14 @@ export function Step1Panel({
     if (normalize(previousResearchType) === normalize(recommendation.value)) {
       return
     }
+    setRevertSnapshots((current) => ({
+      ...current,
+      researchType: {
+        researchCategory: previousResearchCategory,
+        researchType: previousResearchType,
+        interpretationMode: previousInterpretationMode,
+      },
+    }))
     pushUndoEntry({
       key: 'researchType',
       label: 'Research type update',
@@ -743,6 +798,14 @@ export function Step1Panel({
     if (normalize(previousResearchCategory) === normalize(recommendation.value)) {
       return
     }
+    setRevertSnapshots((current) => ({
+      ...current,
+      researchCategory: {
+        researchCategory: previousResearchCategory,
+        researchType: previousResearchType,
+        interpretationMode: previousInterpretationMode,
+      },
+    }))
     pushUndoEntry({
       key: 'researchCategory',
       label: 'Research category update',
@@ -765,6 +828,10 @@ export function Step1Panel({
     if (normalize(previousInterpretationMode) === normalize(recommendation.value)) {
       return
     }
+    setRevertSnapshots((current) => ({
+      ...current,
+      interpretationMode: { interpretationMode: previousInterpretationMode },
+    }))
     pushUndoEntry({
       key: 'interpretationMode',
       label: 'Interpretation mode update',
@@ -789,6 +856,10 @@ export function Step1Panel({
       (articleRecommendation?.value && normalize(articleRecommendation.value) !== normalize(previousArticleType)) ||
       (wordLengthRecommendation?.value && normalize(wordLengthRecommendation.value) !== normalize(previousWordLength))
     ) {
+      setRevertSnapshots((current) => ({
+        ...current,
+        journal: { articleType: previousArticleType, wordLength: previousWordLength },
+      }))
       pushUndoEntry({
         key: 'journal',
         label: 'Journal recommendation apply',
@@ -807,7 +878,6 @@ export function Step1Panel({
       persistIgnoredStateForKey(currentKey, next)
       return next
     })
-    setIgnoredSectionOpen(true)
   }
 
   const onRestoreIgnoredSuggestion = (key: AppliedKey) => {
@@ -1095,7 +1165,7 @@ export function Step1Panel({
   }
 
   const renderAppliedCard = (key: SuggestionKey) => {
-    const hasRevert = Boolean(latestUndoByKey[key])
+    const hasRevert = Boolean(revertSnapshots[key] || latestUndoByKey[key])
     const revertControl = hasRevert ? (
       <Button
         size="sm"
