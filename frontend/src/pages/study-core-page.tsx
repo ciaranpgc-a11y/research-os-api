@@ -352,7 +352,7 @@ export function StudyCorePage() {
           onStudyTypeDefaultsResolved={({ interpretationMode, enableConservativeGuardrails }) => {
             setContextValues((current) => ({
               ...current,
-              interpretationMode,
+              interpretationMode: current.interpretationMode.trim() || interpretationMode,
             }))
             setGuardrailsEnabled(enableConservativeGuardrails)
           }}

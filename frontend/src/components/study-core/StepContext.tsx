@@ -257,7 +257,6 @@ export function StepContext({
           placeholder="e.g., Pulmonary Hypertension Cohort"
           onChange={(event) => onValueChange('projectTitle', event.target.value)}
         />
-        {attemptedSubmit && errors.projectTitle ? <p className="text-xs text-destructive">{errors.projectTitle}</p> : null}
       </div>
 
       <div className="space-y-1">
@@ -300,6 +299,9 @@ export function StepContext({
             onValueChange('researchCategory', nextCategory)
             if (values.studyArchitecture && !getStudyTypesForCategory(nextCategory, true).includes(values.studyArchitecture)) {
               onValueChange('studyArchitecture', '')
+              if (values.interpretationMode) {
+                onValueChange('interpretationMode', '')
+              }
             }
           }}
         >
@@ -310,7 +312,6 @@ export function StepContext({
             </option>
           ))}
         </select>
-        {attemptedSubmit && errors.researchCategory ? <p className="text-xs text-destructive">{errors.researchCategory}</p> : null}
       </div>
 
       <div className="space-y-1">
@@ -326,7 +327,9 @@ export function StepContext({
               return
             }
             const defaults = getStudyTypeDefaults(nextStudyType)
-            onValueChange('interpretationMode', defaults.defaultInterpretationMode)
+            if (!values.interpretationMode.trim()) {
+              onValueChange('interpretationMode', defaults.defaultInterpretationMode)
+            }
             onStudyTypeDefaultsResolved({
               interpretationMode: defaults.defaultInterpretationMode,
               enableConservativeGuardrails: defaults.enableConservativeGuardrails,
@@ -341,7 +344,6 @@ export function StepContext({
             </option>
           ))}
         </select>
-        {attemptedSubmit && errors.studyArchitecture ? <p className="text-xs text-destructive">{errors.studyArchitecture}</p> : null}
       </div>
 
       <div className="space-y-1">

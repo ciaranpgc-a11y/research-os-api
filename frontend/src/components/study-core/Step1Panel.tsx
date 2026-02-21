@@ -53,24 +53,19 @@ export function Step1Panel({
     () =>
       `${summary.trim().toLowerCase()}::${researchCategory.trim().toLowerCase()}::${researchType
         .trim()
-        .toLowerCase()}::${currentArticleType.trim().toLowerCase()}::${currentWordLength
-        .trim()
-        .toLowerCase()}::${interpretationMode
-        .trim()
         .toLowerCase()}::${targetJournal.trim().toLowerCase()}`,
-    [currentArticleType, currentWordLength, interpretationMode, researchCategory, researchType, summary, targetJournal],
+    [researchCategory, researchType, summary, targetJournal],
   )
   const hasGenerated = generatedKey.length > 0
   const isStale = hasGenerated && generatedKey !== currentKey
-  const summaryOptions = suggestions?.summary_refinements.slice(0, 1) ?? []
-  const hasInterpretationRecommendation = Boolean(suggestions?.interpretation_mode_recommendation)
-  const hasJournalRecommendation = Boolean(suggestions?.article_type_recommendation || suggestions?.word_length_recommendation)
+  const summarySuggestion = suggestions?.summary_refinements[0] ?? ''
 
   const normalize = (value: string) => value.trim().toLowerCase()
   const researchTypeSuggestion = suggestions?.research_type_suggestion
   const interpretationSuggestion = suggestions?.interpretation_mode_recommendation
   const articleSuggestion = suggestions?.article_type_recommendation
   const wordLengthSuggestion = suggestions?.word_length_recommendation
+  const isSummaryApplied = Boolean(summarySuggestion && normalize(summarySuggestion) === normalize(summary))
   const isResearchTypeApplied = Boolean(
     researchTypeSuggestion &&
       normalize(researchTypeSuggestion.value) &&
@@ -132,15 +127,6 @@ export function Step1Panel({
 
   const onApplySummary = (option: string) => {
     onReplaceSummary(option)
-    setSuggestions((current) => {
-      if (!current) {
-        return current
-      }
-      return {
-        ...current,
-        summary_refinements: [],
-      }
-    })
   }
 
   const onApplyResearchTypeSuggestion = () => {
@@ -198,55 +184,67 @@ export function Step1Panel({
           ) : null}
         </div>
         {!summary.trim() ? <p className="text-xs text-muted-foreground">Add a summary of research to enable suggestions.</p> : null}
-        {refinementsEnabled && isStale ? <p className="text-xs text-muted-foreground">Summary changed. Refresh suggestions.</p> : null}
+        {refinementsEnabled && isStale ? <p className="text-xs text-muted-foreground">Inputs changed. Refresh suggestions.</p> : null}
         {requestError ? <p className="text-xs text-destructive">{requestError}</p> : null}
       </div>
 
-      {refinementsEnabled && summaryOptions.length > 0 ? (
+      {refinementsEnabled ? (
         <div className={SUMMARY_CARD_CLASS}>
           <p className="text-sm font-medium text-emerald-900">Summary of research refinement</p>
-          <p className="text-xs text-emerald-900">AI rewrite option based on your current research summary.</p>
-          <div className="space-y-2">
-            {summaryOptions.map((option) => (
-              <div key={option} className="rounded border border-emerald-300 bg-white p-2">
-                <p className="text-xs text-emerald-950">{option}</p>
-                <Button size="sm" className={`mt-2 ${ACTION_BUTTON_CLASS}`} onClick={() => onApplySummary(option)}>
+          {loading && !hasGenerated ? <p className="text-xs text-emerald-900">Generating rewrite...</p> : null}
+          {!loading && !summarySuggestion ? <p className="text-xs text-emerald-900">No summary rewrite returned. Use Refresh.</p> : null}
+          {summarySuggestion ? (
+            <div className="rounded border border-emerald-300 bg-white p-2">
+              <p className="text-xs text-emerald-950">{summarySuggestion}</p>
+              {isSummaryApplied ? (
+                <p className="mt-2 text-xs text-emerald-900">Current summary already matches the suggested refinement.</p>
+              ) : (
+                <Button size="sm" className={`mt-2 ${ACTION_BUTTON_CLASS}`} onClick={() => onApplySummary(summarySuggestion)}>
                   Replace summary
                 </Button>
-              </div>
-            ))}
-          </div>
+              )}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
-      {refinementsEnabled && suggestions?.research_type_suggestion ? (
+      {refinementsEnabled ? (
         <div className={RESEARCH_TYPE_CARD_CLASS}>
           <p className="text-sm font-medium text-sky-900">Research type suggestion</p>
-          {isResearchTypeApplied ? (
+          {loading && !hasGenerated ? <p className="text-xs text-sky-900">Generating research type suggestion...</p> : null}
+          {!loading && !researchTypeSuggestion ? (
+            <p className="text-xs text-sky-900">No research type suggestion returned. Use Refresh.</p>
+          ) : null}
+          {researchTypeSuggestion && isResearchTypeApplied ? (
             <>
               <p className="text-xs text-sky-900">
-                Correct research type selected: <span className="font-semibold">{suggestions.research_type_suggestion.value}</span>
+                Correct research type selected: <span className="font-semibold">{researchTypeSuggestion.value}</span>
               </p>
-              <p className="text-xs text-sky-900">Appropriate because: {suggestions.research_type_suggestion.rationale}</p>
+              <p className="text-xs text-sky-900">Appropriate because: {researchTypeSuggestion.rationale}</p>
             </>
-          ) : (
+          ) : null}
+          {researchTypeSuggestion && !isResearchTypeApplied ? (
             <>
               <p className="text-xs text-sky-900">
-                Recommended research type: <span className="font-semibold">{suggestions.research_type_suggestion.value}</span>
+                Recommended research type: <span className="font-semibold">{researchTypeSuggestion.value}</span>
               </p>
-              <p className="text-xs text-sky-900">{suggestions.research_type_suggestion.rationale}</p>
+              <p className="text-xs text-sky-900">{researchTypeSuggestion.rationale}</p>
               <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyResearchTypeSuggestion}>
                 Apply suggested research type
               </Button>
             </>
-          )}
+          ) : null}
         </div>
       ) : null}
 
-      {refinementsEnabled && hasInterpretationRecommendation ? (
+      {refinementsEnabled ? (
         <div className={INTERPRETATION_CARD_CLASS}>
           <p className="text-sm font-medium text-cyan-900">Interpretation mode suggestion</p>
-          {isInterpretationModeApplied ? (
+          {loading && !hasGenerated ? <p className="text-xs text-cyan-900">Generating interpretation mode suggestion...</p> : null}
+          {!loading && !interpretationSuggestion ? (
+            <p className="text-xs text-cyan-900">No interpretation mode suggestion returned. Use Refresh.</p>
+          ) : null}
+          {interpretationSuggestion && isInterpretationModeApplied ? (
             <>
               <p className="text-xs text-cyan-900">
                 Correct interpretation mode selected:{' '}
@@ -256,7 +254,8 @@ export function Step1Panel({
                 <p className="text-xs text-cyan-900">Appropriate because: {suggestions.interpretation_mode_recommendation.rationale}</p>
               ) : null}
             </>
-          ) : (
+          ) : null}
+          {interpretationSuggestion && !isInterpretationModeApplied ? (
             <>
               <p className="text-xs text-cyan-900">
                 Recommended interpretation mode:{' '}
@@ -269,13 +268,14 @@ export function Step1Panel({
                 Apply interpretation mode
               </Button>
             </>
-          )}
+          ) : null}
         </div>
       ) : null}
 
-      {refinementsEnabled && hasJournalRecommendation ? (
+      {refinementsEnabled ? (
         <div className={JOURNAL_CARD_CLASS}>
           <p className="text-sm font-medium text-amber-900">Journal recommendation</p>
+          {loading && !hasGenerated ? <p className="text-xs text-amber-900">Generating journal recommendations...</p> : null}
           {articleSuggestion ? (
             <div className="rounded border border-amber-300 bg-white p-2">
               <p className="text-xs font-medium text-amber-950">Article type</p>
@@ -285,7 +285,9 @@ export function Step1Panel({
                 {isArticleTypeApplied ? 'Correct article type selected.' : 'Update required to match recommendation.'}
               </p>
             </div>
-          ) : null}
+          ) : (
+            !loading && <p className="text-xs text-amber-900">No article type recommendation returned.</p>
+          )}
           {wordLengthSuggestion ? (
             <div className="rounded border border-amber-300 bg-white p-2">
               <p className="text-xs font-medium text-amber-950">Recommended word length</p>
@@ -295,26 +297,18 @@ export function Step1Panel({
                 {isWordLengthApplied ? 'Correct word length selected.' : 'Update required to match recommendation.'}
               </p>
             </div>
-          ) : null}
+          ) : (
+            !loading && <p className="text-xs text-amber-900">No word length recommendation returned.</p>
+          )}
           {shouldShowJournalApplyButton ? (
             <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyJournalRecommendation}>
               Apply journal recommendations
             </Button>
-          ) : (
+          ) : articleSuggestion || wordLengthSuggestion ? (
             <p className="text-xs text-amber-900">Journal recommendations are already applied.</p>
+          ) : (
+            !loading && <p className="text-xs text-amber-900">No journal recommendations returned. Use Refresh.</p>
           )}
-        </div>
-      ) : null}
-
-      {refinementsEnabled &&
-      hasGenerated &&
-      summaryOptions.length === 0 &&
-      !suggestions?.research_type_suggestion &&
-      !hasInterpretationRecommendation &&
-      !hasJournalRecommendation ? (
-        <div className="rounded-md border border-border bg-background p-3">
-          <p className="text-sm font-medium">No pending suggestions</p>
-          <p className="text-xs text-muted-foreground">Use Refresh to generate suggestions.</p>
         </div>
       ) : null}
     </aside>
