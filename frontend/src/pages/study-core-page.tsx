@@ -37,7 +37,7 @@ type RunRecommendations = {
 
 const CONTEXT_KEY = 'aawe-run-context'
 const RESEARCH_FRAME_SIGNATURE_KEY = 'aawe-research-frame-signature'
-const CORE_SECTIONS = ['introduction', 'methods', 'results', 'discussion']
+const CORE_SECTIONS = ['introduction', 'methods', 'results', 'discussion', 'conclusion']
 const KNOWN_STUDY_TYPES = getResearchTypeTaxonomy(true).flatMap((item) => [...item.studyTypes])
 
 function normalizeSelectionLabel(value: string): string {
@@ -411,10 +411,8 @@ export function StudyCorePage() {
 
   const applyContextPayload = (payload: { projectId: string; manuscriptId: string; recommendedSections: string[] }) => {
     setRunContext({ projectId: payload.projectId, manuscriptId: payload.manuscriptId })
-    const nextSections = payload.recommendedSections.length > 0 ? payload.recommendedSections : selectedSections
-    if (payload.recommendedSections.length > 0) {
-      setSelectedSections(payload.recommendedSections)
-    }
+    const nextSections = [...CORE_SECTIONS]
+    setSelectedSections(nextSections)
     setGenerationBrief(buildGenerationBrief(contextValues, nextSections, guardrailsEnabled))
     setGenerationBriefTouched(false)
     setSavedResearchFrameSignature(currentResearchFrameSignature)

@@ -236,17 +236,18 @@ export function analyzePlan(state: AnalyzePlanState): PlanRecommendation[] {
   const objective = state.objective.trim()
   if (objective && state.plan) {
     const terms = objectiveTerms(objective)
-    const coreSections = ['introduction', 'methods', 'results', 'discussion']
+    const coreSections = ['introduction', 'methods', 'results', 'discussion', 'conclusion']
     const mappedSections = coreSections.filter((sectionName) => {
       const text = sectionText(findSection(state.plan, sectionName))
       return terms.some((term) => text.includes(term))
     })
-    if (mappedSections.length < 3) {
+    if (mappedSections.length < 4) {
       const sectionBullets: Record<string, string> = {
         introduction: `State the objective directly: ${objective}`,
         methods: 'Map objective terms to variables, model, and adjustment plan.',
         results: 'Report objective-linked primary estimate and uncertainty together.',
         discussion: 'Interpret objective-linked findings with limitations and alternatives.',
+        conclusion: 'Close with a conclusion that stays aligned to the stated objective and interpretation scope.',
       }
       const missingSections = coreSections.filter((sectionName) => !mappedSections.includes(sectionName))
       recommendations.push({
