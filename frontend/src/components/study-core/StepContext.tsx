@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import {
   INTERPRETATION_MODE_OPTIONS,
   getCategoryForStudyType,
+  getJournalQualityScore,
   getJournalQualityStars,
   getResearchTypeTaxonomy,
   getJournalSubmissionGuidanceUrl,
@@ -193,11 +194,25 @@ export function StepContext({
   )
   const submissionGuidanceUrl = useMemo(() => getJournalSubmissionGuidanceUrl(targetJournal), [targetJournal])
   const wordLengthBoxClass = useMemo(() => getWordLengthBoxClass(values.recommendedWordLength), [values.recommendedWordLength])
+  const journalQualityScore = useMemo(() => getJournalQualityScore(targetJournal), [targetJournal])
   const journalQualityStars = useMemo(() => getJournalQualityStars(targetJournal), [targetJournal])
   const selectedJournalLabel = useMemo(
     () => journals.find((journal) => journal.slug === targetJournal)?.display_name ?? '',
     [journals, targetJournal],
   )
+  const targetJournalBoxClass = useMemo(() => {
+    const base = 'rounded-md border border-border/70 bg-background p-2'
+    if (!selectedJournalLabel) {
+      return base
+    }
+    if (journalQualityScore >= 5) {
+      return `${base} shadow-md shadow-slate-300/70`
+    }
+    if (journalQualityScore >= 4) {
+      return `${base} shadow-sm shadow-slate-300/60`
+    }
+    return `${base} shadow-sm shadow-slate-200/60`
+  }, [journalQualityScore, selectedJournalLabel])
   const studyTypeDefaults = useMemo(
     () => (values.studyArchitecture.trim() ? getStudyTypeDefaults(values.studyArchitecture) : null),
     [values.studyArchitecture],
@@ -426,7 +441,7 @@ export function StepContext({
       <section className="space-y-2 rounded-md border border-border/80 bg-muted/20 p-3">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Research frame snapshot</p>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          <div className="rounded-md border border-border/70 bg-background p-2">
+          <div className={targetJournalBoxClass}>
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Target journal</p>
             <p className="text-sm">{selectedJournalLabel || 'Not set'}</p>
             {selectedJournalLabel ? (

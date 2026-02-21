@@ -430,8 +430,12 @@ export function getJournalSubmissionGuidanceUrl(journalSlug: string): string | n
   return JOURNAL_SUBMISSION_GUIDANCE_URLS[key] ?? null
 }
 
+export function getJournalQualityScore(journalSlug: string): 2 | 3 | 4 | 5 {
+  return JOURNAL_QUALITY_SCORE[journalSlug.trim()] ?? 3
+}
+
 export function getJournalQualityStars(journalSlug: string): string {
-  const score = JOURNAL_QUALITY_SCORE[journalSlug.trim()] ?? 3
+  const score = getJournalQualityScore(journalSlug)
   return `${'★'.repeat(score)}${'☆'.repeat(5 - score)} (${score}/5)`
 }
 
@@ -445,3 +449,4 @@ export function mergeJournalOptions(apiJournals: JournalOption[]): JournalOption
   }
   return Array.from(bySlug.values()).sort((left, right) => left.display_name.localeCompare(right.display_name))
 }
+
