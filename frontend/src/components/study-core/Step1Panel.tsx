@@ -663,6 +663,11 @@ export function Step1Panel({
     if (!summary.trim()) {
       return
     }
+    const trimmedJournal = targetJournal.trim()
+    if (trimmedJournal) {
+      // Prevent journal auto-refresh from re-firing after manual/apply-driven updates.
+      lastAutoRefreshJournalRef.current = trimmedJournal
+    }
     if (resetHistory) {
       setUndoStack([])
       setRevertSnapshots({})
@@ -843,6 +848,17 @@ export function Step1Panel({
     if (normalize(previousSummary) === normalize(option)) {
       return
     }
+    setGeneratedKey(
+      buildSuggestionContextKey({
+        summary: option,
+        researchCategory,
+        researchType,
+        interpretationMode,
+        targetJournal,
+        articleType: currentArticleType,
+        wordLength: currentWordLength,
+      }),
+    )
     setRevertSnapshots((current) => ({ ...current, summary: { summary: previousSummary } }))
     pushUndoEntry({
       key: 'summary',
