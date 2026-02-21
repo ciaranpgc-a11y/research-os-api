@@ -25,6 +25,7 @@ type Step1PanelProps = {
 const ACTION_BUTTON_CLASS = 'bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500'
 const OUTLINE_ACTION_BUTTON_CLASS =
   'border-emerald-300 text-emerald-800 hover:bg-emerald-100 focus-visible:ring-emerald-500'
+const IGNORE_BUTTON_CLASS = 'border-slate-300 text-slate-700 hover:bg-slate-100 focus-visible:ring-slate-400'
 const SUMMARY_CARD_CLASS = 'space-y-2 rounded-md border border-emerald-400 bg-emerald-50 p-3 shadow-sm'
 const RESEARCH_CATEGORY_CARD_CLASS = 'space-y-2 rounded-md border border-violet-400 bg-violet-50 p-3 shadow-sm'
 const RESEARCH_TYPE_CARD_CLASS = 'space-y-2 rounded-md border border-sky-400 bg-sky-50 p-3 shadow-sm'
@@ -39,6 +40,50 @@ const CARD_TRANSITION_CLASS = 'transition-all duration-300 ease-out'
 
 type AppliedKey = 'summary' | 'researchCategory' | 'researchType' | 'interpretationMode' | 'journal'
 type SuggestionKey = AppliedKey
+
+function inferOfflineArticleType(summary: string, currentValue: string): string {
+  const current = currentValue.trim()
+  if (current) {
+    return current
+  }
+  const lowerSummary = summary.toLowerCase()
+  if (
+    lowerSummary.includes('literature review') ||
+    lowerSummary.includes('narrative review') ||
+    lowerSummary.includes('scoping review') ||
+    lowerSummary.includes('review article')
+  ) {
+    return 'Review Article'
+  }
+  if (lowerSummary.includes('case series')) {
+    return 'Case Series'
+  }
+  if (lowerSummary.includes('letter')) {
+    return 'Letter'
+  }
+  return 'Original Research Article'
+}
+
+function inferOfflineWordLength(articleType: string, currentValue: string): string {
+  const current = currentValue.trim()
+  if (current) {
+    return current
+  }
+  const lowered = articleType.toLowerCase()
+  if (lowered.includes('letter')) {
+    return '600-1,000 words'
+  }
+  if (lowered.includes('brief') || lowered.includes('short') || lowered.includes('rapid')) {
+    return '1,500-2,500 words'
+  }
+  if (lowered.includes('case series') || lowered.includes('case report')) {
+    return '1,500-3,000 words'
+  }
+  if (lowered.includes('review')) {
+    return '4,500-6,500 words'
+  }
+  return '3,000-4,500 words'
+}
 
 function inferOfflineResearchCategory(summary: string, currentValue: string): string {
   const normalizedCurrent = currentValue.trim()
@@ -176,8 +221,8 @@ function buildOfflineSuggestions(input: {
   const offlineResearchCategory = inferOfflineResearchCategory(normalizedSummary, input.researchCategory)
   const offlineStudyType = inferOfflineStudyType(input.studyTypeOptions, normalizedSummary, input.researchType)
   const offlineInterpretationMode = input.interpretationMode.trim() || inferOfflineInterpretationMode(normalizedSummary)
-  const offlineArticleType = input.articleType.trim() || 'Original Research Article'
-  const offlineWordLength = input.wordLength.trim() || '3,000-4,500 words (provisional; verify at submission)'
+  const offlineArticleType = inferOfflineArticleType(normalizedSummary, input.articleType)
+  const offlineWordLength = inferOfflineWordLength(offlineArticleType, input.wordLength)
 
   return {
     summary_refinements: normalizedSummary ? [normalizedSummary] : [],
@@ -201,11 +246,11 @@ function buildOfflineSuggestions(input: {
       : null,
     article_type_recommendation: {
       value: offlineArticleType,
-      rationale: 'Provisional offline recommendation used because the live API is unavailable.',
+      rationale: 'Offline best-fit recommendation; verify at submission.',
     },
     word_length_recommendation: {
       value: offlineWordLength,
-      rationale: 'Provisional offline recommendation used because the live API is unavailable.',
+      rationale: 'Offline best-fit range; verify at submission.',
     },
     guidance_suggestions: [],
     source_urls: [],
@@ -235,6 +280,13 @@ export function Step1Panel({
   const [suggestions, setSuggestions] = useState<ResearchOverviewSuggestionsPayload | null>(null)
   const [generatedKey, setGeneratedKey] = useState('')
   const [appliedState, setAppliedState] = useState<Record<AppliedKey, boolean>>({
+    summary: false,
+    researchCategory: false,
+    researchType: false,
+    interpretationMode: false,
+    journal: false,
+  })
+  const [ignoredState, setIgnoredState] = useState<Record<AppliedKey, boolean>>({
     summary: false,
     researchCategory: false,
     researchType: false,
@@ -301,23 +353,28 @@ export function Step1Panel({
 
   const pendingKeys = useMemo(() => {
     const keys: SuggestionKey[] = []
-    if (summarySuggestion && !isSummaryApplied) {
+    if (summarySuggestion && !isSummaryApplied && !ignoredState.summary) {
       keys.push('summary')
     }
-    if (researchCategorySuggestion && !isResearchCategoryApplied) {
+    if (researchCategorySuggestion && !isResearchCategoryApplied && !ignoredState.researchCategory) {
       keys.push('researchCategory')
     }
-    if (researchTypeSuggestion && !isResearchTypeApplied) {
+    if (researchTypeSuggestion && !isResearchTypeApplied && !ignoredState.researchType) {
       keys.push('researchType')
     }
-    if (interpretationSuggestion && !isInterpretationModeApplied) {
+    if (interpretationSuggestion && !isInterpretationModeApplied && !ignoredState.interpretationMode) {
       keys.push('interpretationMode')
     }
-    if (shouldShowJournalApplyButton) {
+    if (shouldShowJournalApplyButton && !ignoredState.journal) {
       keys.push('journal')
     }
     return keys
   }, [
+    ignoredState.interpretationMode,
+    ignoredState.journal,
+    ignoredState.researchCategory,
+    ignoredState.researchType,
+    ignoredState.summary,
     interpretationSuggestion,
     isInterpretationModeApplied,
     isResearchCategoryApplied,
@@ -327,6 +384,41 @@ export function Step1Panel({
     shouldShowJournalApplyButton,
     summarySuggestion,
     isSummaryApplied,
+  ])
+
+  const ignoredCount = useMemo(() => {
+    let count = 0
+    if (ignoredState.summary && summarySuggestion && !isSummaryApplied) {
+      count += 1
+    }
+    if (ignoredState.researchCategory && researchCategorySuggestion && !isResearchCategoryApplied) {
+      count += 1
+    }
+    if (ignoredState.researchType && researchTypeSuggestion && !isResearchTypeApplied) {
+      count += 1
+    }
+    if (ignoredState.interpretationMode && interpretationSuggestion && !isInterpretationModeApplied) {
+      count += 1
+    }
+    if (ignoredState.journal && shouldShowJournalApplyButton) {
+      count += 1
+    }
+    return count
+  }, [
+    ignoredState.interpretationMode,
+    ignoredState.journal,
+    ignoredState.researchCategory,
+    ignoredState.researchType,
+    ignoredState.summary,
+    interpretationSuggestion,
+    isInterpretationModeApplied,
+    isResearchCategoryApplied,
+    isResearchTypeApplied,
+    isSummaryApplied,
+    researchCategorySuggestion,
+    researchTypeSuggestion,
+    shouldShowJournalApplyButton,
+    summarySuggestion,
   ])
 
   const appliedKeys = useMemo(() => {
@@ -405,6 +497,13 @@ export function Step1Panel({
       interpretationMode: false,
       journal: false,
     })
+    setIgnoredState({
+      summary: false,
+      researchCategory: false,
+      researchType: false,
+      interpretationMode: false,
+      journal: false,
+    })
     await generateSuggestions()
   }
 
@@ -420,6 +519,7 @@ export function Step1Panel({
   }
 
   const markApplied = (key: AppliedKey) => {
+    setIgnoredState((current) => ({ ...current, [key]: false }))
     setAppliedState((current) => ({ ...current, [key]: true }))
     const timerId = window.setTimeout(() => {
       setAppliedState((current) => ({ ...current, [key]: false }))
@@ -471,6 +571,10 @@ export function Step1Panel({
     markApplied('journal')
   }
 
+  const onIgnoreSuggestion = (key: AppliedKey) => {
+    setIgnoredState((current) => ({ ...current, [key]: true }))
+  }
+
   const applyDisabled = loading
   const pendingToRender = pendingKeys.slice(0, 3)
   const hiddenPendingCount = Math.max(0, pendingKeys.length - pendingToRender.length)
@@ -490,9 +594,20 @@ export function Step1Panel({
           </div>
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-emerald-900">{isStale ? 'Inputs changed. Refresh before applying.' : 'Direct rewrite only; no new claims added.'}</p>
-            <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={() => onApplySummary(summarySuggestion)} disabled={applyDisabled}>
-              Replace summary
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className={IGNORE_BUTTON_CLASS}
+                onClick={() => onIgnoreSuggestion('summary')}
+                disabled={loading}
+              >
+                Ignore
+              </Button>
+              <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={() => onApplySummary(summarySuggestion)} disabled={applyDisabled}>
+                Replace summary
+              </Button>
+            </div>
           </div>
         </div>
       )
@@ -506,7 +621,16 @@ export function Step1Panel({
             Recommended category: <span className="font-semibold">{researchCategorySuggestion.value}</span>
           </p>
           <p className="text-xs text-violet-900">{researchCategorySuggestion.rationale}</p>
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className={IGNORE_BUTTON_CLASS}
+              onClick={() => onIgnoreSuggestion('researchCategory')}
+              disabled={loading}
+            >
+              Ignore
+            </Button>
             <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyResearchCategorySuggestion} disabled={applyDisabled}>
               Apply research category
             </Button>
@@ -523,7 +647,16 @@ export function Step1Panel({
             Recommended type: <span className="font-semibold">{researchTypeSuggestion.value}</span>
           </p>
           <p className="text-xs text-sky-900">{researchTypeSuggestion.rationale}</p>
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className={IGNORE_BUTTON_CLASS}
+              onClick={() => onIgnoreSuggestion('researchType')}
+              disabled={loading}
+            >
+              Ignore
+            </Button>
             <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyResearchTypeSuggestion} disabled={applyDisabled}>
               Apply suggested type
             </Button>
@@ -540,7 +673,16 @@ export function Step1Panel({
             Recommended mode: <span className="font-semibold">{interpretationSuggestion.value}</span>
           </p>
           <p className="text-xs text-cyan-900">{interpretationSuggestion.rationale}</p>
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className={IGNORE_BUTTON_CLASS}
+              onClick={() => onIgnoreSuggestion('interpretationMode')}
+              disabled={loading}
+            >
+              Ignore
+            </Button>
             <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyInterpretationModeSuggestion} disabled={applyDisabled}>
               Apply interpretation mode
             </Button>
@@ -565,7 +707,16 @@ export function Step1Panel({
               <p className="text-xs text-amber-900">{wordLengthSuggestion.value}</p>
             </div>
           ) : null}
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className={IGNORE_BUTTON_CLASS}
+              onClick={() => onIgnoreSuggestion('journal')}
+              disabled={loading}
+            >
+              Ignore
+            </Button>
             <Button size="sm" className={ACTION_BUTTON_CLASS} onClick={onApplyJournalRecommendation} disabled={applyDisabled}>
               Apply journal recommendation
             </Button>
@@ -684,6 +835,30 @@ export function Step1Panel({
             <p className="text-xs text-muted-foreground">
               {hiddenPendingCount} additional action{hiddenPendingCount > 1 ? 's' : ''} hidden. Apply or refresh to reprioritise.
             </p>
+          ) : null}
+          {ignoredCount > 0 ? (
+            <div className="flex items-center justify-between rounded-md border border-slate-300 bg-slate-50 px-2 py-2">
+              <p className="text-xs text-slate-700">
+                {ignoredCount} suggestion{ignoredCount > 1 ? 's' : ''} ignored.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                className={IGNORE_BUTTON_CLASS}
+                onClick={() =>
+                  setIgnoredState({
+                    summary: false,
+                    researchCategory: false,
+                    researchType: false,
+                    interpretationMode: false,
+                    journal: false,
+                  })
+                }
+                disabled={loading}
+              >
+                Restore ignored
+              </Button>
+            </div>
           ) : null}
         </div>
       ) : null}

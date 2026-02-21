@@ -229,6 +229,44 @@ _CAUSAL_REPLACEMENTS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bincreases\b", re.IGNORECASE), "is associated with higher"),
     (re.compile(r"\bincreased\b", re.IGNORECASE), "was associated with higher"),
 )
+_US_TO_UK_SPELLING_MAP: tuple[tuple[str, str], ...] = (
+    ("analyze", "analyse"),
+    ("analyzed", "analysed"),
+    ("analyzes", "analyses"),
+    ("analyzing", "analysing"),
+    ("characterize", "characterise"),
+    ("characterized", "characterised"),
+    ("characterizes", "characterises"),
+    ("characterizing", "characterising"),
+    ("synthesize", "synthesise"),
+    ("synthesized", "synthesised"),
+    ("synthesizes", "synthesises"),
+    ("synthesizing", "synthesising"),
+    ("optimize", "optimise"),
+    ("optimized", "optimised"),
+    ("optimizes", "optimises"),
+    ("optimizing", "optimising"),
+    ("standardize", "standardise"),
+    ("standardized", "standardised"),
+    ("standardizes", "standardises"),
+    ("standardizing", "standardising"),
+    ("modeling", "modelling"),
+    ("modeled", "modelled"),
+    ("behavior", "behaviour"),
+    ("behavioral", "behavioural"),
+    ("center", "centre"),
+    ("centered", "centred"),
+    ("centering", "centring"),
+    ("organization", "organisation"),
+    ("organize", "organise"),
+    ("organized", "organised"),
+    ("organizing", "organising"),
+    ("randomized", "randomised"),
+    ("randomization", "randomisation"),
+    ("pediatric", "paediatric"),
+    ("hemodynamic", "haemodynamic"),
+    ("hemodynamics", "haemodynamics"),
+)
 _STOPWORDS = {
     "a",
     "an",
@@ -531,6 +569,7 @@ Rules:
 - Do not add new facts, numbers, outcomes, methods, or claims.
 - Improve wording only.
 - Use 2-4 sentences.
+- Use British English spelling (for example: synthesises, characterises, haemodynamic).
 - Avoid bullet points and instruction language.
 - For observational framing, keep claims associative and non-causal.
 
@@ -588,8 +627,8 @@ def _extract_word_length_hint_from_excerpt(guidance_excerpt: str) -> str | None:
             lower = min(numbers[0], numbers[1])
             upper = max(numbers[0], numbers[1])
             if upper - lower >= 100:
-                return f"{lower}-{upper} words (verify final article-specific limit at submission)"
-        return f"Up to {numbers[0]} words (verify final article-specific limit at submission)"
+                return f"{lower}-{upper} words"
+        return f"Up to {numbers[0]} words"
     return None
 
 
@@ -636,7 +675,7 @@ def _fallback_article_type_recommendation(
     if hint:
         return {
             "value": hint,
-            "rationale": "Derived from available submission guidance text; verify the exact article category before submission.",
+            "rationale": "From submission guidance text; verify at submission.",
         }
 
     inferred = _infer_article_type_from_context(
@@ -647,23 +686,23 @@ def _fallback_article_type_recommendation(
     )
     return {
         "value": inferred,
-        "rationale": "Provisional recommendation from research framing when explicit journal wording was unavailable; verify at submission.",
+        "rationale": "Best-fit article type from journal scope and study focus; verify at submission.",
     }
 
 
 def _fallback_word_length_for_article_type(article_type_value: str) -> str:
     lowered = article_type_value.strip().lower()
     if "letter" in lowered:
-        return "600-1,000 words (provisional; verify at submission)"
+        return "600-1,000 words"
     if "brief" in lowered or "short" in lowered or "rapid" in lowered:
-        return "1,500-2,500 words (provisional; verify at submission)"
+        return "1,500-2,500 words"
     if "case series" in lowered or "case report" in lowered:
-        return "1,500-3,000 words (provisional; verify at submission)"
+        return "1,500-3,000 words"
     if "technical note" in lowered:
-        return "2,000-3,000 words (provisional; verify at submission)"
+        return "2,000-3,000 words"
     if "review" in lowered:
-        return "4,500-6,500 words (provisional; verify at submission)"
-    return "3,000-4,500 words (provisional; verify at submission)"
+        return "4,500-6,500 words"
+    return "3,000-4,500 words"
 
 
 def _fallback_word_length_recommendation(
@@ -673,11 +712,11 @@ def _fallback_word_length_recommendation(
     if hint:
         return {
             "value": hint,
-            "rationale": "Extracted from submission guidance wording; confirm the final limit for the selected article type.",
+            "rationale": "From submission guidance text; verify at submission.",
         }
     return {
         "value": _fallback_word_length_for_article_type(article_type_value),
-        "rationale": "Provisional range from article type when explicit journal limits were unavailable; verify at submission.",
+        "rationale": "Best-fit range from article type; verify at submission.",
     }
 
 
@@ -739,6 +778,7 @@ Rules:
 - If explicit limits are missing, provide a best-fit estimate and include "verify at submission" in rationale.
 - Do not fabricate numbers not implied by the guidance.
 - Keep recommendations concise and actionable.
+- Use British English spelling in rationale text.
 """.strip()
 
     raw_output, model_used = _ask_model(prompt, preferred_model=preferred_model)
@@ -1069,8 +1109,27 @@ def _coerce_interpretation_mode_recommendation(value: Any) -> dict[str, str] | N
     return recommendation
 
 
+def _apply_word_case(source: str, replacement: str) -> str:
+    if source.isupper():
+        return replacement.upper()
+    if source[:1].isupper():
+        return replacement[:1].upper() + replacement[1:]
+    return replacement
+
+
+def _to_british_english(text: str) -> str:
+    converted = text
+    for american, british in _US_TO_UK_SPELLING_MAP:
+        pattern = re.compile(rf"\b{re.escape(american)}\b", re.IGNORECASE)
+        converted = pattern.sub(
+            lambda match: _apply_word_case(match.group(0), british),
+            converted,
+        )
+    return converted
+
+
 def _normalize_summary_text(text: str) -> str:
-    normalized = re.sub(r"\s+", " ", text).strip()
+    normalized = _to_british_english(re.sub(r"\s+", " ", text).strip())
     if not normalized:
         return ""
     if normalized[-1] not in ".!?":
@@ -1195,6 +1254,45 @@ def _empty_payload(
     }
 
 
+def _apply_british_english_to_payload(payload: dict[str, object]) -> dict[str, object]:
+    normalized_payload = dict(payload)
+
+    summary_refinements = payload.get("summary_refinements")
+    if isinstance(summary_refinements, list):
+        normalized_payload["summary_refinements"] = [
+            _normalize_summary_text(str(item))
+            for item in summary_refinements
+            if str(item).strip()
+        ]
+
+    guidance_suggestions = payload.get("guidance_suggestions")
+    if isinstance(guidance_suggestions, list):
+        normalized_payload["guidance_suggestions"] = [
+            _to_british_english(str(item).strip())
+            for item in guidance_suggestions
+            if str(item).strip()
+        ]
+
+    def _normalise_recommendation(key: str, preserve_value: bool = False) -> None:
+        recommendation = payload.get(key)
+        if not isinstance(recommendation, dict):
+            return
+        value = str(recommendation.get("value", "")).strip()
+        rationale = str(recommendation.get("rationale", "")).strip()
+        normalized_payload[key] = {
+            "value": value if preserve_value else _to_british_english(value),
+            "rationale": _to_british_english(rationale),
+        }
+
+    _normalise_recommendation("research_category_suggestion")
+    _normalise_recommendation("research_type_suggestion")
+    _normalise_recommendation("article_type_recommendation")
+    _normalise_recommendation("word_length_recommendation")
+    _normalise_recommendation("interpretation_mode_recommendation", preserve_value=True)
+
+    return normalized_payload
+
+
 def generate_research_overview_suggestions(
     *,
     target_journal: str,
@@ -1283,6 +1381,7 @@ Allowed research categories (choose exactly one for research_category_suggestion
 Rules:
 - Provide exactly 1 summary_refinement.
 - summary_refinements must be full rewritten versions of summary_of_research, each as 2-4 sentences.
+- Use British English spelling throughout generated text and rationales.
 - Do not add new facts, endpoints, sample sizes, methods, or results not already present in the inputs.
 - Do not write instructions to the user (no "add/include/report/specify/clarify/ensure").
 - research_category_suggestion.value must be exactly one allowed research category listed above.
@@ -1339,6 +1438,6 @@ Rules:
         payload["article_type_recommendation"] = journal_article_recommendation
         payload["word_length_recommendation"] = journal_word_length_recommendation
         payload["guidance_suggestions"] = guidance_suggestions
-        return payload
+        return _apply_british_english_to_payload(payload)
     except Exception:
-        return base_payload
+        return _apply_british_english_to_payload(base_payload)
