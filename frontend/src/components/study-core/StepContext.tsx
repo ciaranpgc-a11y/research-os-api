@@ -654,9 +654,6 @@ export function StepContext({
               </option>
             ))}
           </select>
-          <p className="text-xs text-muted-foreground">
-            AI suggestion uses journal, research category, study type, article type, and summary.
-          </p>
         </div>
       </section>
 

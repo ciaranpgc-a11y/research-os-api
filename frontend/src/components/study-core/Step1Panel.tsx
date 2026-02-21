@@ -1321,7 +1321,6 @@ export function Step1Panel({
 
       <div className="space-y-2 rounded-md border border-slate-300 bg-slate-100 p-3">
         <p className="text-sm font-medium">Suggestion controls</p>
-        <p className="text-xs text-slate-600">Generate AI suggestions on demand.</p>
         <div className="flex flex-wrap items-center gap-2">
           {primaryAction ? (
             <Button className={ACTION_BUTTON_CLASS} size="sm" onClick={primaryAction.onClick} disabled={primaryAction.disabled}>
