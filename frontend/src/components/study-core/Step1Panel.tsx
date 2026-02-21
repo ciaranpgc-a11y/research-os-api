@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { fetchResearchOverviewSuggestions } from '@/lib/study-core-api'
@@ -23,10 +23,13 @@ type Step1PanelProps = {
 const ACTION_BUTTON_CLASS = 'bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500'
 const OUTLINE_ACTION_BUTTON_CLASS =
   'border-emerald-300 text-emerald-800 hover:bg-emerald-100 focus-visible:ring-emerald-500'
-const SUMMARY_CARD_CLASS = 'space-y-2 rounded-md border border-emerald-400 bg-emerald-100 p-3'
-const RESEARCH_TYPE_CARD_CLASS = 'space-y-2 rounded-md border border-sky-400 bg-sky-100 p-3'
-const INTERPRETATION_CARD_CLASS = 'space-y-2 rounded-md border border-cyan-400 bg-cyan-100 p-3'
-const JOURNAL_CARD_CLASS = 'space-y-2 rounded-md border border-amber-400 bg-amber-100 p-3'
+const SUMMARY_CARD_CLASS = 'space-y-2 rounded-md border border-emerald-300 bg-gradient-to-br from-emerald-50 to-emerald-100 p-3 shadow-sm'
+const RESEARCH_TYPE_CARD_CLASS = 'space-y-2 rounded-md border border-sky-300 bg-gradient-to-br from-sky-50 to-sky-100 p-3 shadow-sm'
+const INTERPRETATION_CARD_CLASS = 'space-y-2 rounded-md border border-cyan-300 bg-gradient-to-br from-cyan-50 to-cyan-100 p-3 shadow-sm'
+const JOURNAL_CARD_CLASS = 'space-y-2 rounded-md border border-amber-300 bg-gradient-to-br from-amber-50 to-amber-100 p-3 shadow-sm'
+const CARD_TRANSITION_CLASS = 'transition-all duration-500 ease-out'
+
+type AppliedKey = 'summary' | 'researchType' | 'interpretationMode' | 'journal'
 
 export function Step1Panel({
   summary,
@@ -48,6 +51,20 @@ export function Step1Panel({
   const [requestError, setRequestError] = useState('')
   const [suggestions, setSuggestions] = useState<ResearchOverviewSuggestionsPayload | null>(null)
   const [generatedKey, setGeneratedKey] = useState('')
+  const [appliedState, setAppliedState] = useState<Record<AppliedKey, boolean>>({
+    summary: false,
+    researchType: false,
+    interpretationMode: false,
+    journal: false,
+  })
+  const applyTimersRef = useRef<number[]>([])
+
+  useEffect(() => {
+    return () => {
+      applyTimersRef.current.forEach((timerId) => window.clearTimeout(timerId))
+      applyTimersRef.current = []
+    }
+  }, [])
 
   const currentKey = useMemo(
     () =>
@@ -125,8 +142,17 @@ export function Step1Panel({
     }
   }
 
+  const markApplied = (key: AppliedKey) => {
+    setAppliedState((current) => ({ ...current, [key]: true }))
+    const timerId = window.setTimeout(() => {
+      setAppliedState((current) => ({ ...current, [key]: false }))
+    }, 850)
+    applyTimersRef.current.push(timerId)
+  }
+
   const onApplySummary = (option: string) => {
     onReplaceSummary(option)
+    markApplied('summary')
   }
 
   const onApplyResearchTypeSuggestion = () => {
@@ -135,6 +161,7 @@ export function Step1Panel({
       return
     }
     onApplyResearchType(recommendation.value)
+    markApplied('researchType')
   }
 
   const onApplyInterpretationModeSuggestion = () => {
@@ -143,6 +170,7 @@ export function Step1Panel({
       return
     }
     onApplyInterpretationMode(recommendation.value)
+    markApplied('interpretationMode')
   }
 
   const onApplyJournalRecommendation = () => {
@@ -155,6 +183,7 @@ export function Step1Panel({
       onApplyWordLength(wordLengthRecommendation.value)
     }
     onJournalRecommendationsLockedChange(true)
+    markApplied('journal')
   }
 
   return (
@@ -189,7 +218,11 @@ export function Step1Panel({
       </div>
 
       {refinementsEnabled ? (
-        <div className={SUMMARY_CARD_CLASS}>
+        <div
+          className={`${SUMMARY_CARD_CLASS} ${CARD_TRANSITION_CLASS} ${
+            appliedState.summary ? 'ring-2 ring-emerald-300 shadow-md' : ''
+          }`}
+        >
           <p className="text-sm font-medium text-emerald-900">Summary of research refinement</p>
           {loading && !hasGenerated ? <p className="text-xs text-emerald-900">Generating rewrite...</p> : null}
           {!loading && !summarySuggestion ? <p className="text-xs text-emerald-900">No summary rewrite returned. Use Refresh.</p> : null}
@@ -209,7 +242,11 @@ export function Step1Panel({
       ) : null}
 
       {refinementsEnabled ? (
-        <div className={RESEARCH_TYPE_CARD_CLASS}>
+        <div
+          className={`${RESEARCH_TYPE_CARD_CLASS} ${CARD_TRANSITION_CLASS} ${
+            appliedState.researchType ? 'ring-2 ring-sky-300 shadow-md' : ''
+          }`}
+        >
           <p className="text-sm font-medium text-sky-900">Research type suggestion</p>
           {loading && !hasGenerated ? <p className="text-xs text-sky-900">Generating research type suggestion...</p> : null}
           {!loading && !researchTypeSuggestion ? (
@@ -238,7 +275,11 @@ export function Step1Panel({
       ) : null}
 
       {refinementsEnabled ? (
-        <div className={INTERPRETATION_CARD_CLASS}>
+        <div
+          className={`${INTERPRETATION_CARD_CLASS} ${CARD_TRANSITION_CLASS} ${
+            appliedState.interpretationMode ? 'ring-2 ring-cyan-300 shadow-md' : ''
+          }`}
+        >
           <p className="text-sm font-medium text-cyan-900">Interpretation mode suggestion</p>
           {loading && !hasGenerated ? <p className="text-xs text-cyan-900">Generating interpretation mode suggestion...</p> : null}
           {!loading && !interpretationSuggestion ? (
@@ -273,7 +314,11 @@ export function Step1Panel({
       ) : null}
 
       {refinementsEnabled ? (
-        <div className={JOURNAL_CARD_CLASS}>
+        <div
+          className={`${JOURNAL_CARD_CLASS} ${CARD_TRANSITION_CLASS} ${
+            appliedState.journal ? 'ring-2 ring-amber-300 shadow-md' : ''
+          }`}
+        >
           <p className="text-sm font-medium text-amber-900">Journal recommendation</p>
           {loading && !hasGenerated ? <p className="text-xs text-amber-900">Generating journal recommendations...</p> : null}
           {articleSuggestion ? (

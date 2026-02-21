@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import {
   CURATED_CARDIOLOGY_IMAGING_JOURNALS,
   getCategoryForStudyType,
+  getResearchTypeTaxonomy,
   getStudyTypeDefaults,
   mergeJournalOptions,
 } from '@/lib/research-frame-options'
@@ -34,6 +35,61 @@ type RunRecommendations = {
 const CONTEXT_KEY = 'aawe-run-context'
 const RESEARCH_FRAME_SIGNATURE_KEY = 'aawe-research-frame-signature'
 const CORE_SECTIONS = ['introduction', 'methods', 'results', 'discussion']
+const KNOWN_STUDY_TYPES = getResearchTypeTaxonomy(true).flatMap((item) => [...item.studyTypes])
+
+function normalizeSelectionLabel(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+}
+
+function resolveSuggestedStudyType(rawSuggestion: string): string {
+  const suggestion = normalizeSelectionLabel(rawSuggestion)
+  if (!suggestion) {
+    return ''
+  }
+  const exact = KNOWN_STUDY_TYPES.find((candidate) => normalizeSelectionLabel(candidate) === suggestion)
+  if (exact) {
+    return exact
+  }
+
+  const contained = KNOWN_STUDY_TYPES.find((candidate) => {
+    const normalizedCandidate = normalizeSelectionLabel(candidate)
+    return normalizedCandidate.includes(suggestion) || suggestion.includes(normalizedCandidate)
+  })
+  if (contained) {
+    return contained
+  }
+
+  const targetTokens = new Set(suggestion.split(' ').filter(Boolean))
+  let bestCandidate = ''
+  let bestScore = 0
+  for (const candidate of KNOWN_STUDY_TYPES) {
+    const candidateTokens = new Set(normalizeSelectionLabel(candidate).split(' ').filter(Boolean))
+    if (candidateTokens.size === 0) {
+      continue
+    }
+    let overlap = 0
+    for (const token of targetTokens) {
+      if (candidateTokens.has(token)) {
+        overlap += 1
+      }
+    }
+    const recall = overlap / Math.max(1, targetTokens.size)
+    const precision = overlap / Math.max(1, candidateTokens.size)
+    const score = (recall + precision) / 2
+    if (score > bestScore) {
+      bestScore = score
+      bestCandidate = candidate
+    }
+  }
+  if (bestCandidate && bestScore >= 0.5) {
+    return bestCandidate
+  }
+  return ''
+}
 
 function buildGenerationBrief(values: ContextFormValues, sections: string[], guardrailsEnabled: boolean): string {
   const lines = [
@@ -465,11 +521,12 @@ export function StudyCorePage() {
           }
           onApplyResearchType={(value) =>
             {
-              const defaults = getStudyTypeDefaults(value)
+              const resolvedStudyType = resolveSuggestedStudyType(value) || value
+              const defaults = getStudyTypeDefaults(resolvedStudyType)
               setContextValues((current) => ({
                 ...current,
-                researchCategory: getCategoryForStudyType(value, true) ?? current.researchCategory,
-                studyArchitecture: value,
+                researchCategory: getCategoryForStudyType(resolvedStudyType, true) ?? current.researchCategory,
+                studyArchitecture: resolvedStudyType,
                 interpretationMode: defaults.defaultInterpretationMode,
               }))
               setGuardrailsEnabled(defaults.enableConservativeGuardrails)

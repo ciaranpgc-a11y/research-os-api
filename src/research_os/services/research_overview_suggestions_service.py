@@ -485,7 +485,7 @@ def _normalize_rewrite_candidate(candidate: str) -> str:
 def _is_valid_summary_rewrite(candidate: str, source_summary: str) -> bool:
     if not candidate:
         return False
-    if len(candidate) < 30:
+    if len(candidate) < 15:
         return False
     if _looks_like_instruction(candidate):
         return False
@@ -502,18 +502,14 @@ def _is_valid_summary_rewrite(candidate: str, source_summary: str) -> bool:
 
     source_tokens = _content_tokens(source_summary)
     candidate_tokens = _content_tokens(candidate)
-    if not source_tokens:
-        return False
     if not candidate_tokens:
         return False
-
-    overlap = len(source_tokens.intersection(candidate_tokens)) / max(1, len(source_tokens))
-    new_token_ratio = len(candidate_tokens.difference(source_tokens)) / max(
-        1, len(candidate_tokens)
-    )
-    if overlap < 0.3:
-        return False
-    if new_token_ratio > 0.6:
+    if source_tokens:
+        overlap_count = len(source_tokens.intersection(candidate_tokens))
+        if overlap_count < 2 and len(source_tokens) >= 4:
+            return False
+    new_token_ratio = len(candidate_tokens.difference(source_tokens)) / max(1, len(candidate_tokens))
+    if new_token_ratio > 0.85:
         return False
     return True
 
