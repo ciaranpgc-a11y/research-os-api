@@ -349,7 +349,6 @@ export function StepContext({
         manuscriptId: payload.manuscript.id,
         recommendedSections: payload.inference.recommended_sections,
       })
-      onStatus(`Research summary saved (${payload.project.id.slice(0, 8)} / ${payload.manuscript.id.slice(0, 8)}).`)
     } catch (error) {
       onError(error instanceof Error ? error.message : 'Could not save research summary.')
     } finally {

@@ -233,7 +233,7 @@ export function StudyCorePage() {
   const [savedResearchFrameSignature, setSavedResearchFrameSignature] = useState<string | null>(() =>
     window.localStorage.getItem(RESEARCH_FRAME_SIGNATURE_KEY),
   )
-  const [contextSaveRequestId] = useState(0)
+  const [contextSaveRequestId, setContextSaveRequestId] = useState(0)
 
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
@@ -333,9 +333,32 @@ export function StudyCorePage() {
     () => Boolean(runContext) && researchFrameComplete && savedResearchFrameSignature === currentResearchFrameSignature,
     [currentResearchFrameSignature, researchFrameComplete, runContext, savedResearchFrameSignature],
   )
+  const researchFrameInProgress = useMemo(
+    () =>
+      !researchFrameComplete &&
+      Boolean(
+        contextValues.projectTitle.trim() ||
+          targetJournal.trim() ||
+          contextValues.researchCategory.trim() ||
+          contextValues.studyArchitecture.trim() ||
+          contextValues.interpretationMode.trim() ||
+          contextValues.recommendedArticleType.trim() ||
+          contextValues.recommendedWordLength.trim(),
+      ),
+    [
+      contextValues.interpretationMode,
+      contextValues.projectTitle,
+      contextValues.recommendedArticleType,
+      contextValues.recommendedWordLength,
+      contextValues.researchCategory,
+      contextValues.studyArchitecture,
+      researchFrameComplete,
+      targetJournal,
+    ],
+  )
   const completedSteps = useMemo(() => {
     const completed: WizardStep[] = []
-    if (researchFrameSaved) {
+    if (researchFrameComplete) {
       completed.push(1)
     }
     if (planStatus === 'built') {
@@ -351,7 +374,8 @@ export function StudyCorePage() {
       completed.push(5)
     }
     return completed
-  }, [acceptedSections, jobStatus, planStatus, qcStatus, researchFrameSaved])
+  }, [acceptedSections, jobStatus, planStatus, qcStatus, researchFrameComplete])
+  const inProgressSteps = useMemo(() => (researchFrameInProgress ? ([1] as WizardStep[]) : []), [researchFrameInProgress])
 
   useEffect(() => {
     void fetchJournalOptions()
@@ -717,8 +741,18 @@ export function StudyCorePage() {
             steps={STEP_ITEMS}
             currentStep={currentStep}
             completedSteps={completedSteps}
-            canNavigateToStep={canNavigateToStep}
+            inProgressSteps={inProgressSteps}
+            canNavigateToStep={(step) => {
+              if (step === 2 && currentStep === 1) {
+                return true
+              }
+              return canNavigateToStep(step)
+            }}
             onStepSelect={(step) => {
+              if (step === 2 && currentStep === 1 && !researchFrameSaved) {
+                setContextSaveRequestId((current) => current + 1)
+                return
+              }
               if (canNavigateToStep(step)) {
                 setCurrentStep(step)
               }
