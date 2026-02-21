@@ -92,30 +92,7 @@ function buildAnalysisSummary(values: ContextFormValues): string {
   return parts.join(' | ')
 }
 
-type WordLengthBand = 'short' | 'standard' | 'long' | 'unknown'
-
-function getWordLengthBand(value: string): WordLengthBand {
-  const matches = value.match(/\d[\d,]*/g)
-  if (!matches || matches.length === 0) {
-    return 'unknown'
-  }
-  const numbers = matches
-    .map((part) => Number.parseInt(part.replace(/,/g, ''), 10))
-    .filter((part) => Number.isFinite(part))
-  if (numbers.length === 0) {
-    return 'unknown'
-  }
-  const upperBound = Math.max(...numbers)
-  if (upperBound <= 2500) {
-    return 'short'
-  }
-  if (upperBound >= 5000) {
-    return 'long'
-  }
-  return 'standard'
-}
-
-function getScaledTileClass(score: 2 | 3 | 4 | 5 | null): string {
+function getJournalScaleTileClass(score: 2 | 3 | 4 | 5 | null): string {
   const baseClass = 'rounded-md border p-2'
   if (score === null) {
     return `${baseClass} border-border/70 bg-background`
@@ -133,24 +110,34 @@ function getScaledTileClass(score: 2 | 3 | 4 | 5 | null): string {
 }
 
 function getWordLengthScaleScore(value: string): 2 | 3 | 4 | 5 | null {
-  const band = getWordLengthBand(value)
-  if (band === 'unknown') {
-    return null
-  }
   const numbers = (value.match(/\d[\d,]*/g) ?? [])
     .map((part) => Number.parseInt(part.replace(/,/g, ''), 10))
     .filter((part) => Number.isFinite(part))
-  const upperBound = numbers.length > 0 ? Math.max(...numbers) : 0
-  if (band === 'short') {
-    return 2
+  if (numbers.length === 0) {
+    return null
   }
-  if (band === 'standard') {
-    return 4
-  }
-  if (upperBound <= 6500) {
+  const upperBound = Math.max(...numbers)
+  if (upperBound < 1500) {
     return 5
   }
-  return 3
+  if (upperBound <= 4000) {
+    return 3
+  }
+  return 2
+}
+
+function getWordLengthTileClass(score: 2 | 3 | 4 | 5 | null): string {
+  const baseClass = 'rounded-md border p-2'
+  if (score === null) {
+    return `${baseClass} border-border/70 bg-background`
+  }
+  if (score >= 5) {
+    return `${baseClass} border-emerald-300 bg-emerald-50/70`
+  }
+  if (score >= 3) {
+    return `${baseClass} border-amber-300 bg-amber-50/65`
+  }
+  return `${baseClass} border-rose-300 bg-rose-50/70`
 }
 
 function FieldHintLabel({
@@ -234,14 +221,11 @@ export function StepContext({
 
   const errors = useMemo(() => {
     const nextErrors: Record<string, string> = {}
-    if (!targetJournal.trim()) {
-      nextErrors.targetJournal = 'Working target journal is required.'
-    }
     if (!values.researchObjective.trim()) {
       nextErrors.researchObjective = 'Summary of research is required.'
     }
     return nextErrors
-  }, [targetJournal, values.researchObjective])
+  }, [values.researchObjective])
 
   const researchCategories = useMemo(() => getResearchTypeTaxonomy(true), [])
   const studyTypeOptions = useMemo(
@@ -250,7 +234,7 @@ export function StepContext({
   )
   const submissionGuidanceUrl = useMemo(() => getJournalSubmissionGuidanceUrl(targetJournal), [targetJournal])
   const wordLengthBoxClass = useMemo(
-    () => getScaledTileClass(getWordLengthScaleScore(values.recommendedWordLength)),
+    () => getWordLengthTileClass(getWordLengthScaleScore(values.recommendedWordLength)),
     [values.recommendedWordLength],
   )
   const journalQualityScore = useMemo(() => getJournalQualityScore(targetJournal), [targetJournal])
@@ -260,7 +244,7 @@ export function StepContext({
     [journals, targetJournal],
   )
   const targetJournalBoxClass = useMemo(
-    () => getScaledTileClass(selectedJournalLabel ? journalQualityScore : null),
+    () => getJournalScaleTileClass(selectedJournalLabel ? journalQualityScore : null),
     [journalQualityScore, selectedJournalLabel],
   )
   const studyTypeDefaults = useMemo(
@@ -378,7 +362,7 @@ export function StepContext({
       const analysisSummary = buildAnalysisSummary(values)
       const payload = await bootstrapRunContext({
         title: values.projectTitle.trim() || 'Untitled research overview',
-        targetJournal,
+        targetJournal: targetJournal || 'generic-original',
         answers: {
           study_type: values.studyArchitecture,
           research_objective: values.researchObjective,
@@ -529,7 +513,7 @@ export function StepContext({
 
         <div className="grid gap-4 xl:grid-cols-2">
           <div className="space-y-1 xl:col-span-2">
-            <Label htmlFor="context-project-title">Proposed project title</Label>
+            <Label htmlFor="context-project-title">1. Proposed project title</Label>
             <Input
               id="context-project-title"
               value={values.projectTitle}
@@ -539,7 +523,7 @@ export function StepContext({
 
           <div className="space-y-1 xl:col-span-2">
             <div className="flex items-center justify-between gap-2">
-              <Label htmlFor="context-target-journal">Working target journal</Label>
+              <Label htmlFor="context-target-journal">2. Target journal</Label>
               {submissionGuidanceUrl ? (
                 <a
                   href={submissionGuidanceUrl}
@@ -565,13 +549,12 @@ export function StepContext({
                 </option>
               ))}
             </select>
-            {attemptedSubmit && errors.targetJournal ? <p className="text-xs text-destructive">{errors.targetJournal}</p> : null}
           </div>
 
           <div className="space-y-1">
             <FieldHintLabel
               htmlFor="context-research-category"
-              label="Research category"
+              label="3. Research category"
               hint="Pick the broad study family first. Example: observational patient datasets usually fit Observational Clinical Cohort or Imaging Biomarker Study; evidence synthesis fits Methodological / Analytical."
             />
             <select
@@ -639,7 +622,7 @@ export function StepContext({
       <section className="space-y-4 rounded-md border border-border/80 p-4">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <Label htmlFor="context-research-objective">Summary of research</Label>
+            <Label htmlFor="context-research-objective">4. Summary of research *</Label>
           </div>
           <div className="flex flex-wrap gap-2">
             {SUMMARY_HELPER_CHIPS.map((helper) => (
@@ -681,6 +664,7 @@ export function StepContext({
           </div>
           {!speechSupported ? <p className="text-xs text-muted-foreground">Speech to text is not available in this browser.</p> : null}
           {attemptedSubmit && errors.researchObjective ? <p className="text-xs text-destructive">{errors.researchObjective}</p> : null}
+          <p className="text-xs text-muted-foreground">* Required to save and proceed.</p>
         </div>
 
         <div className="space-y-1">

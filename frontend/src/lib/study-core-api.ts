@@ -13,6 +13,7 @@ import type {
   GroundedDraftPayload,
   GenerationJobPayload,
   JournalOption,
+  PlanClarificationQuestionsPayload,
   ManuscriptRecord,
   ProjectRecord,
   ResearchOverviewSuggestionsPayload,
@@ -96,6 +97,34 @@ export async function planSections(input: {
     throw new Error(await parseApiError(response, `Section planning failed (${response.status})`))
   }
   return (await response.json()) as SectionPlanPayload
+}
+
+export async function fetchPlanClarificationQuestions(input: {
+  targetJournal: string
+  researchCategory: string
+  studyType: string
+  interpretationMode: string
+  articleType: string
+  wordLength: string
+  summaryOfResearch: string
+}): Promise<PlanClarificationQuestionsPayload> {
+  const response = await fetch(`${API_BASE_URL}/v1/aawe/plan/clarification-questions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      target_journal: input.targetJournal,
+      research_category: input.researchCategory,
+      study_type: input.studyType,
+      interpretation_mode: input.interpretationMode,
+      article_type: input.articleType,
+      word_length: input.wordLength,
+      summary_of_research: input.summaryOfResearch,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Clarification questions failed (${response.status})`))
+  }
+  return (await response.json()) as PlanClarificationQuestionsPayload
 }
 
 export async function fetchResearchOverviewSuggestions(input: {

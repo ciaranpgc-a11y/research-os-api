@@ -48,6 +48,8 @@ from research_os.api.schemas import (
     ManuscriptSnapshotResponse,
     ManuscriptSectionsUpdateRequest,
     ManuscriptResponse,
+    PlanClarificationQuestionsRequest,
+    PlanClarificationQuestionsResponse,
     ParagraphRegenerationRequest,
     ParagraphRegenerationResponse,
     ProjectCreateRequest,
@@ -125,6 +127,9 @@ from research_os.services.paragraph_regeneration_service import (
 )
 from research_os.services.qc_service import run_qc_checks
 from research_os.services.section_planning_service import build_section_plan
+from research_os.services.plan_clarification_service import (
+    generate_plan_clarification_questions,
+)
 from research_os.services.research_overview_suggestions_service import (
     generate_research_overview_suggestions,
 )
@@ -408,6 +413,27 @@ def v1_plan_aawe_sections(request: SectionPlanRequest) -> SectionPlanResponse:
         sections=request.sections,
     )
     return SectionPlanResponse(**payload)
+
+
+@app.post(
+    "/v1/aawe/plan/clarification-questions",
+    response_model=PlanClarificationQuestionsResponse,
+    tags=["v1"],
+)
+def v1_plan_aawe_clarification_questions(
+    request: PlanClarificationQuestionsRequest,
+) -> PlanClarificationQuestionsResponse:
+    payload = generate_plan_clarification_questions(
+        target_journal=request.target_journal,
+        research_category=request.research_category,
+        study_type=request.study_type,
+        interpretation_mode=request.interpretation_mode,
+        article_type=request.article_type,
+        word_length=request.word_length,
+        summary_of_research=request.summary_of_research,
+        preferred_model=request.model or "gpt-5.2",
+    )
+    return PlanClarificationQuestionsResponse(**payload)
 
 
 @app.post(

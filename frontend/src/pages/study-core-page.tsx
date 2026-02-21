@@ -26,6 +26,7 @@ import type {
   GenerationJobPayload,
   JournalOption,
   OutlinePlanState,
+  Step2ClarificationResponse,
 } from '@/types/study-core'
 
 type RunContext = { projectId: string; manuscriptId: string }
@@ -225,6 +226,7 @@ export function StudyCorePage() {
   const [styleProfile, setStyleProfile] = useState<'technical' | 'concise' | 'narrative_review'>('technical')
 
   const [plan, setPlan] = useState<OutlinePlanState | null>(null)
+  const [clarificationResponses, setClarificationResponses] = useState<Step2ClarificationResponse[]>([])
   const [estimatePreview, setEstimatePreview] = useState<GenerationEstimate | null>(null)
   const [activeJob, setActiveJob] = useState<GenerationJobPayload | null>(null)
   const [links, setLinks] = useState<ClaimLinkSuggestion[]>([])
@@ -554,11 +556,10 @@ export function StudyCorePage() {
           selectedSections={selectedSections}
           generationBrief={generationBrief}
           plan={plan}
-          estimatePreview={estimatePreview}
+          clarificationResponses={clarificationResponses}
           mechanisticRelevant={contextValues.interpretationMode.toLowerCase().includes('mechanistic')}
           onSectionsChange={setSelectedSections}
           onPlanChange={onPlanChange}
-          onEstimateChange={setEstimatePreview}
           onStatus={setStatus}
           onError={setError}
         />
@@ -708,7 +709,24 @@ export function StudyCorePage() {
       )
     }
     if (currentStep === 2) {
-      return <Step2Panel hasPlan={Boolean(plan)} recommendations={planRecommendations} />
+      return (
+        <Step2Panel
+          hasPlan={Boolean(plan)}
+          recommendations={planRecommendations}
+          planningContext={{
+            targetJournal,
+            targetJournalLabel,
+            researchCategory: contextValues.researchCategory,
+            studyType: contextValues.studyArchitecture,
+            interpretationMode: contextValues.interpretationMode,
+            articleType: contextValues.recommendedArticleType,
+            wordLength: contextValues.recommendedWordLength,
+            summary: contextValues.researchObjective,
+          }}
+          clarificationResponses={clarificationResponses}
+          onClarificationResponsesChange={setClarificationResponses}
+        />
+      )
     }
     return null
   }

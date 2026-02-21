@@ -300,6 +300,28 @@ class SectionPlanResponse(BaseModel):
     total_estimated_cost_usd_high: float
 
 
+class PlanClarificationQuestionResponse(BaseModel):
+    id: str
+    prompt: str
+    rationale: str
+
+
+class PlanClarificationQuestionsRequest(BaseModel):
+    target_journal: str = ""
+    research_category: str = ""
+    study_type: str = ""
+    interpretation_mode: str = ""
+    article_type: str = ""
+    word_length: str = ""
+    summary_of_research: str = ""
+    model: str | None = None
+
+
+class PlanClarificationQuestionsResponse(BaseModel):
+    questions: list[PlanClarificationQuestionResponse] = Field(default_factory=list)
+    model_used: str
+
+
 class ResearchOverviewSuggestionsRequest(BaseModel):
     target_journal: str
     research_category: str = ""

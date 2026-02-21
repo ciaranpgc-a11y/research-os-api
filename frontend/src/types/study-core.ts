@@ -247,3 +247,21 @@ export type ResearchOverviewSuggestionsPayload = {
   source_urls: string[]
   model_used: string
 }
+
+export type Step2ClarificationResponse = {
+  id: string
+  prompt: string
+  answer: 'yes' | 'no' | ''
+  comment: string
+}
+
+export type PlanClarificationQuestion = {
+  id: string
+  prompt: string
+  rationale: string
+}
+
+export type PlanClarificationQuestionsPayload = {
+  questions: PlanClarificationQuestion[]
+  model_used: string
+}
