@@ -11,6 +11,7 @@ import {
   confirmPasswordReset,
   fetchOAuthConnect,
   fetchOAuthProviderStatuses,
+  loginAuth,
   loginAuthChallenge,
   registerAuth,
   requestPasswordReset,
@@ -170,7 +171,24 @@ export function AuthPage() {
       }
       setError('Sign-in flow is incomplete. Please retry.')
     } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : 'Sign-in failed.')
+      const detail = loginError instanceof Error ? loginError.message : 'Sign-in failed.'
+      const lower = detail.toLowerCase()
+      const fallbackEligible =
+        lower.includes('404') ||
+        lower.includes('not found') ||
+        lower.includes('login challenge')
+      if (!fallbackEligible) {
+        setError(detail)
+        return
+      }
+      try {
+        const session = await loginAuth({ email: signInEmail, password: signInPassword })
+        setAuthSessionToken(session.session_token)
+        setStatus('Signed in. Redirecting to profile...')
+        navigate('/profile', { replace: true })
+      } catch (fallbackError) {
+        setError(fallbackError instanceof Error ? fallbackError.message : 'Sign-in failed.')
+      }
     } finally {
       setLoading(false)
     }

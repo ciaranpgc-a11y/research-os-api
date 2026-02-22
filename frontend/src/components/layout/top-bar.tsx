@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Download, Loader2, Menu, Moon, PanelRight, Search, Sun } from 'lucide-react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,6 +26,7 @@ const TOP_NAV_LINKS = [
 
 export function TopBar({ onOpenLeftNav, onOpenRightPanel, showRightPanelButton = true }: TopBarProps) {
   const navigate = useNavigate()
+  const location = useLocation()
   const theme = useAaweStore((state) => state.theme)
   const toggleTheme = useAaweStore((state) => state.toggleTheme)
   const selectedItem = useAaweStore((state) => state.selectedItem)
@@ -35,6 +36,7 @@ export function TopBar({ onOpenLeftNav, onOpenRightPanel, showRightPanelButton =
   const setSearchQuery = useAaweStore((state) => state.setSearchQuery)
   const [isRunningQc, setIsRunningQc] = useState(false)
   const [qcStatus, setQcStatus] = useState('')
+  const isProfileRoute = location.pathname === '/profile' || location.pathname === '/impact'
 
   const canExport = useMemo(() => selectedItem !== null, [selectedItem])
 
@@ -127,7 +129,7 @@ export function TopBar({ onOpenLeftNav, onOpenRightPanel, showRightPanelButton =
       <div className="mx-auto hidden w-full max-w-xl items-center gap-2 md:flex">
         <Search className="h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search claims, results, citations..."
+          placeholder={isProfileRoute ? 'Search works, themes, collaborators...' : 'Search claims, results, citations...'}
           className="h-8"
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
@@ -146,25 +148,33 @@ export function TopBar({ onOpenLeftNav, onOpenRightPanel, showRightPanelButton =
             <TooltipContent>{theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        <Button variant="outline" size="sm" onClick={onExport} disabled={!canExport}>
-          <Download className="mr-1 h-3.5 w-3.5" />
-          Export
-        </Button>
-        <Button size="sm" onClick={onRunQc} disabled={isRunningQc}>
-          {isRunningQc ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-          {isRunningQc ? 'Running...' : 'Run QC'}
-        </Button>
-        {qcStatus ? <span className="hidden text-xs text-muted-foreground md:inline">{qcStatus}</span> : null}
+        {!isProfileRoute ? (
+          <>
+            <Button variant="outline" size="sm" onClick={onExport} disabled={!canExport}>
+              <Download className="mr-1 h-3.5 w-3.5" />
+              Export
+            </Button>
+            <Button size="sm" onClick={onRunQc} disabled={isRunningQc}>
+              {isRunningQc ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+              {isRunningQc ? 'Running...' : 'Run QC'}
+            </Button>
+            {qcStatus ? <span className="hidden text-xs text-muted-foreground md:inline">{qcStatus}</span> : null}
+          </>
+        ) : (
+          <Button variant="outline" size="sm" onClick={() => navigate('/study-core')}>
+            Run Wizard
+          </Button>
+        )}
         {showRightPanelButton ? (
           <TooltipProvider delayDuration={100}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="outline" size="icon" className="insight:hidden" onClick={onOpenRightPanel}>
                   <PanelRight className="h-4 w-4" />
-                  <span className="sr-only">Open insights</span>
+                  <span className="sr-only">{isProfileRoute ? 'Open profile panel' : 'Open insights'}</span>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Open Insight Panel</TooltipContent>
+              <TooltipContent>{isProfileRoute ? 'Open Profile Panel' : 'Open Insight Panel'}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : null}

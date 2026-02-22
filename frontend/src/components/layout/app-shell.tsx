@@ -1,6 +1,7 @@
 import { Outlet, useLocation } from 'react-router-dom'
 
 import { InsightPanel } from '@/components/layout/insight-panel'
+import { ProfilePanel } from '@/components/layout/profile-panel'
 import { StudyNavigator } from '@/components/layout/study-navigator'
 import { TopBar } from '@/components/layout/top-bar'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -15,20 +16,25 @@ export function AppShell() {
   const setLeftPanelOpen = useAaweStore((state) => state.setLeftPanelOpen)
   const setRightPanelOpen = useAaweStore((state) => state.setRightPanelOpen)
   const isStudyCoreRoute = location.pathname === '/study-core'
-  const showInsightPanel = !isStudyCoreRoute
+  const isProfileRoute = location.pathname === '/profile' || location.pathname === '/impact'
+  const showRightPanel = !isStudyCoreRoute
+  const rightPanel = isProfileRoute ? <ProfilePanel /> : <InsightPanel />
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       <TopBar
         onOpenLeftNav={() => setLeftPanelOpen(true)}
         onOpenRightPanel={() => setRightPanelOpen(true)}
-        showRightPanelButton={showInsightPanel}
+        showRightPanelButton={showRightPanel}
       />
 
       <div
         className={cn(
           'grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[280px_minmax(0,1fr)]',
-          showInsightPanel && 'insight:grid-cols-[280px_minmax(0,1fr)_360px]',
+          showRightPanel &&
+            (isProfileRoute
+              ? 'insight:grid-cols-[280px_minmax(0,1fr)_340px]'
+              : 'insight:grid-cols-[280px_minmax(0,1fr)_360px]'),
         )}
       >
         <aside className="hidden border-r border-border nav:block">
@@ -40,7 +46,11 @@ export function AppShell() {
             <div
               className={cn(
                 'mx-auto w-full py-4',
-                isStudyCoreRoute ? 'max-w-none px-3 md:px-4' : 'max-w-6xl px-4 md:px-6',
+                isStudyCoreRoute
+                  ? 'max-w-none px-3 md:px-4'
+                  : isProfileRoute
+                    ? 'max-w-[1360px] px-3 md:px-5'
+                    : 'max-w-6xl px-4 md:px-6',
               )}
             >
               <Outlet />
@@ -48,9 +58,9 @@ export function AppShell() {
           </ScrollArea>
         </main>
 
-        {showInsightPanel ? (
+        {showRightPanel ? (
           <aside className="hidden border-l border-border insight:block">
-            <InsightPanel />
+            {rightPanel}
           </aside>
         ) : null}
       </div>
@@ -61,10 +71,16 @@ export function AppShell() {
         </SheetContent>
       </Sheet>
 
-      {showInsightPanel ? (
+      {showRightPanel ? (
         <Sheet open={rightPanelOpen} onOpenChange={setRightPanelOpen}>
-          <SheetContent side="right" className="w-[360px] p-0 insight:hidden sm:w-[360px]">
-            <InsightPanel />
+          <SheetContent
+            side="right"
+            className={cn(
+              'p-0 insight:hidden',
+              isProfileRoute ? 'w-[340px] sm:w-[340px]' : 'w-[360px] sm:w-[360px]',
+            )}
+          >
+            {rightPanel}
           </SheetContent>
         </Sheet>
       ) : null}

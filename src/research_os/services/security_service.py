@@ -51,19 +51,87 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, stored_hash: str) -> bool:
-    try:
-        algorithm, iterations_raw, salt_raw, digest_raw = stored_hash.split("$", 3)
-        if algorithm != PBKDF2_ALGORITHM:
-            return False
-        iterations = int(iterations_raw)
-        salt = _safe_b64decode(salt_raw)
-        digest = _safe_b64decode(digest_raw)
-    except Exception:
+    clean_hash = (stored_hash or "").strip()
+    clean_password = (password or "").encode("utf-8")
+    if not clean_hash:
         return False
-    candidate = hashlib.pbkdf2_hmac(
-        "sha256", (password or "").encode("utf-8"), salt, iterations
-    )
-    return hmac.compare_digest(candidate, digest)
+
+    def _candidate_salts(raw_value: str) -> list[bytes]:
+        values: list[bytes] = []
+        raw_bytes = raw_value.encode("utf-8")
+        values.append(raw_bytes)
+        try:
+            decoded = _safe_b64decode(raw_value)
+            if decoded and decoded not in values:
+                values.append(decoded)
+        except Exception:
+            pass
+        return values
+
+    def _candidate_digests(raw_value: str) -> list[bytes]:
+        values: list[bytes] = []
+        try:
+            decoded = _safe_b64decode(raw_value)
+            if decoded:
+                values.append(decoded)
+        except Exception:
+            pass
+        try:
+            hex_decoded = bytes.fromhex(raw_value)
+            if hex_decoded and hex_decoded not in values:
+                values.append(hex_decoded)
+        except Exception:
+            pass
+        return values
+
+    def _verify_pbkdf2(*, iterations: int, salts: list[bytes], digests: list[bytes]) -> bool:
+        for salt in salts:
+            candidate = hashlib.pbkdf2_hmac("sha256", clean_password, salt, iterations)
+            for digest in digests:
+                if hmac.compare_digest(candidate, digest):
+                    return True
+        return False
+
+    try:
+        algorithm, iterations_raw, salt_raw, digest_raw = clean_hash.split("$", 3)
+    except ValueError:
+        algorithm = ""
+        iterations_raw = ""
+        salt_raw = ""
+        digest_raw = ""
+
+    if algorithm == PBKDF2_ALGORITHM:
+        try:
+            iterations = int(iterations_raw)
+            salts = _candidate_salts(salt_raw)
+            digests = _candidate_digests(digest_raw)
+            if iterations > 0 and salts and digests:
+                return _verify_pbkdf2(
+                    iterations=iterations,
+                    salts=salts,
+                    digests=digests,
+                )
+        except Exception:
+            return False
+        return False
+
+    if clean_hash.startswith("pbkdf2:sha256:"):
+        try:
+            algorithm_raw, salt_raw, digest_raw = clean_hash.split("$", 2)
+            iterations = int(algorithm_raw.rsplit(":", 1)[-1])
+            salts = _candidate_salts(salt_raw)
+            digests = _candidate_digests(digest_raw)
+            if iterations > 0 and salts and digests:
+                return _verify_pbkdf2(
+                    iterations=iterations,
+                    salts=salts,
+                    digests=digests,
+                )
+        except Exception:
+            return False
+        return False
+
+    return False
 
 
 def generate_session_token() -> str:
