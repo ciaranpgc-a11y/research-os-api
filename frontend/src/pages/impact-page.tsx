@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -6,24 +7,29 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   analyseImpact,
+  disableTwoFactor,
+  enableTwoFactor,
   fetchImpactCollaborators,
   fetchImpactThemes,
   fetchMe,
   fetchOrcidConnect,
   fetchPersonaContext,
   fetchPersonaState,
+  fetchTwoFactorState,
   generateImpactReport,
   generatePersonaEmbeddings,
   importOrcidWorks,
   listPersonaWorks,
-  loginAuth,
   logoutAuth,
   recomputeImpact,
-  registerAuth,
+  setupTwoFactor,
   syncPersonaMetrics,
 } from '@/lib/impact-api'
+import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
 import type {
   AuthUser,
+  AuthTwoFactorSetupPayload,
+  AuthTwoFactorStatePayload,
   ImpactAnalysePayload,
   ImpactCollaboratorsPayload,
   ImpactRecomputePayload,
@@ -34,37 +40,14 @@ import type {
   PersonaWork,
 } from '@/types/impact'
 
-const AUTH_TOKEN_STORAGE_KEY = 'aawe-impact-session-token'
-
-function isLikelyEmail(value: string): boolean {
-  const email = value.trim()
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-}
-
-function isStrongPassword(value: string): boolean {
-  const password = value.trim()
-  return password.length >= 10 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password)
-}
-
 function histogramBar(total: number, value: number): string {
   const width = total <= 0 ? 0 : Math.max(8, Math.round((value / total) * 100))
   return `${Math.min(100, width)}%`
 }
 
 export function ImpactPage() {
-  const [token, setToken] = useState<string>(() => {
-    const sessionValue = window.sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
-    if (sessionValue) {
-      return sessionValue
-    }
-    const legacyLocal = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
-    if (!legacyLocal) {
-      return ''
-    }
-    window.sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, legacyLocal)
-    window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
-    return legacyLocal
-  })
+  const navigate = useNavigate()
+  const [token, setToken] = useState<string>(() => getAuthSessionToken())
   const [user, setUser] = useState<AuthUser | null>(null)
   const [works, setWorks] = useState<PersonaWork[]>([])
   const [statePayload, setStatePayload] = useState<PersonaStatePayload | null>(null)
@@ -74,42 +57,13 @@ export function ImpactPage() {
   const [personaContext, setPersonaContext] = useState<PersonaContextPayload | null>(null)
   const [analysis, setAnalysis] = useState<ImpactAnalysePayload | null>(null)
   const [report, setReport] = useState<ImpactReportPayload | null>(null)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [name, setName] = useState('')
+  const [twoFactorState, setTwoFactorState] = useState<AuthTwoFactorStatePayload | null>(null)
+  const [twoFactorSetup, setTwoFactorSetup] = useState<AuthTwoFactorSetupPayload | null>(null)
+  const [twoFactorCode, setTwoFactorCode] = useState('')
+  const [disableTwoFactorCode, setDisableTwoFactorCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
-
-  const registerValidationMessage = useMemo(() => {
-    if (!name.trim()) {
-      return 'Name is required.'
-    }
-    if (name.trim().length < 2) {
-      return 'Name must be at least 2 characters.'
-    }
-    if (!isLikelyEmail(email)) {
-      return 'Enter a valid email address.'
-    }
-    if (!isStrongPassword(password)) {
-      return 'Password must be 10+ characters and include uppercase, lowercase, and a number.'
-    }
-    if (password !== confirmPassword) {
-      return 'Password confirmation does not match.'
-    }
-    return ''
-  }, [confirmPassword, email, name, password])
-
-  const loginValidationMessage = useMemo(() => {
-    if (!isLikelyEmail(email)) {
-      return 'Enter a valid email address.'
-    }
-    if (!password.trim()) {
-      return 'Password is required.'
-    }
-    return ''
-  }, [email, password])
 
   const totalHistogramCount = useMemo(() => {
     if (!statePayload) {
@@ -122,13 +76,14 @@ export function ImpactPage() {
     setLoading(true)
     setError('')
     try {
-      const [me, workRows, personaState, collaboratorRows, themeRows, contextRows] = await Promise.all([
+      const [me, workRows, personaState, collaboratorRows, themeRows, contextRows, twoFactor] = await Promise.all([
         fetchMe(sessionToken),
         listPersonaWorks(sessionToken),
         fetchPersonaState(sessionToken),
         fetchImpactCollaborators(sessionToken),
         fetchImpactThemes(sessionToken),
         fetchPersonaContext(sessionToken),
+        fetchTwoFactorState(sessionToken),
       ])
       setUser(me)
       setWorks(workRows)
@@ -136,6 +91,7 @@ export function ImpactPage() {
       setCollaborators(collaboratorRows)
       setThemes(themeRows)
       setPersonaContext(contextRows)
+      setTwoFactorState(twoFactor)
       try {
         const snapshot = await recomputeImpact(sessionToken)
         setImpactSnapshot(snapshot)
@@ -158,43 +114,74 @@ export function ImpactPage() {
     void loadProfileData(token)
   }, [token, loadProfileData])
 
-  const onRegister = async () => {
+  useEffect(() => {
+    if (!token) {
+      navigate('/auth', { replace: true })
+    }
+  }, [navigate, token])
+
+  const onStartTwoFactorSetup = async () => {
+    if (!token) {
+      return
+    }
     setError('')
     setStatus('')
     setLoading(true)
     try {
-      const payload = await registerAuth({ email, password, name })
-      window.sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, payload.session_token)
-      window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
-      setToken(payload.session_token)
-      setUser(payload.user)
-      setPassword('')
-      setConfirmPassword('')
-      setStatus('Account created and signed in.')
-      await loadProfileData(payload.session_token)
-    } catch (registerError) {
-      setError(registerError instanceof Error ? registerError.message : 'Registration failed.')
+      const payload = await setupTwoFactor(token)
+      setTwoFactorSetup(payload)
+      setTwoFactorCode('')
+      setStatus('2FA setup generated. Scan in your authenticator and verify one code.')
+    } catch (setupError) {
+      setError(setupError instanceof Error ? setupError.message : '2FA setup failed.')
     } finally {
       setLoading(false)
     }
   }
 
-  const onLogin = async () => {
+  const onEnableTwoFactor = async () => {
+    if (!token || !twoFactorSetup) {
+      return
+    }
     setError('')
     setStatus('')
     setLoading(true)
     try {
-      const payload = await loginAuth({ email, password })
-      window.sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, payload.session_token)
-      window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
-      setToken(payload.session_token)
-      setUser(payload.user)
-      setPassword('')
-      setConfirmPassword('')
-      setStatus('Signed in.')
-      await loadProfileData(payload.session_token)
-    } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : 'Login failed.')
+      const payload = await enableTwoFactor({
+        token,
+        secret: twoFactorSetup.secret,
+        code: twoFactorCode,
+        backupCodes: twoFactorSetup.backup_codes,
+      })
+      setTwoFactorState(payload)
+      setStatus('Two-factor authentication enabled.')
+      setTwoFactorSetup(null)
+      setTwoFactorCode('')
+    } catch (enableError) {
+      setError(enableError instanceof Error ? enableError.message : '2FA enable failed.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const onDisableTwoFactor = async () => {
+    if (!token) {
+      return
+    }
+    setError('')
+    setStatus('')
+    setLoading(true)
+    try {
+      const payload = await disableTwoFactor({
+        token,
+        code: disableTwoFactorCode,
+      })
+      setTwoFactorState(payload)
+      setTwoFactorSetup(null)
+      setDisableTwoFactorCode('')
+      setStatus('Two-factor authentication disabled.')
+    } catch (disableError) {
+      setError(disableError instanceof Error ? disableError.message : '2FA disable failed.')
     } finally {
       setLoading(false)
     }
@@ -212,8 +199,7 @@ export function ImpactPage() {
     } catch {
       // Continue with client-side cleanup.
     } finally {
-      window.sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
-      window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
+      clearAuthSessionToken()
       setToken('')
       setUser(null)
       setWorks([])
@@ -222,10 +208,13 @@ export function ImpactPage() {
       setCollaborators(null)
       setThemes(null)
       setPersonaContext(null)
+      setTwoFactorState(null)
+      setTwoFactorSetup(null)
       setAnalysis(null)
       setReport(null)
       setLoading(false)
       setStatus('Signed out.')
+      navigate('/auth', { replace: true })
     }
   }
 
@@ -380,71 +369,78 @@ export function ImpactPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           {user ? (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="rounded border border-border px-2 py-1">Signed in: {user.email}</span>
-              {user.orcid_id ? <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1">ORCID: {user.orcid_id}</span> : null}
-              <Button variant="outline" size="sm" onClick={onConnectOrcid} disabled={loading}>
-                Connect ORCID
-              </Button>
-              <Button variant="outline" size="sm" onClick={onImportOrcid} disabled={loading}>
-                Import ORCID works
-              </Button>
-              <Button variant="outline" size="sm" onClick={onSyncMetrics} disabled={loading}>
-                Sync metrics
-              </Button>
-              <Button variant="outline" size="sm" onClick={onGenerateEmbeddings} disabled={loading}>
-                Generate themes
-              </Button>
-              <Button variant="outline" size="sm" onClick={onRecomputeImpact} disabled={loading}>
-                Recompute impact
-              </Button>
-              <Button variant="ghost" size="sm" onClick={onLogout} disabled={loading}>
-                Sign out
-              </Button>
+            <div className="space-y-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded border border-border px-2 py-1">Signed in: {user.email}</span>
+                {user.orcid_id ? <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1">ORCID: {user.orcid_id}</span> : null}
+                <span className="rounded border border-slate-300 bg-slate-50 px-2 py-1">
+                  2FA: {twoFactorState?.enabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" onClick={onConnectOrcid} disabled={loading}>
+                  Connect ORCID
+                </Button>
+                <Button variant="outline" size="sm" onClick={onImportOrcid} disabled={loading}>
+                  Import ORCID works
+                </Button>
+                <Button variant="outline" size="sm" onClick={onSyncMetrics} disabled={loading}>
+                  Sync metrics
+                </Button>
+                <Button variant="outline" size="sm" onClick={onGenerateEmbeddings} disabled={loading}>
+                  Generate themes
+                </Button>
+                <Button variant="outline" size="sm" onClick={onRecomputeImpact} disabled={loading}>
+                  Recompute impact
+                </Button>
+                <Button variant="ghost" size="sm" onClick={onLogout} disabled={loading}>
+                  Sign out
+                </Button>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Two-factor authentication</p>
+                {!twoFactorState?.enabled ? (
+                  <div className="mt-2 space-y-2">
+                    <Button type="button" size="sm" variant="outline" onClick={onStartTwoFactorSetup} disabled={loading}>
+                      Generate 2FA setup
+                    </Button>
+                    {twoFactorSetup ? (
+                      <div className="space-y-2 rounded border border-emerald-200 bg-white p-2">
+                        <p className="text-xs text-slate-600">Secret (manual): <span className="font-mono">{twoFactorSetup.secret}</span></p>
+                        <p className="text-xs text-slate-600 break-all">URI: {twoFactorSetup.otpauth_uri}</p>
+                        <p className="text-xs text-slate-600">Backup codes: {twoFactorSetup.backup_codes.join(', ')}</p>
+                        <Input
+                          placeholder="Enter authenticator code"
+                          value={twoFactorCode}
+                          onChange={(event) => setTwoFactorCode(event.target.value)}
+                        />
+                        <Button type="button" size="sm" onClick={onEnableTwoFactor} disabled={loading || !twoFactorCode.trim()}>
+                          Enable 2FA
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    <p className="text-xs text-slate-600">Backup codes remaining: {twoFactorState.backup_codes_remaining}</p>
+                    <Input
+                      placeholder="Enter authenticator or backup code to disable"
+                      value={disableTwoFactorCode}
+                      onChange={(event) => setDisableTwoFactorCode(event.target.value)}
+                    />
+                    <Button type="button" size="sm" variant="outline" onClick={onDisableTwoFactor} disabled={loading || !disableTwoFactorCode.trim()}>
+                      Disable 2FA
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
-            <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
-              <Input
-                placeholder="Name"
-                autoComplete="name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-              />
-              <Input
-                placeholder="Email"
-                autoComplete="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-              <Input
-                type="password"
-                placeholder="Password"
-                autoComplete="new-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
-              <Input
-                type="password"
-                placeholder="Confirm password"
-                autoComplete="new-password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-              />
-              <Button onClick={onRegister} disabled={loading || Boolean(registerValidationMessage)}>
-                Register
+            <div className="space-y-2">
+              <p className="text-sm text-slate-600">No active session. Continue via the dedicated auth page.</p>
+              <Button type="button" onClick={() => navigate('/auth')}>
+                Open sign-in
               </Button>
-              <Button variant="outline" onClick={onLogin} disabled={loading || Boolean(loginValidationMessage)}>
-                Login
-              </Button>
-              <p className="text-xs text-muted-foreground md:col-span-6">
-                Password policy: 10+ characters with uppercase, lowercase, and numeric characters.
-              </p>
-              {registerValidationMessage ? (
-                <p className="text-xs text-amber-700 md:col-span-6">{registerValidationMessage}</p>
-              ) : null}
-              {!registerValidationMessage && loginValidationMessage ? (
-                <p className="text-xs text-amber-700 md:col-span-6">{loginValidationMessage}</p>
-              ) : null}
             </div>
           )}
         </CardContent>

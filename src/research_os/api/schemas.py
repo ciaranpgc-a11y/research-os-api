@@ -775,10 +775,28 @@ class AuthLoginRequest(BaseModel):
     password: str
 
 
+class AuthLoginChallengeRequest(BaseModel):
+    email: str
+    password: str
+
+
 class AuthSessionResponse(BaseModel):
     user: AuthUserResponse
     session_token: str
     session_expires_at: datetime
+
+
+class AuthLoginChallengeResponse(BaseModel):
+    status: Literal["authenticated", "two_factor_required"]
+    session: AuthSessionResponse | None = None
+    challenge_token: str | None = None
+    challenge_expires_at: datetime | None = None
+    user_hint: dict[str, str] = Field(default_factory=dict)
+
+
+class AuthLoginVerifyTwoFactorRequest(BaseModel):
+    challenge_token: str
+    code: str
 
 
 class AuthLogoutResponse(BaseModel):
@@ -789,6 +807,48 @@ class AuthMeUpdateRequest(BaseModel):
     name: str | None = None
     email: str | None = None
     password: str | None = None
+
+
+class AuthTwoFactorStateResponse(BaseModel):
+    enabled: bool
+    backup_codes_remaining: int
+    confirmed_at: datetime | None = None
+
+
+class AuthTwoFactorSetupResponse(BaseModel):
+    secret: str
+    otpauth_uri: str
+    backup_codes: list[str] = Field(default_factory=list)
+
+
+class AuthTwoFactorEnableRequest(BaseModel):
+    secret: str
+    code: str
+    backup_codes: list[str] = Field(default_factory=list)
+
+
+class AuthTwoFactorDisableRequest(BaseModel):
+    code: str
+
+
+class AuthOAuthConnectResponse(BaseModel):
+    provider: Literal["orcid", "google", "microsoft"]
+    state: str
+    url: str
+
+
+class AuthOAuthCallbackRequest(BaseModel):
+    provider: Literal["orcid", "google", "microsoft"]
+    state: str
+    code: str
+
+
+class AuthOAuthCallbackResponse(BaseModel):
+    provider: Literal["orcid", "google", "microsoft"]
+    is_new_user: bool = False
+    user: AuthUserResponse
+    session_token: str
+    session_expires_at: datetime
 
 
 class OrcidConnectResponse(BaseModel):

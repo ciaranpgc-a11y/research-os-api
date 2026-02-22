@@ -2082,6 +2082,124 @@ def test_v1_auth_login_rate_limit(monkeypatch, tmp_path) -> None:
     api_module._AUTH_RATE_LIMIT_EVENTS.clear()
 
 
+def test_v1_auth_login_challenge_and_two_factor_flow(monkeypatch, tmp_path) -> None:
+    from research_os.services.security_service import generate_totp_code
+
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "twofactor@example.com",
+                "password": "StrongPassword123",
+                "name": "Two Factor User",
+            },
+        )
+        assert register_response.status_code == 200
+        initial_token = register_response.json()["session_token"]
+
+        setup_response = client.post(
+            "/v1/auth/2fa/setup",
+            headers=_auth_headers(initial_token),
+        )
+        assert setup_response.status_code == 200
+        setup_payload = setup_response.json()
+        code = generate_totp_code(setup_payload["secret"])
+        enable_response = client.post(
+            "/v1/auth/2fa/enable",
+            headers=_auth_headers(initial_token),
+            json={
+                "secret": setup_payload["secret"],
+                "code": code,
+                "backup_codes": setup_payload["backup_codes"],
+            },
+        )
+        assert enable_response.status_code == 200
+        assert enable_response.json()["enabled"] is True
+
+        logout_response = client.post(
+            "/v1/auth/logout",
+            headers=_auth_headers(initial_token),
+        )
+        assert logout_response.status_code == 200
+
+        challenge_response = client.post(
+            "/v1/auth/login/challenge",
+            json={
+                "email": "twofactor@example.com",
+                "password": "StrongPassword123",
+            },
+        )
+        assert challenge_response.status_code == 200
+        challenge_payload = challenge_response.json()
+        assert challenge_payload["status"] == "two_factor_required"
+        assert challenge_payload["challenge_token"]
+
+        verify_response = client.post(
+            "/v1/auth/login/verify-2fa",
+            json={
+                "challenge_token": challenge_payload["challenge_token"],
+                "code": generate_totp_code(setup_payload["secret"]),
+            },
+        )
+        assert verify_response.status_code == 200
+        session_token = verify_response.json()["session_token"]
+
+        me_response = client.get("/v1/auth/me", headers=_auth_headers(session_token))
+
+    assert me_response.status_code == 200
+    assert me_response.json()["email"] == "twofactor@example.com"
+
+
+def test_v1_auth_oauth_connect_and_callback_endpoints(monkeypatch, tmp_path) -> None:
+    from datetime import datetime, timezone
+
+    _set_test_environment(monkeypatch, tmp_path)
+
+    monkeypatch.setattr(
+        "research_os.api.app.create_oauth_connect_url",
+        lambda provider: {
+            "provider": "orcid",
+            "state": "state-123",
+            "url": "https://orcid.org/oauth/authorize?state=state-123",
+        },
+    )
+    monkeypatch.setattr(
+        "research_os.api.app.complete_oauth_callback",
+        lambda provider, state, code: {
+            "provider": "orcid",
+            "is_new_user": False,
+            "user": {
+                "id": "user-1",
+                "email": "orcid-0000@orcid.local",
+                "name": "ORCID User",
+                "is_active": True,
+                "role": "user",
+                "orcid_id": "0000-0002-1825-0097",
+                "impact_last_computed_at": None,
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            },
+            "session_token": "session-token-1",
+            "session_expires_at": datetime.now(timezone.utc),
+        },
+    )
+
+    with TestClient(app) as client:
+        connect_response = client.get("/v1/auth/oauth/connect", params={"provider": "orcid"})
+        callback_response = client.post(
+            "/v1/auth/oauth/callback",
+            json={"provider": "orcid", "state": "state-123", "code": "code-123"},
+        )
+
+    assert connect_response.status_code == 200
+    assert connect_response.json()["provider"] == "orcid"
+    assert callback_response.status_code == 200
+    assert callback_response.json()["provider"] == "orcid"
+    assert callback_response.json()["session_token"] == "session-token-1"
+
+
 def test_v1_orcid_connect_callback_and_import(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
 

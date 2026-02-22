@@ -16,6 +16,26 @@ export type AuthSessionPayload = {
   session_expires_at: string
 }
 
+export type AuthLoginChallengePayload = {
+  status: 'authenticated' | 'two_factor_required'
+  session: AuthSessionPayload | null
+  challenge_token: string | null
+  challenge_expires_at: string | null
+  user_hint: Record<string, string>
+}
+
+export type AuthTwoFactorStatePayload = {
+  enabled: boolean
+  backup_codes_remaining: number
+  confirmed_at: string | null
+}
+
+export type AuthTwoFactorSetupPayload = {
+  secret: string
+  otpauth_uri: string
+  backup_codes: string[]
+}
+
 export type PersonaWork = {
   id: string
   title: string
@@ -131,6 +151,20 @@ export type PersonaContextPayload = {
 export type OrcidConnectPayload = {
   url: string
   state: string
+}
+
+export type AuthOAuthConnectPayload = {
+  provider: 'orcid' | 'google' | 'microsoft'
+  state: string
+  url: string
+}
+
+export type AuthOAuthCallbackPayload = {
+  provider: 'orcid' | 'google' | 'microsoft'
+  is_new_user: boolean
+  user: AuthUser
+  session_token: string
+  session_expires_at: string
 }
 
 export type OrcidImportPayload = {

@@ -1,7 +1,12 @@
 import { API_BASE_URL } from '@/lib/api'
 import type { ApiErrorPayload } from '@/types/insight'
 import type {
+  AuthLoginChallengePayload,
+  AuthOAuthCallbackPayload,
+  AuthOAuthConnectPayload,
   AuthSessionPayload,
+  AuthTwoFactorSetupPayload,
+  AuthTwoFactorStatePayload,
   AuthUser,
   ImpactAnalysePayload,
   ImpactCollaboratorsPayload,
@@ -86,6 +91,39 @@ export async function loginAuth(input: {
   )
 }
 
+export async function loginAuthChallenge(input: {
+  email: string
+  password: string
+}): Promise<AuthLoginChallengePayload> {
+  return requestJson<AuthLoginChallengePayload>(
+    `${API_BASE_URL}/v1/auth/login/challenge`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+    'Login challenge failed',
+  )
+}
+
+export async function verifyLoginTwoFactor(input: {
+  challengeToken: string
+  code: string
+}): Promise<AuthSessionPayload> {
+  return requestJson<AuthSessionPayload>(
+    `${API_BASE_URL}/v1/auth/login/verify-2fa`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        challenge_token: input.challengeToken,
+        code: input.code,
+      }),
+    },
+    '2FA verification failed',
+  )
+}
+
 export async function logoutAuth(token: string): Promise<{ success: boolean }> {
   return requestJson<{ success: boolean }>(
     `${API_BASE_URL}/v1/auth/logout`,
@@ -120,6 +158,96 @@ export async function updateMe(
       body: JSON.stringify(input),
     },
     'User update failed',
+  )
+}
+
+export async function fetchTwoFactorState(token: string): Promise<AuthTwoFactorStatePayload> {
+  return requestJson<AuthTwoFactorStatePayload>(
+    `${API_BASE_URL}/v1/auth/2fa`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    '2FA state lookup failed',
+  )
+}
+
+export async function setupTwoFactor(token: string): Promise<AuthTwoFactorSetupPayload> {
+  return requestJson<AuthTwoFactorSetupPayload>(
+    `${API_BASE_URL}/v1/auth/2fa/setup`,
+    {
+      method: 'POST',
+      headers: authHeaders(token),
+    },
+    '2FA setup failed',
+  )
+}
+
+export async function enableTwoFactor(input: {
+  token: string
+  secret: string
+  code: string
+  backupCodes: string[]
+}): Promise<AuthTwoFactorStatePayload> {
+  return requestJson<AuthTwoFactorStatePayload>(
+    `${API_BASE_URL}/v1/auth/2fa/enable`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(input.token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        secret: input.secret,
+        code: input.code,
+        backup_codes: input.backupCodes,
+      }),
+    },
+    '2FA enable failed',
+  )
+}
+
+export async function disableTwoFactor(input: {
+  token: string
+  code: string
+}): Promise<AuthTwoFactorStatePayload> {
+  return requestJson<AuthTwoFactorStatePayload>(
+    `${API_BASE_URL}/v1/auth/2fa/disable`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(input.token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: input.code,
+      }),
+    },
+    '2FA disable failed',
+  )
+}
+
+export async function fetchOAuthConnect(provider: 'orcid' | 'google' | 'microsoft'): Promise<AuthOAuthConnectPayload> {
+  return requestJson<AuthOAuthConnectPayload>(
+    `${API_BASE_URL}/v1/auth/oauth/connect?provider=${encodeURIComponent(provider)}`,
+    {
+      method: 'GET',
+    },
+    'OAuth connect failed',
+  )
+}
+
+export async function completeOAuthCallback(input: {
+  provider: 'orcid' | 'google' | 'microsoft'
+  state: string
+  code: string
+}): Promise<AuthOAuthCallbackPayload> {
+  return requestJson<AuthOAuthCallbackPayload>(
+    `${API_BASE_URL}/v1/auth/oauth/callback`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider: input.provider,
+        state: input.state,
+        code: input.code,
+      }),
+    },
+    'OAuth callback failed',
   )
 }
 

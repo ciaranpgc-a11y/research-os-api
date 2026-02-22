@@ -3,6 +3,8 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/app-shell'
 import { AgentLogsPage } from '@/pages/agent-logs-page'
+import { AuthCallbackPage } from '@/pages/auth-callback-page'
+import { AuthPage } from '@/pages/auth-page'
 import { AuditLogPage } from '@/pages/audit-log-page'
 import { ClaimMapPage } from '@/pages/claim-map-page'
 import { InferenceRulesPage } from '@/pages/inference-rules-page'
@@ -42,6 +44,8 @@ function App() {
 
   return (
     <Routes>
+      <Route path="/auth" element={<AuthPage />} />
+      <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route element={<AppShell />}>
         <Route index element={<Navigate to="/overview" replace />} />
         <Route path="/overview" element={<OverviewPage />} />

@@ -91,6 +91,10 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     role: Mapped[str] = mapped_column(String(16), default="user")
     orcid_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    google_sub: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    microsoft_sub: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
     orcid_access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     orcid_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     orcid_token_expires_at: Mapped[datetime | None] = mapped_column(
@@ -100,6 +104,12 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
     orcid_last_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    two_factor_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    two_factor_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
+    two_factor_backup_codes: Mapped[list[str]] = mapped_column(JSON, default=list)
+    two_factor_confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -122,6 +132,12 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     orcid_states: Mapped[list["OrcidOAuthState"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    oauth_login_states: Mapped[list["AuthOAuthState"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    login_challenges: Mapped[list["AuthLoginChallenge"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -147,6 +163,27 @@ class AuthSession(Base):
     user: Mapped[User] = relationship(back_populates="sessions")
 
 
+class AuthLoginChallenge(Base):
+    __tablename__ = "auth_login_challenges"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    challenge_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    user: Mapped[User] = relationship(back_populates="login_challenges")
+
+
 class OrcidOAuthState(Base):
     __tablename__ = "orcid_oauth_states"
 
@@ -166,6 +203,28 @@ class OrcidOAuthState(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="orcid_states")
+
+
+class AuthOAuthState(Base):
+    __tablename__ = "auth_oauth_states"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    provider: Mapped[str] = mapped_column(String(32), index=True)
+    state_token: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    user: Mapped[User | None] = relationship(back_populates="oauth_login_states")
 
 
 class Manuscript(Base):

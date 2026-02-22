@@ -20,10 +20,20 @@ from research_os.api.schemas import (
     AnalysisScaffoldRequest,
     AnalysisScaffoldResponse,
     AuthLoginRequest,
+    AuthLoginChallengeRequest,
+    AuthLoginChallengeResponse,
+    AuthLoginVerifyTwoFactorRequest,
     AuthLogoutResponse,
     AuthMeUpdateRequest,
+    AuthOAuthCallbackRequest,
+    AuthOAuthCallbackResponse,
+    AuthOAuthConnectResponse,
     AuthRegisterRequest,
     AuthSessionResponse,
+    AuthTwoFactorDisableRequest,
+    AuthTwoFactorEnableRequest,
+    AuthTwoFactorSetupResponse,
+    AuthTwoFactorStateResponse,
     AuthUserResponse,
     ClaimLinkerRequest,
     ClaimLinkerResponse,
@@ -190,9 +200,15 @@ from research_os.services.auth_service import (
     AuthNotFoundError,
     AuthValidationError,
     get_user_by_session_token,
+    get_two_factor_state,
     login_user,
     logout_session,
     register_user,
+    start_login_challenge,
+    complete_login_challenge,
+    create_two_factor_setup,
+    disable_two_factor,
+    enable_two_factor,
     update_current_user,
 )
 from research_os.services.orcid_service import (
@@ -201,6 +217,10 @@ from research_os.services.orcid_service import (
     complete_orcid_callback,
     create_orcid_connect_url,
     import_orcid_works,
+)
+from research_os.services.social_auth_service import (
+    complete_oauth_callback,
+    create_oauth_connect_url,
 )
 from research_os.services.persona_service import (
     PersonaNotFoundError,
@@ -280,6 +300,14 @@ AUTH_RATE_LIMIT_WINDOW_SECONDS = max(
 )
 AUTH_LOGIN_RATE_LIMIT = max(5, int(os.getenv("AUTH_LOGIN_RATE_LIMIT", "15")))
 AUTH_REGISTER_RATE_LIMIT = max(3, int(os.getenv("AUTH_REGISTER_RATE_LIMIT", "8")))
+AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "0").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}
+AUTH_COOKIE_SAMESITE = os.getenv("AUTH_COOKIE_SAMESITE", "lax").strip().lower()
+if AUTH_COOKIE_SAMESITE not in {"lax", "strict", "none"}:
+    AUTH_COOKIE_SAMESITE = "lax"
 _AUTH_RATE_LIMIT_EVENTS: dict[str, deque[float]] = defaultdict(deque)
 _AUTH_RATE_LIMIT_LOCK = Lock()
 
@@ -512,8 +540,26 @@ def _session_response(payload: dict[str, object]) -> JSONResponse:
             key="aawe_session",
             value=session_token,
             httponly=True,
-            secure=False,
-            samesite="lax",
+            secure=AUTH_COOKIE_SECURE,
+            samesite=AUTH_COOKIE_SAMESITE,
+            max_age=60 * 60 * 24 * 30,
+            path="/",
+        )
+    return response
+
+
+def _oauth_session_response(payload: dict[str, object]) -> JSONResponse:
+    response = JSONResponse(
+        content=AuthOAuthCallbackResponse(**payload).model_dump(mode="json")
+    )
+    session_token = str(payload.get("session_token", "")).strip()
+    if session_token:
+        response.set_cookie(
+            key="aawe_session",
+            value=session_token,
+            httponly=True,
+            secure=AUTH_COOKIE_SECURE,
+            samesite=AUTH_COOKIE_SAMESITE,
             max_age=60 * 60 * 24 * 30,
             path="/",
         )
@@ -607,6 +653,180 @@ def v1_auth_login(
         return _session_response(payload)
     except AuthValidationError as exc:
         return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/auth/login/challenge",
+    response_model=AuthLoginChallengeResponse,
+    responses=BAD_REQUEST_RESPONSES | RATE_LIMIT_RESPONSES,
+    tags=["v1"],
+)
+def v1_auth_login_challenge(
+    http_request: Request,
+    request: AuthLoginChallengeRequest,
+) -> AuthLoginChallengeResponse | JSONResponse:
+    login_key = f"auth-login:{_client_ip(http_request)}"
+    allowed, retry_after = _check_auth_rate_limit(
+        key=login_key,
+        limit=AUTH_LOGIN_RATE_LIMIT,
+        window_seconds=AUTH_RATE_LIMIT_WINDOW_SECONDS,
+    )
+    if not allowed:
+        return _build_rate_limited_response(
+            "Too many login attempts. Please retry shortly.",
+            retry_after,
+        )
+    try:
+        payload = start_login_challenge(email=request.email, password=request.password)
+        return AuthLoginChallengeResponse(**payload)
+    except AuthValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/auth/login/verify-2fa",
+    response_model=AuthSessionResponse,
+    responses=BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_auth_login_verify_two_factor(
+    request: AuthLoginVerifyTwoFactorRequest,
+) -> AuthSessionResponse | JSONResponse:
+    try:
+        payload = complete_login_challenge(
+            challenge_token=request.challenge_token,
+            code=request.code,
+        )
+        return _session_response(payload)
+    except (AuthValidationError, AuthNotFoundError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/auth/2fa",
+    response_model=AuthTwoFactorStateResponse,
+    responses=UNAUTHORIZED_RESPONSES | BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_auth_two_factor_state(
+    request: Request,
+) -> AuthTwoFactorStateResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        payload = get_two_factor_state(session_token=token)
+        return AuthTwoFactorStateResponse(**payload)
+    except AuthValidationError as exc:
+        return _build_bad_request_response(str(exc))
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+
+
+@app.post(
+    "/v1/auth/2fa/setup",
+    response_model=AuthTwoFactorSetupResponse,
+    responses=UNAUTHORIZED_RESPONSES | BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_auth_two_factor_setup(
+    request: Request,
+) -> AuthTwoFactorSetupResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        payload = create_two_factor_setup(session_token=token)
+        return AuthTwoFactorSetupResponse(**payload)
+    except AuthValidationError as exc:
+        return _build_bad_request_response(str(exc))
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+
+
+@app.post(
+    "/v1/auth/2fa/enable",
+    response_model=AuthTwoFactorStateResponse,
+    responses=UNAUTHORIZED_RESPONSES | BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_auth_two_factor_enable(
+    http_request: Request,
+    request: AuthTwoFactorEnableRequest,
+) -> AuthTwoFactorStateResponse | JSONResponse:
+    token = _extract_session_token(http_request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        payload = enable_two_factor(
+            session_token=token,
+            secret=request.secret,
+            code=request.code,
+            backup_codes=request.backup_codes,
+        )
+        return AuthTwoFactorStateResponse(**payload)
+    except AuthValidationError as exc:
+        return _build_bad_request_response(str(exc))
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+
+
+@app.post(
+    "/v1/auth/2fa/disable",
+    response_model=AuthTwoFactorStateResponse,
+    responses=UNAUTHORIZED_RESPONSES | BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_auth_two_factor_disable(
+    http_request: Request,
+    request: AuthTwoFactorDisableRequest,
+) -> AuthTwoFactorStateResponse | JSONResponse:
+    token = _extract_session_token(http_request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        payload = disable_two_factor(session_token=token, code=request.code)
+        return AuthTwoFactorStateResponse(**payload)
+    except AuthValidationError as exc:
+        return _build_bad_request_response(str(exc))
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+
+
+@app.get(
+    "/v1/auth/oauth/connect",
+    response_model=AuthOAuthConnectResponse,
+    responses=BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_auth_oauth_connect(provider: str = Query(default="orcid")) -> AuthOAuthConnectResponse | JSONResponse:
+    try:
+        payload = create_oauth_connect_url(provider=provider)
+        return AuthOAuthConnectResponse(**payload)
+    except AuthValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/auth/oauth/callback",
+    response_model=AuthOAuthCallbackResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_auth_oauth_callback(
+    request: AuthOAuthCallbackRequest,
+) -> AuthOAuthCallbackResponse | JSONResponse:
+    try:
+        payload = complete_oauth_callback(
+            provider=request.provider,
+            state=request.state,
+            code=request.code,
+        )
+        return _oauth_session_response(payload)
+    except AuthValidationError as exc:
+        return _build_bad_request_response(str(exc))
+    except AuthNotFoundError as exc:
+        return _build_not_found_response(str(exc))
 
 
 @app.post(

@@ -28,6 +28,23 @@ def _column_exists(table_name: str, column_name: str) -> bool:
     return column_name in column_names
 
 
+def _index_exists(table_name: str, index_name: str) -> bool:
+    inspector = sa.inspect(op.get_bind())
+    return index_name in {index["name"] for index in inspector.get_indexes(table_name)}
+
+
+def _create_index_if_missing(
+    index_name: str,
+    table_name: str,
+    columns: list[str],
+    *,
+    unique: bool = False,
+) -> None:
+    if _index_exists(table_name, index_name):
+        return
+    op.create_index(index_name, table_name, columns, unique=unique)
+
+
 def _create_projects_table() -> None:
     op.create_table(
         "projects",
@@ -116,11 +133,17 @@ def _create_users_table() -> None:
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("1")),
         sa.Column("role", sa.String(length=16), nullable=False, server_default=sa.text("'user'")),
         sa.Column("orcid_id", sa.String(length=64), nullable=True),
+        sa.Column("google_sub", sa.String(length=128), nullable=True),
+        sa.Column("microsoft_sub", sa.String(length=128), nullable=True),
         sa.Column("orcid_access_token", sa.Text(), nullable=True),
         sa.Column("orcid_refresh_token", sa.Text(), nullable=True),
         sa.Column("orcid_token_expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("impact_last_computed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("orcid_last_synced_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("two_factor_enabled", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("two_factor_secret", sa.Text(), nullable=True),
+        sa.Column("two_factor_backup_codes", sa.JSON(), nullable=False, server_default=sa.text("'[]'")),
+        sa.Column("two_factor_confirmed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
@@ -128,6 +151,8 @@ def _create_users_table() -> None:
     )
     op.create_index("ix_users_email", "users", ["email"], unique=False)
     op.create_index("ix_users_orcid_id", "users", ["orcid_id"], unique=False)
+    op.create_index("ix_users_google_sub", "users", ["google_sub"], unique=False)
+    op.create_index("ix_users_microsoft_sub", "users", ["microsoft_sub"], unique=False)
 
 
 def _create_auth_sessions_table() -> None:
@@ -162,6 +187,67 @@ def _create_orcid_oauth_states_table() -> None:
     )
     op.create_index("ix_orcid_oauth_states_user_id", "orcid_oauth_states", ["user_id"], unique=False)
     op.create_index("ix_orcid_oauth_states_state_token", "orcid_oauth_states", ["state_token"], unique=False)
+
+
+def _create_auth_login_challenges_table() -> None:
+    op.create_table(
+        "auth_login_challenges",
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("user_id", sa.String(length=36), nullable=False),
+        sa.Column("challenge_hash", sa.String(length=128), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("challenge_hash"),
+    )
+    op.create_index(
+        "ix_auth_login_challenges_user_id",
+        "auth_login_challenges",
+        ["user_id"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_auth_login_challenges_challenge_hash",
+        "auth_login_challenges",
+        ["challenge_hash"],
+        unique=False,
+    )
+
+
+def _create_auth_oauth_states_table() -> None:
+    op.create_table(
+        "auth_oauth_states",
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("user_id", sa.String(length=36), nullable=True),
+        sa.Column("provider", sa.String(length=32), nullable=False),
+        sa.Column("state_token", sa.String(length=128), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("state_token"),
+    )
+    op.create_index(
+        "ix_auth_oauth_states_user_id",
+        "auth_oauth_states",
+        ["user_id"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_auth_oauth_states_provider",
+        "auth_oauth_states",
+        ["provider"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_auth_oauth_states_state_token",
+        "auth_oauth_states",
+        ["state_token"],
+        unique=False,
+    )
 
 
 def _create_works_table() -> None:
@@ -398,12 +484,54 @@ def upgrade() -> None:
 
     if not _table_exists("users"):
         _create_users_table()
+    else:
+        if not _column_exists("users", "google_sub"):
+            op.add_column("users", sa.Column("google_sub", sa.String(length=128), nullable=True))
+        if not _column_exists("users", "microsoft_sub"):
+            op.add_column(
+                "users", sa.Column("microsoft_sub", sa.String(length=128), nullable=True)
+            )
+        if not _column_exists("users", "two_factor_enabled"):
+            op.add_column(
+                "users",
+                sa.Column(
+                    "two_factor_enabled",
+                    sa.Boolean(),
+                    nullable=False,
+                    server_default=sa.text("0"),
+                ),
+            )
+        if not _column_exists("users", "two_factor_secret"):
+            op.add_column("users", sa.Column("two_factor_secret", sa.Text(), nullable=True))
+        if not _column_exists("users", "two_factor_backup_codes"):
+            op.add_column(
+                "users",
+                sa.Column(
+                    "two_factor_backup_codes",
+                    sa.JSON(),
+                    nullable=False,
+                    server_default=sa.text("'[]'"),
+                ),
+            )
+        if not _column_exists("users", "two_factor_confirmed_at"):
+            op.add_column(
+                "users",
+                sa.Column("two_factor_confirmed_at", sa.DateTime(timezone=True), nullable=True),
+            )
+        _create_index_if_missing("ix_users_google_sub", "users", ["google_sub"])
+        _create_index_if_missing("ix_users_microsoft_sub", "users", ["microsoft_sub"])
 
     if not _table_exists("auth_sessions"):
         _create_auth_sessions_table()
 
     if not _table_exists("orcid_oauth_states"):
         _create_orcid_oauth_states_table()
+
+    if not _table_exists("auth_login_challenges"):
+        _create_auth_login_challenges_table()
+
+    if not _table_exists("auth_oauth_states"):
+        _create_auth_oauth_states_table()
 
     if not _table_exists("works"):
         _create_works_table()

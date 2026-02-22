@@ -5,9 +5,12 @@ import hashlib
 import hmac
 import os
 import secrets
+import time
 
 PBKDF2_ALGORITHM = "pbkdf2_sha256"
 PBKDF2_ITERATIONS = max(200_000, int(os.getenv("AUTH_PBKDF2_ITERATIONS", "390000")))
+TOTP_PERIOD_SECONDS = 30
+TOTP_DIGITS = 6
 
 
 class SecurityValidationError(RuntimeError):
@@ -70,6 +73,94 @@ def generate_session_token() -> str:
 def hash_session_token(token: str) -> str:
     pepper = os.getenv("AUTH_TOKEN_PEPPER", "")
     payload = f"{pepper}:{token}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def generate_totp_secret() -> str:
+    raw = secrets.token_bytes(20)
+    return base64.b32encode(raw).decode("utf-8").rstrip("=")
+
+
+def _decode_totp_secret(secret: str) -> bytes:
+    clean = (secret or "").strip().replace(" ", "").upper()
+    if not clean:
+        raise SecurityValidationError("TOTP secret is required.")
+    padding = "=" * ((8 - len(clean) % 8) % 8)
+    try:
+        return base64.b32decode(clean + padding, casefold=True)
+    except Exception as exc:
+        raise SecurityValidationError("TOTP secret is invalid.") from exc
+
+
+def _totp_value(secret: str, counter: int, digits: int = TOTP_DIGITS) -> str:
+    key = _decode_totp_secret(secret)
+    counter_bytes = counter.to_bytes(8, byteorder="big", signed=False)
+    digest = hmac.new(key, counter_bytes, hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    binary = (
+        ((digest[offset] & 0x7F) << 24)
+        | ((digest[offset + 1] & 0xFF) << 16)
+        | ((digest[offset + 2] & 0xFF) << 8)
+        | (digest[offset + 3] & 0xFF)
+    )
+    value = binary % (10**digits)
+    return str(value).zfill(digits)
+
+
+def normalize_totp_code(code: str) -> str:
+    value = "".join(char for char in (code or "").strip() if char.isdigit())
+    return value
+
+
+def verify_totp_code(
+    secret: str,
+    code: str,
+    *,
+    at_time: int | None = None,
+    window: int = 1,
+) -> bool:
+    candidate = normalize_totp_code(code)
+    if len(candidate) != TOTP_DIGITS:
+        return False
+    timestamp = int(at_time if at_time is not None else time.time())
+    counter = timestamp // TOTP_PERIOD_SECONDS
+    for delta in range(-max(0, window), max(0, window) + 1):
+        expected = _totp_value(secret, counter + delta)
+        if hmac.compare_digest(candidate, expected):
+            return True
+    return False
+
+
+def generate_totp_code(secret: str, *, at_time: int | None = None) -> str:
+    timestamp = int(at_time if at_time is not None else time.time())
+    counter = timestamp // TOTP_PERIOD_SECONDS
+    return _totp_value(secret, counter)
+
+
+def build_totp_otpauth_uri(*, secret: str, label: str, issuer: str = "AAWE") -> str:
+    safe_issuer = (issuer or "AAWE").strip() or "AAWE"
+    safe_label = (label or "user").strip() or "user"
+    return (
+        f"otpauth://totp/{safe_issuer}:{safe_label}"
+        f"?secret={secret}&issuer={safe_issuer}&algorithm=SHA1&digits={TOTP_DIGITS}&period={TOTP_PERIOD_SECONDS}"
+    )
+
+
+def generate_backup_codes(*, count: int = 8) -> list[str]:
+    size = max(4, int(count))
+    codes: list[str] = []
+    for _ in range(size):
+        raw = secrets.token_hex(4).upper()
+        codes.append(f"{raw[:4]}-{raw[4:]}")
+    return codes
+
+
+def hash_backup_code(code: str) -> str:
+    clean = "".join(char for char in (code or "").strip().upper() if char.isalnum())
+    if not clean:
+        raise SecurityValidationError("Backup code is required.")
+    pepper = os.getenv("AUTH_BACKUP_CODE_PEPPER", os.getenv("AUTH_TOKEN_PEPPER", ""))
+    payload = f"{pepper}:{clean}".encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 
