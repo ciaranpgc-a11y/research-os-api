@@ -76,6 +76,16 @@ def test_v1_health_returns_ok(monkeypatch) -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_v1_health_ready_returns_ok(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    with TestClient(app) as client:
+        response = client.get("/v1/health/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "database": "ok"}
+
+
 def test_draft_methods_returns_generated_draft(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 

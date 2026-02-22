@@ -3,8 +3,8 @@ services:
     name: research-os-api-achk
     runtime: docker
     branch: main
-    autoDeployTrigger: commit
-    healthCheckPath: /v1/health
+    autoDeployTrigger: checksPass
+    healthCheckPath: /v1/health/ready
     envVars:
       - key: OPENAI_API_KEY
         sync: false
@@ -26,7 +26,7 @@ services:
     type: web
     runtime: static
     branch: main
-    autoDeployTrigger: commit
+    autoDeployTrigger: checksPass
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist

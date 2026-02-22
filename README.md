@@ -80,6 +80,11 @@ Health:
 curl http://127.0.0.1:8000/v1/health
 ```
 
+Readiness:
+```bash
+curl http://127.0.0.1:8000/v1/health/ready
+```
+
 PowerShell-safe section draft request:
 ```powershell
 curl.exe --% -X POST http://127.0.0.1:8000/v1/draft/section -H "Content-Type: application/json" -d "{\"section\":\"results\",\"notes\":\"test notes\"}"
@@ -107,6 +112,8 @@ curl.exe --% -X POST http://127.0.0.1:8000/v1/projects/PROJECT_ID/manuscripts/MA
 - `research-os-ui-achk` (static site from `frontend/`)
 
 The API Docker startup runs `alembic upgrade head` before launching Uvicorn.
+The API health check path is `/v1/health/ready` so database connectivity is verified.
+Auto-deploy is configured to `checksPass` so only commits that pass CI are deployed.
 
 Required API environment variables:
 - `OPENAI_API_KEY` (must be set; API fails startup if missing)

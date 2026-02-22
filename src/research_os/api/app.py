@@ -15,8 +15,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.responses import PlainTextResponse
 from fastapi.responses import RedirectResponse
+from sqlalchemy import text
 
 from research_os.config import get_openai_api_key
+from research_os.db import session_scope
 from research_os.api.schemas import (
     AnalysisScaffoldRequest,
     AnalysisScaffoldResponse,
@@ -628,6 +630,23 @@ def _generate_methods_response(
 @app.get("/v1/health", response_model=HealthResponse, tags=["v1"])
 def v1_health_check() -> HealthResponse:
     return HealthResponse(status="ok")
+
+
+@app.get("/v1/health/ready", response_model=dict[str, str], tags=["v1"])
+def v1_readiness_check() -> dict[str, str] | JSONResponse:
+    try:
+        with session_scope() as session:
+            session.execute(text("SELECT 1"))
+        return {"status": "ok", "database": "ok"}
+    except Exception:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "degraded",
+                "database": "unavailable",
+                "detail": "Database readiness check failed.",
+            },
+        )
 
 
 @app.post(
@@ -2545,6 +2564,11 @@ def v1_draft_methods(
 @app.get("/health", response_model=HealthResponse)
 def health_check() -> HealthResponse:
     return v1_health_check()
+
+
+@app.get("/health/ready", response_model=dict[str, str])
+def health_ready_check() -> dict[str, str] | JSONResponse:
+    return v1_readiness_check()
 
 
 @app.post("/draft/methods", responses=ERROR_RESPONSES)
