@@ -25,8 +25,18 @@ def _safe_b64decode(value: str) -> bytes:
 
 def hash_password(password: str) -> str:
     clean = (password or "").strip()
-    if len(clean) < 8:
-        raise SecurityValidationError("Password must be at least 8 characters.")
+    if len(clean) < 10:
+        raise SecurityValidationError("Password must be at least 10 characters.")
+    if clean.lower() == clean:
+        raise SecurityValidationError(
+            "Password must include at least one uppercase letter."
+        )
+    if clean.upper() == clean:
+        raise SecurityValidationError(
+            "Password must include at least one lowercase letter."
+        )
+    if not any(char.isdigit() for char in clean):
+        raise SecurityValidationError("Password must include at least one number.")
     salt = secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac(
         "sha256", clean.encode("utf-8"), salt, PBKDF2_ITERATIONS
@@ -108,4 +118,3 @@ def decrypt_secret(value: str | None) -> str | None:
     stream = _keystream(key, nonce, len(ciphertext))
     plaintext = bytes(a ^ b for a, b in zip(ciphertext, stream, strict=False))
     return plaintext.decode("utf-8")
-

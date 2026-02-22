@@ -2,7 +2,9 @@ import base64
 import logging
 import os
 import time
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
+from threading import Lock
 from typing import Literal
 from uuid import uuid4
 
@@ -269,6 +271,18 @@ UNAUTHORIZED_RESPONSES = {
     401: {"model": ErrorResponse},
 }
 
+RATE_LIMIT_RESPONSES = {
+    429: {"model": ErrorResponse},
+}
+
+AUTH_RATE_LIMIT_WINDOW_SECONDS = max(
+    10, int(os.getenv("AUTH_RATE_LIMIT_WINDOW_SECONDS", "60"))
+)
+AUTH_LOGIN_RATE_LIMIT = max(5, int(os.getenv("AUTH_LOGIN_RATE_LIMIT", "15")))
+AUTH_REGISTER_RATE_LIMIT = max(3, int(os.getenv("AUTH_REGISTER_RATE_LIMIT", "8")))
+_AUTH_RATE_LIMIT_EVENTS: dict[str, deque[float]] = defaultdict(deque)
+_AUTH_RATE_LIMIT_LOCK = Lock()
+
 @asynccontextmanager
 async def app_lifespan(_: FastAPI):
     # In local development, allow API startup even if OPENAI_API_KEY is not set so
@@ -440,6 +454,48 @@ def _build_unauthorized_response(detail: str) -> JSONResponse:
     )
 
 
+def _build_rate_limited_response(detail: str, retry_after: int) -> JSONResponse:
+    response = JSONResponse(
+        status_code=429,
+        content={
+            "error": {
+                "message": "Too many requests",
+                "type": "rate_limited",
+                "detail": detail,
+            }
+        },
+    )
+    response.headers["Retry-After"] = str(max(1, retry_after))
+    return response
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = str(request.headers.get("x-forwarded-for", "")).strip()
+    if forwarded:
+        return forwarded.split(",", maxsplit=1)[0].strip()
+    if request.client and request.client.host:
+        return str(request.client.host).strip()
+    return "unknown"
+
+
+def _check_auth_rate_limit(
+    *,
+    key: str,
+    limit: int,
+    window_seconds: int,
+) -> tuple[bool, int]:
+    now = time.time()
+    with _AUTH_RATE_LIMIT_LOCK:
+        events = _AUTH_RATE_LIMIT_EVENTS[key]
+        while events and (now - events[0]) >= window_seconds:
+            events.popleft()
+        if len(events) >= limit:
+            retry_after = int(window_seconds - (now - events[0])) + 1
+            return False, max(1, retry_after)
+        events.append(now)
+        return True, 0
+
+
 def _extract_session_token(request: Request) -> str:
     auth_header = str(request.headers.get("Authorization", "")).strip()
     if auth_header.lower().startswith("bearer "):
@@ -495,10 +551,23 @@ def v1_health_check() -> HealthResponse:
 @app.post(
     "/v1/auth/register",
     response_model=AuthSessionResponse,
-    responses=BAD_REQUEST_RESPONSES | CONFLICT_RESPONSES,
+    responses=BAD_REQUEST_RESPONSES | CONFLICT_RESPONSES | RATE_LIMIT_RESPONSES,
     tags=["v1"],
 )
-def v1_auth_register(request: AuthRegisterRequest) -> AuthSessionResponse | JSONResponse:
+def v1_auth_register(
+    http_request: Request,
+    request: AuthRegisterRequest,
+) -> AuthSessionResponse | JSONResponse:
+    allowed, retry_after = _check_auth_rate_limit(
+        key=f"auth-register:{_client_ip(http_request)}",
+        limit=AUTH_REGISTER_RATE_LIMIT,
+        window_seconds=AUTH_RATE_LIMIT_WINDOW_SECONDS,
+    )
+    if not allowed:
+        return _build_rate_limited_response(
+            "Too many registration attempts. Please retry shortly.",
+            retry_after,
+        )
     try:
         payload = register_user(
             email=request.email,
@@ -515,10 +584,24 @@ def v1_auth_register(request: AuthRegisterRequest) -> AuthSessionResponse | JSON
 @app.post(
     "/v1/auth/login",
     response_model=AuthSessionResponse,
-    responses=BAD_REQUEST_RESPONSES,
+    responses=BAD_REQUEST_RESPONSES | RATE_LIMIT_RESPONSES,
     tags=["v1"],
 )
-def v1_auth_login(request: AuthLoginRequest) -> AuthSessionResponse | JSONResponse:
+def v1_auth_login(
+    http_request: Request,
+    request: AuthLoginRequest,
+) -> AuthSessionResponse | JSONResponse:
+    login_key = f"auth-login:{_client_ip(http_request)}"
+    allowed, retry_after = _check_auth_rate_limit(
+        key=login_key,
+        limit=AUTH_LOGIN_RATE_LIMIT,
+        window_seconds=AUTH_RATE_LIMIT_WINDOW_SECONDS,
+    )
+    if not allowed:
+        return _build_rate_limited_response(
+            "Too many login attempts. Please retry shortly.",
+            retry_after,
+        )
     try:
         payload = login_user(email=request.email, password=request.password)
         return _session_response(payload)

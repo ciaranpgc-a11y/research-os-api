@@ -36,13 +36,35 @@ import type {
 
 const AUTH_TOKEN_STORAGE_KEY = 'aawe-impact-session-token'
 
+function isLikelyEmail(value: string): boolean {
+  const email = value.trim()
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+function isStrongPassword(value: string): boolean {
+  const password = value.trim()
+  return password.length >= 10 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password)
+}
+
 function histogramBar(total: number, value: number): string {
   const width = total <= 0 ? 0 : Math.max(8, Math.round((value / total) * 100))
   return `${Math.min(100, width)}%`
 }
 
 export function ImpactPage() {
-  const [token, setToken] = useState<string>(() => window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '')
+  const [token, setToken] = useState<string>(() => {
+    const sessionValue = window.sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
+    if (sessionValue) {
+      return sessionValue
+    }
+    const legacyLocal = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
+    if (!legacyLocal) {
+      return ''
+    }
+    window.sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, legacyLocal)
+    window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
+    return legacyLocal
+  })
   const [user, setUser] = useState<AuthUser | null>(null)
   const [works, setWorks] = useState<PersonaWork[]>([])
   const [statePayload, setStatePayload] = useState<PersonaStatePayload | null>(null)
@@ -54,10 +76,40 @@ export function ImpactPage() {
   const [report, setReport] = useState<ImpactReportPayload | null>(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+
+  const registerValidationMessage = useMemo(() => {
+    if (!name.trim()) {
+      return 'Name is required.'
+    }
+    if (name.trim().length < 2) {
+      return 'Name must be at least 2 characters.'
+    }
+    if (!isLikelyEmail(email)) {
+      return 'Enter a valid email address.'
+    }
+    if (!isStrongPassword(password)) {
+      return 'Password must be 10+ characters and include uppercase, lowercase, and a number.'
+    }
+    if (password !== confirmPassword) {
+      return 'Password confirmation does not match.'
+    }
+    return ''
+  }, [confirmPassword, email, name, password])
+
+  const loginValidationMessage = useMemo(() => {
+    if (!isLikelyEmail(email)) {
+      return 'Enter a valid email address.'
+    }
+    if (!password.trim()) {
+      return 'Password is required.'
+    }
+    return ''
+  }, [email, password])
 
   const totalHistogramCount = useMemo(() => {
     if (!statePayload) {
@@ -112,9 +164,12 @@ export function ImpactPage() {
     setLoading(true)
     try {
       const payload = await registerAuth({ email, password, name })
-      window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, payload.session_token)
+      window.sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, payload.session_token)
+      window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
       setToken(payload.session_token)
       setUser(payload.user)
+      setPassword('')
+      setConfirmPassword('')
       setStatus('Account created and signed in.')
       await loadProfileData(payload.session_token)
     } catch (registerError) {
@@ -130,9 +185,12 @@ export function ImpactPage() {
     setLoading(true)
     try {
       const payload = await loginAuth({ email, password })
-      window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, payload.session_token)
+      window.sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, payload.session_token)
+      window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
       setToken(payload.session_token)
       setUser(payload.user)
+      setPassword('')
+      setConfirmPassword('')
       setStatus('Signed in.')
       await loadProfileData(payload.session_token)
     } catch (loginError) {
@@ -154,6 +212,7 @@ export function ImpactPage() {
     } catch {
       // Continue with client-side cleanup.
     } finally {
+      window.sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
       window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
       setToken('')
       setUser(null)
@@ -344,21 +403,48 @@ export function ImpactPage() {
               </Button>
             </div>
           ) : (
-            <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
-              <Input placeholder="Name" value={name} onChange={(event) => setName(event.target.value)} />
-              <Input placeholder="Email" value={email} onChange={(event) => setEmail(event.target.value)} />
+            <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
+              <Input
+                placeholder="Name"
+                autoComplete="name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+              <Input
+                placeholder="Email"
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
               <Input
                 type="password"
                 placeholder="Password"
+                autoComplete="new-password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
               />
-              <Button onClick={onRegister} disabled={loading}>
+              <Input
+                type="password"
+                placeholder="Confirm password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+              />
+              <Button onClick={onRegister} disabled={loading || Boolean(registerValidationMessage)}>
                 Register
               </Button>
-              <Button variant="outline" onClick={onLogin} disabled={loading}>
+              <Button variant="outline" onClick={onLogin} disabled={loading || Boolean(loginValidationMessage)}>
                 Login
               </Button>
+              <p className="text-xs text-muted-foreground md:col-span-6">
+                Password policy: 10+ characters with uppercase, lowercase, and numeric characters.
+              </p>
+              {registerValidationMessage ? (
+                <p className="text-xs text-amber-700 md:col-span-6">{registerValidationMessage}</p>
+              ) : null}
+              {!registerValidationMessage && loginValidationMessage ? (
+                <p className="text-xs text-amber-700 md:col-span-6">{loginValidationMessage}</p>
+              ) : null}
             </div>
           )}
         </CardContent>
@@ -618,4 +704,3 @@ export function ImpactPage() {
     </section>
   )
 }
-

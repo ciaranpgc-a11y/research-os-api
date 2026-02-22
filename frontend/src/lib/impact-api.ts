@@ -34,8 +34,21 @@ function authHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${clean}` }
 }
 
+const REQUEST_TIMEOUT_MS = 20_000
+
 async function requestJson<T>(url: string, init: RequestInit, fallbackError: string): Promise<T> {
-  const response = await fetch(url, { ...init, credentials: 'include' })
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  let response: Response
+  try {
+    response = await fetch(url, { ...init, signal: controller.signal })
+  } catch (error) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown-origin'
+    const detail = error instanceof Error ? error.message : 'Network error'
+    throw new Error(`Could not reach API at ${API_BASE_URL}. UI origin: ${origin}. Detail: ${detail}`)
+  } finally {
+    window.clearTimeout(timeout)
+  }
   if (!response.ok) {
     throw new Error(await parseApiError(response, `${fallbackError} (${response.status})`))
   }

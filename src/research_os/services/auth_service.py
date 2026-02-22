@@ -16,6 +16,8 @@ from research_os.services.security_service import (
 )
 
 SESSION_DAYS = max(1, int(os.getenv("AUTH_SESSION_DAYS", "30")))
+MAX_ACTIVE_SESSIONS = max(1, int(os.getenv("AUTH_MAX_ACTIVE_SESSIONS", "5")))
+_DUMMY_PASSWORD_HASH = hash_password("AaweDummyPassword123")
 
 
 class AuthValidationError(RuntimeError):
@@ -44,9 +46,29 @@ def _as_utc(value: datetime | None) -> datetime | None:
 
 def _normalize_email(value: str) -> str:
     email = (value or "").strip().lower()
+    if len(email) < 6 or len(email) > 320:
+        raise AuthValidationError("A valid email address is required.")
     if "@" not in email or "." not in email.split("@", 1)[-1]:
         raise AuthValidationError("A valid email address is required.")
     return email
+
+
+def _normalize_name(value: str) -> str:
+    clean_name = (value or "").strip()
+    if len(clean_name) < 2:
+        raise AuthValidationError("Name must be at least 2 characters.")
+    if len(clean_name) > 120:
+        raise AuthValidationError("Name must be 120 characters or fewer.")
+    return clean_name
+
+
+def _normalize_password_input(value: str) -> str:
+    clean_password = (value or "").strip()
+    if not clean_password:
+        raise AuthValidationError("Password is required.")
+    if len(clean_password) > 256:
+        raise AuthValidationError("Password is too long.")
+    return clean_password
 
 
 def _serialize_user(user: User) -> dict[str, object]:
@@ -67,7 +89,32 @@ def _session_expiry() -> datetime:
     return _utcnow() + timedelta(days=SESSION_DAYS)
 
 
+def _prune_sessions(*, session, user_id: str) -> None:
+    now = _utcnow()
+    sessions = session.scalars(
+        select(AuthSession).where(
+            AuthSession.user_id == user_id, AuthSession.revoked_at.is_(None)
+        )
+    ).all()
+    active: list[AuthSession] = []
+    for row in sessions:
+        expires_at = _as_utc(row.expires_at)
+        if expires_at and expires_at <= now:
+            row.revoked_at = now
+            continue
+        active.append(row)
+
+    if len(active) < MAX_ACTIVE_SESSIONS:
+        return
+
+    active.sort(key=lambda row: _as_utc(row.created_at) or now)
+    surplus = len(active) - (MAX_ACTIVE_SESSIONS - 1)
+    for row in active[:max(0, surplus)]:
+        row.revoked_at = now
+
+
 def _create_session(*, session, user: User) -> tuple[str, AuthSession]:
+    _prune_sessions(session=session, user_id=user.id)
     plain_token = generate_session_token()
     token_hash = hash_session_token(plain_token)
     auth_session = AuthSession(
@@ -84,11 +131,10 @@ def _create_session(*, session, user: User) -> tuple[str, AuthSession]:
 def register_user(*, email: str, password: str, name: str) -> dict[str, object]:
     create_all_tables()
     normalized_email = _normalize_email(email)
-    clean_name = (name or "").strip()
-    if not clean_name:
-        raise AuthValidationError("Name is required.")
+    clean_name = _normalize_name(name)
+    normalized_password = _normalize_password_input(password)
     try:
-        password_hash_value = hash_password(password)
+        password_hash_value = hash_password(normalized_password)
     except SecurityValidationError as exc:
         raise AuthValidationError(str(exc)) from exc
 
@@ -117,9 +163,13 @@ def register_user(*, email: str, password: str, name: str) -> dict[str, object]:
 def login_user(*, email: str, password: str) -> dict[str, object]:
     create_all_tables()
     normalized_email = _normalize_email(email)
+    normalized_password = _normalize_password_input(password)
     with session_scope() as session:
         user = session.scalars(select(User).where(User.email == normalized_email)).first()
-        if user is None or not verify_password(password, user.password_hash):
+        if user is None:
+            verify_password(normalized_password, _DUMMY_PASSWORD_HASH)
+            raise AuthValidationError("Invalid credentials.")
+        if not verify_password(normalized_password, user.password_hash):
             raise AuthValidationError("Invalid credentials.")
         if not user.is_active:
             raise AuthValidationError("Account is inactive.")
@@ -210,8 +260,9 @@ def update_current_user(
         if email is not None:
             user.email = _normalize_email(email)
         if password is not None:
+            normalized_password = _normalize_password_input(password)
             try:
-                user.password_hash = hash_password(password)
+                user.password_hash = hash_password(normalized_password)
             except SecurityValidationError as exc:
                 raise AuthValidationError(str(exc)) from exc
 

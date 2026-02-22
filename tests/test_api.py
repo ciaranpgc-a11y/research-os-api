@@ -8,9 +8,12 @@ from research_os.services.persona_service import upsert_work
 
 
 def _set_test_environment(monkeypatch, tmp_path) -> None:
+    import research_os.api.app as api_module
+
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     db_path = tmp_path / "research_os_test.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{db_path}")
+    api_module._AUTH_RATE_LIMIT_EVENTS.clear()
     reset_database_state()
 
 
@@ -2020,6 +2023,63 @@ def test_v1_auth_register_login_me_patch_logout(monkeypatch, tmp_path) -> None:
     assert me_after_logout.status_code == 401
     assert login_response.status_code == 200
     assert login_response.json()["user"]["email"] == "ciaran@example.com"
+
+
+def test_v1_auth_register_rejects_weak_password(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "weak@example.com",
+                "password": "weakpass1",
+                "name": "Weak User",
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["type"] == "bad_request"
+    assert "password must" in response.json()["error"]["detail"].lower()
+
+
+def test_v1_auth_login_rate_limit(monkeypatch, tmp_path) -> None:
+    import research_os.api.app as api_module
+
+    _set_test_environment(monkeypatch, tmp_path)
+    api_module._AUTH_RATE_LIMIT_EVENTS.clear()
+    monkeypatch.setattr(api_module, "AUTH_LOGIN_RATE_LIMIT", 2)
+    monkeypatch.setattr(api_module, "AUTH_RATE_LIMIT_WINDOW_SECONDS", 60)
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "ratelimit@example.com",
+                "password": "StrongPassword123",
+                "name": "Rate Limit User",
+            },
+        )
+        assert register_response.status_code == 200
+
+        first = client.post(
+            "/v1/auth/login",
+            json={"email": "ratelimit@example.com", "password": "wrong-password"},
+        )
+        second = client.post(
+            "/v1/auth/login",
+            json={"email": "ratelimit@example.com", "password": "wrong-password"},
+        )
+        third = client.post(
+            "/v1/auth/login",
+            json={"email": "ratelimit@example.com", "password": "wrong-password"},
+        )
+
+    assert first.status_code == 400
+    assert second.status_code == 400
+    assert third.status_code == 429
+    assert third.json()["error"]["type"] == "rate_limited"
+    api_module._AUTH_RATE_LIMIT_EVENTS.clear()
 
 
 def test_v1_orcid_connect_callback_and_import(monkeypatch, tmp_path) -> None:
