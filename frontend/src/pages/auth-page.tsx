@@ -13,6 +13,7 @@ import {
   fetchOAuthProviderStatuses,
   loginAuth,
   loginAuthChallenge,
+  pingApiHealth,
   registerAuth,
   requestPasswordReset,
   verifyLoginTwoFactor,
@@ -331,6 +332,20 @@ export function AuthPage() {
     setStatus('Test account credentials inserted. Click Continue to sign in.')
   }
 
+  const onWakeApi = async () => {
+    setLoading(true)
+    setStatus('')
+    setError('')
+    try {
+      await pingApiHealth()
+      setStatus('API is reachable. Retry sign in.')
+    } catch (wakeError) {
+      setError(wakeError instanceof Error ? wakeError.message : 'API wake-up failed.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-slate-100 px-4 py-10">
       <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[1.1fr_minmax(0,520px)]">
@@ -561,7 +576,16 @@ export function AuthPage() {
             </Tabs>
 
             {status ? <p className="text-xs text-emerald-700">{status}</p> : null}
-            {error ? <p className="text-xs text-red-700">{error}</p> : null}
+            {error ? (
+              <div className="space-y-2">
+                <p className="text-xs text-red-700">{error}</p>
+                {error.toLowerCase().includes('could not reach api') ? (
+                  <Button type="button" variant="outline" size="sm" onClick={() => void onWakeApi()} disabled={loading}>
+                    Retry API connection
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </div>

@@ -44,25 +44,55 @@ function authHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${clean}` }
 }
 
-const REQUEST_TIMEOUT_MS = 20_000
+const REQUEST_TIMEOUT_MS =
+  Number(import.meta.env.VITE_API_REQUEST_TIMEOUT_MS || '45000') || 45_000
+const REQUEST_RETRY_COUNT =
+  Number(import.meta.env.VITE_API_REQUEST_RETRY_COUNT || '1') || 1
+
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
+}
 
 async function requestJson<T>(url: string, init: RequestInit, fallbackError: string): Promise<T> {
-  const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-  let response: Response
-  try {
-    response = await fetch(url, { ...init, signal: controller.signal })
-  } catch (error) {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown-origin'
-    const detail = error instanceof Error ? error.message : 'Network error'
-    throw new Error(`Could not reach API at ${API_BASE_URL}. UI origin: ${origin}. Detail: ${detail}`)
-  } finally {
-    window.clearTimeout(timeout)
+  let lastError: Error | null = null
+  for (let attempt = 0; attempt <= REQUEST_RETRY_COUNT; attempt += 1) {
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    try {
+      const response = await fetch(url, { ...init, signal: controller.signal })
+      if (!response.ok) {
+        if (isRetryableStatus(response.status) && attempt < REQUEST_RETRY_COUNT) {
+          await sleep(900 * (attempt + 1))
+          continue
+        }
+        throw new Error(await parseApiError(response, `${fallbackError} (${response.status})`))
+      }
+      return (await response.json()) as T
+    } catch (error) {
+      if (attempt < REQUEST_RETRY_COUNT) {
+        await sleep(900 * (attempt + 1))
+        continue
+      }
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown-origin'
+      const detail = isAbortError(error)
+        ? `Request timed out after ${Math.round(REQUEST_TIMEOUT_MS / 1000)}s`
+        : error instanceof Error
+          ? error.message
+          : 'Network error'
+      lastError = new Error(`Could not reach API at ${API_BASE_URL}. UI origin: ${origin}. Detail: ${detail}`)
+    } finally {
+      window.clearTimeout(timeout)
+    }
   }
-  if (!response.ok) {
-    throw new Error(await parseApiError(response, `${fallbackError} (${response.status})`))
-  }
-  return (await response.json()) as T
+  throw lastError || new Error(`Could not reach API at ${API_BASE_URL}.`)
 }
 
 export async function registerAuth(input: {
@@ -487,5 +517,15 @@ export async function fetchPersonaState(token: string): Promise<PersonaStatePayl
       headers: authHeaders(token),
     },
     'Persona state lookup failed',
+  )
+}
+
+export async function pingApiHealth(): Promise<{ status: string }> {
+  return requestJson<{ status: string }>(
+    `${API_BASE_URL}/v1/health`,
+    {
+      method: 'GET',
+    },
+    'API health check failed',
   )
 }
