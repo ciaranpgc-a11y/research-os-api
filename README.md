@@ -124,6 +124,9 @@ Frontend environment variables:
 - `VITE_API_BASE_URL` should point to the API service URL.
 - `VITE_TEST_ACCOUNT_EMAIL` / `VITE_TEST_ACCOUNT_PASSWORD` (optional auth-page shortcut for test environments).
 
+SPA refresh routing:
+- Frontend build copies `dist/index.html` to `dist/404.html` and `dist/200.html` so direct refreshes on deep routes (e.g. `/w/...`) still load the app shell on static hosts.
+
 ### Easier rebuild testing (recommended)
 
 If you redeploy often, use both:
