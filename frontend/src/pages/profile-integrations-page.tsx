@@ -177,7 +177,7 @@ export function ProfileIntegrationsPage() {
     try {
       const payload = await importOrcidWorks(token)
       if (payload.imported_count > 0) {
-        setStatus(`Imported ${payload.imported_count} ORCID work(s). Citation sync has been updated.`)
+        setStatus(`Imported ${payload.imported_count} ORCID work(s). Run citation sync next.`)
       } else {
         setStatus('No new ORCID works were imported. Library is already up to date.')
       }

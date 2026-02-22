@@ -19,6 +19,9 @@ from research_os.services.persona_service import (
 from research_os.services.security_service import decrypt_secret, encrypt_secret
 
 ORCID_CONNECT_TTL_MINUTES = 20
+ORCID_IMPORT_DETAIL_FETCH_MAX = max(
+    0, int(os.getenv("ORCID_IMPORT_DETAIL_FETCH_MAX", "25"))
+)
 
 
 class OrcidValidationError(RuntimeError):
@@ -76,6 +79,14 @@ def _orcid_token_url() -> str:
 
 def _orcid_api_base() -> str:
     return os.getenv("ORCID_API_BASE_URL", "https://pub.orcid.org/v3.0").strip().rstrip("/")
+
+
+def _orcid_auto_sync_metrics_enabled() -> bool:
+    return os.getenv("ORCID_IMPORT_AUTO_SYNC_METRICS", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
 
 def _resolve_user_or_raise(session, user_id: str) -> User:
@@ -326,7 +337,7 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
         works_payload = works_response.json()
         groups = works_payload.get("group") or []
 
-        imported: list[dict[str, Any]] = []
+        candidates: list[tuple[dict[str, Any], Any]] = []
         seen_put_codes: set[str] = set()
         for group in groups:
             summaries = group.get("work-summary") or []
@@ -339,23 +350,31 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
                     if put_code_key in seen_put_codes:
                         continue
                     seen_put_codes.add(put_code_key)
-                detail_payload = None
-                if put_code is not None:
-                    detail_url = f"{_orcid_api_base()}/{orcid_id}/work/{put_code}"
-                    detail_response = client.get(detail_url, headers=_orcid_headers(access_token))
-                    if detail_response.status_code < 400:
-                        detail_payload = detail_response.json()
-                work_payload = _extract_work_payload(summary, detail_payload)
-                if not work_payload.get("url") and put_code is not None:
-                    work_payload["url"] = (
-                        f"https://orcid.org/{orcid_id}/work/{put_code}"
-                    )
-                if not work_payload["title"]:
-                    fallback_ref = str(work_payload.get("doi") or put_code or "").strip()
-                    if not fallback_ref:
-                        continue
-                    work_payload["title"] = f"ORCID work {fallback_ref}"
-                imported.append(work_payload)
+                candidates.append((summary, put_code))
+
+        fetch_details = (
+            ORCID_IMPORT_DETAIL_FETCH_MAX > 0
+            and len(candidates) <= ORCID_IMPORT_DETAIL_FETCH_MAX
+        )
+        imported: list[dict[str, Any]] = []
+        for summary, put_code in candidates:
+            detail_payload = None
+            if fetch_details and put_code is not None:
+                detail_url = f"{_orcid_api_base()}/{orcid_id}/work/{put_code}"
+                detail_response = client.get(detail_url, headers=_orcid_headers(access_token))
+                if detail_response.status_code < 400:
+                    detail_payload = detail_response.json()
+            work_payload = _extract_work_payload(summary, detail_payload)
+            if not work_payload.get("url") and put_code is not None:
+                work_payload["url"] = (
+                    f"https://orcid.org/{orcid_id}/work/{put_code}"
+                )
+            if not work_payload["title"]:
+                fallback_ref = str(work_payload.get("doi") or put_code or "").strip()
+                if not fallback_ref:
+                    continue
+                work_payload["title"] = f"ORCID work {fallback_ref}"
+            imported.append(work_payload)
 
     upserted_ids: list[str] = []
     seen_upserted_ids: set[str] = set()
@@ -377,15 +396,16 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
         user = _resolve_user_or_raise(session, user_id)
         user.orcid_last_synced_at = _utcnow()
         session.flush()
-    try:
-        sync_metrics(
-            user_id=user_id,
-            providers=["openalex", "semantic_scholar"],
-            work_ids=upserted_ids,
-        )
-    except Exception:
-        # Keep ORCID import resilient even if external citation providers are unavailable.
-        pass
+    if _orcid_auto_sync_metrics_enabled() and upserted_ids:
+        try:
+            sync_metrics(
+                user_id=user_id,
+                providers=["openalex", "semantic_scholar"],
+                work_ids=upserted_ids,
+            )
+        except Exception:
+            # Keep ORCID import resilient even if external citation providers are unavailable.
+            pass
     collaboration = recompute_collaborator_edges(user_id=user_id)
     return {
         "imported_count": len(upserted_ids),
