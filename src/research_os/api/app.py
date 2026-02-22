@@ -208,6 +208,7 @@ from research_os.services.auth_service import (
     AuthConflictError,
     AuthNotFoundError,
     AuthValidationError,
+    ensure_bootstrap_user,
     get_user_by_session_token,
     get_two_factor_state,
     login_user,
@@ -344,6 +345,23 @@ async def app_lifespan(_: FastAPI):
         if strict_startup:
             raise
         logger.warning("openai_api_key_missing_at_startup", extra={"detail": str(exc)})
+    try:
+        seed_result = ensure_bootstrap_user()
+        if seed_result:
+            logger.info(
+                "bootstrap_user_ready",
+                extra={
+                    "email": seed_result["email"],
+                    "created": seed_result["created"],
+                    "updated": seed_result["updated"],
+                    "role": seed_result["role"],
+                },
+            )
+    except Exception as exc:
+        logger.warning(
+            "bootstrap_user_seed_failed",
+            extra={"detail": str(exc)},
+        )
     yield
 
 

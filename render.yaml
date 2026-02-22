@@ -8,8 +8,20 @@ services:
     envVars:
       - key: OPENAI_API_KEY
         sync: false
+      - key: DATABASE_URL
+        sync: false
       - key: CORS_ALLOW_ORIGINS
         value: http://localhost:5173,https://research-os-ui-achk.onrender.com
+      - key: AAWE_BOOTSTRAP_EMAIL
+        sync: false
+      - key: AAWE_BOOTSTRAP_PASSWORD
+        sync: false
+      - key: AAWE_BOOTSTRAP_NAME
+        value: AAWE Test User
+      - key: AAWE_BOOTSTRAP_EMAIL_VERIFIED
+        value: "1"
+      - key: AAWE_BOOTSTRAP_FORCE_PASSWORD
+        value: "0"
   - name: research-os-ui-achk
     type: web
     runtime: static
@@ -29,3 +41,7 @@ services:
     envVars:
       - key: VITE_API_BASE_URL
         value: https://research-os-api-achk.onrender.com
+      - key: VITE_TEST_ACCOUNT_EMAIL
+        sync: false
+      - key: VITE_TEST_ACCOUNT_PASSWORD
+        sync: false

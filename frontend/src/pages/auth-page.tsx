@@ -19,6 +19,10 @@ import {
 } from '@/lib/impact-api'
 import type { AuthOAuthProviderStatusItem } from '@/types/impact'
 
+const LAST_AUTH_EMAIL_STORAGE_KEY = 'aawe-last-auth-email'
+const TEST_ACCOUNT_EMAIL = String(import.meta.env.VITE_TEST_ACCOUNT_EMAIL || '').trim()
+const TEST_ACCOUNT_PASSWORD = String(import.meta.env.VITE_TEST_ACCOUNT_PASSWORD || '').trim()
+
 function isLikelyEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 }
@@ -49,11 +53,37 @@ export function AuthPage() {
   const [resetPassword, setResetPassword] = useState('')
   const [resetPreviewCode, setResetPreviewCode] = useState('')
 
+  const hasTestAccountShortcut = Boolean(TEST_ACCOUNT_EMAIL && TEST_ACCOUNT_PASSWORD)
+
+  const persistLastEmail = (value: string) => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    const clean = value.trim()
+    if (!clean) {
+      return
+    }
+    window.localStorage.setItem(LAST_AUTH_EMAIL_STORAGE_KEY, clean)
+  }
+
   useEffect(() => {
     if (getAuthSessionToken()) {
       navigate('/profile', { replace: true })
     }
   }, [navigate])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    const storedEmail = window.localStorage.getItem(LAST_AUTH_EMAIL_STORAGE_KEY) || ''
+    if (storedEmail && !signInEmail) {
+      setSignInEmail(storedEmail)
+      if (!resetEmail) {
+        setResetEmail(storedEmail)
+      }
+    }
+  }, [resetEmail, signInEmail])
 
   useEffect(() => {
     void (async () => {
@@ -136,6 +166,7 @@ export function AuthPage() {
     try {
       const payload = await registerAuth({ email: registerEmail, password: registerPassword, name: registerName })
       setAuthSessionToken(payload.session_token)
+      persistLastEmail(payload.user.email)
       setStatus('Account created. Redirecting to profile...')
       navigate('/profile', { replace: true })
     } catch (registerError) {
@@ -160,6 +191,7 @@ export function AuthPage() {
       const payload = await loginAuthChallenge({ email: signInEmail, password: signInPassword })
       if (payload.status === 'authenticated' && payload.session) {
         setAuthSessionToken(payload.session.session_token)
+        persistLastEmail(payload.session.user.email)
         setStatus('Signed in. Redirecting to profile...')
         navigate('/profile', { replace: true })
         return
@@ -184,6 +216,7 @@ export function AuthPage() {
       try {
         const session = await loginAuth({ email: signInEmail, password: signInPassword })
         setAuthSessionToken(session.session_token)
+        persistLastEmail(session.user.email)
         setStatus('Signed in. Redirecting to profile...')
         navigate('/profile', { replace: true })
       } catch (fallbackError) {
@@ -210,6 +243,7 @@ export function AuthPage() {
     try {
       const payload = await verifyLoginTwoFactor({ challengeToken, code: twoFactorCode })
       setAuthSessionToken(payload.session_token)
+      persistLastEmail(payload.user.email)
       setStatus('Two-factor verification complete. Redirecting...')
       navigate('/profile', { replace: true })
     } catch (verifyError) {
@@ -287,6 +321,14 @@ export function AuthPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const onUseTestAccount = () => {
+    setSignInEmail(TEST_ACCOUNT_EMAIL)
+    setSignInPassword(TEST_ACCOUNT_PASSWORD)
+    setAttemptedSignIn(false)
+    setError('')
+    setStatus('Test account credentials inserted. Click Continue to sign in.')
   }
 
   return (
@@ -369,6 +411,22 @@ export function AuthPage() {
                 <TabsTrigger value="register">Register</TabsTrigger>
               </TabsList>
               <TabsContent value="signin" className="space-y-3 pt-2">
+                {hasTestAccountShortcut ? (
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50/70 p-2">
+                    <p className="text-xs text-emerald-800">
+                      Test shortcut is enabled for this environment.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-2 w-full border-emerald-300 text-emerald-800"
+                      onClick={onUseTestAccount}
+                      disabled={loading}
+                    >
+                      Use test account
+                    </Button>
+                  </div>
+                ) : null}
                 <Input
                   autoComplete="email"
                   placeholder="Email"

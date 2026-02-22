@@ -114,9 +114,36 @@ Required API environment variables:
 Recommended API environment variables:
 - `CORS_ALLOW_ORIGINS` (comma-separated origins for frontend access)
 - `DATABASE_URL` (defaults to local SQLite when absent)
+- `AAWE_BOOTSTRAP_EMAIL` (optional stable seeded login for rebuilds)
+- `AAWE_BOOTSTRAP_PASSWORD` (password for seeded login)
+- `AAWE_BOOTSTRAP_NAME` (optional; default `AAWE Test User`)
+- `AAWE_BOOTSTRAP_EMAIL_VERIFIED` (`1` to skip manual verification for that seeded account)
+- `AAWE_BOOTSTRAP_FORCE_PASSWORD` (`1` to reset seeded account password on every startup)
 
 Frontend environment variables:
 - `VITE_API_BASE_URL` should point to the API service URL.
+- `VITE_TEST_ACCOUNT_EMAIL` / `VITE_TEST_ACCOUNT_PASSWORD` (optional auth-page shortcut for test environments).
+
+### Easier rebuild testing (recommended)
+
+If you redeploy often, use both:
+
+1. Persistent database
+- Set `DATABASE_URL` to a managed Postgres instance (recommended on Render).
+- Without this, container-local SQLite is reset on deploy.
+
+2. Bootstrap test account
+- Set on API service:
+  - `AAWE_BOOTSTRAP_EMAIL`
+  - `AAWE_BOOTSTRAP_PASSWORD`
+  - `AAWE_BOOTSTRAP_EMAIL_VERIFIED=1`
+- The API seeds/updates this account automatically on startup.
+
+Optional frontend convenience:
+- Set:
+  - `VITE_TEST_ACCOUNT_EMAIL`
+  - `VITE_TEST_ACCOUNT_PASSWORD`
+- Auth page will show a `Use test account` button to prefill credentials.
 
 ## Docker
 

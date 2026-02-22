@@ -117,6 +117,74 @@ def _serialize_user(user: User) -> dict[str, object]:
     }
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name, "1" if default else "0").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def ensure_bootstrap_user() -> dict[str, object] | None:
+    seed_email = os.getenv("AAWE_BOOTSTRAP_EMAIL", "").strip()
+    seed_password = os.getenv("AAWE_BOOTSTRAP_PASSWORD", "").strip()
+    if not seed_email or not seed_password:
+        return None
+
+    default_name = os.getenv("AAWE_BOOTSTRAP_NAME", "AAWE Test User").strip()
+    seed_name = default_name if len(default_name) >= 2 else "AAWE Test User"
+    force_password_reset = _env_flag("AAWE_BOOTSTRAP_FORCE_PASSWORD", default=False)
+    mark_email_verified = _env_flag("AAWE_BOOTSTRAP_EMAIL_VERIFIED", default=True)
+    role = os.getenv("AAWE_BOOTSTRAP_ROLE", "user").strip().lower()
+    if role not in {"user", "admin"}:
+        role = "user"
+
+    normalized_email = _normalize_email(seed_email)
+    normalized_name = _normalize_name(seed_name)
+    normalized_password = _normalize_password_input(seed_password)
+    password_hash_value = hash_password(normalized_password)
+
+    create_all_tables()
+    with session_scope() as session:
+        user = session.scalars(
+            select(User).where(User.email == normalized_email)
+        ).first()
+        created = False
+        updated = False
+        if user is None:
+            created = True
+            user = User(
+                email=normalized_email,
+                password_hash=password_hash_value,
+                name=normalized_name,
+                is_active=True,
+                role=role,
+                email_verified_at=_utcnow() if mark_email_verified else None,
+            )
+            session.add(user)
+        else:
+            if user.name != normalized_name:
+                user.name = normalized_name
+                updated = True
+            if not bool(user.is_active):
+                user.is_active = True
+                updated = True
+            if user.role != role:
+                user.role = role
+                updated = True
+            if mark_email_verified and user.email_verified_at is None:
+                user.email_verified_at = _utcnow()
+                updated = True
+            if force_password_reset:
+                user.password_hash = password_hash_value
+                updated = True
+        session.flush()
+        return {
+            "email": normalized_email,
+            "created": created,
+            "updated": updated,
+            "email_verified": bool(user.email_verified_at),
+            "role": user.role,
+        }
+
+
 def _session_expiry() -> datetime:
     return _utcnow() + timedelta(days=SESSION_DAYS)
 
