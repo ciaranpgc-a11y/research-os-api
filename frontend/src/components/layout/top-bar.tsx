@@ -200,6 +200,12 @@ export function TopBar({
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        {isGuest ? (
+          <Button size="sm" variant="outline" onClick={() => navigate('/auth')}>
+            Sign in
+          </Button>
+        ) : null}
+
         <TooltipProvider delayDuration={100}>
           <Tooltip>
             <TooltipTrigger asChild>

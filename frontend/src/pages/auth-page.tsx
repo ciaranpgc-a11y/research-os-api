@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowRight, KeyRound, Loader2, LockKeyhole, ShieldCheck } from 'lucide-react'
+import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getAuthSessionToken, setAuthSessionToken } from '@/lib/auth-session'
 import {
   confirmPasswordReset,
@@ -23,6 +22,20 @@ import type { AuthOAuthProviderStatusItem } from '@/types/impact'
 const LAST_AUTH_EMAIL_STORAGE_KEY = 'aawe-last-auth-email'
 const TEST_ACCOUNT_EMAIL = String(import.meta.env.VITE_TEST_ACCOUNT_EMAIL || '').trim()
 const TEST_ACCOUNT_PASSWORD = String(import.meta.env.VITE_TEST_ACCOUNT_PASSWORD || '').trim()
+const SOCIAL_PROVIDERS = ['orcid', 'google', 'microsoft'] as const
+
+type AuthMode = 'signin' | 'register'
+type SocialProvider = (typeof SOCIAL_PROVIDERS)[number]
+
+function providerLabel(provider: SocialProvider): string {
+  if (provider === 'orcid') {
+    return 'ORCID'
+  }
+  if (provider === 'google') {
+    return 'Google'
+  }
+  return 'Microsoft'
+}
 
 function isLikelyEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
@@ -35,6 +48,7 @@ function isStrongPassword(value: string): boolean {
 
 export function AuthPage() {
   const navigate = useNavigate()
+  const [mode, setMode] = useState<AuthMode>('signin')
   const [signInEmail, setSignInEmail] = useState('')
   const [signInPassword, setSignInPassword] = useState('')
   const [registerName, setRegisterName] = useState('')
@@ -53,6 +67,9 @@ export function AuthPage() {
   const [resetCode, setResetCode] = useState('')
   const [resetPassword, setResetPassword] = useState('')
   const [resetPreviewCode, setResetPreviewCode] = useState('')
+  const [showSignInPassword, setShowSignInPassword] = useState(false)
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false)
+  const [showResetPanel, setShowResetPanel] = useState(false)
 
   const hasTestAccountShortcut = Boolean(TEST_ACCOUNT_EMAIL && TEST_ACCOUNT_PASSWORD)
 
@@ -97,6 +114,15 @@ export function AuthPage() {
     })()
   }, [])
 
+  const providerByName = useMemo(() => {
+    const map = new Map<SocialProvider, AuthOAuthProviderStatusItem>()
+    for (const provider of oauthProviders) {
+      const key = provider.provider as SocialProvider
+      map.set(key, provider)
+    }
+    return map
+  }, [oauthProviders])
+
   const registerValidationMessage = useMemo(() => {
     if (registerName.trim().length < 2) {
       return 'Name must be at least 2 characters.'
@@ -133,16 +159,6 @@ export function AuthPage() {
       matches: registerPassword === registerConfirmPassword && registerConfirmPassword.length > 0,
     }
   }, [registerConfirmPassword, registerPassword])
-
-  const configuredProviders = useMemo(
-    () => oauthProviders.filter((provider) => provider.configured),
-    [oauthProviders],
-  )
-
-  const unavailableProviders = useMemo(
-    () => oauthProviders.filter((provider) => !provider.configured),
-    [oauthProviders],
-  )
 
   const resetValidationMessage = useMemo(() => {
     if (!isLikelyEmail(resetEmail)) {
@@ -206,10 +222,7 @@ export function AuthPage() {
     } catch (loginError) {
       const detail = loginError instanceof Error ? loginError.message : 'Sign-in failed.'
       const lower = detail.toLowerCase()
-      const fallbackEligible =
-        lower.includes('404') ||
-        lower.includes('not found') ||
-        lower.includes('login challenge')
+      const fallbackEligible = lower.includes('404') || lower.includes('not found') || lower.includes('login challenge')
       if (!fallbackEligible) {
         setError(detail)
         return
@@ -224,9 +237,7 @@ export function AuthPage() {
         const fallbackDetail = fallbackError instanceof Error ? fallbackError.message : 'Sign-in failed.'
         setError(fallbackDetail)
         if (fallbackDetail.toLowerCase().includes('invalid credentials')) {
-          setStatus(
-            'Credentials not recognised. If this account was created via ORCID/Google/Microsoft, use that provider or run password reset.',
-          )
+          setStatus('Credentials not recognised. Use provider sign-in or reset your password.')
         }
       }
     } finally {
@@ -254,7 +265,12 @@ export function AuthPage() {
     }
   }
 
-  const onOAuth = async (provider: 'orcid' | 'google' | 'microsoft') => {
+  const onOAuth = async (provider: SocialProvider) => {
+    const providerState = providerByName.get(provider)
+    if (!providerState?.configured) {
+      setStatus(providerState?.reason || `${providerLabel(provider)} sign-in is not configured.`)
+      return
+    }
     setLoading(true)
     setError('')
     setStatus('')
@@ -262,7 +278,7 @@ export function AuthPage() {
       const payload = await fetchOAuthConnect(provider)
       window.location.assign(payload.url)
     } catch (oauthError) {
-      setError(oauthError instanceof Error ? oauthError.message : `${provider} sign-in failed.`)
+      setError(oauthError instanceof Error ? oauthError.message : `${providerLabel(provider)} sign-in failed.`)
       setLoading(false)
     }
   }
@@ -312,11 +328,13 @@ export function AuthPage() {
         code: resetCode,
         newPassword: resetPassword,
       })
-      setStatus('Password reset complete. You can now sign in with the new password.')
+      setStatus('Password reset complete. You can now sign in.')
       setSignInEmail(resetEmail)
       setSignInPassword('')
       setResetCode('')
       setResetPassword('')
+      setMode('signin')
+      setShowResetPanel(false)
     } catch (confirmError) {
       setError(confirmError instanceof Error ? confirmError.message : 'Password reset failed.')
     } finally {
@@ -329,7 +347,7 @@ export function AuthPage() {
     setSignInPassword(TEST_ACCOUNT_PASSWORD)
     setAttemptedSignIn(false)
     setError('')
-    setStatus('Test account credentials inserted. Click Continue to sign in.')
+    setStatus('Test account credentials inserted. Click Log in.')
   }
 
   const onWakeApi = async () => {
@@ -347,114 +365,84 @@ export function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-slate-100 px-4 py-10">
-      <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[1.1fr_minmax(0,520px)]">
-        <section className="rounded-xl border border-emerald-200/60 bg-white/80 p-6 shadow-sm backdrop-blur">
-          <p className="text-xs uppercase tracking-wide text-emerald-700">AAWE account access</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Secure profile sign-in</h1>
-          <p className="mt-3 max-w-xl text-sm text-slate-600">
-            Create an account once, then access manuscript planning and your profile in one place. Enhanced security and provider
-            sign-in are available when you want them.
-          </p>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
-              <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
-                <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                Simple sign-in
-              </p>
-              <p className="mt-1 text-xs text-slate-600">Email + password is the default flow and lands you directly in your profile.</p>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
-              <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
-                <LockKeyhole className="h-4 w-4 text-emerald-600" />
-                Optional extra security
-              </p>
-              <p className="mt-1 text-xs text-slate-600">Two-factor authentication can be enabled later from profile settings.</p>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
-              <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
-                <KeyRound className="h-4 w-4 text-emerald-600" />
-                ORCID and provider sign-in
-              </p>
-              <p className="mt-1 text-xs text-slate-600">Use ORCID for publication sync; Google/Microsoft are available when configured.</p>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
-              <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
-                <ArrowRight className="h-4 w-4 text-emerald-600" />
-                Fast setup
-              </p>
-              <p className="mt-1 text-xs text-slate-600">Register in under a minute, then connect ORCID any time from your profile.</p>
-            </div>
-          </div>
-        </section>
+    <div className="min-h-screen bg-slate-100 px-4 py-10">
+      <div className="mx-auto flex w-full max-w-[520px] flex-col items-center gap-5">
+        <div className="text-3xl font-semibold tracking-tight text-slate-900">AAWE</div>
 
-        <Card className="border border-slate-200 bg-white shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Sign in</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <details className="rounded-md border border-slate-200 bg-slate-50 p-3">
-              <summary className="cursor-pointer text-sm font-medium text-slate-900">Other sign-in options</summary>
-              {configuredProviders.length ? (
-                <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                  {configuredProviders.map((provider) => (
-                    <Button
-                      key={provider.provider}
-                      type="button"
-                      variant="outline"
-                      onClick={() => void onOAuth(provider.provider)}
-                      disabled={loading}
-                    >
-                      {provider.provider.toUpperCase()}
-                    </Button>
-                  ))}
+        <Card className="w-full border border-slate-200 bg-white shadow-sm">
+          <CardContent className="space-y-4 p-6 sm:p-8">
+            <div className="space-y-1">
+              <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
+                {mode === 'signin' ? 'Welcome back' : 'Create account'}
+              </h1>
+              <p className="text-sm text-slate-600">
+                {mode === 'signin' ? 'Log in with your AAWE account' : 'Create your AAWE account'}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-1 rounded-md bg-slate-100 p-1">
+              <button
+                type="button"
+                onClick={() => setMode('signin')}
+                className={mode === 'signin' ? 'rounded bg-white px-3 py-1.5 text-sm font-medium shadow-sm' : 'rounded px-3 py-1.5 text-sm text-slate-600'}
+              >
+                Sign in
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('register')}
+                className={mode === 'register' ? 'rounded bg-white px-3 py-1.5 text-sm font-medium shadow-sm' : 'rounded px-3 py-1.5 text-sm text-slate-600'}
+              >
+                Register
+              </button>
+            </div>
+
+            {mode === 'signin' ? (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold tracking-wide text-slate-700">EMAIL ADDRESS</label>
+                  <Input
+                    autoComplete="email"
+                    placeholder="email@address.com"
+                    value={signInEmail}
+                    onChange={(event) => setSignInEmail(event.target.value)}
+                  />
                 </div>
-              ) : (
-                <p className="mt-2 text-xs text-slate-600">No OAuth providers are configured in the backend environment.</p>
-              )}
-              {unavailableProviders.length ? (
-                <p className="mt-2 text-xs text-slate-500">
-                  Unavailable: {unavailableProviders.map((provider) => provider.provider).join(', ')}
-                </p>
-              ) : null}
-              <p className="mt-2 text-xs text-slate-600">Use ORCID if you want to import publications into your profile.</p>
-            </details>
-
-            <Tabs defaultValue="signin" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="signin">Sign in</TabsTrigger>
-                <TabsTrigger value="register">Register</TabsTrigger>
-              </TabsList>
-              <TabsContent value="signin" className="space-y-3 pt-2">
-                {hasTestAccountShortcut ? (
-                  <div className="rounded-md border border-emerald-200 bg-emerald-50/70 p-2">
-                    <p className="text-xs text-emerald-800">
-                      Test shortcut is enabled for this environment.
-                    </p>
-                    <Button
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold tracking-wide text-slate-700">PASSWORD</label>
+                  <div className="flex rounded-md border border-input bg-background">
+                    <Input
+                      autoComplete="current-password"
+                      type={showSignInPassword ? 'text' : 'password'}
+                      placeholder="Enter your password"
+                      value={signInPassword}
+                      onChange={(event) => setSignInPassword(event.target.value)}
+                      className="border-0 shadow-none focus-visible:ring-0"
+                    />
+                    <button
                       type="button"
-                      variant="outline"
-                      className="mt-2 w-full border-emerald-300 text-emerald-800"
-                      onClick={onUseTestAccount}
-                      disabled={loading}
+                      className="border-l border-input px-3 text-slate-600"
+                      onClick={() => setShowSignInPassword((value) => !value)}
+                      aria-label={showSignInPassword ? 'Hide password' : 'Show password'}
                     >
-                      Use test account
-                    </Button>
+                      {showSignInPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
-                ) : null}
-                <Input
-                  autoComplete="email"
-                  placeholder="Email"
-                  value={signInEmail}
-                  onChange={(event) => setSignInEmail(event.target.value)}
-                />
-                <Input
-                  autoComplete="current-password"
-                  type="password"
-                  placeholder="Password"
-                  value={signInPassword}
-                  onChange={(event) => setSignInPassword(event.target.value)}
-                />
+                </div>
+
+                <button
+                  type="button"
+                  className="text-sm font-medium text-emerald-700 underline underline-offset-2"
+                  onClick={() => {
+                    setShowResetPanel((value) => !value)
+                    if (!resetEmail) {
+                      setResetEmail(signInEmail)
+                    }
+                  }}
+                >
+                  Forgot your password?
+                </button>
+
                 <Button
                   type="button"
                   className="w-full bg-emerald-600 hover:bg-emerald-700"
@@ -462,8 +450,22 @@ export function AuthPage() {
                   onClick={() => void onSignIn()}
                 >
                   {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Continue
+                  Log in
                 </Button>
+
+                {hasTestAccountShortcut ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={onUseTestAccount}
+                    disabled={loading}
+                  >
+                    Use test account
+                  </Button>
+                ) : null}
+
+                {attemptedSignIn && loginValidationMessage ? <p className="text-xs text-amber-700">{loginValidationMessage}</p> : null}
 
                 {challengeToken ? (
                   <div className="space-y-2 rounded-md border border-emerald-300 bg-emerald-50/70 p-3">
@@ -474,22 +476,34 @@ export function AuthPage() {
                       value={twoFactorCode}
                       onChange={(event) => setTwoFactorCode(event.target.value)}
                     />
-                    <Button type="button" variant="outline" className="w-full" onClick={() => void onVerifyTwoFactor()} disabled={loading || !twoFactorCode.trim()}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => void onVerifyTwoFactor()}
+                      disabled={loading || !twoFactorCode.trim()}
+                    >
                       Verify 2FA
                     </Button>
                   </div>
                 ) : null}
 
-                <details className="rounded-md border border-slate-200 bg-slate-50 p-3">
-                  <summary className="cursor-pointer text-xs font-medium text-slate-700">Forgot password</summary>
-                  <div className="mt-2 space-y-2">
+                {showResetPanel ? (
+                  <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-medium text-slate-700">Reset your password</p>
                     <Input
                       autoComplete="email"
                       placeholder="Account email"
                       value={resetEmail}
                       onChange={(event) => setResetEmail(event.target.value)}
                     />
-                    <Button type="button" variant="outline" className="w-full" onClick={() => void onRequestReset()} disabled={loading || !isLikelyEmail(resetEmail)}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => void onRequestReset()}
+                      disabled={loading || !isLikelyEmail(resetEmail)}
+                    >
                       Request reset code
                     </Button>
                     {resetPreviewCode ? (
@@ -519,37 +533,60 @@ export function AuthPage() {
                     </Button>
                     {resetValidationMessage ? <p className="text-xs text-amber-700">{resetValidationMessage}</p> : null}
                   </div>
-                </details>
+                ) : null}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold tracking-wide text-slate-700">FULL NAME</label>
+                  <Input
+                    autoComplete="name"
+                    placeholder="Jane Researcher"
+                    value={registerName}
+                    onChange={(event) => setRegisterName(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold tracking-wide text-slate-700">EMAIL ADDRESS</label>
+                  <Input
+                    autoComplete="email"
+                    placeholder="email@address.com"
+                    value={registerEmail}
+                    onChange={(event) => setRegisterEmail(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold tracking-wide text-slate-700">PASSWORD</label>
+                  <div className="flex rounded-md border border-input bg-background">
+                    <Input
+                      autoComplete="new-password"
+                      type={showRegisterPassword ? 'text' : 'password'}
+                      placeholder="Create your password"
+                      value={registerPassword}
+                      onChange={(event) => setRegisterPassword(event.target.value)}
+                      className="border-0 shadow-none focus-visible:ring-0"
+                    />
+                    <button
+                      type="button"
+                      className="border-l border-input px-3 text-slate-600"
+                      onClick={() => setShowRegisterPassword((value) => !value)}
+                      aria-label={showRegisterPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showRegisterPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold tracking-wide text-slate-700">CONFIRM PASSWORD</label>
+                  <Input
+                    autoComplete="new-password"
+                    type="password"
+                    placeholder="Confirm password"
+                    value={registerConfirmPassword}
+                    onChange={(event) => setRegisterConfirmPassword(event.target.value)}
+                  />
+                </div>
 
-                {attemptedSignIn && loginValidationMessage ? <p className="text-xs text-amber-700">{loginValidationMessage}</p> : null}
-              </TabsContent>
-              <TabsContent value="register" className="space-y-3 pt-2">
-                <Input
-                  autoComplete="name"
-                  placeholder="Full name"
-                  value={registerName}
-                  onChange={(event) => setRegisterName(event.target.value)}
-                />
-                <Input
-                  autoComplete="email"
-                  placeholder="Email"
-                  value={registerEmail}
-                  onChange={(event) => setRegisterEmail(event.target.value)}
-                />
-                <Input
-                  autoComplete="new-password"
-                  type="password"
-                  placeholder="Password"
-                  value={registerPassword}
-                  onChange={(event) => setRegisterPassword(event.target.value)}
-                />
-                <Input
-                  autoComplete="new-password"
-                  type="password"
-                  placeholder="Confirm password"
-                  value={registerConfirmPassword}
-                  onChange={(event) => setRegisterConfirmPassword(event.target.value)}
-                />
                 <div className="grid gap-1 text-xs text-slate-600 sm:grid-cols-2">
                   <p className={registerPasswordChecks.length ? 'text-emerald-700' : ''}>10+ characters</p>
                   <p className={registerPasswordChecks.upper ? 'text-emerald-700' : ''}>Uppercase letter</p>
@@ -559,6 +596,7 @@ export function AuthPage() {
                     Passwords match
                   </p>
                 </div>
+
                 <Button
                   type="button"
                   className="w-full bg-emerald-600 hover:bg-emerald-700"
@@ -568,12 +606,34 @@ export function AuthPage() {
                   {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Create account
                 </Button>
-                <p className="text-xs text-slate-500">
-                  Password policy: minimum 10 characters with upper/lowercase letters and a number.
-                </p>
                 {attemptedRegister && registerValidationMessage ? <p className="text-xs text-amber-700">{registerValidationMessage}</p> : null}
-              </TabsContent>
-            </Tabs>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <span className="h-px flex-1 bg-slate-200" />
+              <span>or</span>
+              <span className="h-px flex-1 bg-slate-200" />
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {SOCIAL_PROVIDERS.map((provider) => {
+                const config = providerByName.get(provider)
+                return (
+                  <Button
+                    key={provider}
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => void onOAuth(provider)}
+                    disabled={loading || !config?.configured}
+                    title={!config?.configured ? config?.reason || `${providerLabel(provider)} is not configured` : ''}
+                  >
+                    {providerLabel(provider)}
+                  </Button>
+                )
+              })}
+            </div>
 
             {status ? <p className="text-xs text-emerald-700">{status}</p> : null}
             {error ? (
@@ -588,6 +648,24 @@ export function AuthPage() {
             ) : null}
           </CardContent>
         </Card>
+
+        <p className="text-sm text-slate-600">
+          {mode === 'signin' ? (
+            <>
+              New to AAWE?{' '}
+              <button type="button" className="font-semibold text-emerald-700 underline underline-offset-2" onClick={() => setMode('register')}>
+                Create an account
+              </button>
+            </>
+          ) : (
+            <>
+              Already have an account?{' '}
+              <button type="button" className="font-semibold text-emerald-700 underline underline-offset-2" onClick={() => setMode('signin')}>
+                Sign in
+              </button>
+            </>
+          )}
+        </p>
       </div>
     </div>
   )
