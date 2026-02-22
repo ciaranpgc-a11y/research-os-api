@@ -289,6 +289,49 @@ def _safe_bool(value: Any, default: bool = False) -> bool:
     return default
 
 
+def _summarise_data_profile_for_prompt(data_profile_json: dict[str, Any] | None) -> str:
+    payload = data_profile_json or {}
+    if not isinstance(payload, dict) or not payload:
+        return "None."
+    dataset_kind = str(payload.get("dataset_kind", "")).strip() or "unknown"
+    hints = payload.get("likely_design_hints", [])
+    unresolved = payload.get("unresolved_questions", [])
+    role_guesses = payload.get("variable_role_guesses", {})
+    outcomes = []
+    exposures = []
+    if isinstance(role_guesses, dict):
+        outcomes = [str(item).strip() for item in role_guesses.get("outcomes", []) if str(item).strip()]
+        exposures = [str(item).strip() for item in role_guesses.get("exposures", []) if str(item).strip()]
+    hints_text = "; ".join(str(item).strip() for item in hints if str(item).strip()) or "none"
+    unresolved_text = "; ".join(str(item).strip() for item in unresolved if str(item).strip()) or "none"
+    outcomes_text = ", ".join(outcomes[:4]) or "none"
+    exposures_text = ", ".join(exposures[:4]) or "none"
+    return (
+        f"dataset_kind={dataset_kind}; "
+        f"design_hints={hints_text}; "
+        f"outcomes={outcomes_text}; "
+        f"exposures={exposures_text}; "
+        f"unresolved={unresolved_text}"
+    )
+
+
+def _normalize_profile_unresolved_questions(
+    profile_unresolved_questions: list[str],
+) -> list[str]:
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for item in profile_unresolved_questions:
+        prompt = _normalise_prompt(str(item).strip())
+        if not prompt:
+            continue
+        key = prompt.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(prompt)
+    return normalized
+
+
 def _normalise_choice_label(value: str) -> str:
     normalized = value.strip().lower()
     normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
@@ -586,6 +629,9 @@ def _build_next_question_prompt(
     word_length: str,
     summary_of_research: str,
     study_type_options: list[str],
+    data_profile_summary: str,
+    profile_unresolved_questions: list[str],
+    use_profile_tailoring: bool,
     max_questions: int,
     history: list[dict[str, str]],
 ) -> str:
@@ -606,6 +652,11 @@ def _build_next_question_prompt(
     history_block = _format_history(history)
     no_answers_block = _format_no_history_prompts(history)
     remaining = max(0, max_questions - len(history))
+    profile_unresolved_block = (
+        "\n".join(f"- {item}" for item in profile_unresolved_questions)
+        if profile_unresolved_questions
+        else "- none"
+    )
     study_type_block = "\n".join(f"- {item}" for item in study_type_options) or "- none supplied"
     research_category_block = "\n".join(f"- {item}" for item in RESEARCH_CATEGORY_OPTIONS)
     interpretation_mode_block = "\n".join(f"- {item}" for item in INTERPRETATION_MODE_OPTIONS)
@@ -627,6 +678,10 @@ Context:
 - asked_so_far: {len(history)}
 - max_questions: {max_questions}
 - remaining_slots: {remaining}
+- use_profile_tailoring: {"true" if use_profile_tailoring else "false"}
+- data_profile_summary: {data_profile_summary}
+- profile_unresolved_questions:
+{profile_unresolved_block}
 
 Question/answer history:
 {history_block}
@@ -648,6 +703,7 @@ Rules:
 - Question must start with one of: Should, Is, Are, Do, Does, Can.
 - The question must be specific to this manuscript context.
 - Do not repeat prior questions.
+- If use_profile_tailoring is true, prioritise unresolved profile questions before generic planning prompts.
 - If the user answered NO to a theme, move to a different unresolved uncertainty.
 - Prefer the highest-impact unresolved decision for plan quality.
 - Keep rationale to one sentence.
@@ -699,14 +755,21 @@ def generate_next_plan_clarification_question(
     word_length: str,
     summary_of_research: str,
     study_type_options: list[str],
-    history: list[dict[str, str]],
+    data_profile_json: dict[str, Any] | None = None,
+    profile_unresolved_questions: list[str] | None = None,
+    use_profile_tailoring: bool = False,
+    history: list[dict[str, str]] | None = None,
     max_questions: int = 10,
     force_next_question: bool = False,
     preferred_model: str = PREFERRED_MODEL,
 ) -> dict[str, object]:
     safe_max_questions = max(1, min(max_questions, 20))
     hard_limit = 30
-    cleaned_history = _normalise_history(history)
+    cleaned_history = _normalise_history(history or [])
+    normalized_profile_unresolved = _normalize_profile_unresolved_questions(
+        profile_unresolved_questions or []
+    )
+    data_profile_summary = _summarise_data_profile_for_prompt(data_profile_json)
     cleaned_study_type_options = _clean_study_type_options(study_type_options)
     if current_study_type := study_type.strip():
         if current_study_type not in cleaned_study_type_options:
@@ -736,6 +799,44 @@ def generate_next_plan_clarification_question(
             "model_used": preferred_model,
         }
 
+    existing_prompts = {item["prompt"].strip().lower() for item in cleaned_history}
+    if use_profile_tailoring:
+        for unresolved_prompt in normalized_profile_unresolved:
+            if unresolved_prompt.lower() in existing_prompts:
+                continue
+            fallback_summary = (
+                "The plan will structure the manuscript across Introduction, Methods, Results, Discussion, and Conclusion using clarified profile-aware context."
+            )
+            return {
+                "question": {
+                    "id": _normalise_id(asked_count, unresolved_prompt),
+                    "prompt": unresolved_prompt,
+                    "rationale": "Prioritized from unresolved data-profile uncertainty to keep planning data-aware.",
+                },
+                "completed": False,
+                "ready_for_plan": False,
+                "confidence_percent": max(10, min(90, 40 + asked_count * 5)),
+                "additional_questions_for_full_confidence": max(
+                    0, len(normalized_profile_unresolved) - asked_count
+                ),
+                "advice": "Resolve profile-driven uncertainties before finalising the manuscript plan.",
+                "updated_fields": {
+                    "summary_of_research": summary_of_research.strip(),
+                    "research_category": research_category.strip(),
+                    "study_type": study_type.strip(),
+                    "interpretation_mode": interpretation_mode.strip(),
+                    "article_type": article_type.strip(),
+                    "word_length": word_length.strip(),
+                },
+                "manuscript_plan_summary": fallback_summary,
+                "manuscript_plan_sections": _fallback_manuscript_plan_sections(
+                    fallback_summary
+                ),
+                "asked_count": asked_count,
+                "max_questions": safe_max_questions,
+                "model_used": "profile-priority",
+            }
+
     context_tokens = _content_tokens(
         project_title,
         target_journal_label,
@@ -746,7 +847,6 @@ def generate_next_plan_clarification_question(
         word_length,
         summary_of_research,
     )
-    existing_prompts = {item["prompt"].strip().lower() for item in cleaned_history}
     base_prompt = _build_next_question_prompt(
         project_title=project_title,
         target_journal=target_journal,
@@ -758,6 +858,9 @@ def generate_next_plan_clarification_question(
         word_length=word_length,
         summary_of_research=summary_of_research,
         study_type_options=cleaned_study_type_options,
+        data_profile_summary=data_profile_summary,
+        profile_unresolved_questions=normalized_profile_unresolved,
+        use_profile_tailoring=use_profile_tailoring,
         max_questions=safe_max_questions,
         history=cleaned_history,
     )

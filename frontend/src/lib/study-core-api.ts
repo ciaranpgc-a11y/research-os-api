@@ -3,6 +3,17 @@ import type { ApiErrorPayload } from '@/types/insight'
 import type { QCRunResponse } from '@/types/qc-run'
 import type {
   CitationAutofillPayload,
+  DataProfilePayload,
+  AnalysisScaffoldPayload,
+  TablesScaffoldPayload,
+  FiguresScaffoldPayload,
+  LibraryAssetRecord,
+  LibraryAssetUploadPayload,
+  ManuscriptAttachAssetsPayload,
+  PlannerConfirmedFields,
+  ManuscriptPlanJson,
+  ManuscriptPlanUpdatePayload,
+  PlanSectionImprovePayload,
   ClaimLinkerPayload,
   ConsistencyCheckPayload,
   GenerationEstimate,
@@ -40,6 +51,223 @@ export async function fetchJournalOptions(): Promise<JournalOption[]> {
     throw new Error(await parseApiError(response, `Journal lookup failed (${response.status})`))
   }
   return (await response.json()) as JournalOption[]
+}
+
+export async function uploadLibraryAssets(input: {
+  files: File[]
+  projectId?: string
+}): Promise<LibraryAssetUploadPayload> {
+  const projectId = (input.projectId || '').trim()
+
+  const toBase64 = async (file: File): Promise<string> => {
+    const buffer = await file.arrayBuffer()
+    const bytes = new Uint8Array(buffer)
+    let binary = ''
+    for (let index = 0; index < bytes.byteLength; index += 1) {
+      binary += String.fromCharCode(bytes[index])
+    }
+    return btoa(binary)
+  }
+
+  const formData = new FormData()
+  for (const file of input.files) {
+    formData.append('files', file)
+  }
+  if (projectId) {
+    formData.append('project_id', projectId)
+  }
+  const response = await fetch(`${API_BASE_URL}/v1/library/assets/upload`, {
+    method: 'POST',
+    body: formData,
+  })
+  if (response.ok) {
+    return (await response.json()) as LibraryAssetUploadPayload
+  }
+
+  const multipartError = await parseApiError(response, `Asset upload failed (${response.status})`)
+  if (!multipartError.toLowerCase().includes('multipart parsing is unavailable')) {
+    throw new Error(multipartError)
+  }
+
+  const jsonFiles = await Promise.all(
+    input.files.map(async (file) => ({
+      filename: file.name || 'asset.bin',
+      mime_type: file.type || null,
+      content_base64: await toBase64(file),
+    })),
+  )
+  const fallbackResponse = await fetch(`${API_BASE_URL}/v1/library/assets/upload`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      project_id: projectId || null,
+      files: jsonFiles,
+    }),
+  })
+  if (!fallbackResponse.ok) {
+    throw new Error(await parseApiError(fallbackResponse, `Asset upload fallback failed (${fallbackResponse.status})`))
+  }
+  return (await fallbackResponse.json()) as LibraryAssetUploadPayload
+}
+
+export async function listLibraryAssets(projectId?: string): Promise<LibraryAssetRecord[]> {
+  const search = new URLSearchParams()
+  if ((projectId || '').trim()) {
+    search.set('project_id', projectId!.trim())
+  }
+  const suffix = search.toString() ? `?${search.toString()}` : ''
+  const response = await fetch(`${API_BASE_URL}/v1/library/assets${suffix}`)
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Asset list failed (${response.status})`))
+  }
+  return (await response.json()) as LibraryAssetRecord[]
+}
+
+export async function attachAssetsToManuscript(input: {
+  manuscriptId: string
+  assetIds: string[]
+  sectionContext: 'RESULTS' | 'TABLES' | 'FIGURES' | 'PLANNER'
+}): Promise<ManuscriptAttachAssetsPayload> {
+  const response = await fetch(`${API_BASE_URL}/v1/manuscripts/${encodeURIComponent(input.manuscriptId)}/attach-assets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      asset_ids: input.assetIds,
+      section_context: input.sectionContext,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Attach assets failed (${response.status})`))
+  }
+  return (await response.json()) as ManuscriptAttachAssetsPayload
+}
+
+export async function createDataProfile(input: {
+  assetIds: string[]
+  maxRows?: number
+  maxChars?: number
+}): Promise<DataProfilePayload> {
+  const response = await fetch(`${API_BASE_URL}/v1/data/profile`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      asset_ids: input.assetIds,
+      sampling: {
+        max_rows: input.maxRows ?? 200,
+        max_chars: input.maxChars ?? 20000,
+      },
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Data profiling failed (${response.status})`))
+  }
+  return (await response.json()) as DataProfilePayload
+}
+
+export async function createAnalysisScaffold(input: {
+  manuscriptId: string
+  profileId?: string | null
+  confirmedFields: PlannerConfirmedFields
+}): Promise<AnalysisScaffoldPayload> {
+  const response = await fetch(`${API_BASE_URL}/v1/scaffold/analysis-plan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      manuscript_id: input.manuscriptId,
+      profile_id: input.profileId ?? null,
+      confirmed_fields: input.confirmedFields,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Analysis scaffold failed (${response.status})`))
+  }
+  return (await response.json()) as AnalysisScaffoldPayload
+}
+
+export async function createTablesScaffold(input: {
+  manuscriptId: string
+  profileId?: string | null
+  confirmedFields: PlannerConfirmedFields
+}): Promise<TablesScaffoldPayload> {
+  const response = await fetch(`${API_BASE_URL}/v1/scaffold/tables`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      manuscript_id: input.manuscriptId,
+      profile_id: input.profileId ?? null,
+      confirmed_fields: input.confirmedFields,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Tables scaffold failed (${response.status})`))
+  }
+  return (await response.json()) as TablesScaffoldPayload
+}
+
+export async function createFiguresScaffold(input: {
+  manuscriptId: string
+  profileId?: string | null
+  confirmedFields: PlannerConfirmedFields
+}): Promise<FiguresScaffoldPayload> {
+  const response = await fetch(`${API_BASE_URL}/v1/scaffold/figures`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      manuscript_id: input.manuscriptId,
+      profile_id: input.profileId ?? null,
+      confirmed_fields: input.confirmedFields,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Figures scaffold failed (${response.status})`))
+  }
+  return (await response.json()) as FiguresScaffoldPayload
+}
+
+export async function saveManuscriptPlan(input: {
+  manuscriptId: string
+  planJson: ManuscriptPlanJson
+}): Promise<ManuscriptPlanUpdatePayload> {
+  const response = await fetch(`${API_BASE_URL}/v1/manuscripts/${encodeURIComponent(input.manuscriptId)}/plan`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      plan_json: input.planJson,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Plan save failed (${response.status})`))
+  }
+  return (await response.json()) as ManuscriptPlanUpdatePayload
+}
+
+export async function improveManuscriptPlanSection(input: {
+  manuscriptId: string
+  sectionKey: string
+  currentText: string
+  context: {
+    profileId?: string | null
+    confirmedFields: PlannerConfirmedFields
+  }
+  tool: 'improve' | 'critique' | 'alternatives' | 'subheadings' | 'link_to_data' | 'checklist'
+}): Promise<PlanSectionImprovePayload> {
+  const response = await fetch(`${API_BASE_URL}/v1/manuscripts/${encodeURIComponent(input.manuscriptId)}/plan/section-improve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      section_key: input.sectionKey,
+      current_text: input.currentText,
+      context: {
+        profile_id: input.context.profileId ?? null,
+        confirmed_fields: input.context.confirmedFields,
+      },
+      tool: input.tool,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Section tool failed (${response.status})`))
+  }
+  return (await response.json()) as PlanSectionImprovePayload
 }
 
 export async function bootstrapRunContext(input: {
@@ -145,6 +373,9 @@ export async function fetchNextPlanClarificationQuestion(input: {
   wordLength: string
   summaryOfResearch: string
   studyTypeOptions?: string[]
+  dataProfileJson?: Record<string, unknown> | null
+  profileUnresolvedQuestions?: string[]
+  useProfileTailoring?: boolean
   history: PlanClarificationHistoryItem[]
   maxQuestions?: number
   forceNextQuestion?: boolean
@@ -163,6 +394,9 @@ export async function fetchNextPlanClarificationQuestion(input: {
       word_length: input.wordLength,
       summary_of_research: input.summaryOfResearch,
       study_type_options: input.studyTypeOptions ?? [],
+      data_profile_json: input.dataProfileJson ?? null,
+      profile_unresolved_questions: input.profileUnresolvedQuestions ?? [],
+      use_profile_tailoring: input.useProfileTailoring ?? false,
       history: input.history,
       max_questions: input.maxQuestions ?? 10,
       force_next_question: input.forceNextQuestion ?? false,

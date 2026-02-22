@@ -9,7 +9,8 @@ const CORE_SECTIONS = ['introduction', 'methods', 'results', 'discussion']
 const REQUIRED_CONTEXT_FIELDS: Array<keyof ContextReadinessFields> = [
   'projectTitle',
   'researchObjective',
-  'studyType',
+  'studyArchitecture',
+  'interpretationMode',
 ]
 
 const SCORE_MAX = {
@@ -99,8 +100,8 @@ function computeQcScore(qcStatus: QcStatus, qcSeverityCounts: QcSeverityCounts):
   return clamp(SCORE_MAX.qc - deduction, 0, SCORE_MAX.qc)
 }
 
-function computeStatisticalScore(primaryAnalyticalClaim: string): number {
-  const normalised = primaryAnalyticalClaim.trim().toLowerCase()
+function computeStatisticalScore(interpretationMode: string): number {
+  const normalised = interpretationMode.trim().toLowerCase()
   if (!normalised) {
     return 0
   }
@@ -128,7 +129,7 @@ export function computeReadinessScore(state: ReadinessScoreState): ReadinessScor
     plan: computePlanScore(state.planStatus, state.selectedSections),
     qc: computeQcScore(state.qcStatus, state.qcSeverityCounts),
     draft: computeDraftScore(state.acceptedSections),
-    statistical: computeStatisticalScore(state.contextFields.primaryAnalyticalClaim),
+    statistical: computeStatisticalScore(state.contextFields.interpretationMode),
     anchoring: SCORE_MAX.anchoring,
   }
 

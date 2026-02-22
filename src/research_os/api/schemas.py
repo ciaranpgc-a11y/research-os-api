@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -341,6 +341,9 @@ class PlanClarificationNextQuestionRequest(BaseModel):
     word_length: str = ""
     summary_of_research: str = ""
     study_type_options: list[str] = Field(default_factory=list)
+    data_profile_json: dict[str, Any] | None = None
+    profile_unresolved_questions: list[str] = Field(default_factory=list)
+    use_profile_tailoring: bool = False
     history: list[PlanClarificationHistoryItemRequest] = Field(default_factory=list)
     max_questions: int = 10
     force_next_question: bool = False
@@ -401,6 +404,138 @@ class PlanSectionEditResponse(BaseModel):
     updated_section_text: str
     applied_to_selection: bool = False
     model_used: str = ""
+
+
+class LibraryAssetUploadResponse(BaseModel):
+    asset_ids: list[str] = Field(default_factory=list)
+
+
+class LibraryAssetResponse(BaseModel):
+    id: str
+    project_id: str | None = None
+    filename: str
+    kind: str
+    mime_type: str | None = None
+    byte_size: int = 0
+    uploaded_at: datetime
+
+
+class ManuscriptAttachAssetsRequest(BaseModel):
+    asset_ids: list[str] = Field(default_factory=list)
+    section_context: Literal["RESULTS", "TABLES", "FIGURES", "PLANNER"] = "PLANNER"
+
+
+class ManuscriptAttachAssetsResponse(BaseModel):
+    manuscript_id: str
+    attached_asset_ids: list[str] = Field(default_factory=list)
+    section_context: Literal["RESULTS", "TABLES", "FIGURES", "PLANNER"]
+
+
+class DataProfileSamplingRequest(BaseModel):
+    max_rows: int = 200
+    max_chars: int = 20000
+
+
+class DataProfileRequest(BaseModel):
+    asset_ids: list[str] = Field(default_factory=list)
+    sampling: DataProfileSamplingRequest = Field(
+        default_factory=DataProfileSamplingRequest
+    )
+
+
+class DataProfileResponse(BaseModel):
+    profile_id: str
+    data_profile_json: dict[str, Any] = Field(default_factory=dict)
+    human_summary: str = ""
+
+
+class PlannerConfirmedFields(BaseModel):
+    design: str = ""
+    unit_of_analysis: str = ""
+    primary_outcome: str = ""
+    key_exposures: str = ""
+    key_covariates: str = ""
+
+
+class AnalysisScaffoldRequest(BaseModel):
+    manuscript_id: str
+    profile_id: str | None = None
+    confirmed_fields: PlannerConfirmedFields = Field(
+        default_factory=PlannerConfirmedFields
+    )
+
+
+class AnalysisScaffoldResponse(BaseModel):
+    analysis_scaffold_id: str
+    analysis_scaffold_json: dict[str, Any] = Field(default_factory=dict)
+    human_summary: str = ""
+
+
+class TablesScaffoldRequest(BaseModel):
+    manuscript_id: str
+    profile_id: str | None = None
+    confirmed_fields: PlannerConfirmedFields = Field(
+        default_factory=PlannerConfirmedFields
+    )
+
+
+class TablesScaffoldResponse(BaseModel):
+    tables_scaffold_id: str
+    tables_scaffold_json: dict[str, Any] = Field(default_factory=dict)
+    human_summary: str = ""
+
+
+class FiguresScaffoldRequest(BaseModel):
+    manuscript_id: str
+    profile_id: str | None = None
+    confirmed_fields: PlannerConfirmedFields = Field(
+        default_factory=PlannerConfirmedFields
+    )
+
+
+class FiguresScaffoldResponse(BaseModel):
+    figures_scaffold_id: str
+    figures_scaffold_json: dict[str, Any] = Field(default_factory=dict)
+    human_summary: str = ""
+
+
+class ManuscriptPlanUpdateRequest(BaseModel):
+    plan_json: dict[str, Any] = Field(default_factory=dict)
+
+
+class ManuscriptPlanUpdateResponse(BaseModel):
+    manuscript_id: str
+    plan_json: dict[str, Any] = Field(default_factory=dict)
+    updated_at: datetime
+
+
+class PlanSectionImproveContextRequest(BaseModel):
+    profile_id: str | None = None
+    confirmed_fields: PlannerConfirmedFields = Field(
+        default_factory=PlannerConfirmedFields
+    )
+
+
+class PlanSectionImproveRequest(BaseModel):
+    section_key: str
+    current_text: str = ""
+    context: PlanSectionImproveContextRequest = Field(
+        default_factory=PlanSectionImproveContextRequest
+    )
+    tool: Literal[
+        "improve",
+        "critique",
+        "alternatives",
+        "subheadings",
+        "link_to_data",
+        "checklist",
+    ]
+
+
+class PlanSectionImproveResponse(BaseModel):
+    updated_text: str = ""
+    suggestions: list[str] = Field(default_factory=list)
+    to_confirm: list[str] = Field(default_factory=list)
 
 
 class ResearchOverviewSuggestionsRequest(BaseModel):

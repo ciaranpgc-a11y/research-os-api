@@ -305,3 +305,156 @@ export type PlanSectionEditPayload = {
   applied_to_selection: boolean
   model_used: string
 }
+
+export type LibraryAssetRecord = {
+  id: string
+  project_id: string | null
+  filename: string
+  kind: string
+  mime_type: string | null
+  byte_size: number
+  uploaded_at: string
+}
+
+export type LibraryAssetUploadPayload = {
+  asset_ids: string[]
+}
+
+export type ManuscriptAttachAssetsPayload = {
+  manuscript_id: string
+  attached_asset_ids: string[]
+  section_context: 'RESULTS' | 'TABLES' | 'FIGURES' | 'PLANNER'
+}
+
+export type DataProfilePayload = {
+  profile_id: string
+  data_profile_json: {
+    dataset_kind: string
+    likely_design_hints: string[]
+    variable_role_guesses: {
+      outcomes: string[]
+      exposures: string[]
+      covariates: string[]
+      identifiers: string[]
+      time_variables: string[]
+    }
+    sample_size_signals: {
+      assets_count: number
+      rows_sampled: number
+      columns_detected: number
+    }
+    warnings: string[]
+    uncertainty: string[]
+    unresolved_questions: string[]
+    preview: Array<{
+      asset_id: string
+      filename: string
+      columns: string[]
+      sample_rows: Record<string, string>[]
+    }>
+  }
+  human_summary: string
+}
+
+export type PlannerConfirmedFields = {
+  design: string
+  unit_of_analysis: string
+  primary_outcome: string
+  key_exposures: string
+  key_covariates: string
+}
+
+export type AnalysisScaffoldPayload = {
+  analysis_scaffold_id: string
+  analysis_scaffold_json: {
+    methods_analytic_approach: Array<{
+      analysis_name: string
+      model_family: string
+      outcome: string
+      exposure: string
+      covariates: string
+      assumptions: string
+      qc: string
+      missing_data: string
+    }>
+    results_narrative_outline: Array<{
+      subheading: string
+      what_goes_here: string
+    }>
+    unresolved_questions: string[]
+  }
+  human_summary: string
+}
+
+export type TablesScaffoldPayload = {
+  tables_scaffold_id: string
+  tables_scaffold_json: {
+    proposed_tables: Array<{
+      table_id: string
+      title: string
+      purpose: string
+      columns: string[]
+      footnotes: string[]
+      unresolved_inputs: string[]
+    }>
+  }
+  human_summary: string
+}
+
+export type FiguresScaffoldPayload = {
+  figures_scaffold_id: string
+  figures_scaffold_json: {
+    proposed_figures: Array<{
+      figure_id: string
+      title: string
+      purpose: string
+      figure_type: string
+      caption_stub: string
+      inputs_needed: string[]
+      unresolved_inputs: string[]
+    }>
+  }
+  human_summary: string
+}
+
+export type ManuscriptPlanSection = {
+  key:
+    | 'TITLE_ABSTRACT'
+    | 'INTRODUCTION'
+    | 'METHODS'
+    | 'RESULTS'
+    | 'TABLES'
+    | 'FIGURES'
+    | 'DISCUSSION'
+    | 'LIMITATIONS'
+    | 'REFERENCES'
+  status: 'draft' | 'reviewed' | 'locked'
+  summary: string
+  content: string
+  subheadings: Array<{ title: string; notes: string }>
+  to_confirm: Array<{ question: string; why_it_matters: string }>
+  section_assets: { attached_asset_ids: string[] }
+  section_artifacts: {
+    tables?: Array<Record<string, unknown>>
+    figures?: Array<Record<string, unknown>>
+  }
+}
+
+export type ManuscriptPlanJson = {
+  manuscript_id: string
+  profile_id: string | null
+  confirmed_fields: PlannerConfirmedFields
+  sections: ManuscriptPlanSection[]
+}
+
+export type ManuscriptPlanUpdatePayload = {
+  manuscript_id: string
+  plan_json: ManuscriptPlanJson
+  updated_at: string
+}
+
+export type PlanSectionImprovePayload = {
+  updated_text: string
+  suggestions: string[]
+  to_confirm: string[]
+}

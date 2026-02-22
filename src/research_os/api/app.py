@@ -1,3 +1,4 @@
+import base64
 import logging
 import os
 import time
@@ -14,6 +15,8 @@ from fastapi.responses import PlainTextResponse
 
 from research_os.config import get_openai_api_key
 from research_os.api.schemas import (
+    AnalysisScaffoldRequest,
+    AnalysisScaffoldResponse,
     ClaimLinkerRequest,
     ClaimLinkerResponse,
     CitationAutofillRequest,
@@ -24,6 +27,8 @@ from research_os.api.schemas import (
     ClaimCitationUpdateRequest,
     ConsistencyCheckRequest,
     ConsistencyCheckResponse,
+    DataProfileRequest,
+    DataProfileResponse,
     DraftMethodsRequest,
     DraftMethodsSuccessResponse,
     DraftSectionRequest,
@@ -33,10 +38,16 @@ from research_os.api.schemas import (
     GenerationEstimateResponse,
     GenerationJobRetryRequest,
     GenerationJobResponse,
+    FiguresScaffoldRequest,
+    FiguresScaffoldResponse,
     GroundedDraftRequest,
     GroundedDraftResponse,
     HealthResponse,
     JournalOptionResponse,
+    LibraryAssetResponse,
+    LibraryAssetUploadResponse,
+    ManuscriptAttachAssetsRequest,
+    ManuscriptAttachAssetsResponse,
     QCRunResponse,
     ResearchOverviewSuggestionsRequest,
     ResearchOverviewSuggestionsResponse,
@@ -54,6 +65,8 @@ from research_os.api.schemas import (
     PlanClarificationQuestionsResponse,
     PlanSectionEditRequest,
     PlanSectionEditResponse,
+    PlanSectionImproveRequest,
+    PlanSectionImproveResponse,
     ParagraphRegenerationRequest,
     ParagraphRegenerationResponse,
     ProjectCreateRequest,
@@ -62,6 +75,10 @@ from research_os.api.schemas import (
     ReferencePackRequest,
     SectionPlanRequest,
     SectionPlanResponse,
+    TablesScaffoldRequest,
+    TablesScaffoldResponse,
+    ManuscriptPlanUpdateRequest,
+    ManuscriptPlanUpdateResponse,
     SubmissionPackRequest,
     SubmissionPackResponse,
     TitleAbstractSynthesisRequest,
@@ -131,6 +148,19 @@ from research_os.services.paragraph_regeneration_service import (
 )
 from research_os.services.qc_service import run_qc_checks
 from research_os.services.section_planning_service import build_section_plan
+from research_os.services.data_planner_service import (
+    DataAssetNotFoundError,
+    PlannerValidationError,
+    attach_assets_to_manuscript,
+    create_analysis_scaffold,
+    create_data_profile,
+    create_figures_scaffold,
+    create_tables_scaffold,
+    improve_plan_section,
+    list_library_assets,
+    save_manuscript_plan,
+    upload_library_assets,
+)
 from research_os.services.plan_clarification_service import (
     generate_next_plan_clarification_question,
     generate_plan_clarification_questions,
@@ -369,6 +399,257 @@ def v1_list_journal_presets() -> list[JournalOptionResponse]:
     return [JournalOptionResponse(**preset) for preset in JOURNAL_PRESETS]
 
 
+@app.post(
+    "/v1/library/assets/upload",
+    response_model=LibraryAssetUploadResponse,
+    responses=BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+async def v1_upload_library_assets(
+    request: Request,
+    project_id: str | None = Query(default=None),
+) -> LibraryAssetUploadResponse | JSONResponse:
+    try:
+        project_id_value = project_id
+        file_payloads: list[tuple[str, str | None, bytes]] = []
+        content_type = request.headers.get("content-type", "").lower()
+
+        if "application/json" in content_type:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                return _build_bad_request_response("JSON payload must be an object.")
+
+            payload_project_id = str(payload.get("project_id", "")).strip()
+            if payload_project_id:
+                project_id_value = payload_project_id
+
+            raw_files = payload.get("files", [])
+            if not isinstance(raw_files, list):
+                return _build_bad_request_response("JSON payload field 'files' must be a list.")
+
+            for item in raw_files:
+                if not isinstance(item, dict):
+                    continue
+                filename = str(item.get("filename", "")).strip() or "asset.bin"
+                mime_type_raw = str(item.get("mime_type", "")).strip()
+                mime_type = mime_type_raw or None
+                encoded = str(item.get("content_base64", "")).strip()
+                if not encoded:
+                    continue
+                try:
+                    content = base64.b64decode(encoded, validate=False)
+                except Exception:
+                    continue
+                file_payloads.append((filename, mime_type, content))
+        else:
+            try:
+                form = await request.form()
+            except RuntimeError:
+                return _build_bad_request_response(
+                    (
+                        "Multipart parsing is unavailable in this deployment. "
+                        "Install python-multipart or send JSON fallback payload."
+                    )
+                )
+
+            form_project_id = str(form.get("project_id", "")).strip()
+            if form_project_id:
+                project_id_value = form_project_id
+
+            files = form.getlist("files")
+            for file in files:
+                if not hasattr(file, "read"):
+                    continue
+                filename = (getattr(file, "filename", "") or "").strip() or "asset.bin"
+                file_content_type = getattr(file, "content_type", None)
+                content = await file.read()
+                file_payloads.append((filename, file_content_type, content))
+
+        if not file_payloads:
+            return _build_bad_request_response("No valid file payloads were provided.")
+
+        asset_ids = upload_library_assets(
+            files=file_payloads,
+            project_id=project_id_value,
+        )
+        return LibraryAssetUploadResponse(asset_ids=asset_ids)
+    except PlannerValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/library/assets",
+    response_model=list[LibraryAssetResponse],
+    tags=["v1"],
+)
+def v1_list_library_assets(
+    project_id: str | None = Query(default=None),
+) -> list[LibraryAssetResponse]:
+    payload = list_library_assets(project_id=project_id)
+    return [LibraryAssetResponse(**item) for item in payload]
+
+
+@app.post(
+    "/v1/manuscripts/{manuscript_id}/attach-assets",
+    response_model=ManuscriptAttachAssetsResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_attach_assets_to_manuscript(
+    manuscript_id: str,
+    request: ManuscriptAttachAssetsRequest,
+) -> ManuscriptAttachAssetsResponse | JSONResponse:
+    try:
+        attached = attach_assets_to_manuscript(
+            manuscript_id=manuscript_id,
+            asset_ids=request.asset_ids,
+            section_context=request.section_context,
+        )
+        return ManuscriptAttachAssetsResponse(
+            manuscript_id=manuscript_id,
+            attached_asset_ids=attached,
+            section_context=request.section_context,
+        )
+    except DataAssetNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PlannerValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/data/profile",
+    response_model=DataProfileResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_create_data_profile(
+    request: DataProfileRequest,
+) -> DataProfileResponse | JSONResponse:
+    try:
+        payload = create_data_profile(
+            asset_ids=request.asset_ids,
+            sampling=request.sampling.model_dump(),
+        )
+        return DataProfileResponse(**payload)
+    except DataAssetNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PlannerValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/scaffold/analysis-plan",
+    response_model=AnalysisScaffoldResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_create_analysis_scaffold(
+    request: AnalysisScaffoldRequest,
+) -> AnalysisScaffoldResponse | JSONResponse:
+    try:
+        payload = create_analysis_scaffold(
+            manuscript_id=request.manuscript_id,
+            profile_id=request.profile_id,
+            confirmed_fields=request.confirmed_fields.model_dump(),
+        )
+        return AnalysisScaffoldResponse(**payload)
+    except DataAssetNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PlannerValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/scaffold/tables",
+    response_model=TablesScaffoldResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_create_tables_scaffold(
+    request: TablesScaffoldRequest,
+) -> TablesScaffoldResponse | JSONResponse:
+    try:
+        payload = create_tables_scaffold(
+            manuscript_id=request.manuscript_id,
+            profile_id=request.profile_id,
+            confirmed_fields=request.confirmed_fields.model_dump(),
+        )
+        return TablesScaffoldResponse(**payload)
+    except DataAssetNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PlannerValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/scaffold/figures",
+    response_model=FiguresScaffoldResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_create_figures_scaffold(
+    request: FiguresScaffoldRequest,
+) -> FiguresScaffoldResponse | JSONResponse:
+    try:
+        payload = create_figures_scaffold(
+            manuscript_id=request.manuscript_id,
+            profile_id=request.profile_id,
+            confirmed_fields=request.confirmed_fields.model_dump(),
+        )
+        return FiguresScaffoldResponse(**payload)
+    except DataAssetNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PlannerValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.put(
+    "/v1/manuscripts/{manuscript_id}/plan",
+    response_model=ManuscriptPlanUpdateResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_save_manuscript_plan(
+    manuscript_id: str,
+    request: ManuscriptPlanUpdateRequest,
+) -> ManuscriptPlanUpdateResponse | JSONResponse:
+    try:
+        payload = save_manuscript_plan(
+            manuscript_id=manuscript_id,
+            plan_json=request.plan_json,
+        )
+        return ManuscriptPlanUpdateResponse(**payload)
+    except DataAssetNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PlannerValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/manuscripts/{manuscript_id}/plan/section-improve",
+    response_model=PlanSectionImproveResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_improve_manuscript_plan_section(
+    manuscript_id: str,
+    request: PlanSectionImproveRequest,
+) -> PlanSectionImproveResponse | JSONResponse:
+    try:
+        payload = improve_plan_section(
+            manuscript_id=manuscript_id,
+            section_key=request.section_key,
+            current_text=request.current_text,
+            context=request.context.model_dump(),
+            tool=request.tool,
+        )
+        return PlanSectionImproveResponse(**payload)
+    except DataAssetNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PlannerValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
 @app.get(
     "/v1/aawe/insights/{selection_type}/{item_id}",
     response_model=SelectionInsightResponse,
@@ -463,6 +744,9 @@ def v1_plan_aawe_next_clarification_question(
         word_length=request.word_length,
         summary_of_research=request.summary_of_research,
         study_type_options=request.study_type_options,
+        data_profile_json=request.data_profile_json,
+        profile_unresolved_questions=request.profile_unresolved_questions,
+        use_profile_tailoring=request.use_profile_tailoring,
         history=[item.model_dump() for item in request.history],
         max_questions=request.max_questions,
         force_next_question=request.force_next_question,

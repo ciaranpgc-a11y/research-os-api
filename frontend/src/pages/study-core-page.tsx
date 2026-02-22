@@ -988,8 +988,7 @@ export function StudyCorePage() {
     return null
   }
 
-  const showRightPanel =
-    (currentStep === 1 && contextValues.researchObjective.trim().length > 0) || currentStep === 2
+  const showRightPanel = currentStep === 1 && contextValues.researchObjective.trim().length > 0
 
   return (
     <section className="space-y-4">

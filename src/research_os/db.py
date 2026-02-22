@@ -73,6 +73,9 @@ class Project(Base):
     generation_jobs: Mapped[list["GenerationJob"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
+    data_assets: Mapped[list["DataLibraryAsset"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
 
 
 class Manuscript(Base):
@@ -102,6 +105,157 @@ class Manuscript(Base):
     generation_jobs: Mapped[list["GenerationJob"]] = relationship(
         back_populates="manuscript", cascade="all, delete-orphan"
     )
+    asset_links: Mapped[list["ManuscriptAssetLink"]] = relationship(
+        back_populates="manuscript", cascade="all, delete-orphan"
+    )
+    planner_artifacts: Mapped[list["PlannerArtifact"]] = relationship(
+        back_populates="manuscript", cascade="all, delete-orphan"
+    )
+    plan_state: Mapped["ManuscriptPlan | None"] = relationship(
+        back_populates="manuscript",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+
+
+class DataLibraryAsset(Base):
+    __tablename__ = "data_library_assets"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    project_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
+    )
+    filename: Mapped[str] = mapped_column(String(255))
+    kind: Mapped[str] = mapped_column(String(32), default="unknown")
+    mime_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    byte_size: Mapped[int] = mapped_column(Integer, default=0)
+    storage_path: Mapped[str] = mapped_column(Text)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    project: Mapped[Project | None] = relationship(back_populates="data_assets")
+    manuscript_links: Mapped[list["ManuscriptAssetLink"]] = relationship(
+        back_populates="asset", cascade="all, delete-orphan"
+    )
+
+
+class ManuscriptAssetLink(Base):
+    __tablename__ = "manuscript_asset_links"
+    __table_args__ = (
+        UniqueConstraint("manuscript_id", "asset_id", "section_context"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    manuscript_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("manuscripts.id", ondelete="CASCADE")
+    )
+    asset_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("data_library_assets.id", ondelete="CASCADE")
+    )
+    section_context: Mapped[str] = mapped_column(String(32), default="PLANNER")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    manuscript: Mapped[Manuscript] = relationship(back_populates="asset_links")
+    asset: Mapped[DataLibraryAsset] = relationship(back_populates="manuscript_links")
+
+
+class DataProfile(Base):
+    __tablename__ = "data_profiles"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    asset_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    data_profile_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    human_summary: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    artifacts: Mapped[list["PlannerArtifact"]] = relationship(
+        back_populates="profile", cascade="all, delete-orphan"
+    )
+
+
+class PlannerArtifact(Base):
+    __tablename__ = "planner_artifacts"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    manuscript_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("manuscripts.id", ondelete="CASCADE")
+    )
+    profile_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("data_profiles.id", ondelete="SET NULL"), nullable=True
+    )
+    artifact_type: Mapped[str] = mapped_column(String(32))
+    scaffold_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    human_summary: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    manuscript: Mapped[Manuscript] = relationship(back_populates="planner_artifacts")
+    profile: Mapped[DataProfile | None] = relationship(back_populates="artifacts")
+
+
+class ManuscriptPlan(Base):
+    __tablename__ = "manuscript_plans"
+    __table_args__ = (UniqueConstraint("manuscript_id"),)
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    manuscript_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("manuscripts.id", ondelete="CASCADE")
+    )
+    plan_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    manuscript: Mapped[Manuscript] = relationship(back_populates="plan_state")
+
+
+class ManuscriptSnapshot(Base):
+    __tablename__ = "manuscript_snapshots"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="CASCADE")
+    )
+    manuscript_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("manuscripts.id", ondelete="CASCADE")
+    )
+    label: Mapped[str] = mapped_column(String(255), default="")
+    sections: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    manuscript: Mapped[Manuscript] = relationship(back_populates="snapshots")
 
 
 class ManuscriptSnapshot(Base):
