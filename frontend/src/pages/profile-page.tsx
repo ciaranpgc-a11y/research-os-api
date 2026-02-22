@@ -4,9 +4,20 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { fetchImpactCollaborators, fetchMe, fetchOrcidConnect, fetchOrcidStatus, fetchPersonaState, importOrcidWorks, updateMe } from '@/lib/impact-api'
+import {
+  analyseImpact,
+  fetchImpactCollaborators,
+  fetchMe,
+  fetchOrcidConnect,
+  fetchOrcidStatus,
+  fetchPersonaState,
+  importOrcidWorks,
+  recomputeImpact,
+  syncPersonaMetrics,
+  updateMe,
+} from '@/lib/impact-api'
 import { getAuthSessionToken } from '@/lib/auth-session'
-import type { AuthUser, ImpactCollaboratorsPayload, OrcidStatusPayload, PersonaStatePayload } from '@/types/impact'
+import type { AuthUser, ImpactAnalysePayload, ImpactCollaboratorsPayload, OrcidStatusPayload, PersonaStatePayload } from '@/types/impact'
 
 const PROFILE_META_STORAGE_KEY = 'aawe-profile-meta'
 const WRITING_PREFERENCES_STORAGE_KEY = 'aawe-profile-writing-preferences'
@@ -121,7 +132,9 @@ export function ProfilePage() {
   const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(null)
   const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(null)
   const [collaborators, setCollaborators] = useState<ImpactCollaboratorsPayload | null>(null)
+  const [analysis, setAnalysis] = useState<ImpactAnalysePayload | null>(null)
   const [loading, setLoading] = useState(false)
+  const [analysisLoading, setAnalysisLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
   const [nameInput, setNameInput] = useState('')
@@ -180,6 +193,23 @@ export function ProfilePage() {
 
   const works = personaState?.works ?? []
   const syncStatus = personaState?.sync_status
+  const metricsRows = personaState?.metrics.works ?? []
+  const citationByWorkId = useMemo(() => {
+    const map = new Map<string, { citations: number; provider: string }>()
+    for (const row of metricsRows) {
+      map.set(row.work_id, { citations: row.citations, provider: row.provider })
+    }
+    return map
+  }, [metricsRows])
+  const totalCitations = useMemo(
+    () => metricsRows.reduce((sum, row) => sum + Math.max(0, Number(row.citations || 0)), 0),
+    [metricsRows],
+  )
+  const worksWithCitations = useMemo(
+    () => metricsRows.filter((row) => Number(row.citations || 0) > 0).length,
+    [metricsRows],
+  )
+  const citationCoveragePercent = works.length ? Math.round((worksWithCitations / works.length) * 100) : 0
   const isGuest = !token || !user
 
   const profileCompleteness = useMemo(() => {
@@ -253,12 +283,60 @@ export function ProfilePage() {
     setLoading(true)
     try {
       const payload = await importOrcidWorks(token)
-      setStatus(`Imported ${payload.imported_count} work(s) from ORCID.`)
+      await syncPersonaMetrics(token, ['openalex', 'semantic_scholar'])
+      setStatus(`Imported ${payload.imported_count} ORCID work(s) and synchronised citation coverage.`)
       await loadProfile(token)
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : 'Could not import works.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const onSyncCitations = async () => {
+    if (!token) {
+      navigate('/auth')
+      return
+    }
+    if (works.length === 0) {
+      setStatus('Import works before synchronising citations.')
+      return
+    }
+    setError('')
+    setStatus('')
+    setLoading(true)
+    try {
+      const payload = await syncPersonaMetrics(token, ['openalex', 'semantic_scholar', 'manual'])
+      setStatus(`Citations synchronised (${payload.synced_snapshots} metric snapshots captured).`)
+      await loadProfile(token)
+    } catch (syncError) {
+      setError(syncError instanceof Error ? syncError.message : 'Could not synchronise citations.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const onAnalyseResearchWorks = async () => {
+    if (!token) {
+      navigate('/auth')
+      return
+    }
+    if (works.length === 0) {
+      setStatus('Import works before running AI research analysis.')
+      return
+    }
+    setError('')
+    setStatus('')
+    setAnalysisLoading(true)
+    try {
+      await recomputeImpact(token)
+      const payload = await analyseImpact(token)
+      setAnalysis(payload)
+      setStatus('AI research works analysis updated.')
+    } catch (analysisError) {
+      setError(analysisError instanceof Error ? analysisError.message : 'Could not generate AI analysis.')
+    } finally {
+      setAnalysisLoading(false)
     }
   }
 
@@ -425,19 +503,32 @@ export function ProfilePage() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Integrations</CardTitle>
-          <CardDescription>Connection and sync status for profile data sources.</CardDescription>
+          <CardDescription>Connection and synchronisation status for profile data sources.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div className="rounded border border-border p-2">
-            <p className="font-medium">ORCID</p>
-            <p>Status: {orcidStatus?.linked ? 'Connected' : 'Not connected'}</p>
-            <p>Last sync: {formatTimestamp(syncStatus?.orcid_last_synced_at)}</p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-medium">ORCID</p>
+                <p>Status: {orcidStatus?.linked ? 'Connected' : 'Not connected'}</p>
+                <p>Last ORCID sync: {formatTimestamp(syncStatus?.orcid_last_synced_at)}</p>
+                <p>Last citation sync: {formatTimestamp(syncStatus?.metrics_last_synced_at)}</p>
+              </div>
+              <div className="rounded border border-border bg-muted/40 px-2 py-1 text-xs">
+                <p>Works: {works.length}</p>
+                <p>Citations: {totalCitations}</p>
+                <p>Coverage: {citationCoveragePercent}%</p>
+              </div>
+            </div>
             <div className="mt-2 flex flex-wrap gap-2">
               <Button type="button" size="sm" variant="outline" onClick={onConnectOrcid} disabled={loading}>
                 Connect ORCID
               </Button>
-              <Button type="button" size="sm" variant="outline" onClick={onImportWorks} disabled={loading}>
-                Sync now
+              <Button type="button" size="sm" onClick={onImportWorks} disabled={loading}>
+                Import all ORCID works + citations
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={onSyncCitations} disabled={loading}>
+                Synchronise citations
               </Button>
             </div>
           </div>
@@ -496,34 +587,41 @@ export function ProfilePage() {
             </div>
           ) : (
             <div className="overflow-x-auto rounded border border-border">
-              <table className="w-full min-w-[760px] text-sm">
+              <table className="w-full min-w-[960px] text-sm">
                 <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
                   <tr>
                     <th className="px-2 py-2">Title</th>
                     <th className="px-2 py-2">Year</th>
                     <th className="px-2 py-2">Venue</th>
                     <th className="px-2 py-2">Role</th>
+                    <th className="px-2 py-2">Citations</th>
+                    <th className="px-2 py-2">Provider</th>
                     <th className="px-2 py-2">Topic tags</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {works.slice(0, 15).map((work) => (
-                    <tr key={work.id} className="border-t border-border">
-                      <td className="px-2 py-2">{work.title}</td>
-                      <td className="px-2 py-2">{work.year ?? 'n/a'}</td>
-                      <td className="px-2 py-2">{work.venue_name || 'n/a'}</td>
-                      <td className="px-2 py-2">{work.provenance === 'orcid' ? 'Author' : 'Collaborator'}</td>
-                      <td className="px-2 py-2">
-                        <div className="flex flex-wrap gap-1">
-                          {(work.keywords || []).slice(0, 3).map((keyword) => (
-                            <span key={keyword} className="rounded border border-border bg-background px-1.5 py-0.5 text-[11px]">
-                              {keyword}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {works.slice(0, 20).map((work) => {
+                    const citation = citationByWorkId.get(work.id)
+                    return (
+                      <tr key={work.id} className="border-t border-border">
+                        <td className="px-2 py-2">{work.title}</td>
+                        <td className="px-2 py-2">{work.year ?? 'n/a'}</td>
+                        <td className="px-2 py-2">{work.venue_name || 'n/a'}</td>
+                        <td className="px-2 py-2">{work.provenance === 'orcid' ? 'Author' : 'Collaborator'}</td>
+                        <td className="px-2 py-2">{citation?.citations ?? 0}</td>
+                        <td className="px-2 py-2">{citation?.provider || 'not synced'}</td>
+                        <td className="px-2 py-2">
+                          <div className="flex flex-wrap gap-1">
+                            {(work.keywords || []).slice(0, 3).map((keyword) => (
+                              <span key={keyword} className="rounded border border-border bg-background px-1.5 py-0.5 text-[11px]">
+                                {keyword}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -556,6 +654,77 @@ export function ProfilePage() {
           <Button type="button" size="sm" variant="outline" disabled={isGuest}>
             Invite (coming soon)
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Profile readiness</CardTitle>
+          <CardDescription>Quality checks before impact interpretation and planning.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <div className="flex items-center justify-between rounded border border-border px-2 py-1">
+            <span>ORCID linked</span>
+            <span className={orcidStatus?.linked ? 'text-emerald-700' : 'text-amber-700'}>
+              {orcidStatus?.linked ? 'Complete' : 'Pending'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between rounded border border-border px-2 py-1">
+            <span>Works imported</span>
+            <span className={works.length > 0 ? 'text-emerald-700' : 'text-amber-700'}>{works.length}</span>
+          </div>
+          <div className="flex items-center justify-between rounded border border-border px-2 py-1">
+            <span>Citation coverage</span>
+            <span className={citationCoveragePercent >= 60 ? 'text-emerald-700' : 'text-amber-700'}>
+              {citationCoveragePercent}%
+            </span>
+          </div>
+          <div className="flex items-center justify-between rounded border border-border px-2 py-1">
+            <span>Writing preferences</span>
+            <span className={preferences.defaultStudyTypes.length > 0 ? 'text-emerald-700' : 'text-amber-700'}>
+              {preferences.defaultStudyTypes.length > 0 ? 'Configured' : 'Pending'}
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">AI research works analysis</CardTitle>
+          <CardDescription>Evidence-linked interpretation of publications, collaborators, and themes.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <Button type="button" size="sm" onClick={onAnalyseResearchWorks} disabled={analysisLoading || loading}>
+            {analysisLoading ? 'Analysing...' : 'Generate analysis'}
+          </Button>
+          {analysis ? (
+            <div className="space-y-2">
+              <div className="rounded border border-border p-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Summary</p>
+                <p>{analysis.scholarly_impact_summary}</p>
+              </div>
+              <div className="rounded border border-border p-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Collaboration</p>
+                <p>{analysis.collaboration_analysis}</p>
+              </div>
+              <div className="rounded border border-border p-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Themes</p>
+                <p>{analysis.thematic_evolution}</p>
+              </div>
+              <div className="rounded border border-border p-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Strategic suggestions</p>
+                <ul className="list-disc space-y-1 pl-4">
+                  {analysis.strategic_suggestions.slice(0, 4).map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded border border-dashed border-border p-3 text-xs text-muted-foreground">
+              Generate analysis after importing works and citations.
+            </div>
+          )}
         </CardContent>
       </Card>
 

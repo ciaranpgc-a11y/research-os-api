@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime, timezone
 import json
 import re
@@ -14,6 +15,7 @@ from research_os.services.persona_service import (
     get_persona_context,
     get_themes,
     list_collaborators,
+    list_works,
     persona_timeline,
     serialise_metrics_distribution,
 )
@@ -188,6 +190,47 @@ def _ask_model(prompt: str) -> tuple[dict[str, Any], str]:
         return _extract_json(fallback.output_text), FALLBACK_MODEL
 
 
+def _build_venue_distribution_from_works(*, user_id: str) -> dict[str, int]:
+    works = list_works(user_id=user_id)
+    counts = Counter()
+    for work in works:
+        venue = str(work.get("venue_name", "")).strip()
+        if venue:
+            counts[venue] += 1
+    return dict(counts.most_common(12))
+
+
+def _build_analysis_evidence_pack(*, user_id: str) -> dict[str, Any]:
+    works = list_works(user_id=user_id)
+    metrics = serialise_metrics_distribution(user_id=user_id)
+    ranked = metrics.get("works", [])
+    top_cited = [
+        {
+            "work_id": item.get("work_id"),
+            "title": item.get("title"),
+            "year": item.get("year"),
+            "citations": int(item.get("citations", 0) or 0),
+            "provider": item.get("provider"),
+        }
+        for item in ranked[:10]
+    ]
+    works_with_doi = sum(1 for work in works if str(work.get("doi") or "").strip())
+    works_with_abstract = sum(
+        1 for work in works if str(work.get("abstract") or "").strip()
+    )
+    works_with_citations = sum(1 for item in ranked if int(item.get("citations", 0) or 0) > 0)
+    return {
+        "counts": {
+            "total_works": len(works),
+            "works_with_doi": works_with_doi,
+            "works_with_abstract": works_with_abstract,
+            "works_with_citations": works_with_citations,
+        },
+        "top_cited_works": top_cited,
+        "citation_histogram": dict(metrics.get("histogram") or {}),
+    }
+
+
 def analyse_impact(
     *,
     user_id: str,
@@ -202,15 +245,15 @@ def analyse_impact(
     themes = theme_data or get_themes(user_id=user_id)
     timeline = publication_timeline or persona_timeline(user_id=user_id)
     if venue_distribution is None:
-        persona_context = get_persona_context(user_id=user_id)
-        venue_distribution = {
-            venue: index + 1
-            for index, venue in enumerate(persona_context.get("top_venues", []))
-        }
+        venue_distribution = _build_venue_distribution_from_works(user_id=user_id)
+    persona_context = get_persona_context(user_id=user_id)
+    evidence_pack = _build_analysis_evidence_pack(user_id=user_id)
 
     prompt = f"""
-You are generating strategic scholarly-impact analysis.
-Only use the supplied metrics and do not fabricate.
+You are generating strategic scholarly impact analysis for a researcher profile.
+Only use supplied evidence. Do not invent works, counts, venues, methods, trends, or collaborators.
+Use concise British English.
+For each interpretation claim, anchor it to specific supplied evidence.
 
 Impact snapshot:
 {json.dumps(snapshot, default=str)}
@@ -227,6 +270,12 @@ Publication timeline:
 Venue distribution:
 {json.dumps(venue_distribution, default=str)}
 
+Persona context:
+{json.dumps(persona_context, default=str)}
+
+Evidence pack:
+{json.dumps(evidence_pack, default=str)}
+
 Return JSON only with fields:
 {{
   "scholarly_impact_summary": "string",
@@ -240,21 +289,62 @@ Return JSON only with fields:
 }}
 
 Rules:
-- Separate factual statements from interpretation.
-- Include confidence markers when data is sparse or incomplete.
-- Use concise British English.
+- Separate factual statements from interpretation in each section.
+- Mention at least two concrete evidence anchors in:
+  1) scholarly_impact_summary,
+  2) collaboration_analysis,
+  3) thematic_evolution.
+- If data is incomplete, state exactly what is missing in confidence_markers.
+- strategic_suggestions must be specific and executable within 6-12 months.
+- Do not recommend actions that require unavailable data without explicitly marking dependency.
 """.strip()
     try:
         parsed, model_used = _ask_model(prompt)
+        strengths = [
+            str(item).strip()
+            for item in parsed.get("strengths", [])
+            if str(item).strip()
+        ]
+        blind_spots = [
+            str(item).strip()
+            for item in parsed.get("blind_spots", [])
+            if str(item).strip()
+        ]
+        strategic_suggestions = [
+            str(item).strip()
+            for item in parsed.get("strategic_suggestions", [])
+            if str(item).strip()
+        ]
+        grant_notes = [
+            str(item).strip()
+            for item in parsed.get("grant_positioning_notes", [])
+            if str(item).strip()
+        ]
+        confidence_markers = [
+            str(item).strip()
+            for item in parsed.get("confidence_markers", [])
+            if str(item).strip()
+        ]
+        if not confidence_markers:
+            if evidence_pack["counts"]["works_with_abstract"] < max(
+                3, int(evidence_pack["counts"]["total_works"] * 0.5)
+            ):
+                confidence_markers.append(
+                    "Abstract coverage is limited; theme interpretation has moderate uncertainty."
+                )
+            if evidence_pack["counts"]["works_with_citations"] == 0:
+                confidence_markers.append(
+                    "Citation records are absent across imported works."
+                )
         return {
             "scholarly_impact_summary": str(parsed.get("scholarly_impact_summary", "")).strip(),
             "collaboration_analysis": str(parsed.get("collaboration_analysis", "")).strip(),
             "thematic_evolution": str(parsed.get("thematic_evolution", "")).strip(),
-            "strengths": [str(item).strip() for item in parsed.get("strengths", []) if str(item).strip()],
-            "blind_spots": [str(item).strip() for item in parsed.get("blind_spots", []) if str(item).strip()],
-            "strategic_suggestions": [str(item).strip() for item in parsed.get("strategic_suggestions", []) if str(item).strip()],
-            "grant_positioning_notes": [str(item).strip() for item in parsed.get("grant_positioning_notes", []) if str(item).strip()],
-            "confidence_markers": [str(item).strip() for item in parsed.get("confidence_markers", []) if str(item).strip()],
+            "strengths": strengths,
+            "blind_spots": blind_spots,
+            "strategic_suggestions": strategic_suggestions,
+            "grant_positioning_notes": grant_notes,
+            "confidence_markers": confidence_markers,
             "model_used": model_used,
         }
     except Exception:
@@ -265,31 +355,45 @@ Rules:
             confidence_markers.append("Timeline data is incomplete.")
         if not themes.get("clusters"):
             confidence_markers.append("Theme clustering is not yet available.")
+        if evidence_pack["counts"]["works_with_abstract"] == 0:
+            confidence_markers.append("No abstracts are available for thematic interpretation.")
+        if evidence_pack["counts"]["works_with_citations"] == 0:
+            confidence_markers.append("Citation coverage is currently unavailable.")
+        top_work = evidence_pack["top_cited_works"][0] if evidence_pack["top_cited_works"] else None
+        top_work_line = (
+            f"Most cited work currently visible is '{top_work.get('title', 'n/a')}' "
+            f"({top_work.get('citations', 0)} citations)."
+            if top_work
+            else "No cited work is currently available in the profile."
+        )
         return {
             "scholarly_impact_summary": (
                 f"Current profile includes {snapshot.get('total_works', 0)} works and "
-                f"{snapshot.get('total_citations', 0)} citations with h-index {snapshot.get('h_index', 0)}."
+                f"{snapshot.get('total_citations', 0)} citations with h-index {snapshot.get('h_index', 0)}. "
+                f"{top_work_line}"
             ),
             "collaboration_analysis": (
-                f"Top collaborator count is based on {len(collaborators.get('collaborators', []))} collaborator edges."
+                f"Top collaborator count is based on {len(collaborators.get('collaborators', []))} collaborator edges, "
+                "derived from co-authorship metadata."
             ),
             "thematic_evolution": (
-                f"Dominant theme is '{snapshot.get('dominant_theme', '') or 'not established'}' based on current clustered works."
+                f"Dominant theme is '{snapshot.get('dominant_theme', '') or 'not established'}' based on current clustered works "
+                "and available abstracts."
             ),
             "strengths": [
-                "Structured citation tracking is available.",
-                "Collaboration edges are precomputed.",
+                "Structured citation tracking is available with provider attribution.",
+                "Collaboration edges are precomputed from publication authorship.",
             ],
             "blind_spots": [
                 "Some works may still be missing abstracts for thematic resolution.",
                 "External citation providers may have incomplete coverage for some DOIs.",
             ],
             "strategic_suggestions": [
-                "Prioritise venues aligned with dominant themes.",
-                "Expand co-authorship breadth in the next publication cycle.",
+                "Prioritise venues aligned with dominant themes and strongest cited outputs.",
+                "Expand co-authorship breadth while retaining one core collaborator stream.",
             ],
             "grant_positioning_notes": [
-                "Use h-index and citation velocity with explicit data completeness caveats.",
+                "Use h-index and citation velocity with explicit profile completeness caveats.",
             ],
             "confidence_markers": confidence_markers,
             "model_used": "fallback-local",

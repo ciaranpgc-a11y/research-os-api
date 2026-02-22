@@ -42,6 +42,12 @@ STOP_WORDS = {
     "cardiovascular",
     "imaging",
 }
+METRICS_PROVIDER_PRIORITY = {
+    "openalex": 30,
+    "semantic_scholar": 20,
+    "semanticscholar": 20,
+    "manual": 10,
+}
 
 
 class PersonaValidationError(RuntimeError):
@@ -440,27 +446,62 @@ def list_collaborators(*, user_id: str) -> dict[str, Any]:
         }
 
 
+def _metrics_snapshot_rank(row: MetricsSnapshot) -> tuple[int, int, int, datetime]:
+    provider_key = str(row.provider or "").strip().lower()
+    citations = max(0, int(row.citations_count or 0))
+    priority = METRICS_PROVIDER_PRIORITY.get(provider_key, 0)
+    has_quality_marker = int(
+        row.influential_citations is not None or row.altmetric_score is not None
+    )
+    captured = row.captured_at or datetime(1970, 1, 1, tzinfo=timezone.utc)
+    return (
+        citations,
+        has_quality_marker,
+        priority,
+        captured,
+    )
+
+
 def _latest_metrics_by_work(session, work_ids: list[str]) -> dict[str, MetricsSnapshot]:
     rows = session.scalars(
-        select(MetricsSnapshot)
-        .where(MetricsSnapshot.work_id.in_(work_ids or [""]))
-        .order_by(MetricsSnapshot.work_id, MetricsSnapshot.captured_at.desc())
+        select(MetricsSnapshot).where(MetricsSnapshot.work_id.in_(work_ids or [""]))
     ).all()
-    latest: dict[str, MetricsSnapshot] = {}
+    best: dict[str, MetricsSnapshot] = {}
     for row in rows:
-        if row.work_id in latest:
+        existing = best.get(row.work_id)
+        if existing is None:
+            best[row.work_id] = row
             continue
-        latest[row.work_id] = row
-    return latest
+        if _metrics_snapshot_rank(row) > _metrics_snapshot_rank(existing):
+            best[row.work_id] = row
+    return best
 
 
-def sync_metrics(*, user_id: str, providers: list[str]) -> dict[str, Any]:
+def sync_metrics(
+    *,
+    user_id: str,
+    providers: list[str],
+    work_ids: list[str] | None = None,
+) -> dict[str, Any]:
     create_all_tables()
     normalized = [item.strip().lower() for item in providers if item.strip()]
-    selected = normalized or ["openalex", "semantic_scholar", "manual"]
+    seen: set[str] = set()
+    selected: list[str] = []
+    for provider_name in normalized:
+        if provider_name in seen:
+            continue
+        seen.add(provider_name)
+        selected.append(provider_name)
+    if not selected:
+        selected = ["openalex", "semantic_scholar", "manual"]
+
+    target_ids = {str(item).strip() for item in (work_ids or []) if str(item).strip()}
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
-        works = session.scalars(select(Work).where(Work.user_id == user_id)).all()
+        work_query = select(Work).where(Work.user_id == user_id)
+        if target_ids:
+            work_query = work_query.where(Work.id.in_(list(target_ids)))
+        works = session.scalars(work_query).all()
         synced = 0
         provider_counts: dict[str, int] = defaultdict(int)
         for work in works:
@@ -472,7 +513,19 @@ def sync_metrics(*, user_id: str, providers: list[str]) -> dict[str, Any]:
             }
             for provider_name in selected:
                 provider = get_metrics_provider(provider_name)
-                metrics = provider.fetch_metrics(work_payload)
+                try:
+                    metrics = provider.fetch_metrics(work_payload)
+                except Exception as exc:
+                    metrics = {
+                        "provider": provider.provider_name,
+                        "citations_count": 0,
+                        "influential_citations": None,
+                        "altmetric_score": None,
+                        "payload_subset": {
+                            "note": "Provider lookup failed.",
+                            "error": str(exc),
+                        },
+                    }
                 snapshot = MetricsSnapshot(
                     work_id=work.id,
                     provider=str(metrics.get("provider", provider.provider_name)),

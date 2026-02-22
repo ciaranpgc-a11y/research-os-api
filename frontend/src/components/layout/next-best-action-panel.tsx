@@ -88,6 +88,9 @@ export function NextBestActionPanel() {
       ]
     }
     const worksCount = personaState?.works.length ?? 0
+    const metricsRows = personaState?.metrics.works ?? []
+    const worksWithCitations = metricsRows.filter((item) => Number(item.citations || 0) > 0).length
+    const citationCoverage = worksCount > 0 ? Math.round((worksWithCitations / worksCount) * 100) : 0
     const preferencesReady = Boolean(window.localStorage.getItem('aawe-profile-writing-preferences'))
     const ranked: RankedAction[] = []
     if (!user.email_verified_at) {
@@ -114,6 +117,26 @@ export function NextBestActionPanel() {
         href: '/profile',
       })
     }
+    if (worksCount > 0 && citationCoverage < 60) {
+      ranked.push({
+        title: 'Synchronise citations',
+        reason: 'Citation coverage is incomplete; refresh provider metrics before impact interpretation.',
+        cta: 'Open integrations',
+        href: '/profile',
+      })
+    }
+    if (
+      worksCount > 0 &&
+      citationCoverage >= 60 &&
+      !personaState?.sync_status.impact_last_computed_at
+    ) {
+      ranked.push({
+        title: 'Generate impact analysis',
+        reason: 'Works and citations are available; generate strategic analysis for planning context.',
+        cta: 'Open impact workspace',
+        href: '/impact',
+      })
+    }
     if (!preferencesReady) {
       ranked.push({
         title: 'Set writing preferences',
@@ -131,7 +154,16 @@ export function NextBestActionPanel() {
       })
     }
     return ranked.slice(0, 3)
-  }, [orcidStatus?.linked, personaState?.works.length, token, user])
+  }, [orcidStatus?.linked, personaState, token, user])
+
+  const contextCitationCoverage = useMemo(() => {
+    const worksCount = personaState?.works.length ?? 0
+    if (!worksCount) {
+      return '0%'
+    }
+    const citedCount = (personaState?.metrics.works ?? []).filter((item) => Number(item.citations || 0) > 0).length
+    return `${Math.round((citedCount / Math.max(1, worksCount)) * 100)}%`
+  }, [personaState])
 
   return (
     <aside className="flex h-full flex-col bg-card">
@@ -166,7 +198,9 @@ export function NextBestActionPanel() {
               <p>Session: {token && user ? 'Signed in' : 'Guest'}</p>
               <p>ORCID: {orcidStatus?.linked ? 'Linked' : 'Not linked'}</p>
               <p>Works: {personaState?.works.length ?? 0}</p>
+              <p>Citation coverage: {contextCitationCoverage}</p>
               <p>Metrics sync: {formatTimestamp(personaState?.sync_status.metrics_last_synced_at)}</p>
+              <p>Impact snapshot: {formatTimestamp(personaState?.sync_status.impact_last_computed_at)}</p>
               <Button size="sm" variant="outline" onClick={() => void refresh()} disabled={loading}>
                 {loading ? 'Refreshing...' : 'Refresh'}
               </Button>

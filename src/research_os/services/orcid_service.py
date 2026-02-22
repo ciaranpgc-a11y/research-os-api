@@ -11,7 +11,11 @@ import httpx
 from sqlalchemy import select
 
 from research_os.db import OrcidOAuthState, User, create_all_tables, session_scope
-from research_os.services.persona_service import recompute_collaborator_edges, upsert_work
+from research_os.services.persona_service import (
+    recompute_collaborator_edges,
+    sync_metrics,
+    upsert_work,
+)
 from research_os.services.security_service import decrypt_secret, encrypt_secret
 
 ORCID_CONNECT_TTL_MINUTES = 20
@@ -323,22 +327,35 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
         groups = works_payload.get("group") or []
 
         imported: list[dict[str, Any]] = []
+        seen_entries: set[str] = set()
         for group in groups:
             summaries = group.get("work-summary") or []
-            if not summaries:
-                continue
-            summary = summaries[0]
-            put_code = summary.get("put-code")
-            detail_payload = None
-            if put_code is not None:
-                detail_url = f"{_orcid_api_base()}/{orcid_id}/work/{put_code}"
-                detail_response = client.get(detail_url, headers=_orcid_headers(access_token))
-                if detail_response.status_code < 400:
-                    detail_payload = detail_response.json()
-            work_payload = _extract_work_payload(summary, detail_payload)
-            if not work_payload["title"]:
-                continue
-            imported.append(work_payload)
+            for summary in summaries:
+                if not isinstance(summary, dict):
+                    continue
+                put_code = summary.get("put-code")
+                detail_payload = None
+                if put_code is not None:
+                    detail_url = f"{_orcid_api_base()}/{orcid_id}/work/{put_code}"
+                    detail_response = client.get(detail_url, headers=_orcid_headers(access_token))
+                    if detail_response.status_code < 400:
+                        detail_payload = detail_response.json()
+                work_payload = _extract_work_payload(summary, detail_payload)
+                if not work_payload["title"]:
+                    fallback_ref = str(work_payload.get("doi") or put_code or "").strip()
+                    if not fallback_ref:
+                        continue
+                    work_payload["title"] = f"ORCID work {fallback_ref}"
+                dedupe_key = (
+                    str(work_payload.get("doi") or "").strip().lower()
+                    or f"{work_payload['title'].strip().lower()}::{work_payload.get('year') or ''}"
+                )
+                if not dedupe_key:
+                    continue
+                if dedupe_key in seen_entries:
+                    continue
+                seen_entries.add(dedupe_key)
+                imported.append(work_payload)
 
     upserted_ids: list[str] = []
     for work in imported:
@@ -355,6 +372,15 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
         user = _resolve_user_or_raise(session, user_id)
         user.orcid_last_synced_at = _utcnow()
         session.flush()
+    try:
+        sync_metrics(
+            user_id=user_id,
+            providers=["openalex", "semantic_scholar"],
+            work_ids=upserted_ids,
+        )
+    except Exception:
+        # Keep ORCID import resilient even if external citation providers are unavailable.
+        pass
     collaboration = recompute_collaborator_edges(user_id=user_id)
     return {
         "imported_count": len(upserted_ids),
