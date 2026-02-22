@@ -15,11 +15,13 @@ type TopBarScope = 'account' | 'workspace'
 type TopBarProps = {
   scope: TopBarScope
   onOpenLeftNav: () => void
+  showLeftNavButton?: boolean
 }
 
 export function TopBar({
   scope,
   onOpenLeftNav,
+  showLeftNavButton = true,
 }: TopBarProps) {
   const navigate = useNavigate()
   const theme = useAaweStore((state) => state.theme)
@@ -53,17 +55,19 @@ export function TopBar({
   return (
     <header className="flex h-14 items-center gap-3 border-b border-border bg-card/80 px-3 backdrop-blur nav:px-4">
       <div className="flex items-center gap-2">
-        <TooltipProvider delayDuration={100}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" size="icon" className="nav:hidden" onClick={onOpenLeftNav}>
-                <Menu className="h-4 w-4" />
-                <span className="sr-only">Open navigator</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Open navigation</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        {showLeftNavButton ? (
+          <TooltipProvider delayDuration={100}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="icon" className="nav:hidden" onClick={onOpenLeftNav}>
+                  <Menu className="h-4 w-4" />
+                  <span className="sr-only">Open navigator</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Open navigation</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : null}
         <div className="flex items-center gap-2">
           <span className="text-base font-semibold tracking-tight">AAWE</span>
           <span className="hidden text-xs text-muted-foreground md:inline">Autonomous Academic Writing Engine</span>

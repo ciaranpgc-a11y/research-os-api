@@ -22,6 +22,7 @@ type WorkspaceStore = {
     workspaceId: string,
     patch: Partial<Pick<WorkspaceRecord, 'name' | 'health' | 'version' | 'updatedAt' | 'pinned' | 'archived'>>,
   ) => void
+  deleteWorkspace: (workspaceId: string) => void
 }
 
 const WORKSPACES_STORAGE_KEY = 'aawe-workspaces'
@@ -201,5 +202,23 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     })
     persistWorkspaces(nextWorkspaces)
     set({ workspaces: nextWorkspaces })
+  },
+  deleteWorkspace: (workspaceId) => {
+    const cleanWorkspaceId = (workspaceId || '').trim()
+    if (!cleanWorkspaceId) {
+      return
+    }
+    const state = get()
+    const nextWorkspaces = state.workspaces.filter((workspace) => workspace.id !== cleanWorkspaceId)
+    const nextActiveWorkspaceId =
+      state.activeWorkspaceId === cleanWorkspaceId
+        ? nextWorkspaces.find((workspace) => !workspace.archived)?.id || nextWorkspaces[0]?.id || null
+        : state.activeWorkspaceId
+    persistWorkspaces(nextWorkspaces)
+    persistActiveWorkspaceId(nextActiveWorkspaceId)
+    set({
+      workspaces: nextWorkspaces,
+      activeWorkspaceId: nextActiveWorkspaceId,
+    })
   },
 }))
