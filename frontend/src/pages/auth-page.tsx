@@ -29,6 +29,8 @@ export function AuthPage() {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const [attemptedSignIn, setAttemptedSignIn] = useState(false)
+  const [attemptedRegister, setAttemptedRegister] = useState(false)
 
   useEffect(() => {
     if (getAuthSessionToken()) {
@@ -63,6 +65,12 @@ export function AuthPage() {
   }, [email, password])
 
   const onRegister = async () => {
+    setAttemptedRegister(true)
+    if (registerValidationMessage) {
+      setError(registerValidationMessage)
+      setStatus('')
+      return
+    }
     setLoading(true)
     setError('')
     setStatus('')
@@ -79,6 +87,12 @@ export function AuthPage() {
   }
 
   const onSignIn = async () => {
+    setAttemptedSignIn(true)
+    if (loginValidationMessage) {
+      setError(loginValidationMessage)
+      setStatus('')
+      return
+    }
     setLoading(true)
     setError('')
     setStatus('')
@@ -214,7 +228,7 @@ export function AuthPage() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                 />
-                <Button type="button" className="w-full bg-emerald-600 hover:bg-emerald-700" disabled={loading || Boolean(loginValidationMessage)} onClick={() => void onSignIn()}>
+                <Button type="button" className="w-full bg-emerald-600 hover:bg-emerald-700" disabled={loading} onClick={() => void onSignIn()}>
                   {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Continue
                 </Button>
@@ -234,7 +248,7 @@ export function AuthPage() {
                   </div>
                 ) : null}
 
-                {loginValidationMessage ? <p className="text-xs text-amber-700">{loginValidationMessage}</p> : null}
+                {attemptedSignIn && loginValidationMessage ? <p className="text-xs text-amber-700">{loginValidationMessage}</p> : null}
               </TabsContent>
               <TabsContent value="register" className="space-y-3 pt-2">
                 <Input
@@ -263,14 +277,14 @@ export function AuthPage() {
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                 />
-                <Button type="button" className="w-full bg-emerald-600 hover:bg-emerald-700" disabled={loading || Boolean(registerValidationMessage)} onClick={() => void onRegister()}>
+                <Button type="button" className="w-full bg-emerald-600 hover:bg-emerald-700" disabled={loading} onClick={() => void onRegister()}>
                   {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Create account
                 </Button>
                 <p className="text-xs text-slate-500">
                   Password policy: minimum 10 characters with upper/lowercase letters and a number.
                 </p>
-                {registerValidationMessage ? <p className="text-xs text-amber-700">{registerValidationMessage}</p> : null}
+                {attemptedRegister && registerValidationMessage ? <p className="text-xs text-amber-700">{registerValidationMessage}</p> : null}
               </TabsContent>
             </Tabs>
 
