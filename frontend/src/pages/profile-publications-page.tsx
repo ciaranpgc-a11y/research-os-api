@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { fetchOrcidStatus, fetchPersonaState, importOrcidWorks, syncPersonaMetrics } from '@/lib/impact-api'
+import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import type { OrcidStatusPayload, PersonaStatePayload } from '@/types/impact'
 
@@ -52,7 +53,16 @@ export function ProfilePublicationsPage() {
     try {
       const settled = await Promise.allSettled([fetchPersonaState(sessionToken), fetchOrcidStatus(sessionToken)])
       const [stateResult, orcidResult] = settled
-      setPersonaState(stateResult.status === 'fulfilled' ? stateResult.value : null)
+      if (stateResult.status === 'fulfilled') {
+        setPersonaState(stateResult.value)
+        writeCachedPersonaState(stateResult.value)
+      } else {
+        const cached = readCachedPersonaState()
+        setPersonaState(cached)
+        if (cached) {
+          setStatus('Showing cached publications while live data reloads.')
+        }
+      }
       setOrcidStatus(orcidResult.status === 'fulfilled' ? orcidResult.value : null)
       const failedCount = settled.filter((item) => item.status === 'rejected').length
       if (failedCount > 0) {
@@ -152,8 +162,8 @@ export function ProfilePublicationsPage() {
     setError('')
     setStatus('')
     try {
-      const payload = await syncPersonaMetrics(token, ['openalex', 'semantic_scholar', 'manual'])
-      setStatus(`Citations synchronised (${payload.synced_snapshots} metric snapshot(s)).`)
+      const payload = await syncPersonaMetrics(token, ['openalex'])
+      setStatus(`Citations synchronised via OpenAlex (${payload.synced_snapshots} snapshot(s)).`)
       await loadData(token, false)
     } catch (syncError) {
       setError(syncError instanceof Error ? syncError.message : 'Could not synchronise citations.')

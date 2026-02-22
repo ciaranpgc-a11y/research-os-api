@@ -12,6 +12,7 @@ import {
   importOrcidWorks,
   syncPersonaMetrics,
 } from '@/lib/impact-api'
+import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import type { AuthOAuthProviderStatusItem, AuthUser, OrcidStatusPayload, PersonaStatePayload } from '@/types/impact'
 
@@ -71,7 +72,16 @@ export function ProfileIntegrationsPage() {
       const [meResult, orcidResult, stateResult, providerResult] = settled
       setUser(meResult.status === 'fulfilled' ? meResult.value : null)
       setOrcidStatus(orcidResult.status === 'fulfilled' ? orcidResult.value : null)
-      setPersonaState(stateResult.status === 'fulfilled' ? stateResult.value : null)
+      if (stateResult.status === 'fulfilled') {
+        setPersonaState(stateResult.value)
+        writeCachedPersonaState(stateResult.value)
+      } else {
+        const cached = readCachedPersonaState()
+        setPersonaState(cached)
+        if (cached) {
+          setStatus('Showing cached publications data while live profile data reloads.')
+        }
+      }
       setProviderStatuses(providerResult.status === 'fulfilled' ? providerResult.value.providers || [] : [])
       const failedCount = settled.filter((item) => item.status === 'rejected').length
       if (failedCount > 0) {
@@ -207,8 +217,8 @@ export function ProfileIntegrationsPage() {
     setError('')
     setStatus('')
     try {
-      const payload = await syncPersonaMetrics(token, ['openalex', 'semantic_scholar', 'manual'])
-      setStatus(`Citations synchronised (${payload.synced_snapshots} metric snapshot(s)).`)
+      const payload = await syncPersonaMetrics(token, ['openalex'])
+      setStatus(`Citations synchronised via OpenAlex (${payload.synced_snapshots} snapshot(s)).`)
       await loadData(token, false)
     } catch (syncError) {
       setError(syncError instanceof Error ? syncError.message : 'Could not synchronise citations.')

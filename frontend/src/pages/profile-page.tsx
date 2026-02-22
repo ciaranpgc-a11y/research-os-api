@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { readAccountSettings, settingsCompleteness } from '@/lib/account-preferences'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { fetchMe, fetchOrcidStatus, fetchPersonaState } from '@/lib/impact-api'
+import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
 import type { AuthUser, OrcidStatusPayload, PersonaStatePayload } from '@/types/impact'
 
 const CITATION_HISTORY_STORAGE_KEY = 'aawe-citation-history'
@@ -133,7 +134,16 @@ export function ProfilePage() {
         const [meResult, orcidResult, stateResult] = settled
         setUser(meResult.status === 'fulfilled' ? meResult.value : null)
         setOrcidStatus(orcidResult.status === 'fulfilled' ? orcidResult.value : null)
-        setPersonaState(stateResult.status === 'fulfilled' ? stateResult.value : null)
+        if (stateResult.status === 'fulfilled') {
+          setPersonaState(stateResult.value)
+          writeCachedPersonaState(stateResult.value)
+        } else {
+          const cached = readCachedPersonaState()
+          setPersonaState(cached)
+          if (cached) {
+            setStatus('Showing cached profile metrics while live data reloads.')
+          }
+        }
         const failedCount = settled.filter((item) => item.status === 'rejected').length
         if (failedCount > 0) {
           setStatus(`Profile loaded with ${failedCount} unavailable source${failedCount === 1 ? '' : 's'}.`)

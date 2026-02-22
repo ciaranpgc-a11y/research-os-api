@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 import hashlib
 import math
@@ -48,6 +49,7 @@ METRICS_PROVIDER_PRIORITY = {
     "semanticscholar": 20,
     "manual": 10,
 }
+METRICS_SYNC_MAX_WORKERS = 6
 
 
 class PersonaValidationError(RuntimeError):
@@ -515,26 +517,70 @@ def sync_metrics(
     if not selected:
         selected = ["openalex", "semantic_scholar", "manual"]
 
+    def _fetch_provider_metrics(
+        *, provider_name: str, work_payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        provider = get_metrics_provider(provider_name)
+        try:
+            return provider.fetch_metrics(work_payload)
+        except Exception as exc:
+            return {
+                "provider": provider.provider_name,
+                "citations_count": 0,
+                "influential_citations": None,
+                "altmetric_score": None,
+                "payload_subset": {
+                    "note": "Provider lookup failed.",
+                    "error": str(exc),
+                },
+            }
+
     target_ids = {str(item).strip() for item in (work_ids or []) if str(item).strip()}
+    work_rows: list[tuple[str, dict[str, Any]]] = []
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
         work_query = select(Work).where(Work.user_id == user_id)
         if target_ids:
             work_query = work_query.where(Work.id.in_(list(target_ids)))
         works = session.scalars(work_query).all()
-        synced = 0
-        provider_counts: dict[str, int] = defaultdict(int)
-        for work in works:
-            work_payload = {
-                "title": work.title,
-                "doi": work.doi,
-                "year": work.year,
-                "work_type": work.work_type,
-            }
-            for provider_name in selected:
+        work_rows = [
+            (
+                str(work.id),
+                {
+                    "title": work.title,
+                    "doi": work.doi,
+                    "year": work.year,
+                    "work_type": work.work_type,
+                },
+            )
+            for work in works
+        ]
+
+    metric_rows: list[dict[str, Any]] = []
+    if work_rows:
+        max_workers = max(
+            1,
+            min(
+                METRICS_SYNC_MAX_WORKERS,
+                len(work_rows) * max(1, len(selected)),
+            ),
+        )
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_index: dict[Any, tuple[str, str]] = {}
+            for work_id, work_payload in work_rows:
+                for provider_name in selected:
+                    future = executor.submit(
+                        _fetch_provider_metrics,
+                        provider_name=provider_name,
+                        work_payload=work_payload,
+                    )
+                    future_index[future] = (work_id, provider_name)
+
+            for future in as_completed(future_index):
+                work_id, provider_name = future_index[future]
                 provider = get_metrics_provider(provider_name)
                 try:
-                    metrics = provider.fetch_metrics(work_payload)
+                    metrics = future.result()
                 except Exception as exc:
                     metrics = {
                         "provider": provider.provider_name,
@@ -546,26 +592,42 @@ def sync_metrics(
                             "error": str(exc),
                         },
                     }
-                snapshot = MetricsSnapshot(
-                    work_id=work.id,
-                    provider=str(metrics.get("provider", provider.provider_name)),
-                    citations_count=int(metrics.get("citations_count", 0) or 0),
-                    influential_citations=(
-                        int(metrics["influential_citations"])
-                        if metrics.get("influential_citations") is not None
-                        else None
-                    ),
-                    altmetric_score=(
-                        float(metrics["altmetric_score"])
-                        if metrics.get("altmetric_score") is not None
-                        else None
-                    ),
-                    metric_payload=dict(metrics.get("payload_subset", {}) or {}),
-                    captured_at=_utcnow(),
+                metric_rows.append(
+                    {
+                        "work_id": work_id,
+                        "provider": str(metrics.get("provider", provider.provider_name)),
+                        "citations_count": int(metrics.get("citations_count", 0) or 0),
+                        "influential_citations": (
+                            int(metrics["influential_citations"])
+                            if metrics.get("influential_citations") is not None
+                            else None
+                        ),
+                        "altmetric_score": (
+                            float(metrics["altmetric_score"])
+                            if metrics.get("altmetric_score") is not None
+                            else None
+                        ),
+                        "metric_payload": dict(metrics.get("payload_subset", {}) or {}),
+                    }
                 )
-                session.add(snapshot)
-                synced += 1
-                provider_counts[snapshot.provider] += 1
+
+    synced = 0
+    provider_counts: dict[str, int] = defaultdict(int)
+    with session_scope() as session:
+        _resolve_user_or_raise(session, user_id)
+        for row in metric_rows:
+            snapshot = MetricsSnapshot(
+                work_id=str(row["work_id"]),
+                provider=str(row["provider"]),
+                citations_count=int(row["citations_count"]),
+                influential_citations=row["influential_citations"],
+                altmetric_score=row["altmetric_score"],
+                metric_payload=dict(row["metric_payload"] or {}),
+                captured_at=_utcnow(),
+            )
+            session.add(snapshot)
+            synced += 1
+            provider_counts[snapshot.provider] += 1
         session.flush()
 
     collaboration = recompute_collaborator_edges(user_id=user_id)
