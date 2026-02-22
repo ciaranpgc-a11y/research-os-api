@@ -23,6 +23,7 @@ import { ResultsPage } from '@/pages/results-page'
 import { SettingsPage } from '@/pages/settings-page'
 import { StudyCorePage } from '@/pages/study-core-page'
 import { VersionHistoryPage } from '@/pages/version-history-page'
+import { WorkspacesPage } from '@/pages/workspaces-page'
 import { WorkspaceExportsPage } from '@/pages/workspace-exports-page'
 import { useWorkspaceStore } from '@/store/use-workspace-store'
 
@@ -47,7 +48,7 @@ function LegacyManuscriptSectionRedirect() {
 function LandingOrWorkspace() {
   const token = getAuthSessionToken()
   if (token) {
-    return <WorkspaceRedirect suffix="overview" />
+    return <Navigate to="/workspaces" replace />
   }
   return <LandingPage />
 }
@@ -70,6 +71,8 @@ export function AppRouter() {
       <Route path="/orcid/callback" element={<OrcidCallbackPage />} />
 
       <Route element={<RequireSignIn />}>
+        <Route path="/workspaces" element={<WorkspacesPage />} />
+
         <Route element={<AccountLayout />}>
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/impact" element={<ImpactPage />} />

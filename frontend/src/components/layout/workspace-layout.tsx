@@ -37,7 +37,6 @@ export function WorkspaceLayout() {
     <div className="flex h-screen flex-col bg-background text-foreground">
       <TopBar
         scope="workspace"
-        workspaceId={workspaceId || null}
         onOpenLeftNav={() => setLeftPanelOpen(true)}
       />
 

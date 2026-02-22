@@ -8,6 +8,8 @@ export type WorkspaceRecord = {
   version: string
   health: WorkspaceHealth
   updatedAt: string
+  pinned: boolean
+  archived: boolean
 }
 
 type WorkspaceStore = {
@@ -16,6 +18,10 @@ type WorkspaceStore = {
   setActiveWorkspaceId: (workspaceId: string | null) => void
   ensureWorkspace: (workspaceId: string) => void
   createWorkspace: (name?: string) => WorkspaceRecord
+  updateWorkspace: (
+    workspaceId: string,
+    patch: Partial<Pick<WorkspaceRecord, 'name' | 'health' | 'version' | 'updatedAt' | 'pinned' | 'archived'>>,
+  ) => void
 }
 
 const WORKSPACES_STORAGE_KEY = 'aawe-workspaces'
@@ -33,6 +39,8 @@ function defaultWorkspaces(): WorkspaceRecord[] {
       version: '0.1',
       health: 'amber',
       updatedAt: nowIso(),
+      pinned: true,
+      archived: false,
     },
   ]
 }
@@ -46,11 +54,22 @@ function readStoredWorkspaces(): WorkspaceRecord[] {
     return defaultWorkspaces()
   }
   try {
-    const parsed = JSON.parse(raw) as WorkspaceRecord[]
+    const parsed = JSON.parse(raw) as Array<Partial<WorkspaceRecord>>
     if (!Array.isArray(parsed) || parsed.length === 0) {
       return defaultWorkspaces()
     }
-    return parsed
+    return parsed.map((workspace) => ({
+      id: (workspace.id || '').trim() || `workspace-${Date.now().toString(36)}`,
+      name: (workspace.name || '').trim() || 'Workspace',
+      version: (workspace.version || '').trim() || '0.1',
+      health:
+        workspace.health === 'green' || workspace.health === 'amber' || workspace.health === 'red'
+          ? workspace.health
+          : 'amber',
+      updatedAt: (workspace.updatedAt || '').trim() || nowIso(),
+      pinned: Boolean(workspace.pinned),
+      archived: Boolean(workspace.archived),
+    }))
   } catch {
     return defaultWorkspaces()
   }
@@ -129,6 +148,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       version: '0.1',
       health: 'amber',
       updatedAt: nowIso(),
+      pinned: false,
+      archived: false,
     }
     const nextWorkspaces = [nextWorkspace, ...state.workspaces]
     persistWorkspaces(nextWorkspaces)
@@ -151,6 +172,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       version: '0.1',
       health: 'amber',
       updatedAt: nowIso(),
+      pinned: false,
+      archived: false,
     }
     const nextWorkspaces = [nextWorkspace, ...state.workspaces]
     persistWorkspaces(nextWorkspaces)
@@ -160,5 +183,23 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       activeWorkspaceId: nextWorkspace.id,
     })
     return nextWorkspace
+  },
+  updateWorkspace: (workspaceId, patch) => {
+    const cleanWorkspaceId = (workspaceId || '').trim()
+    if (!cleanWorkspaceId) {
+      return
+    }
+    const state = get()
+    const nextWorkspaces = state.workspaces.map((workspace) => {
+      if (workspace.id !== cleanWorkspaceId) {
+        return workspace
+      }
+      return {
+        ...workspace,
+        ...patch,
+      }
+    })
+    persistWorkspaces(nextWorkspaces)
+    set({ workspaces: nextWorkspaces })
   },
 }))

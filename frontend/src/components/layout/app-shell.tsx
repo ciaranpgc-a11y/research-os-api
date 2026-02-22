@@ -24,7 +24,6 @@ export function AppShell() {
     <div className="flex h-screen flex-col bg-background text-foreground">
       <TopBar
         scope={isProfileRoute ? 'account' : 'workspace'}
-        workspaceId={null}
         onOpenLeftNav={() => setLeftPanelOpen(true)}
       />
 
