@@ -669,7 +669,7 @@ export function InsightPanel() {
   const fallbackInsight = useMemo(() => buildFallbackInsight(selectedItem), [selectedItem])
   const activeInsight = apiInsight ?? fallbackInsight
 
-  const onStudyCoreRoute = location.pathname === '/study-core'
+  const onStudyCoreRoute = location.pathname === '/study-core' || location.pathname.includes('/run-wizard')
   const showLegacyInspector = !onStudyCoreRoute || currentStep >= 4
 
   const panelTitle = useMemo(() => {

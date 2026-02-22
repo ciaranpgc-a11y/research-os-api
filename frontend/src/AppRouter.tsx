@@ -1,0 +1,96 @@
+import { Navigate, Route, Routes, useParams } from 'react-router-dom'
+
+import { AccountLayout } from '@/components/layout/account-layout'
+import { WorkspaceLayout } from '@/components/layout/workspace-layout'
+import { AgentLogsPage } from '@/pages/agent-logs-page'
+import { AuthCallbackPage } from '@/pages/auth-callback-page'
+import { AuthPage } from '@/pages/auth-page'
+import { AuditLogPage } from '@/pages/audit-log-page'
+import { ClaimMapPage } from '@/pages/claim-map-page'
+import { InferenceRulesPage } from '@/pages/inference-rules-page'
+import { JournalTargetingPage } from '@/pages/journal-targeting-page'
+import { LiteraturePage } from '@/pages/literature-page'
+import { ManuscriptPage } from '@/pages/manuscript-page'
+import { ManuscriptTablesPage } from '@/pages/manuscript-tables-page'
+import { OrcidCallbackPage } from '@/pages/orcid-callback-page'
+import { OverviewPage } from '@/pages/overview-page'
+import { ImpactPage } from '@/pages/impact-page'
+import { ProfilePage } from '@/pages/profile-page'
+import { QCDashboardPage } from '@/pages/qc-dashboard-page'
+import { ResultsPage } from '@/pages/results-page'
+import { SettingsPage } from '@/pages/settings-page'
+import { StudyCorePage } from '@/pages/study-core-page'
+import { VersionHistoryPage } from '@/pages/version-history-page'
+import { WorkspaceExportsPage } from '@/pages/workspace-exports-page'
+import { useWorkspaceStore } from '@/store/use-workspace-store'
+
+function WorkspaceRedirect({ suffix }: { suffix: string }) {
+  const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId)
+  const workspaceId = activeWorkspaceId || 'hf-registry'
+  return <Navigate to={`/w/${workspaceId}/${suffix}`} replace />
+}
+
+function WorkspaceManuscriptIndexRedirect() {
+  const params = useParams<{ workspaceId: string }>()
+  const workspaceId = params.workspaceId || 'hf-registry'
+  return <Navigate to={`/w/${workspaceId}/manuscript/introduction`} replace />
+}
+
+function LegacyManuscriptSectionRedirect() {
+  const params = useParams<{ section: string }>()
+  const section = params.section || 'introduction'
+  return <WorkspaceRedirect suffix={`manuscript/${section}`} />
+}
+
+export function AppRouter() {
+  return (
+    <Routes>
+      <Route path="/auth" element={<AuthPage />} />
+      <Route path="/auth/callback" element={<AuthCallbackPage />} />
+      <Route path="/orcid/callback" element={<OrcidCallbackPage />} />
+
+      <Route element={<AccountLayout />}>
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/impact" element={<ImpactPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+      </Route>
+
+      <Route path="/w/:workspaceId" element={<WorkspaceLayout />}>
+        <Route index element={<Navigate to="overview" replace />} />
+        <Route path="overview" element={<OverviewPage />} />
+        <Route path="run-wizard" element={<StudyCorePage />} />
+        <Route path="data" element={<ResultsPage />} />
+        <Route path="results" element={<ResultsPage />} />
+        <Route path="manuscript" element={<WorkspaceManuscriptIndexRedirect />} />
+        <Route path="manuscript/tables" element={<ManuscriptTablesPage />} />
+        <Route path="manuscript/:section" element={<ManuscriptPage />} />
+        <Route path="literature" element={<LiteraturePage />} />
+        <Route path="journal-targeting" element={<JournalTargetingPage />} />
+        <Route path="qc" element={<QCDashboardPage />} />
+        <Route path="exports" element={<WorkspaceExportsPage />} />
+        <Route path="claim-map" element={<ClaimMapPage />} />
+        <Route path="versions" element={<VersionHistoryPage />} />
+        <Route path="audit" element={<AuditLogPage />} />
+        <Route path="inference-rules" element={<InferenceRulesPage />} />
+        <Route path="agent-logs" element={<AgentLogsPage />} />
+      </Route>
+
+      <Route index element={<WorkspaceRedirect suffix="overview" />} />
+      <Route path="/overview" element={<WorkspaceRedirect suffix="overview" />} />
+      <Route path="/study-core" element={<WorkspaceRedirect suffix="run-wizard" />} />
+      <Route path="/results" element={<WorkspaceRedirect suffix="results" />} />
+      <Route path="/manuscript" element={<WorkspaceRedirect suffix="manuscript/introduction" />} />
+      <Route path="/manuscript/tables" element={<WorkspaceRedirect suffix="manuscript/tables" />} />
+      <Route path="/manuscript/:section" element={<LegacyManuscriptSectionRedirect />} />
+      <Route path="/literature" element={<WorkspaceRedirect suffix="literature" />} />
+      <Route path="/journal-targeting" element={<WorkspaceRedirect suffix="journal-targeting" />} />
+      <Route path="/qc" element={<WorkspaceRedirect suffix="qc" />} />
+      <Route path="/claim-map" element={<WorkspaceRedirect suffix="claim-map" />} />
+      <Route path="/versions" element={<WorkspaceRedirect suffix="versions" />} />
+      <Route path="/audit" element={<WorkspaceRedirect suffix="audit" />} />
+      <Route path="/inference-rules" element={<WorkspaceRedirect suffix="inference-rules" />} />
+      <Route path="/agent-logs" element={<WorkspaceRedirect suffix="agent-logs" />} />
+      <Route path="*" element={<WorkspaceRedirect suffix="overview" />} />
+    </Routes>
+  )
+}

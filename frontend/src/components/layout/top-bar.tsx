@@ -1,32 +1,38 @@
 import { useMemo, useState } from 'react'
 import { Download, Loader2, Menu, Moon, PanelRight, Search, Sun } from 'lucide-react'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { API_BASE_URL } from '@/lib/api'
+import { getAuthSessionToken } from '@/lib/auth-session'
 import { cn } from '@/lib/utils'
 import { qcItems } from '@/mock/qc'
 import { useAaweStore } from '@/store/use-aawe-store'
+import { useWorkspaceStore } from '@/store/use-workspace-store'
 import type { ApiErrorPayload } from '@/types/insight'
 import type { QCRunResponse } from '@/types/qc-run'
 
+type TopBarScope = 'account' | 'workspace'
+
 type TopBarProps = {
+  scope: TopBarScope
+  workspaceId?: string | null
   onOpenLeftNav: () => void
   onOpenRightPanel: () => void
   showRightPanelButton?: boolean
 }
 
-const TOP_NAV_LINKS = [
-  { label: 'Overview', path: '/overview' },
-  { label: 'Profile', path: '/profile' },
-  { label: 'Run Wizard', path: '/study-core' },
-]
-
-export function TopBar({ onOpenLeftNav, onOpenRightPanel, showRightPanelButton = true }: TopBarProps) {
+export function TopBar({
+  scope,
+  workspaceId = null,
+  onOpenLeftNav,
+  onOpenRightPanel,
+  showRightPanelButton = true,
+}: TopBarProps) {
   const navigate = useNavigate()
-  const location = useLocation()
   const theme = useAaweStore((state) => state.theme)
   const toggleTheme = useAaweStore((state) => state.toggleTheme)
   const selectedItem = useAaweStore((state) => state.selectedItem)
@@ -34,11 +40,21 @@ export function TopBar({ onOpenLeftNav, onOpenRightPanel, showRightPanelButton =
   const setRightPanelOpen = useAaweStore((state) => state.setRightPanelOpen)
   const searchQuery = useAaweStore((state) => state.searchQuery)
   const setSearchQuery = useAaweStore((state) => state.setSearchQuery)
+  const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId)
+  const workspaces = useWorkspaceStore((state) => state.workspaces)
+  const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId)
+  const createWorkspace = useWorkspaceStore((state) => state.createWorkspace)
+
   const [isRunningQc, setIsRunningQc] = useState(false)
   const [qcStatus, setQcStatus] = useState('')
-  const isProfileRoute = location.pathname === '/profile' || location.pathname === '/impact'
+  const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false)
+  const [newWorkspaceName, setNewWorkspaceName] = useState('')
+  const isGuest = !getAuthSessionToken()
 
   const canExport = useMemo(() => selectedItem !== null, [selectedItem])
+  const effectiveWorkspaceId = (workspaceId || activeWorkspaceId || '').trim()
+  const overviewHref = effectiveWorkspaceId ? `/w/${effectiveWorkspaceId}/overview` : '/profile'
+  const runWizardHref = effectiveWorkspaceId ? `/w/${effectiveWorkspaceId}/run-wizard` : ''
 
   const onExport = () => {
     if (!selectedItem) {
@@ -48,9 +64,8 @@ export function TopBar({ onOpenLeftNav, onOpenRightPanel, showRightPanelButton =
     const blob = new Blob([payload], { type: 'application/json;charset=utf-8' })
     const url = window.URL.createObjectURL(blob)
     const anchor = document.createElement('a')
-    const suffix = selectedItem.type === 'claim' ? selectedItem.data.id : selectedItem.data.id
     anchor.href = url
-    anchor.download = `aawe-${selectedItem.type}-${suffix}.json`
+    anchor.download = `aawe-${selectedItem.type}-${selectedItem.data.id}.json`
     document.body.appendChild(anchor)
     anchor.click()
     anchor.remove()
@@ -68,13 +83,15 @@ export function TopBar({ onOpenLeftNav, onOpenRightPanel, showRightPanelButton =
           const payload = (await response.json()) as ApiErrorPayload
           message = payload.error?.detail || payload.error?.message || message
         } catch {
-          // keep default message
+          // keep fallback
         }
         throw new Error(message)
       }
       const payload = (await response.json()) as QCRunResponse
       setQcStatus(`${payload.total_findings} findings`)
-      navigate('/qc')
+      if (effectiveWorkspaceId) {
+        navigate(`/w/${effectiveWorkspaceId}/qc`)
+      }
       const topIssue = payload.issues[0]
       if (topIssue) {
         const matchingItem = qcItems.find((item) => item.id === topIssue.id)
@@ -90,6 +107,30 @@ export function TopBar({ onOpenLeftNav, onOpenRightPanel, showRightPanelButton =
     }
   }
 
+  const goToRunWizard = () => {
+    if (effectiveWorkspaceId && !isGuest) {
+      navigate(runWizardHref)
+      return
+    }
+    setWorkspacePickerOpen(true)
+  }
+
+  const onChooseWorkspace = (nextWorkspaceId: string) => {
+    if (!nextWorkspaceId) {
+      return
+    }
+    setActiveWorkspaceId(nextWorkspaceId)
+    navigate(`/w/${nextWorkspaceId}/run-wizard`)
+    setWorkspacePickerOpen(false)
+  }
+
+  const onCreateWorkspace = () => {
+    const nextWorkspace = createWorkspace(newWorkspaceName || 'New Workspace')
+    setNewWorkspaceName('')
+    navigate(`/w/${nextWorkspace.id}/run-wizard`)
+    setWorkspacePickerOpen(false)
+  }
+
   return (
     <header className="flex h-14 items-center gap-3 border-b border-border bg-card/80 px-3 backdrop-blur nav:px-4">
       <div className="flex items-center gap-2">
@@ -101,7 +142,7 @@ export function TopBar({ onOpenLeftNav, onOpenRightPanel, showRightPanelButton =
                 <span className="sr-only">Open navigator</span>
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Open Study Navigator</TooltipContent>
+            <TooltipContent>Open navigation</TooltipContent>
           </Tooltip>
         </TooltipProvider>
         <div className="flex items-center gap-2">
@@ -109,27 +150,49 @@ export function TopBar({ onOpenLeftNav, onOpenRightPanel, showRightPanelButton =
           <span className="hidden text-xs text-muted-foreground md:inline">Autonomous Academic Writing Engine</span>
         </div>
         <nav className="ml-3 hidden items-center gap-1 xl:flex">
-          {TOP_NAV_LINKS.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={({ isActive }) =>
-                cn(
-                  'rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground',
-                  isActive && 'bg-accent text-foreground',
-                )
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
+          <NavLink
+            to={overviewHref}
+            className={({ isActive }) =>
+              cn(
+                'rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground',
+                isActive && 'bg-accent text-foreground',
+              )
+            }
+          >
+            Overview
+          </NavLink>
+          <NavLink
+            to="/profile"
+            className={({ isActive }) =>
+              cn(
+                'rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground',
+                isActive && 'bg-accent text-foreground',
+              )
+            }
+          >
+            Profile
+          </NavLink>
+          <button
+            type="button"
+            onClick={goToRunWizard}
+            className="rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Run Wizard
+          </button>
         </nav>
       </div>
 
       <div className="mx-auto hidden w-full max-w-xl items-center gap-2 md:flex">
+        <span className="rounded border border-border bg-muted px-2 py-1 text-[11px] font-medium text-muted-foreground">
+          {scope === 'account' ? 'Account' : 'Workspace'}
+        </span>
         <Search className="h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder={isProfileRoute ? 'Search works, themes, collaborators...' : 'Search claims, results, citations...'}
+          placeholder={
+            scope === 'account'
+              ? 'Search people, works, themes...'
+              : 'Search sections, tables, figures, claims...'
+          }
           className="h-8"
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
@@ -148,7 +211,8 @@ export function TopBar({ onOpenLeftNav, onOpenRightPanel, showRightPanelButton =
             <TooltipContent>{theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        {!isProfileRoute ? (
+
+        {scope === 'workspace' ? (
           <>
             <Button variant="outline" size="sm" onClick={onExport} disabled={!canExport}>
               <Download className="mr-1 h-3.5 w-3.5" />
@@ -160,25 +224,59 @@ export function TopBar({ onOpenLeftNav, onOpenRightPanel, showRightPanelButton =
             </Button>
             {qcStatus ? <span className="hidden text-xs text-muted-foreground md:inline">{qcStatus}</span> : null}
           </>
-        ) : (
-          <Button variant="outline" size="sm" onClick={() => navigate('/study-core')}>
-            Run Wizard
-          </Button>
-        )}
+        ) : null}
+
         {showRightPanelButton ? (
           <TooltipProvider delayDuration={100}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="outline" size="icon" className="insight:hidden" onClick={onOpenRightPanel}>
                   <PanelRight className="h-4 w-4" />
-                  <span className="sr-only">{isProfileRoute ? 'Open profile panel' : 'Open insights'}</span>
+                  <span className="sr-only">Open right panel</span>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{isProfileRoute ? 'Open Profile Panel' : 'Open Insight Panel'}</TooltipContent>
+              <TooltipContent>Open right panel</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : null}
       </div>
+
+      <Sheet open={workspacePickerOpen} onOpenChange={setWorkspacePickerOpen}>
+        <SheetContent side="right" className="w-[360px] p-4 sm:w-[360px]">
+          <h2 className="text-base font-semibold">Choose workspace</h2>
+          <div className="mt-4 space-y-3">
+            {isGuest ? (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                Guest mode: workspace changes are local only and are not saved to your account.
+              </div>
+            ) : null}
+            <div className="space-y-2">
+              {workspaces.map((workspace) => (
+                <button
+                  key={workspace.id}
+                  type="button"
+                  onClick={() => onChooseWorkspace(workspace.id)}
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-left text-sm hover:bg-accent/35"
+                >
+                  <p className="font-medium">{workspace.name}</p>
+                  <p className="text-xs text-muted-foreground">Version {workspace.version}</p>
+                </button>
+              ))}
+            </div>
+            <div className="space-y-2 rounded-md border border-border p-2">
+              <p className="text-xs font-medium text-muted-foreground">Create new workspace</p>
+              <Input
+                value={newWorkspaceName}
+                onChange={(event) => setNewWorkspaceName(event.target.value)}
+                placeholder="Workspace name"
+              />
+              <Button type="button" size="sm" onClick={onCreateWorkspace}>
+                Create and open Run Wizard
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </header>
   )
 }
