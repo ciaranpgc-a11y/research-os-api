@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { API_BASE_URL } from '@/lib/api'
-import { getAuthSessionToken } from '@/lib/auth-session'
+import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
+import { logoutAuth } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
 import { qcItems } from '@/mock/qc'
 import { useAaweStore } from '@/store/use-aawe-store'
@@ -46,10 +47,12 @@ export function TopBar({
   const createWorkspace = useWorkspaceStore((state) => state.createWorkspace)
 
   const [isRunningQc, setIsRunningQc] = useState(false)
+  const [isSigningOut, setIsSigningOut] = useState(false)
   const [qcStatus, setQcStatus] = useState('')
   const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false)
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
-  const isGuest = !getAuthSessionToken()
+  const sessionToken = getAuthSessionToken()
+  const isGuest = !sessionToken
 
   const canExport = useMemo(() => selectedItem !== null, [selectedItem])
   const effectiveWorkspaceId = (workspaceId || activeWorkspaceId || '').trim()
@@ -131,6 +134,25 @@ export function TopBar({
     setWorkspacePickerOpen(false)
   }
 
+  const onSignOut = async () => {
+    const token = getAuthSessionToken()
+    if (!token) {
+      clearAuthSessionToken()
+      navigate('/auth', { replace: true })
+      return
+    }
+    setIsSigningOut(true)
+    try {
+      await logoutAuth(token)
+    } catch {
+      // Clear local session even if remote logout fails.
+    } finally {
+      clearAuthSessionToken()
+      setIsSigningOut(false)
+      navigate('/auth', { replace: true })
+    }
+  }
+
   return (
     <header className="flex h-14 items-center gap-3 border-b border-border bg-card/80 px-3 backdrop-blur nav:px-4">
       <div className="flex items-center gap-2">
@@ -173,7 +195,7 @@ export function TopBar({
 
       <div className="mx-auto hidden w-full max-w-xl items-center gap-2 md:flex">
         <span className="rounded border border-border bg-muted px-2 py-1 text-[11px] font-medium text-muted-foreground">
-          {scope === 'account' ? 'Account' : 'Workspace'}
+          {scope === 'account' ? 'Profile' : 'Workspace'}
         </span>
         <Search className="h-4 w-4 text-muted-foreground" />
         <Input
@@ -189,9 +211,23 @@ export function TopBar({
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <Button size="sm" variant="outline" onClick={() => navigate(isGuest ? '/auth' : '/profile')}>
-          {isGuest ? 'Sign in' : 'Account'}
-        </Button>
+        {isGuest ? (
+          <Button size="sm" variant="outline" onClick={() => navigate('/auth')}>
+            Sign in
+          </Button>
+        ) : (
+          <>
+            {scope === 'workspace' ? (
+              <Button size="sm" variant="outline" onClick={() => navigate('/profile')}>
+                Profile
+              </Button>
+            ) : null}
+            <Button size="sm" variant="outline" onClick={() => void onSignOut()} disabled={isSigningOut}>
+              {isSigningOut ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+              {isSigningOut ? 'Signing out...' : 'Sign out'}
+            </Button>
+          </>
+        )}
 
         <TooltipProvider delayDuration={100}>
           <Tooltip>
