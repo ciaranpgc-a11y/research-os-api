@@ -187,7 +187,13 @@ export function AuthPage() {
         setStatus('Signed in. Redirecting to profile...')
         navigate('/profile', { replace: true })
       } catch (fallbackError) {
-        setError(fallbackError instanceof Error ? fallbackError.message : 'Sign-in failed.')
+        const fallbackDetail = fallbackError instanceof Error ? fallbackError.message : 'Sign-in failed.'
+        setError(fallbackDetail)
+        if (fallbackDetail.toLowerCase().includes('invalid credentials')) {
+          setStatus(
+            'Credentials not recognised. If this account was created via ORCID/Google/Microsoft, use that provider or run password reset.',
+          )
+        }
       }
     } finally {
       setLoading(false)

@@ -155,6 +155,15 @@ export type OrcidConnectPayload = {
   state: string
 }
 
+export type OrcidStatusPayload = {
+  configured: boolean
+  linked: boolean
+  orcid_id: string | null
+  redirect_uri: string
+  can_import: boolean
+  issues: string[]
+}
+
 export type AuthOAuthConnectPayload = {
   provider: 'orcid' | 'google' | 'microsoft'
   state: string

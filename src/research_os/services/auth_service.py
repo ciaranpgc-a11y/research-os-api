@@ -29,6 +29,7 @@ from research_os.services.security_service import (
     hash_backup_code,
     hash_password,
     hash_session_token,
+    password_hash_supported,
     verify_totp_code,
     verify_password,
 )
@@ -263,6 +264,10 @@ def _get_user_by_credentials(*, session, email: str, password: str) -> User:
         verify_password(normalized_password, _DUMMY_PASSWORD_HASH)
         raise AuthValidationError("Invalid credentials.")
     if not verify_password(normalized_password, user.password_hash):
+        if not password_hash_supported(user.password_hash):
+            raise AuthValidationError(
+                "Password format is legacy or unsupported. Use password reset, then sign in again."
+            )
         raise AuthValidationError("Invalid credentials.")
     if not user.is_active:
         raise AuthValidationError("Account is inactive.")

@@ -51,10 +51,14 @@ def _orcid_client_secret() -> str:
     return value
 
 
+def _frontend_base_url() -> str:
+    return os.getenv("FRONTEND_BASE_URL", "http://localhost:5173").strip().rstrip("/")
+
+
 def _orcid_redirect_uri() -> str:
     return os.getenv(
         "ORCID_REDIRECT_URI",
-        "http://localhost:8000/v1/orcid/callback",
+        f"{_frontend_base_url()}/orcid/callback",
     ).strip()
 
 
@@ -75,6 +79,15 @@ def _resolve_user_or_raise(session, user_id: str) -> User:
     if user is None:
         raise OrcidNotFoundError(f"User '{user_id}' was not found.")
     return user
+
+
+def _orcid_config_issues() -> list[str]:
+    issues: list[str] = []
+    if not os.getenv("ORCID_CLIENT_ID", "").strip():
+        issues.append("Missing ORCID_CLIENT_ID")
+    if not os.getenv("ORCID_CLIENT_SECRET", "").strip():
+        issues.append("Missing ORCID_CLIENT_SECRET")
+    return issues
 
 
 def create_orcid_connect_url(*, user_id: str) -> dict[str, str]:
@@ -103,6 +116,22 @@ def create_orcid_connect_url(*, user_id: str) -> dict[str, str]:
         "url": f"{_orcid_authorize_url()}?{query}",
         "state": state_token,
     }
+
+
+def get_orcid_status(*, user_id: str) -> dict[str, Any]:
+    create_all_tables()
+    config_issues = _orcid_config_issues()
+    with session_scope() as session:
+        user = _resolve_user_or_raise(session, user_id)
+        linked = bool(user.orcid_id and user.orcid_access_token)
+        return {
+            "configured": len(config_issues) == 0,
+            "linked": linked,
+            "orcid_id": user.orcid_id,
+            "redirect_uri": _orcid_redirect_uri(),
+            "can_import": linked and len(config_issues) == 0,
+            "issues": config_issues,
+        }
 
 
 def _token_headers() -> dict[str, str]:

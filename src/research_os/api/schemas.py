@@ -907,6 +907,15 @@ class OrcidCallbackResponse(BaseModel):
     orcid_id: str
 
 
+class OrcidStatusResponse(BaseModel):
+    configured: bool
+    linked: bool
+    orcid_id: str | None = None
+    redirect_uri: str
+    can_import: bool
+    issues: list[str] = Field(default_factory=list)
+
+
 class PersonaImportOrcidRequest(BaseModel):
     overwrite_user_metadata: bool = False
 

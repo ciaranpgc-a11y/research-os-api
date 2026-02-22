@@ -2257,6 +2257,33 @@ def test_v1_orcid_connect_callback_and_import(monkeypatch, tmp_path) -> None:
     assert import_response.json()["imported_count"] == 1
 
 
+def test_v1_orcid_status(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setenv("ORCID_CLIENT_ID", "client-id")
+    monkeypatch.setenv("ORCID_CLIENT_SECRET", "client-secret")
+    monkeypatch.setenv("ORCID_REDIRECT_URI", "http://localhost:5173/orcid/callback")
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "orcid-status@example.com",
+                "password": "StrongPassword123",
+                "name": "ORCID Status User",
+            },
+        )
+        token = register_response.json()["session_token"]
+        headers = _auth_headers(token)
+        status_response = client.get("/v1/orcid/status", headers=headers)
+
+    assert status_response.status_code == 200
+    payload = status_response.json()
+    assert payload["configured"] is True
+    assert payload["linked"] is False
+    assert payload["can_import"] is False
+    assert payload["redirect_uri"] == "http://localhost:5173/orcid/callback"
+
+
 def test_v1_persona_metrics_embeddings_and_impact_flow(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
 

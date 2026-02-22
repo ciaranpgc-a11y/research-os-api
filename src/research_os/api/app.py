@@ -14,6 +14,7 @@ from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.responses import PlainTextResponse
+from fastapi.responses import RedirectResponse
 
 from research_os.config import get_openai_api_key
 from research_os.api.schemas import (
@@ -124,6 +125,7 @@ from research_os.api.schemas import (
     TitleAbstractSynthesisResponse,
     OrcidCallbackResponse,
     OrcidConnectResponse,
+    OrcidStatusResponse,
     WizardBootstrapRequest,
     WizardBootstrapResponse,
     WizardInferRequest,
@@ -227,6 +229,7 @@ from research_os.services.orcid_service import (
     OrcidValidationError,
     complete_orcid_callback,
     create_orcid_connect_url,
+    get_orcid_status,
     import_orcid_works,
 )
 from research_os.services.social_auth_service import (
@@ -1037,18 +1040,52 @@ def v1_orcid_connect(request: Request) -> OrcidConnectResponse | JSONResponse:
 
 
 @app.get(
+    "/v1/orcid/status",
+    response_model=OrcidStatusResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_orcid_status(request: Request) -> OrcidStatusResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = get_orcid_status(user_id=str(user["id"]))
+        return OrcidStatusResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except OrcidNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except (OrcidValidationError, AuthValidationError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
     "/v1/orcid/callback",
     response_model=OrcidCallbackResponse,
     responses=BAD_REQUEST_RESPONSES,
     tags=["v1"],
 )
 def v1_orcid_callback(
+    request: Request,
     state: str = Query(default=""),
     code: str = Query(default=""),
-) -> OrcidCallbackResponse | JSONResponse:
+    mode: str = Query(default="json"),
+) -> OrcidCallbackResponse | JSONResponse | RedirectResponse:
     try:
         payload = complete_orcid_callback(state=state, code=code)
-        return OrcidCallbackResponse(**payload)
+        wants_json = mode.strip().lower() == "json" or "application/json" in str(
+            request.headers.get("accept", "")
+        ).lower()
+        if wants_json:
+            return OrcidCallbackResponse(**payload)
+        frontend_base = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173").strip().rstrip("/")
+        redirect_url = (
+            f"{frontend_base}/profile?orcid=linked"
+            f"&orcid_id={str(payload.get('orcid_id', '')).strip()}"
+        )
+        return RedirectResponse(url=redirect_url, status_code=303)
     except OrcidValidationError as exc:
         return _build_bad_request_response(str(exc))
 

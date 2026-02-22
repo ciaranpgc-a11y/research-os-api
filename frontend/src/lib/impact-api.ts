@@ -18,6 +18,7 @@ import type {
   ImpactReportPayload,
   ImpactThemesPayload,
   OrcidConnectPayload,
+  OrcidStatusPayload,
   OrcidImportPayload,
   PersonaStatePayload,
   PersonaContextPayload,
@@ -331,6 +332,32 @@ export async function fetchOrcidConnect(token: string): Promise<OrcidConnectPayl
       headers: authHeaders(token),
     },
     'ORCID connect failed',
+  )
+}
+
+export async function fetchOrcidStatus(token: string): Promise<OrcidStatusPayload> {
+  return requestJson<OrcidStatusPayload>(
+    `${API_BASE_URL}/v1/orcid/status`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'ORCID status lookup failed',
+  )
+}
+
+export async function completeOrcidLink(input: {
+  state: string
+  code: string
+}): Promise<{ connected: boolean; user_id: string; orcid_id: string }> {
+  const state = encodeURIComponent(input.state.trim())
+  const code = encodeURIComponent(input.code.trim())
+  return requestJson<{ connected: boolean; user_id: string; orcid_id: string }>(
+    `${API_BASE_URL}/v1/orcid/callback?mode=json&state=${state}&code=${code}`,
+    {
+      method: 'GET',
+    },
+    'ORCID callback failed',
   )
 }
 

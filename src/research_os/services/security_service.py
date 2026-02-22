@@ -134,6 +134,15 @@ def verify_password(password: str, stored_hash: str) -> bool:
     return False
 
 
+def password_hash_supported(stored_hash: str) -> bool:
+    clean_hash = (stored_hash or "").strip()
+    if not clean_hash:
+        return False
+    return clean_hash.startswith(f"{PBKDF2_ALGORITHM}$") or clean_hash.startswith(
+        "pbkdf2:sha256:"
+    )
+
+
 def generate_session_token() -> str:
     return secrets.token_urlsafe(48)
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,6 +13,7 @@ import {
   fetchImpactThemes,
   fetchMe,
   fetchOrcidConnect,
+  fetchOrcidStatus,
   fetchPersonaContext,
   fetchPersonaState,
   fetchTwoFactorState,
@@ -41,6 +42,7 @@ import type {
   PersonaContextPayload,
   PersonaStatePayload,
   PersonaWork,
+  OrcidStatusPayload,
 } from '@/types/impact'
 
 function histogramBar(total: number, value: number): string {
@@ -79,6 +81,7 @@ function daysSince(value: string | null | undefined): number | null {
 
 export function ImpactPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [token, setToken] = useState<string>(() => getAuthSessionToken())
   const [user, setUser] = useState<AuthUser | null>(null)
   const [works, setWorks] = useState<PersonaWork[]>([])
@@ -89,6 +92,7 @@ export function ImpactPage() {
   const [personaContext, setPersonaContext] = useState<PersonaContextPayload | null>(null)
   const [analysis, setAnalysis] = useState<ImpactAnalysePayload | null>(null)
   const [report, setReport] = useState<ImpactReportPayload | null>(null)
+  const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(null)
   const [twoFactorState, setTwoFactorState] = useState<AuthTwoFactorStatePayload | null>(null)
   const [twoFactorSetup, setTwoFactorSetup] = useState<AuthTwoFactorSetupPayload | null>(null)
   const [twoFactorCode, setTwoFactorCode] = useState('')
@@ -186,6 +190,7 @@ export function ImpactPage() {
         fetchImpactThemes(sessionToken),
         fetchPersonaContext(sessionToken),
         fetchTwoFactorState(sessionToken),
+        fetchOrcidStatus(sessionToken),
         recomputeImpact(sessionToken),
       ])
 
@@ -196,6 +201,7 @@ export function ImpactPage() {
         themesResult,
         contextResult,
         twoFactorResult,
+        orcidStatusResult,
         snapshotResult,
       ] = settled
 
@@ -205,6 +211,7 @@ export function ImpactPage() {
       setThemes(themesResult.status === 'fulfilled' ? themesResult.value : null)
       setPersonaContext(contextResult.status === 'fulfilled' ? contextResult.value : null)
       setTwoFactorState(twoFactorResult.status === 'fulfilled' ? twoFactorResult.value : null)
+      setOrcidStatus(orcidStatusResult.status === 'fulfilled' ? orcidStatusResult.value : null)
       setImpactSnapshot(snapshotResult.status === 'fulfilled' ? snapshotResult.value : null)
 
       const failedCount = settled.filter((item) => item.status === 'rejected').length
@@ -220,6 +227,7 @@ export function ImpactPage() {
       setThemes(null)
       setPersonaContext(null)
       setTwoFactorState(null)
+      setOrcidStatus(null)
       setImpactSnapshot(null)
     } finally {
       setLoading(false)
@@ -236,11 +244,43 @@ export function ImpactPage() {
       setThemes(null)
       setPersonaContext(null)
       setTwoFactorState(null)
+      setOrcidStatus(null)
       setImpactSnapshot(null)
       return
     }
     void loadProfileData(token)
   }, [token, loadProfileData])
+
+  useEffect(() => {
+    const linkFlag = new URLSearchParams(location.search).get('orcid')
+    if (linkFlag !== 'linked') {
+      return
+    }
+    let message = 'ORCID linked successfully.'
+    const payloadRaw = sessionStorage.getItem('aawe_orcid_link_result')
+    if (payloadRaw) {
+      try {
+        const payload = JSON.parse(payloadRaw) as { linked?: boolean; orcidId?: string }
+        if (payload.linked) {
+          message = payload.orcidId
+            ? `ORCID linked successfully (${payload.orcidId}).`
+            : 'ORCID linked successfully.'
+        }
+      } catch {
+        message = 'ORCID linked successfully.'
+      } finally {
+        sessionStorage.removeItem('aawe_orcid_link_result')
+      }
+    }
+    if (token) {
+      void (async () => {
+        await loadProfileData(token)
+        setStatus(message)
+      })()
+      return
+    }
+    setStatus(message)
+  }, [loadProfileData, location.search, token])
 
   useEffect(() => {
     if (!user) {
@@ -340,6 +380,7 @@ export function ImpactPage() {
       setPersonaContext(null)
       setTwoFactorState(null)
       setTwoFactorSetup(null)
+      setOrcidStatus(null)
       setAnalysis(null)
       setReport(null)
       setLoading(false)
@@ -359,9 +400,13 @@ export function ImpactPage() {
     setError('')
     setStatus('')
     try {
+      if (orcidStatus && !orcidStatus.configured) {
+        const issue = orcidStatus.issues[0] || 'ORCID provider is not configured.'
+        setStatus(`${issue} Configure backend ORCID settings, then retry.`)
+        return
+      }
       const payload = await fetchOrcidConnect(token)
-      window.open(payload.url, '_blank', 'noopener,noreferrer')
-      setStatus('Opened ORCID authorisation in a new tab.')
+      window.location.assign(payload.url)
     } catch (connectError) {
       setError(connectError instanceof Error ? connectError.message : 'ORCID connect failed.')
     }
@@ -439,6 +484,10 @@ export function ImpactPage() {
     }
     if (verificationRequired) {
       setStatus('Verify your email before importing ORCID works.')
+      return
+    }
+    if (orcidStatus && !orcidStatus.linked) {
+      setStatus('Link ORCID first, then run import.')
       return
     }
     setError('')
@@ -582,6 +631,48 @@ export function ImpactPage() {
     setStatus('CSV works upload will be added next. Use ORCID import for now.')
   }
 
+  const setupChecklist = useMemo(
+    () => [
+      {
+        label: 'Sign in',
+        done: Boolean(token && user),
+        hint: token && user ? 'Signed in' : 'No active account session',
+      },
+      {
+        label: 'Verify email',
+        done: Boolean(user?.email_verified_at),
+        hint: user?.email_verified_at ? 'Verified' : 'Required for protected actions',
+      },
+      {
+        label: 'Link ORCID',
+        done: Boolean(orcidStatus?.linked || user?.orcid_id),
+        hint: orcidStatus?.linked
+          ? `Linked${orcidStatus.orcid_id ? ` (${orcidStatus.orcid_id})` : ''}`
+          : 'Connect ORCID to import publications',
+      },
+      {
+        label: 'Import publications',
+        done: works.length > 0,
+        hint: works.length > 0 ? `${works.length} work(s) available` : 'Run ORCID import',
+      },
+      {
+        label: 'Sync metrics',
+        done: Boolean(syncStatus.metrics_last_synced_at),
+        hint: syncStatus.metrics_last_synced_at ? 'Metrics available' : 'Sync citations/providers',
+      },
+    ],
+    [
+      orcidStatus?.linked,
+      orcidStatus?.orcid_id,
+      syncStatus.metrics_last_synced_at,
+      token,
+      user,
+      works.length,
+    ],
+  )
+
+  const setupCompletedCount = setupChecklist.filter((step) => step.done).length
+
   return (
     <section className="space-y-4">
       <header className="space-y-1">
@@ -668,24 +759,45 @@ export function ImpactPage() {
                 </div>
               ) : null}
 
+              {orcidStatus ? (
+                <div className="space-y-1 rounded-md border border-border bg-background p-2 text-xs">
+                  <p>
+                    ORCID configuration:{' '}
+                    <span className={orcidStatus.configured ? 'text-emerald-700' : 'text-amber-700'}>
+                      {orcidStatus.configured ? 'Ready' : 'Needs setup'}
+                    </span>
+                  </p>
+                  <p>
+                    ORCID link status:{' '}
+                    <span className={orcidStatus.linked ? 'text-emerald-700' : 'text-amber-700'}>
+                      {orcidStatus.linked ? 'Linked' : 'Not linked'}
+                    </span>
+                  </p>
+                  <p className="break-all text-muted-foreground">Redirect URI: {orcidStatus.redirect_uri}</p>
+                  {!orcidStatus.configured && orcidStatus.issues.length ? (
+                    <p className="text-amber-800">Setup issues: {orcidStatus.issues.join(' | ')}</p>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="outline" size="sm" onClick={onConnectOrcid} disabled={loading || verificationRequired}>
                   Connect ORCID
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => (token ? void loadProfileData(token) : navigate('/auth'))} disabled={loading}>
-                  Sync now
+                <Button variant="outline" size="sm" onClick={onImportOrcid} disabled={loading || verificationRequired}>
+                  Import ORCID works
                 </Button>
-                <details className="rounded-md border border-border bg-background px-2 py-1">
-                  <summary className="cursor-pointer text-xs text-slate-700">More actions</summary>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={onImportOrcid} disabled={loading || verificationRequired}>
-                      Import ORCID works
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={onLogout} disabled={loading}>
-                      Sign out
-                    </Button>
-                  </div>
-                </details>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => (token ? void loadProfileData(token) : navigate('/auth'))}
+                  disabled={loading}
+                >
+                  Refresh profile
+                </Button>
+                <Button variant="ghost" size="sm" onClick={onLogout} disabled={loading}>
+                  Sign out
+                </Button>
               </div>
 
               <details className="rounded-md border border-border bg-background p-2">
@@ -726,6 +838,57 @@ export function ImpactPage() {
               </Button>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Profile setup path ({setupCompletedCount}/5 complete)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          {setupChecklist.map((step, index) => (
+            <div
+              key={step.label}
+              className="grid grid-cols-[24px_minmax(0,1fr)_auto] items-start gap-2 rounded-md border border-border/70 bg-background p-2"
+            >
+              <span className="text-xs font-semibold text-muted-foreground">{index + 1}</span>
+              <div>
+                <p className="font-medium">{step.label}</p>
+                <p className="text-xs text-muted-foreground">{step.hint}</p>
+              </div>
+              <span className={step.done ? 'text-xs text-emerald-700' : 'text-xs text-amber-700'}>
+                {step.done ? 'Done' : 'Pending'}
+              </span>
+            </div>
+          ))}
+
+          <div className="flex flex-wrap gap-2 pt-1">
+            {!token || !user ? (
+              <Button size="sm" onClick={() => navigate('/auth')}>
+                Open sign-in
+              </Button>
+            ) : null}
+            {token && user && !user.email_verified_at ? (
+              <Button size="sm" variant="outline" onClick={onRequestEmailVerification} disabled={loading}>
+                Send verification code
+              </Button>
+            ) : null}
+            {token && user && user.email_verified_at && !orcidStatus?.linked ? (
+              <Button size="sm" variant="outline" onClick={onConnectOrcid} disabled={loading}>
+                Link ORCID now
+              </Button>
+            ) : null}
+            {token && user && user.email_verified_at && (orcidStatus?.linked || user.orcid_id) ? (
+              <Button size="sm" variant="outline" onClick={onImportOrcid} disabled={loading}>
+                Import publications
+              </Button>
+            ) : null}
+            {token && user && works.length > 0 ? (
+              <Button size="sm" variant="outline" onClick={onSyncMetrics} disabled={loading}>
+                Sync metrics
+              </Button>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 

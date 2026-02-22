@@ -14,6 +14,7 @@ import { ManuscriptPage } from '@/pages/manuscript-page'
 import { ManuscriptTablesPage } from '@/pages/manuscript-tables-page'
 import { OverviewPage } from '@/pages/overview-page'
 import { ImpactPage } from '@/pages/impact-page'
+import { OrcidCallbackPage } from '@/pages/orcid-callback-page'
 import { QCDashboardPage } from '@/pages/qc-dashboard-page'
 import { ResultsPage } from '@/pages/results-page'
 import { StudyCorePage } from '@/pages/study-core-page'
@@ -46,6 +47,7 @@ function App() {
     <Routes>
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
+      <Route path="/orcid/callback" element={<OrcidCallbackPage />} />
       <Route element={<AppShell />}>
         <Route index element={<Navigate to="/overview" replace />} />
         <Route path="/overview" element={<OverviewPage />} />
