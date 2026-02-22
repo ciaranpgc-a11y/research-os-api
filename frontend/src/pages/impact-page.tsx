@@ -70,42 +70,63 @@ export function ImpactPage() {
   const [profilePassword, setProfilePassword] = useState('')
 
   const totalHistogramCount = useMemo(() => {
-    if (!statePayload) {
+    const histogram = statePayload?.metrics?.histogram
+    if (!histogram) {
       return 0
     }
-    return Object.values(statePayload.metrics.histogram).reduce((sum, value) => sum + value, 0)
+    return Object.values(histogram).reduce((sum, value) => sum + value, 0)
   }, [statePayload])
 
   const loadProfileData = useCallback(async (sessionToken: string) => {
     setLoading(true)
     setError('')
+    setStatus('')
     try {
-      const [me, workRows, personaState, collaboratorRows, themeRows, contextRows, twoFactor] = await Promise.all([
-        fetchMe(sessionToken),
+      const me = await fetchMe(sessionToken)
+      setUser(me)
+
+      const settled = await Promise.allSettled([
         listPersonaWorks(sessionToken),
         fetchPersonaState(sessionToken),
         fetchImpactCollaborators(sessionToken),
         fetchImpactThemes(sessionToken),
         fetchPersonaContext(sessionToken),
         fetchTwoFactorState(sessionToken),
+        recomputeImpact(sessionToken),
       ])
-      setUser(me)
-      setWorks(workRows)
-      setStatePayload(personaState)
-      setCollaborators(collaboratorRows)
-      setThemes(themeRows)
-      setPersonaContext(contextRows)
-      setTwoFactorState(twoFactor)
-      try {
-        const snapshot = await recomputeImpact(sessionToken)
-        setImpactSnapshot(snapshot)
-      } catch (snapshotError) {
-        setImpactSnapshot(null)
-        setStatus(snapshotError instanceof Error ? snapshotError.message : 'Impact snapshot not available yet.')
+
+      const [
+        worksResult,
+        personaStateResult,
+        collaboratorsResult,
+        themesResult,
+        contextResult,
+        twoFactorResult,
+        snapshotResult,
+      ] = settled
+
+      setWorks(worksResult.status === 'fulfilled' ? worksResult.value : [])
+      setStatePayload(personaStateResult.status === 'fulfilled' ? personaStateResult.value : null)
+      setCollaborators(collaboratorsResult.status === 'fulfilled' ? collaboratorsResult.value : null)
+      setThemes(themesResult.status === 'fulfilled' ? themesResult.value : null)
+      setPersonaContext(contextResult.status === 'fulfilled' ? contextResult.value : null)
+      setTwoFactorState(twoFactorResult.status === 'fulfilled' ? twoFactorResult.value : null)
+      setImpactSnapshot(snapshotResult.status === 'fulfilled' ? snapshotResult.value : null)
+
+      const failedCount = settled.filter((item) => item.status === 'rejected').length
+      if (failedCount > 0) {
+        setStatus(`Profile loaded with ${failedCount} partial data source${failedCount === 1 ? '' : 's'} unavailable.`)
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load impact data.')
+      setError(loadError instanceof Error ? loadError.message : 'Failed to load profile.')
       setUser(null)
+      setWorks([])
+      setStatePayload(null)
+      setCollaborators(null)
+      setThemes(null)
+      setPersonaContext(null)
+      setTwoFactorState(null)
+      setImpactSnapshot(null)
     } finally {
       setLoading(false)
     }
@@ -113,16 +134,18 @@ export function ImpactPage() {
 
   useEffect(() => {
     if (!token) {
+      setUser(null)
+      setWorks([])
+      setStatePayload(null)
+      setCollaborators(null)
+      setThemes(null)
+      setPersonaContext(null)
+      setTwoFactorState(null)
+      setImpactSnapshot(null)
       return
     }
     void loadProfileData(token)
   }, [token, loadProfileData])
-
-  useEffect(() => {
-    if (!token) {
-      navigate('/auth', { replace: true })
-    }
-  }, [navigate, token])
 
   useEffect(() => {
     if (!user) {
@@ -392,10 +415,17 @@ export function ImpactPage() {
   return (
     <section className="space-y-4">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Impact Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Profile publications, citation traction, collaborations, themes, and AI-supported strategic positioning.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
+            <p className="text-sm text-muted-foreground">
+              Account, ORCID, impact metrics, collaborations, themes, and strategy outputs.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => (token ? void loadProfileData(token) : navigate('/auth'))} disabled={loading}>
+            Refresh profile
+          </Button>
+        </div>
       </header>
 
       <Card>
@@ -470,6 +500,19 @@ export function ImpactPage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-3">
+          {!user ? (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Sign in required</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <p className="text-muted-foreground">No active account session found for this browser tab.</p>
+                <Button type="button" onClick={() => navigate('/auth')}>
+                  Open sign-in
+                </Button>
+              </CardContent>
+            </Card>
+          ) : null}
           <div className="grid gap-3 md:grid-cols-4">
             <Card>
               <CardHeader className="pb-2">
