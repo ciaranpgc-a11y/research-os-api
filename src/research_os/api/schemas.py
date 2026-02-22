@@ -750,3 +750,168 @@ class ReferencePackRequest(BaseModel):
     claim_ids: list[str] | None = None
     citation_ids: list[str] | None = None
     include_urls: bool = True
+
+
+class AuthUserResponse(BaseModel):
+    id: str
+    email: str
+    name: str
+    is_active: bool
+    role: Literal["user", "admin"]
+    orcid_id: str | None = None
+    impact_last_computed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AuthRegisterRequest(BaseModel):
+    email: str
+    password: str
+    name: str
+
+
+class AuthLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class AuthSessionResponse(BaseModel):
+    user: AuthUserResponse
+    session_token: str
+    session_expires_at: datetime
+
+
+class AuthLogoutResponse(BaseModel):
+    success: bool = True
+
+
+class AuthMeUpdateRequest(BaseModel):
+    name: str | None = None
+    email: str | None = None
+    password: str | None = None
+
+
+class OrcidConnectResponse(BaseModel):
+    url: str
+    state: str
+
+
+class OrcidCallbackResponse(BaseModel):
+    connected: bool
+    user_id: str
+    orcid_id: str
+
+
+class PersonaImportOrcidRequest(BaseModel):
+    overwrite_user_metadata: bool = False
+
+
+class PersonaImportOrcidResponse(BaseModel):
+    imported_count: int
+    work_ids: list[str] = Field(default_factory=list)
+    provenance: str
+    last_synced_at: datetime
+    core_collaborators: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class PersonaWorkResponse(BaseModel):
+    id: str
+    title: str
+    year: int | None = None
+    doi: str | None = None
+    work_type: str
+    venue_name: str
+    publisher: str
+    abstract: str | None = None
+    keywords: list[str] = Field(default_factory=list)
+    url: str
+    provenance: str
+    cluster_id: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PersonaMetricsSyncRequest(BaseModel):
+    providers: list[Literal["openalex", "semantic_scholar", "manual"]] = Field(
+        default_factory=lambda: ["openalex", "semantic_scholar", "manual"]
+    )
+
+
+class PersonaMetricsSyncResponse(BaseModel):
+    synced_snapshots: int
+    provider_attribution: dict[str, int] = Field(default_factory=dict)
+    core_collaborators: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class PersonaEmbeddingsGenerateRequest(BaseModel):
+    model_name: str | None = None
+
+
+class PersonaEmbeddingsGenerateResponse(BaseModel):
+    generated_embeddings: int
+    model_name: str
+    clusters: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ImpactCollaboratorsResponse(BaseModel):
+    collaborators: list[dict[str, Any]] = Field(default_factory=list)
+    new_collaborators_by_year: dict[int, int] = Field(default_factory=dict)
+
+
+class ImpactThemesResponse(BaseModel):
+    clusters: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ImpactRecomputeResponse(BaseModel):
+    user_id: str
+    total_works: int
+    total_citations: int
+    h_index: int
+    m_index: float
+    citation_velocity: float
+    dominant_theme: str
+    computed_at: datetime
+    most_cited_work: dict[str, Any] | None = None
+    top_collaborator: dict[str, Any] | None = None
+    collaboration_density: float = 0.0
+    theme_citation_averages: list[dict[str, Any]] = Field(default_factory=list)
+    publication_timeline: list[dict[str, Any]] = Field(default_factory=list)
+    provider_attribution: list[str] = Field(default_factory=list)
+
+
+class ImpactAnalyseRequest(BaseModel):
+    impact_snapshot: dict[str, Any] | None = None
+    collaborator_data: dict[str, Any] | None = None
+    theme_data: dict[str, Any] | None = None
+    publication_timeline: list[dict[str, Any]] | None = None
+    venue_distribution: dict[str, int] | None = None
+
+
+class ImpactAnalyseResponse(BaseModel):
+    scholarly_impact_summary: str
+    collaboration_analysis: str
+    thematic_evolution: str
+    strengths: list[str] = Field(default_factory=list)
+    blind_spots: list[str] = Field(default_factory=list)
+    strategic_suggestions: list[str] = Field(default_factory=list)
+    grant_positioning_notes: list[str] = Field(default_factory=list)
+    confidence_markers: list[str] = Field(default_factory=list)
+    model_used: str
+
+
+class ImpactReportResponse(BaseModel):
+    executive_summary: str
+    scholarly_metrics: dict[str, Any] = Field(default_factory=dict)
+    collaboration_profile: str
+    thematic_profile: str
+    strategic_analysis: str
+    projected_trajectory: str
+
+
+class PersonaContextResponse(BaseModel):
+    dominant_themes: list[str] = Field(default_factory=list)
+    common_study_types: list[str] = Field(default_factory=list)
+    top_venues: list[str] = Field(default_factory=list)
+    frequent_collaborators: list[str] = Field(default_factory=list)
+    methodological_patterns: list[str] = Field(default_factory=list)
+    works_used: list[dict[str, Any]] = Field(default_factory=list)

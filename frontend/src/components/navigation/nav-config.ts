@@ -16,6 +16,7 @@ export const NAV_GROUPS: NavGroup[] = [
     title: 'WORKSPACE',
     items: [
       { label: 'Overview', path: '/overview' },
+      { label: 'Impact', path: '/impact' },
       { label: 'Run Wizard', path: '/study-core' },
       { label: 'Quality Check', path: '/qc', badge: '3', badgeTone: 'warning' },
     ],

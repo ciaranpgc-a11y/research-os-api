@@ -11,6 +11,7 @@ import { LiteraturePage } from '@/pages/literature-page'
 import { ManuscriptPage } from '@/pages/manuscript-page'
 import { ManuscriptTablesPage } from '@/pages/manuscript-tables-page'
 import { OverviewPage } from '@/pages/overview-page'
+import { ImpactPage } from '@/pages/impact-page'
 import { QCDashboardPage } from '@/pages/qc-dashboard-page'
 import { ResultsPage } from '@/pages/results-page'
 import { StudyCorePage } from '@/pages/study-core-page'
@@ -44,6 +45,7 @@ function App() {
       <Route element={<AppShell />}>
         <Route index element={<Navigate to="/overview" replace />} />
         <Route path="/overview" element={<OverviewPage />} />
+        <Route path="/impact" element={<ImpactPage />} />
         <Route path="/study-core" element={<StudyCorePage />} />
         <Route path="/results" element={<ResultsPage />} />
         <Route path="/manuscript" element={<Navigate to="/manuscript/introduction" replace />} />

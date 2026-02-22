@@ -11,6 +11,7 @@ from sqlalchemy import (
     JSON,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -78,6 +79,95 @@ class Project(Base):
     )
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(512))
+    name: Mapped[str] = mapped_column(String(255), default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    role: Mapped[str] = mapped_column(String(16), default="user")
+    orcid_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    orcid_access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    orcid_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    orcid_token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    impact_last_computed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    orcid_last_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    sessions: Mapped[list["AuthSession"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    works: Mapped[list["Work"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    collaborator_edges: Mapped[list["CollaboratorEdge"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    impact_snapshots: Mapped[list["ImpactSnapshot"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    orcid_states: Mapped[list["OrcidOAuthState"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    user: Mapped[User] = relationship(back_populates="sessions")
+
+
+class OrcidOAuthState(Base):
+    __tablename__ = "orcid_oauth_states"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    state_token: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    user: Mapped[User] = relationship(back_populates="orcid_states")
+
+
 class Manuscript(Base):
     __tablename__ = "manuscripts"
     __table_args__ = (UniqueConstraint("project_id", "branch_name"),)
@@ -143,6 +233,184 @@ class DataLibraryAsset(Base):
     manuscript_links: Mapped[list["ManuscriptAssetLink"]] = relationship(
         back_populates="asset", cascade="all, delete-orphan"
     )
+
+
+class Work(Base):
+    __tablename__ = "works"
+    __table_args__ = (
+        Index("ix_works_user_year", "user_id", "year"),
+        Index("ix_works_title_lower", "title_lower"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(Text, default="")
+    title_lower: Mapped[str] = mapped_column(String(512), default="")
+    year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    doi: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    work_type: Mapped[str] = mapped_column(String(128), default="")
+    venue_name: Mapped[str] = mapped_column(String(255), default="")
+    publisher: Mapped[str] = mapped_column(String(255), default="")
+    abstract: Mapped[str | None] = mapped_column(Text, nullable=True)
+    keywords: Mapped[list[str]] = mapped_column(JSON, default=list)
+    url: Mapped[str] = mapped_column(Text, default="")
+    provenance: Mapped[str] = mapped_column(String(32), default="manual")
+    cluster_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_edited: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    user: Mapped[User] = relationship(back_populates="works")
+    authorships: Mapped[list["WorkAuthorship"]] = relationship(
+        back_populates="work", cascade="all, delete-orphan"
+    )
+    metrics_snapshots: Mapped[list["MetricsSnapshot"]] = relationship(
+        back_populates="work", cascade="all, delete-orphan"
+    )
+    embeddings: Mapped[list["Embedding"]] = relationship(
+        back_populates="work", cascade="all, delete-orphan"
+    )
+
+
+class Author(Base):
+    __tablename__ = "authors"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    canonical_name: Mapped[str] = mapped_column(String(255), default="")
+    canonical_name_lower: Mapped[str] = mapped_column(
+        String(255), default="", index=True
+    )
+    orcid_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
+    authorships: Mapped[list["WorkAuthorship"]] = relationship(
+        back_populates="author", cascade="all, delete-orphan"
+    )
+    collaborations: Mapped[list["CollaboratorEdge"]] = relationship(
+        back_populates="collaborator", cascade="all, delete-orphan"
+    )
+
+
+class WorkAuthorship(Base):
+    __tablename__ = "work_authorships"
+    __table_args__ = (UniqueConstraint("work_id", "author_id"),)
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    work_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("works.id", ondelete="CASCADE")
+    )
+    author_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("authors.id", ondelete="CASCADE")
+    )
+    author_order: Mapped[int] = mapped_column(Integer, default=1)
+    is_user: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    work: Mapped[Work] = relationship(back_populates="authorships")
+    author: Mapped[Author] = relationship(back_populates="authorships")
+
+
+class MetricsSnapshot(Base):
+    __tablename__ = "metrics_snapshots"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    work_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("works.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[str] = mapped_column(String(64), default="manual")
+    citations_count: Mapped[int] = mapped_column(Integer, default=0)
+    influential_citations: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    altmetric_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    metric_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    captured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    work: Mapped[Work] = relationship(back_populates="metrics_snapshots")
+
+
+class Embedding(Base):
+    __tablename__ = "embeddings"
+    __table_args__ = (UniqueConstraint("work_id", "model_name"),)
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    work_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("works.id", ondelete="CASCADE"), index=True
+    )
+    embedding_vector: Mapped[list[float]] = mapped_column(JSON, default=list)
+    model_name: Mapped[str] = mapped_column(String(128), default="local-hash-1")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    work: Mapped[Work] = relationship(back_populates="embeddings")
+
+
+class CollaboratorEdge(Base):
+    __tablename__ = "collaborator_edges"
+    __table_args__ = (UniqueConstraint("user_id", "collaborator_author_id"),)
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    collaborator_author_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("authors.id", ondelete="CASCADE"), index=True
+    )
+    n_shared_works: Mapped[int] = mapped_column(Integer, default=0)
+    first_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    user: Mapped[User] = relationship(back_populates="collaborator_edges")
+    collaborator: Mapped[Author] = relationship(back_populates="collaborations")
+
+
+class ImpactSnapshot(Base):
+    __tablename__ = "impact_snapshots"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    total_works: Mapped[int] = mapped_column(Integer, default=0)
+    total_citations: Mapped[int] = mapped_column(Integer, default=0)
+    h_index: Mapped[int] = mapped_column(Integer, default=0)
+    m_index: Mapped[float] = mapped_column(Float, default=0.0)
+    citation_velocity: Mapped[float] = mapped_column(Float, default=0.0)
+    dominant_theme: Mapped[str] = mapped_column(String(255), default="")
+    snapshot_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    user: Mapped[User] = relationship(back_populates="impact_snapshots")
 
 
 class ManuscriptAssetLink(Base):
@@ -235,27 +503,6 @@ class ManuscriptPlan(Base):
     )
 
     manuscript: Mapped[Manuscript] = relationship(back_populates="plan_state")
-
-
-class ManuscriptSnapshot(Base):
-    __tablename__ = "manuscript_snapshots"
-
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid4())
-    )
-    project_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("projects.id", ondelete="CASCADE")
-    )
-    manuscript_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("manuscripts.id", ondelete="CASCADE")
-    )
-    label: Mapped[str] = mapped_column(String(255), default="")
-    sections: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow
-    )
-
-    manuscript: Mapped[Manuscript] = relationship(back_populates="snapshots")
 
 
 class ManuscriptSnapshot(Base):

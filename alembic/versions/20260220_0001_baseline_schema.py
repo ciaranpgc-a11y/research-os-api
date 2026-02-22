@@ -106,6 +106,198 @@ def _create_manuscript_snapshots_table() -> None:
     )
 
 
+def _create_users_table() -> None:
+    op.create_table(
+        "users",
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("email", sa.String(length=320), nullable=False),
+        sa.Column("password_hash", sa.String(length=512), nullable=False),
+        sa.Column("name", sa.String(length=255), nullable=False),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("1")),
+        sa.Column("role", sa.String(length=16), nullable=False, server_default=sa.text("'user'")),
+        sa.Column("orcid_id", sa.String(length=64), nullable=True),
+        sa.Column("orcid_access_token", sa.Text(), nullable=True),
+        sa.Column("orcid_refresh_token", sa.Text(), nullable=True),
+        sa.Column("orcid_token_expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("impact_last_computed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("orcid_last_synced_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("email"),
+    )
+    op.create_index("ix_users_email", "users", ["email"], unique=False)
+    op.create_index("ix_users_orcid_id", "users", ["orcid_id"], unique=False)
+
+
+def _create_auth_sessions_table() -> None:
+    op.create_table(
+        "auth_sessions",
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("user_id", sa.String(length=36), nullable=False),
+        sa.Column("token_hash", sa.String(length=128), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("token_hash"),
+    )
+    op.create_index("ix_auth_sessions_user_id", "auth_sessions", ["user_id"], unique=False)
+    op.create_index("ix_auth_sessions_token_hash", "auth_sessions", ["token_hash"], unique=False)
+
+
+def _create_orcid_oauth_states_table() -> None:
+    op.create_table(
+        "orcid_oauth_states",
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("user_id", sa.String(length=36), nullable=False),
+        sa.Column("state_token", sa.String(length=128), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("state_token"),
+    )
+    op.create_index("ix_orcid_oauth_states_user_id", "orcid_oauth_states", ["user_id"], unique=False)
+    op.create_index("ix_orcid_oauth_states_state_token", "orcid_oauth_states", ["state_token"], unique=False)
+
+
+def _create_works_table() -> None:
+    op.create_table(
+        "works",
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("user_id", sa.String(length=36), nullable=False),
+        sa.Column("title", sa.Text(), nullable=False),
+        sa.Column("title_lower", sa.String(length=512), nullable=False),
+        sa.Column("year", sa.Integer(), nullable=True),
+        sa.Column("doi", sa.String(length=255), nullable=True),
+        sa.Column("work_type", sa.String(length=128), nullable=False),
+        sa.Column("venue_name", sa.String(length=255), nullable=False),
+        sa.Column("publisher", sa.String(length=255), nullable=False),
+        sa.Column("abstract", sa.Text(), nullable=True),
+        sa.Column("keywords", sa.JSON(), nullable=False),
+        sa.Column("url", sa.Text(), nullable=False),
+        sa.Column("provenance", sa.String(length=32), nullable=False),
+        sa.Column("cluster_id", sa.String(length=64), nullable=True),
+        sa.Column("user_edited", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index("ix_works_user_id", "works", ["user_id"], unique=False)
+    op.create_index("ix_works_doi", "works", ["doi"], unique=False)
+    op.create_index("ix_works_title_lower", "works", ["title_lower"], unique=False)
+    op.create_index("ix_works_user_year", "works", ["user_id", "year"], unique=False)
+
+
+def _create_authors_table() -> None:
+    op.create_table(
+        "authors",
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("canonical_name", sa.String(length=255), nullable=False),
+        sa.Column("canonical_name_lower", sa.String(length=255), nullable=False),
+        sa.Column("orcid_id", sa.String(length=64), nullable=True),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index("ix_authors_canonical_name_lower", "authors", ["canonical_name_lower"], unique=False)
+    op.create_index("ix_authors_orcid_id", "authors", ["orcid_id"], unique=False)
+
+
+def _create_work_authorships_table() -> None:
+    op.create_table(
+        "work_authorships",
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("work_id", sa.String(length=36), nullable=False),
+        sa.Column("author_id", sa.String(length=36), nullable=False),
+        sa.Column("author_order", sa.Integer(), nullable=False),
+        sa.Column("is_user", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.ForeignKeyConstraint(["author_id"], ["authors.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["work_id"], ["works.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("work_id", "author_id"),
+    )
+
+
+def _create_metrics_snapshots_table() -> None:
+    op.create_table(
+        "metrics_snapshots",
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("work_id", sa.String(length=36), nullable=False),
+        sa.Column("provider", sa.String(length=64), nullable=False),
+        sa.Column("citations_count", sa.Integer(), nullable=False),
+        sa.Column("influential_citations", sa.Integer(), nullable=True),
+        sa.Column("altmetric_score", sa.Float(), nullable=True),
+        sa.Column("metric_payload", sa.JSON(), nullable=False),
+        sa.Column("captured_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(["work_id"], ["works.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index("ix_metrics_snapshots_work_id", "metrics_snapshots", ["work_id"], unique=False)
+
+
+def _create_embeddings_table() -> None:
+    op.create_table(
+        "embeddings",
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("work_id", sa.String(length=36), nullable=False),
+        sa.Column("embedding_vector", sa.JSON(), nullable=False),
+        sa.Column("model_name", sa.String(length=128), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(["work_id"], ["works.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("work_id", "model_name"),
+    )
+    op.create_index("ix_embeddings_work_id", "embeddings", ["work_id"], unique=False)
+
+
+def _create_collaborator_edges_table() -> None:
+    op.create_table(
+        "collaborator_edges",
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("user_id", sa.String(length=36), nullable=False),
+        sa.Column("collaborator_author_id", sa.String(length=36), nullable=False),
+        sa.Column("n_shared_works", sa.Integer(), nullable=False),
+        sa.Column("first_year", sa.Integer(), nullable=True),
+        sa.Column("last_year", sa.Integer(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(["collaborator_author_id"], ["authors.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("user_id", "collaborator_author_id"),
+    )
+    op.create_index("ix_collaborator_edges_user_id", "collaborator_edges", ["user_id"], unique=False)
+    op.create_index(
+        "ix_collaborator_edges_collaborator_author_id",
+        "collaborator_edges",
+        ["collaborator_author_id"],
+        unique=False,
+    )
+
+
+def _create_impact_snapshots_table() -> None:
+    op.create_table(
+        "impact_snapshots",
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("user_id", sa.String(length=36), nullable=False),
+        sa.Column("total_works", sa.Integer(), nullable=False),
+        sa.Column("total_citations", sa.Integer(), nullable=False),
+        sa.Column("h_index", sa.Integer(), nullable=False),
+        sa.Column("m_index", sa.Float(), nullable=False),
+        sa.Column("citation_velocity", sa.Float(), nullable=False),
+        sa.Column("dominant_theme", sa.String(length=255), nullable=False),
+        sa.Column("snapshot_json", sa.JSON(), nullable=False),
+        sa.Column("computed_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index("ix_impact_snapshots_user_id", "impact_snapshots", ["user_id"], unique=False)
+
+
 def _add_generation_job_column_if_missing(
     column_name: str, column: sa.Column[sa.Any]
 ) -> None:
@@ -203,6 +395,36 @@ def upgrade() -> None:
 
     if not _table_exists("manuscript_snapshots"):
         _create_manuscript_snapshots_table()
+
+    if not _table_exists("users"):
+        _create_users_table()
+
+    if not _table_exists("auth_sessions"):
+        _create_auth_sessions_table()
+
+    if not _table_exists("orcid_oauth_states"):
+        _create_orcid_oauth_states_table()
+
+    if not _table_exists("works"):
+        _create_works_table()
+
+    if not _table_exists("authors"):
+        _create_authors_table()
+
+    if not _table_exists("work_authorships"):
+        _create_work_authorships_table()
+
+    if not _table_exists("metrics_snapshots"):
+        _create_metrics_snapshots_table()
+
+    if not _table_exists("embeddings"):
+        _create_embeddings_table()
+
+    if not _table_exists("collaborator_edges"):
+        _create_collaborator_edges_table()
+
+    if not _table_exists("impact_snapshots"):
+        _create_impact_snapshots_table()
 
 
 def downgrade() -> None:

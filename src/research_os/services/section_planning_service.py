@@ -173,6 +173,7 @@ def build_section_plan(
     target_journal: str,
     answers: dict[str, str],
     sections: list[str] | None = None,
+    persona_context: dict[str, object] | None = None,
 ) -> dict[str, object]:
     inference = infer_wizard_state(target_journal, answers)
     requested_sections = _normalize_sections(sections)
@@ -194,13 +195,53 @@ def build_section_plan(
         high_cost = float(estimate["estimated_cost_usd_high"])
         total_low += low_cost
         total_high += high_cost
+        must_include = list(blueprint["must_include"])  # type: ignore[arg-type]
+        evidence_expectations = list(blueprint["evidence_expectations"])  # type: ignore[arg-type]
+        qc_focus = list(blueprint["qc_focus"])  # type: ignore[arg-type]
+
+        if persona_context:
+            dominant_themes = [
+                str(item).strip()
+                for item in (persona_context.get("dominant_themes") or [])
+                if str(item).strip()
+            ][:2]
+            top_venues = [
+                str(item).strip()
+                for item in (persona_context.get("top_venues") or [])
+                if str(item).strip()
+            ][:2]
+            supporting_works = [
+                item
+                for item in (persona_context.get("works_used") or [])
+                if isinstance(item, dict)
+            ][:3]
+            if dominant_themes:
+                must_include.append(
+                    f"Align framing with prior theme(s): {', '.join(dominant_themes)}."
+                )
+            if top_venues:
+                qc_focus.append(
+                    f"Check alignment with prior venue patterns: {', '.join(top_venues)}."
+                )
+            if supporting_works:
+                cited = []
+                for work in supporting_works:
+                    title = str(work.get("title", "")).strip()
+                    year = str(work.get("year", "")).strip()
+                    if title:
+                        cited.append(f"{title} ({year})".strip())
+                if cited:
+                    evidence_expectations.append(
+                        "Persona context from works: " + "; ".join(cited)
+                    )
+
         items.append(
             {
                 "section": section,
                 "objective": str(blueprint["objective"]),
-                "must_include": list(blueprint["must_include"]),  # type: ignore[arg-type]
-                "evidence_expectations": list(blueprint["evidence_expectations"]),  # type: ignore[arg-type]
-                "qc_focus": list(blueprint["qc_focus"]),  # type: ignore[arg-type]
+                "must_include": must_include,
+                "evidence_expectations": evidence_expectations,
+                "qc_focus": qc_focus,
                 "target_words_low": int(word_low),
                 "target_words_high": int(word_high),
                 "estimated_cost_usd_low": round(low_cost, 6),
@@ -218,4 +259,3 @@ def build_section_plan(
         "total_estimated_cost_usd_low": round(total_low, 6),
         "total_estimated_cost_usd_high": round(total_high, 6),
     }
-

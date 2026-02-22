@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from research_os.api.app import app
 from research_os.db import reset_database_state
+from research_os.services.persona_service import upsert_work
 
 
 def _set_test_environment(monkeypatch, tmp_path) -> None:
@@ -46,6 +47,10 @@ def _set_citation_state(monkeypatch) -> None:
             "discussion-p1": ["CIT-004"],
         },
     )
+
+
+def _auth_headers(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
 
 
 def test_health_returns_ok(monkeypatch) -> None:
@@ -1949,3 +1954,248 @@ def test_v1_wizard_bootstrap_creates_project_and_manuscript(
     assert payload["project"]["target_journal"] == "jacc"
     assert "introduction" in payload["manuscript"]["sections"]
     assert payload["inference"]["target_journal"] == "jacc"
+
+
+def test_v1_auth_register_login_me_patch_logout(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "ciaran@example.com",
+                "password": "StrongPassword123",
+                "name": "Ciaran",
+            },
+        )
+        assert register_response.status_code == 200
+        register_payload = register_response.json()
+        token = register_payload["session_token"]
+
+        me_response = client.get("/v1/auth/me", headers=_auth_headers(token))
+        patch_response = client.patch(
+            "/v1/auth/me",
+            headers=_auth_headers(token),
+            json={"name": "Ciaran Updated"},
+        )
+        logout_response = client.post("/v1/auth/logout", headers=_auth_headers(token))
+        me_after_logout = client.get("/v1/auth/me", headers=_auth_headers(token))
+        login_response = client.post(
+            "/v1/auth/login",
+            json={"email": "ciaran@example.com", "password": "StrongPassword123"},
+        )
+
+    assert me_response.status_code == 200
+    assert me_response.json()["email"] == "ciaran@example.com"
+    assert patch_response.status_code == 200
+    assert patch_response.json()["name"] == "Ciaran Updated"
+    assert logout_response.status_code == 200
+    assert logout_response.json()["success"] is True
+    assert me_after_logout.status_code == 401
+    assert login_response.status_code == 200
+    assert login_response.json()["user"]["email"] == "ciaran@example.com"
+
+
+def test_v1_orcid_connect_callback_and_import(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "orcid@example.com",
+                "password": "StrongPassword123",
+                "name": "ORCID User",
+            },
+        )
+        token = register_response.json()["session_token"]
+
+        monkeypatch.setattr(
+            "research_os.api.app.create_orcid_connect_url",
+            lambda user_id: {"url": "https://orcid.org/oauth/authorize?state=test", "state": "test"},
+        )
+        connect_response = client.get("/v1/orcid/connect", headers=_auth_headers(token))
+
+        monkeypatch.setattr(
+            "research_os.api.app.complete_orcid_callback",
+            lambda state, code: {
+                "connected": True,
+                "user_id": register_response.json()["user"]["id"],
+                "orcid_id": "0000-0002-1825-0097",
+            },
+        )
+        callback_response = client.get(
+            "/v1/orcid/callback",
+            params={"state": "test", "code": "code-1"},
+        )
+
+        monkeypatch.setattr(
+            "research_os.api.app.import_orcid_works",
+            lambda user_id, overwrite_user_metadata=False: {
+                "imported_count": 1,
+                "work_ids": ["work-1"],
+                "provenance": "orcid",
+                "last_synced_at": "2026-02-22T00:00:00Z",
+                "core_collaborators": [],
+            },
+        )
+        import_response = client.post(
+            "/v1/persona/import/orcid",
+            headers=_auth_headers(token),
+            json={"overwrite_user_metadata": False},
+        )
+
+    assert connect_response.status_code == 200
+    assert connect_response.json()["state"] == "test"
+    assert callback_response.status_code == 200
+    assert callback_response.json()["connected"] is True
+    assert import_response.status_code == 200
+    assert import_response.json()["imported_count"] == 1
+
+
+def test_v1_persona_metrics_embeddings_and_impact_flow(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "impact@example.com",
+                "password": "StrongPassword123",
+                "name": "Impact User",
+            },
+        )
+        assert register_response.status_code == 200
+        user_id = register_response.json()["user"]["id"]
+        token = register_response.json()["session_token"]
+        headers = _auth_headers(token)
+
+        upsert_work(
+            user_id=user_id,
+            provenance="manual",
+            work={
+                "title": "4D flow CMR haemodynamic assessment in pulmonary hypertension",
+                "year": 2022,
+                "doi": "10.0000/example.1",
+                "work_type": "Original Research Article",
+                "venue_name": "BMJ Open",
+                "publisher": "BMJ",
+                "abstract": "Retrospective cohort with multivariable regression and haemodynamic markers.",
+                "keywords": ["4D flow", "CMR", "haemodynamics"],
+                "url": "https://example.org/work1",
+                "authors": [
+                    {"name": "Impact User", "orcid_id": ""},
+                    {"name": "A Collaborator", "orcid_id": ""},
+                ],
+            },
+        )
+        upsert_work(
+            user_id=user_id,
+            provenance="manual",
+            work={
+                "title": "Imaging biomarker reproducibility in pulmonary hypertension",
+                "year": 2024,
+                "doi": "10.0000/example.2",
+                "work_type": "Original Research Article",
+                "venue_name": "Circulation: Cardiovascular Imaging",
+                "publisher": "AHA",
+                "abstract": "Inter-reader reproducibility study with regression modelling.",
+                "keywords": ["reproducibility", "imaging biomarker"],
+                "url": "https://example.org/work2",
+                "authors": [
+                    {"name": "Impact User", "orcid_id": ""},
+                    {"name": "A Collaborator", "orcid_id": ""},
+                    {"name": "B Collaborator", "orcid_id": ""},
+                ],
+            },
+        )
+
+        metrics_response = client.post(
+            "/v1/persona/metrics/sync",
+            headers=headers,
+            json={"providers": ["manual"]},
+        )
+        embeddings_response = client.post(
+            "/v1/persona/embeddings/generate",
+            headers=headers,
+            json={},
+        )
+        recompute_response = client.post("/v1/impact/recompute", headers=headers)
+        collaborators_response = client.get("/v1/impact/collaborators", headers=headers)
+        themes_response = client.get("/v1/impact/themes", headers=headers)
+        analyse_response = client.post("/v1/impact/analyse", headers=headers, json={})
+        report_response = client.post("/v1/impact/report", headers=headers, json={})
+        context_response = client.get("/v1/persona/context", headers=headers)
+        works_response = client.get("/v1/persona/works", headers=headers)
+
+    assert metrics_response.status_code == 200
+    assert metrics_response.json()["provider_attribution"]["manual"] >= 1
+    assert embeddings_response.status_code == 200
+    assert embeddings_response.json()["generated_embeddings"] >= 1
+    assert recompute_response.status_code == 200
+    assert recompute_response.json()["total_works"] == 2
+    assert collaborators_response.status_code == 200
+    assert len(collaborators_response.json()["collaborators"]) >= 1
+    assert themes_response.status_code == 200
+    assert len(themes_response.json()["clusters"]) >= 1
+    assert analyse_response.status_code == 200
+    assert "scholarly_impact_summary" in analyse_response.json()
+    assert report_response.status_code == 200
+    assert "scholarly_metrics" in report_response.json()
+    assert context_response.status_code == 200
+    assert "dominant_themes" in context_response.json()
+    assert works_response.status_code == 200
+    assert len(works_response.json()) == 2
+
+
+def test_v1_plan_sections_can_include_persona_context(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "planner-context@example.com",
+                "password": "StrongPassword123",
+                "name": "Planner User",
+            },
+        )
+        token = register_response.json()["session_token"]
+        user_id = register_response.json()["user"]["id"]
+
+        upsert_work(
+            user_id=user_id,
+            provenance="manual",
+            work={
+                "title": "Longitudinal CMR haemodynamic profiling in pulmonary hypertension",
+                "year": 2025,
+                "doi": "10.0000/example.3",
+                "work_type": "Original Research Article",
+                "venue_name": "BMJ Open",
+                "publisher": "BMJ",
+                "abstract": "Cohort analysis with regression modelling.",
+                "keywords": ["CMR", "haemodynamics"],
+                "url": "https://example.org/work3",
+                "authors": [{"name": "Planner User", "orcid_id": ""}],
+            },
+        )
+
+        response = client.post(
+            "/v1/aawe/plan/sections",
+            headers=_auth_headers(token),
+            json={
+                "target_journal": "ehj",
+                "answers": {
+                    "population": "Adults with pulmonary hypertension",
+                    "analysis_summary": "Adjusted multivariable modelling",
+                },
+                "sections": ["introduction"],
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    evidence_expectations = payload["items"][0]["evidence_expectations"]
+    assert any(
+        "Persona context from works:" in item for item in evidence_expectations
+    )
