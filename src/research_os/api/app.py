@@ -936,7 +936,7 @@ async def v1_upload_library_assets(
         else:
             try:
                 form = await request.form()
-            except RuntimeError:
+            except (RuntimeError, AssertionError):
                 return _build_bad_request_response(
                     (
                         "Multipart parsing is unavailable in this deployment. "

@@ -255,6 +255,32 @@ def test_v1_journals_returns_presets(monkeypatch, tmp_path) -> None:
     assert {"slug", "display_name", "default_voice"}.issubset(payload[0].keys())
 
 
+def test_v1_library_asset_upload_returns_400_when_multipart_parser_unavailable(
+    monkeypatch, tmp_path
+) -> None:
+    from starlette.requests import Request as StarletteRequest
+
+    _set_test_environment(monkeypatch, tmp_path)
+
+    async def _broken_form(self):  # pragma: no cover - exercised via endpoint
+        raise AssertionError("python-multipart missing")
+
+    monkeypatch.setattr(StarletteRequest, "form", _broken_form)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/library/assets/upload",
+            files={"files": ("sample.csv", b"a,b\n1,2\n", "text/csv")},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["type"] == "bad_request"
+    assert (
+        "Multipart parsing is unavailable"
+        in response.json()["error"]["detail"]
+    )
+
+
 def test_v1_aawe_selection_insight_returns_claim_payload(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
