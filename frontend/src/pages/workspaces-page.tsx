@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { TopBar } from '@/components/layout/top-bar'
@@ -132,6 +132,7 @@ function SortableHeader({
 function WorkspaceMenu({
   workspace,
   menuOpen,
+  openUp,
   onToggleMenu,
   onRename,
   onArchiveToggle,
@@ -139,7 +140,8 @@ function WorkspaceMenu({
 }: {
   workspace: WorkspaceRecord
   menuOpen: boolean
-  onToggleMenu: () => void
+  openUp: boolean
+  onToggleMenu: (event: MouseEvent<HTMLButtonElement>) => void
   onRename: () => void
   onArchiveToggle: () => void
   onDelete: () => void
@@ -148,10 +150,7 @@ function WorkspaceMenu({
     <div className="relative">
       <button
         type="button"
-        onClick={(event) => {
-          event.stopPropagation()
-          onToggleMenu()
-        }}
+        onClick={onToggleMenu}
         className="rounded-md border border-border bg-background px-2 py-1 text-sm text-muted-foreground hover:text-foreground"
         aria-label="Workspace options"
       >
@@ -160,7 +159,10 @@ function WorkspaceMenu({
 
       {menuOpen ? (
         <div
-          className="absolute right-0 top-9 z-20 w-40 rounded-md border border-border bg-card p-1 shadow-lg"
+          className={cn(
+            'absolute right-0 z-20 w-40 rounded-md border border-border bg-card p-1 shadow-lg',
+            openUp ? 'bottom-9' : 'top-9',
+          )}
           onClick={(event) => event.stopPropagation()}
         >
           <button
@@ -205,6 +207,7 @@ export function WorkspacesPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
   const [menuWorkspaceId, setMenuWorkspaceId] = useState<string | null>(null)
+  const [menuPlacement, setMenuPlacement] = useState<'up' | 'down'>('down')
   const [renamingWorkspaceId, setRenamingWorkspaceId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
 
@@ -301,6 +304,15 @@ export function WorkspacesPage() {
     }
     setSortColumn(column)
     setSortDirection(column === 'updatedAt' ? 'desc' : 'asc')
+  }
+
+  const onToggleWorkspaceMenu = (workspaceId: string, event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    const rect = event.currentTarget.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    const estimatedMenuHeight = 132
+    setMenuPlacement(spaceBelow < estimatedMenuHeight ? 'up' : 'down')
+    setMenuWorkspaceId((current) => (current === workspaceId ? null : workspaceId))
   }
 
   return (
@@ -496,7 +508,8 @@ export function WorkspacesPage() {
                               <WorkspaceMenu
                                 workspace={workspace}
                                 menuOpen={menuWorkspaceId === workspace.id}
-                                onToggleMenu={() => setMenuWorkspaceId((current) => (current === workspace.id ? null : workspace.id))}
+                                openUp={menuPlacement === 'up'}
+                                onToggleMenu={(event) => onToggleWorkspaceMenu(workspace.id, event)}
                                 onRename={() => onStartRenameWorkspace(workspace)}
                                 onArchiveToggle={() => onArchiveToggle(workspace)}
                                 onDelete={() => onDeleteWorkspace(workspace)}
@@ -571,7 +584,8 @@ export function WorkspacesPage() {
                         <WorkspaceMenu
                           workspace={workspace}
                           menuOpen={menuWorkspaceId === workspace.id}
-                          onToggleMenu={() => setMenuWorkspaceId((current) => (current === workspace.id ? null : workspace.id))}
+                          openUp={menuPlacement === 'up'}
+                          onToggleMenu={(event) => onToggleWorkspaceMenu(workspace.id, event)}
                           onRename={() => onStartRenameWorkspace(workspace)}
                           onArchiveToggle={() => onArchiveToggle(workspace)}
                           onDelete={() => onDeleteWorkspace(workspace)}
@@ -606,4 +620,3 @@ export function WorkspacesPage() {
     </div>
   )
 }
-
