@@ -24,6 +24,7 @@ import {
   recomputeImpact,
   setupTwoFactor,
   syncPersonaMetrics,
+  updateMe,
 } from '@/lib/impact-api'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
 import type {
@@ -64,6 +65,9 @@ export function ImpactPage() {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const [profileName, setProfileName] = useState('')
+  const [profileEmail, setProfileEmail] = useState('')
+  const [profilePassword, setProfilePassword] = useState('')
 
   const totalHistogramCount = useMemo(() => {
     if (!statePayload) {
@@ -119,6 +123,14 @@ export function ImpactPage() {
       navigate('/auth', { replace: true })
     }
   }, [navigate, token])
+
+  useEffect(() => {
+    if (!user) {
+      return
+    }
+    setProfileName(user.name || '')
+    setProfileEmail(user.email || '')
+  }, [user])
 
   const onStartTwoFactorSetup = async () => {
     if (!token) {
@@ -230,6 +242,29 @@ export function ImpactPage() {
       setStatus('Opened ORCID authorisation in a new tab.')
     } catch (connectError) {
       setError(connectError instanceof Error ? connectError.message : 'ORCID connect failed.')
+    }
+  }
+
+  const onUpdateProfile = async () => {
+    if (!token) {
+      return
+    }
+    setError('')
+    setStatus('')
+    setLoading(true)
+    try {
+      const payload = await updateMe(token, {
+        name: profileName.trim(),
+        email: profileEmail.trim(),
+        password: profilePassword.trim() || undefined,
+      })
+      setUser(payload)
+      setProfilePassword('')
+      setStatus('Profile details updated.')
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : 'Profile update failed.')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -373,67 +408,44 @@ export function ImpactPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded border border-border px-2 py-1">Signed in: {user.email}</span>
                 {user.orcid_id ? <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1">ORCID: {user.orcid_id}</span> : null}
-                <span className="rounded border border-slate-300 bg-slate-50 px-2 py-1">
-                  2FA: {twoFactorState?.enabled ? 'Enabled' : 'Disabled'}
-                </span>
+                <span className="rounded border border-slate-300 bg-slate-50 px-2 py-1">Security: {twoFactorState?.enabled ? 'Enhanced' : 'Standard'}</span>
+              </div>
+              <div className="grid gap-2 md:grid-cols-3">
+                <Input
+                  autoComplete="name"
+                  placeholder="Full name"
+                  value={profileName}
+                  onChange={(event) => setProfileName(event.target.value)}
+                />
+                <Input
+                  autoComplete="email"
+                  placeholder="Email"
+                  value={profileEmail}
+                  onChange={(event) => setProfileEmail(event.target.value)}
+                />
+                <Input
+                  autoComplete="new-password"
+                  type="password"
+                  placeholder="New password (optional)"
+                  value={profilePassword}
+                  onChange={(event) => setProfilePassword(event.target.value)}
+                />
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" onClick={onUpdateProfile} disabled={loading || !profileName.trim() || !profileEmail.trim()}>
+                  Save profile
+                </Button>
                 <Button variant="outline" size="sm" onClick={onConnectOrcid} disabled={loading}>
                   Connect ORCID
                 </Button>
                 <Button variant="outline" size="sm" onClick={onImportOrcid} disabled={loading}>
                   Import ORCID works
                 </Button>
-                <Button variant="outline" size="sm" onClick={onSyncMetrics} disabled={loading}>
-                  Sync metrics
-                </Button>
-                <Button variant="outline" size="sm" onClick={onGenerateEmbeddings} disabled={loading}>
-                  Generate themes
-                </Button>
-                <Button variant="outline" size="sm" onClick={onRecomputeImpact} disabled={loading}>
-                  Recompute impact
-                </Button>
                 <Button variant="ghost" size="sm" onClick={onLogout} disabled={loading}>
                   Sign out
                 </Button>
               </div>
-              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Two-factor authentication</p>
-                {!twoFactorState?.enabled ? (
-                  <div className="mt-2 space-y-2">
-                    <Button type="button" size="sm" variant="outline" onClick={onStartTwoFactorSetup} disabled={loading}>
-                      Generate 2FA setup
-                    </Button>
-                    {twoFactorSetup ? (
-                      <div className="space-y-2 rounded border border-emerald-200 bg-white p-2">
-                        <p className="text-xs text-slate-600">Secret (manual): <span className="font-mono">{twoFactorSetup.secret}</span></p>
-                        <p className="text-xs text-slate-600 break-all">URI: {twoFactorSetup.otpauth_uri}</p>
-                        <p className="text-xs text-slate-600">Backup codes: {twoFactorSetup.backup_codes.join(', ')}</p>
-                        <Input
-                          placeholder="Enter authenticator code"
-                          value={twoFactorCode}
-                          onChange={(event) => setTwoFactorCode(event.target.value)}
-                        />
-                        <Button type="button" size="sm" onClick={onEnableTwoFactor} disabled={loading || !twoFactorCode.trim()}>
-                          Enable 2FA
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="mt-2 space-y-2">
-                    <p className="text-xs text-slate-600">Backup codes remaining: {twoFactorState.backup_codes_remaining}</p>
-                    <Input
-                      placeholder="Enter authenticator or backup code to disable"
-                      value={disableTwoFactorCode}
-                      onChange={(event) => setDisableTwoFactorCode(event.target.value)}
-                    />
-                    <Button type="button" size="sm" variant="outline" onClick={onDisableTwoFactor} disabled={loading || !disableTwoFactorCode.trim()}>
-                      Disable 2FA
-                    </Button>
-                  </div>
-                )}
-              </div>
+              <p className="text-xs text-slate-500">Advanced security controls are available in the Security tab.</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -453,6 +465,7 @@ export function ImpactPage() {
           <TabsTrigger value="collaborations">Collaborations</TabsTrigger>
           <TabsTrigger value="themes">Themes</TabsTrigger>
           <TabsTrigger value="strategy">Strategy</TabsTrigger>
+          <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="reports">Reports</TabsTrigger>
         </TabsList>
 
@@ -647,6 +660,75 @@ export function ImpactPage() {
                   </ul>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="security" className="space-y-3">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Account security</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <p>
+                Two-factor status: <strong>{twoFactorState?.enabled ? 'Enabled' : 'Disabled'}</strong>
+              </p>
+              {!twoFactorState?.enabled ? (
+                <div className="space-y-2">
+                  <Button type="button" size="sm" variant="outline" onClick={onStartTwoFactorSetup} disabled={loading}>
+                    Generate 2FA setup
+                  </Button>
+                  {twoFactorSetup ? (
+                    <div className="space-y-2 rounded border border-emerald-200 bg-white p-2">
+                      <p className="text-xs text-slate-600">
+                        Secret (manual): <span className="font-mono">{twoFactorSetup.secret}</span>
+                      </p>
+                      <p className="text-xs text-slate-600 break-all">URI: {twoFactorSetup.otpauth_uri}</p>
+                      <p className="text-xs text-slate-600">Backup codes: {twoFactorSetup.backup_codes.join(', ')}</p>
+                      <Input
+                        placeholder="Enter authenticator code"
+                        value={twoFactorCode}
+                        onChange={(event) => setTwoFactorCode(event.target.value)}
+                      />
+                      <Button type="button" size="sm" onClick={onEnableTwoFactor} disabled={loading || !twoFactorCode.trim()}>
+                        Enable 2FA
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-600">Backup codes remaining: {twoFactorState.backup_codes_remaining}</p>
+                  <Input
+                    placeholder="Enter authenticator or backup code to disable"
+                    value={disableTwoFactorCode}
+                    onChange={(event) => setDisableTwoFactorCode(event.target.value)}
+                  />
+                  <Button type="button" size="sm" variant="outline" onClick={onDisableTwoFactor} disabled={loading || !disableTwoFactorCode.trim()}>
+                    Disable 2FA
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Data and impact maintenance</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" onClick={onSyncMetrics} disabled={loading}>
+                  Sync metrics
+                </Button>
+                <Button variant="outline" size="sm" onClick={onGenerateEmbeddings} disabled={loading}>
+                  Generate themes
+                </Button>
+                <Button variant="outline" size="sm" onClick={onRecomputeImpact} disabled={loading}>
+                  Recompute impact
+                </Button>
+              </div>
+              <p className="text-xs text-slate-600">Run these actions when new publications or citation updates are available.</p>
             </CardContent>
           </Card>
         </TabsContent>

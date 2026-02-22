@@ -20,10 +20,12 @@ function isStrongPassword(value: string): boolean {
 
 export function AuthPage() {
   const navigate = useNavigate()
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
+  const [signInEmail, setSignInEmail] = useState('')
+  const [signInPassword, setSignInPassword] = useState('')
+  const [registerName, setRegisterName] = useState('')
+  const [registerEmail, setRegisterEmail] = useState('')
+  const [registerPassword, setRegisterPassword] = useState('')
+  const [registerConfirmPassword, setRegisterConfirmPassword] = useState('')
   const [challengeToken, setChallengeToken] = useState('')
   const [twoFactorCode, setTwoFactorCode] = useState('')
   const [loading, setLoading] = useState(false)
@@ -39,30 +41,41 @@ export function AuthPage() {
   }, [navigate])
 
   const registerValidationMessage = useMemo(() => {
-    if (name.trim().length < 2) {
+    if (registerName.trim().length < 2) {
       return 'Name must be at least 2 characters.'
     }
-    if (!isLikelyEmail(email)) {
+    if (!isLikelyEmail(registerEmail)) {
       return 'Enter a valid email address.'
     }
-    if (!isStrongPassword(password)) {
+    if (!isStrongPassword(registerPassword)) {
       return 'Password must be 10+ characters with uppercase, lowercase, and numeric characters.'
     }
-    if (password !== confirmPassword) {
+    if (registerPassword !== registerConfirmPassword) {
       return 'Password confirmation does not match.'
     }
     return ''
-  }, [confirmPassword, email, name, password])
+  }, [registerConfirmPassword, registerEmail, registerName, registerPassword])
 
   const loginValidationMessage = useMemo(() => {
-    if (!isLikelyEmail(email)) {
+    if (!isLikelyEmail(signInEmail)) {
       return 'Enter a valid email address.'
     }
-    if (!password.trim()) {
+    if (!signInPassword.trim()) {
       return 'Password is required.'
     }
     return ''
-  }, [email, password])
+  }, [signInEmail, signInPassword])
+
+  const registerPasswordChecks = useMemo(() => {
+    const password = registerPassword.trim()
+    return {
+      length: password.length >= 10,
+      lower: /[a-z]/.test(password),
+      upper: /[A-Z]/.test(password),
+      number: /\d/.test(password),
+      matches: registerPassword === registerConfirmPassword && registerConfirmPassword.length > 0,
+    }
+  }, [registerConfirmPassword, registerPassword])
 
   const onRegister = async () => {
     setAttemptedRegister(true)
@@ -75,7 +88,7 @@ export function AuthPage() {
     setError('')
     setStatus('')
     try {
-      const payload = await registerAuth({ email, password, name })
+      const payload = await registerAuth({ email: registerEmail, password: registerPassword, name: registerName })
       setAuthSessionToken(payload.session_token)
       setStatus('Account created. Redirecting to profile...')
       navigate('/profile', { replace: true })
@@ -98,7 +111,7 @@ export function AuthPage() {
     setStatus('')
     setChallengeToken('')
     try {
-      const payload = await loginAuthChallenge({ email, password })
+      const payload = await loginAuthChallenge({ email: signInEmail, password: signInPassword })
       if (payload.status === 'authenticated' && payload.session) {
         setAuthSessionToken(payload.session.session_token)
         setStatus('Signed in. Redirecting to profile...')
@@ -157,37 +170,37 @@ export function AuthPage() {
           <p className="text-xs uppercase tracking-wide text-emerald-700">AAWE account access</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Secure profile sign-in</h1>
           <p className="mt-3 max-w-xl text-sm text-slate-600">
-            Access your impact profile, ORCID sync, and manuscript planning context with strengthened login controls and optional
-            two-factor verification.
+            Create an account once, then access manuscript planning and your profile in one place. Enhanced security and provider
+            sign-in are available when you want them.
           </p>
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <div className="rounded-lg border border-slate-200 bg-white p-3">
               <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
                 <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                Hardened sessions
+                Simple sign-in
               </p>
-              <p className="mt-1 text-xs text-slate-600">Short-lived session tokens with secure hashing and active-session limits.</p>
+              <p className="mt-1 text-xs text-slate-600">Email + password is the default flow and lands you directly in your profile.</p>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white p-3">
               <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
                 <LockKeyhole className="h-4 w-4 text-emerald-600" />
-                Optional 2FA
+                Optional extra security
               </p>
-              <p className="mt-1 text-xs text-slate-600">Authenticator app codes and one-time backup codes are supported.</p>
+              <p className="mt-1 text-xs text-slate-600">Two-factor authentication can be enabled later from profile settings.</p>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white p-3">
               <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
                 <KeyRound className="h-4 w-4 text-emerald-600" />
-                OAuth sign-in
+                ORCID and provider sign-in
               </p>
-              <p className="mt-1 text-xs text-slate-600">Use ORCID now; Google and Microsoft if provider credentials are configured.</p>
+              <p className="mt-1 text-xs text-slate-600">Use ORCID for publication sync; Google/Microsoft are available when configured.</p>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white p-3">
               <p className="flex items-center gap-2 text-sm font-medium text-slate-900">
                 <ArrowRight className="h-4 w-4 text-emerald-600" />
-                Direct to profile
+                Fast setup
               </p>
-              <p className="mt-1 text-xs text-slate-600">After sign-in, you land directly on Profile/Impact without extra navigation.</p>
+              <p className="mt-1 text-xs text-slate-600">Register in under a minute, then connect ORCID any time from your profile.</p>
             </div>
           </div>
         </section>
@@ -197,17 +210,21 @@ export function AuthPage() {
             <CardTitle className="text-base">Sign in</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-2 sm:grid-cols-3">
-              <Button type="button" variant="outline" onClick={() => void onOAuth('orcid')} disabled={loading}>
-                ORCID
-              </Button>
-              <Button type="button" variant="outline" onClick={() => void onOAuth('google')} disabled={loading}>
-                Google
-              </Button>
-              <Button type="button" variant="outline" onClick={() => void onOAuth('microsoft')} disabled={loading}>
-                Microsoft
-              </Button>
-            </div>
+            <details className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <summary className="cursor-pointer text-sm font-medium text-slate-900">Other sign-in options</summary>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                <Button type="button" variant="outline" onClick={() => void onOAuth('orcid')} disabled={loading}>
+                  ORCID
+                </Button>
+                <Button type="button" variant="outline" onClick={() => void onOAuth('google')} disabled={loading}>
+                  Google
+                </Button>
+                <Button type="button" variant="outline" onClick={() => void onOAuth('microsoft')} disabled={loading}>
+                  Microsoft
+                </Button>
+              </div>
+              <p className="mt-2 text-xs text-slate-600">Use ORCID if you want to import publications into your profile.</p>
+            </details>
 
             <Tabs defaultValue="signin" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
@@ -218,17 +235,22 @@ export function AuthPage() {
                 <Input
                   autoComplete="email"
                   placeholder="Email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  value={signInEmail}
+                  onChange={(event) => setSignInEmail(event.target.value)}
                 />
                 <Input
                   autoComplete="current-password"
                   type="password"
                   placeholder="Password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
+                  value={signInPassword}
+                  onChange={(event) => setSignInPassword(event.target.value)}
                 />
-                <Button type="button" className="w-full bg-emerald-600 hover:bg-emerald-700" disabled={loading} onClick={() => void onSignIn()}>
+                <Button
+                  type="button"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700"
+                  disabled={loading || !!loginValidationMessage}
+                  onClick={() => void onSignIn()}
+                >
                   {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Continue
                 </Button>
@@ -254,30 +276,44 @@ export function AuthPage() {
                 <Input
                   autoComplete="name"
                   placeholder="Full name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
+                  value={registerName}
+                  onChange={(event) => setRegisterName(event.target.value)}
                 />
                 <Input
                   autoComplete="email"
                   placeholder="Email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  value={registerEmail}
+                  onChange={(event) => setRegisterEmail(event.target.value)}
                 />
                 <Input
                   autoComplete="new-password"
                   type="password"
                   placeholder="Password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
+                  value={registerPassword}
+                  onChange={(event) => setRegisterPassword(event.target.value)}
                 />
                 <Input
                   autoComplete="new-password"
                   type="password"
                   placeholder="Confirm password"
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  value={registerConfirmPassword}
+                  onChange={(event) => setRegisterConfirmPassword(event.target.value)}
                 />
-                <Button type="button" className="w-full bg-emerald-600 hover:bg-emerald-700" disabled={loading} onClick={() => void onRegister()}>
+                <div className="grid gap-1 text-xs text-slate-600 sm:grid-cols-2">
+                  <p className={registerPasswordChecks.length ? 'text-emerald-700' : ''}>10+ characters</p>
+                  <p className={registerPasswordChecks.upper ? 'text-emerald-700' : ''}>Uppercase letter</p>
+                  <p className={registerPasswordChecks.lower ? 'text-emerald-700' : ''}>Lowercase letter</p>
+                  <p className={registerPasswordChecks.number ? 'text-emerald-700' : ''}>Number</p>
+                  <p className={registerPasswordChecks.matches ? 'text-emerald-700 sm:col-span-2' : 'sm:col-span-2'}>
+                    Passwords match
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700"
+                  disabled={loading || !!registerValidationMessage}
+                  onClick={() => void onRegister()}
+                >
                   {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Create account
                 </Button>
