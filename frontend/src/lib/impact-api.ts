@@ -66,16 +66,9 @@ async function requestJson<T>(url: string, init: RequestInit, fallbackError: str
   for (let attempt = 0; attempt <= REQUEST_RETRY_COUNT; attempt += 1) {
     const controller = new AbortController()
     const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    let response: Response | null = null
     try {
-      const response = await fetch(url, { ...init, signal: controller.signal })
-      if (!response.ok) {
-        if (isRetryableStatus(response.status) && attempt < REQUEST_RETRY_COUNT) {
-          await sleep(900 * (attempt + 1))
-          continue
-        }
-        throw new Error(await parseApiError(response, `${fallbackError} (${response.status})`))
-      }
-      return (await response.json()) as T
+      response = await fetch(url, { ...init, signal: controller.signal })
     } catch (error) {
       if (attempt < REQUEST_RETRY_COUNT) {
         await sleep(900 * (attempt + 1))
@@ -91,6 +84,17 @@ async function requestJson<T>(url: string, init: RequestInit, fallbackError: str
     } finally {
       window.clearTimeout(timeout)
     }
+    if (!response) {
+      continue
+    }
+    if (!response.ok) {
+      if (isRetryableStatus(response.status) && attempt < REQUEST_RETRY_COUNT) {
+        await sleep(900 * (attempt + 1))
+        continue
+      }
+      throw new Error(await parseApiError(response, `${fallbackError} (${response.status})`))
+    }
+    return (await response.json()) as T
   }
   throw lastError || new Error(`Could not reach API at ${API_BASE_URL}.`)
 }
