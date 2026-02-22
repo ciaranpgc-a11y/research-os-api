@@ -36,8 +36,8 @@ export function OrcidCallbackPage() {
             at: Date.now(),
           }),
         )
-        setStatus('ORCID linked. Returning to profile...')
-        navigate('/profile?orcid=linked', { replace: true })
+        setStatus('ORCID linked. Returning to integrations...')
+        navigate('/profile/integrations?orcid=linked', { replace: true })
       } catch (callbackError) {
         setError(callbackError instanceof Error ? callbackError.message : 'Could not complete ORCID link.')
       }

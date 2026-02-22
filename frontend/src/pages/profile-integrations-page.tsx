@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -34,19 +34,27 @@ function formatTimestamp(value: string | null | undefined): string {
 
 export function ProfileIntegrationsPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [token, setToken] = useState<string>(() => getAuthSessionToken())
   const [user, setUser] = useState<AuthUser | null>(null)
   const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(null)
   const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(null)
   const [providerStatuses, setProviderStatuses] = useState<AuthOAuthProviderStatusItem[]>([])
   const [loading, setLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [connecting, setConnecting] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
 
-  const loadData = useCallback(async (sessionToken: string) => {
+  const loadData = useCallback(async (sessionToken: string, resetMessages = true) => {
     setLoading(true)
+    setRefreshing(true)
     setError('')
-    setStatus('')
+    if (resetMessages) {
+      setStatus('')
+    }
     try {
       const settled = await Promise.allSettled([
         fetchMe(sessionToken),
@@ -67,6 +75,7 @@ export function ProfileIntegrationsPage() {
       setError(loadError instanceof Error ? loadError.message : 'Could not load integrations.')
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }, [])
 
@@ -80,6 +89,32 @@ export function ProfileIntegrationsPage() {
     void loadData(sessionToken)
   }, [loadData, navigate])
 
+  useEffect(() => {
+    const linked = searchParams.get('orcid')
+    if (linked !== 'linked') {
+      return
+    }
+    const raw = sessionStorage.getItem('aawe_orcid_link_result')
+    if (!raw) {
+      setStatus('ORCID linked successfully.')
+      return
+    }
+    try {
+      const payload = JSON.parse(raw) as { linked?: boolean; orcidId?: string }
+      if (payload.linked) {
+        setStatus(
+          payload.orcidId
+            ? `ORCID linked successfully (${payload.orcidId}).`
+            : 'ORCID linked successfully.',
+        )
+      }
+    } catch {
+      setStatus('ORCID linked successfully.')
+    } finally {
+      sessionStorage.removeItem('aawe_orcid_link_result')
+    }
+  }, [searchParams])
+
   const providerByName = useMemo(() => {
     const map = new Map<string, AuthOAuthProviderStatusItem>()
     for (const provider of providerStatuses) {
@@ -89,6 +124,15 @@ export function ProfileIntegrationsPage() {
   }, [providerStatuses])
 
   const metricsRows = personaState?.metrics.works ?? []
+  const worksCount = personaState?.works.length ?? 0
+  const emailVerified = Boolean(user?.email_verified_at)
+  const orcidConfigured = Boolean(orcidStatus?.configured)
+  const orcidLinked = Boolean(orcidStatus?.linked || user?.orcid_id)
+  const busy = loading || connecting || importing || syncing
+  const canConnectOrcid = emailVerified && orcidConfigured && !busy
+  const canImportOrcid = emailVerified && orcidConfigured && orcidLinked && !busy
+  const canSyncCitations = worksCount > 0 && !busy
+  const connectLabel = orcidLinked ? 'Reconnect ORCID' : 'Connect ORCID'
   const totalCitations = useMemo(
     () => metricsRows.reduce((sum, row) => sum + Math.max(0, Number(row.citations || 0)), 0),
     [metricsRows],
@@ -108,11 +152,14 @@ export function ProfileIntegrationsPage() {
     }
     setError('')
     setStatus('')
+    setConnecting(true)
     try {
       const payload = await fetchOrcidConnect(token)
       window.location.assign(payload.url)
     } catch (connectError) {
       setError(connectError instanceof Error ? connectError.message : 'ORCID connect failed.')
+    } finally {
+      setConnecting(false)
     }
   }
 
@@ -124,18 +171,21 @@ export function ProfileIntegrationsPage() {
       setStatus('Connect ORCID before importing works.')
       return
     }
-    setLoading(true)
+    setImporting(true)
     setError('')
     setStatus('')
     try {
       const payload = await importOrcidWorks(token)
-      await syncPersonaMetrics(token, ['openalex', 'semantic_scholar'])
-      setStatus(`Imported ${payload.imported_count} ORCID work(s) and refreshed citation metrics.`)
-      await loadData(token)
+      if (payload.imported_count > 0) {
+        setStatus(`Imported ${payload.imported_count} ORCID work(s). Citation sync has been updated.`)
+      } else {
+        setStatus('No new ORCID works were imported. Library is already up to date.')
+      }
+      await loadData(token, false)
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : 'Could not import ORCID works.')
     } finally {
-      setLoading(false)
+      setImporting(false)
     }
   }
 
@@ -143,17 +193,21 @@ export function ProfileIntegrationsPage() {
     if (!token) {
       return
     }
-    setLoading(true)
+    if (worksCount === 0) {
+      setStatus('Import at least one work before syncing citations.')
+      return
+    }
+    setSyncing(true)
     setError('')
     setStatus('')
     try {
       const payload = await syncPersonaMetrics(token, ['openalex', 'semantic_scholar', 'manual'])
       setStatus(`Citations synchronised (${payload.synced_snapshots} metric snapshot(s)).`)
-      await loadData(token)
+      await loadData(token, false)
     } catch (syncError) {
       setError(syncError instanceof Error ? syncError.message : 'Could not synchronise citations.')
     } finally {
-      setLoading(false)
+      setSyncing(false)
     }
   }
 
@@ -193,16 +247,33 @@ export function ProfileIntegrationsPage() {
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={onConnectOrcid} disabled={loading}>
-              Connect ORCID
+            <Button type="button" variant="outline" onClick={onConnectOrcid} disabled={!canConnectOrcid}>
+              {connecting ? 'Opening ORCID...' : connectLabel}
             </Button>
-            <Button type="button" onClick={onImportOrcid} disabled={loading}>
-              Import ORCID works
+            <Button type="button" onClick={onImportOrcid} disabled={!canImportOrcid}>
+              {importing ? 'Importing...' : 'Import ORCID works'}
             </Button>
-            <Button type="button" variant="outline" onClick={onSyncMetrics} disabled={loading}>
-              Sync citations
+            <Button type="button" variant="outline" onClick={onSyncMetrics} disabled={!canSyncCitations}>
+              {syncing ? 'Syncing...' : 'Sync citations'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => (token ? void loadData(token, false) : undefined)}
+              disabled={!token || busy}
+            >
+              {refreshing ? 'Refreshing...' : 'Refresh status'}
             </Button>
           </div>
+          {!emailVerified ? (
+            <p className="text-xs text-amber-700">Verify your email to enable ORCID connect and import.</p>
+          ) : null}
+          {!orcidConfigured ? (
+            <p className="text-xs text-amber-700">ORCID provider is not configured in backend environment.</p>
+          ) : null}
+          {worksCount === 0 ? (
+            <p className="text-xs text-muted-foreground">Citation sync becomes available after your first works import.</p>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -262,7 +333,9 @@ export function ProfileIntegrationsPage() {
 
       {status ? <p className="text-sm text-emerald-700">{status}</p> : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      {loading ? <p className="text-xs text-muted-foreground">Working...</p> : null}
+      {(loading || connecting || importing || syncing) ? (
+        <p className="text-xs text-muted-foreground">Working...</p>
+      ) : null}
     </section>
   )
 }

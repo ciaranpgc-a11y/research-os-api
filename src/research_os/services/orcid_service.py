@@ -327,13 +327,18 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
         groups = works_payload.get("group") or []
 
         imported: list[dict[str, Any]] = []
-        seen_entries: set[str] = set()
+        seen_put_codes: set[str] = set()
         for group in groups:
             summaries = group.get("work-summary") or []
             for summary in summaries:
                 if not isinstance(summary, dict):
                     continue
                 put_code = summary.get("put-code")
+                put_code_key = str(put_code).strip()
+                if put_code_key:
+                    if put_code_key in seen_put_codes:
+                        continue
+                    seen_put_codes.add(put_code_key)
                 detail_payload = None
                 if put_code is not None:
                     detail_url = f"{_orcid_api_base()}/{orcid_id}/work/{put_code}"
@@ -341,23 +346,19 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
                     if detail_response.status_code < 400:
                         detail_payload = detail_response.json()
                 work_payload = _extract_work_payload(summary, detail_payload)
+                if not work_payload.get("url") and put_code is not None:
+                    work_payload["url"] = (
+                        f"https://orcid.org/{orcid_id}/work/{put_code}"
+                    )
                 if not work_payload["title"]:
                     fallback_ref = str(work_payload.get("doi") or put_code or "").strip()
                     if not fallback_ref:
                         continue
                     work_payload["title"] = f"ORCID work {fallback_ref}"
-                dedupe_key = (
-                    str(work_payload.get("doi") or "").strip().lower()
-                    or f"{work_payload['title'].strip().lower()}::{work_payload.get('year') or ''}"
-                )
-                if not dedupe_key:
-                    continue
-                if dedupe_key in seen_entries:
-                    continue
-                seen_entries.add(dedupe_key)
                 imported.append(work_payload)
 
     upserted_ids: list[str] = []
+    seen_upserted_ids: set[str] = set()
     for work in imported:
         record = upsert_work(
             user_id=user_id,
@@ -365,7 +366,11 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
             provenance="orcid",
             overwrite_user_metadata=overwrite_user_metadata,
         )
-        upserted_ids.append(str(record["id"]))
+        work_id = str(record["id"])
+        if work_id in seen_upserted_ids:
+            continue
+        seen_upserted_ids.add(work_id)
+        upserted_ids.append(work_id)
 
     create_all_tables()
     with session_scope() as session:

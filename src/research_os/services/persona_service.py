@@ -103,13 +103,31 @@ def _resolve_user_or_raise(session, user_id: str) -> User:
     return user
 
 
-def _find_existing_work(session, *, user_id: str, doi: str | None, title_lower: str, year: int | None) -> Work | None:
+def _find_existing_work(
+    session,
+    *,
+    user_id: str,
+    doi: str | None,
+    url: str | None,
+    title_lower: str,
+    year: int | None,
+) -> Work | None:
     if doi:
         by_doi = session.scalars(
             select(Work).where(Work.user_id == user_id, Work.doi == doi)
         ).first()
         if by_doi is not None:
             return by_doi
+    clean_url = re.sub(r"\s+", "", (url or "").strip())
+    if clean_url:
+        by_url = session.scalars(
+            select(Work).where(Work.user_id == user_id, Work.url == url)
+        ).first()
+        if by_url is not None:
+            return by_url
+        # If the caller has a concrete URL but no DOI match, treat as a distinct work.
+        if not doi:
+            return None
     if title_lower:
         by_title = session.scalars(
             select(Work).where(
@@ -179,6 +197,7 @@ def upsert_work(
     year_raw = work.get("year")
     year = int(year_raw) if str(year_raw).strip().isdigit() else None
     doi = _normalize_doi(work.get("doi"))
+    url = str(work.get("url", "")).strip()
     authors = work.get("authors", [])
     if not isinstance(authors, list):
         authors = []
@@ -189,6 +208,7 @@ def upsert_work(
             session,
             user_id=user.id,
             doi=doi,
+            url=url,
             title_lower=title_lower,
             year=year,
         )
@@ -203,7 +223,7 @@ def upsert_work(
             "publisher": re.sub(r"\s+", " ", str(work.get("publisher", "")).strip()),
             "abstract": re.sub(r"\s+", " ", str(work.get("abstract", "")).strip()) or None,
             "keywords": _normalize_keywords(work.get("keywords")),
-            "url": str(work.get("url", "")).strip(),
+            "url": url,
             "provenance": provenance,
         }
 

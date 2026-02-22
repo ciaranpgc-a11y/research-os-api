@@ -32,13 +32,19 @@ export function ProfilePublicationsPage() {
   const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(null)
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
 
-  const loadData = useCallback(async (sessionToken: string) => {
+  const loadData = useCallback(async (sessionToken: string, resetMessages = true) => {
     setLoading(true)
+    setRefreshing(true)
     setError('')
-    setStatus('')
+    if (resetMessages) {
+      setStatus('')
+    }
     try {
       const settled = await Promise.allSettled([fetchPersonaState(sessionToken), fetchOrcidStatus(sessionToken)])
       const [stateResult, orcidResult] = settled
@@ -52,6 +58,7 @@ export function ProfilePublicationsPage() {
       setError(loadError instanceof Error ? loadError.message : 'Could not load publications.')
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }, [])
 
@@ -98,6 +105,10 @@ export function ProfilePublicationsPage() {
     }
     return count
   }, [personaState?.metrics.works])
+  const worksCount = personaState?.works.length ?? 0
+  const busy = loading || importing || syncing
+  const canImportOrcid = Boolean(orcidStatus?.can_import) && !busy
+  const canSyncCitations = worksCount > 0 && !busy
 
   const onImportOrcid = async () => {
     if (!token) {
@@ -107,18 +118,21 @@ export function ProfilePublicationsPage() {
       setStatus('Connect ORCID in Integrations before importing publications.')
       return
     }
-    setLoading(true)
+    setImporting(true)
     setError('')
     setStatus('')
     try {
       const payload = await importOrcidWorks(token)
-      await syncPersonaMetrics(token, ['openalex', 'semantic_scholar'])
-      setStatus(`Imported ${payload.imported_count} ORCID work(s) and refreshed citation metrics.`)
-      await loadData(token)
+      if (payload.imported_count > 0) {
+        setStatus(`Imported ${payload.imported_count} ORCID work(s).`)
+      } else {
+        setStatus('No new ORCID works were imported. Library is already up to date.')
+      }
+      await loadData(token, false)
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : 'Could not import ORCID works.')
     } finally {
-      setLoading(false)
+      setImporting(false)
     }
   }
 
@@ -126,17 +140,21 @@ export function ProfilePublicationsPage() {
     if (!token) {
       return
     }
-    setLoading(true)
+    if (worksCount === 0) {
+      setStatus('Import at least one work before syncing citations.')
+      return
+    }
+    setSyncing(true)
     setError('')
     setStatus('')
     try {
       const payload = await syncPersonaMetrics(token, ['openalex', 'semantic_scholar', 'manual'])
       setStatus(`Citations synchronised (${payload.synced_snapshots} metric snapshot(s)).`)
-      await loadData(token)
+      await loadData(token, false)
     } catch (syncError) {
       setError(syncError instanceof Error ? syncError.message : 'Could not synchronise citations.')
     } finally {
-      setLoading(false)
+      setSyncing(false)
     }
   }
 
@@ -177,11 +195,11 @@ export function ProfilePublicationsPage() {
           <CardDescription>ORCID import is active; DOI/BibTeX upload is scaffolded.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
-          <Button type="button" onClick={onImportOrcid} disabled={loading}>
-            Import ORCID works
+          <Button type="button" onClick={onImportOrcid} disabled={!canImportOrcid}>
+            {importing ? 'Importing...' : 'Import ORCID works'}
           </Button>
-          <Button type="button" variant="outline" onClick={onSyncCitations} disabled={loading}>
-            Sync citations
+          <Button type="button" variant="outline" onClick={onSyncCitations} disabled={!canSyncCitations}>
+            {syncing ? 'Syncing...' : 'Sync citations'}
           </Button>
           <Button
             type="button"
@@ -195,6 +213,14 @@ export function ProfilePublicationsPage() {
           </Button>
           <Button type="button" variant="outline" onClick={() => navigate('/profile/integrations')}>
             Open integrations
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => (token ? void loadData(token, false) : undefined)}
+            disabled={!token || busy}
+          >
+            {refreshing ? 'Refreshing...' : 'Refresh library'}
           </Button>
         </CardContent>
       </Card>
@@ -261,7 +287,7 @@ export function ProfilePublicationsPage() {
 
       {status ? <p className="text-sm text-emerald-700">{status}</p> : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      {loading ? <p className="text-xs text-muted-foreground">Working...</p> : null}
+      {(loading || importing || syncing) ? <p className="text-xs text-muted-foreground">Working...</p> : null}
     </section>
   )
 }
