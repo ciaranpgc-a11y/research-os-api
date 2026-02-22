@@ -161,17 +161,6 @@ export function TopBar({
           >
             Overview
           </NavLink>
-          <NavLink
-            to="/profile"
-            className={({ isActive }) =>
-              cn(
-                'rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground',
-                isActive && 'bg-accent text-foreground',
-              )
-            }
-          >
-            Profile
-          </NavLink>
           <button
             type="button"
             onClick={goToRunWizard}
@@ -200,11 +189,9 @@ export function TopBar({
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        {isGuest ? (
-          <Button size="sm" variant="outline" onClick={() => navigate('/auth')}>
-            Sign in
-          </Button>
-        ) : null}
+        <Button size="sm" variant="outline" onClick={() => navigate(isGuest ? '/auth' : '/profile')}>
+          {isGuest ? 'Sign in' : 'Account'}
+        </Button>
 
         <TooltipProvider delayDuration={100}>
           <Tooltip>
