@@ -1,9 +1,13 @@
 import { API_BASE_URL } from '@/lib/api'
 import type { ApiErrorPayload } from '@/types/insight'
 import type {
+  AuthEmailVerificationRequestPayload,
   AuthLoginChallengePayload,
+  AuthOAuthProviderStatusesPayload,
   AuthOAuthCallbackPayload,
   AuthOAuthConnectPayload,
+  AuthPasswordResetConfirmPayload,
+  AuthPasswordResetRequestPayload,
   AuthSessionPayload,
   AuthTwoFactorSetupPayload,
   AuthTwoFactorStatePayload,
@@ -231,6 +235,16 @@ export async function fetchOAuthConnect(provider: 'orcid' | 'google' | 'microsof
   )
 }
 
+export async function fetchOAuthProviderStatuses(): Promise<AuthOAuthProviderStatusesPayload> {
+  return requestJson<AuthOAuthProviderStatusesPayload>(
+    `${API_BASE_URL}/v1/auth/oauth/providers`,
+    {
+      method: 'GET',
+    },
+    'OAuth provider lookup failed',
+  )
+}
+
 export async function completeOAuthCallback(input: {
   provider: 'orcid' | 'google' | 'microsoft'
   state: string
@@ -248,6 +262,64 @@ export async function completeOAuthCallback(input: {
       }),
     },
     'OAuth callback failed',
+  )
+}
+
+export async function requestEmailVerification(token: string): Promise<AuthEmailVerificationRequestPayload> {
+  return requestJson<AuthEmailVerificationRequestPayload>(
+    `${API_BASE_URL}/v1/auth/email-verification/request`,
+    {
+      method: 'POST',
+      headers: authHeaders(token),
+    },
+    'Email verification request failed',
+  )
+}
+
+export async function confirmEmailVerification(input: {
+  token: string
+  code: string
+}): Promise<AuthUser> {
+  return requestJson<AuthUser>(
+    `${API_BASE_URL}/v1/auth/email-verification/confirm`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(input.token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: input.code }),
+    },
+    'Email verification failed',
+  )
+}
+
+export async function requestPasswordReset(email: string): Promise<AuthPasswordResetRequestPayload> {
+  return requestJson<AuthPasswordResetRequestPayload>(
+    `${API_BASE_URL}/v1/auth/password-reset/request`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    },
+    'Password reset request failed',
+  )
+}
+
+export async function confirmPasswordReset(input: {
+  email: string
+  code: string
+  newPassword: string
+}): Promise<AuthPasswordResetConfirmPayload> {
+  return requestJson<AuthPasswordResetConfirmPayload>(
+    `${API_BASE_URL}/v1/auth/password-reset/confirm`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: input.email,
+        code: input.code,
+        new_password: input.newPassword,
+      }),
+    },
+    'Password reset failed',
   )
 }
 

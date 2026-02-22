@@ -144,6 +144,8 @@ def _create_users_table() -> None:
         sa.Column("two_factor_secret", sa.Text(), nullable=True),
         sa.Column("two_factor_backup_codes", sa.JSON(), nullable=False, server_default=sa.text("'[]'")),
         sa.Column("two_factor_confirmed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("email_verified_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("last_sign_in_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
@@ -212,6 +214,60 @@ def _create_auth_login_challenges_table() -> None:
         "ix_auth_login_challenges_challenge_hash",
         "auth_login_challenges",
         ["challenge_hash"],
+        unique=False,
+    )
+
+
+def _create_auth_email_verification_codes_table() -> None:
+    op.create_table(
+        "auth_email_verification_codes",
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("user_id", sa.String(length=36), nullable=False),
+        sa.Column("code_hash", sa.String(length=128), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("code_hash"),
+    )
+    op.create_index(
+        "ix_auth_email_verification_codes_user_id",
+        "auth_email_verification_codes",
+        ["user_id"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_auth_email_verification_codes_code_hash",
+        "auth_email_verification_codes",
+        ["code_hash"],
+        unique=False,
+    )
+
+
+def _create_auth_password_reset_codes_table() -> None:
+    op.create_table(
+        "auth_password_reset_codes",
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("user_id", sa.String(length=36), nullable=False),
+        sa.Column("code_hash", sa.String(length=128), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("code_hash"),
+    )
+    op.create_index(
+        "ix_auth_password_reset_codes_user_id",
+        "auth_password_reset_codes",
+        ["user_id"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_auth_password_reset_codes_code_hash",
+        "auth_password_reset_codes",
+        ["code_hash"],
         unique=False,
     )
 
@@ -518,6 +574,16 @@ def upgrade() -> None:
                 "users",
                 sa.Column("two_factor_confirmed_at", sa.DateTime(timezone=True), nullable=True),
             )
+        if not _column_exists("users", "email_verified_at"):
+            op.add_column(
+                "users",
+                sa.Column("email_verified_at", sa.DateTime(timezone=True), nullable=True),
+            )
+        if not _column_exists("users", "last_sign_in_at"):
+            op.add_column(
+                "users",
+                sa.Column("last_sign_in_at", sa.DateTime(timezone=True), nullable=True),
+            )
         _create_index_if_missing("ix_users_google_sub", "users", ["google_sub"])
         _create_index_if_missing("ix_users_microsoft_sub", "users", ["microsoft_sub"])
 
@@ -529,6 +595,12 @@ def upgrade() -> None:
 
     if not _table_exists("auth_login_challenges"):
         _create_auth_login_challenges_table()
+
+    if not _table_exists("auth_email_verification_codes"):
+        _create_auth_email_verification_codes_table()
+
+    if not _table_exists("auth_password_reset_codes"):
+        _create_auth_password_reset_codes_table()
 
     if not _table_exists("auth_oauth_states"):
         _create_auth_oauth_states_table()

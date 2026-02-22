@@ -760,6 +760,8 @@ class AuthUserResponse(BaseModel):
     role: Literal["user", "admin"]
     orcid_id: str | None = None
     impact_last_computed_at: datetime | None = None
+    email_verified_at: datetime | None = None
+    last_sign_in_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -837,6 +839,16 @@ class AuthOAuthConnectResponse(BaseModel):
     url: str
 
 
+class AuthOAuthProviderStatusItemResponse(BaseModel):
+    provider: Literal["orcid", "google", "microsoft"]
+    configured: bool
+    reason: str = ""
+
+
+class AuthOAuthProviderStatusesResponse(BaseModel):
+    providers: list[AuthOAuthProviderStatusItemResponse] = Field(default_factory=list)
+
+
 class AuthOAuthCallbackRequest(BaseModel):
     provider: Literal["orcid", "google", "microsoft"]
     state: str
@@ -849,6 +861,39 @@ class AuthOAuthCallbackResponse(BaseModel):
     user: AuthUserResponse
     session_token: str
     session_expires_at: datetime
+
+
+class AuthEmailVerificationRequestResponse(BaseModel):
+    requested: bool
+    already_verified: bool = False
+    expires_at: datetime | None = None
+    delivery_hint: str = ""
+    code_preview: str | None = None
+
+
+class AuthEmailVerificationConfirmRequest(BaseModel):
+    code: str
+
+
+class AuthPasswordResetRequestRequest(BaseModel):
+    email: str
+
+
+class AuthPasswordResetRequestResponse(BaseModel):
+    requested: bool
+    expires_at: datetime | None = None
+    delivery_hint: str = ""
+    code_preview: str | None = None
+
+
+class AuthPasswordResetConfirmRequest(BaseModel):
+    email: str
+    code: str
+    new_password: str
+
+
+class AuthPasswordResetConfirmResponse(BaseModel):
+    success: bool
 
 
 class OrcidConnectResponse(BaseModel):

@@ -3,12 +3,16 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import hmac
 import os
+import secrets
+import string
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from research_os.db import (
+    AuthEmailVerificationCode,
     AuthLoginChallenge,
+    AuthPasswordResetCode,
     AuthSession,
     User,
     create_all_tables,
@@ -32,6 +36,16 @@ from research_os.services.security_service import (
 SESSION_DAYS = max(1, int(os.getenv("AUTH_SESSION_DAYS", "30")))
 MAX_ACTIVE_SESSIONS = max(1, int(os.getenv("AUTH_MAX_ACTIVE_SESSIONS", "5")))
 LOGIN_CHALLENGE_MINUTES = max(3, int(os.getenv("AUTH_LOGIN_CHALLENGE_MINUTES", "10")))
+EMAIL_VERIFICATION_MINUTES = max(
+    5, int(os.getenv("AUTH_EMAIL_VERIFICATION_MINUTES", "30"))
+)
+PASSWORD_RESET_MINUTES = max(5, int(os.getenv("AUTH_PASSWORD_RESET_MINUTES", "30")))
+EXPOSE_AUTH_CODES_IN_RESPONSE = os.getenv("AUTH_EXPOSE_DEBUG_CODES", "1").strip() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 _DUMMY_PASSWORD_HASH = hash_password("AaweDummyPassword123")
 
 
@@ -95,6 +109,8 @@ def _serialize_user(user: User) -> dict[str, object]:
         "role": user.role,
         "orcid_id": user.orcid_id,
         "impact_last_computed_at": user.impact_last_computed_at,
+        "email_verified_at": user.email_verified_at,
+        "last_sign_in_at": user.last_sign_in_at,
         "created_at": user.created_at,
         "updated_at": user.updated_at,
     }
@@ -106,6 +122,19 @@ def _session_expiry() -> datetime:
 
 def _login_challenge_expiry() -> datetime:
     return _utcnow() + timedelta(minutes=LOGIN_CHALLENGE_MINUTES)
+
+
+def _email_verification_expiry() -> datetime:
+    return _utcnow() + timedelta(minutes=EMAIL_VERIFICATION_MINUTES)
+
+
+def _password_reset_expiry() -> datetime:
+    return _utcnow() + timedelta(minutes=PASSWORD_RESET_MINUTES)
+
+
+def _generate_human_code(length: int = 8) -> str:
+    alphabet = string.ascii_uppercase + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(max(6, length)))
 
 
 def _serialize_session_payload(
@@ -129,6 +158,80 @@ def _prune_login_challenges(*, session, user_id: str) -> None:
             continue
         if expires_at and expires_at <= now:
             challenge.consumed_at = now
+
+
+def _prune_email_verification_codes(*, session, user_id: str) -> None:
+    now = _utcnow()
+    codes = session.scalars(
+        select(AuthEmailVerificationCode).where(
+            AuthEmailVerificationCode.user_id == user_id
+        )
+    ).all()
+    for item in codes:
+        expires_at = _as_utc(item.expires_at)
+        if item.consumed_at is not None:
+            continue
+        if expires_at and expires_at <= now:
+            item.consumed_at = now
+
+
+def _prune_password_reset_codes(*, session, user_id: str) -> None:
+    now = _utcnow()
+    codes = session.scalars(
+        select(AuthPasswordResetCode).where(AuthPasswordResetCode.user_id == user_id)
+    ).all()
+    for item in codes:
+        expires_at = _as_utc(item.expires_at)
+        if item.consumed_at is not None:
+            continue
+        if expires_at and expires_at <= now:
+            item.consumed_at = now
+
+
+def _issue_email_verification_code(*, session, user: User) -> tuple[str, datetime]:
+    _prune_email_verification_codes(session=session, user_id=user.id)
+    now = _utcnow()
+    existing = session.scalars(
+        select(AuthEmailVerificationCode).where(
+            AuthEmailVerificationCode.user_id == user.id,
+            AuthEmailVerificationCode.consumed_at.is_(None),
+        )
+    ).all()
+    for row in existing:
+        row.consumed_at = now
+    plain_code = _generate_human_code(8)
+    code_row = AuthEmailVerificationCode(
+        user_id=user.id,
+        code_hash=hash_session_token(plain_code),
+        expires_at=_email_verification_expiry(),
+        consumed_at=None,
+    )
+    session.add(code_row)
+    session.flush()
+    return plain_code, code_row.expires_at
+
+
+def _issue_password_reset_code(*, session, user: User) -> tuple[str, datetime]:
+    _prune_password_reset_codes(session=session, user_id=user.id)
+    now = _utcnow()
+    existing = session.scalars(
+        select(AuthPasswordResetCode).where(
+            AuthPasswordResetCode.user_id == user.id,
+            AuthPasswordResetCode.consumed_at.is_(None),
+        )
+    ).all()
+    for row in existing:
+        row.consumed_at = now
+    plain_code = _generate_human_code(10)
+    code_row = AuthPasswordResetCode(
+        user_id=user.id,
+        code_hash=hash_session_token(plain_code),
+        expires_at=_password_reset_expiry(),
+        consumed_at=None,
+    )
+    session.add(code_row)
+    session.flush()
+    return plain_code, code_row.expires_at
 
 
 def _resolve_user_from_session_token(*, session, token: str) -> tuple[User, AuthSession]:
@@ -237,6 +340,7 @@ def _prune_sessions(*, session, user_id: str) -> None:
 
 def _create_session(*, session, user: User) -> tuple[str, AuthSession]:
     _prune_sessions(session=session, user_id=user.id)
+    user.last_sign_in_at = _utcnow()
     plain_token = generate_session_token()
     token_hash = hash_session_token(plain_token)
     auth_session = AuthSession(
@@ -340,7 +444,10 @@ def update_current_user(
         if name is not None:
             user.name = _normalize_name(name)
         if email is not None:
-            user.email = _normalize_email(email)
+            normalized_email = _normalize_email(email)
+            if normalized_email != user.email:
+                user.email = normalized_email
+                user.email_verified_at = None
         if password is not None:
             normalized_password = _normalize_password_input(password)
             try:
@@ -436,6 +543,110 @@ def complete_login_challenge(*, challenge_token: str, code: str) -> dict[str, ob
             session_token=token,
             session_expires_at=auth_session.expires_at,
         )
+
+
+def request_email_verification(*, session_token: str) -> dict[str, object]:
+    create_all_tables()
+    with session_scope() as session:
+        user, _ = _resolve_user_from_session_token(session=session, token=session_token)
+        if user.email_verified_at is not None:
+            return {
+                "requested": False,
+                "already_verified": True,
+                "expires_at": None,
+                "delivery_hint": "Email already verified.",
+                "code_preview": None,
+            }
+        plain_code, expires_at = _issue_email_verification_code(session=session, user=user)
+        return {
+            "requested": True,
+            "already_verified": False,
+            "expires_at": expires_at,
+            "delivery_hint": "Verification code generated. Connect an outbound email provider for delivery.",
+            "code_preview": plain_code if EXPOSE_AUTH_CODES_IN_RESPONSE else None,
+        }
+
+
+def confirm_email_verification(*, session_token: str, code: str) -> dict[str, object]:
+    create_all_tables()
+    clean_code = (code or "").strip().upper()
+    if not clean_code:
+        raise AuthValidationError("Verification code is required.")
+    with session_scope() as session:
+        user, _ = _resolve_user_from_session_token(session=session, token=session_token)
+        if user.email_verified_at is not None:
+            return _serialize_user(user)
+
+        _prune_email_verification_codes(session=session, user_id=user.id)
+        code_hash = hash_session_token(clean_code)
+        row = session.scalars(
+            select(AuthEmailVerificationCode).where(
+                AuthEmailVerificationCode.user_id == user.id,
+                AuthEmailVerificationCode.code_hash == code_hash,
+                AuthEmailVerificationCode.consumed_at.is_(None),
+            )
+        ).first()
+        if row is None:
+            raise AuthValidationError("Verification code is invalid or expired.")
+        row.consumed_at = _utcnow()
+        user.email_verified_at = _utcnow()
+        session.flush()
+        session.refresh(user)
+        return _serialize_user(user)
+
+
+def request_password_reset(*, email: str) -> dict[str, object]:
+    create_all_tables()
+    normalized_email = _normalize_email(email)
+    with session_scope() as session:
+        user = session.scalars(select(User).where(User.email == normalized_email)).first()
+        if user is None or not user.is_active:
+            return {
+                "requested": True,
+                "expires_at": None,
+                "delivery_hint": "If this email exists, a reset code has been generated.",
+                "code_preview": None,
+            }
+        plain_code, expires_at = _issue_password_reset_code(session=session, user=user)
+        return {
+            "requested": True,
+            "expires_at": expires_at,
+            "delivery_hint": "Reset code generated. Connect an outbound email provider for delivery.",
+            "code_preview": plain_code if EXPOSE_AUTH_CODES_IN_RESPONSE else None,
+        }
+
+
+def confirm_password_reset(*, email: str, code: str, new_password: str) -> dict[str, object]:
+    create_all_tables()
+    normalized_email = _normalize_email(email)
+    clean_code = (code or "").strip().upper()
+    if not clean_code:
+        raise AuthValidationError("Reset code is required.")
+    normalized_password = _normalize_password_input(new_password)
+    try:
+        password_hash_value = hash_password(normalized_password)
+    except SecurityValidationError as exc:
+        raise AuthValidationError(str(exc)) from exc
+
+    with session_scope() as session:
+        user = session.scalars(select(User).where(User.email == normalized_email)).first()
+        if user is None or not user.is_active:
+            raise AuthValidationError("Reset request is invalid.")
+        _prune_password_reset_codes(session=session, user_id=user.id)
+        code_hash = hash_session_token(clean_code)
+        row = session.scalars(
+            select(AuthPasswordResetCode).where(
+                AuthPasswordResetCode.user_id == user.id,
+                AuthPasswordResetCode.code_hash == code_hash,
+                AuthPasswordResetCode.consumed_at.is_(None),
+            )
+        ).first()
+        if row is None:
+            raise AuthValidationError("Reset code is invalid or expired.")
+        row.consumed_at = _utcnow()
+        user.password_hash = password_hash_value
+        session.flush()
+        return {"success": True}
 
 
 def get_two_factor_state(*, session_token: str) -> dict[str, object]:

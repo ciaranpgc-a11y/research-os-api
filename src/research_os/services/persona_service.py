@@ -8,13 +8,14 @@ import re
 from statistics import mean
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from research_os.clients.openai_client import get_client
 from research_os.db import (
     Author,
     CollaboratorEdge,
     Embedding,
+    ImpactSnapshot,
     MetricsSnapshot,
     User,
     Work,
@@ -733,6 +734,40 @@ def serialise_metrics_distribution(*, user_id: str) -> dict[str, Any]:
         return {"works": rows, "histogram": histogram}
 
 
+def _persona_sync_status(*, user_id: str) -> dict[str, Any]:
+    create_all_tables()
+    with session_scope() as session:
+        user = _resolve_user_or_raise(session, user_id)
+        works_last_updated = session.scalar(
+            select(func.max(Work.updated_at)).where(Work.user_id == user_id)
+        )
+        metrics_last_captured = session.scalar(
+            select(func.max(MetricsSnapshot.captured_at))
+            .select_from(MetricsSnapshot)
+            .join(Work, MetricsSnapshot.work_id == Work.id)
+            .where(Work.user_id == user_id)
+        )
+        themes_last_generated = session.scalar(
+            select(func.max(Embedding.created_at))
+            .select_from(Embedding)
+            .join(Work, Embedding.work_id == Work.id)
+            .where(Work.user_id == user_id)
+        )
+        impact_last_computed = user.impact_last_computed_at or session.scalar(
+            select(func.max(ImpactSnapshot.computed_at)).where(
+                ImpactSnapshot.user_id == user_id
+            )
+        )
+        return {
+            "works_last_synced_at": user.orcid_last_synced_at or works_last_updated,
+            "works_last_updated_at": works_last_updated,
+            "metrics_last_synced_at": metrics_last_captured,
+            "themes_last_generated_at": themes_last_generated,
+            "impact_last_computed_at": impact_last_computed,
+            "orcid_last_synced_at": user.orcid_last_synced_at,
+        }
+
+
 def dump_persona_state(*, user_id: str) -> dict[str, Any]:
     return {
         "works": list_works(user_id=user_id),
@@ -741,4 +776,5 @@ def dump_persona_state(*, user_id: str) -> dict[str, Any]:
         "timeline": persona_timeline(user_id=user_id),
         "metrics": serialise_metrics_distribution(user_id=user_id),
         "context": get_persona_context(user_id=user_id),
+        "sync_status": _persona_sync_status(user_id=user_id),
     }

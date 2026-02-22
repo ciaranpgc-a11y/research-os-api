@@ -16,12 +16,14 @@ import {
   fetchPersonaContext,
   fetchPersonaState,
   fetchTwoFactorState,
+  confirmEmailVerification,
   generateImpactReport,
   generatePersonaEmbeddings,
   importOrcidWorks,
   listPersonaWorks,
   logoutAuth,
   recomputeImpact,
+  requestEmailVerification,
   setupTwoFactor,
   syncPersonaMetrics,
   updateMe,
@@ -46,6 +48,35 @@ function histogramBar(total: number, value: number): string {
   return `${Math.min(100, width)}%`
 }
 
+function formatTimestamp(value: string | null | undefined): string {
+  if (!value) {
+    return 'Not available'
+  }
+  const timestamp = Date.parse(value)
+  if (Number.isNaN(timestamp)) {
+    return 'Not available'
+  }
+  return new Date(timestamp).toLocaleString('en-GB', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function daysSince(value: string | null | undefined): number | null {
+  if (!value) {
+    return null
+  }
+  const timestamp = Date.parse(value)
+  if (Number.isNaN(timestamp)) {
+    return null
+  }
+  const deltaMs = Date.now() - timestamp
+  return Math.max(0, Math.floor(deltaMs / (1000 * 60 * 60 * 24)))
+}
+
 export function ImpactPage() {
   const navigate = useNavigate()
   const [token, setToken] = useState<string>(() => getAuthSessionToken())
@@ -68,6 +99,9 @@ export function ImpactPage() {
   const [profileName, setProfileName] = useState('')
   const [profileEmail, setProfileEmail] = useState('')
   const [profilePassword, setProfilePassword] = useState('')
+  const [verificationCode, setVerificationCode] = useState('')
+  const [verificationPreviewCode, setVerificationPreviewCode] = useState('')
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
 
   const totalHistogramCount = useMemo(() => {
     const histogram = statePayload?.metrics?.histogram
@@ -76,6 +110,60 @@ export function ImpactPage() {
     }
     return Object.values(histogram).reduce((sum, value) => sum + value, 0)
   }, [statePayload])
+
+  const verificationRequired = useMemo(
+    () => Boolean(user && !user.email_verified_at),
+    [user],
+  )
+
+  const syncStatus = useMemo(
+    () =>
+      statePayload?.sync_status || {
+        works_last_synced_at: null,
+        works_last_updated_at: null,
+        metrics_last_synced_at: null,
+        themes_last_generated_at: null,
+        impact_last_computed_at: impactSnapshot?.computed_at || null,
+        orcid_last_synced_at: null,
+      },
+    [impactSnapshot?.computed_at, statePayload?.sync_status],
+  )
+
+  const lastSyncAt = useMemo(() => {
+    const candidates = [
+      syncStatus.works_last_synced_at,
+      syncStatus.metrics_last_synced_at,
+      syncStatus.themes_last_generated_at,
+      syncStatus.impact_last_computed_at,
+      user?.impact_last_computed_at || null,
+    ]
+      .map((value) => (value ? Date.parse(value) : Number.NaN))
+      .filter((value) => Number.isFinite(value))
+    if (!candidates.length) {
+      return null
+    }
+    return new Date(Math.max(...candidates)).toISOString()
+  }, [syncStatus, user?.impact_last_computed_at])
+
+  const staleWarnings = useMemo(() => {
+    const rows = [
+      { label: 'Works', value: syncStatus.works_last_synced_at },
+      { label: 'Metrics', value: syncStatus.metrics_last_synced_at },
+      { label: 'Themes', value: syncStatus.themes_last_generated_at },
+      { label: 'Impact', value: syncStatus.impact_last_computed_at },
+    ]
+    return rows
+      .map((row) => {
+        const age = daysSince(row.value)
+        if (age === null || age <= 30) {
+          return null
+        }
+        return `${row.label} is ${age} day${age === 1 ? '' : 's'} old`
+      })
+      .filter((value): value is string => Boolean(value))
+  }, [syncStatus.impact_last_computed_at, syncStatus.metrics_last_synced_at, syncStatus.themes_last_generated_at, syncStatus.works_last_synced_at])
+
+  const isInitialProfileLoading = Boolean(token) && loading && !hasLoadedOnce && !user
 
   const loadProfileData = useCallback(async (sessionToken: string) => {
     setLoading(true)
@@ -129,6 +217,7 @@ export function ImpactPage() {
       setImpactSnapshot(null)
     } finally {
       setLoading(false)
+      setHasLoadedOnce(true)
     }
   }, [])
 
@@ -257,6 +346,10 @@ export function ImpactPage() {
     if (!token) {
       return
     }
+    if (verificationRequired) {
+      setStatus('Verify your email before connecting ORCID.')
+      return
+    }
     setError('')
     setStatus('')
     try {
@@ -291,8 +384,55 @@ export function ImpactPage() {
     }
   }
 
+  const onRequestEmailVerification = async () => {
+    if (!token) {
+      return
+    }
+    setError('')
+    setStatus('')
+    setLoading(true)
+    try {
+      const payload = await requestEmailVerification(token)
+      if (payload.code_preview) {
+        setVerificationPreviewCode(payload.code_preview)
+      }
+      setStatus(payload.delivery_hint || 'Verification code requested.')
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Email verification request failed.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const onConfirmEmailVerification = async () => {
+    if (!token || !verificationCode.trim()) {
+      return
+    }
+    setError('')
+    setStatus('')
+    setLoading(true)
+    try {
+      const payload = await confirmEmailVerification({
+        token,
+        code: verificationCode,
+      })
+      setUser(payload)
+      setVerificationCode('')
+      setVerificationPreviewCode('')
+      setStatus('Email verified. Full profile actions are now available.')
+    } catch (confirmError) {
+      setError(confirmError instanceof Error ? confirmError.message : 'Email verification failed.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const onImportOrcid = async () => {
     if (!token) {
+      return
+    }
+    if (verificationRequired) {
+      setStatus('Verify your email before importing ORCID works.')
       return
     }
     setError('')
@@ -313,6 +453,10 @@ export function ImpactPage() {
     if (!token) {
       return
     }
+    if (verificationRequired) {
+      setStatus('Verify your email before syncing metrics.')
+      return
+    }
     setError('')
     setStatus('')
     setLoading(true)
@@ -329,6 +473,10 @@ export function ImpactPage() {
 
   const onGenerateEmbeddings = async () => {
     if (!token) {
+      return
+    }
+    if (verificationRequired) {
+      setStatus('Verify your email before generating themes.')
       return
     }
     setError('')
@@ -349,6 +497,10 @@ export function ImpactPage() {
     if (!token) {
       return
     }
+    if (verificationRequired) {
+      setStatus('Verify your email before recomputing impact.')
+      return
+    }
     setError('')
     setStatus('')
     setLoading(true)
@@ -367,6 +519,10 @@ export function ImpactPage() {
     if (!token) {
       return
     }
+    if (verificationRequired) {
+      setStatus('Verify your email before running strategy analysis.')
+      return
+    }
     setError('')
     setStatus('')
     setLoading(true)
@@ -383,6 +539,10 @@ export function ImpactPage() {
 
   const onGenerateReport = async () => {
     if (!token) {
+      return
+    }
+    if (verificationRequired) {
+      setStatus('Verify your email before generating reports.')
       return
     }
     setError('')
@@ -412,6 +572,10 @@ export function ImpactPage() {
     URL.revokeObjectURL(url)
   }
 
+  const onUploadWorksCsvStub = () => {
+    setStatus('CSV works upload will be added next. Use ORCID import for now.')
+  }
+
   return (
     <section className="space-y-4">
       <header className="space-y-1">
@@ -430,16 +594,79 @@ export function ImpactPage() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm">User profile</CardTitle>
+          <CardTitle className="text-sm">Account summary</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {user ? (
-            <div className="space-y-3 text-sm">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded border border-border px-2 py-1">Signed in: {user.email}</span>
-                {user.orcid_id ? <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1">ORCID: {user.orcid_id}</span> : null}
-                <span className="rounded border border-slate-300 bg-slate-50 px-2 py-1">Security: {twoFactorState?.enabled ? 'Enhanced' : 'Standard'}</span>
+          {isInitialProfileLoading ? (
+            <div className="animate-pulse space-y-3">
+              <div className="grid gap-2 md:grid-cols-4">
+                <div className="h-16 rounded-md bg-slate-100" />
+                <div className="h-16 rounded-md bg-slate-100" />
+                <div className="h-16 rounded-md bg-slate-100" />
+                <div className="h-16 rounded-md bg-slate-100" />
               </div>
+              <div className="h-9 rounded-md bg-slate-100" />
+            </div>
+          ) : user ? (
+            <div className="space-y-3 text-sm">
+              <div className="grid gap-2 md:grid-cols-4">
+                <div className="rounded-md border border-border bg-background p-2">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Email verification</p>
+                  <p className={user.email_verified_at ? 'text-emerald-700' : 'text-amber-700'}>
+                    {user.email_verified_at ? 'Verified' : 'Verification required'}
+                  </p>
+                </div>
+                <div className="rounded-md border border-border bg-background p-2">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">ORCID</p>
+                  <p className={user.orcid_id ? 'text-emerald-700' : 'text-amber-700'}>
+                    {user.orcid_id ? 'Linked' : 'Not linked'}
+                  </p>
+                </div>
+                <div className="rounded-md border border-border bg-background p-2">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Last sync</p>
+                  <p className={staleWarnings.length ? 'text-amber-700' : 'text-slate-800'}>
+                    {formatTimestamp(lastSyncAt)}
+                  </p>
+                </div>
+                <div className="rounded-md border border-border bg-background p-2">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Security level</p>
+                  <p className={twoFactorState?.enabled ? 'text-emerald-700' : 'text-slate-800'}>
+                    {twoFactorState?.enabled ? 'Enhanced (2FA)' : 'Standard'}
+                  </p>
+                </div>
+              </div>
+
+              {staleWarnings.length ? (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
+                  {staleWarnings.join(' | ')}
+                </div>
+              ) : null}
+
+              {verificationRequired ? (
+                <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3">
+                  <p className="text-xs font-medium text-amber-900">Verify your email to unlock full profile features.</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={onRequestEmailVerification} disabled={loading}>
+                      Send verification code
+                    </Button>
+                    <Input
+                      placeholder="Verification code"
+                      value={verificationCode}
+                      onChange={(event) => setVerificationCode(event.target.value)}
+                      className="w-[180px]"
+                    />
+                    <Button size="sm" onClick={onConfirmEmailVerification} disabled={loading || !verificationCode.trim()}>
+                      Verify email
+                    </Button>
+                  </div>
+                  {verificationPreviewCode ? (
+                    <p className="text-xs text-amber-900">
+                      Verification code (debug preview): <span className="font-mono">{verificationPreviewCode}</span>
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div className="grid gap-2 md:grid-cols-3">
                 <Input
                   autoComplete="name"
@@ -461,21 +688,29 @@ export function ImpactPage() {
                   onChange={(event) => setProfilePassword(event.target.value)}
                 />
               </div>
+
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="outline" size="sm" onClick={onUpdateProfile} disabled={loading || !profileName.trim() || !profileEmail.trim()}>
                   Save profile
                 </Button>
-                <Button variant="outline" size="sm" onClick={onConnectOrcid} disabled={loading}>
+                <Button variant="outline" size="sm" onClick={onConnectOrcid} disabled={loading || verificationRequired}>
                   Connect ORCID
                 </Button>
-                <Button variant="outline" size="sm" onClick={onImportOrcid} disabled={loading}>
-                  Import ORCID works
-                </Button>
-                <Button variant="ghost" size="sm" onClick={onLogout} disabled={loading}>
-                  Sign out
-                </Button>
+                <details className="rounded-md border border-border bg-background px-2 py-1">
+                  <summary className="cursor-pointer text-xs text-slate-700">More actions</summary>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={onImportOrcid} disabled={loading || verificationRequired}>
+                      Import ORCID works
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => (token ? void loadProfileData(token) : navigate('/auth'))} disabled={loading}>
+                      Refresh profile
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={onLogout} disabled={loading}>
+                      Sign out
+                    </Button>
+                  </div>
+                </details>
               </div>
-              <p className="text-xs text-slate-500">Advanced security controls are available in the Security tab.</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -500,6 +735,21 @@ export function ImpactPage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-3">
+          {isInitialProfileLoading ? (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Loading profile</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="animate-pulse space-y-2">
+                  <div className="h-8 rounded bg-slate-100" />
+                  <div className="h-8 rounded bg-slate-100" />
+                  <div className="h-8 rounded bg-slate-100" />
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
           {!user ? (
             <Card>
               <CardHeader className="pb-2">
@@ -513,6 +763,85 @@ export function ImpactPage() {
               </CardContent>
             </Card>
           ) : null}
+          {user ? (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Onboarding checklist</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div className="flex items-center justify-between rounded border border-border/70 p-2">
+                  <span>1. Complete profile details</span>
+                  <span className={profileName.trim() && profileEmail.trim() ? 'text-emerald-700' : 'text-amber-700'}>
+                    {profileName.trim() && profileEmail.trim() ? 'Done' : 'Pending'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between rounded border border-border/70 p-2">
+                  <span>2. Verify email</span>
+                  <span className={user.email_verified_at ? 'text-emerald-700' : 'text-amber-700'}>
+                    {user.email_verified_at ? 'Done' : 'Pending'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between rounded border border-border/70 p-2">
+                  <span>3. Link ORCID</span>
+                  <span className={user.orcid_id ? 'text-emerald-700' : 'text-amber-700'}>
+                    {user.orcid_id ? 'Done' : 'Pending'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between rounded border border-border/70 p-2">
+                  <span>4. Run first sync</span>
+                  <span className={works.length > 0 ? 'text-emerald-700' : 'text-amber-700'}>
+                    {works.length > 0 ? 'Done' : 'Pending'}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {user && works.length === 0 ? (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">No publications yet</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <p className="text-muted-foreground">Import publications to start citation, collaboration, and theme analytics.</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={onImportOrcid} disabled={loading || verificationRequired}>
+                    Import ORCID works
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={onUploadWorksCsvStub}>
+                    Upload works CSV (coming soon)
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {user ? (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Sync status</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1 text-sm">
+                <div className="flex items-center justify-between border-b border-border/60 py-1">
+                  <span>Works</span>
+                  <span>{formatTimestamp(syncStatus.works_last_synced_at)}</span>
+                </div>
+                <div className="flex items-center justify-between border-b border-border/60 py-1">
+                  <span>Metrics</span>
+                  <span>{formatTimestamp(syncStatus.metrics_last_synced_at)}</span>
+                </div>
+                <div className="flex items-center justify-between border-b border-border/60 py-1">
+                  <span>Themes</span>
+                  <span>{formatTimestamp(syncStatus.themes_last_generated_at)}</span>
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <span>Impact</span>
+                  <span>{formatTimestamp(syncStatus.impact_last_computed_at)}</span>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
           <div className="grid gap-3 md:grid-cols-4">
             <Card>
               <CardHeader className="pb-2">
@@ -545,7 +874,7 @@ export function ImpactPage() {
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               <p>{analysis?.scholarly_impact_summary || 'Run strategy analysis to generate AI interpretation.'}</p>
-              <Button variant="outline" size="sm" onClick={onAnalyse} disabled={loading || !user}>
+              <Button variant="outline" size="sm" onClick={onAnalyse} disabled={loading || !user || verificationRequired}>
                 Refresh AI summary
               </Button>
             </CardContent>
@@ -672,7 +1001,7 @@ export function ImpactPage() {
               <CardTitle className="text-sm">Strategic analysis</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <Button variant="outline" size="sm" onClick={onAnalyse} disabled={loading || !user}>
+              <Button variant="outline" size="sm" onClick={onAnalyse} disabled={loading || !user || verificationRequired}>
                 Generate strategy analysis
               </Button>
               <p>{analysis?.collaboration_analysis || 'No strategy analysis generated yet.'}</p>
@@ -752,6 +1081,16 @@ export function ImpactPage() {
                   </Button>
                 </div>
               )}
+              {user ? (
+                <div className="rounded-md border border-border/70 bg-background p-2 text-xs">
+                  <p>
+                    Last sign-in: <span className="font-medium">{formatTimestamp(user.last_sign_in_at)}</span>
+                  </p>
+                  <p>
+                    Last account change: <span className="font-medium">{formatTimestamp(user.updated_at)}</span>
+                  </p>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 
@@ -761,13 +1100,13 @@ export function ImpactPage() {
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" size="sm" onClick={onSyncMetrics} disabled={loading}>
+                <Button variant="outline" size="sm" onClick={onSyncMetrics} disabled={loading || verificationRequired}>
                   Sync metrics
                 </Button>
-                <Button variant="outline" size="sm" onClick={onGenerateEmbeddings} disabled={loading}>
+                <Button variant="outline" size="sm" onClick={onGenerateEmbeddings} disabled={loading || verificationRequired}>
                   Generate themes
                 </Button>
-                <Button variant="outline" size="sm" onClick={onRecomputeImpact} disabled={loading}>
+                <Button variant="outline" size="sm" onClick={onRecomputeImpact} disabled={loading || verificationRequired}>
                   Recompute impact
                 </Button>
               </div>
@@ -783,7 +1122,7 @@ export function ImpactPage() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={onGenerateReport} disabled={loading || !user}>
+                <Button variant="outline" size="sm" onClick={onGenerateReport} disabled={loading || !user || verificationRequired}>
                   Generate report
                 </Button>
                 <Button variant="outline" size="sm" onClick={onDownloadReport} disabled={!report}>

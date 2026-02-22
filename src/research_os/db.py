@@ -112,6 +112,12 @@ class User(Base):
     two_factor_confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_sign_in_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow
     )
@@ -138,6 +144,12 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     login_challenges: Mapped[list["AuthLoginChallenge"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    email_verification_codes: Mapped[list["AuthEmailVerificationCode"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    password_reset_codes: Mapped[list["AuthPasswordResetCode"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -182,6 +194,48 @@ class AuthLoginChallenge(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="login_challenges")
+
+
+class AuthEmailVerificationCode(Base):
+    __tablename__ = "auth_email_verification_codes"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    code_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    user: Mapped[User] = relationship(back_populates="email_verification_codes")
+
+
+class AuthPasswordResetCode(Base):
+    __tablename__ = "auth_password_reset_codes"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    code_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    user: Mapped[User] = relationship(back_populates="password_reset_codes")
 
 
 class OrcidOAuthState(Base):

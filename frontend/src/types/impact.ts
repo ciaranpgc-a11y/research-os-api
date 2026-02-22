@@ -6,6 +6,8 @@ export type AuthUser = {
   role: 'user' | 'admin'
   orcid_id: string | null
   impact_last_computed_at: string | null
+  email_verified_at: string | null
+  last_sign_in_at: string | null
   created_at: string
   updated_at: string
 }
@@ -159,12 +161,41 @@ export type AuthOAuthConnectPayload = {
   url: string
 }
 
+export type AuthOAuthProviderStatusItem = {
+  provider: 'orcid' | 'google' | 'microsoft'
+  configured: boolean
+  reason: string
+}
+
+export type AuthOAuthProviderStatusesPayload = {
+  providers: AuthOAuthProviderStatusItem[]
+}
+
 export type AuthOAuthCallbackPayload = {
   provider: 'orcid' | 'google' | 'microsoft'
   is_new_user: boolean
   user: AuthUser
   session_token: string
   session_expires_at: string
+}
+
+export type AuthEmailVerificationRequestPayload = {
+  requested: boolean
+  already_verified: boolean
+  expires_at: string | null
+  delivery_hint: string
+  code_preview: string | null
+}
+
+export type AuthPasswordResetRequestPayload = {
+  requested: boolean
+  expires_at: string | null
+  delivery_hint: string
+  code_preview: string | null
+}
+
+export type AuthPasswordResetConfirmPayload = {
+  success: boolean
 }
 
 export type OrcidImportPayload = {
@@ -195,4 +226,12 @@ export type PersonaStatePayload = {
     histogram: Record<string, number>
   }
   context: PersonaContextPayload
+  sync_status: {
+    works_last_synced_at: string | null
+    works_last_updated_at: string | null
+    metrics_last_synced_at: string | null
+    themes_last_generated_at: string | null
+    impact_last_computed_at: string | null
+    orcid_last_synced_at: string | null
+  }
 }

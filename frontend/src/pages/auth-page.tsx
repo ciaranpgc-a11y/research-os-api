@@ -7,7 +7,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getAuthSessionToken, setAuthSessionToken } from '@/lib/auth-session'
-import { fetchOAuthConnect, loginAuthChallenge, registerAuth, verifyLoginTwoFactor } from '@/lib/impact-api'
+import {
+  confirmPasswordReset,
+  fetchOAuthConnect,
+  fetchOAuthProviderStatuses,
+  loginAuthChallenge,
+  registerAuth,
+  requestPasswordReset,
+  verifyLoginTwoFactor,
+} from '@/lib/impact-api'
+import type { AuthOAuthProviderStatusItem } from '@/types/impact'
 
 function isLikelyEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
@@ -33,12 +42,28 @@ export function AuthPage() {
   const [error, setError] = useState('')
   const [attemptedSignIn, setAttemptedSignIn] = useState(false)
   const [attemptedRegister, setAttemptedRegister] = useState(false)
+  const [oauthProviders, setOauthProviders] = useState<AuthOAuthProviderStatusItem[]>([])
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetCode, setResetCode] = useState('')
+  const [resetPassword, setResetPassword] = useState('')
+  const [resetPreviewCode, setResetPreviewCode] = useState('')
 
   useEffect(() => {
     if (getAuthSessionToken()) {
       navigate('/profile', { replace: true })
     }
   }, [navigate])
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const payload = await fetchOAuthProviderStatuses()
+        setOauthProviders(payload.providers || [])
+      } catch {
+        setOauthProviders([])
+      }
+    })()
+  }, [])
 
   const registerValidationMessage = useMemo(() => {
     if (registerName.trim().length < 2) {
@@ -76,6 +101,26 @@ export function AuthPage() {
       matches: registerPassword === registerConfirmPassword && registerConfirmPassword.length > 0,
     }
   }, [registerConfirmPassword, registerPassword])
+
+  const configuredProviders = useMemo(
+    () => oauthProviders.filter((provider) => provider.configured),
+    [oauthProviders],
+  )
+
+  const unavailableProviders = useMemo(
+    () => oauthProviders.filter((provider) => !provider.configured),
+    [oauthProviders],
+  )
+
+  const resetValidationMessage = useMemo(() => {
+    if (!isLikelyEmail(resetEmail)) {
+      return 'Enter a valid email address.'
+    }
+    if (resetCode.trim() && !isStrongPassword(resetPassword)) {
+      return 'Reset password must satisfy the password policy.'
+    }
+    return ''
+  }, [resetCode, resetEmail, resetPassword])
 
   const onRegister = async () => {
     setAttemptedRegister(true)
@@ -163,6 +208,63 @@ export function AuthPage() {
     }
   }
 
+  const onRequestReset = async () => {
+    if (!isLikelyEmail(resetEmail)) {
+      setError('Enter a valid email address.')
+      setStatus('')
+      return
+    }
+    setLoading(true)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await requestPasswordReset(resetEmail)
+      setResetPreviewCode(payload.code_preview || '')
+      setStatus(payload.delivery_hint || 'Password reset request submitted.')
+    } catch (resetError) {
+      setError(resetError instanceof Error ? resetError.message : 'Password reset request failed.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const onConfirmReset = async () => {
+    if (!isLikelyEmail(resetEmail)) {
+      setError('Enter a valid email address.')
+      setStatus('')
+      return
+    }
+    if (!resetCode.trim()) {
+      setError('Reset code is required.')
+      setStatus('')
+      return
+    }
+    if (!isStrongPassword(resetPassword)) {
+      setError('Reset password must satisfy the password policy.')
+      setStatus('')
+      return
+    }
+    setLoading(true)
+    setError('')
+    setStatus('')
+    try {
+      await confirmPasswordReset({
+        email: resetEmail,
+        code: resetCode,
+        newPassword: resetPassword,
+      })
+      setStatus('Password reset complete. You can now sign in with the new password.')
+      setSignInEmail(resetEmail)
+      setSignInPassword('')
+      setResetCode('')
+      setResetPassword('')
+    } catch (confirmError) {
+      setError(confirmError instanceof Error ? confirmError.message : 'Password reset failed.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-slate-100 px-4 py-10">
       <div className="mx-auto grid w-full max-w-6xl gap-6 lg:grid-cols-[1.1fr_minmax(0,520px)]">
@@ -212,17 +314,28 @@ export function AuthPage() {
           <CardContent className="space-y-4">
             <details className="rounded-md border border-slate-200 bg-slate-50 p-3">
               <summary className="cursor-pointer text-sm font-medium text-slate-900">Other sign-in options</summary>
-              <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                <Button type="button" variant="outline" onClick={() => void onOAuth('orcid')} disabled={loading}>
-                  ORCID
-                </Button>
-                <Button type="button" variant="outline" onClick={() => void onOAuth('google')} disabled={loading}>
-                  Google
-                </Button>
-                <Button type="button" variant="outline" onClick={() => void onOAuth('microsoft')} disabled={loading}>
-                  Microsoft
-                </Button>
-              </div>
+              {configuredProviders.length ? (
+                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                  {configuredProviders.map((provider) => (
+                    <Button
+                      key={provider.provider}
+                      type="button"
+                      variant="outline"
+                      onClick={() => void onOAuth(provider.provider)}
+                      disabled={loading}
+                    >
+                      {provider.provider.toUpperCase()}
+                    </Button>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-slate-600">No OAuth providers are configured in the backend environment.</p>
+              )}
+              {unavailableProviders.length ? (
+                <p className="mt-2 text-xs text-slate-500">
+                  Unavailable: {unavailableProviders.map((provider) => provider.provider).join(', ')}
+                </p>
+              ) : null}
               <p className="mt-2 text-xs text-slate-600">Use ORCID if you want to import publications into your profile.</p>
             </details>
 
@@ -269,6 +382,47 @@ export function AuthPage() {
                     </Button>
                   </div>
                 ) : null}
+
+                <details className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <summary className="cursor-pointer text-xs font-medium text-slate-700">Forgot password</summary>
+                  <div className="mt-2 space-y-2">
+                    <Input
+                      autoComplete="email"
+                      placeholder="Account email"
+                      value={resetEmail}
+                      onChange={(event) => setResetEmail(event.target.value)}
+                    />
+                    <Button type="button" variant="outline" className="w-full" onClick={() => void onRequestReset()} disabled={loading || !isLikelyEmail(resetEmail)}>
+                      Request reset code
+                    </Button>
+                    {resetPreviewCode ? (
+                      <p className="text-xs text-emerald-700">
+                        Reset code (debug preview): <span className="font-mono">{resetPreviewCode}</span>
+                      </p>
+                    ) : null}
+                    <Input
+                      placeholder="Reset code"
+                      value={resetCode}
+                      onChange={(event) => setResetCode(event.target.value)}
+                    />
+                    <Input
+                      type="password"
+                      placeholder="New password"
+                      value={resetPassword}
+                      onChange={(event) => setResetPassword(event.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => void onConfirmReset()}
+                      disabled={loading || !resetCode.trim() || !isStrongPassword(resetPassword)}
+                    >
+                      Confirm password reset
+                    </Button>
+                    {resetValidationMessage ? <p className="text-xs text-amber-700">{resetValidationMessage}</p> : null}
+                  </div>
+                </details>
 
                 {attemptedSignIn && loginValidationMessage ? <p className="text-xs text-amber-700">{loginValidationMessage}</p> : null}
               </TabsContent>

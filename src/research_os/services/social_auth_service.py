@@ -53,6 +53,8 @@ def _serialize_user(user: User) -> dict[str, object]:
         "role": user.role,
         "orcid_id": user.orcid_id,
         "impact_last_computed_at": user.impact_last_computed_at,
+        "email_verified_at": user.email_verified_at,
+        "last_sign_in_at": user.last_sign_in_at,
         "created_at": user.created_at,
         "updated_at": user.updated_at,
     }
@@ -281,6 +283,7 @@ def _prune_sessions(*, session, user_id: str) -> None:
 
 def _create_session(*, session, user: User) -> tuple[str, AuthSession]:
     _prune_sessions(session=session, user_id=user.id)
+    user.last_sign_in_at = _utcnow()
     session_token = generate_session_token()
     auth_session = AuthSession(
         user_id=user.id,
@@ -326,6 +329,8 @@ def _resolve_user_for_oauth(
             session.add(user)
             is_new_user = True
         user.orcid_id = orcid_id
+        if user.email_verified_at is None:
+            user.email_verified_at = _utcnow()
         access_token = str(token_payload.get("access_token", "")).strip()
         refresh_token = str(token_payload.get("refresh_token", "")).strip() or None
         expires_in = int(token_payload.get("expires_in", 3600) or 3600)
@@ -363,9 +368,36 @@ def _resolve_user_for_oauth(
         user.google_sub = provider_subject
     else:
         user.microsoft_sub = provider_subject
+    if user.email_verified_at is None:
+        user.email_verified_at = _utcnow()
     if not user.name:
         user.name = name
     return user, is_new_user
+
+
+def get_oauth_provider_statuses() -> dict[str, object]:
+    providers: list[dict[str, object]] = []
+    for provider in sorted(SUPPORTED_OAUTH_PROVIDERS):
+        try:
+            _provider_config(provider)
+            providers.append(
+                {
+                    "provider": provider,
+                    "configured": True,
+                    "reason": "",
+                }
+            )
+        except AuthValidationError as exc:
+            providers.append(
+                {
+                    "provider": provider,
+                    "configured": False,
+                    "reason": str(exc),
+                }
+            )
+    return {
+        "providers": providers,
+    }
 
 
 def complete_oauth_callback(

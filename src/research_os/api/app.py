@@ -25,9 +25,16 @@ from research_os.api.schemas import (
     AuthLoginVerifyTwoFactorRequest,
     AuthLogoutResponse,
     AuthMeUpdateRequest,
+    AuthEmailVerificationConfirmRequest,
+    AuthEmailVerificationRequestResponse,
     AuthOAuthCallbackRequest,
     AuthOAuthCallbackResponse,
     AuthOAuthConnectResponse,
+    AuthOAuthProviderStatusesResponse,
+    AuthPasswordResetConfirmRequest,
+    AuthPasswordResetConfirmResponse,
+    AuthPasswordResetRequestRequest,
+    AuthPasswordResetRequestResponse,
     AuthRegisterRequest,
     AuthSessionResponse,
     AuthTwoFactorDisableRequest,
@@ -209,6 +216,10 @@ from research_os.services.auth_service import (
     create_two_factor_setup,
     disable_two_factor,
     enable_two_factor,
+    confirm_email_verification,
+    confirm_password_reset,
+    request_email_verification,
+    request_password_reset,
     update_current_user,
 )
 from research_os.services.orcid_service import (
@@ -221,6 +232,7 @@ from research_os.services.orcid_service import (
 from research_os.services.social_auth_service import (
     complete_oauth_callback,
     create_oauth_connect_url,
+    get_oauth_provider_statuses,
 )
 from research_os.services.persona_service import (
     PersonaNotFoundError,
@@ -300,6 +312,9 @@ AUTH_RATE_LIMIT_WINDOW_SECONDS = max(
 )
 AUTH_LOGIN_RATE_LIMIT = max(5, int(os.getenv("AUTH_LOGIN_RATE_LIMIT", "15")))
 AUTH_REGISTER_RATE_LIMIT = max(3, int(os.getenv("AUTH_REGISTER_RATE_LIMIT", "8")))
+AUTH_PASSWORD_RESET_RATE_LIMIT = max(
+    3, int(os.getenv("AUTH_PASSWORD_RESET_RATE_LIMIT", "8"))
+)
 AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "0").strip().lower() in {
     "1",
     "true",
@@ -794,6 +809,16 @@ def v1_auth_two_factor_disable(
 
 
 @app.get(
+    "/v1/auth/oauth/providers",
+    response_model=AuthOAuthProviderStatusesResponse,
+    tags=["v1"],
+)
+def v1_auth_oauth_provider_statuses() -> AuthOAuthProviderStatusesResponse:
+    payload = get_oauth_provider_statuses()
+    return AuthOAuthProviderStatusesResponse(**payload)
+
+
+@app.get(
     "/v1/auth/oauth/connect",
     response_model=AuthOAuthConnectResponse,
     responses=BAD_REQUEST_RESPONSES,
@@ -894,6 +919,99 @@ def v1_auth_update_me(
         return _build_conflict_response(str(exc))
     except AuthNotFoundError as exc:
         return _build_unauthorized_response(str(exc))
+
+
+@app.post(
+    "/v1/auth/email-verification/request",
+    response_model=AuthEmailVerificationRequestResponse,
+    responses=UNAUTHORIZED_RESPONSES | BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_auth_email_verification_request(
+    request: Request,
+) -> AuthEmailVerificationRequestResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        payload = request_email_verification(session_token=token)
+        return AuthEmailVerificationRequestResponse(**payload)
+    except AuthValidationError as exc:
+        return _build_bad_request_response(str(exc))
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+
+
+@app.post(
+    "/v1/auth/email-verification/confirm",
+    response_model=AuthUserResponse,
+    responses=UNAUTHORIZED_RESPONSES | BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_auth_email_verification_confirm(
+    request: Request,
+    payload: AuthEmailVerificationConfirmRequest,
+) -> AuthUserResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user_payload = confirm_email_verification(
+            session_token=token,
+            code=payload.code,
+        )
+        return AuthUserResponse(**user_payload)
+    except AuthValidationError as exc:
+        return _build_bad_request_response(str(exc))
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+
+
+@app.post(
+    "/v1/auth/password-reset/request",
+    response_model=AuthPasswordResetRequestResponse,
+    responses=BAD_REQUEST_RESPONSES | RATE_LIMIT_RESPONSES,
+    tags=["v1"],
+)
+def v1_auth_password_reset_request(
+    http_request: Request,
+    payload: AuthPasswordResetRequestRequest,
+) -> AuthPasswordResetRequestResponse | JSONResponse:
+    allowed, retry_after = _check_auth_rate_limit(
+        key=f"auth-password-reset:{_client_ip(http_request)}",
+        limit=AUTH_PASSWORD_RESET_RATE_LIMIT,
+        window_seconds=AUTH_RATE_LIMIT_WINDOW_SECONDS,
+    )
+    if not allowed:
+        return _build_rate_limited_response(
+            "Too many password reset requests. Please retry shortly.",
+            retry_after,
+        )
+    try:
+        response_payload = request_password_reset(email=payload.email)
+        return AuthPasswordResetRequestResponse(**response_payload)
+    except AuthValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/auth/password-reset/confirm",
+    response_model=AuthPasswordResetConfirmResponse,
+    responses=BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_auth_password_reset_confirm(
+    payload: AuthPasswordResetConfirmRequest,
+) -> AuthPasswordResetConfirmResponse | JSONResponse:
+    try:
+        response_payload = confirm_password_reset(
+            email=payload.email,
+            code=payload.code,
+            new_password=payload.new_password,
+        )
+        return AuthPasswordResetConfirmResponse(**response_payload)
+    except AuthValidationError as exc:
+        return _build_bad_request_response(str(exc))
 
 
 @app.get(
