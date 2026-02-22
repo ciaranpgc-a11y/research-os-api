@@ -1,4 +1,5 @@
-import { useMemo, useState, type MouseEvent } from 'react'
+import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 
 import { TopBar } from '@/components/layout/top-bar'
@@ -129,66 +130,26 @@ function SortableHeader({
   )
 }
 
-function WorkspaceMenu({
-  workspace,
+function WorkspaceMenuTrigger({
   menuOpen,
-  openUp,
   onToggleMenu,
-  onRename,
-  onArchiveToggle,
-  onDelete,
 }: {
-  workspace: WorkspaceRecord
   menuOpen: boolean
-  openUp: boolean
-  onToggleMenu: (event: MouseEvent<HTMLButtonElement>) => void
-  onRename: () => void
-  onArchiveToggle: () => void
-  onDelete: () => void
+  onToggleMenu: (event: ReactMouseEvent<HTMLButtonElement>) => void
 }) {
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={onToggleMenu}
-        className="rounded-md border border-border bg-background px-2 py-1 text-sm text-muted-foreground hover:text-foreground"
-        aria-label="Workspace options"
-      >
-        ...
-      </button>
-
-      {menuOpen ? (
-        <div
-          className={cn(
-            'absolute right-0 z-20 w-40 rounded-md border border-border bg-card p-1 shadow-lg',
-            openUp ? 'bottom-9' : 'top-9',
-          )}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50"
-            onClick={onRename}
-          >
-            Rename
-          </button>
-          <button
-            type="button"
-            className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50"
-            onClick={onArchiveToggle}
-          >
-            {workspace.archived ? 'Restore' : 'Archive'}
-          </button>
-          <button
-            type="button"
-            className="block w-full rounded px-2 py-1.5 text-left text-sm text-red-700 hover:bg-red-50"
-            onClick={onDelete}
-          >
-            Delete
-          </button>
-        </div>
-      ) : null}
-    </div>
+    <button
+      type="button"
+      data-workspace-menu="true"
+      onClick={onToggleMenu}
+      className={cn(
+        'rounded-md border border-border bg-background px-2 py-1 text-sm text-muted-foreground hover:text-foreground',
+        menuOpen && 'border-emerald-400 text-foreground',
+      )}
+      aria-label="Workspace options"
+    >
+      ...
+    </button>
   )
 }
 
@@ -206,8 +167,11 @@ export function WorkspacesPage() {
   const [sortColumn, setSortColumn] = useState<SortColumn>('updatedAt')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
-  const [menuWorkspaceId, setMenuWorkspaceId] = useState<string | null>(null)
-  const [menuPlacement, setMenuPlacement] = useState<'up' | 'down'>('down')
+  const [menuState, setMenuState] = useState<{
+    workspaceId: string
+    x: number
+    y: number
+  } | null>(null)
   const [renamingWorkspaceId, setRenamingWorkspaceId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
 
@@ -237,6 +201,36 @@ export function WorkspacesPage() {
     return sortWorkspaces(next, sortColumn, sortDirection)
   }, [filterKey, query, sortColumn, sortDirection, workspaces])
 
+  useEffect(() => {
+    if (!menuState) {
+      return
+    }
+    const closeMenu = () => setMenuState(null)
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeMenu()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('resize', closeMenu)
+    window.addEventListener('scroll', closeMenu, true)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('resize', closeMenu)
+      window.removeEventListener('scroll', closeMenu, true)
+    }
+  }, [menuState])
+
+  useEffect(() => {
+    if (!menuState) {
+      return
+    }
+    const exists = workspaces.some((workspace) => workspace.id === menuState.workspaceId)
+    if (!exists) {
+      setMenuState(null)
+    }
+  }, [menuState, workspaces])
+
   const onCreateWorkspace = () => {
     const created = createWorkspace(newWorkspaceName.trim() || 'New Workspace')
     setNewWorkspaceName('')
@@ -251,7 +245,7 @@ export function WorkspacesPage() {
   const onStartRenameWorkspace = (workspace: WorkspaceRecord) => {
     setRenamingWorkspaceId(workspace.id)
     setRenameDraft(workspace.name)
-    setMenuWorkspaceId(null)
+    setMenuState(null)
   }
 
   const onCancelRenameWorkspace = () => {
@@ -277,17 +271,17 @@ export function WorkspacesPage() {
       archived: !workspace.archived,
       updatedAt: new Date().toISOString(),
     })
-    setMenuWorkspaceId(null)
+    setMenuState(null)
   }
 
   const onDeleteWorkspace = (workspace: WorkspaceRecord) => {
     const confirmed = window.confirm(`Delete workspace "${workspace.name}"?`)
     if (!confirmed) {
-      setMenuWorkspaceId(null)
+      setMenuState(null)
       return
     }
     deleteWorkspace(workspace.id)
-    setMenuWorkspaceId(null)
+    setMenuState(null)
   }
 
   const onTogglePinned = (workspace: WorkspaceRecord) => {
@@ -306,14 +300,23 @@ export function WorkspacesPage() {
     setSortDirection(column === 'updatedAt' ? 'desc' : 'asc')
   }
 
-  const onToggleWorkspaceMenu = (workspaceId: string, event: MouseEvent<HTMLButtonElement>) => {
+  const onToggleWorkspaceMenu = (workspaceId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
     const rect = event.currentTarget.getBoundingClientRect()
-    const spaceBelow = window.innerHeight - rect.bottom
-    const estimatedMenuHeight = 132
-    setMenuPlacement(spaceBelow < estimatedMenuHeight ? 'up' : 'down')
-    setMenuWorkspaceId((current) => (current === workspaceId ? null : workspaceId))
+    const menuWidth = 160
+    const menuHeight = 132
+    const gap = 6
+    const rightAlignedX = rect.right - menuWidth
+    const x = Math.max(8, Math.min(rightAlignedX, window.innerWidth - menuWidth - 8))
+    const openUp = window.innerHeight - rect.bottom < menuHeight + gap
+    const y = openUp
+      ? Math.max(8, rect.top - menuHeight - gap)
+      : Math.min(rect.bottom + gap, window.innerHeight - menuHeight - 8)
+    setMenuState((current) => (current?.workspaceId === workspaceId ? null : { workspaceId, x, y }))
   }
+
+  const menuWorkspace =
+    menuState ? workspaces.find((workspace) => workspace.id === menuState.workspaceId) || null : null
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -505,14 +508,9 @@ export function WorkspacesPage() {
                                 )}
                               </div>
 
-                              <WorkspaceMenu
-                                workspace={workspace}
-                                menuOpen={menuWorkspaceId === workspace.id}
-                                openUp={menuPlacement === 'up'}
+                              <WorkspaceMenuTrigger
+                                menuOpen={menuState?.workspaceId === workspace.id}
                                 onToggleMenu={(event) => onToggleWorkspaceMenu(workspace.id, event)}
-                                onRename={() => onStartRenameWorkspace(workspace)}
-                                onArchiveToggle={() => onArchiveToggle(workspace)}
-                                onDelete={() => onDeleteWorkspace(workspace)}
                               />
                             </div>
                           </td>
@@ -581,14 +579,9 @@ export function WorkspacesPage() {
                             </>
                           )}
                         </div>
-                        <WorkspaceMenu
-                          workspace={workspace}
-                          menuOpen={menuWorkspaceId === workspace.id}
-                          openUp={menuPlacement === 'up'}
+                        <WorkspaceMenuTrigger
+                          menuOpen={menuState?.workspaceId === workspace.id}
                           onToggleMenu={(event) => onToggleWorkspaceMenu(workspace.id, event)}
-                          onRename={() => onStartRenameWorkspace(workspace)}
-                          onArchiveToggle={() => onArchiveToggle(workspace)}
-                          onDelete={() => onDeleteWorkspace(workspace)}
                         />
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
@@ -617,6 +610,42 @@ export function WorkspacesPage() {
           </div>
         </ScrollArea>
       </main>
+
+      {menuState && menuWorkspace
+        ? createPortal(
+            <div className="fixed inset-0 z-50" onClick={() => setMenuState(null)}>
+              <div
+                data-workspace-menu="true"
+                className="fixed w-40 rounded-md border border-border bg-card p-1 shadow-lg"
+                style={{ left: menuState.x, top: menuState.y }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50"
+                  onClick={() => onStartRenameWorkspace(menuWorkspace)}
+                >
+                  Rename
+                </button>
+                <button
+                  type="button"
+                  className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50"
+                  onClick={() => onArchiveToggle(menuWorkspace)}
+                >
+                  {menuWorkspace.archived ? 'Restore' : 'Archive'}
+                </button>
+                <button
+                  type="button"
+                  className="block w-full rounded px-2 py-1.5 text-left text-sm text-red-700 hover:bg-red-50"
+                  onClick={() => onDeleteWorkspace(menuWorkspace)}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }
