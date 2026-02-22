@@ -169,9 +169,6 @@ export function NextBestActionPanel() {
     <aside className="flex h-full flex-col bg-card">
       <div className="space-y-2 border-b border-border p-4">
         <h2 className="text-sm font-semibold">Next best action</h2>
-        <p className="text-xs text-muted-foreground">
-          Deterministic steps to improve profile readiness for planning and impact analytics.
-        </p>
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
       </div>
       <ScrollArea className="flex-1">

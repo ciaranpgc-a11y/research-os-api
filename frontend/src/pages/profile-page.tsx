@@ -32,6 +32,14 @@ const STUDY_TYPE_OPTIONS = [
 ]
 
 const GUIDELINE_OPTIONS = ['STROBE', 'CONSORT', 'PRISMA', 'TRIPOD', 'STARD']
+const PROFILE_SECTION_JUMPS = [
+  { label: 'Identity', id: 'identity' },
+  { label: 'Integrations', id: 'integrations' },
+  { label: 'Publications', id: 'publications' },
+  { label: 'Collaborators', id: 'collaborators' },
+  { label: 'AI analysis', id: 'ai-analysis' },
+  { label: 'Writing preferences', id: 'writing-preferences' },
+]
 
 type ProfileMeta = {
   affiliation: string
@@ -401,13 +409,22 @@ export function ProfilePage() {
   }
 
   return (
-    <section className="space-y-4">
-      <header className="space-y-1">
+    <section className="space-y-5">
+      <header>
         <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
-        <p className="text-sm text-muted-foreground">
-          Global account context shared across all workspaces and manuscript plans.
-        </p>
       </header>
+
+      <div className="flex flex-wrap gap-2">
+        {PROFILE_SECTION_JUMPS.map((section) => (
+          <a
+            key={section.id}
+            href={`#${section.id}`}
+            className="rounded border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
+          >
+            {section.label}
+          </a>
+        ))}
+      </div>
 
       {isGuest ? (
         <Card className="border-emerald-300 bg-emerald-50/70">
@@ -428,10 +445,49 @@ export function ProfilePage() {
         </Card>
       ) : null}
 
-      <Card>
+      <Card id="overview" className="scroll-mt-20">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Account snapshot</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded border border-border bg-muted/30 px-3 py-2 text-sm">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Profile completion</p>
+              <p className="font-semibold">{profileCompleteness}%</p>
+            </div>
+            <div className="rounded border border-border bg-muted/30 px-3 py-2 text-sm">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">ORCID</p>
+              <p className="font-semibold">{orcidStatus?.linked ? 'Connected' : 'Not connected'}</p>
+            </div>
+            <div className="rounded border border-border bg-muted/30 px-3 py-2 text-sm">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Works</p>
+              <p className="font-semibold">{works.length}</p>
+            </div>
+            <div className="rounded border border-border bg-muted/30 px-3 py-2 text-sm">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Citation coverage</p>
+              <p className="font-semibold">{citationCoveragePercent}%</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={onConnectOrcid} disabled={loading}>
+              Connect ORCID
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={onImportWorks} disabled={loading}>
+              Import works
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={onSyncCitations} disabled={loading}>
+              Sync citations
+            </Button>
+            <Button type="button" size="sm" onClick={onAnalyseResearchWorks} disabled={analysisLoading || loading}>
+              {analysisLoading ? 'Analysing...' : 'Run AI analysis'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card id="identity" className="scroll-mt-20">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Identity</CardTitle>
-          <CardDescription>Name, affiliation, and keywords used across AAWE.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-2 md:grid-cols-2">
@@ -500,10 +556,9 @@ export function ProfilePage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="integrations" className="scroll-mt-20">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Integrations</CardTitle>
-          <CardDescription>Connection and synchronisation status for profile data sources.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div className="rounded border border-border p-2">
@@ -556,10 +611,9 @@ export function ProfilePage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="publications" className="scroll-mt-20">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Publications library (AAWE Works)</CardTitle>
-          <CardDescription>Works used for collaborator and impact analysis.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
@@ -629,10 +683,9 @@ export function ProfilePage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="collaborators" className="scroll-mt-20">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Collaborators</CardTitle>
-          <CardDescription>Derived from publication metadata.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {(collaborators?.collaborators ?? []).length > 0 ? (
@@ -657,41 +710,9 @@ export function ProfilePage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Profile readiness</CardTitle>
-          <CardDescription>Quality checks before impact interpretation and planning.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <div className="flex items-center justify-between rounded border border-border px-2 py-1">
-            <span>ORCID linked</span>
-            <span className={orcidStatus?.linked ? 'text-emerald-700' : 'text-amber-700'}>
-              {orcidStatus?.linked ? 'Complete' : 'Pending'}
-            </span>
-          </div>
-          <div className="flex items-center justify-between rounded border border-border px-2 py-1">
-            <span>Works imported</span>
-            <span className={works.length > 0 ? 'text-emerald-700' : 'text-amber-700'}>{works.length}</span>
-          </div>
-          <div className="flex items-center justify-between rounded border border-border px-2 py-1">
-            <span>Citation coverage</span>
-            <span className={citationCoveragePercent >= 60 ? 'text-emerald-700' : 'text-amber-700'}>
-              {citationCoveragePercent}%
-            </span>
-          </div>
-          <div className="flex items-center justify-between rounded border border-border px-2 py-1">
-            <span>Writing preferences</span>
-            <span className={preferences.defaultStudyTypes.length > 0 ? 'text-emerald-700' : 'text-amber-700'}>
-              {preferences.defaultStudyTypes.length > 0 ? 'Configured' : 'Pending'}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
+      <Card id="ai-analysis" className="scroll-mt-20">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">AI research works analysis</CardTitle>
-          <CardDescription>Evidence-linked interpretation of publications, collaborators, and themes.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <Button type="button" size="sm" onClick={onAnalyseResearchWorks} disabled={analysisLoading || loading}>
@@ -728,10 +749,9 @@ export function ProfilePage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="writing-preferences" className="scroll-mt-20">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Writing preferences</CardTitle>
-          <CardDescription>Feeds manuscript planning defaults across workspaces.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div className="space-y-1">
