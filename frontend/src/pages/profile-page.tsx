@@ -108,6 +108,11 @@ export function ProfilePage() {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const syncStatus = personaState?.sync_status || {
+    orcid_last_synced_at: null,
+    works_last_updated_at: null,
+    impact_last_computed_at: null,
+  }
 
   useEffect(() => {
     const token = getAuthSessionToken()
@@ -262,7 +267,7 @@ export function ProfilePage() {
               ORCID: <strong>{orcidStatus?.linked ? 'Connected' : 'Not connected'}</strong>
             </p>
             <p className="text-muted-foreground">
-              Last ORCID sync: {formatTimestamp(personaState?.sync_status.orcid_last_synced_at)}
+              Last ORCID sync: {formatTimestamp(syncStatus.orcid_last_synced_at)}
             </p>
             <Button type="button" size="sm" variant="outline" onClick={() => navigate('/profile/integrations')}>
               Open integrations
@@ -279,7 +284,7 @@ export function ProfilePage() {
               Library size: <strong>{works.length}</strong>
             </p>
             <p className="text-muted-foreground">
-              Last update: {formatTimestamp(personaState?.sync_status.works_last_updated_at)}
+              Last update: {formatTimestamp(syncStatus.works_last_updated_at)}
             </p>
             <Button type="button" size="sm" variant="outline" onClick={() => navigate('/profile/publications')}>
               Open publications
@@ -293,7 +298,7 @@ export function ProfilePage() {
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p className="text-muted-foreground">
-              Last impact run: {formatTimestamp(personaState?.sync_status.impact_last_computed_at || user?.impact_last_computed_at)}
+              Last impact run: {formatTimestamp(syncStatus.impact_last_computed_at || user?.impact_last_computed_at)}
             </p>
             <Button type="button" size="sm" variant="outline" onClick={() => navigate('/impact')}>
               Open impact
@@ -340,4 +345,3 @@ export function ProfilePage() {
     </section>
   )
 }
-

@@ -47,6 +47,12 @@ export function ProfileIntegrationsPage() {
   const [syncing, setSyncing] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const syncStatus = personaState?.sync_status || {
+    orcid_last_synced_at: null,
+    metrics_last_synced_at: null,
+    works_last_updated_at: null,
+  }
+  const orcidIssues = Array.isArray(orcidStatus?.issues) ? orcidStatus.issues : []
 
   const loadData = useCallback(async (sessionToken: string, resetMessages = true) => {
     setLoading(true)
@@ -147,7 +153,7 @@ export function ProfileIntegrationsPage() {
       return
     }
     if (orcidStatus && !orcidStatus.configured) {
-      setStatus(orcidStatus.issues[0] || 'ORCID is not configured in backend environment.')
+      setStatus(orcidIssues[0] || 'ORCID is not configured in backend environment.')
       return
     }
     setError('')
@@ -234,16 +240,16 @@ export function ProfileIntegrationsPage() {
             </div>
             <div className="rounded border border-border px-3 py-2">
               <p className="text-xs text-muted-foreground">Last ORCID sync</p>
-              <p>{formatTimestamp(personaState?.sync_status.orcid_last_synced_at)}</p>
+              <p>{formatTimestamp(syncStatus.orcid_last_synced_at)}</p>
             </div>
             <div className="rounded border border-border px-3 py-2">
               <p className="text-xs text-muted-foreground">Last metrics sync</p>
-              <p>{formatTimestamp(personaState?.sync_status.metrics_last_synced_at)}</p>
+              <p>{formatTimestamp(syncStatus.metrics_last_synced_at)}</p>
             </div>
           </div>
-          {orcidStatus?.issues.length ? (
+          {orcidIssues.length ? (
             <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              {orcidStatus.issues[0]}
+              {orcidIssues[0]}
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">
@@ -326,7 +332,7 @@ export function ProfileIntegrationsPage() {
           </div>
           <div className="rounded border border-border px-3 py-2">
             <p className="text-xs text-muted-foreground">Last data update</p>
-            <p>{formatTimestamp(personaState?.sync_status.works_last_updated_at)}</p>
+            <p>{formatTimestamp(syncStatus.works_last_updated_at)}</p>
           </div>
         </CardContent>
       </Card>

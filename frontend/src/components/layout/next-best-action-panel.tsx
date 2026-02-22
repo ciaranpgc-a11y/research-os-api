@@ -40,6 +40,10 @@ export function NextBestActionPanel() {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(null)
   const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(null)
+  const syncStatus = personaState?.sync_status || {
+    metrics_last_synced_at: null,
+    impact_last_computed_at: null,
+  }
 
   const refresh = useCallback(async () => {
     const currentToken = getAuthSessionToken()
@@ -196,8 +200,8 @@ export function NextBestActionPanel() {
               <p>ORCID: {orcidStatus?.linked ? 'Linked' : 'Not linked'}</p>
               <p>Works: {personaState?.works.length ?? 0}</p>
               <p>Citation coverage: {contextCitationCoverage}</p>
-              <p>Metrics sync: {formatTimestamp(personaState?.sync_status.metrics_last_synced_at)}</p>
-              <p>Impact snapshot: {formatTimestamp(personaState?.sync_status.impact_last_computed_at)}</p>
+              <p>Metrics sync: {formatTimestamp(syncStatus.metrics_last_synced_at)}</p>
+              <p>Impact snapshot: {formatTimestamp(syncStatus.impact_last_computed_at)}</p>
               <Button size="sm" variant="outline" onClick={() => void refresh()} disabled={loading}>
                 {loading ? 'Refreshing...' : 'Refresh'}
               </Button>

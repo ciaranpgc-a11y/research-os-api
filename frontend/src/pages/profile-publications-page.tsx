@@ -37,6 +37,10 @@ export function ProfilePublicationsPage() {
   const [syncing, setSyncing] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const syncStatus = personaState?.sync_status || {
+    works_last_synced_at: null,
+    metrics_last_synced_at: null,
+  }
 
   const loadData = useCallback(async (sessionToken: string, resetMessages = true) => {
     setLoading(true)
@@ -180,11 +184,11 @@ export function ProfilePublicationsPage() {
           </div>
           <div className="rounded border border-border px-3 py-2 text-sm">
             <p className="text-xs text-muted-foreground">Last works sync</p>
-            <p>{formatTimestamp(personaState?.sync_status.works_last_synced_at)}</p>
+            <p>{formatTimestamp(syncStatus.works_last_synced_at)}</p>
           </div>
           <div className="rounded border border-border px-3 py-2 text-sm">
             <p className="text-xs text-muted-foreground">Last metrics sync</p>
-            <p>{formatTimestamp(personaState?.sync_status.metrics_last_synced_at)}</p>
+            <p>{formatTimestamp(syncStatus.metrics_last_synced_at)}</p>
           </div>
         </CardContent>
       </Card>
