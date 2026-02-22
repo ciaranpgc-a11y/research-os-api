@@ -17,7 +17,9 @@ import { ManuscriptTablesPage } from '@/pages/manuscript-tables-page'
 import { OrcidCallbackPage } from '@/pages/orcid-callback-page'
 import { OverviewPage } from '@/pages/overview-page'
 import { ImpactPage } from '@/pages/impact-page'
+import { ProfileIntegrationsPage } from '@/pages/profile-integrations-page'
 import { ProfilePage } from '@/pages/profile-page'
+import { ProfilePublicationsPage } from '@/pages/profile-publications-page'
 import { QCDashboardPage } from '@/pages/qc-dashboard-page'
 import { ResultsPage } from '@/pages/results-page'
 import { SettingsPage } from '@/pages/settings-page'
@@ -75,6 +77,8 @@ export function AppRouter() {
 
         <Route element={<AccountLayout />}>
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/profile/integrations" element={<ProfileIntegrationsPage />} />
+          <Route path="/profile/publications" element={<ProfilePublicationsPage />} />
           <Route path="/impact" element={<ImpactPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
