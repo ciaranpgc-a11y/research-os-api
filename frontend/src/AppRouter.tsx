@@ -1,7 +1,8 @@
-import { Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-router-dom'
 
 import { AccountLayout } from '@/components/layout/account-layout'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
+import { getAuthSessionToken } from '@/lib/auth-session'
 import { AgentLogsPage } from '@/pages/agent-logs-page'
 import { AuthCallbackPage } from '@/pages/auth-callback-page'
 import { AuthPage } from '@/pages/auth-page'
@@ -9,6 +10,7 @@ import { AuditLogPage } from '@/pages/audit-log-page'
 import { ClaimMapPage } from '@/pages/claim-map-page'
 import { InferenceRulesPage } from '@/pages/inference-rules-page'
 import { JournalTargetingPage } from '@/pages/journal-targeting-page'
+import { LandingPage } from '@/pages/landing-page'
 import { LiteraturePage } from '@/pages/literature-page'
 import { ManuscriptPage } from '@/pages/manuscript-page'
 import { ManuscriptTablesPage } from '@/pages/manuscript-tables-page'
@@ -42,55 +44,75 @@ function LegacyManuscriptSectionRedirect() {
   return <WorkspaceRedirect suffix={`manuscript/${section}`} />
 }
 
+function LandingOrWorkspace() {
+  const token = getAuthSessionToken()
+  if (token) {
+    return <WorkspaceRedirect suffix="overview" />
+  }
+  return <LandingPage />
+}
+
+function RequireSignIn() {
+  const token = getAuthSessionToken()
+  const location = useLocation()
+  if (!token) {
+    return <Navigate to="/" replace state={{ from: location.pathname }} />
+  }
+  return <Outlet />
+}
+
 export function AppRouter() {
   return (
     <Routes>
+      <Route path="/" element={<LandingOrWorkspace />} />
       <Route path="/auth" element={<AuthPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route path="/orcid/callback" element={<OrcidCallbackPage />} />
 
-      <Route element={<AccountLayout />}>
-        <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/impact" element={<ImpactPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+      <Route element={<RequireSignIn />}>
+        <Route element={<AccountLayout />}>
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/impact" element={<ImpactPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Route>
+
+        <Route path="/w/:workspaceId" element={<WorkspaceLayout />}>
+          <Route index element={<Navigate to="overview" replace />} />
+          <Route path="overview" element={<OverviewPage />} />
+          <Route path="run-wizard" element={<StudyCorePage />} />
+          <Route path="data" element={<ResultsPage />} />
+          <Route path="results" element={<ResultsPage />} />
+          <Route path="manuscript" element={<WorkspaceManuscriptIndexRedirect />} />
+          <Route path="manuscript/tables" element={<ManuscriptTablesPage />} />
+          <Route path="manuscript/:section" element={<ManuscriptPage />} />
+          <Route path="literature" element={<LiteraturePage />} />
+          <Route path="journal-targeting" element={<JournalTargetingPage />} />
+          <Route path="qc" element={<QCDashboardPage />} />
+          <Route path="exports" element={<WorkspaceExportsPage />} />
+          <Route path="claim-map" element={<ClaimMapPage />} />
+          <Route path="versions" element={<VersionHistoryPage />} />
+          <Route path="audit" element={<AuditLogPage />} />
+          <Route path="inference-rules" element={<InferenceRulesPage />} />
+          <Route path="agent-logs" element={<AgentLogsPage />} />
+        </Route>
+
+        <Route path="/overview" element={<WorkspaceRedirect suffix="overview" />} />
+        <Route path="/study-core" element={<WorkspaceRedirect suffix="run-wizard" />} />
+        <Route path="/results" element={<WorkspaceRedirect suffix="results" />} />
+        <Route path="/manuscript" element={<WorkspaceRedirect suffix="manuscript/introduction" />} />
+        <Route path="/manuscript/tables" element={<WorkspaceRedirect suffix="manuscript/tables" />} />
+        <Route path="/manuscript/:section" element={<LegacyManuscriptSectionRedirect />} />
+        <Route path="/literature" element={<WorkspaceRedirect suffix="literature" />} />
+        <Route path="/journal-targeting" element={<WorkspaceRedirect suffix="journal-targeting" />} />
+        <Route path="/qc" element={<WorkspaceRedirect suffix="qc" />} />
+        <Route path="/claim-map" element={<WorkspaceRedirect suffix="claim-map" />} />
+        <Route path="/versions" element={<WorkspaceRedirect suffix="versions" />} />
+        <Route path="/audit" element={<WorkspaceRedirect suffix="audit" />} />
+        <Route path="/inference-rules" element={<WorkspaceRedirect suffix="inference-rules" />} />
+        <Route path="/agent-logs" element={<WorkspaceRedirect suffix="agent-logs" />} />
       </Route>
 
-      <Route path="/w/:workspaceId" element={<WorkspaceLayout />}>
-        <Route index element={<Navigate to="overview" replace />} />
-        <Route path="overview" element={<OverviewPage />} />
-        <Route path="run-wizard" element={<StudyCorePage />} />
-        <Route path="data" element={<ResultsPage />} />
-        <Route path="results" element={<ResultsPage />} />
-        <Route path="manuscript" element={<WorkspaceManuscriptIndexRedirect />} />
-        <Route path="manuscript/tables" element={<ManuscriptTablesPage />} />
-        <Route path="manuscript/:section" element={<ManuscriptPage />} />
-        <Route path="literature" element={<LiteraturePage />} />
-        <Route path="journal-targeting" element={<JournalTargetingPage />} />
-        <Route path="qc" element={<QCDashboardPage />} />
-        <Route path="exports" element={<WorkspaceExportsPage />} />
-        <Route path="claim-map" element={<ClaimMapPage />} />
-        <Route path="versions" element={<VersionHistoryPage />} />
-        <Route path="audit" element={<AuditLogPage />} />
-        <Route path="inference-rules" element={<InferenceRulesPage />} />
-        <Route path="agent-logs" element={<AgentLogsPage />} />
-      </Route>
-
-      <Route index element={<WorkspaceRedirect suffix="overview" />} />
-      <Route path="/overview" element={<WorkspaceRedirect suffix="overview" />} />
-      <Route path="/study-core" element={<WorkspaceRedirect suffix="run-wizard" />} />
-      <Route path="/results" element={<WorkspaceRedirect suffix="results" />} />
-      <Route path="/manuscript" element={<WorkspaceRedirect suffix="manuscript/introduction" />} />
-      <Route path="/manuscript/tables" element={<WorkspaceRedirect suffix="manuscript/tables" />} />
-      <Route path="/manuscript/:section" element={<LegacyManuscriptSectionRedirect />} />
-      <Route path="/literature" element={<WorkspaceRedirect suffix="literature" />} />
-      <Route path="/journal-targeting" element={<WorkspaceRedirect suffix="journal-targeting" />} />
-      <Route path="/qc" element={<WorkspaceRedirect suffix="qc" />} />
-      <Route path="/claim-map" element={<WorkspaceRedirect suffix="claim-map" />} />
-      <Route path="/versions" element={<WorkspaceRedirect suffix="versions" />} />
-      <Route path="/audit" element={<WorkspaceRedirect suffix="audit" />} />
-      <Route path="/inference-rules" element={<WorkspaceRedirect suffix="inference-rules" />} />
-      <Route path="/agent-logs" element={<WorkspaceRedirect suffix="agent-logs" />} />
-      <Route path="*" element={<WorkspaceRedirect suffix="overview" />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }
