@@ -57,6 +57,10 @@ function workspaceStage(workspace: WorkspaceRecord): string {
   return 'Draft'
 }
 
+function workspaceStatus(workspace: WorkspaceRecord): 'Active' | 'Archived' {
+  return workspace.archived ? 'Archived' : 'Active'
+}
+
 function stageRank(stage: string): number {
   if (stage === 'Plan') {
     return 1
@@ -68,10 +72,6 @@ function stageRank(stage: string): number {
     return 3
   }
   return 4
-}
-
-function workspaceStatus(workspace: WorkspaceRecord): 'Active' | 'Archived' {
-  return workspace.archived ? 'Archived' : 'Active'
 }
 
 function statusRank(status: 'Active' | 'Archived'): number {
@@ -205,6 +205,8 @@ export function WorkspacesPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
   const [menuWorkspaceId, setMenuWorkspaceId] = useState<string | null>(null)
+  const [renamingWorkspaceId, setRenamingWorkspaceId] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
 
   const filteredWorkspaces = useMemo(() => {
     const cleanQuery = query.trim().toLowerCase()
@@ -243,22 +245,28 @@ export function WorkspacesPage() {
     navigate(`/w/${workspaceId}/overview`)
   }
 
-  const onRenameWorkspace = (workspace: WorkspaceRecord) => {
-    const nextName = window.prompt('Rename workspace', workspace.name)
-    if (!nextName) {
-      setMenuWorkspaceId(null)
-      return
-    }
-    const clean = nextName.trim()
+  const onStartRenameWorkspace = (workspace: WorkspaceRecord) => {
+    setRenamingWorkspaceId(workspace.id)
+    setRenameDraft(workspace.name)
+    setMenuWorkspaceId(null)
+  }
+
+  const onCancelRenameWorkspace = () => {
+    setRenamingWorkspaceId(null)
+    setRenameDraft('')
+  }
+
+  const onSaveRenameWorkspace = (workspace: WorkspaceRecord) => {
+    const clean = renameDraft.trim()
     if (!clean || clean === workspace.name) {
-      setMenuWorkspaceId(null)
+      onCancelRenameWorkspace()
       return
     }
     updateWorkspace(workspace.id, {
       name: clean,
       updatedAt: new Date().toISOString(),
     })
-    setMenuWorkspaceId(null)
+    onCancelRenameWorkspace()
   }
 
   const onArchiveToggle = (workspace: WorkspaceRecord) => {
@@ -355,7 +363,12 @@ export function WorkspacesPage() {
                     </select>
                   ) : null}
                   {viewMode === 'cards' ? (
-                    <Button type="button" variant="outline" size="sm" onClick={() => setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'))}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'))}
+                    >
                       {sortDirection === 'desc' ? 'Descending' : 'Ascending'}
                     </Button>
                   ) : null}
@@ -447,24 +460,44 @@ export function WorkspacesPage() {
                           onClick={() => onOpenWorkspace(workspace.id)}
                         >
                           <td className="px-3 py-2 font-medium">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="truncate">{workspace.name}</p>
-                                <div className="mt-1 flex flex-wrap gap-1">
-                                  {workspace.pinned ? (
-                                    <span className="rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700">
-                                      Pinned
-                                    </span>
-                                  ) : null}
-                                </div>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                {renamingWorkspaceId === workspace.id ? (
+                                  <div className="space-y-2" onClick={(event) => event.stopPropagation()}>
+                                    <Input
+                                      value={renameDraft}
+                                      onChange={(event) => setRenameDraft(event.target.value)}
+                                      className="h-8"
+                                      autoFocus
+                                    />
+                                    <div className="flex items-center gap-2">
+                                      <Button type="button" size="sm" onClick={() => onSaveRenameWorkspace(workspace)}>
+                                        Save
+                                      </Button>
+                                      <Button type="button" size="sm" variant="outline" onClick={onCancelRenameWorkspace}>
+                                        Cancel
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <p className="truncate">{workspace.name}</p>
+                                    <div className="mt-1 flex flex-wrap gap-1">
+                                      {workspace.pinned ? (
+                                        <span className="rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700">
+                                          Pinned
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </>
+                                )}
                               </div>
+
                               <WorkspaceMenu
                                 workspace={workspace}
                                 menuOpen={menuWorkspaceId === workspace.id}
-                                onToggleMenu={() =>
-                                  setMenuWorkspaceId((current) => (current === workspace.id ? null : workspace.id))
-                                }
-                                onRename={() => onRenameWorkspace(workspace)}
+                                onToggleMenu={() => setMenuWorkspaceId((current) => (current === workspace.id ? null : workspace.id))}
+                                onRename={() => onStartRenameWorkspace(workspace)}
                                 onArchiveToggle={() => onArchiveToggle(workspace)}
                                 onDelete={() => onDeleteWorkspace(workspace)}
                               />
@@ -508,19 +541,38 @@ export function WorkspacesPage() {
                       className="rounded-lg border border-border bg-background p-3 text-left hover:bg-accent/30"
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="font-medium">{workspace.name}</p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Updated {formatTimestamp(workspace.updatedAt)}
-                          </p>
+                        <div className="min-w-0 flex-1">
+                          {renamingWorkspaceId === workspace.id ? (
+                            <div className="space-y-2" onClick={(event) => event.stopPropagation()}>
+                              <Input
+                                value={renameDraft}
+                                onChange={(event) => setRenameDraft(event.target.value)}
+                                className="h-8"
+                                autoFocus
+                              />
+                              <div className="flex items-center gap-2">
+                                <Button type="button" size="sm" onClick={() => onSaveRenameWorkspace(workspace)}>
+                                  Save
+                                </Button>
+                                <Button type="button" size="sm" variant="outline" onClick={onCancelRenameWorkspace}>
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <p className="font-medium">{workspace.name}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Updated {formatTimestamp(workspace.updatedAt)}
+                              </p>
+                            </>
+                          )}
                         </div>
                         <WorkspaceMenu
                           workspace={workspace}
                           menuOpen={menuWorkspaceId === workspace.id}
-                          onToggleMenu={() =>
-                            setMenuWorkspaceId((current) => (current === workspace.id ? null : workspace.id))
-                          }
-                          onRename={() => onRenameWorkspace(workspace)}
+                          onToggleMenu={() => setMenuWorkspaceId((current) => (current === workspace.id ? null : workspace.id))}
+                          onRename={() => onStartRenameWorkspace(workspace)}
                           onArchiveToggle={() => onArchiveToggle(workspace)}
                           onDelete={() => onDeleteWorkspace(workspace)}
                         />
