@@ -26,8 +26,6 @@ export function AppShell() {
         scope={isProfileRoute ? 'account' : 'workspace'}
         workspaceId={null}
         onOpenLeftNav={() => setLeftPanelOpen(true)}
-        onOpenRightPanel={() => setRightPanelOpen(true)}
-        showRightPanelButton={showRightPanel}
       />
 
       <div

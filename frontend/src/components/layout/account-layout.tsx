@@ -18,8 +18,6 @@ export function AccountLayout() {
       <TopBar
         scope="account"
         onOpenLeftNav={() => setLeftPanelOpen(true)}
-        onOpenRightPanel={() => setRightPanelOpen(true)}
-        showRightPanelButton
       />
 
       <div className="grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[250px_minmax(0,1fr)] insight:grid-cols-[250px_minmax(0,1fr)_330px]">

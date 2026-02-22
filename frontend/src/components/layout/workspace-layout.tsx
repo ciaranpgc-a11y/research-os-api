@@ -39,8 +39,6 @@ export function WorkspaceLayout() {
         scope="workspace"
         workspaceId={workspaceId || null}
         onOpenLeftNav={() => setLeftPanelOpen(true)}
-        onOpenRightPanel={() => setRightPanelOpen(true)}
-        showRightPanelButton={showRightPanel}
       />
 
       <div
