@@ -164,6 +164,12 @@ export function ImpactPage() {
   }, [syncStatus.impact_last_computed_at, syncStatus.metrics_last_synced_at, syncStatus.themes_last_generated_at, syncStatus.works_last_synced_at])
 
   const isInitialProfileLoading = Boolean(token) && loading && !hasLoadedOnce && !user
+  const timelineRows = statePayload?.timeline ?? []
+  const metricsWorks = statePayload?.metrics?.works ?? []
+  const metricsHistogram = statePayload?.metrics?.histogram ?? {}
+  const collaboratorRows = collaborators?.collaborators ?? []
+  const collaboratorsByYear = collaborators?.new_collaborators_by_year ?? {}
+  const themeRows = themes?.clusters ?? []
 
   const loadProfileData = useCallback(async (sessionToken: string) => {
     setLoading(true)
@@ -579,16 +585,11 @@ export function ImpactPage() {
   return (
     <section className="space-y-4">
       <header className="space-y-1">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
-            <p className="text-sm text-muted-foreground">
-              Account, ORCID, impact metrics, collaborations, themes, and strategy outputs.
-            </p>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => (token ? void loadProfileData(token) : navigate('/auth'))} disabled={loading}>
-            Refresh profile
-          </Button>
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
+          <p className="text-sm text-muted-foreground">
+            Account, ORCID, impact metrics, collaborations, themes, and strategy outputs.
+          </p>
         </div>
       </header>
 
@@ -667,34 +668,12 @@ export function ImpactPage() {
                 </div>
               ) : null}
 
-              <div className="grid gap-2 md:grid-cols-3">
-                <Input
-                  autoComplete="name"
-                  placeholder="Full name"
-                  value={profileName}
-                  onChange={(event) => setProfileName(event.target.value)}
-                />
-                <Input
-                  autoComplete="email"
-                  placeholder="Email"
-                  value={profileEmail}
-                  onChange={(event) => setProfileEmail(event.target.value)}
-                />
-                <Input
-                  autoComplete="new-password"
-                  type="password"
-                  placeholder="New password (optional)"
-                  value={profilePassword}
-                  onChange={(event) => setProfilePassword(event.target.value)}
-                />
-              </div>
-
               <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" size="sm" onClick={onUpdateProfile} disabled={loading || !profileName.trim() || !profileEmail.trim()}>
-                  Save profile
-                </Button>
                 <Button variant="outline" size="sm" onClick={onConnectOrcid} disabled={loading || verificationRequired}>
                   Connect ORCID
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => (token ? void loadProfileData(token) : navigate('/auth'))} disabled={loading}>
+                  Sync now
                 </Button>
                 <details className="rounded-md border border-border bg-background px-2 py-1">
                   <summary className="cursor-pointer text-xs text-slate-700">More actions</summary>
@@ -702,15 +681,42 @@ export function ImpactPage() {
                     <Button variant="outline" size="sm" onClick={onImportOrcid} disabled={loading || verificationRequired}>
                       Import ORCID works
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => (token ? void loadProfileData(token) : navigate('/auth'))} disabled={loading}>
-                      Refresh profile
-                    </Button>
                     <Button variant="ghost" size="sm" onClick={onLogout} disabled={loading}>
                       Sign out
                     </Button>
                   </div>
                 </details>
               </div>
+
+              <details className="rounded-md border border-border bg-background p-2">
+                <summary className="cursor-pointer text-xs text-slate-700">Edit account details</summary>
+                <div className="mt-2 grid gap-2 md:grid-cols-3">
+                  <Input
+                    autoComplete="name"
+                    placeholder="Full name"
+                    value={profileName}
+                    onChange={(event) => setProfileName(event.target.value)}
+                  />
+                  <Input
+                    autoComplete="email"
+                    placeholder="Email"
+                    value={profileEmail}
+                    onChange={(event) => setProfileEmail(event.target.value)}
+                  />
+                  <Input
+                    autoComplete="new-password"
+                    type="password"
+                    placeholder="New password (optional)"
+                    value={profilePassword}
+                    onChange={(event) => setProfilePassword(event.target.value)}
+                  />
+                </div>
+                <div className="mt-2">
+                  <Button variant="outline" size="sm" onClick={onUpdateProfile} disabled={loading || !profileName.trim() || !profileEmail.trim()}>
+                    Save profile
+                  </Button>
+                </div>
+              </details>
             </div>
           ) : (
             <div className="space-y-2">
@@ -887,13 +893,13 @@ export function ImpactPage() {
               <CardTitle className="text-sm">Citation timeline</CardTitle>
             </CardHeader>
             <CardContent className="space-y-1 text-sm">
-              {(statePayload?.timeline || []).map((item) => (
+              {timelineRows.map((item) => (
                 <div key={item.year} className="flex items-center justify-between border-b border-border/60 py-1">
                   <span>{item.year}</span>
                   <span>{item.citations} citations</span>
                 </div>
               ))}
-              {!statePayload?.timeline?.length ? <p className="text-muted-foreground">No timeline data yet.</p> : null}
+              {!timelineRows.length ? <p className="text-muted-foreground">No timeline data yet.</p> : null}
             </CardContent>
           </Card>
           <Card>
@@ -901,7 +907,7 @@ export function ImpactPage() {
               <CardTitle className="text-sm">Most cited works</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              {(statePayload?.metrics.works || []).slice(0, 8).map((item) => (
+              {metricsWorks.slice(0, 8).map((item) => (
                 <div key={item.work_id} className="rounded border border-border/70 p-2">
                   <p className="font-medium">{item.title}</p>
                   <p className="text-xs text-muted-foreground">
@@ -916,7 +922,7 @@ export function ImpactPage() {
               <CardTitle className="text-sm">Citation distribution histogram</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              {Object.entries(statePayload?.metrics.histogram || {}).map(([bucket, value]) => (
+              {Object.entries(metricsHistogram).map(([bucket, value]) => (
                 <div key={bucket} className="grid grid-cols-[80px_minmax(0,1fr)_40px] items-center gap-2">
                   <span>{bucket}</span>
                   <div className="h-2 rounded bg-muted">
@@ -938,7 +944,7 @@ export function ImpactPage() {
               <CardTitle className="text-sm">Top collaborators</CardTitle>
             </CardHeader>
             <CardContent className="space-y-1 text-sm">
-              {(collaborators?.collaborators || []).slice(0, 10).map((item) => (
+              {collaboratorRows.slice(0, 10).map((item) => (
                 <div key={item.author_id} className="flex items-center justify-between border-b border-border/60 py-1">
                   <span>{item.name}</span>
                   <span>
@@ -953,7 +959,7 @@ export function ImpactPage() {
               <CardTitle className="text-sm">New collaborators by year</CardTitle>
             </CardHeader>
             <CardContent className="space-y-1 text-sm">
-              {Object.entries(collaborators?.new_collaborators_by_year || {}).map(([year, count]) => (
+              {Object.entries(collaboratorsByYear).map(([year, count]) => (
                 <div key={year} className="flex items-center justify-between border-b border-border/60 py-1">
                   <span>{year}</span>
                   <span>{count}</span>
@@ -969,7 +975,7 @@ export function ImpactPage() {
               <CardTitle className="text-sm">Dominant research themes</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              {(themes?.clusters || []).map((cluster) => (
+              {themeRows.map((cluster) => (
                 <div key={cluster.cluster_id} className="rounded border border-border/70 p-2">
                   <p className="font-medium">{cluster.label}</p>
                   <p className="text-xs text-muted-foreground">
