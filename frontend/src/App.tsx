@@ -45,6 +45,7 @@ function App() {
       <Route element={<AppShell />}>
         <Route index element={<Navigate to="/overview" replace />} />
         <Route path="/overview" element={<OverviewPage />} />
+        <Route path="/profile" element={<ImpactPage />} />
         <Route path="/impact" element={<ImpactPage />} />
         <Route path="/study-core" element={<StudyCorePage />} />
         <Route path="/results" element={<ResultsPage />} />

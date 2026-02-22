@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Download, Loader2, Menu, Moon, PanelRight, Search, Sun } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { API_BASE_URL } from '@/lib/api'
+import { cn } from '@/lib/utils'
 import { qcItems } from '@/mock/qc'
 import { useAaweStore } from '@/store/use-aawe-store'
 import type { ApiErrorPayload } from '@/types/insight'
@@ -16,6 +17,12 @@ type TopBarProps = {
   onOpenRightPanel: () => void
   showRightPanelButton?: boolean
 }
+
+const TOP_NAV_LINKS = [
+  { label: 'Overview', path: '/overview' },
+  { label: 'Profile', path: '/profile' },
+  { label: 'Run Wizard', path: '/study-core' },
+]
 
 export function TopBar({ onOpenLeftNav, onOpenRightPanel, showRightPanelButton = true }: TopBarProps) {
   const navigate = useNavigate()
@@ -99,6 +106,22 @@ export function TopBar({ onOpenLeftNav, onOpenRightPanel, showRightPanelButton =
           <span className="text-base font-semibold tracking-tight">AAWE</span>
           <span className="hidden text-xs text-muted-foreground md:inline">Autonomous Academic Writing Engine</span>
         </div>
+        <nav className="ml-3 hidden items-center gap-1 xl:flex">
+          {TOP_NAV_LINKS.map((item) => (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              className={({ isActive }) =>
+                cn(
+                  'rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground',
+                  isActive && 'bg-accent text-foreground',
+                )
+              }
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
       </div>
 
       <div className="mx-auto hidden w-full max-w-xl items-center gap-2 md:flex">
