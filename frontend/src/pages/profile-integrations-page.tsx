@@ -67,6 +67,7 @@ export function ProfileIntegrationsPage() {
   const [status, setStatus] = useState('')
   const [googleStatus, setGoogleStatus] = useState('')
   const [error, setError] = useState('')
+  const [lastImportedCount, setLastImportedCount] = useState<number | null>(null)
   const syncStatus = personaState?.sync_status || {
     orcid_last_synced_at: null,
     metrics_last_synced_at: null,
@@ -172,6 +173,31 @@ export function ProfileIntegrationsPage() {
     }
   }, [searchParams])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    const raw = window.sessionStorage.getItem('aawe_orcid_auto_sync_result')
+    if (!raw) {
+      return
+    }
+    try {
+      const parsed = JSON.parse(raw) as { imported_count?: number }
+      if (typeof parsed.imported_count === 'number') {
+        setLastImportedCount(parsed.imported_count)
+        if (parsed.imported_count > 0) {
+          setStatus(`Auto-sync imported ${parsed.imported_count} ORCID work(s) after sign-in.`)
+        } else {
+          setStatus('Auto-sync completed after sign-in. No new ORCID works were imported.')
+        }
+      }
+    } catch {
+      // Ignore malformed payload and continue with live state.
+    } finally {
+      window.sessionStorage.removeItem('aawe_orcid_auto_sync_result')
+    }
+  }, [])
+
   const providerByName = useMemo(() => {
     const map = new Map<string, AuthOAuthProviderStatusItem>()
     for (const provider of providerStatuses) {
@@ -199,22 +225,6 @@ export function ProfileIntegrationsPage() {
     () => metricsRows.reduce((sum, row) => sum + Math.max(0, Number(row.citations || 0)), 0),
     [metricsRows],
   )
-  const orcidProgressLabel = useMemo(() => {
-    if (connecting) {
-      return 'Opening ORCID sign-in...'
-    }
-    if (importing) {
-      return 'Importing ORCID works and syncing citations...'
-    }
-    if (disconnecting) {
-      return 'Disconnecting ORCID...'
-    }
-    if (refreshing) {
-      return 'Refreshing ORCID integration status...'
-    }
-    return ''
-  }, [connecting, importing, disconnecting, refreshing])
-
   const onConnectOrcid = async () => {
     if (!token) {
       return
@@ -259,14 +269,11 @@ export function ProfileIntegrationsPage() {
     try {
       await pingApiHealth()
       const payload = await importOrcidWorks(token)
+      setLastImportedCount(payload.imported_count)
       if (payload.imported_count > 0) {
-        setStatus(
-          `Imported ${payload.imported_count} ORCID work(s). Citation sync ran automatically.`,
-        )
+        setStatus(`Imported ${payload.imported_count} ORCID work(s).`)
       } else {
-        setStatus(
-          'No new ORCID works were imported. Citation sync still ran on your current library.',
-        )
+        setStatus('No new ORCID works were imported.')
       }
       await loadData(token, false)
     } catch (importError) {
@@ -281,14 +288,11 @@ export function ProfileIntegrationsPage() {
           setStatus('API connection looked unstable. Retrying import once...')
           await pingApiHealth()
           const retryPayload = await importOrcidWorks(token)
+          setLastImportedCount(retryPayload.imported_count)
           if (retryPayload.imported_count > 0) {
-            setStatus(
-              `Imported ${retryPayload.imported_count} ORCID work(s). Citation sync ran automatically.`,
-            )
+            setStatus(`Imported ${retryPayload.imported_count} ORCID work(s).`)
           } else {
-            setStatus(
-              'No new ORCID works were imported. Citation sync still ran on your current library.',
-            )
+            setStatus('No new ORCID works were imported.')
           }
           await loadData(token, false)
           return
@@ -416,45 +420,52 @@ export function ProfileIntegrationsPage() {
               {orcidIssues[0]}
             </div>
           ) : null}
-          <div className="flex flex-wrap gap-2">
-            {!orcidLinked ? (
-              <Button type="button" onClick={onConnectOrcid} disabled={!canConnectOrcid}>
-                {connecting ? 'Opening ORCID...' : 'Connect ORCID'}
-              </Button>
-            ) : null}
-            {orcidLinked ? (
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex flex-wrap gap-2">
+              {!orcidLinked ? (
+                <Button type="button" onClick={onConnectOrcid} disabled={!canConnectOrcid}>
+                  {connecting ? 'Opening ORCID...' : 'Connect ORCID'}
+                </Button>
+              ) : null}
+              {orcidLinked ? (
+                <Button
+                  type="button"
+                  variant={importing ? 'default' : 'outline'}
+                  onClick={onImportOrcid}
+                  disabled={!canImportOrcid}
+                  className={importing ? 'bg-emerald-600 text-white hover:bg-emerald-700' : ''}
+                >
+                  {importing
+                    ? 'Importing + syncing...'
+                    : worksCount > 0
+                      ? 'Refresh works + sync citations'
+                      : 'Import works + sync citations'}
+                </Button>
+              ) : null}
               <Button
                 type="button"
-                variant={importing ? "default" : "outline"}
-                onClick={onImportOrcid}
-                disabled={!canImportOrcid}
-                className={
-                  importing
-                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                    : ""
-                }
+                variant="outline"
+                onClick={() => (token ? void loadData(token, false) : undefined)}
+                disabled={!token || busy}
               >
-                {importing
-                  ? 'Importing + syncing...'
-                  : worksCount > 0
-                    ? 'Refresh works + sync citations'
-                    : 'Import works + sync citations'}
+                {refreshing ? 'Refreshing...' : 'Refresh'}
               </Button>
+            </div>
+            {orcidLinked ? (
+              <div className="grid w-full gap-2 sm:grid-cols-2 lg:w-[320px]">
+                <div className="rounded border border-border px-3 py-2">
+                  <p className="text-xs text-muted-foreground">Total works</p>
+                  <p className="text-sm font-semibold">{worksCount}</p>
+                </div>
+                <div className="rounded border border-border px-3 py-2">
+                  <p className="text-xs text-muted-foreground">New works imported</p>
+                  <p className="text-sm font-semibold">{lastImportedCount ?? 0}</p>
+                </div>
+              </div>
             ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => (token ? void loadData(token, false) : undefined)}
-              disabled={!token || busy}
-            >
-              {refreshing ? 'Refreshing...' : 'Refresh'}
-            </Button>
           </div>
           {!orcidConfigured ? (
             <p className="text-xs text-amber-700">ORCID provider is not configured in backend environment.</p>
-          ) : null}
-          {orcidProgressLabel ? (
-            <p className="text-xs font-medium text-emerald-700">{orcidProgressLabel}</p>
           ) : null}
           {status ? <p className="text-sm text-emerald-700">{status}</p> : null}
           {error ? (
