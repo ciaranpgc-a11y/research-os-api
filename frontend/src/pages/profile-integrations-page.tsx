@@ -33,6 +33,22 @@ function formatTimestamp(value: string | null | undefined): string {
   })
 }
 
+function formatShortTimestamp(value: string | null | undefined): string | null {
+  if (!value) {
+    return null
+  }
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) {
+    return null
+  }
+  return new Date(parsed).toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 export function ProfileIntegrationsPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -45,9 +61,7 @@ export function ProfileIntegrationsPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [importing, setImporting] = useState(false)
-  const [richImporting, setRichImporting] = useState(false)
   const [syncing, setSyncing] = useState(false)
-  const [fullSyncing, setFullSyncing] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
   const syncStatus = personaState?.sync_status || {
@@ -146,11 +160,17 @@ export function ProfileIntegrationsPage() {
   const emailVerified = Boolean(user?.email_verified_at)
   const orcidConfigured = Boolean(orcidStatus?.configured)
   const orcidLinked = Boolean(orcidStatus?.linked || user?.orcid_id)
-  const busy = loading || connecting || importing || richImporting || syncing || fullSyncing
+  const busy = loading || connecting || importing || syncing
   const canConnectOrcid = emailVerified && orcidConfigured && !busy
   const canImportOrcid = emailVerified && orcidConfigured && orcidLinked && !busy
   const canSyncCitations = worksCount > 0 && !busy
   const connectLabel = orcidLinked ? 'Reconnect ORCID' : 'Connect ORCID'
+  const shortLastSync = formatShortTimestamp(syncStatus.orcid_last_synced_at)
+  const connectionStatusLabel = orcidLinked
+    ? shortLastSync
+      ? `Connected (${shortLastSync})`
+      : 'Connected'
+    : 'Not connected'
   const totalCitations = useMemo(
     () => metricsRows.reduce((sum, row) => sum + Math.max(0, Number(row.citations || 0)), 0),
     [metricsRows],
@@ -229,53 +249,6 @@ export function ProfileIntegrationsPage() {
     }
   }
 
-  const onRichImportOrcid = async () => {
-    if (!token) {
-      return
-    }
-    if (!(orcidStatus?.linked || user?.orcid_id)) {
-      setStatus('Connect ORCID before running rich import.')
-      return
-    }
-    setRichImporting(true)
-    setError('')
-    setStatus('')
-    try {
-      const importPayload = await importOrcidWorks(token, { overwriteUserMetadata: true })
-      const syncPayload = await syncPersonaMetrics(token, ['openalex', 'semantic_scholar'])
-      setStatus(
-        `Rich import complete: ${importPayload.imported_count} work(s) refreshed, ${syncPayload.synced_snapshots} citation snapshot(s) updated.`,
-      )
-      await loadData(token, false)
-    } catch (importError) {
-      setError(importError instanceof Error ? importError.message : 'Could not run rich ORCID import.')
-    } finally {
-      setRichImporting(false)
-    }
-  }
-
-  const onFullSyncMetrics = async () => {
-    if (!token) {
-      return
-    }
-    if (worksCount === 0) {
-      setStatus('Import at least one work before syncing citations.')
-      return
-    }
-    setFullSyncing(true)
-    setError('')
-    setStatus('')
-    try {
-      const payload = await syncPersonaMetrics(token, ['openalex', 'semantic_scholar', 'manual'])
-      setStatus(`Full citation sync complete (${payload.synced_snapshots} snapshot(s)).`)
-      await loadData(token, false)
-    } catch (syncError) {
-      setError(syncError instanceof Error ? syncError.message : 'Could not run full citation sync.')
-    } finally {
-      setFullSyncing(false)
-    }
-  }
-
   return (
     <section className="space-y-4">
       <header className="space-y-1">
@@ -284,14 +257,28 @@ export function ProfileIntegrationsPage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">ORCID</CardTitle>
+          <CardTitle className="text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#A6CE39] text-xs font-semibold text-white">
+                iD
+              </span>
+              <span>ORCID</span>
+              <span
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                  orcidLinked ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'
+                }`}
+              >
+                {connectionStatusLabel}
+              </span>
+            </div>
+          </CardTitle>
           <CardDescription>Primary source for publication import.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div className="grid gap-2 md:grid-cols-2">
             <div className="rounded border border-border px-3 py-2">
               <p className="text-xs text-muted-foreground">Connection status</p>
-              <p className="font-medium">{orcidStatus?.linked ? 'Connected' : 'Not connected'}</p>
+              <p className={`font-medium ${orcidLinked ? 'text-emerald-700' : 'text-amber-700'}`}>{connectionStatusLabel}</p>
             </div>
             <div className="rounded border border-border px-3 py-2">
               <p className="text-xs text-muted-foreground">ORCID id</p>
@@ -312,28 +299,26 @@ export function ProfileIntegrationsPage() {
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={onConnectOrcid} disabled={!canConnectOrcid}>
+            <Button type="button" onClick={onConnectOrcid} disabled={!canConnectOrcid}>
               {connecting ? 'Opening ORCID...' : connectLabel}
             </Button>
-            <Button type="button" onClick={onImportOrcid} disabled={!canImportOrcid}>
-              {importing ? 'Importing...' : 'Import ORCID works'}
-            </Button>
-            <Button type="button" onClick={onRichImportOrcid} disabled={!canImportOrcid}>
-              {richImporting ? 'Hydrating...' : 'Rich ORCID refresh'}
-            </Button>
-            <Button type="button" variant="outline" onClick={onSyncMetrics} disabled={!canSyncCitations}>
-              {syncing ? 'Syncing...' : 'Sync citations'}
-            </Button>
-            <Button type="button" variant="outline" onClick={onFullSyncMetrics} disabled={!canSyncCitations}>
-              {fullSyncing ? 'Full sync...' : 'Full sync (slower)'}
-            </Button>
+            {orcidLinked ? (
+              <Button type="button" variant="outline" onClick={onImportOrcid} disabled={!canImportOrcid}>
+                {importing ? 'Importing...' : worksCount > 0 ? 'Refresh ORCID works' : 'Import ORCID works'}
+              </Button>
+            ) : null}
+            {orcidLinked ? (
+              <Button type="button" variant="outline" onClick={onSyncMetrics} disabled={!canSyncCitations}>
+                {syncing ? 'Syncing...' : 'Sync citations'}
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"
               onClick={() => (token ? void loadData(token, false) : undefined)}
               disabled={!token || busy}
             >
-              {refreshing ? 'Refreshing...' : 'Refresh status'}
+              {refreshing ? 'Refreshing...' : 'Refresh'}
             </Button>
           </div>
           {!emailVerified ? (
@@ -343,11 +328,11 @@ export function ProfileIntegrationsPage() {
             <p className="text-xs text-amber-700">ORCID provider is not configured in backend environment.</p>
           ) : null}
           {worksCount === 0 ? (
-            <p className="text-xs text-muted-foreground">Citation sync becomes available after your first works import.</p>
+            <p className="text-xs text-muted-foreground">Import works first. Citation sync appears once works are available.</p>
           ) : null}
           {worksCount > 0 ? (
             <p className="text-xs text-muted-foreground">
-              Quick sync uses OpenAlex. Full sync also queries Semantic Scholar.
+              Citation sync uses OpenAlex and updates your latest citation totals.
             </p>
           ) : null}
         </CardContent>
@@ -409,7 +394,7 @@ export function ProfileIntegrationsPage() {
 
       {status ? <p className="text-sm text-emerald-700">{status}</p> : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      {(loading || connecting || importing || richImporting || syncing || fullSyncing) ? (
+      {(loading || connecting || importing || syncing) ? (
         <p className="text-xs text-muted-foreground">Working...</p>
       ) : null}
     </section>
