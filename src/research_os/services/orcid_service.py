@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+import inspect
 import os
 import re
 import secrets
@@ -44,6 +45,7 @@ ORCID_IMPORT_DETAIL_FETCH_WORKERS = max(
 ORCID_HTTP_TIMEOUT_SECONDS = max(
     5.0, float(os.getenv("ORCID_HTTP_TIMEOUT_SECONDS", "20"))
 )
+UPSERT_WORK_ACCEPTS_SESSION = "session" in inspect.signature(upsert_work).parameters
 
 
 class OrcidValidationError(RuntimeError):
@@ -412,6 +414,25 @@ def _fetch_orcid_work_detail(
         return None
 
 
+def _upsert_imported_orcid_work(
+    *,
+    user_id: str,
+    work: dict[str, Any],
+    overwrite_user_metadata: bool,
+    session,
+) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
+        "user_id": user_id,
+        "work": work,
+        "provenance": "orcid",
+        "overwrite_user_metadata": overwrite_user_metadata,
+        "ensure_tables": False,
+    }
+    if UPSERT_WORK_ACCEPTS_SESSION:
+        kwargs["session"] = session
+    return upsert_work(**kwargs)
+
+
 def import_orcid_works(
     *, user_id: str, overwrite_user_metadata: bool = False
 ) -> dict[str, Any]:
@@ -540,12 +561,10 @@ def import_orcid_works(
     with session_scope() as session:
         user = _resolve_user_or_raise(session, user_id)
         for work in imported:
-            record = upsert_work(
+            record = _upsert_imported_orcid_work(
                 user_id=user_id,
                 work=work,
-                provenance="orcid",
                 overwrite_user_metadata=overwrite_user_metadata,
-                ensure_tables=False,
                 session=session,
             )
             work_id = str(record["id"])
