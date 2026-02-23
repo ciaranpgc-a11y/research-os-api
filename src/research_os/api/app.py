@@ -1114,13 +1114,20 @@ def v1_orcid_callback(
         payload = complete_orcid_callback(state=state, code=code)
         clean_mode = mode.strip().lower()
         accept_header = str(request.headers.get("accept", "")).lower()
+        user_agent = str(request.headers.get("user-agent", "")).lower()
+        sec_fetch_mode = str(request.headers.get("sec-fetch-mode", "")).lower()
         if clean_mode == "json":
             wants_json = True
         elif clean_mode in {"redirect", "html"}:
             wants_json = False
         else:
-            # Auto mode: browsers typically request text/html; API clients prefer JSON.
-            wants_json = "text/html" not in accept_header
+            # Auto mode: keep API clients JSON-first, but redirect browser navigations.
+            is_browser_navigation = (
+                "text/html" in accept_header
+                or sec_fetch_mode == "navigate"
+                or "mozilla/" in user_agent
+            )
+            wants_json = not is_browser_navigation
         if wants_json:
             return OrcidCallbackResponse(**payload)
         frontend_base = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173").strip().rstrip("/")

@@ -20,8 +20,23 @@ from research_os.services.persona_service import (
 from research_os.services.security_service import decrypt_secret, encrypt_secret
 
 ORCID_CONNECT_TTL_MINUTES = 20
-ORCID_IMPORT_DETAIL_FETCH_MAX = max(
-    0, int(os.getenv("ORCID_IMPORT_DETAIL_FETCH_MAX", "250"))
+ORCID_IMPORT_DETAIL_FETCH_MAX_STANDARD = max(
+    0,
+    int(
+        os.getenv(
+            "ORCID_IMPORT_DETAIL_FETCH_MAX_STANDARD",
+            os.getenv("ORCID_IMPORT_DETAIL_FETCH_MAX", "0"),
+        )
+    ),
+)
+ORCID_IMPORT_DETAIL_FETCH_MAX_RICH = max(
+    0,
+    int(
+        os.getenv(
+            "ORCID_IMPORT_DETAIL_FETCH_MAX_RICH",
+            os.getenv("ORCID_IMPORT_DETAIL_FETCH_MAX", "250"),
+        )
+    ),
 )
 ORCID_IMPORT_DETAIL_FETCH_WORKERS = max(
     1, int(os.getenv("ORCID_IMPORT_DETAIL_FETCH_WORKERS", "8"))
@@ -393,7 +408,12 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
                     seen_put_codes.add(put_code_key)
                 candidates.append((summary, put_code))
 
-        fetch_details_limit = min(len(candidates), ORCID_IMPORT_DETAIL_FETCH_MAX)
+        detail_fetch_cap = (
+            ORCID_IMPORT_DETAIL_FETCH_MAX_RICH
+            if overwrite_user_metadata
+            else ORCID_IMPORT_DETAIL_FETCH_MAX_STANDARD
+        )
+        fetch_details_limit = min(len(candidates), detail_fetch_cap)
         fetch_details = fetch_details_limit > 0
         detail_payload_by_put_code: dict[str, dict[str, Any]] = {}
         if fetch_details:
@@ -446,23 +466,23 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
 
     upserted_ids: list[str] = []
     seen_upserted_ids: set[str] = set()
-    for work in imported:
-        record = upsert_work(
-            user_id=user_id,
-            work=work,
-            provenance="orcid",
-            overwrite_user_metadata=overwrite_user_metadata,
-            ensure_tables=False,
-        )
-        work_id = str(record["id"])
-        if work_id in seen_upserted_ids:
-            continue
-        seen_upserted_ids.add(work_id)
-        upserted_ids.append(work_id)
-
     create_all_tables()
     with session_scope() as session:
         user = _resolve_user_or_raise(session, user_id)
+        for work in imported:
+            record = upsert_work(
+                user_id=user_id,
+                work=work,
+                provenance="orcid",
+                overwrite_user_metadata=overwrite_user_metadata,
+                ensure_tables=False,
+                session=session,
+            )
+            work_id = str(record["id"])
+            if work_id in seen_upserted_ids:
+                continue
+            seen_upserted_ids.add(work_id)
+            upserted_ids.append(work_id)
         user.orcid_last_synced_at = _utcnow()
         session.flush()
     if _orcid_auto_sync_metrics_enabled() and upserted_ids:
