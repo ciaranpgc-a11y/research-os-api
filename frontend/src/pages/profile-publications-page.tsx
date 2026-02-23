@@ -235,16 +235,86 @@ function normalizeAuthorName(value: string): string {
     .trim()
 }
 
-function isOwnerAuthor(author: string, userName: string): boolean {
+function nameTokens(value: string): string[] {
+  return normalizeAuthorName(value)
+    .split(' ')
+    .map((token) => token.trim())
+    .filter(Boolean)
+}
+
+function initials(tokens: string[]): string {
+  return tokens
+    .map((token) => token.charAt(0))
+    .join('')
+    .toLowerCase()
+}
+
+function isOwnerAuthor(author: string, userName: string, userEmail: string): boolean {
   const authorKey = normalizeAuthorName(author)
   const userKey = normalizeAuthorName(userName)
-  if (!authorKey || !userKey) {
+  const authorTokens = nameTokens(author)
+  const userTokens = nameTokens(userName)
+  if (!authorKey || (!userKey && !userEmail)) {
     return false
   }
   if (authorKey === userKey) {
     return true
   }
-  return authorKey.includes(userKey) || userKey.includes(authorKey)
+  if (userKey && (authorKey.includes(userKey) || userKey.includes(authorKey))) {
+    return true
+  }
+
+  // Match by token subset so "Ciaran Clarke" maps to "Ciaran Grafton Clarke".
+  if (
+    userTokens.length >= 2 &&
+    userTokens.every((token) => authorTokens.includes(token))
+  ) {
+    return true
+  }
+
+  if (
+    userTokens.length >= 2 &&
+    authorTokens.length >= 2 &&
+    userTokens[0] === authorTokens[0] &&
+    userTokens[userTokens.length - 1] === authorTokens[authorTokens.length - 1]
+  ) {
+    return true
+  }
+
+  // Initials fallback for names like "Ciaran GC".
+  const userInitials = initials(userTokens)
+  const authorInitials = initials(authorTokens)
+  if (
+    userTokens.length >= 1 &&
+    authorTokens.length >= 2 &&
+    userTokens[0] === authorTokens[0] &&
+    userInitials.length >= 2
+  ) {
+    const authorTailInitials = initials(authorTokens.slice(1))
+    if (
+      authorTailInitials === userInitials.slice(1) ||
+      authorInitials === userInitials ||
+      authorTailInitials.includes(userInitials.slice(1))
+    ) {
+      return true
+    }
+  }
+
+  // Email fallback: "ciaran.clarke@..." should match "Ciaran ... Clarke".
+  const emailLocal = (userEmail || '').split('@')[0] || ''
+  const emailTokens = emailLocal
+    .toLowerCase()
+    .split(/[._-]+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+  if (
+    emailTokens.length >= 2 &&
+    emailTokens.every((token) => authorTokens.includes(token))
+  ) {
+    return true
+  }
+
+  return false
 }
 
 function citationCellTone(citations: number, hIndex: number): string {
@@ -483,6 +553,7 @@ export function ProfilePublicationsPage() {
   const hIndex = useMemo(() => computeHIndex(citationCounts), [citationCounts])
   const citedWorksCount = useMemo(() => citationCounts.filter((value) => value > 0).length, [citationCounts])
   const ownerName = user?.name || ''
+  const ownerEmail = user?.email || ''
   const worksCount = personaState?.works.length ?? 0
   const busy = loading || richImporting || syncing || fullSyncing
   const canSyncCitations = worksCount > 0 && !busy
@@ -809,7 +880,9 @@ export function ProfilePublicationsPage() {
                       {(selectedWork.authors || []).length > 0 ? (
                         <p className="whitespace-pre-wrap leading-relaxed">
                           {(selectedWork.authors || []).map((author, index, list) => {
-                            const owner = Boolean(ownerName) && isOwnerAuthor(author, ownerName)
+                            const owner =
+                              (Boolean(ownerName) || Boolean(ownerEmail)) &&
+                              isOwnerAuthor(author, ownerName, ownerEmail)
                             return (
                               <span
                                 key={`${author}-${index}`}
