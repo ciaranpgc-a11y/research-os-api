@@ -103,6 +103,11 @@ function isLikelyEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 }
 
+function isPlaceholderOAuthEmail(value: string): boolean {
+  const clean = value.trim().toLowerCase()
+  return clean.endsWith('@orcid.local') || clean.endsWith('@oauth.local')
+}
+
 function isStrongPassword(value: string): boolean {
   const password = value.trim()
   return password.length >= 10 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password)
@@ -147,6 +152,10 @@ export function AuthPage() {
     }
     const clean = value.trim()
     if (!clean) {
+      return
+    }
+    if (isPlaceholderOAuthEmail(clean)) {
+      window.localStorage.removeItem(LAST_AUTH_EMAIL_STORAGE_KEY)
       return
     }
     window.localStorage.setItem(LAST_AUTH_EMAIL_STORAGE_KEY, clean)
@@ -244,9 +253,13 @@ export function AuthPage() {
       return
     }
     const storedEmail = window.localStorage.getItem(LAST_AUTH_EMAIL_STORAGE_KEY) || ''
-    if (storedEmail) {
+    if (storedEmail && !isPlaceholderOAuthEmail(storedEmail)) {
       setSignInEmail(storedEmail)
       setResetEmail(storedEmail)
+      return
+    }
+    if (storedEmail && isPlaceholderOAuthEmail(storedEmail)) {
+      window.localStorage.removeItem(LAST_AUTH_EMAIL_STORAGE_KEY)
     }
   }, [])
 
