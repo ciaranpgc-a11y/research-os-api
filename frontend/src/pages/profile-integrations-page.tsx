@@ -423,7 +423,17 @@ export function ProfileIntegrationsPage() {
               </Button>
             ) : null}
             {orcidLinked ? (
-              <Button type="button" variant="outline" onClick={onImportOrcid} disabled={!canImportOrcid}>
+              <Button
+                type="button"
+                variant={importing ? "default" : "outline"}
+                onClick={onImportOrcid}
+                disabled={!canImportOrcid}
+                className={
+                  importing
+                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                    : ""
+                }
+              >
                 {importing
                   ? 'Importing + syncing...'
                   : worksCount > 0
@@ -443,16 +453,8 @@ export function ProfileIntegrationsPage() {
           {!orcidConfigured ? (
             <p className="text-xs text-amber-700">ORCID provider is not configured in backend environment.</p>
           ) : null}
-          <p className="text-xs text-muted-foreground">
-            ORCID import always runs citation sync automatically.
-          </p>
-          {worksCount > 0 ? (
-            <p className="text-xs text-muted-foreground">
-              Citation sync uses OpenAlex and updates your latest citation totals during import.
-            </p>
-          ) : null}
           {orcidProgressLabel ? (
-            <p className="text-xs text-muted-foreground">{orcidProgressLabel}</p>
+            <p className="text-xs font-medium text-emerald-700">{orcidProgressLabel}</p>
           ) : null}
           {status ? <p className="text-sm text-emerald-700">{status}</p> : null}
           {error ? (
