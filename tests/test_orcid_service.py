@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from research_os.db import User, create_all_tables, reset_database_state, session_scope
+from sqlalchemy import func, select
+
+from research_os.db import (
+    User,
+    Work,
+    WorkAuthorship,
+    create_all_tables,
+    reset_database_state,
+    session_scope,
+)
 import pytest
 
 from research_os.services.orcid_service import (
@@ -247,6 +256,69 @@ def test_orcid_import_reports_zero_new_works_on_repeat_sync(
     assert len(sync_calls[0]["work_ids"]) == 1
     assert call_urls.count(works_url) == 2
     assert call_urls.count(work_404_url) == 1
+
+
+def test_orcid_import_dedupes_duplicate_contributors(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    orcid_id = "0000-0002-1825-0097"
+    user_id = _create_orcid_user(email="orcid-import-dup-authors@example.com", orcid_id=orcid_id)
+
+    works_url = f"https://pub.orcid.org/v3.0/{orcid_id}/works"
+    work_505_url = f"https://pub.orcid.org/v3.0/{orcid_id}/work/505"
+    responses = {
+        works_url: _FakeResponse(
+            200,
+            {"group": [{"work-summary": [{"put-code": 505}]}]},
+        ),
+        work_505_url: _FakeResponse(
+            200,
+            {
+                "title": {"title": {"value": "Duplicate contributor work"}},
+                "publication-date": {"year": {"value": "2022"}},
+                "type": "journal-article",
+                "contributors": {
+                    "contributor": [
+                        {
+                            "credit-name": {"value": "Alex Author"},
+                            "contributor-orcid": {"path": "0000-0001-1111-1111"},
+                        },
+                        {
+                            "credit-name": {"value": "Alex Author"},
+                            "contributor-orcid": {"path": "0000-0001-1111-1111"},
+                        },
+                    ]
+                },
+            },
+        ),
+    }
+
+    monkeypatch.setattr(
+        "research_os.services.orcid_service._ensure_valid_access_token",
+        lambda session, user: "access-token",
+    )
+    monkeypatch.setattr(
+        "research_os.services.orcid_service.httpx.Client",
+        lambda timeout=20.0: _FakeOrcidClient(responses),
+    )
+    monkeypatch.setattr(
+        "research_os.services.orcid_service.sync_metrics",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "research_os.services.orcid_service.recompute_collaborator_edges",
+        lambda user_id: {"core_collaborators": [], "new_collaborators_by_year": {}},
+    )
+
+    payload = import_orcid_works(user_id=user_id)
+    assert payload["imported_count"] == 1
+
+    with session_scope() as session:
+        work = session.scalars(select(Work).where(Work.user_id == user_id)).first()
+        assert work is not None
+        authorship_count = session.scalar(
+            select(func.count(WorkAuthorship.id)).where(WorkAuthorship.work_id == work.id)
+        )
+        assert int(authorship_count or 0) == 1
 
 
 def test_disconnect_orcid_blocks_orcid_only_placeholder_account(

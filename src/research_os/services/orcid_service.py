@@ -439,6 +439,7 @@ def _extract_external_id(summary: dict[str, Any], target_type: str) -> str | Non
 def _extract_authors(work_detail: dict[str, Any]) -> list[dict[str, str]]:
     contributors = (work_detail.get("contributors") or {}).get("contributor") or []
     authors: list[dict[str, str]] = []
+    seen_keys: set[str] = set()
     for item in contributors:
         if not isinstance(item, dict):
             continue
@@ -448,9 +449,20 @@ def _extract_authors(work_detail: dict[str, Any]) -> list[dict[str, str]]:
         contributor_orcid = (
             (item.get("contributor-orcid") or {}).get("path") or ""
         ).strip() or None
+        normalized_name = re.sub(r"\s+", " ", str(credit_name).strip())
+        if not normalized_name:
+            continue
+        dedupe_key = (
+            re.sub(r"\s+", "", contributor_orcid.lower())
+            if contributor_orcid
+            else re.sub(r"\s+", " ", normalized_name.lower())
+        )
+        if dedupe_key in seen_keys:
+            continue
+        seen_keys.add(dedupe_key)
         authors.append(
             {
-                "name": str(credit_name).strip(),
+                "name": normalized_name,
                 "orcid_id": contributor_orcid or "",
             }
         )

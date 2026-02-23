@@ -32,6 +32,7 @@ import type {
   PublicationAiInsightsResponsePayload,
   PublicationAuthorsPayload,
   PublicationDetailPayload,
+  PublicationMetricDetailPayload,
   PublicationFileLinkPayload,
   PublicationFilePayload,
   PublicationFilesListPayload,
@@ -603,6 +604,22 @@ export async function triggerPublicationsTopMetricsRefresh(
     },
     'Publications top metrics refresh failed',
     { timeoutMs: 60_000, retryCount: 1 },
+  )
+}
+
+export async function fetchPublicationMetricDetail(
+  token: string,
+  metricId: string,
+): Promise<PublicationMetricDetailPayload> {
+  const encodedMetricId = encodeURIComponent(String(metricId || '').trim())
+  return requestJson<PublicationMetricDetailPayload>(
+    `${API_BASE_URL}/v1/publications/metric/${encodedMetricId}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Publication metric detail lookup failed',
+    { timeoutMs: 90_000, retryCount: 2 },
   )
 }
 

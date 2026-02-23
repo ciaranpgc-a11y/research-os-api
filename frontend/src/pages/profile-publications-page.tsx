@@ -1487,7 +1487,7 @@ export function ProfilePublicationsPage() {
         </div>
       </header>
 
-      <PublicationsTopStrip metrics={topMetricsResponse} loading={loading || !topMetricsResponse} />
+      <PublicationsTopStrip metrics={topMetricsResponse} loading={loading || !topMetricsResponse} token={token || null} />
 
       <div className="grid gap-3 xl:grid-cols-2">
         <Card>

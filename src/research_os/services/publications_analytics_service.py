@@ -182,6 +182,23 @@ def _sum_citations(rows: dict[str, MetricsSnapshot]) -> int:
     return sum(max(0, int(snapshot.citations_count or 0)) for snapshot in rows.values())
 
 
+def _is_history_snapshot_usable(snapshot: MetricsSnapshot | None) -> bool:
+    if snapshot is None:
+        return False
+    payload = snapshot.metric_payload if isinstance(snapshot.metric_payload, dict) else {}
+    note = str(payload.get("note") or "").strip().lower()
+    if not note:
+        return True
+    if (
+        "lookup unavailable" in note
+        or "provider lookup failed" in note
+        or "no confident" in note
+        or "failed" in note
+    ):
+        return False
+    return True
+
+
 def _extract_counts_by_year(snapshot: MetricsSnapshot, *, now_year: int) -> dict[int, int]:
     payload = snapshot.metric_payload if isinstance(snapshot.metric_payload, dict) else {}
     raw = payload.get("counts_by_year")
@@ -624,25 +641,43 @@ def _compute_payload(session, *, user_id: str, computed_at: datetime) -> dict[st
     citations_last_12 = 0
     citations_previous_12 = 0
     for work_id in work_ids:
-        current = max(0, int((latest.get(work_id).citations_count if latest.get(work_id) else 0) or 0))
+        latest_snapshot = latest.get(work_id)
+        current = max(0, int((latest_snapshot.citations_count if latest_snapshot else 0) or 0))
         snap_12 = at_12.get(work_id)
         snap_24 = at_24.get(work_id)
+        latest_provider = str((latest_snapshot.provider if latest_snapshot else "") or "").strip().lower()
+        if latest_provider:
+            if snap_12 is not None and (
+                str(snap_12.provider or "").strip().lower() != latest_provider
+                or not _is_history_snapshot_usable(snap_12)
+            ):
+                snap_12 = None
+            if snap_24 is not None and (
+                str(snap_24.provider or "").strip().lower() != latest_provider
+                or not _is_history_snapshot_usable(snap_24)
+            ):
+                snap_24 = None
         yearly = yearly_by_work.get(work_id, {})
-        if snap_12 is not None:
-            last_12 = max(0, current - int(snap_12.citations_count or 0))
-        elif yearly:
+        if yearly:
             last_12 = _estimate_window_citations(yearly, start=cutoff_12, end=now, now=now)
+        elif snap_12 is not None:
+            last_12 = max(0, current - int(snap_12.citations_count or 0))
         else:
             last_12 = 0
 
-        if snap_12 is not None and snap_24 is not None:
-            prev_12 = max(0, int(snap_12.citations_count or 0) - int(snap_24.citations_count or 0))
-        elif yearly:
+        if yearly:
             prev_12 = _estimate_window_citations(yearly, start=cutoff_24, end=cutoff_12, now=now)
+        elif snap_12 is not None and snap_24 is not None:
+            prev_12 = max(0, int(snap_12.citations_count or 0) - int(snap_24.citations_count or 0))
         elif snap_12 is not None:
             prev_12 = max(0, int(snap_12.citations_count or 0))
         else:
             prev_12 = 0
+
+        if yearly and current > 0 and (last_12 + prev_12) > current:
+            scale = current / max(1, last_12 + prev_12)
+            last_12 = int(round(last_12 * scale))
+            prev_12 = int(round(prev_12 * scale))
 
         growth_by_work[work_id] = last_12
         citations_last_12 += last_12

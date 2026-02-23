@@ -153,16 +153,25 @@ export type PublicationMetricDrilldownPayload = {
 }
 
 export type PublicationMetricTilePayload = {
+  id: string
   key: string
   label: string
+  main_value: number | null
   value: number | null
+  main_value_display: string
   value_display: string
   delta_value: number | null
   delta_display: string | null
+  delta_direction: 'up' | 'down' | 'flat' | 'na'
+  delta_tone: 'positive' | 'neutral' | 'caution' | 'negative'
+  delta_color_code: string
   unit: string | null
   sparkline: number[]
+  sparkline_overlay: number[]
   tooltip: string
+  tooltip_details: Record<string, unknown>
   data_source: string[]
+  confidence_score: number
   stability: 'stable' | 'unstable'
   drilldown: PublicationMetricDrilldownPayload
 }
@@ -183,6 +192,18 @@ export type PublicationsTopMetricsRefreshPayload = {
   enqueued: boolean
   status: 'READY' | 'RUNNING' | 'FAILED'
   metric_key: string
+}
+
+export type PublicationMetricDetailPayload = {
+  metric_id: string
+  tile: PublicationMetricTilePayload
+  data_sources: string[]
+  data_last_refreshed: string | null
+  computed_at: string | null
+  status: 'READY' | 'RUNNING' | 'FAILED'
+  is_stale: boolean
+  is_updating: boolean
+  last_error: string | null
 }
 
 export type PublicationDetailPayload = {

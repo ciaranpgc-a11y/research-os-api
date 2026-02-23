@@ -26,7 +26,14 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 2
+TOP_METRICS_SCHEMA_VERSION = 3
+
+DELTA_COLOR_BY_TONE = {
+    "positive": "#166534",
+    "neutral": "#475569",
+    "caution": "#B45309",
+    "negative": "#B91C1C",
+}
 
 _executor_lock = threading.Lock()
 _executor: ThreadPoolExecutor | None = None
@@ -138,6 +145,121 @@ def _format_pct(value: float | None, *, digits: int = 1) -> str:
     if value is None:
         return "n/a"
     return f"{value:+.{digits}f}%"
+
+
+def _delta_direction(value: float | int | None) -> str:
+    parsed = _safe_float(value)
+    if parsed is None:
+        return "na"
+    if parsed > 0:
+        return "up"
+    if parsed < 0:
+        return "down"
+    return "flat"
+
+
+def _delta_tone_for_metric(*, key: str, delta_value: float | int | None) -> str:
+    parsed = _safe_float(delta_value)
+    if parsed is None:
+        return "neutral"
+    metric_key = str(key or "").strip().lower()
+
+    if metric_key in {"citations_last_12m", "yoy_change"}:
+        if parsed < -10.0:
+            return "negative"
+        if parsed < 0.0:
+            return "caution"
+        if parsed <= 10.0:
+            return "caution"
+        return "positive"
+
+    if metric_key == "citation_concentration_risk":
+        # Lower concentration is better (less risk concentration).
+        if parsed < 0:
+            return "positive"
+        if parsed > 10:
+            return "negative"
+        if parsed > 0:
+            return "caution"
+        return "neutral"
+
+    if parsed > 0:
+        return "positive"
+    if parsed < 0:
+        return "caution" if abs(parsed) < 10 else "negative"
+    return "neutral"
+
+
+def _delta_color_code_for_metric(*, key: str, delta_value: float | int | None) -> str:
+    tone = _delta_tone_for_metric(key=key, delta_value=delta_value)
+    return DELTA_COLOR_BY_TONE.get(tone, DELTA_COLOR_BY_TONE["neutral"])
+
+
+def _update_frequency_label() -> str:
+    return "Daily (24h TTL, stale-while-revalidate)."
+
+
+def _build_tooltip(
+    *,
+    definition: str,
+    data_sources: list[str],
+    computation: str,
+) -> tuple[str, dict[str, Any]]:
+    sources_text = ", ".join([item for item in data_sources if str(item).strip()]) or "Not available"
+    update_frequency = _update_frequency_label()
+    tooltip = (
+        f"{definition} "
+        f"Data source: {sources_text}. "
+        f"Computed as: {computation}. "
+        f"Update frequency: {update_frequency}"
+    )
+    details = {
+        "definition": definition,
+        "data_sources": data_sources,
+        "computation": computation,
+        "update_frequency": update_frequency,
+    }
+    return tooltip, details
+
+
+def _doi_url(value: str | None) -> str | None:
+    clean = str(value or "").strip()
+    if not clean:
+        return None
+    if clean.lower().startswith("http://") or clean.lower().startswith("https://"):
+        return clean
+    return f"https://doi.org/{clean}"
+
+
+def _confidence_score_from_publications(publications: list[dict[str, Any]]) -> float:
+    values: list[float] = []
+    for item in publications:
+        if not isinstance(item, dict):
+            continue
+        parsed = _safe_float(item.get("confidence_score"))
+        if parsed is None:
+            continue
+        values.append(max(0.0, min(1.0, float(parsed))))
+    if not values:
+        return 0.0
+    return round(sum(values) / len(values), 2)
+
+
+def _publication_item_with_links(item: dict[str, Any]) -> dict[str, Any]:
+    row = dict(item)
+    doi = str(row.get("doi") or "").strip() or None
+    row["doi_url"] = _doi_url(doi)
+    source = str(row.get("match_source") or "").strip()
+    row["data_sources"] = [source] if source else []
+    return row
+
+
+def _concentration_risk_label(value: float) -> str:
+    if value < 30.0:
+        return "Low"
+    if value <= 50.0:
+        return "Moderate"
+    return "High"
 
 
 def _month_start(value: datetime) -> datetime:
@@ -302,12 +424,44 @@ def _best_snapshot(rows: list[MetricsSnapshot]) -> MetricsSnapshot | None:
     return max(rows, key=_snapshot_rank)
 
 
+def _is_history_snapshot_usable(row: MetricsSnapshot) -> bool:
+    payload = row.metric_payload if isinstance(row.metric_payload, dict) else {}
+    note = str(payload.get("note") or "").strip().lower()
+    if not note:
+        return True
+    if (
+        "lookup unavailable" in note
+        or "provider lookup failed" in note
+        or "no confident" in note
+        or "failed" in note
+    ):
+        return False
+    return True
+
+
 def _best_snapshot_at_or_before(
-    rows: list[MetricsSnapshot], *, cutoff: datetime
+    rows: list[MetricsSnapshot],
+    *,
+    cutoff: datetime,
+    preferred_provider: str | None = None,
+    fallback_to_other_providers: bool = True,
 ) -> MetricsSnapshot | None:
-    eligible = [row for row in rows if _coerce_utc(row.captured_at) <= cutoff]
+    eligible = [
+        row
+        for row in rows
+        if _coerce_utc(row.captured_at) <= cutoff and _is_history_snapshot_usable(row)
+    ]
     if not eligible:
         return None
+    preferred = str(preferred_provider or "").strip().lower()
+    if preferred:
+        preferred_rows = [
+            row for row in eligible if str(row.provider or "").strip().lower() == preferred
+        ]
+        if preferred_rows:
+            return max(preferred_rows, key=_snapshot_rank)
+        if not fallback_to_other_providers:
+            return None
     return max(eligible, key=_snapshot_rank)
 
 
@@ -434,22 +588,37 @@ def _metric_tile(
     delta_display: str | None,
     unit: str | None,
     sparkline: list[int | float],
+    sparkline_overlay: list[int | float] | None = None,
     tooltip: str,
+    tooltip_details: dict[str, Any],
     data_source: list[str],
     drilldown: dict[str, Any],
+    confidence_score: float = 0.0,
     stability: str = "stable",
 ) -> dict[str, Any]:
+    direction = _delta_direction(delta_value)
+    tone = _delta_tone_for_metric(key=key, delta_value=delta_value)
+    color = _delta_color_code_for_metric(key=key, delta_value=delta_value)
     return {
+        "id": key,
         "key": key,
         "label": label,
+        "main_value": value,
         "value": value,
+        "main_value_display": value_display,
         "value_display": value_display,
         "delta_value": delta_value,
         "delta_display": delta_display,
+        "delta_direction": direction,
+        "delta_tone": tone,
+        "delta_color_code": color,
         "unit": unit,
         "sparkline": _series_to_sparkline(sparkline),
+        "sparkline_overlay": _series_to_sparkline(sparkline_overlay or []),
         "tooltip": tooltip,
+        "tooltip_details": tooltip_details,
         "data_source": data_source,
+        "confidence_score": round(max(0.0, min(1.0, float(confidence_score or 0.0))), 2),
         "stability": stability,
         "drilldown": drilldown,
     }
@@ -621,8 +790,21 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 prev_12 = int(round(prev_12 * scale))
             window_basis = "yearly_counts"
         else:
-            best_12 = _best_snapshot_at_or_before(rows, cutoff=cutoff_12)
-            best_24 = _best_snapshot_at_or_before(rows, cutoff=cutoff_24)
+            latest_provider = (
+                str(latest.provider or "").strip().lower() if latest is not None else None
+            )
+            best_12 = _best_snapshot_at_or_before(
+                rows,
+                cutoff=cutoff_12,
+                preferred_provider=latest_provider,
+                fallback_to_other_providers=False,
+            )
+            best_24 = _best_snapshot_at_or_before(
+                rows,
+                cutoff=cutoff_24,
+                preferred_provider=latest_provider,
+                fallback_to_other_providers=False,
+            )
             if best_12 is None:
                 monthly_added = [0 for _ in range(24)]
                 cumulative_series = [latest_citations for _ in range(25)]
@@ -632,7 +814,12 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             else:
                 cumulative_from_snapshots: list[int] = []
                 for endpoint in month_end_points:
-                    best_at_endpoint = _best_snapshot_at_or_before(rows, cutoff=endpoint)
+                    best_at_endpoint = _best_snapshot_at_or_before(
+                        rows,
+                        cutoff=endpoint,
+                        preferred_provider=latest_provider,
+                        fallback_to_other_providers=False,
+                    )
                     if best_at_endpoint is None:
                         cumulative_from_snapshots.append(0)
                     else:
@@ -658,7 +845,12 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 window_basis = "snapshot_delta"
 
         semantic_latest_total = max(0, int(latest_influential or 0))
-        semantic_12 = _best_snapshot_at_or_before(semantic_rows, cutoff=cutoff_12)
+        semantic_12 = _best_snapshot_at_or_before(
+            semantic_rows,
+            cutoff=cutoff_12,
+            preferred_provider="semantic_scholar",
+            fallback_to_other_providers=False,
+        )
         if semantic_12 is None:
             monthly_semantic_added = [0 for _ in range(24)]
             semantic_cumulative_series = [semantic_latest_total for _ in range(25)]
@@ -666,7 +858,10 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             semantic_cumulative_raw: list[int] = []
             for endpoint in month_end_points:
                 semantic_at_endpoint = _best_snapshot_at_or_before(
-                    semantic_rows, cutoff=endpoint
+                    semantic_rows,
+                    cutoff=endpoint,
+                    preferred_provider="semantic_scholar",
+                    fallback_to_other_providers=False,
                 )
                 if semantic_at_endpoint is None or semantic_at_endpoint.influential_citations is None:
                     semantic_cumulative_raw.append(0)
@@ -837,6 +1032,14 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 dimensions_values.append(parsed)
         if dimensions_values:
             field_norm = round(sum(dimensions_values) / len(dimensions_values), 3)
+            dimensions_tooltip, dimensions_tooltip_details = _build_tooltip(
+                definition=(
+                    "Average field-normalized citation impact across publications where Dimensions "
+                    "returns Normalised Citation Impact."
+                ),
+                data_sources=["Dimensions Metrics"],
+                computation="mean(field_normalized_impact)",
+            )
             dimensions_tile = _metric_tile(
                 key="field_normalized_impact",
                 label="Field-normalized impact",
@@ -846,10 +1049,10 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 delta_display=None,
                 unit="index",
                 sparkline=[field_norm for _ in range(12)],
-                tooltip=(
-                    "Average field-normalized impact index from Dimensions metrics when licensed."
-                ),
+                tooltip=dimensions_tooltip,
+                tooltip_details=dimensions_tooltip_details,
                 data_source=["Dimensions Metrics"],
+                confidence_score=1.0,
                 stability="stable",
                 drilldown={
                     "title": "Field-normalized impact",
@@ -860,6 +1063,12 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                     "formula": "mean(field_normalized_impact)",
                     "confidence_note": _confidence_note(),
                     "publications": [],
+                    "metadata": {
+                        "intermediate_values": {
+                            "field_normalized_values_count": len(dimensions_values),
+                            "field_normalized_values_mean": field_norm,
+                        }
+                    },
                 },
             )
             data_sources.append("Dimensions Metrics")
@@ -872,7 +1081,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     stability = "stable" if confidence_average >= 0.70 else "unstable"
 
     total_citation_publications = [
-        {
+        _publication_item_with_links(
+            {
             "work_id": row["work_id"],
             "title": row["title"],
             "doi": row["doi"],
@@ -883,12 +1093,14 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             "confidence_label": row["confidence_label"],
             "match_source": row["match_source"],
             "match_method": row["match_method"],
-        }
+            }
+        )
         for row in per_work_rows[:100]
     ]
 
     h_threshold_publications = [
-        {
+        _publication_item_with_links(
+            {
             "work_id": row["work_id"],
             "title": row["title"],
             "doi": row["doi"],
@@ -900,13 +1112,15 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             "confidence_label": row["confidence_label"],
             "match_source": row["match_source"],
             "match_method": row["match_method"],
-        }
+            }
+        )
         for row in per_work_rows[:100]
     ]
 
     growth_publications = sorted(
         [
-            {
+            _publication_item_with_links(
+                {
                 "work_id": row["work_id"],
                 "title": row["title"],
                 "doi": row["doi"],
@@ -919,7 +1133,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "confidence_label": row["confidence_label"],
                 "match_source": row["match_source"],
                 "match_method": row["match_method"],
-            }
+                }
+            )
             for row in per_work_rows
         ],
         key=lambda item: (int(item["citations_last_12m"]), int(item["yoy_delta"])),
@@ -928,7 +1143,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
 
     momentum_publications = sorted(
         [
-            {
+            _publication_item_with_links(
+                {
                 "work_id": row["work_id"],
                 "title": row["title"],
                 "doi": row["doi"],
@@ -940,7 +1156,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "confidence_label": row["confidence_label"],
                 "match_source": row["match_source"],
                 "match_method": row["match_method"],
-            }
+                }
+            )
             for row in per_work_rows
         ],
         key=lambda item: float(item["momentum_contribution"]),
@@ -948,7 +1165,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     )[:100]
 
     concentration_publications = [
-        {
+        _publication_item_with_links(
+            {
             "work_id": row["work_id"],
             "title": row["title"],
             "doi": row["doi"],
@@ -964,13 +1182,15 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             "confidence_label": row["confidence_label"],
             "match_source": row["match_source"],
             "match_method": row["match_method"],
-        }
+            }
+        )
         for row in per_work_rows[:3]
     ]
 
     influence_publications = sorted(
         [
-            {
+            _publication_item_with_links(
+                {
                 "work_id": row["work_id"],
                 "title": row["title"],
                 "doi": row["doi"],
@@ -982,7 +1202,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "confidence_label": row["confidence_label"],
                 "match_source": row["match_source"],
                 "match_method": row["match_method"],
-            }
+                }
+            )
             for row in influence_candidates
         ],
         key=lambda item: int(item["influential_citations"]),
@@ -1002,6 +1223,66 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     )
     last12_stability = "unstable" if has_insufficient_history else "stable"
 
+    rolling_last_12_series_24 = [
+        _rolling_sum(monthly_added_totals, 12, index) for index in range(24)
+    ]
+    momentum_weighted_monthly = [
+        round(float(value) * (1.5 if index >= 9 else 1.0), 2)
+        for index, value in enumerate(monthly_added_totals[-12:])
+    ]
+    influence_monthly_added_totals = [0 for _ in range(24)]
+    for row in influence_candidates:
+        additions = row.get("semantic_monthly_added_24")
+        if not isinstance(additions, list):
+            continue
+        for idx in range(min(24, len(additions))):
+            influence_monthly_added_totals[idx] += max(0, int(additions[idx] or 0))
+
+    concentration_label = _concentration_risk_label(float(concentration_risk))
+
+    total_tooltip, total_tooltip_details = _build_tooltip(
+        definition="Lifetime citations across all publications in your portfolio.",
+        data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+        computation="sum(latest_citations_per_publication)",
+    )
+    h_tooltip, h_tooltip_details = _build_tooltip(
+        definition="h-index and m-index summarize sustained publication impact over career length.",
+        data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+        computation=(
+            "h = max(h such that >= h papers have >= h citations); "
+            "m = h / years_since_first_publication"
+        ),
+    )
+    roll12_tooltip, roll12_tooltip_details = _build_tooltip(
+        definition=(
+            "Citations gained in the most recent rolling 12-month window; delta compares with the previous 12-month window."
+        ),
+        data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+        computation="sum(monthly_citation_growth[-12:]) vs sum(monthly_citation_growth[-24:-12])",
+    )
+    yoy_tooltip, yoy_tooltip_details = _build_tooltip(
+        definition="Year-over-year change in citations comparing last 12 months with previous 12 months.",
+        data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+        computation="((citations_last_12m - citations_prev_12m) / citations_prev_12m) * 100",
+    )
+    momentum_tooltip, momentum_tooltip_details = _build_tooltip(
+        definition="Weighted citation momentum emphasizing the most recent quarter.",
+        data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+        computation="(sum(months[-3:]) * 1.5) + sum(months[-12:-3])",
+    )
+    concentration_tooltip, concentration_tooltip_details = _build_tooltip(
+        definition=(
+            "Citation concentration risk is the percentage of lifetime citations coming from your top 3 publications."
+        ),
+        data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+        computation="(sum(top_3_paper_citations) / total_citations) * 100",
+    )
+    influence_tooltip, influence_tooltip_details = _build_tooltip(
+        definition="Influence-weighted citations from Semantic Scholar influentialCitationCount.",
+        data_sources=["Semantic Scholar"],
+        computation="sum(semantic_scholar.influentialCitationCount)",
+    )
+
     tiles = [
         _metric_tile(
             key="total_citations_lifetime",
@@ -1009,14 +1290,13 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             value=total_citations,
             value_display=_format_int(total_citations),
             delta_value=citations_last_12m,
-            delta_display=f"+{_format_int(citations_last_12m)} in last 12m",
+            delta_display=f"+{_format_int(citations_last_12m)} in last 12 months",
             unit="citations",
-            sparkline=monthly_cumulative_totals[-12:],
-            tooltip=(
-                "Lifetime citations across your publication library. "
-                "Primary sources: OpenAlex and Semantic Scholar snapshots."
-            ),
+            sparkline=monthly_cumulative_totals[1:],
+            tooltip=total_tooltip,
+            tooltip_details=total_tooltip_details,
             data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+            confidence_score=_confidence_score_from_publications(total_citation_publications),
             stability=stability,
             drilldown={
                 "title": "Total citations (lifetime)",
@@ -1024,6 +1304,13 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "formula": "sum(latest_citations_per_publication)",
                 "confidence_note": _confidence_note(),
                 "publications": total_citation_publications,
+                "metadata": {
+                    "intermediate_values": {
+                        "total_citations": total_citations,
+                        "citations_last_12_months": citations_last_12m,
+                    },
+                    "data_sources": [src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+                },
             },
         ),
         _metric_tile(
@@ -1035,11 +1322,10 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             delta_display=f"m-index {_format_float(m_index, digits=2)}",
             unit="index",
             sparkline=h_index_series,
-            tooltip=(
-                "h-index is the largest h with at least h papers cited h times. "
-                "m-index = h-index / years since first publication."
-            ),
+            tooltip=h_tooltip,
+            tooltip_details=h_tooltip_details,
             data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+            confidence_score=_confidence_score_from_publications(h_threshold_publications),
             stability=stability,
             drilldown={
                 "title": "h-index and m-index",
@@ -1054,9 +1340,12 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "confidence_note": _confidence_note(),
                 "publications": h_threshold_publications,
                 "metadata": {
-                    "h_index": h_index,
-                    "m_index": m_index,
-                    "first_publication_year": first_publication_year,
+                    "intermediate_values": {
+                        "h_index": h_index,
+                        "m_index": m_index,
+                        "first_publication_year": first_publication_year,
+                    },
+                    "data_sources": [src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
                 },
             },
         ),
@@ -1068,9 +1357,11 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             delta_value=yoy_pct,
             delta_display=_format_pct(yoy_pct),
             unit="citations",
-            sparkline=rolling_last_12_series,
-            tooltip="Total citations gained over the most recent 12 months.",
+            sparkline=monthly_added_totals[-12:],
+            tooltip=roll12_tooltip,
+            tooltip_details=roll12_tooltip_details,
             data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+            confidence_score=_confidence_score_from_publications(growth_publications),
             stability=last12_stability,
             drilldown={
                 "title": "Citations (rolling last 12 months)",
@@ -1078,6 +1369,14 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "formula": "sum(monthly_citation_growth[-12:])",
                 "confidence_note": _confidence_note(),
                 "publications": growth_publications,
+                "metadata": {
+                    "intermediate_values": {
+                        "citations_last_12m": citations_last_12m,
+                        "citations_prev_12m": citations_prev_12m,
+                        "yoy_pct": yoy_pct,
+                    },
+                    "raw_monthly_citations_12m": monthly_added_totals[-12:],
+                },
             },
         ),
         _metric_tile(
@@ -1088,11 +1387,12 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             delta_value=yoy_delta,
             delta_display=f"{yoy_delta:+,} citations",
             unit="percent",
-            sparkline=yoy_series_numbers,
-            tooltip=(
-                "Year-over-year change: rolling last 12 months versus previous 12 months."
-            ),
+            sparkline=monthly_added_totals[-24:],
+            sparkline_overlay=rolling_last_12_series_24,
+            tooltip=yoy_tooltip,
+            tooltip_details=yoy_tooltip_details,
             data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+            confidence_score=_confidence_score_from_publications(growth_publications),
             stability=yoy_stability,
             drilldown={
                 "title": "Year-over-year citation change",
@@ -1100,6 +1400,17 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "formula": "((citations_last_12m - citations_prev_12m) / citations_prev_12m) * 100",
                 "confidence_note": _confidence_note(),
                 "publications": growth_publications,
+                "metadata": {
+                    "intermediate_values": {
+                        "citations_last_12m": citations_last_12m,
+                        "citations_prev_12m": citations_prev_12m,
+                        "yoy_pct": yoy_pct,
+                        "yoy_delta": yoy_delta,
+                    },
+                    "raw_monthly_citations_24m": monthly_added_totals[-24:],
+                    "rolling_12m_overlay_24m": rolling_last_12_series_24,
+                    "yoy_series_12m": yoy_series_numbers,
+                },
             },
         ),
         _metric_tile(
@@ -1108,13 +1419,13 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             value=momentum_score,
             value_display=_format_float(momentum_score, digits=2),
             delta_value=momentum_delta,
-            delta_display=f"{momentum_delta:+.2f} vs previous window",
+            delta_display=f"{momentum_delta:+.2f} vs previous 12m window",
             unit="score",
-            sparkline=momentum_series,
-            tooltip=(
-                "Weighted momentum where last 3 months have 1.5x weight and months 4-12 have 1.0x weight."
-            ),
+            sparkline=momentum_weighted_monthly,
+            tooltip=momentum_tooltip,
+            tooltip_details=momentum_tooltip_details,
             data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+            confidence_score=_confidence_score_from_publications(momentum_publications),
             stability="stable",
             drilldown={
                 "title": "Citation momentum score",
@@ -1122,6 +1433,14 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "formula": "(sum(months[-3:]) * 1.5) + sum(months[-12:-3])",
                 "confidence_note": _confidence_note(),
                 "publications": momentum_publications,
+                "metadata": {
+                    "intermediate_values": {
+                        "momentum_score_last_12m": momentum_score,
+                        "momentum_score_prev_12m": momentum_previous_score,
+                        "momentum_delta": momentum_delta,
+                    },
+                    "weighted_monthly_values_12m": momentum_weighted_monthly,
+                },
             },
         ),
         _metric_tile(
@@ -1130,14 +1449,13 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             value=concentration_risk,
             value_display=f"{concentration_risk:.2f}%",
             delta_value=concentration_delta,
-            delta_display=f"{concentration_delta:+.2f}pp",
+            delta_display=f"{concentration_label} risk | {concentration_delta:+.2f}pp",
             unit="percent",
             sparkline=concentration_series,
-            tooltip=(
-                "Percent of lifetime citations coming from the top 3 papers. "
-                "Higher concentration means more portfolio risk."
-            ),
+            tooltip=concentration_tooltip,
+            tooltip_details=concentration_tooltip_details,
             data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+            confidence_score=_confidence_score_from_publications(concentration_publications),
             stability="unstable" if concentration_risk >= 70.0 else "stable",
             drilldown={
                 "title": "Citation concentration risk",
@@ -1145,23 +1463,36 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "formula": "(sum(top_3_paper_citations) / total_citations) * 100",
                 "confidence_note": _confidence_note(),
                 "publications": concentration_publications,
+                "metadata": {
+                    "intermediate_values": {
+                        "top3_citations": top3_citations,
+                        "total_citations": total_citations,
+                        "risk_percent": concentration_risk,
+                        "risk_label": concentration_label,
+                    },
+                    "concentration_series_12m": concentration_series,
+                },
             },
         ),
     ]
 
     if influence_available:
+        influence_prev_12m = max(0, int(sum(influence_monthly_added_totals[:12])))
+        influence_delta = influence_last_12m - influence_prev_12m
         tiles.append(
             _metric_tile(
                 key="influence_weighted_citations",
                 label="Influence-weighted citations",
                 value=influence_total,
                 value_display=_format_int(influence_total),
-                delta_value=influence_last_12m,
-                delta_display=f"+{_format_int(influence_last_12m)} in last 12m",
+                delta_value=influence_delta,
+                delta_display=f"{influence_delta:+,} vs previous 12m",
                 unit="influential citations",
-                sparkline=influence_series,
-                tooltip="Sum of influential citations from Semantic Scholar where available.",
+                sparkline=influence_monthly_added_totals[-12:],
+                tooltip=influence_tooltip,
+                tooltip_details=influence_tooltip_details,
                 data_source=["Semantic Scholar"],
+                confidence_score=_confidence_score_from_publications(influence_publications),
                 stability="stable",
                 drilldown={
                     "title": "Influence-weighted citations",
@@ -1169,6 +1500,15 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                     "formula": "sum(semantic_scholar.influentialCitationCount)",
                     "confidence_note": _confidence_note(),
                     "publications": influence_publications,
+                    "metadata": {
+                        "intermediate_values": {
+                            "influence_total": influence_total,
+                            "influence_last_12m": influence_last_12m,
+                            "influence_prev_12m": influence_prev_12m,
+                            "influence_delta": influence_delta,
+                        },
+                        "influential_monthly_counts_24m": influence_monthly_added_totals,
+                    },
                 },
             )
         )
@@ -1203,6 +1543,14 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             "provider_counts_latest": provider_counts_latest,
             "window_basis_counts": window_basis_counts,
             "citations_prev_12m": citations_prev_12m,
+            "update_frequency": _update_frequency_label(),
+            "sparkline_sets": {
+                "raw_monthly_citations_24m": _series_to_sparkline(monthly_added_totals),
+                "rolling_citations_12m": _series_to_sparkline(rolling_last_12_series_24),
+                "momentum_weighted_monthly_12m": _series_to_sparkline(momentum_weighted_monthly),
+                "influential_monthly_citations_24m": _series_to_sparkline(influence_monthly_added_totals),
+                "concentration_risk_12m": _series_to_sparkline(concentration_series),
+            },
         },
     }
 
@@ -1413,6 +1761,36 @@ def get_publication_top_metrics(*, user_id: str) -> dict[str, Any]:
     if enqueue:
         enqueue_publication_top_metrics_refresh(user_id=user_id, reason="stale_read")
     return response
+
+
+def get_publication_metric_detail(*, user_id: str, metric_id: str) -> dict[str, Any]:
+    response = get_publication_top_metrics(user_id=user_id)
+    metric_key = str(metric_id or "").strip()
+    if not metric_key:
+        raise PublicationMetricsValidationError("metric_id is required.")
+
+    tiles = response.get("tiles")
+    if not isinstance(tiles, list):
+        raise PublicationMetricsNotFoundError("Publication metrics payload is unavailable.")
+
+    for tile in tiles:
+        if not isinstance(tile, dict):
+            continue
+        tile_key = str(tile.get("key") or tile.get("id") or "").strip()
+        if tile_key == metric_key:
+            return {
+                "metric_id": metric_key,
+                "tile": tile,
+                "data_sources": response.get("data_sources", []),
+                "data_last_refreshed": response.get("data_last_refreshed"),
+                "computed_at": response.get("computed_at"),
+                "status": response.get("status", RUNNING_STATUS),
+                "is_stale": bool(response.get("is_stale")),
+                "is_updating": bool(response.get("is_updating")),
+                "last_error": response.get("last_error"),
+            }
+
+    raise PublicationMetricsNotFoundError(f"Metric '{metric_key}' was not found.")
 
 
 def trigger_publication_top_metrics_refresh(*, user_id: str) -> dict[str, Any]:

@@ -1116,16 +1116,25 @@ class PublicationMetricDrilldownResponse(BaseModel):
 
 
 class PublicationMetricTileResponse(BaseModel):
+    id: str = ""
     key: str
     label: str
+    main_value: float | int | None = None
     value: float | int | None = None
+    main_value_display: str = ""
     value_display: str
     delta_value: float | int | None = None
     delta_display: str | None = None
+    delta_direction: Literal["up", "down", "flat", "na"] = "na"
+    delta_tone: Literal["positive", "neutral", "caution", "negative"] = "neutral"
+    delta_color_code: str = "#475569"
     unit: str | None = None
     sparkline: list[float] = Field(default_factory=list)
+    sparkline_overlay: list[float] = Field(default_factory=list)
     tooltip: str = ""
+    tooltip_details: dict[str, Any] = Field(default_factory=dict)
     data_source: list[str] = Field(default_factory=list)
+    confidence_score: float = 0.0
     stability: Literal["stable", "unstable"] = "stable"
     drilldown: PublicationMetricDrilldownResponse
 
@@ -1135,6 +1144,18 @@ class PublicationsTopMetricsResponse(BaseModel):
     data_sources: list[str] = Field(default_factory=list)
     data_last_refreshed: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    computed_at: datetime | None = None
+    status: Literal["READY", "RUNNING", "FAILED"] = "RUNNING"
+    is_stale: bool = False
+    is_updating: bool = False
+    last_error: str | None = None
+
+
+class PublicationMetricDetailResponse(BaseModel):
+    metric_id: str
+    tile: PublicationMetricTileResponse
+    data_sources: list[str] = Field(default_factory=list)
+    data_last_refreshed: str | None = None
     computed_at: datetime | None = None
     status: Literal["READY", "RUNNING", "FAILED"] = "RUNNING"
     is_stale: bool = False

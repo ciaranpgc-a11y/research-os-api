@@ -162,6 +162,30 @@ def test_metric_compute_helpers() -> None:
     assert compute_yoy_percent(citations_last_12m=100, citations_prev_12m=0) is None
     assert compute_citation_momentum_score([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) == 94.5
     assert compute_concentration_risk_percent(total_citations=200, top3_citations=80) == 40.0
+    assert (
+        publication_metrics_service._delta_tone_for_metric(
+            key="citations_last_12m", delta_value=5.0
+        )
+        == "caution"
+    )
+    assert (
+        publication_metrics_service._delta_tone_for_metric(
+            key="citations_last_12m", delta_value=15.0
+        )
+        == "positive"
+    )
+    assert (
+        publication_metrics_service._delta_tone_for_metric(
+            key="citations_last_12m", delta_value=-12.0
+        )
+        == "negative"
+    )
+    assert (
+        publication_metrics_service._delta_tone_for_metric(
+            key="citation_concentration_risk", delta_value=-2.0
+        )
+        == "positive"
+    )
 
 
 def test_counts_by_year_prevents_lifetime_lumping(monkeypatch, tmp_path) -> None:
@@ -281,6 +305,71 @@ def test_single_snapshot_without_history_is_conservative(monkeypatch, tmp_path) 
                 metric_payload={"match_method": "doi"},
                 captured_at=now - timedelta(days=2),
             )
+        )
+
+    payload = compute_publication_top_metrics(user_id=user_id)
+    last12_tile = _tile(payload, "citations_last_12m")
+    yoy_tile = _tile(payload, "yoy_change")
+    assert int(last12_tile["value"] or 0) == 0
+    assert str(yoy_tile["value_display"]) == "n/a"
+
+
+def test_snapshot_delta_ignores_mismatched_provider_baseline(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    now = datetime.now(timezone.utc)
+
+    with session_scope() as session:
+        user = User(
+            email="mismatched-baseline@example.com",
+            password_hash="test-hash",
+            name="Mismatched Baseline",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+        work = Work(
+            user_id=user_id,
+            title="Provider mismatch work",
+            title_lower="provider mismatch work",
+            year=2022,
+            doi="10.1000/provider-mismatch-work",
+            venue_name="Mismatch Journal",
+            journal="Mismatch Journal",
+            publication_type="journal-article",
+            citations_total=0,
+            work_type="journal-article",
+            publisher="Publisher",
+            abstract="Abstract",
+            keywords=["mismatch"],
+            url="https://example.org/mismatch",
+            provenance="manual",
+        )
+        session.add(work)
+        session.flush()
+
+        session.add_all(
+            [
+                MetricsSnapshot(
+                    work_id=str(work.id),
+                    provider="manual",
+                    citations_count=0,
+                    influential_citations=None,
+                    altmetric_score=None,
+                    metric_payload={"note": "manual baseline"},
+                    captured_at=now - timedelta(days=450),
+                ),
+                MetricsSnapshot(
+                    work_id=str(work.id),
+                    provider="semantic_scholar",
+                    citations_count=100,
+                    influential_citations=12,
+                    altmetric_score=None,
+                    metric_payload={"match_method": "doi"},
+                    captured_at=now - timedelta(days=2),
+                ),
+            ]
         )
 
     payload = compute_publication_top_metrics(user_id=user_id)
@@ -425,16 +514,25 @@ def test_publications_metrics_api_response_contract(monkeypatch, tmp_path) -> No
     assert len(payload["tiles"]) >= 6
     first_tile = payload["tiles"][0]
     assert {
+        "id",
         "key",
         "label",
+        "main_value",
         "value",
+        "main_value_display",
         "value_display",
         "delta_value",
         "delta_display",
+        "delta_direction",
+        "delta_tone",
+        "delta_color_code",
         "unit",
         "sparkline",
+        "sparkline_overlay",
         "tooltip",
+        "tooltip_details",
         "data_source",
+        "confidence_score",
         "stability",
         "drilldown",
     }.issubset(first_tile.keys())
@@ -475,3 +573,66 @@ def test_refresh_endpoint_returns_status(monkeypatch, tmp_path) -> None:
     assert payload["enqueued"] is True
     assert payload["status"] in {"RUNNING", "READY"}
     assert payload["metric_key"] == TOP_METRICS_KEY
+
+
+def test_metric_detail_endpoint_returns_drilldown(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    with TestClient(app) as client:
+        register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "metrics-detail@example.com",
+                "password": "StrongPassword123",
+                "name": "Metrics Detail",
+            },
+        )
+        assert register.status_code == 200
+        token = register.json()["session_token"]
+        user_id = register.json()["user"]["id"]
+
+        with session_scope() as session:
+            work = Work(
+                user_id=user_id,
+                title="Metric Detail Work",
+                title_lower="metric detail work",
+                year=2021,
+                doi="10.1000/metric-detail-work",
+                venue_name="Detail Journal",
+                journal="Detail Journal",
+                publication_type="journal-article",
+                citations_total=0,
+                work_type="journal-article",
+                publisher="Publisher",
+                abstract="Detail abstract",
+                keywords=["detail"],
+                url="https://example.org/detail",
+                provenance="manual",
+            )
+            session.add(work)
+            session.flush()
+            session.add(
+                MetricsSnapshot(
+                    work_id=str(work.id),
+                    provider="openalex",
+                    citations_count=42,
+                    influential_citations=None,
+                    altmetric_score=None,
+                    metric_payload={"match_method": "doi"},
+                    captured_at=datetime.now(timezone.utc) - timedelta(days=10),
+                )
+            )
+
+        compute_publication_top_metrics(user_id=user_id)
+        response = client.get(
+            "/v1/publications/metric/total_citations_lifetime",
+            headers=_auth_headers(token),
+        )
+        assert response.status_code == 200
+        payload = response.json()
+
+    assert payload["metric_id"] == "total_citations_lifetime"
+    assert payload["tile"]["key"] == "total_citations_lifetime"
+    assert "drilldown" in payload["tile"]
+    assert "publications" in payload["tile"]["drilldown"]

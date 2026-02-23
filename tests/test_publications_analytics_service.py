@@ -148,6 +148,80 @@ def test_compute_publications_analytics_persists_bundle(monkeypatch, tmp_path) -
     assert "summary" in row.payload_json
 
 
+def test_yearly_counts_preferred_over_mismatched_baseline_snapshot(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    now = datetime.now(timezone.utc)
+
+    with session_scope() as session:
+        user = User(
+            email="analytics-yearly-preferred@example.com",
+            password_hash="test-hash",
+            name="Analytics Yearly",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+        work = Work(
+            user_id=user_id,
+            title="Yearly preferred work",
+            title_lower="yearly preferred work",
+            year=2021,
+            doi="10.1000/yearly-preferred-work",
+            work_type="journal-article",
+            venue_name="Journal",
+            publisher="Publisher",
+            abstract="Abstract",
+            keywords=["metrics"],
+            url="https://example.org/yearly",
+            provenance="manual",
+            user_edited=False,
+        )
+        session.add(work)
+        session.flush()
+
+        session.add_all(
+            [
+                MetricsSnapshot(
+                    work_id=str(work.id),
+                    provider="manual",
+                    citations_count=0,
+                    influential_citations=None,
+                    altmetric_score=None,
+                    metric_payload={"note": "manual baseline"},
+                    captured_at=now - timedelta(days=500),
+                ),
+                MetricsSnapshot(
+                    work_id=str(work.id),
+                    provider="openalex",
+                    citations_count=120,
+                    influential_citations=None,
+                    altmetric_score=None,
+                    metric_payload={
+                        "counts_by_year": [
+                            {"year": now.year - 2, "cited_by_count": 40},
+                            {"year": now.year - 1, "cited_by_count": 50},
+                            {"year": now.year, "cited_by_count": 30},
+                        ]
+                    },
+                    captured_at=now - timedelta(days=2),
+                ),
+            ]
+        )
+
+    monkeypatch.setattr(
+        "research_os.services.publications_analytics_service._resolve_openalex_author_id",
+        lambda **kwargs: None,
+    )
+    payload = compute_publications_analytics(user_id=user_id)
+    summary = payload["summary"]
+    assert int(summary["total_citations"]) == 120
+    assert int(summary["citations_last_12_months"]) < 120
+
+
 def test_stale_while_revalidate_returns_cache_and_enqueues(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()

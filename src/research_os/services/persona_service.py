@@ -324,8 +324,9 @@ def upsert_work(
             ).all()
             by_author_id = {item.author_id: item for item in existing_authorships}
             seen_author_ids: set[str] = set()
+            author_order_position = 0
 
-            for index, author_item in enumerate(authors, start=1):
+            for author_item in authors:
                 if not isinstance(author_item, dict):
                     continue
                 author_name = _normalize_author_name(str(author_item.get("name", "")))
@@ -340,23 +341,34 @@ def upsert_work(
                     canonical_name=author_name,
                     orcid_id=author_orcid,
                 )
-                seen_author_ids.add(author.id)
                 is_user = bool(user.orcid_id and author.orcid_id == user.orcid_id) or (
                     _author_name_key(author_name) == _author_name_key(user.name)
                 )
+
+                # ORCID/OpenAlex payloads can include the same person multiple times;
+                # keep the first occurrence and avoid duplicate (work_id, author_id) inserts.
+                if author.id in seen_author_ids:
+                    link = by_author_id.get(author.id)
+                    if link is not None:
+                        link.is_user = bool(link.is_user or is_user)
+                    continue
+
+                seen_author_ids.add(author.id)
+                author_order_position += 1
                 link = by_author_id.get(author.id)
                 if link is None:
-                    db_session.add(
-                        WorkAuthorship(
-                            work_id=existing.id,
-                            author_id=author.id,
-                            author_order=index,
-                            is_user=is_user,
-                        )
+                    link = WorkAuthorship(
+                        work_id=existing.id,
+                        author_id=author.id,
+                        author_order=author_order_position,
+                        is_user=is_user,
                     )
+                    db_session.add(link)
+                    by_author_id[author.id] = link
                 else:
-                    link.author_order = index
+                    link.author_order = author_order_position
                     link.is_user = is_user
+
             for link in existing_authorships:
                 if link.author_id not in seen_author_ids:
                     db_session.delete(link)
