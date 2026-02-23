@@ -9,6 +9,10 @@ import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-c
 import { getAuthSessionToken } from '@/lib/auth-session'
 import type { OrcidStatusPayload, PersonaStatePayload } from '@/types/impact'
 
+type PublicationFilterKey = 'all' | 'cited' | 'with_doi' | 'with_abstract'
+type PublicationSortField = 'updated' | 'citations' | 'year' | 'title' | 'venue'
+type SortDirection = 'asc' | 'desc'
+
 function formatTimestamp(value: string | null | undefined): string {
   if (!value) {
     return 'Not available'
@@ -26,12 +30,42 @@ function formatTimestamp(value: string | null | undefined): string {
   })
 }
 
+function formatShortDate(value: string | null | undefined): string {
+  if (!value) {
+    return 'Not available'
+  }
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) {
+    return 'Not available'
+  }
+  return new Date(parsed).toLocaleDateString('en-GB', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+  })
+}
+
+function doiToUrl(doi: string | null | undefined): string | null {
+  const clean = (doi || '').trim()
+  if (!clean) {
+    return null
+  }
+  if (clean.startsWith('https://') || clean.startsWith('http://')) {
+    return clean
+  }
+  return `https://doi.org/${clean}`
+}
+
 export function ProfilePublicationsPage() {
   const navigate = useNavigate()
   const [token, setToken] = useState<string>(() => getAuthSessionToken())
   const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(null)
   const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(null)
   const [query, setQuery] = useState('')
+  const [filterKey, setFilterKey] = useState<PublicationFilterKey>('all')
+  const [sortField, setSortField] = useState<PublicationSortField>('updated')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -100,18 +134,70 @@ export function ProfilePublicationsPage() {
 
   const filteredWorks = useMemo(() => {
     const cleanQuery = query.trim().toLowerCase()
-    const works = personaState?.works ?? []
-    if (!cleanQuery) {
-      return works
-    }
-    return works.filter((work) => {
-      return (
+    const works = [...(personaState?.works ?? [])]
+    const filtered = works.filter((work) => {
+      const matchesQuery =
+        !cleanQuery ||
         work.title.toLowerCase().includes(cleanQuery) ||
         work.venue_name.toLowerCase().includes(cleanQuery) ||
         (work.doi || '').toLowerCase().includes(cleanQuery)
-      )
+      if (!matchesQuery) {
+        return false
+      }
+      if (filterKey === 'cited') {
+        return Number(metricsByWorkId.get(work.id)?.citations || 0) > 0
+      }
+      if (filterKey === 'with_doi') {
+        return Boolean((work.doi || '').trim())
+      }
+      if (filterKey === 'with_abstract') {
+        return Boolean((work.abstract || '').trim())
+      }
+      return true
     })
-  }, [personaState?.works, query])
+
+    const direction = sortDirection === 'asc' ? 1 : -1
+    filtered.sort((left, right) => {
+      if (sortField === 'citations') {
+        const leftCitations = Number(metricsByWorkId.get(left.id)?.citations || 0)
+        const rightCitations = Number(metricsByWorkId.get(right.id)?.citations || 0)
+        return (leftCitations - rightCitations) * direction
+      }
+      if (sortField === 'year') {
+        const leftYear = left.year ?? 0
+        const rightYear = right.year ?? 0
+        return (leftYear - rightYear) * direction
+      }
+      if (sortField === 'title') {
+        return left.title.localeCompare(right.title) * direction
+      }
+      if (sortField === 'venue') {
+        return left.venue_name.localeCompare(right.venue_name) * direction
+      }
+      return (Date.parse(left.updated_at) - Date.parse(right.updated_at)) * direction
+    })
+    return filtered
+  }, [filterKey, metricsByWorkId, personaState?.works, query, sortDirection, sortField])
+
+  useEffect(() => {
+    if (filteredWorks.length === 0) {
+      setSelectedWorkId(null)
+      return
+    }
+    setSelectedWorkId((current) => {
+      if (current && filteredWorks.some((work) => work.id === current)) {
+        return current
+      }
+      return filteredWorks[0].id
+    })
+  }, [filteredWorks])
+
+  const selectedWork = useMemo(() => {
+    if (!selectedWorkId) {
+      return null
+    }
+    return (personaState?.works ?? []).find((work) => work.id === selectedWorkId) ?? null
+  }, [personaState?.works, selectedWorkId])
 
   const totalCitations = useMemo(() => {
     let count = 0
@@ -267,61 +353,202 @@ export function ProfilePublicationsPage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Library</CardTitle>
+          <CardTitle className="text-sm">Library explorer</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Filter by title, venue, DOI"
-          />
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Filter by title, venue, DOI"
+                  className="w-[280px]"
+                />
+                <select
+                  value={filterKey}
+                  onChange={(event) => setFilterKey(event.target.value as PublicationFilterKey)}
+                  className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                >
+                  <option value="all">All works</option>
+                  <option value="cited">Cited only</option>
+                  <option value="with_doi">With DOI</option>
+                  <option value="with_abstract">With abstract</option>
+                </select>
+                <select
+                  value={sortField}
+                  onChange={(event) => setSortField(event.target.value as PublicationSortField)}
+                  className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                >
+                  <option value="updated">Sort: Updated</option>
+                  <option value="citations">Sort: Citations</option>
+                  <option value="year">Sort: Year</option>
+                  <option value="title">Sort: Title</option>
+                  <option value="venue">Sort: Venue</option>
+                </select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'))}
+                >
+                  {sortDirection === 'desc' ? 'Descending' : 'Ascending'}
+                </Button>
+              </div>
 
-          {filteredWorks.length === 0 ? (
-            <div className="rounded border border-dashed border-border p-4 text-sm text-muted-foreground">
-              <p className="mb-2 text-foreground">No works in your library yet.</p>
-              <ol className="list-decimal space-y-1 pl-5">
-                <li>Connect ORCID in Integrations.</li>
-                <li>Import works from ORCID or DOI/BibTeX.</li>
-                <li>Create a collection for manuscript planning.</li>
-              </ol>
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded border border-border">
-              <table className="w-full min-w-[920px] text-sm">
-                <thead className="bg-muted/35 text-left text-xs text-muted-foreground">
-                  <tr>
-                    <th className="px-2 py-2">Title</th>
-                    <th className="px-2 py-2">Year</th>
-                    <th className="px-2 py-2">Venue</th>
-                    <th className="px-2 py-2">Type</th>
-                    <th className="px-2 py-2">Topic tags</th>
-                    <th className="px-2 py-2">Citations</th>
-                    <th className="px-2 py-2">Provider</th>
-                    <th className="px-2 py-2">Source</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredWorks.map((work) => {
-                    const metrics = metricsByWorkId.get(work.id)
-                    return (
-                      <tr key={work.id} className="border-t border-border">
-                        <td className="px-2 py-2">{work.title}</td>
-                        <td className="px-2 py-2">{work.year ?? 'n/a'}</td>
-                        <td className="px-2 py-2">{work.venue_name || 'n/a'}</td>
-                        <td className="px-2 py-2">{work.work_type || 'n/a'}</td>
-                        <td className="px-2 py-2">
-                          {work.keywords.length > 0 ? work.keywords.slice(0, 3).join(', ') : 'n/a'}
-                        </td>
-                        <td className="px-2 py-2">{metrics?.citations ?? 0}</td>
-                        <td className="px-2 py-2">{metrics?.provider || 'not synced'}</td>
-                        <td className="px-2 py-2">{work.provenance}</td>
+              <p className="text-xs text-muted-foreground">
+                {filteredWorks.length} work{filteredWorks.length === 1 ? '' : 's'} shown.
+              </p>
+
+              {filteredWorks.length === 0 ? (
+                <div className="rounded border border-dashed border-border p-4 text-sm text-muted-foreground">
+                  <p className="mb-2 text-foreground">No works in your library yet.</p>
+                  <ol className="list-decimal space-y-1 pl-5">
+                    <li>Connect ORCID in Integrations.</li>
+                    <li>Import works from ORCID or DOI/BibTeX.</li>
+                    <li>Create a collection for manuscript planning.</li>
+                  </ol>
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded border border-border">
+                  <table className="w-full min-w-[760px] text-sm">
+                    <thead className="bg-muted/35 text-left text-xs text-muted-foreground">
+                      <tr>
+                        <th className="px-2 py-2">Title</th>
+                        <th className="px-2 py-2">Year</th>
+                        <th className="px-2 py-2">Venue</th>
+                        <th className="px-2 py-2">Type</th>
+                        <th className="px-2 py-2">Citations</th>
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody>
+                      {filteredWorks.map((work) => {
+                        const metrics = metricsByWorkId.get(work.id)
+                        const isSelected = selectedWorkId === work.id
+                        return (
+                          <tr
+                            key={work.id}
+                            onClick={() => setSelectedWorkId(work.id)}
+                            className={`cursor-pointer border-t border-border ${
+                              isSelected ? 'bg-emerald-50/70' : 'hover:bg-accent/30'
+                            }`}
+                          >
+                            <td className="px-2 py-2 font-medium">{work.title}</td>
+                            <td className="px-2 py-2">{work.year ?? 'n/a'}</td>
+                            <td className="px-2 py-2">{work.venue_name || 'n/a'}</td>
+                            <td className="px-2 py-2">{work.work_type || 'n/a'}</td>
+                            <td className="px-2 py-2">{metrics?.citations ?? 0}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
-          )}
+
+            <Card className="h-fit xl:sticky xl:top-4">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Publication details</CardTitle>
+                <CardDescription>Click a row to inspect details.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {!selectedWork ? (
+                  <p className="text-muted-foreground">Select a publication to view details.</p>
+                ) : (
+                  <>
+                    <div>
+                      <p className="font-semibold">{selectedWork.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedWork.year ?? 'Year n/a'} | {selectedWork.venue_name || 'Venue n/a'}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2">
+                      <div className="rounded border border-border px-2 py-1.5">
+                        <p className="text-[11px] uppercase text-muted-foreground">Type</p>
+                        <p>{selectedWork.work_type || 'Not available'}</p>
+                      </div>
+                      <div className="rounded border border-border px-2 py-1.5">
+                        <p className="text-[11px] uppercase text-muted-foreground">Citations</p>
+                        <p>{metricsByWorkId.get(selectedWork.id)?.citations ?? 0}</p>
+                      </div>
+                      <div className="rounded border border-border px-2 py-1.5">
+                        <p className="text-[11px] uppercase text-muted-foreground">Metrics provider</p>
+                        <p>{metricsByWorkId.get(selectedWork.id)?.provider || 'Not synced'}</p>
+                      </div>
+                      <div className="rounded border border-border px-2 py-1.5">
+                        <p className="text-[11px] uppercase text-muted-foreground">Source</p>
+                        <p>{selectedWork.provenance || 'Not available'}</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase text-muted-foreground">DOI</p>
+                      {selectedWork.doi ? (
+                        <a
+                          className="text-emerald-700 underline-offset-2 hover:underline"
+                          href={doiToUrl(selectedWork.doi) || undefined}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {selectedWork.doi}
+                        </a>
+                      ) : (
+                        <p className="text-muted-foreground">Not available</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase text-muted-foreground">Primary link</p>
+                      {selectedWork.url ? (
+                        <a
+                          className="text-emerald-700 underline-offset-2 hover:underline"
+                          href={selectedWork.url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open publication link
+                        </a>
+                      ) : (
+                        <p className="text-muted-foreground">Not available</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase text-muted-foreground">Keywords</p>
+                      {selectedWork.keywords.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {selectedWork.keywords.slice(0, 8).map((keyword) => (
+                            <span
+                              key={keyword}
+                              className="rounded border border-border bg-muted/40 px-1.5 py-0.5 text-xs"
+                            >
+                              {keyword}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground">No keywords saved.</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase text-muted-foreground">Abstract</p>
+                      <p className="max-h-44 overflow-auto whitespace-pre-wrap rounded border border-border bg-muted/15 p-2 text-xs leading-relaxed">
+                        {selectedWork.abstract || 'No abstract available.'}
+                      </p>
+                    </div>
+
+                    <div className="space-y-1 text-xs text-muted-foreground">
+                      <p>Added: {formatShortDate(selectedWork.created_at)}</p>
+                      <p>Updated: {formatShortDate(selectedWork.updated_at)}</p>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </CardContent>
       </Card>
 
