@@ -143,6 +143,48 @@ export type PublicationsAnalyticsResponsePayload = {
   last_update_failed: boolean
 }
 
+export type PublicationMetricDrilldownPayload = {
+  title: string
+  definition: string
+  formula: string
+  confidence_note: string
+  publications: Array<Record<string, unknown>>
+  metadata: Record<string, unknown>
+}
+
+export type PublicationMetricTilePayload = {
+  key: string
+  label: string
+  value: number | null
+  value_display: string
+  delta_value: number | null
+  delta_display: string | null
+  unit: string | null
+  sparkline: number[]
+  tooltip: string
+  data_source: string[]
+  stability: 'stable' | 'unstable'
+  drilldown: PublicationMetricDrilldownPayload
+}
+
+export type PublicationsTopMetricsPayload = {
+  tiles: PublicationMetricTilePayload[]
+  data_sources: string[]
+  data_last_refreshed: string | null
+  metadata: Record<string, unknown>
+  computed_at: string | null
+  status: 'READY' | 'RUNNING' | 'FAILED'
+  is_stale: boolean
+  is_updating: boolean
+  last_error: string | null
+}
+
+export type PublicationsTopMetricsRefreshPayload = {
+  enqueued: boolean
+  status: 'READY' | 'RUNNING' | 'FAILED'
+  metric_key: string
+}
+
 export type PublicationDetailPayload = {
   id: string
   title: string

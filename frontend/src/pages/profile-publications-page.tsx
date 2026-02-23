@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
+import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -21,6 +22,7 @@ import {
   fetchOrcidStatus,
   fetchPersonaState,
   fetchPublicationsAnalytics,
+  fetchPublicationsTopMetrics,
   linkPublicationOpenAccessPdf,
   listPersonaSyncJobs,
   uploadPublicationFile,
@@ -41,6 +43,7 @@ import type {
   PublicationsAnalyticsSummaryPayload,
   PublicationsAnalyticsTimeseriesPayload,
   PublicationsAnalyticsTopDriversPayload,
+  PublicationsTopMetricsPayload,
 } from '@/types/impact'
 
 type PublicationFilterKey = 'all' | 'cited' | 'with_doi' | 'with_abstract' | 'with_pmid'
@@ -50,6 +53,7 @@ type PublicationDetailTab = 'overview' | 'content' | 'impact' | 'files' | 'ai'
 const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const PUBLICATIONS_ANALYTICS_CACHE_KEY = 'aawe_publications_analytics_cache'
+const PUBLICATIONS_TOP_METRICS_CACHE_KEY = 'aawe_publications_top_metrics_cache'
 const PUBLICATIONS_ACTIVE_SYNC_JOB_STORAGE_PREFIX = 'aawe_publications_active_sync_job:'
 const PUBLICATION_DETAIL_ACTIVE_TAB_STORAGE_KEY = 'aawe.pubDetail.activeTab'
 
@@ -271,6 +275,28 @@ function saveCachedAnalyticsResponse(value: PublicationsAnalyticsResponsePayload
     return
   }
   window.localStorage.setItem(PUBLICATIONS_ANALYTICS_CACHE_KEY, JSON.stringify(value))
+}
+
+function loadCachedTopMetricsResponse(): PublicationsTopMetricsPayload | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const raw = window.localStorage.getItem(PUBLICATIONS_TOP_METRICS_CACHE_KEY)
+  if (!raw) {
+    return null
+  }
+  try {
+    return JSON.parse(raw) as PublicationsTopMetricsPayload
+  } catch {
+    return null
+  }
+}
+
+function saveCachedTopMetricsResponse(value: PublicationsTopMetricsPayload): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(PUBLICATIONS_TOP_METRICS_CACHE_KEY, JSON.stringify(value))
 }
 
 function analyticsSummaryFromResponse(
@@ -553,6 +579,7 @@ export function ProfilePublicationsPage() {
   const initialCachedAnalyticsSummary = analyticsSummaryFromResponse(initialCachedAnalyticsResponse)
   const initialCachedAnalyticsTimeseries = analyticsTimeseriesFromResponse(initialCachedAnalyticsResponse)
   const initialCachedAnalyticsTopDrivers = analyticsTopDriversFromResponse(initialCachedAnalyticsResponse)
+  const initialCachedTopMetricsResponse = loadCachedTopMetricsResponse()
   const [token, setToken] = useState<string>(() => getAuthSessionToken())
   const [user, setUser] = useState<AuthUser | null>(initialCachedUser)
   const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(initialCachedPersonaState)
@@ -561,6 +588,7 @@ export function ProfilePublicationsPage() {
   const [analyticsSummary, setAnalyticsSummary] = useState<PublicationsAnalyticsSummaryPayload | null>(initialCachedAnalyticsSummary)
   const [analyticsTimeseries, setAnalyticsTimeseries] = useState<PublicationsAnalyticsTimeseriesPayload | null>(initialCachedAnalyticsTimeseries)
   const [analyticsTopDrivers, setAnalyticsTopDrivers] = useState<PublicationsAnalyticsTopDriversPayload | null>(initialCachedAnalyticsTopDrivers)
+  const [topMetricsResponse, setTopMetricsResponse] = useState<PublicationsTopMetricsPayload | null>(initialCachedTopMetricsResponse)
   const [query, setQuery] = useState('')
   const [filterKey, setFilterKey] = useState<PublicationFilterKey>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
@@ -610,8 +638,9 @@ export function ProfilePublicationsPage() {
         fetchMe(sessionToken),
         listPersonaSyncJobs(sessionToken, 5),
         fetchPublicationsAnalytics(sessionToken),
+        fetchPublicationsTopMetrics(sessionToken),
       ])
-      const [stateResult, orcidResult, userResult, jobsResult, analyticsResult] = settled
+      const [stateResult, orcidResult, userResult, jobsResult, analyticsResult, topMetricsResult] = settled
       if (stateResult.status === 'fulfilled') {
         setPersonaState(stateResult.value)
         writeCachedPersonaState(stateResult.value)
@@ -670,6 +699,10 @@ export function ProfilePublicationsPage() {
         setAnalyticsSummary(analyticsSummaryFromResponse(analyticsResult.value))
         setAnalyticsTimeseries(analyticsTimeseriesFromResponse(analyticsResult.value))
         setAnalyticsTopDrivers(analyticsTopDriversFromResponse(analyticsResult.value))
+      }
+      if (topMetricsResult.status === 'fulfilled') {
+        setTopMetricsResponse(topMetricsResult.value)
+        saveCachedTopMetricsResponse(topMetricsResult.value)
       }
       const failedCount = settled.filter((item) => item.status === 'rejected').length
       if (failedCount > 0) {
@@ -944,6 +977,37 @@ export function ProfilePublicationsPage() {
     }
   }, [analyticsResponse?.status, token])
 
+  useEffect(() => {
+    if (!token || topMetricsResponse?.status !== 'RUNNING') {
+      return
+    }
+    let cancelled = false
+
+    const poll = async () => {
+      try {
+        const next = await fetchPublicationsTopMetrics(token)
+        if (cancelled) {
+          return
+        }
+        setTopMetricsResponse(next)
+        saveCachedTopMetricsResponse(next)
+      } catch {
+        if (cancelled) {
+          return
+        }
+      }
+    }
+
+    void poll()
+    const timer = window.setInterval(() => {
+      void poll()
+    }, 7000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [topMetricsResponse?.status, token])
+
   const metricsByWorkId = useMemo(() => {
     const map = new Map<string, { citations: number; provider: string }>()
     for (const row of personaState?.metrics.works ?? []) {
@@ -1144,12 +1208,8 @@ export function ProfilePublicationsPage() {
 
   const ownerName = user?.name || ''
   const ownerEmail = user?.email || ''
-  const totalCitations = analyticsSummary?.total_citations ?? 0
   const hIndex = analyticsSummary?.h_index ?? 0
-  const citationsLast12Months = analyticsSummary?.citations_last_12_months ?? 0
   const citationsPrevious12Months = analyticsSummary?.citations_previous_12_months ?? 0
-  const yoyGrowthPercent = analyticsSummary?.yoy_percent ?? null
-  const citationVelocity12m = analyticsSummary?.citation_velocity_12m ?? 0
   const analyticsComputedAt = analyticsResponse?.computed_at || analyticsSummary?.computed_at || null
   const analyticsUpdating = analyticsResponse?.status === 'RUNNING'
   const analyticsFailed = analyticsResponse?.status === 'FAILED' || analyticsResponse?.last_update_failed
@@ -1427,36 +1487,7 @@ export function ProfilePublicationsPage() {
         </div>
       </header>
 
-      <Card>
-        <CardContent className="grid gap-2 p-4 md:grid-cols-3 xl:grid-cols-6">
-          <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">Total citations</p>
-            <p className="font-semibold">{totalCitations}</p>
-          </div>
-          <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">h-index</p>
-            <p className="font-semibold">{hIndex}</p>
-          </div>
-          <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">Citation velocity (12m)</p>
-            <p className="font-semibold">{citationVelocity12m}/month</p>
-          </div>
-          <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">Citations (last 12 months)</p>
-            <p className="font-semibold">{citationsLast12Months}</p>
-          </div>
-          <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">Previous 12 months</p>
-            <p className="font-semibold">{citationsPrevious12Months}</p>
-          </div>
-          <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">YoY %</p>
-            <p className={`font-semibold ${growthToneClass(yoyGrowthPercent)}`}>
-              {formatSignedPercent(yoyGrowthPercent)}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <PublicationsTopStrip metrics={topMetricsResponse} loading={loading || !topMetricsResponse} />
 
       <div className="grid gap-3 xl:grid-cols-2">
         <Card>

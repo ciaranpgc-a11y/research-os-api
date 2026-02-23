@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import os
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import (
     Boolean,
+    Date,
     Float,
     JSON,
     DateTime,
@@ -148,6 +149,9 @@ class User(Base):
     publications_metrics: Mapped[list["PublicationMetric"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    publication_metrics_source_caches: Mapped[
+        list["PublicationMetricsSourceCache"]
+    ] = relationship(back_populates="user", cascade="all, delete-orphan")
     publication_impact_caches: Mapped[list["PublicationImpactCache"]] = relationship(
         back_populates="owner_user", cascade="all, delete-orphan"
     )
@@ -625,6 +629,37 @@ class PublicationMetric(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="publications_metrics")
+
+
+class PublicationMetricsSourceCache(Base):
+    __tablename__ = "publication_metrics_source_cache"
+    __table_args__ = (
+        UniqueConstraint("user_id", "source", "refresh_date"),
+        Index(
+            "ix_publication_metrics_source_cache_user_source_date",
+            "user_id",
+            "source",
+            "refresh_date",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    source: Mapped[str] = mapped_column(String(64), default="unknown")
+    refresh_date: Mapped[date] = mapped_column(Date, nullable=False)
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    user: Mapped[User] = relationship(back_populates="publication_metrics_source_caches")
 
 
 class PublicationImpactCache(Base):

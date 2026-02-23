@@ -1106,6 +1106,48 @@ class PublicationsAnalyticsResponse(BaseModel):
     last_update_failed: bool = False
 
 
+class PublicationMetricDrilldownResponse(BaseModel):
+    title: str
+    definition: str
+    formula: str
+    confidence_note: str
+    publications: list[dict[str, Any]] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class PublicationMetricTileResponse(BaseModel):
+    key: str
+    label: str
+    value: float | int | None = None
+    value_display: str
+    delta_value: float | int | None = None
+    delta_display: str | None = None
+    unit: str | None = None
+    sparkline: list[float] = Field(default_factory=list)
+    tooltip: str = ""
+    data_source: list[str] = Field(default_factory=list)
+    stability: Literal["stable", "unstable"] = "stable"
+    drilldown: PublicationMetricDrilldownResponse
+
+
+class PublicationsTopMetricsResponse(BaseModel):
+    tiles: list[PublicationMetricTileResponse] = Field(default_factory=list)
+    data_sources: list[str] = Field(default_factory=list)
+    data_last_refreshed: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    computed_at: datetime | None = None
+    status: Literal["READY", "RUNNING", "FAILED"] = "RUNNING"
+    is_stale: bool = False
+    is_updating: bool = False
+    last_error: str | None = None
+
+
+class PublicationsTopMetricsRefreshResponse(BaseModel):
+    enqueued: bool = False
+    status: Literal["READY", "RUNNING", "FAILED"] = "RUNNING"
+    metric_key: str = "top_metrics_strip_v1"
+
+
 class PublicationDetailResponse(BaseModel):
     id: str
     title: str

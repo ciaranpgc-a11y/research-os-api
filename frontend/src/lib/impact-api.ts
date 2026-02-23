@@ -44,6 +44,8 @@ import type {
   PublicationsAnalyticsSummaryPayload,
   PublicationsAnalyticsTimeseriesPayload,
   PublicationsAnalyticsTopDriversPayload,
+  PublicationsTopMetricsPayload,
+  PublicationsTopMetricsRefreshPayload,
   PersonaWork,
 } from '@/types/impact'
 
@@ -573,6 +575,34 @@ export async function fetchPublicationsAnalyticsSummary(
     },
     'Publications analytics summary lookup failed',
     { timeoutMs: 120_000, retryCount: 2 },
+  )
+}
+
+export async function fetchPublicationsTopMetrics(
+  token: string,
+): Promise<PublicationsTopMetricsPayload> {
+  return requestJson<PublicationsTopMetricsPayload>(
+    `${API_BASE_URL}/v1/publications/metrics`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Publications top metrics lookup failed',
+    { timeoutMs: 120_000, retryCount: 2 },
+  )
+}
+
+export async function triggerPublicationsTopMetricsRefresh(
+  token: string,
+): Promise<PublicationsTopMetricsRefreshPayload> {
+  return requestJson<PublicationsTopMetricsRefreshPayload>(
+    `${API_BASE_URL}/v1/publications/refresh`,
+    {
+      method: 'POST',
+      headers: authHeaders(token),
+    },
+    'Publications top metrics refresh failed',
+    { timeoutMs: 60_000, retryCount: 1 },
   )
 }
 

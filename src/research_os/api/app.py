@@ -141,6 +141,8 @@ from research_os.api.schemas import (
     PublicationFileResponse,
     PublicationFilesListResponse,
     PublicationImpactResponse,
+    PublicationsTopMetricsRefreshResponse,
+    PublicationsTopMetricsResponse,
     PublicationsAnalyticsResponse,
     PublicationsAnalyticsSummaryResponse,
     PublicationsAnalyticsTimeseriesResponse,
@@ -312,6 +314,12 @@ from research_os.services.publications_analytics_service import (
     get_publications_analytics_top_drivers,
     start_publications_analytics_scheduler,
     stop_publications_analytics_scheduler,
+)
+from research_os.services.publication_metrics_service import (
+    PublicationMetricsNotFoundError,
+    PublicationMetricsValidationError,
+    get_publication_top_metrics,
+    trigger_publication_top_metrics_refresh,
 )
 from research_os.services.publication_console_service import (
     PublicationConsoleNotFoundError,
@@ -1512,6 +1520,54 @@ def v1_persona_open_access_discover(
     except (PersonaNotFoundError, OpenAccessNotFoundError) as exc:
         return _build_not_found_response(str(exc))
     except (OpenAccessValidationError, PersonaValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/publications/metrics",
+    response_model=PublicationsTopMetricsResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_publications_top_metrics(
+    request: Request,
+) -> PublicationsTopMetricsResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = get_publication_top_metrics(user_id=str(user["id"]))
+        return PublicationsTopMetricsResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (PersonaNotFoundError, PublicationMetricsNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+    except (PublicationMetricsValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/publications/refresh",
+    response_model=PublicationsTopMetricsRefreshResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_publications_top_metrics_refresh(
+    request: Request,
+) -> PublicationsTopMetricsRefreshResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = trigger_publication_top_metrics_refresh(user_id=str(user["id"]))
+        return PublicationsTopMetricsRefreshResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (PersonaNotFoundError, PublicationMetricsNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+    except (PublicationMetricsValidationError, ValueError) as exc:
         return _build_bad_request_response(str(exc))
 
 
