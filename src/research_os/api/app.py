@@ -1108,18 +1108,24 @@ def v1_orcid_callback(
     request: Request,
     state: str = Query(default=""),
     code: str = Query(default=""),
-    mode: str = Query(default="json"),
+    mode: str = Query(default="auto"),
 ) -> OrcidCallbackResponse | JSONResponse | RedirectResponse:
     try:
         payload = complete_orcid_callback(state=state, code=code)
-        wants_json = mode.strip().lower() == "json" or "application/json" in str(
-            request.headers.get("accept", "")
-        ).lower()
+        clean_mode = mode.strip().lower()
+        accept_header = str(request.headers.get("accept", "")).lower()
+        if clean_mode == "json":
+            wants_json = True
+        elif clean_mode in {"redirect", "html"}:
+            wants_json = False
+        else:
+            # Auto mode: browsers typically request text/html; API clients prefer JSON.
+            wants_json = "text/html" not in accept_header
         if wants_json:
             return OrcidCallbackResponse(**payload)
         frontend_base = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173").strip().rstrip("/")
         redirect_url = (
-            f"{frontend_base}/profile?orcid=linked"
+            f"{frontend_base}/profile/integrations?orcid=linked"
             f"&orcid_id={str(payload.get('orcid_id', '')).strip()}"
         )
         return RedirectResponse(url=redirect_url, status_code=303)
