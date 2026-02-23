@@ -60,6 +60,9 @@ def test_alembic_upgrade_head_creates_schema_for_fresh_database(
     assert "collaboration_metrics" in table_names
     assert "manuscript_authors" in table_names
     assert "manuscript_affiliations" in table_names
+    assert "publication_impact_cache" in table_names
+    assert "publication_ai_cache" in table_names
+    assert "publication_files" in table_names
     assert "alembic_version" in table_names
 
 

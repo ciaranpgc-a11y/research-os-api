@@ -1660,127 +1660,196 @@ export function ProfilePublicationsPage() {
               )}
             </div>
 
-            <Card className="h-fit xl:sticky xl:top-4">
-              <CardContent className="space-y-3 text-sm">
-                {!selectedWork ? (
-                  <p className="text-muted-foreground">Select a publication to view details.</p>
-                ) : (
-                  <>
-                    <p className="text-base font-semibold leading-snug">{selectedWork.title}</p>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded border border-border bg-muted/20 px-2 py-1.5">
-                        <p className="text-[11px] uppercase text-muted-foreground">Year</p>
-                        <p className="text-2xl font-semibold leading-tight">{selectedWork.year ?? 'n/a'}</p>
-                      </div>
-                      <div className="rounded border border-border bg-muted/20 px-2 py-1.5">
-                        <p className="text-[11px] uppercase text-muted-foreground">Journal</p>
-                        <p className="text-sm font-medium leading-tight">{formatJournalName(selectedWork.venue_name)}</p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded border border-border px-2 py-1.5">
-                        <p className="text-[11px] uppercase text-muted-foreground">Publication type</p>
-                        <p className="font-medium">{derivePublicationTypeLabel(selectedWork)}</p>
-                      </div>
-                      <div className="rounded border border-border px-2 py-1.5">
-                        <p className="text-[11px] uppercase text-muted-foreground">Citations</p>
-                        <p className="font-medium">{metricsByWorkId.get(selectedWork.id)?.citations ?? 0}</p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded border border-border px-2 py-1.5">
-                        <p className="text-[11px] uppercase text-muted-foreground">PMID</p>
-                        {selectedWork.pmid ? (
-                          <a
-                            className="text-emerald-700 underline-offset-2 hover:underline"
-                            href={`https://pubmed.ncbi.nlm.nih.gov/${selectedWork.pmid}/`}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {selectedWork.pmid}
-                          </a>
-                        ) : (
-                          <p>Not available</p>
-                        )}
-                      </div>
-                      <div className="rounded border border-border px-2 py-1.5">
-                        <p className="text-[11px] uppercase text-muted-foreground">DOI</p>
-                        {selectedWork.doi ? (
-                          <a
-                            className="break-all text-emerald-700 underline-offset-2 hover:underline"
-                            href={doiToUrl(selectedWork.doi) || undefined}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {selectedWork.doi}
-                          </a>
-                        ) : (
-                          <p className="text-muted-foreground">Not available</p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <p className="text-[11px] uppercase text-muted-foreground">Authors</p>
-                      {(selectedWork.authors || []).length > 0 ? (
-                        <p className="whitespace-pre-wrap leading-relaxed">
-                          {(selectedWork.authors || []).map((author, index, list) => {
-                            const owner =
-                              (Boolean(ownerName) || Boolean(ownerEmail)) &&
-                              isOwnerAuthor(author, ownerName, ownerEmail)
-                            return (
-                              <span
-                                key={`${author}-${index}`}
-                                className={owner ? 'font-semibold text-emerald-700' : undefined}
-                              >
-                                {author}
-                                {owner ? ' (you)' : ''}
-                                {index < list.length - 1 ? ', ' : ''}
-                              </span>
-                            )
-                          })}
+                        <Card className="h-fit xl:sticky xl:top-4">
+              {!selectedWork ? (
+                <CardContent className="p-3 text-sm text-muted-foreground">
+                  Select a publication to view details.
+                </CardContent>
+              ) : (
+                <CardContent className="p-0 text-sm">
+                  <Tabs value={activeDetailTab} onValueChange={onDetailTabChange} className="w-full">
+                    <div className="max-h-[78vh] overflow-auto">
+                      <div className="sticky top-0 z-20 border-b border-border bg-card px-3 py-3">
+                        <p className="line-clamp-2 text-sm font-semibold leading-snug">
+                          {selectedDetail?.title || selectedWork.title}
                         </p>
-                      ) : (
-                        <p className="text-muted-foreground">Not available</p>
-                      )}
-                    </div>
+                        <TabsList className="mt-2 grid h-auto w-full grid-cols-5 gap-1 bg-muted/40 p-1">
+                          <TabsTrigger value="overview" className="text-[11px]">Overview</TabsTrigger>
+                          <TabsTrigger value="content" className="text-[11px]">Content</TabsTrigger>
+                          <TabsTrigger value="impact" className="text-[11px]">Impact</TabsTrigger>
+                          <TabsTrigger value="files" className="text-[11px]">Files</TabsTrigger>
+                          <TabsTrigger value="ai" className="text-[11px]">AI Insights</TabsTrigger>
+                        </TabsList>
+                      </div>
 
-                    <div className="space-y-1">
-                      <p className="text-[11px] uppercase text-muted-foreground">Keywords</p>
-                      {selectedWork.keywords.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {selectedWork.keywords.slice(0, 8).map((keyword) => (
-                            <span
-                              key={keyword}
-                              className="rounded border border-border bg-muted/40 px-1.5 py-0.5 text-xs text-foreground"
-                            >
-                              {keyword}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-muted-foreground">No keywords saved.</p>
-                      )}
-                    </div>
+                      <div className="space-y-3 px-3 pb-3">
+                        {activePaneError ? (
+                          <p className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-700">{activePaneError}</p>
+                        ) : null}
+                        {activePaneLoading ? (
+                          <p className="text-xs text-muted-foreground">Loading...</p>
+                        ) : null}
 
-                    <div className="space-y-1">
-                      <p className="text-[11px] uppercase text-muted-foreground">Abstract</p>
-                      <p className="max-h-44 overflow-auto whitespace-pre-wrap rounded border border-border bg-muted/15 p-2 text-xs leading-relaxed">
-                        {selectedWork.abstract || 'No abstract available.'}
-                      </p>
-                    </div>
+                        <TabsContent value="overview" className="space-y-3">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">Year</p><p className="font-semibold">{detailYear ?? 'n/a'}</p></div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">Journal</p><p className="font-medium">{detailJournal || 'Not available'}</p></div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">Type</p><p className="font-medium">{detailPublicationType || 'Not available'}</p></div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">Citations</p><p className="font-semibold">{detailCitations}</p></div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">PMID</p>{detailPmid ? <a className="text-emerald-700 underline-offset-2 hover:underline" href={`https://pubmed.ncbi.nlm.nih.gov/${detailPmid}/`} target="_blank" rel="noreferrer">{detailPmid}</a> : <p className="text-muted-foreground">Not available</p>}</div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">DOI</p>{detailDoi ? <a className="break-all text-emerald-700 underline-offset-2 hover:underline" href={doiToUrl(detailDoi) || undefined} target="_blank" rel="noreferrer">{detailDoi}</a> : <p className="text-muted-foreground">Not available</p>}</div>
+                          </div>
 
-                    <div className="rounded border border-border bg-muted/15 px-2 py-1.5 text-xs text-muted-foreground">
-                      <p>Added: {formatShortDate(selectedWork.created_at)}</p>
-                      <p>Updated: {formatShortDate(selectedWork.updated_at)}</p>
+                          <div className="space-y-1">
+                            <p className="text-[11px] uppercase text-muted-foreground">Authors</p>
+                            {selectedAuthorsPayload?.status === 'RUNNING' ? <p className="text-xs text-muted-foreground">Fetching authors...</p> : null}
+                            {selectedAuthorsPayload?.status === 'FAILED' ? <p className="text-xs text-amber-700">Last author hydration failed. Showing cached data.</p> : null}
+                            {selectedAuthorNames.length > 0 ? (
+                              <p className="leading-relaxed">
+                                {selectedAuthorNames.slice(0, 6).map((author, index) => {
+                                  const owner = (Boolean(ownerName) || Boolean(ownerEmail)) && isOwnerAuthor(author, ownerName, ownerEmail)
+                                  return (
+                                    <span key={`${author}-${index}`} className={owner ? 'font-semibold text-emerald-700' : undefined}>
+                                      {author}{owner ? ' (you)' : ''}{index < Math.min(5, selectedAuthorNames.length - 1) ? ', ' : ''}
+                                    </span>
+                                  )
+                                })}
+                                {selectedAuthorNames.length > 6 ? <span className="text-muted-foreground"> +{selectedAuthorNames.length - 6} more</span> : null}
+                              </p>
+                            ) : <p className="text-muted-foreground">Not available</p>}
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            <Button type="button" size="sm" variant="outline" disabled={!Boolean(detailDoi)} asChild={Boolean(detailDoi)}>
+                              {detailDoi ? <a href={doiToUrl(detailDoi) || undefined} target="_blank" rel="noreferrer">Open DOI</a> : <span>Open DOI</span>}
+                            </Button>
+                            <Button type="button" size="sm" variant="outline" disabled={!Boolean(detailPmid)} asChild={Boolean(detailPmid)}>
+                              {detailPmid ? <a href={`https://pubmed.ncbi.nlm.nih.gov/${detailPmid}/`} target="_blank" rel="noreferrer">Open PubMed</a> : <span>Open PubMed</span>}
+                            </Button>
+                            <Button type="button" size="sm" variant="outline" onClick={onCopyVancouverCitation}>Copy citation</Button>
+                            <Button type="button" size="sm" variant="outline" onClick={() => navigate('/workspace')}>Add to manuscript</Button>
+                          </div>
+
+                          <div className="rounded border border-border bg-muted/15 px-2 py-1.5 text-xs text-muted-foreground">
+                            <p>Added: {formatShortDate(selectedDetail?.created_at || selectedWork.created_at)}</p>
+                            <p>Updated: {formatShortDate(selectedDetail?.updated_at || selectedWork.updated_at)}</p>
+                          </div>
+                        </TabsContent>
+
+                        <TabsContent value="content" className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <Button type="button" size="sm" variant={contentMode === 'plain' ? 'default' : 'outline'} onClick={() => void onContentModeChange('plain')}>Plain</Button>
+                            <Button type="button" size="sm" variant={contentMode === 'highlighted' ? 'default' : 'outline'} onClick={() => void onContentModeChange('highlighted')}>Highlighted</Button>
+                          </div>
+                          <div className="space-y-2 rounded border border-border bg-muted/10 p-2">
+                            <p className="text-[11px] uppercase text-muted-foreground">Abstract</p>
+                            <p className="whitespace-pre-wrap text-xs leading-relaxed">{detailAbstract ? abstractPreview : 'No abstract available.'}</p>
+                            {detailAbstract.length > 700 ? <Button type="button" size="sm" variant="outline" onClick={onToggleAbstractExpanded}>{abstractExpanded ? 'Collapse' : 'Expand'}</Button> : null}
+                          </div>
+                          {contentMode === 'highlighted' ? (
+                            <div className="space-y-1 rounded border border-border bg-emerald-50/40 p-2 text-xs">
+                              <p><span className="font-semibold">Objective:</span> {selectedAiResponse?.payload?.extractive_key_points?.objective || 'Not stated in abstract.'}</p>
+                              <p><span className="font-semibold">Methods:</span> {selectedAiResponse?.payload?.extractive_key_points?.methods || 'Not stated in abstract.'}</p>
+                              <p><span className="font-semibold">Findings:</span> {selectedAiResponse?.payload?.extractive_key_points?.main_findings || 'Not stated in abstract.'}</p>
+                              <p><span className="font-semibold">Conclusion:</span> {selectedAiResponse?.payload?.extractive_key_points?.conclusion || 'Not stated in abstract.'}</p>
+                            </div>
+                          ) : null}
+                          <div className="space-y-1">
+                            <p className="text-[11px] uppercase text-muted-foreground">Keywords</p>
+                            {detailKeywords.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {detailKeywords.map((keyword) => <span key={keyword} className="rounded border border-border bg-muted/40 px-1.5 py-0.5 text-xs">{keyword}</span>)}
+                              </div>
+                            ) : <p className="text-xs text-muted-foreground">No keywords saved.</p>}
+                          </div>
+                        </TabsContent>
+
+                        <TabsContent value="impact" className="space-y-3">
+                          {selectedImpactResponse?.status === 'RUNNING' ? <p className="text-xs text-muted-foreground">Computing impact insights...</p> : null}
+                          {selectedImpactResponse?.status === 'FAILED' ? <p className="text-xs text-amber-700">Last impact update failed. Showing cached data.</p> : null}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">Total citations</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_total ?? detailCitations}</p></div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">Citations (12m)</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_last_12m ?? 0}</p></div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">YoY %</p><p className={`font-semibold ${growthToneClass(selectedImpactResponse?.payload?.yoy_pct ?? null)}`}>{formatSignedPercent(selectedImpactResponse?.payload?.yoy_pct ?? null)}</p></div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">Acceleration</p><p className="font-semibold">{selectedImpactResponse?.payload?.acceleration_citations_per_month ?? 0}/month</p></div>
+                          </div>
+                          <div className="space-y-1 rounded border border-border px-2 py-1.5">
+                            <p className="text-[11px] uppercase text-muted-foreground">Key citing papers</p>
+                            {(selectedImpactResponse?.payload?.key_citing_papers || []).length === 0 ? <p className="text-xs text-muted-foreground">Not available from source.</p> : (selectedImpactResponse?.payload?.key_citing_papers || []).slice(0, 5).map((paper, index) => <p key={`${paper.title}-${index}`} className="text-xs">{paper.year ?? 'n/a'} | {paper.title}</p>)}
+                          </div>
+                        </TabsContent>
+
+                        <TabsContent value="files" className="space-y-3">
+                          <div className="flex flex-wrap gap-2">
+                            <Button type="button" size="sm" variant="outline" onClick={onFindOpenAccessPdf} disabled={findingOa}>{findingOa ? 'Finding OA PDF...' : 'Find open access PDF'}</Button>
+                            <Button type="button" size="sm" variant="outline" onClick={() => filePickerRef.current?.click()} disabled={uploadingFile}>{uploadingFile ? 'Uploading...' : 'Upload file'}</Button>
+                            <input ref={filePickerRef} type="file" multiple className="hidden" onChange={(event) => void onUploadFiles(event.target.files)} />
+                          </div>
+                          <div
+                            className={`rounded border border-dashed p-3 text-xs ${filesDragOver ? 'border-emerald-500 bg-emerald-50/40' : 'border-border bg-muted/10'}`}
+                            onDragOver={(event) => {
+                              event.preventDefault()
+                              setFilesDragOver(true)
+                            }}
+                            onDragLeave={() => setFilesDragOver(false)}
+                            onDrop={(event) => {
+                              event.preventDefault()
+                              setFilesDragOver(false)
+                              void onUploadFiles(event.dataTransfer.files)
+                            }}
+                          >
+                            Drag and drop files here, or use Upload file.
+                          </div>
+                          {(selectedFilesPayload?.items || []).length === 0 ? (
+                            <p className="text-xs text-muted-foreground">No files linked to this publication.</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {(selectedFilesPayload?.items || []).map((file) => (
+                                <div key={file.id} className="rounded border border-border px-2 py-1.5">
+                                  <p className="truncate text-xs font-medium">{file.file_name}</p>
+                                  <p className="text-[11px] text-muted-foreground">{file.file_type} | {file.source === 'OA_LINK' ? 'OA link' : 'Uploaded'} | {formatShortDate(file.created_at)}</p>
+                                  <div className="mt-1 flex gap-1">
+                                    {file.source === 'OA_LINK' && file.download_url ? (
+                                      <Button type="button" size="sm" variant="outline" asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
+                                    ) : (
+                                      <Button type="button" size="sm" variant="outline" disabled={downloadingFileId === file.id} onClick={() => void onDownloadPublicationFile(file.id, file.file_name)}>{downloadingFileId === file.id ? 'Downloading...' : 'Download'}</Button>
+                                    )}
+                                    <Button type="button" size="sm" variant="outline" disabled={deletingFileId === file.id} onClick={() => void onDeletePublicationFile(file.id)}>{deletingFileId === file.id ? 'Deleting...' : 'Delete'}</Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </TabsContent>
+
+                        <TabsContent value="ai" className="space-y-3">
+                          <p className="rounded border border-border bg-muted/15 px-2 py-1 text-[11px] text-muted-foreground">AI-generated draft insights. Verify against full text.</p>
+                          {selectedAiResponse?.status === 'RUNNING' ? <p className="text-xs text-muted-foreground">Generating insights...</p> : null}
+                          {selectedAiResponse?.status === 'FAILED' ? <p className="text-xs text-amber-700">Last AI update failed. Showing cached data.</p> : null}
+                          <div className="space-y-1 rounded border border-border px-2 py-1.5">
+                            <p className="text-[11px] uppercase text-muted-foreground">Performance summary</p>
+                            <p className="text-xs leading-relaxed">{selectedAiResponse?.payload?.performance_summary || 'Not available'}</p>
+                          </div>
+                          <div className="rounded border border-border px-2 py-1.5">
+                            <p className="text-[11px] uppercase text-muted-foreground">Trajectory</p>
+                            <p className="text-xs font-medium">{(selectedAiResponse?.payload?.trajectory_classification || 'UNKNOWN').replace(/_/g, ' ')}</p>
+                          </div>
+                          <div className="space-y-1 rounded border border-border px-2 py-1.5">
+                            <p className="text-[11px] uppercase text-muted-foreground">Reuse suggestions</p>
+                            {(selectedAiResponse?.payload?.reuse_suggestions || []).length === 0 ? <p className="text-xs text-muted-foreground">No suggestions yet.</p> : (selectedAiResponse?.payload?.reuse_suggestions || []).map((item, index) => <p key={`${item}-${index}`} className="text-xs">- {item}</p>)}
+                          </div>
+                          <div className="space-y-1 rounded border border-border px-2 py-1.5">
+                            <p className="text-[11px] uppercase text-muted-foreground">Caution flags</p>
+                            {(selectedAiResponse?.payload?.caution_flags || []).length === 0 ? <p className="text-xs text-muted-foreground">No caution flags.</p> : (selectedAiResponse?.payload?.caution_flags || []).map((item, index) => <p key={`${item}-${index}`} className="text-xs">- {item}</p>)}
+                          </div>
+                        </TabsContent>
+                      </div>
                     </div>
-                  </>
-                )}
-              </CardContent>
+                  </Tabs>
+                </CardContent>
+              )}
             </Card>
+
           </div>
         </CardContent>
       </Card>
@@ -1793,3 +1862,4 @@ export function ProfilePublicationsPage() {
     </section>
   )
 }
+
