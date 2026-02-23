@@ -51,6 +51,11 @@ function formatShortTimestamp(value: string | null | undefined): string | null {
   })
 }
 
+function totalCitationsFromPersonaState(state: PersonaStatePayload | null | undefined): number {
+  const rows = state?.metrics?.works ?? []
+  return rows.reduce((sum, row) => sum + Math.max(0, Number(row.citations || 0)), 0)
+}
+
 export function ProfileIntegrationsPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -68,6 +73,7 @@ export function ProfileIntegrationsPage() {
   const [googleStatus, setGoogleStatus] = useState('')
   const [error, setError] = useState('')
   const [lastImportedCount, setLastImportedCount] = useState<number | null>(null)
+  const [lastReferencesSyncedCount, setLastReferencesSyncedCount] = useState<number | null>(null)
   const syncStatus = personaState?.sync_status || {
     orcid_last_synced_at: null,
     metrics_last_synced_at: null,
@@ -111,12 +117,15 @@ export function ProfileIntegrationsPage() {
       const [meResult, orcidResult, stateResult, providerResult] = settled
       setUser(meResult.status === 'fulfilled' ? meResult.value : null)
       setOrcidStatus(orcidResult.status === 'fulfilled' ? orcidResult.value : null)
+      let resolvedPersonaState: PersonaStatePayload | null = null
       if (stateResult.status === 'fulfilled') {
         setPersonaState(stateResult.value)
         writeCachedPersonaState(stateResult.value)
+        resolvedPersonaState = stateResult.value
       } else {
         const cached = readCachedPersonaState()
         setPersonaState(cached)
+        resolvedPersonaState = cached
         if (cached) {
           setStatus('Showing cached publications data while live profile data reloads.')
         }
@@ -126,11 +135,13 @@ export function ProfileIntegrationsPage() {
       if (failedCount > 0) {
         setStatus(`Integrations loaded with ${failedCount} unavailable source${failedCount === 1 ? '' : 's'}.`)
       }
+      return { personaState: resolvedPersonaState }
     } catch (loadError) {
       if (handleSessionExpiry(loadError)) {
-        return
+        return null
       }
       setError(loadError instanceof Error ? loadError.message : 'Could not load integrations.')
+      return null
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -185,11 +196,6 @@ export function ProfileIntegrationsPage() {
       const parsed = JSON.parse(raw) as { imported_count?: number }
       if (typeof parsed.imported_count === 'number') {
         setLastImportedCount(parsed.imported_count)
-        if (parsed.imported_count > 0) {
-          setStatus(`Auto-sync imported ${parsed.imported_count} ORCID work(s) after sign-in.`)
-        } else {
-          setStatus('Auto-sync completed after sign-in. No new ORCID works were imported.')
-        }
       }
     } catch {
       // Ignore malformed payload and continue with live state.
@@ -206,7 +212,6 @@ export function ProfileIntegrationsPage() {
     return map
   }, [providerStatuses])
 
-  const metricsRows = personaState?.metrics.works ?? []
   const worksCount = personaState?.works.length ?? 0
   const emailVerified = Boolean(user?.email_verified_at)
   const orcidConfigured = Boolean(orcidStatus?.configured)
@@ -221,10 +226,7 @@ export function ProfileIntegrationsPage() {
       ? `Connected (${shortLastSync})`
       : 'Connected'
     : 'Not connected'
-  const totalCitations = useMemo(
-    () => metricsRows.reduce((sum, row) => sum + Math.max(0, Number(row.citations || 0)), 0),
-    [metricsRows],
-  )
+  const totalCitations = useMemo(() => totalCitationsFromPersonaState(personaState), [personaState])
   const onConnectOrcid = async () => {
     if (!token) {
       return
@@ -266,16 +268,14 @@ export function ProfileIntegrationsPage() {
     setError('')
     setStatus('')
     setGoogleStatus('')
+    const citationsBeforeImport = totalCitations
     try {
       await pingApiHealth()
       const payload = await importOrcidWorks(token)
       setLastImportedCount(payload.imported_count)
-      if (payload.imported_count > 0) {
-        setStatus(`Imported ${payload.imported_count} ORCID work(s).`)
-      } else {
-        setStatus('No new ORCID works were imported.')
-      }
-      await loadData(token, false)
+      const refreshed = await loadData(token, false)
+      const citationsAfterImport = totalCitationsFromPersonaState(refreshed?.personaState)
+      setLastReferencesSyncedCount(Math.max(0, citationsAfterImport - citationsBeforeImport))
     } catch (importError) {
       if (handleSessionExpiry(importError)) {
         setImporting(false)
@@ -289,12 +289,10 @@ export function ProfileIntegrationsPage() {
           await pingApiHealth()
           const retryPayload = await importOrcidWorks(token)
           setLastImportedCount(retryPayload.imported_count)
-          if (retryPayload.imported_count > 0) {
-            setStatus(`Imported ${retryPayload.imported_count} ORCID work(s).`)
-          } else {
-            setStatus('No new ORCID works were imported.')
-          }
-          await loadData(token, false)
+          const refreshed = await loadData(token, false)
+          const citationsAfterImport = totalCitationsFromPersonaState(refreshed?.personaState)
+          setLastReferencesSyncedCount(Math.max(0, citationsAfterImport - citationsBeforeImport))
+          setStatus('')
           return
         } catch (retryError) {
           const retryDetail = retryError instanceof Error ? retryError.message : detail
@@ -401,18 +399,10 @@ export function ProfileIntegrationsPage() {
           <CardDescription>Primary source for publication import.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
-          <div className="grid gap-2 md:grid-cols-3">
+          <div className="grid gap-2 md:grid-cols-1">
             <div className="rounded border border-border px-3 py-2">
               <p className="text-xs text-muted-foreground">ORCID id</p>
               <p className="font-medium">{orcidStatus?.orcid_id || user?.orcid_id || 'Not linked'}</p>
-            </div>
-            <div className="rounded border border-border px-3 py-2">
-              <p className="text-xs text-muted-foreground">Last ORCID sync</p>
-              <p>{formatTimestamp(syncStatus.orcid_last_synced_at)}</p>
-            </div>
-            <div className="rounded border border-border px-3 py-2">
-              <p className="text-xs text-muted-foreground">Last metrics sync</p>
-              <p>{formatTimestamp(syncStatus.metrics_last_synced_at)}</p>
             </div>
           </div>
           {orcidIssues.length ? (
@@ -437,22 +427,14 @@ export function ProfileIntegrationsPage() {
                 >
                   {importing
                     ? 'Importing + syncing...'
-                    : worksCount > 0
+                    : syncStatus.orcid_last_synced_at || worksCount > 0
                       ? 'Refresh works + sync citations'
                       : 'Import works + sync citations'}
                 </Button>
               ) : null}
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => (token ? void loadData(token, false) : undefined)}
-                disabled={!token || busy}
-              >
-                {refreshing ? 'Refreshing...' : 'Refresh'}
-              </Button>
             </div>
             {orcidLinked ? (
-              <div className="grid w-full gap-2 sm:grid-cols-2 lg:w-[320px]">
+              <div className="grid w-full gap-2 sm:grid-cols-2 lg:w-[520px]">
                 <div className="rounded border border-border px-3 py-2">
                   <p className="text-xs text-muted-foreground">Total works</p>
                   <p className="text-sm font-semibold">{worksCount}</p>
@@ -460,6 +442,14 @@ export function ProfileIntegrationsPage() {
                 <div className="rounded border border-border px-3 py-2">
                   <p className="text-xs text-muted-foreground">New works imported</p>
                   <p className="text-sm font-semibold">{lastImportedCount ?? 0}</p>
+                </div>
+                <div className="rounded border border-border px-3 py-2">
+                  <p className="text-xs text-muted-foreground">Total references</p>
+                  <p className="text-sm font-semibold">{totalCitations}</p>
+                </div>
+                <div className="rounded border border-border px-3 py-2">
+                  <p className="text-xs text-muted-foreground">New references synced</p>
+                  <p className="text-sm font-semibold">{lastReferencesSyncedCount ?? 0}</p>
                 </div>
               </div>
             ) : null}
