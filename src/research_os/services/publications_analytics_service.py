@@ -757,3 +757,204 @@ def _compute_payload(session, *, user_id: str, computed_at: datetime) -> dict[st
             "failures_in_row": 0,
         },
     }
+
+
+def _persist_ready_bundle(
+    *,
+    user_id: str,
+    payload: dict[str, Any],
+    computed_at: datetime,
+    orcid_id: str | None,
+    openalex_author_id: str | None,
+) -> None:
+    with session_scope() as session:
+        user = _resolve_user_or_raise(session, user_id)
+        row = _load_bundle_row(session, user_id=user_id, for_update=True)
+        if row is None:
+            row = PublicationMetric(user_id=user_id, metric_key=BUNDLE_METRIC_KEY)
+            session.add(row)
+            session.flush()
+        payload_copy = _set_failures_in_row(dict(payload), 0)
+        row.metric_json = (
+            payload_copy.get("summary")
+            if isinstance(payload_copy.get("summary"), dict)
+            else {}
+        )
+        row.payload_json = payload_copy
+        row.status = READY_STATUS
+        row.last_error = None
+        row.computed_at = _coerce_utc(computed_at)
+        row.updated_at = _utcnow()
+        row.next_scheduled_at = _utcnow() + timedelta(hours=_schedule_hours())
+        row.orcid_id = orcid_id or user.orcid_id
+        row.openalex_author_id = openalex_author_id
+        session.flush()
+
+
+def _persist_failed_bundle(*, user_id: str, detail: str) -> None:
+    now = _utcnow()
+    with session_scope() as session:
+        user = _resolve_user_or_raise(session, user_id)
+        row = _load_bundle_row(session, user_id=user_id, for_update=True)
+        if row is None:
+            row = PublicationMetric(
+                user_id=user_id,
+                metric_key=BUNDLE_METRIC_KEY,
+                payload_json=_build_empty_payload(computed_at=now),
+                metric_json={},
+                computed_at=now,
+                updated_at=now,
+            )
+            session.add(row)
+            session.flush()
+        payload = _bundle_payload_from_row(row)
+        if not payload:
+            payload = _build_empty_payload(computed_at=now)
+        failures = _read_failures_in_row(payload) + 1
+        payload = _set_failures_in_row(payload, failures)
+        row.payload_json = payload
+        row.metric_json = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+        row.status = FAILED_STATUS
+        row.last_error = str(detail or "Unknown analytics failure")[:2000]
+        row.updated_at = now
+        row.next_scheduled_at = now + timedelta(seconds=_failure_backoff_seconds(failures))
+        row.orcid_id = user.orcid_id
+        session.flush()
+
+
+def _get_executor() -> ThreadPoolExecutor:
+    global _executor
+    with _executor_lock:
+        if _executor is None:
+            _executor = ThreadPoolExecutor(
+                max_workers=_max_concurrent_jobs(),
+                thread_name_prefix="pub-analytics",
+            )
+        return _executor
+
+
+def _shutdown_executor() -> None:
+    global _executor
+    with _executor_lock:
+        if _executor is not None:
+            _executor.shutdown(wait=False, cancel_futures=False)
+            _executor = None
+
+
+def _run_background_compute(user_id: str) -> None:
+    try:
+        compute_publications_analytics(user_id=user_id)
+    except Exception as exc:
+        _persist_failed_bundle(user_id=user_id, detail=str(exc))
+
+
+def _should_enqueue_from_row(
+    row: PublicationMetric | None,
+    *,
+    now: datetime,
+    stale: bool,
+    force: bool = False,
+) -> bool:
+    if force:
+        return row is None or _normalize_status(row.status) != RUNNING_STATUS
+    if row is None:
+        return True
+    status = _normalize_status(row.status)
+    if status == RUNNING_STATUS:
+        return False
+    next_scheduled = _coerce_utc_or_none(row.next_scheduled_at)
+    if status == FAILED_STATUS and next_scheduled and next_scheduled > now:
+        return False
+    if next_scheduled and next_scheduled <= now:
+        return True
+    return stale
+
+
+def _mark_job_running(*, user_id: str, force: bool) -> bool:
+    now = _utcnow()
+    with session_scope() as session:
+        user = _resolve_user_or_raise(session, user_id)
+        row = _load_bundle_row(session, user_id=user_id, for_update=True)
+        if row is None:
+            row = PublicationMetric(
+                user_id=user_id,
+                metric_key=BUNDLE_METRIC_KEY,
+                metric_json={},
+                payload_json=_build_empty_payload(computed_at=now),
+                status=RUNNING_STATUS,
+                last_error=None,
+                computed_at=now,
+                updated_at=now,
+                orcid_id=user.orcid_id,
+                next_scheduled_at=now,
+            )
+            session.add(row)
+            session.flush()
+            return True
+        payload = _bundle_payload_from_row(row)
+        if not payload:
+            payload = _build_empty_payload(computed_at=now)
+            row.payload_json = payload
+            row.metric_json = payload.get("summary", {})
+        stale = _is_stale(computed_at=_coerce_utc_or_none(row.computed_at), now=now) or not _is_metric_payload_current(payload)
+        if _should_enqueue_from_row(row, now=now, stale=stale, force=force):
+            row.status = RUNNING_STATUS
+            row.last_error = None
+            row.updated_at = now
+            row.orcid_id = user.orcid_id
+            if row.next_scheduled_at is None:
+                row.next_scheduled_at = now
+            session.flush()
+            return True
+        return False
+
+
+def enqueue_publications_analytics_recompute(
+    *,
+    user_id: str,
+    force: bool = False,
+    reason: str | None = None,
+) -> bool:
+    create_all_tables()
+    should_enqueue = _mark_job_running(user_id=user_id, force=force)
+    if not should_enqueue:
+        return False
+    try:
+        _get_executor().submit(_run_background_compute, user_id)
+        if reason:
+            logger.info("publications_analytics_enqueue", extra={"user_id": user_id, "reason": reason})
+        return True
+    except Exception as exc:
+        _persist_failed_bundle(user_id=user_id, detail=f"Failed to enqueue publications analytics recompute: {exc}")
+        return False
+
+
+def compute_publications_analytics(
+    *,
+    user_id: str,
+    refresh_metrics: bool = False,
+) -> dict[str, Any]:
+    create_all_tables()
+    if refresh_metrics:
+        from research_os.services.persona_service import sync_metrics
+
+        sync_metrics(user_id=user_id, providers=["openalex"])
+
+    computed_at = _utcnow()
+    with session_scope() as session:
+        user = _resolve_user_or_raise(session, user_id)
+        payload = _compute_payload(session, user_id=user_id, computed_at=computed_at)
+        orcid_id = user.orcid_id
+        user_email = user.email
+    openalex_author_id = _resolve_openalex_author_id(
+        orcid_id=orcid_id,
+        mailto=_openalex_mailto(fallback_email=user_email),
+    )
+    _persist_ready_bundle(
+        user_id=user_id,
+        payload=payload,
+        computed_at=computed_at,
+        orcid_id=orcid_id,
+        openalex_author_id=openalex_author_id,
+    )
+    return payload
