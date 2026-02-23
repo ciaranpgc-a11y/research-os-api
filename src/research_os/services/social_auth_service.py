@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from research_os.db import (
     AuthOAuthState,
     AuthSession,
+    MetricsSnapshot,
     User,
     Work,
     create_all_tables,
@@ -333,16 +334,29 @@ def _resolve_user_for_oauth(
                         .group_by(Work.user_id)
                     ).all()
                 }
+                citation_totals = {
+                    str(user_id): int(total or 0)
+                    for user_id, total in session.execute(
+                        select(Work.user_id, func.sum(MetricsSnapshot.citations_count))
+                        .select_from(MetricsSnapshot)
+                        .join(Work, MetricsSnapshot.work_id == Work.id)
+                        .where(Work.user_id.in_(candidate_ids))
+                        .group_by(Work.user_id)
+                    ).all()
+                }
 
-                def _candidate_rank(candidate: User) -> tuple[int, datetime, datetime]:
+                def _candidate_rank(
+                    candidate: User,
+                ) -> tuple[int, int, datetime, datetime]:
                     works_count = int(work_counts.get(candidate.id, 0))
+                    citations_total = int(citation_totals.get(candidate.id, 0))
                     last_sign_in = _as_utc(candidate.last_sign_in_at) or datetime(
                         1970, 1, 1, tzinfo=timezone.utc
                     )
                     updated = _as_utc(candidate.updated_at) or datetime(
                         1970, 1, 1, tzinfo=timezone.utc
                     )
-                    return (works_count, last_sign_in, updated)
+                    return (works_count, citations_total, last_sign_in, updated)
 
                 user = max(users_with_orcid, key=_candidate_rank)
                 for duplicate in users_with_orcid:
