@@ -13,7 +13,7 @@ import {
   syncPersonaMetrics,
 } from '@/lib/impact-api'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
-import { getAuthSessionToken } from '@/lib/auth-session'
+import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
 import type { AuthOAuthProviderStatusItem, AuthUser, OrcidStatusPayload, PersonaStatePayload } from '@/types/impact'
 
 function formatTimestamp(value: string | null | undefined): string {
@@ -71,6 +71,25 @@ export function ProfileIntegrationsPage() {
   }
   const orcidIssues = Array.isArray(orcidStatus?.issues) ? orcidStatus.issues : []
 
+  const handleSessionExpiry = useCallback(
+    (err: unknown): boolean => {
+      const message = err instanceof Error ? err.message : ''
+      const lowered = message.toLowerCase()
+      const isExpired =
+        lowered.includes('session is invalid or expired') ||
+        lowered.includes('session was not found') ||
+        lowered.includes('session token is required')
+      if (!isExpired) {
+        return false
+      }
+      clearAuthSessionToken()
+      setToken('')
+      navigate('/auth?next=/profile/integrations&reason=session_expired', { replace: true })
+      return true
+    },
+    [navigate],
+  )
+
   const loadData = useCallback(async (sessionToken: string, resetMessages = true) => {
     setLoading(true)
     setRefreshing(true)
@@ -104,12 +123,15 @@ export function ProfileIntegrationsPage() {
         setStatus(`Integrations loaded with ${failedCount} unavailable source${failedCount === 1 ? '' : 's'}.`)
       }
     } catch (loadError) {
+      if (handleSessionExpiry(loadError)) {
+        return
+      }
       setError(loadError instanceof Error ? loadError.message : 'Could not load integrations.')
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [])
+  }, [handleSessionExpiry])
 
   useEffect(() => {
     const sessionToken = getAuthSessionToken()
@@ -194,6 +216,9 @@ export function ProfileIntegrationsPage() {
       const payload = await fetchOrcidConnect(token)
       window.location.assign(payload.url)
     } catch (connectError) {
+      if (handleSessionExpiry(connectError)) {
+        return
+      }
       setError(connectError instanceof Error ? connectError.message : 'ORCID connect failed.')
     } finally {
       setConnecting(false)
@@ -220,6 +245,9 @@ export function ProfileIntegrationsPage() {
       }
       await loadData(token, false)
     } catch (importError) {
+      if (handleSessionExpiry(importError)) {
+        return
+      }
       setError(importError instanceof Error ? importError.message : 'Could not import ORCID works.')
     } finally {
       setImporting(false)
@@ -242,6 +270,9 @@ export function ProfileIntegrationsPage() {
       setStatus(`Citations synchronised via OpenAlex (${payload.synced_snapshots} snapshot(s)).`)
       await loadData(token, false)
     } catch (syncError) {
+      if (handleSessionExpiry(syncError)) {
+        return
+      }
       setError(syncError instanceof Error ? syncError.message : 'Could not synchronise citations.')
     } finally {
       setSyncing(false)
