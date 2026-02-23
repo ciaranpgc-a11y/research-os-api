@@ -236,6 +236,16 @@ export type PersonaStatePayload = {
       provider: string
     }>
     histogram: Record<string, number>
+    trend?: {
+      citations_last_12_months: number
+      citations_previous_12_months: number
+      yoy_growth_percent: number | null
+      yearly_growth: Array<{
+        year: number
+        citations_added: number
+        total_citations_end_year: number
+      }>
+    }
   }
   context: PersonaContextPayload
   sync_status: {

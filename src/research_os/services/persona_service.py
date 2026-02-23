@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import math
 import re
@@ -604,6 +604,124 @@ def _latest_metrics_by_work(session, work_ids: list[str]) -> dict[str, MetricsSn
     return best
 
 
+def _latest_metrics_by_work_at_or_before(
+    session,
+    *,
+    work_ids: list[str],
+    cutoff: datetime,
+) -> dict[str, MetricsSnapshot]:
+    if not work_ids:
+        return {}
+    rows = session.scalars(
+        select(MetricsSnapshot).where(
+            MetricsSnapshot.work_id.in_(work_ids),
+            MetricsSnapshot.captured_at <= cutoff,
+        )
+    ).all()
+    best: dict[str, MetricsSnapshot] = {}
+    for row in rows:
+        existing = best.get(row.work_id)
+        if existing is None:
+            best[row.work_id] = row
+            continue
+        if _metrics_snapshot_rank(row) > _metrics_snapshot_rank(existing):
+            best[row.work_id] = row
+    return best
+
+
+def _sum_citations(rows: dict[str, MetricsSnapshot]) -> int:
+    total = 0
+    for snapshot in rows.values():
+        total += int(snapshot.citations_count or 0)
+    return total
+
+
+def _citation_trend_summary(
+    *,
+    session: Session,
+    work_ids: list[str],
+) -> dict[str, Any]:
+    if not work_ids:
+        return {
+            "citations_last_12_months": 0,
+            "citations_previous_12_months": 0,
+            "yoy_growth_percent": None,
+            "yearly_growth": [],
+        }
+    now = _utcnow()
+    latest = _latest_metrics_by_work(session, work_ids)
+    latest_total = _sum_citations(latest)
+
+    cutoff_12 = now - timedelta(days=365)
+    cutoff_24 = now - timedelta(days=730)
+
+    at_12 = _latest_metrics_by_work_at_or_before(
+        session,
+        work_ids=work_ids,
+        cutoff=cutoff_12,
+    )
+    at_24 = _latest_metrics_by_work_at_or_before(
+        session,
+        work_ids=work_ids,
+        cutoff=cutoff_24,
+    )
+    total_12 = _sum_citations(at_12)
+    total_24 = _sum_citations(at_24)
+
+    last_12 = max(0, latest_total - total_12)
+    previous_12 = max(0, total_12 - total_24)
+    yoy_growth_percent: float | None = None
+    if previous_12 > 0:
+        yoy_growth_percent = round(((last_12 - previous_12) / previous_12) * 100.0, 1)
+
+    first_snapshot_at = session.scalar(
+        select(func.min(MetricsSnapshot.captured_at)).where(
+            MetricsSnapshot.work_id.in_(work_ids)
+        )
+    )
+    yearly_growth: list[dict[str, Any]] = []
+    if isinstance(first_snapshot_at, datetime):
+        start_year = int(first_snapshot_at.astimezone(timezone.utc).year)
+        end_year = int(now.astimezone(timezone.utc).year)
+        for year in range(start_year, end_year + 1):
+            year_end = datetime(year, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+            prev_year_end = datetime(
+                year - 1,
+                12,
+                31,
+                23,
+                59,
+                59,
+                tzinfo=timezone.utc,
+            )
+            at_year_end = _latest_metrics_by_work_at_or_before(
+                session,
+                work_ids=work_ids,
+                cutoff=year_end,
+            )
+            at_prev_year_end = _latest_metrics_by_work_at_or_before(
+                session,
+                work_ids=work_ids,
+                cutoff=prev_year_end,
+            )
+            total_year_end = _sum_citations(at_year_end)
+            total_prev_year_end = _sum_citations(at_prev_year_end)
+            yearly_growth.append(
+                {
+                    "year": year,
+                    "citations_added": max(0, total_year_end - total_prev_year_end),
+                    "total_citations_end_year": total_year_end,
+                }
+            )
+
+    return {
+        "citations_last_12_months": last_12,
+        "citations_previous_12_months": previous_12,
+        "yoy_growth_percent": yoy_growth_percent,
+        "yearly_growth": yearly_growth,
+    }
+
+
 def sync_metrics(
     *,
     user_id: str,
@@ -1027,7 +1145,11 @@ def serialise_metrics_distribution(*, user_id: str) -> dict[str, Any]:
                 histogram["10-49"] += 1
             else:
                 histogram["50+"] += 1
-        return {"works": rows, "histogram": histogram}
+        trend = _citation_trend_summary(
+            session=session,
+            work_ids=[work.id for work in works],
+        )
+        return {"works": rows, "histogram": histogram, "trend": trend}
 
 
 def _persona_sync_status(*, user_id: str) -> dict[str, Any]:

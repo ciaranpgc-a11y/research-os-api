@@ -337,6 +337,30 @@ function citationCellTone(citations: number, hIndex: number): string {
   return 'bg-slate-50 text-slate-700'
 }
 
+function growthToneClass(value: number | null): string {
+  if (value === null || Number.isNaN(value)) {
+    return 'text-muted-foreground'
+  }
+  if (value > 0) {
+    return 'text-emerald-700'
+  }
+  if (value < 0) {
+    return 'text-rose-700'
+  }
+  return 'text-muted-foreground'
+}
+
+function formatSignedPercent(value: number | null): string {
+  if (value === null || Number.isNaN(value)) {
+    return 'n/a'
+  }
+  const rounded = Math.round(value * 10) / 10
+  if (rounded > 0) {
+    return `+${rounded}%`
+  }
+  return `${rounded}%`
+}
+
 function SortHeader({
   label,
   column,
@@ -554,6 +578,10 @@ export function ProfilePublicationsPage() {
   const citedWorksCount = useMemo(() => citationCounts.filter((value) => value > 0).length, [citationCounts])
   const ownerName = user?.name || ''
   const ownerEmail = user?.email || ''
+  const citationsLast12Months = personaState?.metrics.trend?.citations_last_12_months ?? 0
+  const citationsPrevious12Months = personaState?.metrics.trend?.citations_previous_12_months ?? 0
+  const yoyGrowthPercent = personaState?.metrics.trend?.yoy_growth_percent ?? null
+  const latestYearGrowth = personaState?.metrics.trend?.yearly_growth?.at(-1) || null
   const worksCount = personaState?.works.length ?? 0
   const busy = loading || richImporting || syncing || fullSyncing
   const canSyncCitations = worksCount > 0 && !busy
@@ -659,7 +687,7 @@ export function ProfilePublicationsPage() {
       </header>
 
       <Card>
-        <CardContent className="grid gap-2 p-4 md:grid-cols-4">
+        <CardContent className="grid gap-2 p-4 md:grid-cols-3 xl:grid-cols-6">
           <div className="rounded border border-border px-3 py-2 text-sm">
             <p className="text-xs text-muted-foreground">Total works</p>
             <p className="font-semibold">{personaState?.works.length ?? 0}</p>
@@ -675,6 +703,22 @@ export function ProfilePublicationsPage() {
           <div className="rounded border border-border px-3 py-2 text-sm">
             <p className="text-xs text-muted-foreground">Cited works</p>
             <p className="font-semibold">{citedWorksCount}</p>
+          </div>
+          <div className="rounded border border-border px-3 py-2 text-sm">
+            <p className="text-xs text-muted-foreground">Citations (last 12 months)</p>
+            <p className="font-semibold">{citationsLast12Months}</p>
+            <p className="text-xs text-muted-foreground">Previous 12 months: {citationsPrevious12Months}</p>
+          </div>
+          <div className="rounded border border-border px-3 py-2 text-sm">
+            <p className="text-xs text-muted-foreground">Citation growth (YoY)</p>
+            <p className={`font-semibold ${growthToneClass(yoyGrowthPercent)}`}>
+              {formatSignedPercent(yoyGrowthPercent)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {latestYearGrowth
+                ? `${latestYearGrowth.year}: +${latestYearGrowth.citations_added} citations`
+                : 'Awaiting enough sync history'}
+            </p>
           </div>
         </CardContent>
       </Card>
