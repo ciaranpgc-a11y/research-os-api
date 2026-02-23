@@ -37,6 +37,7 @@ const CONFERENCE_HINT_PATTERN =
   /\b(conference|congress|symposium|workshop|annual meeting|scientific sessions|proceedings|poster session)\b/i
 const CONFERENCE_TYPE_HINT_PATTERN =
   /\b(conference|proceedings|meeting|congress|symposium|workshop)\b/i
+const NUMERIC_TITLE_START_PATTERN = /^\s*\d+([)\].,:;-]|\s|th\b|st\b|nd\b|rd\b)/i
 
 function normalizeWorkType(value: string | null | undefined): string {
   return (value || '')
@@ -64,6 +65,9 @@ function derivePublicationTypeLabel(work: {
     (!raw || raw === 'other') &&
     CONFERENCE_HINT_PATTERN.test(`${title} ${venue}`)
   ) {
+    return 'Conference paper'
+  }
+  if (raw === 'other' && NUMERIC_TITLE_START_PATTERN.test(title)) {
     return 'Conference paper'
   }
   if (!raw) {
