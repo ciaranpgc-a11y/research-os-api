@@ -87,16 +87,61 @@ function formatJournalName(value: string | null | undefined): string {
   if (!clean) {
     return 'Not available'
   }
+  const lowerCaseJoiners = new Set([
+    'a',
+    'an',
+    'and',
+    'as',
+    'at',
+    'by',
+    'for',
+    'from',
+    'in',
+    'of',
+    'on',
+    'or',
+    'the',
+    'to',
+    'via',
+    'with',
+  ])
+  const acronymMap: Record<string, string> = {
+    esc: 'ESC',
+    ehj: 'EHJ',
+    jacc: 'JACC',
+    bmj: 'BMJ',
+    ajrccm: 'AJRCCM',
+    erj: 'ERJ',
+    cmr: 'CMR',
+    mri: 'MRI',
+    ct: 'CT',
+  }
+  const words = clean.split(/\s+/)
   return clean
     .split(/\s+/)
-    .map((word) => {
+    .map((word, index) => {
       if (!word) {
         return word
       }
-      if (/^[A-Z0-9&.\-]{2,}$/.test(word)) {
+      const leading = word.match(/^[^A-Za-z0-9]*/) ? word.match(/^[^A-Za-z0-9]*/)![0] : ''
+      const trailing = word.match(/[^A-Za-z0-9]*$/) ? word.match(/[^A-Za-z0-9]*$/)![0] : ''
+      const core = word.slice(leading.length, Math.max(leading.length, word.length - trailing.length))
+      if (!core) {
         return word
       }
-      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+      const lowerCore = core.toLowerCase()
+      if (acronymMap[lowerCore]) {
+        return `${leading}${acronymMap[lowerCore]}${trailing}`
+      }
+      if (/^[A-Z0-9&.\-]{2,}$/.test(core)) {
+        return `${leading}${core}${trailing}`
+      }
+      const isJoiner = lowerCaseJoiners.has(lowerCore)
+      const isEdgeWord = index === 0 || index === words.length - 1
+      if (isJoiner && !isEdgeWord) {
+        return `${leading}${lowerCore}${trailing}`
+      }
+      return `${leading}${core.charAt(0).toUpperCase()}${core.slice(1).toLowerCase()}${trailing}`
     })
     .join(' ')
 }
