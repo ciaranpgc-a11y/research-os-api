@@ -584,9 +584,7 @@ def import_orcid_works(
     with session_scope() as session:
         user = _resolve_user_or_raise(session, user_id)
         baseline_works_count = (
-            session.scalar(
-                select(func.count(Work.id)).where(Work.user_id == user_id)
-            )
+            session.scalar(select(func.count(Work.id)).where(Work.user_id == user_id))
             or 0
         )
         for work in imported:
@@ -602,9 +600,7 @@ def import_orcid_works(
             seen_upserted_ids.add(work_id)
             upserted_ids.append(work_id)
         current_works_count = (
-            session.scalar(
-                select(func.count(Work.id)).where(Work.user_id == user_id)
-            )
+            session.scalar(select(func.count(Work.id)).where(Work.user_id == user_id))
             or 0
         )
         new_works_count = max(0, int(current_works_count) - int(baseline_works_count))

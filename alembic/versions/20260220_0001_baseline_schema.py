@@ -394,7 +394,9 @@ def _create_work_authorships_table() -> None:
         sa.Column("work_id", sa.String(length=36), nullable=False),
         sa.Column("author_id", sa.String(length=36), nullable=False),
         sa.Column("author_order", sa.Integer(), nullable=False),
-        sa.Column("is_user", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+        sa.Column(
+            "is_user", sa.Boolean(), nullable=False, server_default=sa.text("false")
+        ),
         sa.ForeignKeyConstraint(["author_id"], ["authors.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["work_id"], ["works.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -507,12 +509,12 @@ def upgrade() -> None:
     else:
         _add_generation_job_column_if_missing(
             "cancel_requested",
-                sa.Column(
-                    "cancel_requested",
-                    sa.Boolean(),
-                    nullable=False,
-                    server_default=sa.text("false"),
-                ),
+            sa.Column(
+                "cancel_requested",
+                sa.Boolean(),
+                nullable=False,
+                server_default=sa.text("false"),
+            ),
         )
         _add_generation_job_column_if_missing(
             "run_count",

@@ -180,15 +180,21 @@ def test_orcid_import_skips_auto_metrics_sync_by_default(monkeypatch, tmp_path) 
     assert result["imported_count"] == 1
 
 
-def test_orcid_import_reports_zero_new_works_on_repeat_sync(monkeypatch, tmp_path) -> None:
+def test_orcid_import_reports_zero_new_works_on_repeat_sync(
+    monkeypatch, tmp_path
+) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     orcid_id = "0000-0002-1825-0097"
-    user_id = _create_orcid_user(email="orcid-import-repeat@example.com", orcid_id=orcid_id)
+    user_id = _create_orcid_user(
+        email="orcid-import-repeat@example.com", orcid_id=orcid_id
+    )
 
     works_url = f"https://pub.orcid.org/v3.0/{orcid_id}/works"
     work_404_url = f"https://pub.orcid.org/v3.0/{orcid_id}/work/404"
     responses = {
-        works_url: _FakeResponse(200, {"group": [{"work-summary": [{"put-code": 404}]}]}),
+        works_url: _FakeResponse(
+            200, {"group": [{"work-summary": [{"put-code": 404}]}]}
+        ),
         work_404_url: _FakeResponse(
             200,
             {
