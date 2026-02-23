@@ -71,6 +71,8 @@ function totalCitationsFromPersonaState(state: PersonaStatePayload | null | unde
   return rows.reduce((sum, row) => sum + Math.max(0, Number(row.citations || 0)), 0)
 }
 
+const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
+const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const ORCID_SYNC_SUMMARY_STORAGE_PREFIX = 'aawe_orcid_sync_summary:'
 
 type OrcidSyncSummaryStorage = {
@@ -128,17 +130,80 @@ function clearSyncSummary(userId: string): void {
   window.localStorage.removeItem(syncSummaryStorageKey(userId))
 }
 
+function loadCachedIntegrationsUser(): AuthUser | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const raw = window.localStorage.getItem(INTEGRATIONS_USER_CACHE_KEY)
+  if (!raw) {
+    return null
+  }
+  try {
+    return JSON.parse(raw) as AuthUser
+  } catch {
+    return null
+  }
+}
+
+function saveCachedIntegrationsUser(value: AuthUser): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(INTEGRATIONS_USER_CACHE_KEY, JSON.stringify(value))
+}
+
+function clearCachedIntegrationsUser(): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.removeItem(INTEGRATIONS_USER_CACHE_KEY)
+}
+
+function loadCachedOrcidStatus(): OrcidStatusPayload | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const raw = window.localStorage.getItem(INTEGRATIONS_ORCID_STATUS_CACHE_KEY)
+  if (!raw) {
+    return null
+  }
+  try {
+    return JSON.parse(raw) as OrcidStatusPayload
+  } catch {
+    return null
+  }
+}
+
+function saveCachedOrcidStatus(value: OrcidStatusPayload): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(INTEGRATIONS_ORCID_STATUS_CACHE_KEY, JSON.stringify(value))
+}
+
+function clearCachedOrcidStatus(): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.removeItem(INTEGRATIONS_ORCID_STATUS_CACHE_KEY)
+}
+
 export function ProfileIntegrationsPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const initialCachedUser = loadCachedIntegrationsUser()
+  const initialCachedOrcidStatus = loadCachedOrcidStatus()
+  const initialCachedPersonaState = readCachedPersonaState()
   const [token, setToken] = useState<string>(() => getAuthSessionToken())
-  const [user, setUser] = useState<AuthUser | null>(null)
-  const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(null)
-  const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(null)
+  const [user, setUser] = useState<AuthUser | null>(initialCachedUser)
+  const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(initialCachedOrcidStatus)
+  const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(initialCachedPersonaState)
   const [providerStatuses, setProviderStatuses] = useState<AuthOAuthProviderStatusItem[]>([])
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
-  const [orcidStatusResolved, setOrcidStatusResolved] = useState(false)
+  const [orcidStatusResolved, setOrcidStatusResolved] = useState(
+    Boolean(initialCachedOrcidStatus || initialCachedUser?.orcid_id),
+  )
   const [connecting, setConnecting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
@@ -169,6 +234,8 @@ export function ProfileIntegrationsPage() {
         return false
       }
       clearAuthSessionToken()
+      clearCachedIntegrationsUser()
+      clearCachedOrcidStatus()
       setToken('')
       navigate('/auth?next=/profile/integrations&reason=session_expired', { replace: true })
       return true
@@ -191,8 +258,14 @@ export function ProfileIntegrationsPage() {
         fetchOAuthProviderStatuses(),
       ])
       const [meResult, orcidResult, stateResult, providerResult] = settled
-      setUser(meResult.status === 'fulfilled' ? meResult.value : null)
-      setOrcidStatus(orcidResult.status === 'fulfilled' ? orcidResult.value : null)
+      if (meResult.status === 'fulfilled') {
+        setUser(meResult.value)
+        saveCachedIntegrationsUser(meResult.value)
+      }
+      if (orcidResult.status === 'fulfilled') {
+        setOrcidStatus(orcidResult.value)
+        saveCachedOrcidStatus(orcidResult.value)
+      }
       let resolvedPersonaState: PersonaStatePayload | null = null
       if (stateResult.status === 'fulfilled') {
         setPersonaState(stateResult.value)
@@ -228,8 +301,9 @@ export function ProfileIntegrationsPage() {
   useEffect(() => {
     const sessionToken = getAuthSessionToken()
     setToken(sessionToken)
-    setOrcidStatusResolved(false)
     if (!sessionToken) {
+      clearCachedIntegrationsUser()
+      clearCachedOrcidStatus()
       navigate('/auth', { replace: true })
       return
     }
@@ -261,6 +335,22 @@ export function ProfileIntegrationsPage() {
       sessionStorage.removeItem('aawe_orcid_link_result')
     }
   }, [searchParams])
+
+  useEffect(() => {
+    if (user) {
+      saveCachedIntegrationsUser(user)
+      return
+    }
+    clearCachedIntegrationsUser()
+  }, [user])
+
+  useEffect(() => {
+    if (orcidStatus) {
+      saveCachedOrcidStatus(orcidStatus)
+      return
+    }
+    clearCachedOrcidStatus()
+  }, [orcidStatus])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
