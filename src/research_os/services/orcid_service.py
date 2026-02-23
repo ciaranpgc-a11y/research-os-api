@@ -20,7 +20,7 @@ from research_os.services.security_service import decrypt_secret, encrypt_secret
 
 ORCID_CONNECT_TTL_MINUTES = 20
 ORCID_IMPORT_DETAIL_FETCH_MAX = max(
-    0, int(os.getenv("ORCID_IMPORT_DETAIL_FETCH_MAX", "25"))
+    0, int(os.getenv("ORCID_IMPORT_DETAIL_FETCH_MAX", "250"))
 )
 
 
@@ -303,17 +303,31 @@ def _extract_work_payload(summary: dict[str, Any], detail: dict[str, Any] | None
     year_raw = (((source.get("publication-date") or {}).get("year") or {}).get("value") or "").strip()
     work_type = str(source.get("type", "")).strip()
     doi = _extract_external_id(source, "doi")
+    pmid = _extract_external_id(source, "pmid") or _extract_external_id(source, "pubmed-id")
     venue = str((source.get("journal-title") or {}).get("value") or "").strip()
+    publisher = str((source.get("publisher") or {}).get("value") or "").strip()
     url = str((source.get("url") or {}).get("value") or "").strip()
+    if not url and pmid:
+        url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
+    if not url and doi:
+        url = f"https://doi.org/{doi}"
+    keywords_raw = ((source.get("keywords") or {}).get("keyword") or [])
+    keywords: list[str] = []
+    for item in keywords_raw:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("content", "")).strip()
+        if text:
+            keywords.append(text)
     payload = {
         "title": title,
         "year": int(year_raw) if year_raw.isdigit() else None,
         "doi": doi,
         "work_type": work_type,
         "venue_name": venue,
-        "publisher": "",
+        "publisher": publisher,
         "abstract": str((source.get("short-description") or "").strip()) if source.get("short-description") else "",
-        "keywords": [],
+        "keywords": keywords,
         "url": url,
         "authors": _extract_authors(source),
     }
@@ -352,14 +366,12 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
                     seen_put_codes.add(put_code_key)
                 candidates.append((summary, put_code))
 
-        fetch_details = (
-            ORCID_IMPORT_DETAIL_FETCH_MAX > 0
-            and len(candidates) <= ORCID_IMPORT_DETAIL_FETCH_MAX
-        )
+        fetch_details_limit = min(len(candidates), ORCID_IMPORT_DETAIL_FETCH_MAX)
+        fetch_details = fetch_details_limit > 0
         imported: list[dict[str, Any]] = []
-        for summary, put_code in candidates:
+        for index, (summary, put_code) in enumerate(candidates):
             detail_payload = None
-            if fetch_details and put_code is not None:
+            if fetch_details and put_code is not None and index < fetch_details_limit:
                 detail_url = f"{_orcid_api_base()}/{orcid_id}/work/{put_code}"
                 detail_response = client.get(detail_url, headers=_orcid_headers(access_token))
                 if detail_response.status_code < 400:

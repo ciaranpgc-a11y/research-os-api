@@ -9,7 +9,7 @@ import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-c
 import { getAuthSessionToken } from '@/lib/auth-session'
 import type { OrcidStatusPayload, PersonaStatePayload } from '@/types/impact'
 
-type PublicationFilterKey = 'all' | 'cited' | 'with_doi' | 'with_abstract'
+type PublicationFilterKey = 'all' | 'cited' | 'with_doi' | 'with_abstract' | 'with_pmid' | 'with_if'
 type PublicationSortField = 'updated' | 'citations' | 'year' | 'title' | 'venue'
 type SortDirection = 'asc' | 'desc'
 
@@ -102,6 +102,7 @@ export function ProfilePublicationsPage() {
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [richImporting, setRichImporting] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [fullSyncing, setFullSyncing] = useState(false)
   const [status, setStatus] = useState('')
@@ -204,6 +205,12 @@ export function ProfilePublicationsPage() {
       if (filterKey === 'with_abstract') {
         return Boolean((work.abstract || '').trim())
       }
+      if (filterKey === 'with_pmid') {
+        return Boolean((work.pmid || '').trim())
+      }
+      if (filterKey === 'with_if') {
+        return typeof work.journal_impact_factor === 'number' && !Number.isNaN(work.journal_impact_factor)
+      }
       return true
     })
 
@@ -258,7 +265,7 @@ export function ProfilePublicationsPage() {
     return count
   }, [personaState?.metrics.works])
   const worksCount = personaState?.works.length ?? 0
-  const busy = loading || importing || syncing || fullSyncing
+  const busy = loading || importing || richImporting || syncing || fullSyncing
   const canImportOrcid = Boolean(orcidStatus?.can_import) && !busy
   const canSyncCitations = worksCount > 0 && !busy
 
@@ -307,6 +314,31 @@ export function ProfilePublicationsPage() {
       setError(syncError instanceof Error ? syncError.message : 'Could not synchronise citations.')
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const onRichImportOrcid = async () => {
+    if (!token) {
+      return
+    }
+    if (!orcidStatus?.linked) {
+      setStatus('Connect ORCID in Integrations before running rich import.')
+      return
+    }
+    setRichImporting(true)
+    setError('')
+    setStatus('')
+    try {
+      const importPayload = await importOrcidWorks(token, { overwriteUserMetadata: true })
+      const syncPayload = await syncPersonaMetrics(token, ['openalex', 'semantic_scholar'])
+      setStatus(
+        `Rich import complete: ${importPayload.imported_count} work(s) refreshed, ${syncPayload.synced_snapshots} citation snapshot(s) updated.`,
+      )
+      await loadData(token, false)
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : 'Could not run rich ORCID import.')
+    } finally {
+      setRichImporting(false)
     }
   }
 
@@ -372,6 +404,9 @@ export function ProfilePublicationsPage() {
           <Button type="button" onClick={onImportOrcid} disabled={!canImportOrcid}>
             {importing ? 'Importing...' : 'Import ORCID works'}
           </Button>
+          <Button type="button" onClick={onRichImportOrcid} disabled={!canImportOrcid}>
+            {richImporting ? 'Hydrating...' : 'Rich ORCID refresh'}
+          </Button>
           <Button type="button" variant="outline" onClick={onSyncCitations} disabled={!canSyncCitations}>
             {syncing ? 'Syncing...' : 'Sync citations'}
           </Button>
@@ -425,6 +460,8 @@ export function ProfilePublicationsPage() {
                   <option value="cited">Cited only</option>
                   <option value="with_doi">With DOI</option>
                   <option value="with_abstract">With abstract</option>
+                  <option value="with_pmid">With PMID</option>
+                  <option value="with_if">With journal IF/proxy</option>
                 </select>
                 <select
                   value={typeFilter}
@@ -632,7 +669,7 @@ export function ProfilePublicationsPage() {
 
       {status ? <p className="text-sm text-emerald-700">{status}</p> : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      {(loading || importing || syncing || fullSyncing) ? (
+      {(loading || importing || richImporting || syncing || fullSyncing) ? (
         <p className="text-xs text-muted-foreground">Working...</p>
       ) : null}
     </section>

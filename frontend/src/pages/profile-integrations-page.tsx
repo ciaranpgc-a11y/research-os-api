@@ -45,6 +45,7 @@ export function ProfileIntegrationsPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [richImporting, setRichImporting] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [fullSyncing, setFullSyncing] = useState(false)
   const [status, setStatus] = useState('')
@@ -145,7 +146,7 @@ export function ProfileIntegrationsPage() {
   const emailVerified = Boolean(user?.email_verified_at)
   const orcidConfigured = Boolean(orcidStatus?.configured)
   const orcidLinked = Boolean(orcidStatus?.linked || user?.orcid_id)
-  const busy = loading || connecting || importing || syncing || fullSyncing
+  const busy = loading || connecting || importing || richImporting || syncing || fullSyncing
   const canConnectOrcid = emailVerified && orcidConfigured && !busy
   const canImportOrcid = emailVerified && orcidConfigured && orcidLinked && !busy
   const canSyncCitations = worksCount > 0 && !busy
@@ -228,6 +229,31 @@ export function ProfileIntegrationsPage() {
     }
   }
 
+  const onRichImportOrcid = async () => {
+    if (!token) {
+      return
+    }
+    if (!(orcidStatus?.linked || user?.orcid_id)) {
+      setStatus('Connect ORCID before running rich import.')
+      return
+    }
+    setRichImporting(true)
+    setError('')
+    setStatus('')
+    try {
+      const importPayload = await importOrcidWorks(token, { overwriteUserMetadata: true })
+      const syncPayload = await syncPersonaMetrics(token, ['openalex', 'semantic_scholar'])
+      setStatus(
+        `Rich import complete: ${importPayload.imported_count} work(s) refreshed, ${syncPayload.synced_snapshots} citation snapshot(s) updated.`,
+      )
+      await loadData(token, false)
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : 'Could not run rich ORCID import.')
+    } finally {
+      setRichImporting(false)
+    }
+  }
+
   const onFullSyncMetrics = async () => {
     if (!token) {
       return
@@ -291,6 +317,9 @@ export function ProfileIntegrationsPage() {
             </Button>
             <Button type="button" onClick={onImportOrcid} disabled={!canImportOrcid}>
               {importing ? 'Importing...' : 'Import ORCID works'}
+            </Button>
+            <Button type="button" onClick={onRichImportOrcid} disabled={!canImportOrcid}>
+              {richImporting ? 'Hydrating...' : 'Rich ORCID refresh'}
             </Button>
             <Button type="button" variant="outline" onClick={onSyncMetrics} disabled={!canSyncCitations}>
               {syncing ? 'Syncing...' : 'Sync citations'}
@@ -380,7 +409,7 @@ export function ProfileIntegrationsPage() {
 
       {status ? <p className="text-sm text-emerald-700">{status}</p> : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      {(loading || connecting || importing || syncing || fullSyncing) ? (
+      {(loading || connecting || importing || richImporting || syncing || fullSyncing) ? (
         <p className="text-xs text-muted-foreground">Working...</p>
       ) : null}
     </section>

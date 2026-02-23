@@ -395,13 +395,18 @@ export async function completeOrcidLink(input: {
   )
 }
 
-export async function importOrcidWorks(token: string): Promise<OrcidImportPayload> {
+export async function importOrcidWorks(
+  token: string,
+  options?: {
+    overwriteUserMetadata?: boolean
+  },
+): Promise<OrcidImportPayload> {
   return requestJson<OrcidImportPayload>(
     `${API_BASE_URL}/v1/persona/import/orcid`,
     {
       method: 'POST',
       headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ overwrite_user_metadata: false }),
+      body: JSON.stringify({ overwrite_user_metadata: Boolean(options?.overwriteUserMetadata) }),
     },
     'ORCID import failed',
   )
