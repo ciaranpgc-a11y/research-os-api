@@ -51,9 +51,78 @@ function formatShortTimestamp(value: string | null | undefined): string | null {
   })
 }
 
+function formatDateOnly(value: string | null | undefined): string | null {
+  if (!value) {
+    return null
+  }
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) {
+    return null
+  }
+  return new Date(parsed).toLocaleDateString('en-GB', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+  })
+}
+
 function totalCitationsFromPersonaState(state: PersonaStatePayload | null | undefined): number {
   const rows = state?.metrics?.works ?? []
   return rows.reduce((sum, row) => sum + Math.max(0, Number(row.citations || 0)), 0)
+}
+
+const ORCID_SYNC_SUMMARY_STORAGE_PREFIX = 'aawe_orcid_sync_summary:'
+
+type OrcidSyncSummaryStorage = {
+  lastImportedCount: number | null
+  lastReferencesSyncedCount: number | null
+  lastSyncSinceLabel: string | null
+}
+
+function syncSummaryStorageKey(userId: string): string {
+  return `${ORCID_SYNC_SUMMARY_STORAGE_PREFIX}${userId}`
+}
+
+function loadSyncSummary(userId: string): OrcidSyncSummaryStorage | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const raw = window.localStorage.getItem(syncSummaryStorageKey(userId))
+  if (!raw) {
+    return null
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<OrcidSyncSummaryStorage>
+    return {
+      lastImportedCount:
+        typeof parsed.lastImportedCount === 'number' ? parsed.lastImportedCount : null,
+      lastReferencesSyncedCount:
+        typeof parsed.lastReferencesSyncedCount === 'number'
+          ? parsed.lastReferencesSyncedCount
+          : null,
+      lastSyncSinceLabel:
+        typeof parsed.lastSyncSinceLabel === 'string' ? parsed.lastSyncSinceLabel : null,
+    }
+  } catch {
+    return null
+  }
+}
+
+function saveSyncSummary(
+  userId: string,
+  payload: OrcidSyncSummaryStorage,
+): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(syncSummaryStorageKey(userId), JSON.stringify(payload))
+}
+
+function clearSyncSummary(userId: string): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.removeItem(syncSummaryStorageKey(userId))
 }
 
 export function ProfileIntegrationsPage() {
@@ -194,9 +263,15 @@ export function ProfileIntegrationsPage() {
       return
     }
     try {
-      const parsed = JSON.parse(raw) as { imported_count?: number }
+      const parsed = JSON.parse(raw) as { imported_count?: number; synced_at?: string }
       if (typeof parsed.imported_count === 'number') {
         setLastImportedCount(parsed.imported_count)
+        if (!lastSyncSinceLabel && parsed.synced_at) {
+          const short = formatShortTimestamp(parsed.synced_at)
+          if (short) {
+            setLastSyncSinceLabel(short)
+          }
+        }
       }
     } catch {
       // Ignore malformed payload and continue with live state.
@@ -204,6 +279,22 @@ export function ProfileIntegrationsPage() {
       window.sessionStorage.removeItem('aawe_orcid_auto_sync_result')
     }
   }, [])
+
+  useEffect(() => {
+    if (!user?.id) {
+      return
+    }
+    const stored = loadSyncSummary(user.id)
+    if (!stored) {
+      setLastImportedCount(null)
+      setLastReferencesSyncedCount(null)
+      setLastSyncSinceLabel(null)
+      return
+    }
+    setLastImportedCount(stored.lastImportedCount)
+    setLastReferencesSyncedCount(stored.lastReferencesSyncedCount)
+    setLastSyncSinceLabel(stored.lastSyncSinceLabel)
+  }, [user?.id])
 
   const providerByName = useMemo(() => {
     const map = new Map<string, AuthOAuthProviderStatusItem>()
@@ -228,6 +319,10 @@ export function ProfileIntegrationsPage() {
       : 'Connected'
     : 'Not connected'
   const totalCitations = useMemo(() => totalCitationsFromPersonaState(personaState), [personaState])
+  const worksLastSyncDate = formatDateOnly(syncStatus.orcid_last_synced_at)
+  const referencesLastSyncDate = formatDateOnly(
+    syncStatus.metrics_last_synced_at || syncStatus.orcid_last_synced_at,
+  )
   const onConnectOrcid = async () => {
     if (!token) {
       return
@@ -281,9 +376,18 @@ export function ProfileIntegrationsPage() {
       const refreshed = await loadData(token, false)
       const worksAfterImport = refreshed?.personaState?.works?.length ?? worksBeforeImport
       const citationsAfterImport = totalCitationsFromPersonaState(refreshed?.personaState)
-      setLastImportedCount(Math.max(0, worksAfterImport - worksBeforeImport))
-      setLastReferencesSyncedCount(Math.max(0, citationsAfterImport - citationsBeforeImport))
+      const newWorksImported = Math.max(0, worksAfterImport - worksBeforeImport)
+      const newReferencesSynced = Math.max(0, citationsAfterImport - citationsBeforeImport)
+      setLastImportedCount(newWorksImported)
+      setLastReferencesSyncedCount(newReferencesSynced)
       setLastSyncSinceLabel(syncSinceLabel)
+      if (user?.id) {
+        saveSyncSummary(user.id, {
+          lastImportedCount: newWorksImported,
+          lastReferencesSyncedCount: newReferencesSynced,
+          lastSyncSinceLabel: syncSinceLabel,
+        })
+      }
     } catch (importError) {
       if (handleSessionExpiry(importError)) {
         setImporting(false)
@@ -299,9 +403,18 @@ export function ProfileIntegrationsPage() {
           const refreshed = await loadData(token, false)
           const worksAfterImport = refreshed?.personaState?.works?.length ?? worksBeforeImport
           const citationsAfterImport = totalCitationsFromPersonaState(refreshed?.personaState)
-          setLastImportedCount(Math.max(0, worksAfterImport - worksBeforeImport))
-          setLastReferencesSyncedCount(Math.max(0, citationsAfterImport - citationsBeforeImport))
+          const newWorksImported = Math.max(0, worksAfterImport - worksBeforeImport)
+          const newReferencesSynced = Math.max(0, citationsAfterImport - citationsBeforeImport)
+          setLastImportedCount(newWorksImported)
+          setLastReferencesSyncedCount(newReferencesSynced)
           setLastSyncSinceLabel(syncSinceLabel)
+          if (user?.id) {
+            saveSyncSummary(user.id, {
+              lastImportedCount: newWorksImported,
+              lastReferencesSyncedCount: newReferencesSynced,
+              lastSyncSinceLabel: syncSinceLabel,
+            })
+          }
           setStatus('')
           return
         } catch (retryError) {
@@ -353,6 +466,12 @@ export function ProfileIntegrationsPage() {
       const payload = await disconnectOrcid(token)
       setOrcidStatus(payload)
       setStatus('ORCID disconnected successfully.')
+      if (user?.id) {
+        clearSyncSummary(user.id)
+      }
+      setLastImportedCount(null)
+      setLastReferencesSyncedCount(null)
+      setLastSyncSinceLabel(null)
       await loadData(token, false)
     } catch (disconnectError) {
       if (handleSessionExpiry(disconnectError)) {
@@ -419,6 +538,9 @@ export function ProfileIntegrationsPage() {
                 <div className="rounded border border-border px-3 py-2">
                   <p className="text-xs text-muted-foreground">Total works</p>
                   <p className="text-sm font-semibold">{worksCount}</p>
+                  {worksLastSyncDate ? (
+                    <p className="text-xs text-muted-foreground">last sync {worksLastSyncDate}</p>
+                  ) : null}
                 </div>
                 <div className="rounded border border-border px-3 py-2">
                   <p className="text-xs text-muted-foreground">New works imported</p>
@@ -430,6 +552,9 @@ export function ProfileIntegrationsPage() {
                 <div className="rounded border border-border px-3 py-2">
                   <p className="text-xs text-muted-foreground">Total references</p>
                   <p className="text-sm font-semibold">{totalCitations}</p>
+                  {referencesLastSyncDate ? (
+                    <p className="text-xs text-muted-foreground">last sync {referencesLastSyncDate}</p>
+                  ) : null}
                 </div>
                 <div className="rounded border border-border px-3 py-2">
                   <p className="text-xs text-muted-foreground">New references synced</p>
