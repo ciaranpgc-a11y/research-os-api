@@ -147,12 +147,147 @@ def _auth_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _tile(payload: dict[str, object], key: str) -> dict[str, object]:
+    items = payload.get("tiles")
+    assert isinstance(items, list)
+    for item in items:
+        if isinstance(item, dict) and str(item.get("key")) == key:
+            return item
+    raise AssertionError(f"Tile '{key}' not found.")
+
+
 def test_metric_compute_helpers() -> None:
     assert compute_m_index(h_index=20, first_publication_year=2016, current_year=2026) == 1.818
     assert compute_yoy_percent(citations_last_12m=120, citations_prev_12m=80) == 50.0
     assert compute_yoy_percent(citations_last_12m=100, citations_prev_12m=0) is None
     assert compute_citation_momentum_score([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) == 94.5
     assert compute_concentration_risk_percent(total_citations=200, top3_citations=80) == 40.0
+
+
+def test_counts_by_year_prevents_lifetime_lumping(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    now = datetime.now(timezone.utc)
+
+    with session_scope() as session:
+        user = User(
+            email="counts-by-year@example.com",
+            password_hash="test-hash",
+            name="CountsByYear",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+        work = Work(
+            user_id=user_id,
+            title="Long history work",
+            title_lower="long history work",
+            year=2018,
+            doi="10.1000/long-history-work",
+            venue_name="History Journal",
+            journal="History Journal",
+            publication_type="journal-article",
+            citations_total=0,
+            work_type="journal-article",
+            publisher="Publisher",
+            abstract="Abstract",
+            keywords=["history"],
+            url="https://example.org/history",
+            provenance="manual",
+        )
+        session.add(work)
+        session.flush()
+
+        session.add(
+            MetricsSnapshot(
+                work_id=str(work.id),
+                provider="openalex",
+                citations_count=1000,
+                influential_citations=None,
+                altmetric_score=None,
+                metric_payload={
+                    "match_method": "doi",
+                    "counts_by_year": [
+                        {"year": 2018, "cited_by_count": 80},
+                        {"year": 2019, "cited_by_count": 100},
+                        {"year": 2020, "cited_by_count": 120},
+                        {"year": 2021, "cited_by_count": 140},
+                        {"year": 2022, "cited_by_count": 170},
+                        {"year": 2023, "cited_by_count": 190},
+                        {"year": 2024, "cited_by_count": 170},
+                        {"year": 2025, "cited_by_count": 25},
+                        {"year": now.year, "cited_by_count": 5},
+                    ],
+                },
+                captured_at=now - timedelta(days=5),
+            )
+        )
+
+    payload = compute_publication_top_metrics(user_id=user_id)
+    total_tile = _tile(payload, "total_citations_lifetime")
+    last12_tile = _tile(payload, "citations_last_12m")
+    yoy_tile = _tile(payload, "yoy_change")
+
+    total_value = int(total_tile["value"] or 0)
+    last12_value = int(last12_tile["value"] or 0)
+    assert total_value >= 900
+    assert last12_value < int(total_value * 0.5)
+    assert float(yoy_tile["value"] or 0.0) < 1000.0
+
+
+def test_single_snapshot_without_history_is_conservative(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    now = datetime.now(timezone.utc)
+
+    with session_scope() as session:
+        user = User(
+            email="single-snapshot@example.com",
+            password_hash="test-hash",
+            name="SingleSnapshot",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+        work = Work(
+            user_id=user_id,
+            title="Single snapshot work",
+            title_lower="single snapshot work",
+            year=2021,
+            doi="10.1000/single-snapshot-work",
+            venue_name="Snapshot Journal",
+            journal="Snapshot Journal",
+            publication_type="journal-article",
+            citations_total=0,
+            work_type="journal-article",
+            publisher="Publisher",
+            abstract="Abstract",
+            keywords=["snapshot"],
+            url="https://example.org/snapshot",
+            provenance="manual",
+        )
+        session.add(work)
+        session.flush()
+
+        session.add(
+            MetricsSnapshot(
+                work_id=str(work.id),
+                provider="openalex",
+                citations_count=420,
+                influential_citations=None,
+                altmetric_score=None,
+                metric_payload={"match_method": "doi"},
+                captured_at=now - timedelta(days=2),
+            )
+        )
+
+    payload = compute_publication_top_metrics(user_id=user_id)
+    last12_tile = _tile(payload, "citations_last_12m")
+    yoy_tile = _tile(payload, "yoy_change")
+    assert int(last12_tile["value"] or 0) == 0
+    assert str(yoy_tile["value_display"]) == "n/a"
 
 
 def test_stale_while_revalidate_serves_cache_and_enqueues(monkeypatch, tmp_path) -> None:

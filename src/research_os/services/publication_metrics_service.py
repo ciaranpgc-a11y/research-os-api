@@ -26,6 +26,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
+TOP_METRICS_SCHEMA_VERSION = 2
 
 _executor_lock = threading.Lock()
 _executor: ThreadPoolExecutor | None = None
@@ -167,6 +168,124 @@ def _month_end_points(*, now: datetime, months: int) -> list[datetime]:
         month_value = _shift_month(oldest_month, index)
         points.append(_month_end(month_value, now=now))
     return points
+
+
+def _extract_counts_by_year(rows: list[MetricsSnapshot], *, now_year: int) -> dict[int, int]:
+    if not rows:
+        return {}
+
+    def _rank(item: MetricsSnapshot) -> tuple[int, datetime]:
+        provider = str(item.provider or "").strip().lower()
+        is_openalex = 1 if provider == "openalex" else 0
+        return (is_openalex, _coerce_utc(item.captured_at))
+
+    ordered = sorted(rows, key=_rank, reverse=True)
+    for snapshot in ordered:
+        payload = snapshot.metric_payload if isinstance(snapshot.metric_payload, dict) else {}
+        raw = payload.get("counts_by_year")
+        if not isinstance(raw, list):
+            continue
+        counts: dict[int, int] = {}
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            year = _safe_int(item.get("year"))
+            value = _safe_int(item.get("cited_by_count"))
+            if value is None:
+                value = _safe_int(item.get("citation_count"))
+            if value is None:
+                value = _safe_int(item.get("citations"))
+            if year is None or value is None or year < 1900 or year > now_year:
+                continue
+            counts[year] = max(0, int(value))
+        if counts:
+            return counts
+    return {}
+
+
+def _estimate_window_citations(
+    yearly_counts: dict[int, int], *, start: datetime, end: datetime, now: datetime
+) -> int:
+    if not yearly_counts:
+        return 0
+    start_utc = _coerce_utc(start)
+    end_utc = _coerce_utc(end)
+    now_utc = _coerce_utc(now)
+    if end_utc <= start_utc:
+        return 0
+    estimated = 0.0
+    for year, count in yearly_counts.items():
+        citations = max(0, int(count or 0))
+        if citations <= 0:
+            continue
+        segment_start = datetime(year, 1, 1, tzinfo=timezone.utc)
+        segment_end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+        if year == now_utc.year:
+            segment_end = min(segment_end, now_utc)
+        if segment_end <= segment_start:
+            continue
+        overlap_start = max(start_utc, segment_start)
+        overlap_end = min(end_utc, segment_end)
+        if overlap_end <= overlap_start:
+            continue
+        overlap_seconds = (overlap_end - overlap_start).total_seconds()
+        segment_seconds = (segment_end - segment_start).total_seconds()
+        estimated += citations * max(0.0, min(1.0, overlap_seconds / segment_seconds))
+    return max(0, int(round(estimated)))
+
+
+def _monthly_from_yearly_counts(
+    yearly_counts: dict[int, int], *, now: datetime, months: int = 24
+) -> list[int]:
+    if not yearly_counts:
+        return [0 for _ in range(months)]
+    oldest_month = _shift_month(_month_start(now), -months)
+    values: list[int] = []
+    for index in range(months):
+        start = _shift_month(oldest_month, index)
+        end = _shift_month(start, 1)
+        if start.year == now.year and start.month == now.month:
+            end = now
+        values.append(
+            _estimate_window_citations(yearly_counts, start=start, end=end, now=now)
+        )
+    return values
+
+
+def _normalize_monthly_to_total(*, monthly_added: list[int], target_total: int) -> list[int]:
+    clean = [max(0, int(value or 0)) for value in monthly_added]
+    total = int(sum(clean))
+    target = max(0, int(target_total or 0))
+    if total <= 0:
+        return [0 for _ in clean]
+    if total <= target:
+        return clean
+
+    scaled = [int(round((value / total) * target)) for value in clean]
+    diff = target - int(sum(scaled))
+    if diff > 0:
+        for index in range(len(scaled) - 1, -1, -1):
+            if diff <= 0:
+                break
+            scaled[index] += 1
+            diff -= 1
+    elif diff < 0:
+        for index in range(len(scaled) - 1, -1, -1):
+            if diff >= 0:
+                break
+            removable = min(scaled[index], abs(diff))
+            scaled[index] -= removable
+            diff += removable
+    return [max(0, int(value)) for value in scaled]
+
+
+def _cumulative_from_monthly(*, monthly_added: list[int], target_total: int) -> list[int]:
+    clean = _normalize_monthly_to_total(monthly_added=monthly_added, target_total=target_total)
+    base = max(0, int(target_total or 0) - int(sum(clean)))
+    cumulative: list[int] = [base]
+    for value in clean:
+        cumulative.append(cumulative[-1] + max(0, int(value or 0)))
+    return cumulative
 
 
 def _snapshot_rank(row: MetricsSnapshot) -> tuple[int, int, int, datetime]:
@@ -342,7 +461,7 @@ def _empty_metrics_payload() -> dict[str, Any]:
         "data_sources": [],
         "data_last_refreshed": None,
         "metadata": {
-            "schema_version": 1,
+            "schema_version": TOP_METRICS_SCHEMA_VERSION,
             "message": "Metrics are being computed in the background.",
         },
     }
@@ -421,7 +540,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             "data_sources": ["ORCID"] if str(user.orcid_id or "").strip() else [],
             "data_last_refreshed": now.isoformat(),
             "metadata": {
-                "schema_version": 1,
+                "schema_version": TOP_METRICS_SCHEMA_VERSION,
                 "works_count": 0,
                 "message": "No publications available.",
                 "confidence_note": _confidence_note(),
@@ -442,10 +561,17 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             semantic_by_work.setdefault(work_id, []).append(row)
 
     month_end_points = _month_end_points(now=now, months=24)
+    cutoff_12 = now - timedelta(days=365)
+    cutoff_24 = now - timedelta(days=730)
     per_work_rows: list[dict[str, Any]] = []
     monthly_added_totals = [0] * 24
     monthly_cumulative_totals = [0] * 25
     provider_counts_latest: dict[str, int] = {}
+    window_basis_counts = {
+        "yearly_counts": 0,
+        "snapshot_delta": 0,
+        "insufficient_history": 0,
+    }
 
     for work in works:
         work_id = str(work.id)
@@ -466,40 +592,105 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         latest_provider = str(latest.provider or "manual").strip().lower() if latest is not None else "manual"
         provider_counts_latest[latest_provider] = provider_counts_latest.get(latest_provider, 0) + 1
 
-        cumulative_series: list[int] = []
-        semantic_cumulative_series: list[int] = []
-        for endpoint in month_end_points:
-            best_at_endpoint = _best_snapshot_at_or_before(rows, cutoff=endpoint)
-            if best_at_endpoint is None:
-                fallback = max(0, int(work.citations_total or 0))
-                if isinstance(work.year, int) and work.year > endpoint.year:
-                    fallback = 0
-                cumulative_series.append(fallback)
-            else:
-                cumulative_series.append(max(0, int(best_at_endpoint.citations_count or 0)))
-
-            semantic_at_endpoint = _best_snapshot_at_or_before(semantic_rows, cutoff=endpoint)
-            if semantic_at_endpoint is None or semantic_at_endpoint.influential_citations is None:
-                semantic_cumulative_series.append(0)
-            else:
-                semantic_cumulative_series.append(
-                    max(0, int(semantic_at_endpoint.influential_citations or 0))
-                )
-
-        monthly_added = [
-            max(0, cumulative_series[index + 1] - cumulative_series[index])
-            for index in range(24)
-        ]
-        monthly_semantic_added = [
-            max(
-                0,
-                semantic_cumulative_series[index + 1] - semantic_cumulative_series[index],
+        yearly_counts = _extract_counts_by_year(rows, now_year=now.year)
+        if yearly_counts:
+            monthly_added = _monthly_from_yearly_counts(yearly_counts, now=now, months=24)
+            monthly_added = _normalize_monthly_to_total(
+                monthly_added=monthly_added,
+                target_total=latest_citations,
             )
-            for index in range(24)
-        ]
+            cumulative_series = _cumulative_from_monthly(
+                monthly_added=monthly_added,
+                target_total=latest_citations,
+            )
+            last_12 = _estimate_window_citations(
+                yearly_counts,
+                start=cutoff_12,
+                end=now,
+                now=now,
+            )
+            prev_12 = _estimate_window_citations(
+                yearly_counts,
+                start=cutoff_24,
+                end=cutoff_12,
+                now=now,
+            )
+            if last_12 + prev_12 > latest_citations and latest_citations > 0:
+                scale = latest_citations / max(1, last_12 + prev_12)
+                last_12 = int(round(last_12 * scale))
+                prev_12 = int(round(prev_12 * scale))
+            window_basis = "yearly_counts"
+        else:
+            best_12 = _best_snapshot_at_or_before(rows, cutoff=cutoff_12)
+            best_24 = _best_snapshot_at_or_before(rows, cutoff=cutoff_24)
+            if best_12 is None:
+                monthly_added = [0 for _ in range(24)]
+                cumulative_series = [latest_citations for _ in range(25)]
+                last_12 = 0
+                prev_12 = 0
+                window_basis = "insufficient_history"
+            else:
+                cumulative_from_snapshots: list[int] = []
+                for endpoint in month_end_points:
+                    best_at_endpoint = _best_snapshot_at_or_before(rows, cutoff=endpoint)
+                    if best_at_endpoint is None:
+                        cumulative_from_snapshots.append(0)
+                    else:
+                        cumulative_from_snapshots.append(
+                            max(0, int(best_at_endpoint.citations_count or 0))
+                        )
+                monthly_added = [
+                    max(0, cumulative_from_snapshots[index + 1] - cumulative_from_snapshots[index])
+                    for index in range(24)
+                ]
+                monthly_added = _normalize_monthly_to_total(
+                    monthly_added=monthly_added,
+                    target_total=latest_citations,
+                )
+                cumulative_series = _cumulative_from_monthly(
+                    monthly_added=monthly_added,
+                    target_total=latest_citations,
+                )
+                baseline_12 = max(0, int(best_12.citations_count or 0))
+                baseline_24 = max(0, int(best_24.citations_count or 0)) if best_24 is not None else 0
+                last_12 = max(0, latest_citations - baseline_12)
+                prev_12 = max(0, baseline_12 - baseline_24)
+                window_basis = "snapshot_delta"
 
-        last_12 = int(sum(monthly_added[-12:]))
-        prev_12 = int(sum(monthly_added[:12]))
+        semantic_latest_total = max(0, int(latest_influential or 0))
+        semantic_12 = _best_snapshot_at_or_before(semantic_rows, cutoff=cutoff_12)
+        if semantic_12 is None:
+            monthly_semantic_added = [0 for _ in range(24)]
+            semantic_cumulative_series = [semantic_latest_total for _ in range(25)]
+        else:
+            semantic_cumulative_raw: list[int] = []
+            for endpoint in month_end_points:
+                semantic_at_endpoint = _best_snapshot_at_or_before(
+                    semantic_rows, cutoff=endpoint
+                )
+                if semantic_at_endpoint is None or semantic_at_endpoint.influential_citations is None:
+                    semantic_cumulative_raw.append(0)
+                else:
+                    semantic_cumulative_raw.append(
+                        max(0, int(semantic_at_endpoint.influential_citations or 0))
+                    )
+            monthly_semantic_added = [
+                max(
+                    0,
+                    semantic_cumulative_raw[index + 1] - semantic_cumulative_raw[index],
+                )
+                for index in range(24)
+            ]
+            monthly_semantic_added = _normalize_monthly_to_total(
+                monthly_added=monthly_semantic_added,
+                target_total=semantic_latest_total,
+            )
+            semantic_cumulative_series = _cumulative_from_monthly(
+                monthly_added=monthly_semantic_added,
+                target_total=semantic_latest_total,
+            )
+
+        window_basis_counts[window_basis] += 1
         momentum = compute_citation_momentum_score(monthly_added[-12:])
         confidence_score = _estimate_match_confidence(work=work, snapshot=latest)
         confidence_label = _confidence_label(confidence_score)
@@ -524,6 +715,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "confidence_label": confidence_label,
                 "match_method": match_method or "unknown",
                 "match_source": latest_provider,
+                "window_basis": window_basis,
                 "monthly_added_24": monthly_added,
                 "monthly_cumulative_25": cumulative_series,
                 "semantic_monthly_added_24": monthly_semantic_added,
@@ -802,7 +994,13 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     concentration_previous = concentration_series[0] if concentration_series else 0.0
     concentration_delta = round(concentration_risk - concentration_previous, 2)
     yoy_series_numbers = [0.0 if value is None else float(value) for value in yoy_series]
-    yoy_stability = "stable" if citations_prev_12m > 0 else "unstable"
+    has_insufficient_history = window_basis_counts["insufficient_history"] > 0
+    yoy_stability = (
+        "stable"
+        if citations_prev_12m > 0 and not has_insufficient_history
+        else "unstable"
+    )
+    last12_stability = "unstable" if has_insufficient_history else "stable"
 
     tiles = [
         _metric_tile(
@@ -873,7 +1071,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             sparkline=rolling_last_12_series,
             tooltip="Total citations gained over the most recent 12 months.",
             data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-            stability="stable",
+            stability=last12_stability,
             drilldown={
                 "title": "Citations (rolling last 12 months)",
                 "definition": "Sum of citation growth over the latest 12 months.",
@@ -999,10 +1197,11 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         "data_sources": data_sources,
         "data_last_refreshed": now.isoformat(),
         "metadata": {
-            "schema_version": 1,
+            "schema_version": TOP_METRICS_SCHEMA_VERSION,
             "works_count": len(per_work_rows),
             "confidence_note": _confidence_note(),
             "provider_counts_latest": provider_counts_latest,
+            "window_basis_counts": window_basis_counts,
             "citations_prev_12m": citations_prev_12m,
         },
     }
@@ -1200,10 +1399,17 @@ def get_publication_top_metrics(*, user_id: str) -> dict[str, Any]:
             status = _normalize_status(row.status)
             computed_at = _coerce_utc(row.computed_at) if row.computed_at is not None else None
             stale = _is_stale(computed_at=computed_at, now=_utcnow())
-            if stale and status != RUNNING_STATUS:
+            payload = _read_bundle_payload(row)
+            metadata = payload.get("metadata") if isinstance(payload, dict) else {}
+            schema_version = (
+                _safe_int(metadata.get("schema_version")) if isinstance(metadata, dict) else None
+            )
+            schema_outdated = (schema_version or 0) < TOP_METRICS_SCHEMA_VERSION
+            if (stale or schema_outdated) and status != RUNNING_STATUS:
                 enqueue = True
                 status = RUNNING_STATUS
             response = _response_from_row(row, status_override=status)
+            response["is_stale"] = bool(response.get("is_stale")) or schema_outdated
     if enqueue:
         enqueue_publication_top_metrics_refresh(user_id=user_id, reason="stale_read")
     return response
