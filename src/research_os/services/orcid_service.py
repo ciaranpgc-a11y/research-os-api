@@ -25,7 +25,7 @@ ORCID_IMPORT_DETAIL_FETCH_MAX_STANDARD = max(
     int(
         os.getenv(
             "ORCID_IMPORT_DETAIL_FETCH_MAX_STANDARD",
-            os.getenv("ORCID_IMPORT_DETAIL_FETCH_MAX", "0"),
+            "0",
         )
     ),
 )
@@ -271,15 +271,27 @@ def _ensure_valid_access_token(session, user: User) -> str:
     refresh_token = decrypt_secret(user.orcid_refresh_token) if user.orcid_refresh_token else None
     token_expires_at = _as_utc(user.orcid_token_expires_at)
     if token_expires_at and token_expires_at <= _utcnow() and refresh_token:
-        refreshed = _refresh_access_token(refresh_token)
-        access_token = str(refreshed.get("access_token", "")).strip()
-        new_refresh = str(refreshed.get("refresh_token", "")).strip() or refresh_token
-        expires_in = int(refreshed.get("expires_in", 3600) or 3600)
-        user.orcid_access_token = encrypt_secret(access_token)
-        user.orcid_refresh_token = encrypt_secret(new_refresh) if new_refresh else None
-        user.orcid_token_expires_at = _utcnow() + timedelta(seconds=max(0, expires_in))
+        access_token = _refresh_user_access_token(
+            session=session,
+            user=user,
+            refresh_token=refresh_token,
+        )
     if not access_token:
         raise OrcidValidationError("Unable to resolve a valid ORCID access token.")
+    return access_token
+
+
+def _refresh_user_access_token(*, session, user: User, refresh_token: str) -> str:
+    refreshed = _refresh_access_token(refresh_token)
+    access_token = str(refreshed.get("access_token", "")).strip()
+    if not access_token:
+        raise OrcidValidationError("ORCID token refresh did not return access token.")
+    new_refresh = str(refreshed.get("refresh_token", "")).strip() or refresh_token
+    expires_in = int(refreshed.get("expires_in", 3600) or 3600)
+    user.orcid_access_token = encrypt_secret(access_token)
+    user.orcid_refresh_token = encrypt_secret(new_refresh) if new_refresh else None
+    user.orcid_token_expires_at = _utcnow() + timedelta(seconds=max(0, expires_in))
+    session.flush()
     return access_token
 
 
@@ -384,85 +396,111 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
             raise OrcidValidationError("ORCID is not linked for this account.")
         access_token = _ensure_valid_access_token(session, user)
         orcid_id = user.orcid_id
+        has_refresh_token = bool(user.orcid_refresh_token)
 
     works_url = f"{_orcid_api_base()}/{orcid_id}/works"
-    with httpx.Client(timeout=ORCID_HTTP_TIMEOUT_SECONDS) as client:
-        works_response = client.get(works_url, headers=_orcid_headers(access_token))
-        if works_response.status_code >= 400:
-            raise OrcidValidationError("Failed to fetch ORCID works list.")
-        works_payload = works_response.json()
-        groups = works_payload.get("group") or []
+    try:
+        with httpx.Client(timeout=ORCID_HTTP_TIMEOUT_SECONDS) as client:
+            works_response = client.get(works_url, headers=_orcid_headers(access_token))
+    except httpx.HTTPError as exc:
+        raise OrcidValidationError("Failed to fetch ORCID works list due to network timeout.") from exc
 
-        candidates: list[tuple[dict[str, Any], Any]] = []
-        seen_put_codes: set[str] = set()
-        for group in groups:
-            summaries = group.get("work-summary") or []
-            for summary in summaries:
-                if not isinstance(summary, dict):
-                    continue
-                put_code = summary.get("put-code")
-                put_code_key = str(put_code).strip()
-                if put_code_key:
-                    if put_code_key in seen_put_codes:
-                        continue
-                    seen_put_codes.add(put_code_key)
-                candidates.append((summary, put_code))
-
-        detail_fetch_cap = (
-            ORCID_IMPORT_DETAIL_FETCH_MAX_RICH
-            if overwrite_user_metadata
-            else ORCID_IMPORT_DETAIL_FETCH_MAX_STANDARD
-        )
-        fetch_details_limit = min(len(candidates), detail_fetch_cap)
-        fetch_details = fetch_details_limit > 0
-        detail_payload_by_put_code: dict[str, dict[str, Any]] = {}
-        if fetch_details:
-            detail_put_codes: list[str] = []
-            seen_detail_codes: set[str] = set()
-            for index, (_, put_code) in enumerate(candidates):
-                if index >= fetch_details_limit:
-                    break
-                put_code_key = str(put_code).strip()
-                if not put_code_key or put_code_key in seen_detail_codes:
-                    continue
-                seen_detail_codes.add(put_code_key)
-                detail_put_codes.append(put_code_key)
-            if detail_put_codes:
-                max_workers = min(ORCID_IMPORT_DETAIL_FETCH_WORKERS, len(detail_put_codes))
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    future_map = {
-                        executor.submit(
-                            _fetch_orcid_work_detail,
-                            orcid_id=orcid_id,
-                            put_code=put_code_key,
-                            access_token=access_token,
-                        ): put_code_key
-                        for put_code_key in detail_put_codes
-                    }
-                    for future in as_completed(future_map):
-                        put_code_key = future_map[future]
-                        payload = future.result()
-                        if isinstance(payload, dict):
-                            detail_payload_by_put_code[put_code_key] = payload
-
-        imported: list[dict[str, Any]] = []
-        for index, (summary, put_code) in enumerate(candidates):
-            detail_payload = None
-            if fetch_details and put_code is not None and index < fetch_details_limit:
-                put_code_key = str(put_code).strip()
-                if put_code_key:
-                    detail_payload = detail_payload_by_put_code.get(put_code_key)
-            work_payload = _extract_work_payload(summary, detail_payload)
-            if not work_payload.get("url") and put_code is not None:
-                work_payload["url"] = (
-                    f"https://orcid.org/{orcid_id}/work/{put_code}"
+    if works_response.status_code == 401 and has_refresh_token:
+        with session_scope() as session:
+            user = _resolve_user_or_raise(session, user_id)
+            refresh_token = (
+                decrypt_secret(user.orcid_refresh_token) if user.orcid_refresh_token else None
+            )
+            if refresh_token:
+                access_token = _refresh_user_access_token(
+                    session=session,
+                    user=user,
+                    refresh_token=refresh_token,
                 )
-            if not work_payload["title"]:
-                fallback_ref = str(work_payload.get("doi") or put_code or "").strip()
-                if not fallback_ref:
+        try:
+            with httpx.Client(timeout=ORCID_HTTP_TIMEOUT_SECONDS) as client:
+                works_response = client.get(works_url, headers=_orcid_headers(access_token))
+        except httpx.HTTPError as exc:
+            raise OrcidValidationError("Failed to fetch ORCID works list after token refresh.") from exc
+
+    if works_response.status_code >= 400:
+        raise OrcidValidationError(
+            f"Failed to fetch ORCID works list (status {works_response.status_code})."
+        )
+
+    works_payload = works_response.json()
+    groups = works_payload.get("group") or []
+
+    candidates: list[tuple[dict[str, Any], Any]] = []
+    seen_put_codes: set[str] = set()
+    for group in groups:
+        summaries = group.get("work-summary") or []
+        for summary in summaries:
+            if not isinstance(summary, dict):
+                continue
+            put_code = summary.get("put-code")
+            put_code_key = str(put_code).strip()
+            if put_code_key:
+                if put_code_key in seen_put_codes:
                     continue
-                work_payload["title"] = f"ORCID work {fallback_ref}"
-            imported.append(work_payload)
+                seen_put_codes.add(put_code_key)
+            candidates.append((summary, put_code))
+
+    detail_fetch_cap = (
+        ORCID_IMPORT_DETAIL_FETCH_MAX_RICH
+        if overwrite_user_metadata
+        else ORCID_IMPORT_DETAIL_FETCH_MAX_STANDARD
+    )
+    fetch_details_limit = min(len(candidates), detail_fetch_cap)
+    fetch_details = fetch_details_limit > 0
+    detail_payload_by_put_code: dict[str, dict[str, Any]] = {}
+    if fetch_details:
+        detail_put_codes: list[str] = []
+        seen_detail_codes: set[str] = set()
+        for index, (_, put_code) in enumerate(candidates):
+            if index >= fetch_details_limit:
+                break
+            put_code_key = str(put_code).strip()
+            if not put_code_key or put_code_key in seen_detail_codes:
+                continue
+            seen_detail_codes.add(put_code_key)
+            detail_put_codes.append(put_code_key)
+        if detail_put_codes:
+            max_workers = min(ORCID_IMPORT_DETAIL_FETCH_WORKERS, len(detail_put_codes))
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_map = {
+                    executor.submit(
+                        _fetch_orcid_work_detail,
+                        orcid_id=orcid_id,
+                        put_code=put_code_key,
+                        access_token=access_token,
+                    ): put_code_key
+                    for put_code_key in detail_put_codes
+                }
+                for future in as_completed(future_map):
+                    put_code_key = future_map[future]
+                    payload = future.result()
+                    if isinstance(payload, dict):
+                        detail_payload_by_put_code[put_code_key] = payload
+
+    imported: list[dict[str, Any]] = []
+    for index, (summary, put_code) in enumerate(candidates):
+        detail_payload = None
+        if fetch_details and put_code is not None and index < fetch_details_limit:
+            put_code_key = str(put_code).strip()
+            if put_code_key:
+                detail_payload = detail_payload_by_put_code.get(put_code_key)
+        work_payload = _extract_work_payload(summary, detail_payload)
+        if not work_payload.get("url") and put_code is not None:
+            work_payload["url"] = (
+                f"https://orcid.org/{orcid_id}/work/{put_code}"
+            )
+        if not work_payload["title"]:
+            fallback_ref = str(work_payload.get("doi") or put_code or "").strip()
+            if not fallback_ref:
+                continue
+            work_payload["title"] = f"ORCID work {fallback_ref}"
+        imported.append(work_payload)
 
     upserted_ids: list[str] = []
     seen_upserted_ids: set[str] = set()
