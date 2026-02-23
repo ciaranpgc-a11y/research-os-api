@@ -74,6 +74,7 @@ export function ProfileIntegrationsPage() {
   const [error, setError] = useState('')
   const [lastImportedCount, setLastImportedCount] = useState<number | null>(null)
   const [lastReferencesSyncedCount, setLastReferencesSyncedCount] = useState<number | null>(null)
+  const [lastSyncSinceLabel, setLastSyncSinceLabel] = useState<string | null>(null)
   const syncStatus = personaState?.sync_status || {
     orcid_last_synced_at: null,
     metrics_last_synced_at: null,
@@ -270,6 +271,10 @@ export function ProfileIntegrationsPage() {
     setGoogleStatus('')
     const worksBeforeImport = worksCount
     const citationsBeforeImport = totalCitations
+    const syncSinceLabel =
+      formatShortTimestamp(syncStatus.metrics_last_synced_at) ||
+      formatShortTimestamp(syncStatus.orcid_last_synced_at) ||
+      'initial sync'
     try {
       await pingApiHealth()
       await importOrcidWorks(token)
@@ -278,6 +283,7 @@ export function ProfileIntegrationsPage() {
       const citationsAfterImport = totalCitationsFromPersonaState(refreshed?.personaState)
       setLastImportedCount(Math.max(0, worksAfterImport - worksBeforeImport))
       setLastReferencesSyncedCount(Math.max(0, citationsAfterImport - citationsBeforeImport))
+      setLastSyncSinceLabel(syncSinceLabel)
     } catch (importError) {
       if (handleSessionExpiry(importError)) {
         setImporting(false)
@@ -295,6 +301,7 @@ export function ProfileIntegrationsPage() {
           const citationsAfterImport = totalCitationsFromPersonaState(refreshed?.personaState)
           setLastImportedCount(Math.max(0, worksAfterImport - worksBeforeImport))
           setLastReferencesSyncedCount(Math.max(0, citationsAfterImport - citationsBeforeImport))
+          setLastSyncSinceLabel(syncSinceLabel)
           setStatus('')
           return
         } catch (retryError) {
@@ -402,13 +409,13 @@ export function ProfileIntegrationsPage() {
           <CardDescription>Primary source for publication import.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-6">
-            <div className="rounded border border-border px-3 py-2 md:col-span-2 xl:col-span-2">
+          <div className="grid gap-2 md:grid-cols-3">
+            <div className="rounded border border-border px-3 py-2 md:col-span-1">
               <p className="text-xs text-muted-foreground">ORCID id</p>
               <p className="font-medium">{orcidStatus?.orcid_id || user?.orcid_id || 'Not linked'}</p>
             </div>
             {orcidLinked ? (
-              <>
+              <div className="grid gap-2 sm:grid-cols-2 md:col-span-2">
                 <div className="rounded border border-border px-3 py-2">
                   <p className="text-xs text-muted-foreground">Total works</p>
                   <p className="text-sm font-semibold">{worksCount}</p>
@@ -416,6 +423,9 @@ export function ProfileIntegrationsPage() {
                 <div className="rounded border border-border px-3 py-2">
                   <p className="text-xs text-muted-foreground">New works imported</p>
                   <p className="text-sm font-semibold">{lastImportedCount ?? 0}</p>
+                  {lastSyncSinceLabel ? (
+                    <p className="text-xs font-medium text-emerald-700">since {lastSyncSinceLabel}</p>
+                  ) : null}
                 </div>
                 <div className="rounded border border-border px-3 py-2">
                   <p className="text-xs text-muted-foreground">Total references</p>
@@ -424,8 +434,11 @@ export function ProfileIntegrationsPage() {
                 <div className="rounded border border-border px-3 py-2">
                   <p className="text-xs text-muted-foreground">New references synced</p>
                   <p className="text-sm font-semibold">{lastReferencesSyncedCount ?? 0}</p>
+                  {lastSyncSinceLabel ? (
+                    <p className="text-xs font-medium text-emerald-700">since {lastSyncSinceLabel}</p>
+                  ) : null}
                 </div>
-              </>
+              </div>
             ) : null}
           </div>
           {orcidIssues.length ? (
