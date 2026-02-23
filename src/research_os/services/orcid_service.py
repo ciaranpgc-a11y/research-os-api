@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 import os
 import re
@@ -21,6 +22,12 @@ from research_os.services.security_service import decrypt_secret, encrypt_secret
 ORCID_CONNECT_TTL_MINUTES = 20
 ORCID_IMPORT_DETAIL_FETCH_MAX = max(
     0, int(os.getenv("ORCID_IMPORT_DETAIL_FETCH_MAX", "250"))
+)
+ORCID_IMPORT_DETAIL_FETCH_WORKERS = max(
+    1, int(os.getenv("ORCID_IMPORT_DETAIL_FETCH_WORKERS", "8"))
+)
+ORCID_HTTP_TIMEOUT_SECONDS = max(
+    5.0, float(os.getenv("ORCID_HTTP_TIMEOUT_SECONDS", "20"))
 )
 
 
@@ -334,6 +341,26 @@ def _extract_work_payload(summary: dict[str, Any], detail: dict[str, Any] | None
     return payload
 
 
+def _fetch_orcid_work_detail(
+    *,
+    orcid_id: str,
+    put_code: str,
+    access_token: str,
+) -> dict[str, Any] | None:
+    detail_url = f"{_orcid_api_base()}/{orcid_id}/work/{put_code}"
+    try:
+        with httpx.Client(timeout=ORCID_HTTP_TIMEOUT_SECONDS) as client:
+            detail_response = client.get(detail_url, headers=_orcid_headers(access_token))
+        if detail_response.status_code >= 400:
+            return None
+        payload = detail_response.json()
+        if not isinstance(payload, dict):
+            return None
+        return payload
+    except Exception:
+        return None
+
+
 def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -> dict[str, Any]:
     create_all_tables()
     with session_scope() as session:
@@ -344,7 +371,7 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
         orcid_id = user.orcid_id
 
     works_url = f"{_orcid_api_base()}/{orcid_id}/works"
-    with httpx.Client(timeout=20.0) as client:
+    with httpx.Client(timeout=ORCID_HTTP_TIMEOUT_SECONDS) as client:
         works_response = client.get(works_url, headers=_orcid_headers(access_token))
         if works_response.status_code >= 400:
             raise OrcidValidationError("Failed to fetch ORCID works list.")
@@ -368,14 +395,43 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
 
         fetch_details_limit = min(len(candidates), ORCID_IMPORT_DETAIL_FETCH_MAX)
         fetch_details = fetch_details_limit > 0
+        detail_payload_by_put_code: dict[str, dict[str, Any]] = {}
+        if fetch_details:
+            detail_put_codes: list[str] = []
+            seen_detail_codes: set[str] = set()
+            for index, (_, put_code) in enumerate(candidates):
+                if index >= fetch_details_limit:
+                    break
+                put_code_key = str(put_code).strip()
+                if not put_code_key or put_code_key in seen_detail_codes:
+                    continue
+                seen_detail_codes.add(put_code_key)
+                detail_put_codes.append(put_code_key)
+            if detail_put_codes:
+                max_workers = min(ORCID_IMPORT_DETAIL_FETCH_WORKERS, len(detail_put_codes))
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    future_map = {
+                        executor.submit(
+                            _fetch_orcid_work_detail,
+                            orcid_id=orcid_id,
+                            put_code=put_code_key,
+                            access_token=access_token,
+                        ): put_code_key
+                        for put_code_key in detail_put_codes
+                    }
+                    for future in as_completed(future_map):
+                        put_code_key = future_map[future]
+                        payload = future.result()
+                        if isinstance(payload, dict):
+                            detail_payload_by_put_code[put_code_key] = payload
+
         imported: list[dict[str, Any]] = []
         for index, (summary, put_code) in enumerate(candidates):
             detail_payload = None
             if fetch_details and put_code is not None and index < fetch_details_limit:
-                detail_url = f"{_orcid_api_base()}/{orcid_id}/work/{put_code}"
-                detail_response = client.get(detail_url, headers=_orcid_headers(access_token))
-                if detail_response.status_code < 400:
-                    detail_payload = detail_response.json()
+                put_code_key = str(put_code).strip()
+                if put_code_key:
+                    detail_payload = detail_payload_by_put_code.get(put_code_key)
             work_payload = _extract_work_payload(summary, detail_payload)
             if not work_payload.get("url") and put_code is not None:
                 work_payload["url"] = (

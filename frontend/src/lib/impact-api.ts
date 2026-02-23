@@ -45,7 +45,7 @@ function authHeaders(token: string): Record<string, string> {
 }
 
 const REQUEST_TIMEOUT_MS =
-  Number(import.meta.env.VITE_API_REQUEST_TIMEOUT_MS || '45000') || 45_000
+  Number(import.meta.env.VITE_API_REQUEST_TIMEOUT_MS || '90000') || 90_000
 const REQUEST_RETRY_COUNT =
   Number(import.meta.env.VITE_API_REQUEST_RETRY_COUNT || '1') || 1
 
