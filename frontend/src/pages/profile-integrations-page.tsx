@@ -164,7 +164,6 @@ export function ProfileIntegrationsPage() {
   const canConnectOrcid = emailVerified && orcidConfigured && !busy
   const canImportOrcid = emailVerified && orcidConfigured && orcidLinked && !busy
   const canSyncCitations = worksCount > 0 && !busy
-  const connectLabel = orcidLinked ? 'Reconnect ORCID' : 'Connect ORCID'
   const shortLastSync = formatShortTimestamp(syncStatus.orcid_last_synced_at)
   const connectionStatusLabel = orcidLinked
     ? shortLastSync
@@ -275,11 +274,7 @@ export function ProfileIntegrationsPage() {
           <CardDescription>Primary source for publication import.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
-          <div className="grid gap-2 md:grid-cols-2">
-            <div className="rounded border border-border px-3 py-2">
-              <p className="text-xs text-muted-foreground">Connection status</p>
-              <p className={`font-medium ${orcidLinked ? 'text-emerald-700' : 'text-amber-700'}`}>{connectionStatusLabel}</p>
-            </div>
+          <div className="grid gap-2 md:grid-cols-3">
             <div className="rounded border border-border px-3 py-2">
               <p className="text-xs text-muted-foreground">ORCID id</p>
               <p className="font-medium">{orcidStatus?.orcid_id || user?.orcid_id || 'Not linked'}</p>
@@ -299,9 +294,11 @@ export function ProfileIntegrationsPage() {
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={onConnectOrcid} disabled={!canConnectOrcid}>
-              {connecting ? 'Opening ORCID...' : connectLabel}
-            </Button>
+            {!orcidLinked ? (
+              <Button type="button" onClick={onConnectOrcid} disabled={!canConnectOrcid}>
+                {connecting ? 'Opening ORCID...' : 'Connect ORCID'}
+              </Button>
+            ) : null}
             {orcidLinked ? (
               <Button type="button" variant="outline" onClick={onImportOrcid} disabled={!canImportOrcid}>
                 {importing ? 'Importing...' : worksCount > 0 ? 'Refresh ORCID works' : 'Import ORCID works'}
