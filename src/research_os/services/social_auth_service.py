@@ -7,13 +7,14 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from research_os.db import (
     AuthOAuthState,
     AuthSession,
     User,
+    Work,
     create_all_tables,
     session_scope,
 )
@@ -313,7 +314,37 @@ def _resolve_user_for_oauth(
 
     if provider == "orcid":
         orcid_id = identity["orcid_id"]
-        user = session.scalars(select(User).where(User.orcid_id == orcid_id)).first()
+        users_with_orcid = session.scalars(
+            select(User).where(User.orcid_id == orcid_id)
+        ).all()
+        user = None
+        if users_with_orcid:
+            if len(users_with_orcid) == 1:
+                user = users_with_orcid[0]
+            else:
+                # Deterministically resolve duplicate ORCID mappings by choosing the
+                # account with the most works, then most recent sign-in/update.
+                candidate_ids = [candidate.id for candidate in users_with_orcid]
+                work_counts = {
+                    str(user_id): int(count or 0)
+                    for user_id, count in session.execute(
+                        select(Work.user_id, func.count(Work.id))
+                        .where(Work.user_id.in_(candidate_ids))
+                        .group_by(Work.user_id)
+                    ).all()
+                }
+
+                def _candidate_rank(candidate: User) -> tuple[int, datetime, datetime]:
+                    works_count = int(work_counts.get(candidate.id, 0))
+                    last_sign_in = _as_utc(candidate.last_sign_in_at) or datetime(
+                        1970, 1, 1, tzinfo=timezone.utc
+                    )
+                    updated = _as_utc(candidate.updated_at) or datetime(
+                        1970, 1, 1, tzinfo=timezone.utc
+                    )
+                    return (works_count, last_sign_in, updated)
+
+                user = max(users_with_orcid, key=_candidate_rank)
         if user is None:
             user = session.scalars(select(User).where(User.email == email)).first()
         if user is None:

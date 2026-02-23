@@ -275,6 +275,15 @@ def complete_orcid_callback(*, state: str, code: str) -> dict[str, Any]:
             raise OrcidValidationError("OAuth state has expired.")
 
         user = _resolve_user_or_raise(session, state_row.user_id)
+        existing_orcid_users = session.scalars(
+            select(User).where(User.orcid_id == orcid_id, User.id != user.id)
+        ).all()
+        for existing_user in existing_orcid_users:
+            # Keep ORCID ownership unique to avoid account resolution drift.
+            existing_user.orcid_id = None
+            existing_user.orcid_access_token = None
+            existing_user.orcid_refresh_token = None
+            existing_user.orcid_token_expires_at = None
         user.orcid_id = orcid_id
         user.orcid_access_token = encrypt_secret(access_token)
         user.orcid_refresh_token = (
