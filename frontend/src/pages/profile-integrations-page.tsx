@@ -534,7 +534,7 @@ export function ProfileIntegrationsPage() {
               <p className="font-medium">{orcidStatus?.orcid_id || user?.orcid_id || 'Not linked'}</p>
             </div>
             {orcidLinked ? (
-              <div className="grid gap-2 sm:grid-cols-2 md:col-span-2">
+              <>
                 <div className="rounded border border-border px-3 py-2">
                   <p className="text-xs text-muted-foreground">Total works</p>
                   <p className="text-sm font-semibold">{worksCount}</p>
@@ -549,23 +549,28 @@ export function ProfileIntegrationsPage() {
                     <p className="text-xs font-medium text-emerald-700">since {lastSyncSinceLabel}</p>
                   ) : null}
                 </div>
-                <div className="rounded border border-border px-3 py-2">
-                  <p className="text-xs text-muted-foreground">Total references</p>
-                  <p className="text-sm font-semibold">{totalCitations}</p>
-                  {referencesLastSyncDate ? (
-                    <p className="text-xs text-muted-foreground">last sync {referencesLastSyncDate}</p>
-                  ) : null}
-                </div>
-                <div className="rounded border border-border px-3 py-2">
-                  <p className="text-xs text-muted-foreground">New references synced</p>
-                  <p className="text-sm font-semibold">{lastReferencesSyncedCount ?? 0}</p>
-                  {lastSyncSinceLabel ? (
-                    <p className="text-xs font-medium text-emerald-700">since {lastSyncSinceLabel}</p>
-                  ) : null}
-                </div>
-              </div>
+              </>
             ) : null}
           </div>
+          {orcidLinked ? (
+            <div className="grid gap-2 md:grid-cols-3">
+              <div className="hidden md:block" />
+              <div className="rounded border border-border px-3 py-2">
+                <p className="text-xs text-muted-foreground">Total citations</p>
+                <p className="text-sm font-semibold">{totalCitations}</p>
+                {referencesLastSyncDate ? (
+                  <p className="text-xs text-muted-foreground">last sync {referencesLastSyncDate}</p>
+                ) : null}
+              </div>
+              <div className="rounded border border-border px-3 py-2">
+                <p className="text-xs text-muted-foreground">New citations found</p>
+                <p className="text-sm font-semibold">{lastReferencesSyncedCount ?? 0}</p>
+                {lastSyncSinceLabel ? (
+                  <p className="text-xs font-medium text-emerald-700">since {lastSyncSinceLabel}</p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           {orcidIssues.length ? (
             <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               {orcidIssues[0]}
@@ -586,10 +591,10 @@ export function ProfileIntegrationsPage() {
                 className={importing ? 'bg-emerald-600 text-white hover:bg-emerald-700' : ''}
               >
                 {importing
-                  ? 'Importing + syncing...'
+                  ? 'Finding research work and citations...'
                   : syncStatus.orcid_last_synced_at || worksCount > 0
-                    ? 'Refresh works + sync citations'
-                    : 'Import works + sync citations'}
+                    ? 'Find research work and citations'
+                    : 'Import research work and citations'}
               </Button>
             ) : null}
           </div>
