@@ -26,23 +26,6 @@ const WORK_TYPE_LABELS: Record<string, string> = {
   'review-article': 'Review article',
 }
 
-function formatTimestamp(value: string | null | undefined): string {
-  if (!value) {
-    return 'Not available'
-  }
-  const parsed = Date.parse(value)
-  if (Number.isNaN(parsed)) {
-    return 'Not available'
-  }
-  return new Date(parsed).toLocaleString('en-GB', {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 function formatShortDate(value: string | null | undefined): string {
   if (!value) {
     return 'Not available'
@@ -146,6 +129,19 @@ function formatJournalName(value: string | null | undefined): string {
     .join(' ')
 }
 
+function computeHIndex(citationCounts: number[]): number {
+  const sorted = [...citationCounts].sort((a, b) => b - a)
+  let hIndex = 0
+  for (let index = 0; index < sorted.length; index += 1) {
+    if (sorted[index] >= index + 1) {
+      hIndex = index + 1
+      continue
+    }
+    break
+  }
+  return hIndex
+}
+
 function SortHeader({
   label,
   column,
@@ -197,10 +193,6 @@ export function ProfilePublicationsPage() {
   const [fullSyncing, setFullSyncing] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
-  const syncStatus = personaState?.sync_status || {
-    works_last_synced_at: null,
-    metrics_last_synced_at: null,
-  }
 
   const loadData = useCallback(async (sessionToken: string, resetMessages = true) => {
     setLoading(true)
@@ -342,13 +334,13 @@ export function ProfilePublicationsPage() {
     return (personaState?.works ?? []).find((work) => work.id === selectedWorkId) ?? null
   }, [personaState?.works, selectedWorkId])
 
-  const totalCitations = useMemo(() => {
-    let count = 0
-    for (const row of personaState?.metrics.works ?? []) {
-      count += Math.max(0, Number(row.citations || 0))
-    }
-    return count
-  }, [personaState?.metrics.works])
+  const citationCounts = useMemo(
+    () => (personaState?.metrics.works ?? []).map((row) => Math.max(0, Number(row.citations || 0))),
+    [personaState?.metrics.works],
+  )
+  const totalCitations = useMemo(() => citationCounts.reduce((sum, value) => sum + value, 0), [citationCounts])
+  const hIndex = useMemo(() => computeHIndex(citationCounts), [citationCounts])
+  const citedWorksCount = useMemo(() => citationCounts.filter((value) => value > 0).length, [citationCounts])
   const worksCount = personaState?.works.length ?? 0
   const busy = loading || richImporting || syncing || fullSyncing
   const canSyncCitations = worksCount > 0 && !busy
@@ -464,12 +456,12 @@ export function ProfilePublicationsPage() {
             <p className="font-semibold">{totalCitations}</p>
           </div>
           <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">Last works sync</p>
-            <p>{formatTimestamp(syncStatus.works_last_synced_at)}</p>
+            <p className="text-xs text-muted-foreground">h-index</p>
+            <p className="font-semibold">{hIndex}</p>
           </div>
           <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">Last metrics sync</p>
-            <p>{formatTimestamp(syncStatus.metrics_last_synced_at)}</p>
+            <p className="text-xs text-muted-foreground">Cited works</p>
+            <p className="font-semibold">{citedWorksCount}</p>
           </div>
         </CardContent>
       </Card>
