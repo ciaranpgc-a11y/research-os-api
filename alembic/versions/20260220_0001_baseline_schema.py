@@ -135,7 +135,7 @@ def _create_users_table() -> None:
         sa.Column("password_hash", sa.String(length=512), nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column(
-            "is_active", sa.Boolean(), nullable=False, server_default=sa.text("1")
+            "is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")
         ),
         sa.Column(
             "role",
@@ -155,7 +155,7 @@ def _create_users_table() -> None:
             "two_factor_enabled",
             sa.Boolean(),
             nullable=False,
-            server_default=sa.text("0"),
+            server_default=sa.text("false"),
         ),
         sa.Column("two_factor_secret", sa.Text(), nullable=True),
         sa.Column(
@@ -356,7 +356,7 @@ def _create_works_table() -> None:
         sa.Column("provenance", sa.String(length=32), nullable=False),
         sa.Column("cluster_id", sa.String(length=64), nullable=True),
         sa.Column(
-            "user_edited", sa.Boolean(), nullable=False, server_default=sa.text("0")
+            "user_edited", sa.Boolean(), nullable=False, server_default=sa.text("false")
         ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
@@ -394,7 +394,7 @@ def _create_work_authorships_table() -> None:
         sa.Column("work_id", sa.String(length=36), nullable=False),
         sa.Column("author_id", sa.String(length=36), nullable=False),
         sa.Column("author_order", sa.Integer(), nullable=False),
-        sa.Column("is_user", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("is_user", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.ForeignKeyConstraint(["author_id"], ["authors.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["work_id"], ["works.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -507,12 +507,12 @@ def upgrade() -> None:
     else:
         _add_generation_job_column_if_missing(
             "cancel_requested",
-            sa.Column(
-                "cancel_requested",
-                sa.Boolean(),
-                nullable=False,
-                server_default=sa.text("0"),
-            ),
+                sa.Column(
+                    "cancel_requested",
+                    sa.Boolean(),
+                    nullable=False,
+                    server_default=sa.text("false"),
+                ),
         )
         _add_generation_job_column_if_missing(
             "run_count",
@@ -604,7 +604,7 @@ def upgrade() -> None:
                     "two_factor_enabled",
                     sa.Boolean(),
                     nullable=False,
-                    server_default=sa.text("0"),
+                    server_default=sa.text("false"),
                 ),
             )
         if not _column_exists("users", "two_factor_secret"):
