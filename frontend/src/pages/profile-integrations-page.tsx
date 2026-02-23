@@ -141,6 +141,7 @@ export function ProfileIntegrationsPage() {
   const [connecting, setConnecting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
+  const [confirmDisconnectOpen, setConfirmDisconnectOpen] = useState(false)
   const [status, setStatus] = useState('')
   const [googleStatus, setGoogleStatus] = useState('')
   const [error, setError] = useState('')
@@ -469,16 +470,18 @@ export function ProfileIntegrationsPage() {
     }
   }
 
+  const requestDisconnectOrcid = () => {
+    if (!token || !orcidLinked || disconnecting) {
+      return
+    }
+    setConfirmDisconnectOpen(true)
+  }
+
   const onDisconnectOrcid = async () => {
     if (!token || !orcidLinked) {
       return
     }
-    const confirmed = window.confirm(
-      'Disconnect ORCID from this account? Existing imported works stay in your library.',
-    )
-    if (!confirmed) {
-      return
-    }
+    setConfirmDisconnectOpen(false)
     setDisconnecting(true)
     setError('')
     setStatus('')
@@ -537,7 +540,7 @@ export function ProfileIntegrationsPage() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={onDisconnectOrcid}
+                  onClick={requestDisconnectOrcid}
                   disabled={!canDisconnectOrcid}
                   className="border-red-300 text-red-700 hover:border-red-400 hover:bg-red-50 hover:text-red-800"
                 >
@@ -657,6 +660,57 @@ export function ProfileIntegrationsPage() {
           ) : null}
         </CardContent>
       </Card>
+
+      {confirmDisconnectOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"
+          onClick={() => {
+            if (!disconnecting) {
+              setConfirmDisconnectOpen(false)
+            }
+          }}
+          role="presentation"
+        >
+          <div
+            className="w-full max-w-md rounded-lg border border-border bg-background p-5 shadow-lg"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Disconnect ORCID confirmation"
+          >
+            <h3 className="text-base font-semibold">Disconnect ORCID?</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Existing imported works stay in your library. You can reconnect ORCID later.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setConfirmDisconnectOpen(false)}
+                disabled={disconnecting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void onDisconnectOrcid()}
+                disabled={disconnecting}
+                className="border-red-300 text-red-700 hover:border-red-400 hover:bg-red-50 hover:text-red-800"
+              >
+                {disconnecting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Disconnecting...
+                  </>
+                ) : (
+                  'Disconnect ORCID'
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <Card>
         <CardHeader className="pb-2">
