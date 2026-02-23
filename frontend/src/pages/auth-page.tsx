@@ -56,6 +56,49 @@ function providerLabel(provider: SocialProvider): string {
   return 'Microsoft'
 }
 
+function ProviderIcon({ provider }: { provider: SocialProvider }) {
+  if (provider === 'orcid') {
+    return (
+      <span
+        aria-hidden
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#A6CE39] text-[10px] font-semibold text-white"
+      >
+        iD
+      </span>
+    )
+  }
+  if (provider === 'google') {
+    return (
+      <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5">
+        <path
+          fill="#EA4335"
+          d="M12 10.2v3.9h5.4c-.2 1.2-.9 2.2-2 2.9l3.2 2.5c1.9-1.7 2.9-4.3 2.9-7.5 0-.7-.1-1.2-.2-1.8H12z"
+        />
+        <path
+          fill="#34A853"
+          d="M12 22c2.7 0 5-0.9 6.6-2.5l-3.2-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.2l-3.3 2.6C4.8 19.8 8.1 22 12 22z"
+        />
+        <path
+          fill="#4A90E2"
+          d="M6.4 13.8c-.2-.6-.4-1.2-.4-1.8s.1-1.2.4-1.8L3.1 7.6C2.4 9 2 10.5 2 12s.4 3 1.1 4.4l3.3-2.6z"
+        />
+        <path
+          fill="#FBBC05"
+          d="M12 6.8c1.5 0 2.8.5 3.8 1.4l2.8-2.8C17 3.9 14.7 3 12 3 8.1 3 4.8 5.2 3.1 7.6l3.3 2.6C7.2 8.6 9.4 6.8 12 6.8z"
+        />
+      </svg>
+    )
+  }
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5">
+      <rect x="2" y="2" width="9" height="9" fill="#F35325" />
+      <rect x="13" y="2" width="9" height="9" fill="#81BC06" />
+      <rect x="2" y="13" width="9" height="9" fill="#05A6F0" />
+      <rect x="13" y="13" width="9" height="9" fill="#FFBA08" />
+    </svg>
+  )
+}
+
 function isLikelyEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 }
@@ -897,10 +940,12 @@ export function AuthPage() {
                     title={
                       providerExplicitlyDisabled
                         ? config?.reason || `${providerLabel(provider)} is not configured`
-                        : ''
+                        : providerLabel(provider)
                     }
+                    aria-label={providerLabel(provider)}
                   >
-                    {providerLabel(provider)}
+                    <ProviderIcon provider={provider} />
+                    <span className="sr-only">{providerLabel(provider)}</span>
                   </Button>
                 )
               })}
