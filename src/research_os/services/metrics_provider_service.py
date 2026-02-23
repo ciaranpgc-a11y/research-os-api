@@ -35,6 +35,32 @@ def _openalex_abstract_from_inverted_index(value: Any) -> str | None:
     return abstract or None
 
 
+def _openalex_counts_by_year(value: Any) -> list[dict[str, int]]:
+    if not isinstance(value, list):
+        return []
+    normalized: list[dict[str, int]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        year_raw = item.get("year")
+        count_raw = item.get("cited_by_count")
+        try:
+            year = int(year_raw)
+            count = int(count_raw)
+        except (TypeError, ValueError):
+            continue
+        if year < 1900:
+            continue
+        normalized.append(
+            {
+                "year": year,
+                "cited_by_count": max(0, count),
+            }
+        )
+    normalized.sort(key=lambda row: row["year"])
+    return normalized
+
+
 class MetricsProvider(ABC):
     provider_name: str
 
@@ -243,6 +269,7 @@ class OpenAlexMetricsProvider(MetricsProvider):
         abstract = _openalex_abstract_from_inverted_index(
             candidate.get("abstract_inverted_index")
         )
+        counts_by_year = _openalex_counts_by_year(candidate.get("counts_by_year"))
         return {
             "provider": self.provider_name,
             "citations_count": cited_by,
@@ -257,6 +284,7 @@ class OpenAlexMetricsProvider(MetricsProvider):
                 "journal_2yr_mean_citedness": journal_2yr_mean_citedness,
                 "journal_name": source.get("display_name"),
                 "abstract": abstract,
+                "counts_by_year": counts_by_year,
             },
         }
 

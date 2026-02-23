@@ -213,9 +213,14 @@ def test_orcid_import_reports_zero_new_works_on_repeat_sync(
         "research_os.services.orcid_service.httpx.Client",
         lambda timeout=20.0: _FakeOrcidClient(responses),
     )
+    sync_calls: list[dict[str, Any]] = []
+
+    def _capture_sync_metrics(**kwargs):
+        sync_calls.append(dict(kwargs))
+
     monkeypatch.setattr(
         "research_os.services.orcid_service.sync_metrics",
-        lambda **kwargs: None,
+        _capture_sync_metrics,
     )
     monkeypatch.setattr(
         "research_os.services.orcid_service.recompute_collaborator_edges",
@@ -227,6 +232,10 @@ def test_orcid_import_reports_zero_new_works_on_repeat_sync(
 
     assert first["imported_count"] == 1
     assert second["imported_count"] == 0
+    assert len(sync_calls) == 1
+    assert sync_calls[0].get("user_id") == user_id
+    assert isinstance(sync_calls[0].get("work_ids"), list)
+    assert len(sync_calls[0]["work_ids"]) == 1
 
 
 def test_disconnect_orcid_blocks_orcid_only_placeholder_account(

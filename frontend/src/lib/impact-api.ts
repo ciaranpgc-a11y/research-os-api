@@ -435,7 +435,7 @@ export async function importOrcidWorks(
       body: JSON.stringify({ overwrite_user_metadata: Boolean(options?.overwriteUserMetadata) }),
     },
     'ORCID import failed',
-    { timeoutMs: 90_000, retryCount: 0 },
+    { timeoutMs: 90_000, retryCount: 1 },
   )
 }
 

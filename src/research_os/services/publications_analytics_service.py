@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -130,6 +131,135 @@ def _sum_citations(rows: dict[str, MetricsSnapshot]) -> int:
     return total
 
 
+def _safe_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if value.is_integer():
+            return int(value)
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return int(text)
+        except ValueError:
+            return None
+    return None
+
+
+def _fallback_year_for_work(work: Work | None, *, now_year: int) -> int:
+    if work is not None and isinstance(work.year, int) and 1900 <= work.year <= now_year:
+        return int(work.year)
+    return now_year
+
+
+def _extract_counts_by_year(
+    snapshot: MetricsSnapshot,
+    *,
+    now_year: int,
+) -> dict[int, int]:
+    payload = snapshot.metric_payload if isinstance(snapshot.metric_payload, dict) else {}
+    raw = payload.get("counts_by_year")
+    if not isinstance(raw, list):
+        return {}
+    yearly: dict[int, int] = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        year = _safe_int(item.get("year"))
+        citations = _safe_int(item.get("cited_by_count"))
+        if citations is None:
+            citations = _safe_int(item.get("citation_count"))
+        if citations is None:
+            citations = _safe_int(item.get("citations"))
+        if year is None or citations is None:
+            continue
+        if year < 1900 or year > now_year:
+            continue
+        yearly[year] = max(0, citations)
+    return yearly
+
+
+def _window_overlap_fraction(
+    *,
+    start: datetime,
+    end: datetime,
+    segment_start: datetime,
+    segment_end: datetime,
+) -> float:
+    overlap_start = max(start, segment_start)
+    overlap_end = min(end, segment_end)
+    if overlap_end <= overlap_start:
+        return 0.0
+    segment_seconds = (segment_end - segment_start).total_seconds()
+    if segment_seconds <= 0:
+        return 0.0
+    overlap_seconds = (overlap_end - overlap_start).total_seconds()
+    return max(0.0, min(1.0, overlap_seconds / segment_seconds))
+
+
+def _estimate_window_citations(
+    yearly_counts: dict[int, int],
+    *,
+    start: datetime,
+    end: datetime,
+    now: datetime,
+) -> int:
+    start_utc = _coerce_utc(start)
+    end_utc = _coerce_utc(end)
+    now_utc = _coerce_utc(now)
+    if end_utc <= start_utc or not yearly_counts:
+        return 0
+    estimated = 0.0
+    for year, count in yearly_counts.items():
+        citations = max(0, int(count or 0))
+        if citations <= 0:
+            continue
+        year_start = datetime(year, 1, 1, tzinfo=timezone.utc)
+        year_end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+        if year == now_utc.year:
+            ytd_end = min(now_utc, year_end)
+            if ytd_end <= year_start:
+                continue
+            fraction = _window_overlap_fraction(
+                start=start_utc,
+                end=end_utc,
+                segment_start=year_start,
+                segment_end=ytd_end,
+            )
+        else:
+            fraction = _window_overlap_fraction(
+                start=start_utc,
+                end=end_utc,
+                segment_start=year_start,
+                segment_end=year_end,
+            )
+        estimated += citations * fraction
+    return max(0, int(round(estimated)))
+
+
+def _build_timeseries_points_from_yearly_counts(
+    yearly_counts: dict[int, int],
+) -> list[dict[str, Any]]:
+    points: list[dict[str, Any]] = []
+    running_total = 0
+    for year in sorted(yearly_counts.keys()):
+        citations_added = max(0, int(yearly_counts[year] or 0))
+        running_total += citations_added
+        points.append(
+            {
+                "year": year,
+                "citations_added": citations_added,
+                "total_citations_end_year": running_total,
+            }
+        )
+    return points
+
+
 def _compute_h_index(citations: list[int]) -> int:
     sorted_values = sorted(
         [max(0, int(value or 0)) for value in citations], reverse=True
@@ -198,11 +328,84 @@ def _compute_bundle(
     )
 
     latest_total = _sum_citations(latest)
-    total_12 = _sum_citations(at_12)
-    total_24 = _sum_citations(at_24)
+    work_by_id = {str(work.id): work for work in works}
+    yearly_citations_by_work: dict[str, dict[int, int]] = {}
+    has_provider_yearly_history = False
+    fallback_yearly_counts: dict[int, int] = defaultdict(int)
+    aggregated_yearly_counts: dict[int, int] = defaultdict(int)
+    for work_id in work_ids:
+        current_snapshot = latest.get(work_id)
+        if current_snapshot is None:
+            continue
+        current_citations = max(0, int(current_snapshot.citations_count or 0))
+        yearly_counts = _extract_counts_by_year(current_snapshot, now_year=now.year)
+        if yearly_counts:
+            has_provider_yearly_history = True
+            distributed_total = sum(yearly_counts.values())
+            if distributed_total < current_citations:
+                fallback_year = _fallback_year_for_work(
+                    work_by_id.get(work_id), now_year=now.year
+                )
+                yearly_counts[fallback_year] = yearly_counts.get(fallback_year, 0) + (
+                    current_citations - distributed_total
+                )
+            yearly_citations_by_work[work_id] = yearly_counts
+            for year, count in yearly_counts.items():
+                aggregated_yearly_counts[year] += max(0, int(count or 0))
+        elif current_citations > 0:
+            fallback_year = _fallback_year_for_work(
+                work_by_id.get(work_id), now_year=now.year
+            )
+            fallback_yearly_counts[fallback_year] += current_citations
 
-    citations_last_12 = max(0, latest_total - total_12)
-    citations_previous_12 = max(0, total_12 - total_24)
+    growth_last_12_by_work: dict[str, int] = {}
+    citations_last_12 = 0
+    citations_previous_12 = 0
+    for work_id in work_ids:
+        current_snapshot = latest.get(work_id)
+        current_citations = (
+            max(0, int(current_snapshot.citations_count or 0))
+            if current_snapshot is not None
+            else 0
+        )
+        at_12_snapshot = at_12.get(work_id)
+        at_24_snapshot = at_24.get(work_id)
+        yearly_counts = yearly_citations_by_work.get(work_id, {})
+
+        if at_12_snapshot is not None:
+            last_12 = max(0, current_citations - int(at_12_snapshot.citations_count or 0))
+        elif yearly_counts:
+            last_12 = _estimate_window_citations(
+                yearly_counts,
+                start=cutoff_12,
+                end=now,
+                now=now,
+            )
+        else:
+            last_12 = current_citations
+
+        if at_12_snapshot is not None and at_24_snapshot is not None:
+            previous_12 = max(
+                0,
+                int(at_12_snapshot.citations_count or 0)
+                - int(at_24_snapshot.citations_count or 0),
+            )
+        elif yearly_counts:
+            previous_12 = _estimate_window_citations(
+                yearly_counts,
+                start=cutoff_24,
+                end=cutoff_12,
+                now=now,
+            )
+        elif at_12_snapshot is not None:
+            previous_12 = max(0, int(at_12_snapshot.citations_count or 0))
+        else:
+            previous_12 = 0
+
+        growth_last_12_by_work[work_id] = last_12
+        citations_last_12 += last_12
+        citations_previous_12 += previous_12
+
     yoy_percent: float | None = None
     if citations_previous_12 > 0:
         yoy_percent = round(
@@ -215,51 +418,55 @@ def _compute_bundle(
         [int(snapshot.citations_count or 0) for snapshot in latest.values()]
     )
 
-    first_snapshot_at = session.scalar(
-        select(MetricsSnapshot.captured_at)
-        .where(MetricsSnapshot.work_id.in_(work_ids or [""]))
-        .order_by(MetricsSnapshot.captured_at.asc())
-        .limit(1)
-    )
     timeseries_points: list[dict[str, Any]] = []
-    if isinstance(first_snapshot_at, datetime):
-        start_year = _coerce_utc(first_snapshot_at).year
-        end_year = now.year
-        for year in range(start_year, end_year + 1):
-            year_end = datetime(year, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
-            prev_year_end = datetime(year - 1, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
-            at_year_end = _latest_metrics_by_work_at_or_before(
-                session,
-                work_ids=work_ids,
-                cutoff=year_end,
-            )
-            at_prev_year_end = _latest_metrics_by_work_at_or_before(
-                session,
-                work_ids=work_ids,
-                cutoff=prev_year_end,
-            )
-            total_year = _sum_citations(at_year_end)
-            total_prev = _sum_citations(at_prev_year_end)
-            timeseries_points.append(
-                {
-                    "year": year,
-                    "citations_added": max(0, total_year - total_prev),
-                    "total_citations_end_year": total_year,
-                }
-            )
+    if has_provider_yearly_history:
+        for year, count in fallback_yearly_counts.items():
+            aggregated_yearly_counts[year] += max(0, int(count or 0))
+        timeseries_points = _build_timeseries_points_from_yearly_counts(
+            aggregated_yearly_counts
+        )
+    else:
+        first_snapshot_at = session.scalar(
+            select(MetricsSnapshot.captured_at)
+            .where(MetricsSnapshot.work_id.in_(work_ids or [""]))
+            .order_by(MetricsSnapshot.captured_at.asc())
+            .limit(1)
+        )
+        if isinstance(first_snapshot_at, datetime):
+            start_year = _coerce_utc(first_snapshot_at).year
+            end_year = now.year
+            for year in range(start_year, end_year + 1):
+                year_end = datetime(year, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+                prev_year_end = datetime(
+                    year - 1, 12, 31, 23, 59, 59, tzinfo=timezone.utc
+                )
+                at_year_end = _latest_metrics_by_work_at_or_before(
+                    session,
+                    work_ids=work_ids,
+                    cutoff=year_end,
+                )
+                at_prev_year_end = _latest_metrics_by_work_at_or_before(
+                    session,
+                    work_ids=work_ids,
+                    cutoff=prev_year_end,
+                )
+                total_year = _sum_citations(at_year_end)
+                total_prev = _sum_citations(at_prev_year_end)
+                timeseries_points.append(
+                    {
+                        "year": year,
+                        "citations_added": max(0, total_year - total_prev),
+                        "total_citations_end_year": total_year,
+                    }
+                )
 
-    work_by_id = {str(work.id): work for work in works}
     top_drivers: list[dict[str, Any]] = []
     for work_id in work_ids:
         current_snapshot = latest.get(work_id)
         current_citations = (
             int(current_snapshot.citations_count or 0) if current_snapshot else 0
         )
-        base_snapshot = at_12.get(work_id)
-        citations_at_12 = (
-            int(base_snapshot.citations_count or 0) if base_snapshot else 0
-        )
-        growth = max(0, current_citations - citations_at_12)
+        growth = int(growth_last_12_by_work.get(work_id, 0))
         if growth <= 0:
             continue
         work = work_by_id[work_id]

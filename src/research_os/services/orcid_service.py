@@ -117,6 +117,11 @@ def _orcid_auto_sync_metrics_enabled() -> bool:
     }
 
 
+ORCID_IMPORT_AUTO_SYNC_METRICS_MAX_WORKS = max(
+    0, int(os.getenv("ORCID_IMPORT_AUTO_SYNC_METRICS_MAX_WORKS", "25"))
+)
+
+
 def _orcid_sync_metric_providers() -> list[str]:
     raw = os.getenv("ORCID_IMPORT_SYNC_PROVIDERS", "openalex").strip()
     if not raw:
@@ -608,10 +613,18 @@ def import_orcid_works(
 
     upserted_ids: list[str] = []
     seen_upserted_ids: set[str] = set()
+    new_work_ids: list[str] = []
+    seen_new_work_ids: set[str] = set()
     new_works_count = 0
     create_all_tables()
     with session_scope() as session:
         user = _resolve_user_or_raise(session, user_id)
+        existing_work_ids_before = {
+            str(item)
+            for item in session.scalars(
+                select(Work.id).where(Work.user_id == user_id)
+            ).all()
+        }
         baseline_works_count = (
             session.scalar(select(func.count(Work.id)).where(Work.user_id == user_id))
             or 0
@@ -628,6 +641,12 @@ def import_orcid_works(
                 continue
             seen_upserted_ids.add(work_id)
             upserted_ids.append(work_id)
+            if (
+                work_id not in existing_work_ids_before
+                and work_id not in seen_new_work_ids
+            ):
+                seen_new_work_ids.add(work_id)
+                new_work_ids.append(work_id)
         current_works_count = (
             session.scalar(select(func.count(Work.id)).where(Work.user_id == user_id))
             or 0
@@ -635,13 +654,18 @@ def import_orcid_works(
         new_works_count = max(0, int(current_works_count) - int(baseline_works_count))
         user.orcid_last_synced_at = _utcnow()
         session.flush()
-    if _orcid_auto_sync_metrics_enabled() and upserted_ids:
+    if _orcid_auto_sync_metrics_enabled() and new_work_ids:
         providers = _orcid_sync_metric_providers()
+        target_ids = (
+            new_work_ids[:ORCID_IMPORT_AUTO_SYNC_METRICS_MAX_WORKS]
+            if ORCID_IMPORT_AUTO_SYNC_METRICS_MAX_WORKS > 0
+            else new_work_ids
+        )
         try:
             sync_metrics(
                 user_id=user_id,
                 providers=providers,
-                work_ids=upserted_ids,
+                work_ids=target_ids,
             )
         except Exception:
             # Keep ORCID import resilient even if external citation providers are unavailable.

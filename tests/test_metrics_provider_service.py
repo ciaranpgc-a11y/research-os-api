@@ -51,6 +51,10 @@ def test_openalex_provider_matches_with_pmid(monkeypatch) -> None:
                         "id": "https://openalex.org/W123",
                         "cited_by_count": 88,
                         "cited_by_api_url": "https://api.openalex.org/works?filter=cites:W123",
+                        "counts_by_year": [
+                            {"year": 2024, "cited_by_count": 30},
+                            {"year": 2025, "cited_by_count": 58},
+                        ],
                         "ids": {"pmid": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}"},
                         "primary_location": {
                             "source": {
@@ -80,6 +84,10 @@ def test_openalex_provider_matches_with_pmid(monkeypatch) -> None:
     assert payload["provider"] == "openalex"
     assert payload["citations_count"] == 88
     assert payload["payload_subset"]["match_method"] == "pmid"
+    assert payload["payload_subset"]["counts_by_year"] == [
+        {"year": 2024, "cited_by_count": 30},
+        {"year": 2025, "cited_by_count": 58},
+    ]
 
 
 def test_semantic_scholar_provider_matches_with_pmid(monkeypatch) -> None:
