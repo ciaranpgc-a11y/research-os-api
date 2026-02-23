@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Unplug } from 'lucide-react'
+import { Loader2, Unplug } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -77,6 +77,7 @@ type OrcidSyncSummaryStorage = {
   lastImportedCount: number | null
   lastReferencesSyncedCount: number | null
   lastSyncSinceLabel: string | null
+  lastSyncOutcome: string | null
 }
 
 function syncSummaryStorageKey(userId: string): string {
@@ -102,6 +103,8 @@ function loadSyncSummary(userId: string): OrcidSyncSummaryStorage | null {
           : null,
       lastSyncSinceLabel:
         typeof parsed.lastSyncSinceLabel === 'string' ? parsed.lastSyncSinceLabel : null,
+      lastSyncOutcome:
+        typeof parsed.lastSyncOutcome === 'string' ? parsed.lastSyncOutcome : null,
     }
   } catch {
     return null
@@ -144,6 +147,7 @@ export function ProfileIntegrationsPage() {
   const [lastImportedCount, setLastImportedCount] = useState<number | null>(null)
   const [lastReferencesSyncedCount, setLastReferencesSyncedCount] = useState<number | null>(null)
   const [lastSyncSinceLabel, setLastSyncSinceLabel] = useState<string | null>(null)
+  const [lastSyncOutcome, setLastSyncOutcome] = useState<string | null>(null)
   const syncStatus = personaState?.sync_status || {
     orcid_last_synced_at: null,
     metrics_last_synced_at: null,
@@ -289,11 +293,13 @@ export function ProfileIntegrationsPage() {
       setLastImportedCount(null)
       setLastReferencesSyncedCount(null)
       setLastSyncSinceLabel(null)
+      setLastSyncOutcome(null)
       return
     }
     setLastImportedCount(stored.lastImportedCount)
     setLastReferencesSyncedCount(stored.lastReferencesSyncedCount)
     setLastSyncSinceLabel(stored.lastSyncSinceLabel)
+    setLastSyncOutcome(stored.lastSyncOutcome)
   }, [user?.id])
 
   const providerByName = useMemo(() => {
@@ -321,6 +327,9 @@ export function ProfileIntegrationsPage() {
   const totalCitations = useMemo(() => totalCitationsFromPersonaState(personaState), [personaState])
   const worksLastSyncDate = formatDateOnly(syncStatus.orcid_last_synced_at)
   const referencesLastSyncDate = formatDateOnly(
+    syncStatus.metrics_last_synced_at || syncStatus.orcid_last_synced_at,
+  )
+  const globalLastSync = formatTimestamp(
     syncStatus.metrics_last_synced_at || syncStatus.orcid_last_synced_at,
   )
   const onConnectOrcid = async () => {
@@ -378,14 +387,20 @@ export function ProfileIntegrationsPage() {
       const citationsAfterImport = totalCitationsFromPersonaState(refreshed?.personaState)
       const newWorksImported = Math.max(0, worksAfterImport - worksBeforeImport)
       const newReferencesSynced = Math.max(0, citationsAfterImport - citationsBeforeImport)
+      const syncOutcome =
+        newWorksImported > 0 || newReferencesSynced > 0
+          ? `+${newWorksImported} works, +${newReferencesSynced} citations`
+          : 'No new records'
       setLastImportedCount(newWorksImported)
       setLastReferencesSyncedCount(newReferencesSynced)
       setLastSyncSinceLabel(syncSinceLabel)
+      setLastSyncOutcome(syncOutcome)
       if (user?.id) {
         saveSyncSummary(user.id, {
           lastImportedCount: newWorksImported,
           lastReferencesSyncedCount: newReferencesSynced,
           lastSyncSinceLabel: syncSinceLabel,
+          lastSyncOutcome: syncOutcome,
         })
       }
     } catch (importError) {
@@ -405,14 +420,20 @@ export function ProfileIntegrationsPage() {
           const citationsAfterImport = totalCitationsFromPersonaState(refreshed?.personaState)
           const newWorksImported = Math.max(0, worksAfterImport - worksBeforeImport)
           const newReferencesSynced = Math.max(0, citationsAfterImport - citationsBeforeImport)
+          const syncOutcome =
+            newWorksImported > 0 || newReferencesSynced > 0
+              ? `+${newWorksImported} works, +${newReferencesSynced} citations`
+              : 'No new records'
           setLastImportedCount(newWorksImported)
           setLastReferencesSyncedCount(newReferencesSynced)
           setLastSyncSinceLabel(syncSinceLabel)
+          setLastSyncOutcome(syncOutcome)
           if (user?.id) {
             saveSyncSummary(user.id, {
               lastImportedCount: newWorksImported,
               lastReferencesSyncedCount: newReferencesSynced,
               lastSyncSinceLabel: syncSinceLabel,
+              lastSyncOutcome: syncOutcome,
             })
           }
           setStatus('')
@@ -472,6 +493,7 @@ export function ProfileIntegrationsPage() {
       setLastImportedCount(null)
       setLastReferencesSyncedCount(null)
       setLastSyncSinceLabel(null)
+      setLastSyncOutcome(null)
       await loadData(token, false)
     } catch (disconnectError) {
       if (handleSessionExpiry(disconnectError)) {
@@ -528,49 +550,59 @@ export function ProfileIntegrationsPage() {
           <CardDescription>Primary source for publication import.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
-          <div className="grid gap-2 md:grid-cols-3">
-            <div className="rounded border border-border px-3 py-2 md:col-span-1">
+          {orcidLinked ? (
+            <div className="rounded border border-border/70 bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+              Last sync: {globalLastSync}
+            </div>
+          ) : null}
+          <div className="grid gap-2 md:grid-cols-[260px_1fr]">
+            <div className="rounded border border-border px-3 py-2">
               <p className="text-xs text-muted-foreground">ORCID id</p>
               <p className="font-medium">{orcidStatus?.orcid_id || user?.orcid_id || 'Not linked'}</p>
+              {orcidStatus?.orcid_id || user?.orcid_id ? (
+                <a
+                  href={`https://orcid.org/${orcidStatus?.orcid_id || user?.orcid_id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 inline-flex text-xs text-emerald-700 underline underline-offset-2"
+                >
+                  Open ORCID profile
+                </a>
+              ) : null}
             </div>
             {orcidLinked ? (
-              <>
-                <div className="rounded border border-border px-3 py-2">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="rounded border border-border px-3 py-2 min-h-[86px]">
                   <p className="text-xs text-muted-foreground">Total works</p>
-                  <p className="text-sm font-semibold">{worksCount}</p>
+                  <p className="text-2xl font-semibold leading-tight">{worksCount}</p>
                   {worksLastSyncDate ? (
                     <p className="text-xs text-muted-foreground">last sync {worksLastSyncDate}</p>
                   ) : null}
                 </div>
-                <div className="rounded border border-border px-3 py-2">
-                  <p className="text-xs text-muted-foreground">New works imported</p>
-                  <p className="text-sm font-semibold">{lastImportedCount ?? 0}</p>
-                  {lastSyncSinceLabel ? (
-                    <p className="text-xs font-medium text-emerald-700">since {lastSyncSinceLabel}</p>
+                <div className="rounded border border-border px-3 py-2 min-h-[86px]">
+                  <p className="text-xs text-muted-foreground">New works</p>
+                  <p className="text-2xl font-semibold leading-tight">{lastImportedCount ?? 0}</p>
+                  <p className={`text-xs ${(lastImportedCount ?? 0) > 0 ? 'text-emerald-700' : 'text-muted-foreground'}`}>
+                    {(lastImportedCount ?? 0) > 0 ? 'In latest sync' : 'No new works'}
+                  </p>
+                </div>
+                <div className="rounded border border-border px-3 py-2 min-h-[86px]">
+                  <p className="text-xs text-muted-foreground">Total citations</p>
+                  <p className="text-2xl font-semibold leading-tight">{totalCitations}</p>
+                  {referencesLastSyncDate ? (
+                    <p className="text-xs text-muted-foreground">last sync {referencesLastSyncDate}</p>
                   ) : null}
                 </div>
-              </>
+                <div className="rounded border border-border px-3 py-2 min-h-[86px]">
+                  <p className="text-xs text-muted-foreground">New citations</p>
+                  <p className="text-2xl font-semibold leading-tight">{lastReferencesSyncedCount ?? 0}</p>
+                  <p className={`text-xs ${(lastReferencesSyncedCount ?? 0) > 0 ? 'text-emerald-700' : 'text-muted-foreground'}`}>
+                    {(lastReferencesSyncedCount ?? 0) > 0 ? 'In latest sync' : 'No new citations'}
+                  </p>
+                </div>
+              </div>
             ) : null}
           </div>
-          {orcidLinked ? (
-            <div className="grid gap-2 md:grid-cols-3">
-              <div className="hidden md:block" />
-              <div className="rounded border border-border px-3 py-2">
-                <p className="text-xs text-muted-foreground">Total citations</p>
-                <p className="text-sm font-semibold">{totalCitations}</p>
-                {referencesLastSyncDate ? (
-                  <p className="text-xs text-muted-foreground">last sync {referencesLastSyncDate}</p>
-                ) : null}
-              </div>
-              <div className="rounded border border-border px-3 py-2">
-                <p className="text-xs text-muted-foreground">New citations found</p>
-                <p className="text-sm font-semibold">{lastReferencesSyncedCount ?? 0}</p>
-                {lastSyncSinceLabel ? (
-                  <p className="text-xs font-medium text-emerald-700">since {lastSyncSinceLabel}</p>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
           {orcidIssues.length ? (
             <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               {orcidIssues[0]}
@@ -590,14 +622,25 @@ export function ProfileIntegrationsPage() {
                 disabled={!canImportOrcid}
                 className={importing ? 'bg-emerald-600 text-white hover:bg-emerald-700' : ''}
               >
+                {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 {importing
                   ? 'Finding research work and citations...'
                   : syncStatus.orcid_last_synced_at || worksCount > 0
-                    ? 'Find research work and citations'
+                    ? 'Sync ORCID now'
                     : 'Import research work and citations'}
               </Button>
             ) : null}
           </div>
+          {orcidLinked && (lastSyncOutcome || lastSyncSinceLabel) ? (
+            <p className="text-xs text-muted-foreground">
+              {lastSyncOutcome ? (
+                <span className="font-medium text-emerald-700">{lastSyncOutcome}</span>
+              ) : null}
+              {lastSyncSinceLabel ? (
+                <span className={lastSyncOutcome ? 'ml-1' : ''}>since {lastSyncSinceLabel}</span>
+              ) : null}
+            </p>
+          ) : null}
           {!orcidConfigured ? (
             <p className="text-xs text-amber-700">ORCID provider is not configured in backend environment.</p>
           ) : null}
