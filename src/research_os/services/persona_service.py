@@ -236,8 +236,10 @@ def upsert_work(
     work: dict[str, Any],
     provenance: str,
     overwrite_user_metadata: bool = False,
+    ensure_tables: bool = True,
 ) -> dict[str, Any]:
-    create_all_tables()
+    if ensure_tables:
+        create_all_tables()
     title = _normalize_title(str(work.get("title", "")))
     if not title:
         raise PersonaValidationError("Work title is required.")

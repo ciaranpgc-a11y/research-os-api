@@ -452,6 +452,7 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
             work=work,
             provenance="orcid",
             overwrite_user_metadata=overwrite_user_metadata,
+            ensure_tables=False,
         )
         work_id = str(record["id"])
         if work_id in seen_upserted_ids:
