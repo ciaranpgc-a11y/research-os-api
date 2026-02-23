@@ -345,6 +345,13 @@ def _resolve_user_for_oauth(
                     return (works_count, last_sign_in, updated)
 
                 user = max(users_with_orcid, key=_candidate_rank)
+                for duplicate in users_with_orcid:
+                    if duplicate.id == user.id:
+                        continue
+                    duplicate.orcid_id = None
+                    duplicate.orcid_access_token = None
+                    duplicate.orcid_refresh_token = None
+                    duplicate.orcid_token_expires_at = None
         if user is None:
             user = session.scalars(select(User).where(User.email == email)).first()
         if user is None:
