@@ -40,11 +40,35 @@ export function AuthCallbackPage() {
           state,
           code,
         })
+        const hasOpener = typeof window !== 'undefined' && window.opener && !window.opener.closed
+        if (hasOpener) {
+          window.opener.postMessage(
+            {
+              type: 'aawe-oauth-success',
+              payload,
+            },
+            window.location.origin,
+          )
+          setStatus('Sign-in complete. Returning to app...')
+          window.close()
+          return
+        }
         setAuthSessionToken(payload.session_token)
         setStatus('Sign-in complete. Redirecting to profile...')
         navigate('/profile', { replace: true })
       } catch (callbackError) {
-        setError(callbackError instanceof Error ? callbackError.message : 'OAuth callback failed.')
+        const detail = callbackError instanceof Error ? callbackError.message : 'OAuth callback failed.'
+        const hasOpener = typeof window !== 'undefined' && window.opener && !window.opener.closed
+        if (hasOpener) {
+          window.opener.postMessage(
+            {
+              type: 'aawe-oauth-error',
+              error: detail,
+            },
+            window.location.origin,
+          )
+        }
+        setError(detail)
       }
     })()
   }, [navigate, params])
@@ -70,4 +94,3 @@ export function AuthCallbackPage() {
     </div>
   )
 }
-

@@ -29,6 +29,22 @@ const SOCIAL_PROVIDERS = ['orcid', 'google', 'microsoft'] as const
 
 type AuthMode = 'signin' | 'register'
 type SocialProvider = (typeof SOCIAL_PROVIDERS)[number]
+type OAuthSuccessMessagePayload = {
+  type: 'aawe-oauth-success'
+  payload: {
+    provider: SocialProvider
+    is_new_user: boolean
+    user: {
+      email: string
+      email_verified_at: string | null
+    }
+    session_token: string
+  }
+}
+type OAuthErrorMessagePayload = {
+  type: 'aawe-oauth-error'
+  error?: string
+}
 
 function providerLabel(provider: SocialProvider): string {
   if (provider === 'orcid') {
@@ -78,6 +94,7 @@ export function AuthPage() {
   const [verificationPreviewCode, setVerificationPreviewCode] = useState('')
   const [verificationDeliveryHint, setVerificationDeliveryHint] = useState('')
   const [verificationToken, setVerificationToken] = useState('')
+  const [oauthPending, setOauthPending] = useState(false)
 
   const hasTestAccountShortcut = Boolean(TEST_ACCOUNT_EMAIL && TEST_ACCOUNT_PASSWORD)
 
@@ -139,6 +156,44 @@ export function AuthPage() {
     return () => {
       active = false
     }
+  }, [navigate])
+
+  useEffect(() => {
+    const handler = (event: MessageEvent<OAuthSuccessMessagePayload | OAuthErrorMessagePayload>) => {
+      if (event.origin !== window.location.origin) {
+        return
+      }
+      const payload = event.data
+      if (!payload || typeof payload !== 'object' || !('type' in payload)) {
+        return
+      }
+      if (payload.type === 'aawe-oauth-error') {
+        setOauthPending(false)
+        setLoading(false)
+        setError(payload.error || 'OAuth callback failed.')
+        return
+      }
+      if (payload.type === 'aawe-oauth-success') {
+        const session = payload.payload
+        setOauthPending(false)
+        setLoading(false)
+        setError('')
+        if (session.user.email_verified_at) {
+          setAuthSessionToken(session.session_token)
+          persistLastEmail(session.user.email)
+          setStatus('Sign-in complete. Redirecting to profile...')
+          navigate('/profile', { replace: true })
+          return
+        }
+        void beginEmailVerificationGate(
+          session.session_token,
+          session.user.email,
+          'Email verification is required before you can continue.',
+        )
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
   }, [navigate])
 
   useEffect(() => {
@@ -415,7 +470,30 @@ export function AuthPage() {
     setStatus('')
     try {
       const payload = await fetchOAuthConnect(provider)
-      window.location.assign(payload.url)
+      const popup = window.open(
+        payload.url,
+        `aawe-oauth-${provider}`,
+        'popup=yes,width=560,height=760,resizable=yes,scrollbars=yes',
+      )
+      if (!popup) {
+        window.location.assign(payload.url)
+        return
+      }
+      setOauthPending(true)
+      setLoading(false)
+      setStatus(`${providerLabel(provider)} sign-in window opened. Complete sign-in to continue.`)
+      const startedAt = Date.now()
+      const monitor = window.setInterval(() => {
+        if (!popup.closed) {
+          return
+        }
+        window.clearInterval(monitor)
+        if (Date.now() - startedAt < 2500) {
+          return
+        }
+        setOauthPending(false)
+        setLoading(false)
+      }, 500)
     } catch (oauthError) {
       setError(oauthError instanceof Error ? oauthError.message : `${providerLabel(provider)} sign-in failed.`)
       setLoading(false)
@@ -811,7 +889,7 @@ export function AuthPage() {
                     variant="outline"
                     className="w-full"
                     onClick={() => void onOAuth(provider)}
-                    disabled={loading || !config?.configured}
+                    disabled={loading || oauthPending || !config?.configured}
                     title={!config?.configured ? config?.reason || `${providerLabel(provider)} is not configured` : ''}
                   >
                     {providerLabel(provider)}
