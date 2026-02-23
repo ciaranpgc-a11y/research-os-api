@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 import re
+import time
 from typing import Any
 from urllib.parse import quote
 
 import httpx
+
+RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
+REQUEST_RETRY_COUNT = 2
+REQUEST_RETRY_BASE_DELAY_SECONDS = 0.35
 
 
 class MetricsProvider(ABC):
@@ -59,6 +64,42 @@ class OpenAlexMetricsProvider(MetricsProvider):
             clean = clean.removeprefix("https://doi.org/")
         return clean
 
+    @staticmethod
+    def _extract_pmid(value: Any) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        if text.isdigit():
+            return text
+        patterns = [
+            re.compile(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", re.IGNORECASE),
+            re.compile(r"/pubmed/(\d+)", re.IGNORECASE),
+            re.compile(r"pmid[:\s]+(\d+)", re.IGNORECASE),
+        ]
+        for pattern in patterns:
+            match = pattern.search(text)
+            if match:
+                return match.group(1)
+        return ""
+
+    @staticmethod
+    def _request_with_retry(
+        client: httpx.Client,
+        *,
+        url: str,
+        params: dict[str, Any],
+    ) -> httpx.Response:
+        response: httpx.Response | None = None
+        for attempt in range(REQUEST_RETRY_COUNT + 1):
+            response = client.get(url, params=params)
+            if (
+                response.status_code not in RETRYABLE_STATUS_CODES
+                or attempt >= REQUEST_RETRY_COUNT
+            ):
+                return response
+            time.sleep(REQUEST_RETRY_BASE_DELAY_SECONDS * (attempt + 1))
+        return response if response is not None else client.get(url, params=params)
+
     def _best_match_from_search(
         self,
         *,
@@ -91,18 +132,17 @@ class OpenAlexMetricsProvider(MetricsProvider):
         title = str(work.get("title", "")).strip()
         year_raw = work.get("year")
         year = int(year_raw) if str(year_raw).strip().isdigit() else None
+        pmid = self._extract_pmid(work.get("pmid") or work.get("url"))
 
         with httpx.Client(timeout=12.0) as client:
             try:
                 candidate: dict[str, Any] | None = None
                 match_method = ""
                 if doi:
-                    response = client.get(
-                        self._base_url,
-                        params={
-                            "filter": f"doi:https://doi.org/{doi}",
-                            "per-page": 1,
-                        },
+                    response = self._request_with_retry(
+                        client,
+                        url=self._base_url,
+                        params={"filter": f"doi:https://doi.org/{doi}", "per-page": 1},
                     )
                     if response.status_code < 400:
                         payload = response.json()
@@ -110,9 +150,22 @@ class OpenAlexMetricsProvider(MetricsProvider):
                         if results:
                             candidate = results[0]
                             match_method = "doi"
+                if candidate is None and pmid:
+                    response = self._request_with_retry(
+                        client,
+                        url=self._base_url,
+                        params={"filter": f"pmid:{pmid}", "per-page": 1},
+                    )
+                    if response.status_code < 400:
+                        payload = response.json()
+                        results = payload.get("results") or []
+                        if results:
+                            candidate = results[0]
+                            match_method = "pmid"
                 if candidate is None and title:
-                    response = client.get(
-                        self._base_url,
+                    response = self._request_with_retry(
+                        client,
+                        url=self._base_url,
                         params={
                             "search": title,
                             "per-page": 5,
@@ -134,8 +187,8 @@ class OpenAlexMetricsProvider(MetricsProvider):
                         match_method = "title"
                 if candidate is None:
                     note = (
-                        "No DOI/title match available."
-                        if not doi and not title
+                        "No DOI/PMID/title match available."
+                        if not doi and not pmid and not title
                         else "No confident OpenAlex match."
                     )
                     return {
@@ -207,6 +260,42 @@ class SemanticScholarMetricsProvider(MetricsProvider):
             clean = clean.removeprefix("https://doi.org/")
         return clean
 
+    @staticmethod
+    def _extract_pmid(value: Any) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        if text.isdigit():
+            return text
+        patterns = [
+            re.compile(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", re.IGNORECASE),
+            re.compile(r"/pubmed/(\d+)", re.IGNORECASE),
+            re.compile(r"pmid[:\s]+(\d+)", re.IGNORECASE),
+        ]
+        for pattern in patterns:
+            match = pattern.search(text)
+            if match:
+                return match.group(1)
+        return ""
+
+    @staticmethod
+    def _request_with_retry(
+        client: httpx.Client,
+        *,
+        url: str,
+        params: dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        response: httpx.Response | None = None
+        for attempt in range(REQUEST_RETRY_COUNT + 1):
+            response = client.get(url, params=params)
+            if (
+                response.status_code not in RETRYABLE_STATUS_CODES
+                or attempt >= REQUEST_RETRY_COUNT
+            ):
+                return response
+            time.sleep(REQUEST_RETRY_BASE_DELAY_SECONDS * (attempt + 1))
+        return response if response is not None else client.get(url, params=params)
+
     def _best_match_from_search(
         self,
         *,
@@ -237,6 +326,7 @@ class SemanticScholarMetricsProvider(MetricsProvider):
         title = str(work.get("title", "")).strip()
         year_raw = work.get("year")
         year = int(year_raw) if str(year_raw).strip().isdigit() else None
+        pmid = self._extract_pmid(work.get("pmid") or work.get("url"))
 
         with httpx.Client(timeout=12.0) as client:
             try:
@@ -244,19 +334,32 @@ class SemanticScholarMetricsProvider(MetricsProvider):
                 match_method = ""
                 if doi:
                     url = f"{self._base_url}/DOI:{quote(doi, safe='')}"
-                    response = client.get(
-                        url,
+                    response = self._request_with_retry(
+                        client,
+                        url=url,
                         params={
-                            "fields": "title,year,citationCount,influentialCitationCount,url,paperId",
+                            "fields": "title,year,citationCount,influentialCitationCount,url,paperId"
                         },
                     )
                     if response.status_code < 400:
                         payload = response.json()
                         match_method = "doi"
+                if payload is None and pmid:
+                    response = self._request_with_retry(
+                        client,
+                        url=f"{self._base_url}/PMID:{quote(pmid, safe='')}",
+                        params={
+                            "fields": "title,year,citationCount,influentialCitationCount,url,paperId"
+                        },
+                    )
+                    if response.status_code < 400:
+                        payload = response.json()
+                        match_method = "pmid"
 
                 if payload is None and title:
-                    response = client.get(
-                        f"{self._base_url}/search",
+                    response = self._request_with_retry(
+                        client,
+                        url=f"{self._base_url}/search",
                         params={
                             "query": title,
                             "limit": 5,
@@ -282,8 +385,8 @@ class SemanticScholarMetricsProvider(MetricsProvider):
 
                 if payload is None:
                     note = (
-                        "No DOI/title match available."
-                        if not doi and not title
+                        "No DOI/PMID/title match available."
+                        if not doi and not pmid and not title
                         else "No confident Semantic Scholar match."
                     )
                     return {
@@ -320,7 +423,7 @@ class SemanticScholarMetricsProvider(MetricsProvider):
                 "citation_count": citations,
                 "influential_citation_count": influential,
                 "match_method": match_method,
-                "captured_year": datetime.utcnow().year,
+                "captured_year": datetime.now(timezone.utc).year,
             },
         }
 

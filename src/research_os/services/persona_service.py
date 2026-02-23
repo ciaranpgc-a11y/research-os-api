@@ -10,6 +10,7 @@ from statistics import mean
 from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from research_os.clients.openai_client import get_client
 from research_os.db import (
@@ -243,6 +244,7 @@ def upsert_work(
     provenance: str,
     overwrite_user_metadata: bool = False,
     ensure_tables: bool = True,
+    session: Session | None = None,
 ) -> dict[str, Any]:
     if ensure_tables:
         create_all_tables()
@@ -258,10 +260,10 @@ def upsert_work(
     if not isinstance(authors, list):
         authors = []
 
-    with session_scope() as session:
-        user = _resolve_user_or_raise(session, user_id)
+    def _upsert(db_session: Session) -> dict[str, Any]:
+        user = _resolve_user_or_raise(db_session, user_id)
         existing = _find_existing_work(
-            session,
+            db_session,
             user_id=user.id,
             doi=doi,
             url=url,
@@ -299,8 +301,8 @@ def upsert_work(
                 url=mutable_fields["url"],
                 provenance=mutable_fields["provenance"] or "manual",
             )
-            session.add(existing)
-            session.flush()
+            db_session.add(existing)
+            db_session.flush()
         else:
             if overwrite_user_metadata or not existing.user_edited:
                 existing.title = mutable_fields["title"]
@@ -317,7 +319,7 @@ def upsert_work(
             existing.provenance = mutable_fields["provenance"] or existing.provenance
 
         if authors:
-            existing_authorships = session.scalars(
+            existing_authorships = db_session.scalars(
                 select(WorkAuthorship).where(WorkAuthorship.work_id == existing.id)
             ).all()
             by_author_id = {item.author_id: item for item in existing_authorships}
@@ -334,7 +336,7 @@ def upsert_work(
                     or None
                 )
                 author = _upsert_author(
-                    session,
+                    db_session,
                     canonical_name=author_name,
                     orcid_id=author_orcid,
                 )
@@ -344,7 +346,7 @@ def upsert_work(
                 )
                 link = by_author_id.get(author.id)
                 if link is None:
-                    session.add(
+                    db_session.add(
                         WorkAuthorship(
                             work_id=existing.id,
                             author_id=author.id,
@@ -357,9 +359,9 @@ def upsert_work(
                     link.is_user = is_user
             for link in existing_authorships:
                 if link.author_id not in seen_author_ids:
-                    session.delete(link)
+                    db_session.delete(link)
 
-        session.flush()
+        db_session.flush()
         return {
             "id": existing.id,
             "title": existing.title,
@@ -369,6 +371,11 @@ def upsert_work(
             "provenance": existing.provenance,
             "updated_at": existing.updated_at,
         }
+
+    if session is not None:
+        return _upsert(session)
+    with session_scope() as owned_session:
+        return _upsert(owned_session)
 
 
 def list_works(*, user_id: str) -> list[dict[str, Any]]:
@@ -649,6 +656,9 @@ def sync_metrics(
                     "doi": work.doi,
                     "year": work.year,
                     "work_type": work.work_type,
+                    "venue_name": work.venue_name,
+                    "url": work.url,
+                    "pmid": _extract_pmid(work.url),
                 },
             )
             for work in works

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { fetchOrcidStatus, fetchPersonaState, importOrcidWorks, syncPersonaMetrics } from '@/lib/impact-api'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
@@ -81,13 +81,6 @@ function formatWorkType(value: string | null | undefined): string {
   return text.replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
-function formatImpactMetric(value: number | null | undefined): string {
-  if (typeof value !== 'number' || Number.isNaN(value)) {
-    return 'Not available'
-  }
-  return value.toFixed(2)
-}
-
 export function ProfilePublicationsPage() {
   const navigate = useNavigate()
   const [token, setToken] = useState<string>(() => getAuthSessionToken())
@@ -100,8 +93,6 @@ export function ProfilePublicationsPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
-  const [importing, setImporting] = useState(false)
   const [richImporting, setRichImporting] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [fullSyncing, setFullSyncing] = useState(false)
@@ -114,7 +105,6 @@ export function ProfilePublicationsPage() {
 
   const loadData = useCallback(async (sessionToken: string, resetMessages = true) => {
     setLoading(true)
-    setRefreshing(true)
     setError('')
     if (resetMessages) {
       setStatus('')
@@ -141,7 +131,6 @@ export function ProfilePublicationsPage() {
       setError(loadError instanceof Error ? loadError.message : 'Could not load publications.')
     } finally {
       setLoading(false)
-      setRefreshing(false)
     }
   }, [])
 
@@ -265,35 +254,8 @@ export function ProfilePublicationsPage() {
     return count
   }, [personaState?.metrics.works])
   const worksCount = personaState?.works.length ?? 0
-  const busy = loading || importing || richImporting || syncing || fullSyncing
-  const canImportOrcid = Boolean(orcidStatus?.can_import) && !busy
+  const busy = loading || richImporting || syncing || fullSyncing
   const canSyncCitations = worksCount > 0 && !busy
-
-  const onImportOrcid = async () => {
-    if (!token) {
-      return
-    }
-    if (!orcidStatus?.linked) {
-      setStatus('Connect ORCID in Integrations before importing publications.')
-      return
-    }
-    setImporting(true)
-    setError('')
-    setStatus('')
-    try {
-      const payload = await importOrcidWorks(token)
-      if (payload.imported_count > 0) {
-        setStatus(`Imported ${payload.imported_count} ORCID work(s).`)
-      } else {
-        setStatus('No new ORCID works were imported. Library is already up to date.')
-      }
-      await loadData(token, false)
-    } catch (importError) {
-      setError(importError instanceof Error ? importError.message : 'Could not import ORCID works.')
-    } finally {
-      setImporting(false)
-    }
-  }
 
   const onSyncCitations = async () => {
     if (!token) {
@@ -364,14 +326,26 @@ export function ProfilePublicationsPage() {
     }
   }
 
-  const onCreateCollection = () => {
-    setStatus('Collection creation scaffold is ready. Named collections will be added next.')
-  }
-
   return (
     <section className="space-y-4">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Publications</h1>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Publications</h1>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" onClick={onRichImportOrcid} disabled={!Boolean(orcidStatus?.can_import) || busy}>
+            {richImporting ? 'Syncing ORCID...' : 'Sync ORCID now'}
+          </Button>
+          <Button type="button" variant="outline" onClick={onSyncCitations} disabled={!canSyncCitations}>
+            {syncing ? 'Syncing citations...' : 'Sync citations'}
+          </Button>
+          <Button type="button" variant="outline" onClick={onFullSyncCitations} disabled={!canSyncCitations}>
+            {fullSyncing ? 'Full sync...' : 'Full sync (slower)'}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => navigate('/profile/integrations')}>
+            Open integrations
+          </Button>
+        </div>
       </header>
 
       <Card>
@@ -392,48 +366,6 @@ export function ProfilePublicationsPage() {
             <p className="text-xs text-muted-foreground">Last metrics sync</p>
             <p>{formatTimestamp(syncStatus.metrics_last_synced_at)}</p>
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Import controls</CardTitle>
-          <CardDescription>ORCID import is active; DOI/BibTeX upload is scaffolded.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Button type="button" onClick={onImportOrcid} disabled={!canImportOrcid}>
-            {importing ? 'Importing...' : 'Import ORCID works'}
-          </Button>
-          <Button type="button" onClick={onRichImportOrcid} disabled={!canImportOrcid}>
-            {richImporting ? 'Hydrating...' : 'Rich ORCID refresh'}
-          </Button>
-          <Button type="button" variant="outline" onClick={onSyncCitations} disabled={!canSyncCitations}>
-            {syncing ? 'Syncing...' : 'Sync citations'}
-          </Button>
-          <Button type="button" variant="outline" onClick={onFullSyncCitations} disabled={!canSyncCitations}>
-            {fullSyncing ? 'Full sync...' : 'Full sync (slower)'}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setStatus('DOI / BibTeX import scaffold is next.')}
-          >
-            Import DOI / BibTeX (scaffold)
-          </Button>
-          <Button type="button" variant="outline" onClick={onCreateCollection}>
-            Create collection (scaffold)
-          </Button>
-          <Button type="button" variant="outline" onClick={() => navigate('/profile/integrations')}>
-            Open integrations
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => (token ? void loadData(token, false) : undefined)}
-            disabled={!token || busy}
-          >
-            {refreshing ? 'Refreshing...' : 'Refresh library'}
-          </Button>
         </CardContent>
       </Card>
 
@@ -484,7 +416,7 @@ export function ProfilePublicationsPage() {
                   <option value="citations">Sort: Citations</option>
                   <option value="year">Sort: Year</option>
                   <option value="title">Sort: Title</option>
-                  <option value="venue">Sort: Venue</option>
+                  <option value="venue">Sort: Journal</option>
                 </select>
                 <Button
                   type="button"
@@ -505,8 +437,8 @@ export function ProfilePublicationsPage() {
                   <p className="mb-2 text-foreground">No works in your library yet.</p>
                   <ol className="list-decimal space-y-1 pl-5">
                     <li>Connect ORCID in Integrations.</li>
-                    <li>Import works from ORCID or DOI/BibTeX.</li>
-                    <li>Create a collection for manuscript planning.</li>
+                    <li>Run ORCID sync from the top-right actions.</li>
+                    <li>Select any row to inspect publication details.</li>
                   </ol>
                 </div>
               ) : (
@@ -516,8 +448,8 @@ export function ProfilePublicationsPage() {
                       <tr>
                         <th className="px-2 py-2">Title</th>
                         <th className="px-2 py-2">Year</th>
-                        <th className="px-2 py-2">Venue</th>
-                        <th className="px-2 py-2">Type</th>
+                        <th className="px-2 py-2">Journal</th>
+                        <th className="px-2 py-2">Publication type</th>
                         <th className="px-2 py-2">Citations</th>
                       </tr>
                     </thead>
@@ -548,31 +480,27 @@ export function ProfilePublicationsPage() {
             </div>
 
             <Card className="h-fit xl:sticky xl:top-4">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Publication details</CardTitle>
-                <CardDescription>Click a row to inspect details.</CardDescription>
-              </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 {!selectedWork ? (
                   <p className="text-muted-foreground">Select a publication to view details.</p>
                 ) : (
                   <>
-                    <p className="font-semibold">{selectedWork.title}</p>
+                    <p className="text-base font-semibold leading-snug">{selectedWork.title}</p>
 
                     <div className="grid grid-cols-2 gap-2">
                       <div className="rounded border border-border bg-muted/20 px-2 py-1.5">
                         <p className="text-[11px] uppercase text-muted-foreground">Year</p>
-                        <p className="text-lg font-semibold leading-tight">{selectedWork.year ?? 'n/a'}</p>
+                        <p className="text-2xl font-semibold leading-tight">{selectedWork.year ?? 'n/a'}</p>
                       </div>
                       <div className="rounded border border-border bg-muted/20 px-2 py-1.5">
                         <p className="text-[11px] uppercase text-muted-foreground">Journal</p>
-                        <p className="font-semibold leading-tight">{selectedWork.venue_name || 'Not available'}</p>
+                        <p className="text-sm font-medium leading-tight">{selectedWork.venue_name || 'Not available'}</p>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 gap-2">
                       <div className="rounded border border-border px-2 py-1.5">
-                        <p className="text-[11px] uppercase text-muted-foreground">Type</p>
+                        <p className="text-[11px] uppercase text-muted-foreground">Publication type</p>
                         <p>{formatWorkType(selectedWork.work_type)}</p>
                       </div>
                       <div className="rounded border border-border px-2 py-1.5">
@@ -581,11 +509,18 @@ export function ProfilePublicationsPage() {
                       </div>
                       <div className="rounded border border-border px-2 py-1.5">
                         <p className="text-[11px] uppercase text-muted-foreground">PMID</p>
-                        <p>{selectedWork.pmid || 'Not available'}</p>
-                      </div>
-                      <div className="rounded border border-border px-2 py-1.5">
-                        <p className="text-[11px] uppercase text-muted-foreground">Journal IF / proxy</p>
-                        <p>{formatImpactMetric(selectedWork.journal_impact_factor)}</p>
+                        {selectedWork.pmid ? (
+                          <a
+                            className="text-emerald-700 underline-offset-2 hover:underline"
+                            href={`https://pubmed.ncbi.nlm.nih.gov/${selectedWork.pmid}/`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {selectedWork.pmid}
+                          </a>
+                        ) : (
+                          <p>Not available</p>
+                        )}
                       </div>
                     </div>
 
@@ -608,22 +543,6 @@ export function ProfilePublicationsPage() {
                           rel="noreferrer"
                         >
                           {selectedWork.doi}
-                        </a>
-                      ) : (
-                        <p className="text-muted-foreground">Not available</p>
-                      )}
-                    </div>
-
-                    <div className="space-y-1">
-                      <p className="text-[11px] uppercase text-muted-foreground">Primary link</p>
-                      {selectedWork.url ? (
-                        <a
-                          className="text-emerald-700 underline-offset-2 hover:underline"
-                          href={selectedWork.url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Open publication link
                         </a>
                       ) : (
                         <p className="text-muted-foreground">Not available</p>
@@ -669,7 +588,7 @@ export function ProfilePublicationsPage() {
 
       {status ? <p className="text-sm text-emerald-700">{status}</p> : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      {(loading || importing || richImporting || syncing || fullSyncing) ? (
+      {(loading || richImporting || syncing || fullSyncing) ? (
         <p className="text-xs text-muted-foreground">Working...</p>
       ) : null}
     </section>

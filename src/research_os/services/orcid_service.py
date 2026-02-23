@@ -26,7 +26,7 @@ ORCID_IMPORT_DETAIL_FETCH_MAX_STANDARD = max(
     int(
         os.getenv(
             "ORCID_IMPORT_DETAIL_FETCH_MAX_STANDARD",
-            "0",
+            os.getenv("ORCID_IMPORT_DETAIL_FETCH_MAX", "250"),
         )
     ),
 )

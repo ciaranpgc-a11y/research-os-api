@@ -138,6 +138,7 @@ export function ProfileIntegrationsPage() {
   const [providerStatuses, setProviderStatuses] = useState<AuthOAuthProviderStatusItem[]>([])
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [orcidStatusResolved, setOrcidStatusResolved] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
@@ -218,6 +219,7 @@ export function ProfileIntegrationsPage() {
       setError(loadError instanceof Error ? loadError.message : 'Could not load integrations.')
       return null
     } finally {
+      setOrcidStatusResolved(true)
       setLoading(false)
       setRefreshing(false)
     }
@@ -226,6 +228,7 @@ export function ProfileIntegrationsPage() {
   useEffect(() => {
     const sessionToken = getAuthSessionToken()
     setToken(sessionToken)
+    setOrcidStatusResolved(false)
     if (!sessionToken) {
       navigate('/auth', { replace: true })
       return
@@ -313,18 +316,24 @@ export function ProfileIntegrationsPage() {
 
   const worksCount = personaState?.works.length ?? 0
   const emailVerified = Boolean(user?.email_verified_at)
-  const orcidConfigured = Boolean(orcidStatus?.configured)
-  const orcidLinked = Boolean(orcidStatus?.linked || user?.orcid_id)
+  const orcidStatusPending = !orcidStatusResolved
+  const orcidConfigured = orcidStatusPending ? true : Boolean(orcidStatus?.configured)
+  const orcidLinked = orcidStatusPending
+    ? Boolean(user?.orcid_id)
+    : Boolean(orcidStatus?.linked || user?.orcid_id)
   const busy = loading || connecting || importing || disconnecting
-  const canConnectOrcid = orcidConfigured && !busy
-  const canImportOrcid = emailVerified && orcidConfigured && orcidLinked && !busy
-  const canDisconnectOrcid = orcidLinked && !busy
+  const canConnectOrcid = !orcidStatusPending && orcidConfigured && !busy
+  const canImportOrcid =
+    !orcidStatusPending && emailVerified && orcidConfigured && orcidLinked && !busy
+  const canDisconnectOrcid = !orcidStatusPending && orcidLinked && !busy
   const shortLastSync = formatShortTimestamp(syncStatus.orcid_last_synced_at)
-  const connectionStatusLabel = orcidLinked
-    ? shortLastSync
-      ? `Connected (${shortLastSync})`
-      : 'Connected'
-    : 'Not connected'
+  const connectionStatusLabel = orcidStatusPending
+    ? 'Checking status...'
+    : orcidLinked
+      ? shortLastSync
+        ? `Connected (${shortLastSync})`
+        : 'Connected'
+      : 'Not connected'
   const totalCitations = useMemo(() => totalCitationsFromPersonaState(personaState), [personaState])
   const worksLastSyncDate = formatDateOnly(syncStatus.orcid_last_synced_at)
   const referencesLastSyncDate = formatDateOnly(
@@ -529,7 +538,11 @@ export function ProfileIntegrationsPage() {
                 <span>ORCID</span>
                 <span
                   className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                    orcidLinked ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'
+                    orcidStatusPending
+                      ? 'bg-slate-100 text-slate-700'
+                      : orcidLinked
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : 'bg-amber-50 text-amber-800'
                   }`}
                 >
                   {connectionStatusLabel}
@@ -561,7 +574,9 @@ export function ProfileIntegrationsPage() {
           <div className="grid gap-2 md:grid-cols-[260px_1fr]">
             <div className="rounded border border-border px-3 py-2">
               <p className="text-xs text-muted-foreground">ORCID id</p>
-              <p className="font-medium">{orcidStatus?.orcid_id || user?.orcid_id || 'Not linked'}</p>
+              <p className="font-medium">
+                {orcidStatusPending ? 'Loading...' : orcidStatus?.orcid_id || user?.orcid_id || 'Not linked'}
+              </p>
               {orcidStatus?.orcid_id || user?.orcid_id ? (
                 <a
                   href={`https://orcid.org/${orcidStatus?.orcid_id || user?.orcid_id}`}
@@ -590,7 +605,7 @@ export function ProfileIntegrationsPage() {
                   </p>
                 </div>
                 <div className="rounded border border-border px-3 py-2 min-h-[86px]">
-                  <p className="text-xs text-muted-foreground">Total citations</p>
+                  <p className="text-xs text-muted-foreground">Total citations (provider-estimated)</p>
                   <p className="text-2xl font-semibold leading-tight">{totalCitations}</p>
                   {referencesLastSyncDate ? (
                     <p className="text-xs text-muted-foreground">last sync {referencesLastSyncDate}</p>
@@ -612,12 +627,12 @@ export function ProfileIntegrationsPage() {
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">
-            {!orcidLinked ? (
+            {!orcidStatusPending && !orcidLinked ? (
               <Button type="button" onClick={onConnectOrcid} disabled={!canConnectOrcid}>
                 {connecting ? 'Opening ORCID...' : 'Connect ORCID'}
               </Button>
             ) : null}
-            {orcidLinked ? (
+            {!orcidStatusPending && orcidLinked ? (
               <Button
                 type="button"
                 variant={importing ? 'default' : 'outline'}
@@ -634,6 +649,9 @@ export function ProfileIntegrationsPage() {
               </Button>
             ) : null}
           </div>
+          {orcidStatusPending ? (
+            <p className="text-xs text-muted-foreground">Checking ORCID connection...</p>
+          ) : null}
           {orcidLinked && (lastSyncOutcome || lastSyncSinceLabel) ? (
             <p className="text-xs text-muted-foreground">
               {lastSyncOutcome ? (
@@ -644,7 +662,7 @@ export function ProfileIntegrationsPage() {
               ) : null}
             </p>
           ) : null}
-          {!orcidConfigured ? (
+          {!orcidStatusPending && !orcidConfigured ? (
             <p className="text-xs text-amber-700">ORCID provider is not configured in backend environment.</p>
           ) : null}
           {status ? <p className="text-sm text-emerald-700">{status}</p> : null}
