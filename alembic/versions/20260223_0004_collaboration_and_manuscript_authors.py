@@ -103,7 +103,7 @@ def _ensure_collaborator_affiliations_table() -> None:
             sa.Column("country", sa.String(length=64), nullable=True),
             sa.Column("start_year", sa.Integer(), nullable=True),
             sa.Column("end_year", sa.Integer(), nullable=True),
-            sa.Column("is_primary", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+            sa.Column("is_primary", sa.Boolean(), nullable=False, server_default=sa.false()),
             sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
             sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
             sa.ForeignKeyConstraint(
@@ -215,9 +215,9 @@ def _ensure_manuscript_authors_table() -> None:
             sa.Column("orcid_id", sa.String(length=64), nullable=True),
             sa.Column("institution", sa.String(length=255), nullable=True),
             sa.Column("author_order", sa.Integer(), nullable=False),
-            sa.Column("is_corresponding", sa.Boolean(), nullable=False, server_default=sa.text("0")),
-            sa.Column("equal_contribution", sa.Boolean(), nullable=False, server_default=sa.text("0")),
-            sa.Column("is_external", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+            sa.Column("is_corresponding", sa.Boolean(), nullable=False, server_default=sa.false()),
+            sa.Column("equal_contribution", sa.Boolean(), nullable=False, server_default=sa.false()),
+            sa.Column("is_external", sa.Boolean(), nullable=False, server_default=sa.false()),
             sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
             sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
             sa.ForeignKeyConstraint(
