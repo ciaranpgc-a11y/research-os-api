@@ -47,7 +47,7 @@ function authHeaders(token: string): Record<string, string> {
 const REQUEST_TIMEOUT_MS =
   Number(import.meta.env.VITE_API_REQUEST_TIMEOUT_MS || '90000') || 90_000
 const REQUEST_RETRY_COUNT =
-  Number(import.meta.env.VITE_API_REQUEST_RETRY_COUNT || '1') || 1
+  Number(import.meta.env.VITE_API_REQUEST_RETRY_COUNT || '3') || 3
 
 function isRetryableStatus(status: number): boolean {
   return status === 408 || status === 425 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504
@@ -61,22 +61,34 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
 }
 
-async function requestJson<T>(url: string, init: RequestInit, fallbackError: string): Promise<T> {
+type RequestOverrides = {
+  timeoutMs?: number
+  retryCount?: number
+}
+
+async function requestJson<T>(
+  url: string,
+  init: RequestInit,
+  fallbackError: string,
+  overrides?: RequestOverrides,
+): Promise<T> {
+  const timeoutMs = Math.max(5000, Number(overrides?.timeoutMs || REQUEST_TIMEOUT_MS))
+  const retryCount = Math.max(0, Number(overrides?.retryCount ?? REQUEST_RETRY_COUNT))
   let lastError: Error | null = null
-  for (let attempt = 0; attempt <= REQUEST_RETRY_COUNT; attempt += 1) {
+  for (let attempt = 0; attempt <= retryCount; attempt += 1) {
     const controller = new AbortController()
-    const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
     let response: Response | null = null
     try {
       response = await fetch(url, { ...init, signal: controller.signal })
     } catch (error) {
-      if (attempt < REQUEST_RETRY_COUNT) {
+      if (attempt < retryCount) {
         await sleep(900 * (attempt + 1))
         continue
       }
       const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown-origin'
       const detail = isAbortError(error)
-        ? `Request timed out after ${Math.round(REQUEST_TIMEOUT_MS / 1000)}s`
+        ? `Request timed out after ${Math.round(timeoutMs / 1000)}s`
         : error instanceof Error
           ? error.message
           : 'Network error'
@@ -88,7 +100,7 @@ async function requestJson<T>(url: string, init: RequestInit, fallbackError: str
       continue
     }
     if (!response.ok) {
-      if (isRetryableStatus(response.status) && attempt < REQUEST_RETRY_COUNT) {
+      if (isRetryableStatus(response.status) && attempt < retryCount) {
         await sleep(900 * (attempt + 1))
         continue
       }
@@ -409,6 +421,7 @@ export async function importOrcidWorks(
       body: JSON.stringify({ overwrite_user_metadata: Boolean(options?.overwriteUserMetadata) }),
     },
     'ORCID import failed',
+    { timeoutMs: 180_000, retryCount: 2 },
   )
 }
 
@@ -435,6 +448,7 @@ export async function syncPersonaMetrics(
       body: JSON.stringify({ providers }),
     },
     'Metrics sync failed',
+    { timeoutMs: 180_000, retryCount: 2 },
   )
 }
 
@@ -526,6 +540,7 @@ export async function fetchPersonaState(token: string): Promise<PersonaStatePayl
       headers: authHeaders(token),
     },
     'Persona state lookup failed',
+    { timeoutMs: 120_000, retryCount: 2 },
   )
 }
 
