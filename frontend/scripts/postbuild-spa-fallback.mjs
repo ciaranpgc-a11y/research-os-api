@@ -12,6 +12,7 @@ const routeFallbacks = [
   'profile/index.html',
   'profile/integrations/index.html',
   'profile/publications/index.html',
+  'account/collaboration/index.html',
   'impact/index.html',
   'settings/index.html',
   'workspaces/index.html',

@@ -18,6 +18,7 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
 )
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -146,6 +147,18 @@ class User(Base):
     )
     publications_metrics: Mapped[list["PublicationMetric"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
+    )
+    collaborators: Mapped[list["Collaborator"]] = relationship(
+        back_populates="owner_user", cascade="all, delete-orphan"
+    )
+    collaboration_metrics: Mapped[list["CollaborationMetric"]] = relationship(
+        back_populates="owner_user", cascade="all, delete-orphan"
+    )
+    manuscript_authors: Mapped[list["ManuscriptAuthor"]] = relationship(
+        back_populates="owner_user", cascade="all, delete-orphan"
+    )
+    manuscript_affiliations: Mapped[list["ManuscriptAffiliation"]] = relationship(
+        back_populates="owner_user", cascade="all, delete-orphan"
     )
     persona_sync_jobs: Mapped[list["PersonaSyncJob"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
@@ -334,6 +347,12 @@ class Manuscript(Base):
         back_populates="manuscript",
         cascade="all, delete-orphan",
         uselist=False,
+    )
+    authors: Mapped[list["ManuscriptAuthor"]] = relationship(
+        back_populates="manuscript", cascade="all, delete-orphan"
+    )
+    affiliations: Mapped[list["ManuscriptAffiliation"]] = relationship(
+        back_populates="manuscript", cascade="all, delete-orphan"
     )
 
 
@@ -576,6 +595,196 @@ class PublicationMetric(Base):
     user: Mapped[User] = relationship(back_populates="publications_metrics")
 
 
+class Collaborator(Base):
+    __tablename__ = "collaborators"
+    __table_args__ = (
+        Index("ix_collaborators_owner_name_lower", "owner_user_id", "full_name_lower"),
+        Index("ix_collaborators_owner_orcid", "owner_user_id", "orcid_id"),
+        Index("ix_collaborators_owner_openalex", "owner_user_id", "openalex_author_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    owner_user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    full_name: Mapped[str] = mapped_column(String(255))
+    full_name_lower: Mapped[str] = mapped_column(String(255), default="", index=True)
+    preferred_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    orcid_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    openalex_author_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    primary_institution: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    department: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    current_position: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    research_domains: Mapped[list[str]] = mapped_column(JSON, default=list)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    owner_user: Mapped[User] = relationship(back_populates="collaborators")
+    affiliations: Mapped[list["CollaboratorAffiliation"]] = relationship(
+        back_populates="collaborator", cascade="all, delete-orphan"
+    )
+    metrics: Mapped[list["CollaborationMetric"]] = relationship(
+        back_populates="collaborator", cascade="all, delete-orphan"
+    )
+    manuscript_authors: Mapped[list["ManuscriptAuthor"]] = relationship(
+        back_populates="collaborator"
+    )
+
+
+class CollaboratorAffiliation(Base):
+    __tablename__ = "collaborator_affiliations"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    collaborator_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("collaborators.id", ondelete="CASCADE"), index=True
+    )
+    institution_name: Mapped[str] = mapped_column(String(255))
+    department: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    start_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    end_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    collaborator: Mapped[Collaborator] = relationship(back_populates="affiliations")
+
+
+class CollaborationMetric(Base):
+    __tablename__ = "collaboration_metrics"
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "collaborator_id"),
+        Index("ix_collaboration_metrics_owner", "owner_user_id"),
+        Index("ix_collaboration_metrics_collaborator", "collaborator_id"),
+        Index("ix_collaboration_metrics_next_scheduled_at", "next_scheduled_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    owner_user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    collaborator_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("collaborators.id", ondelete="CASCADE"), index=True
+    )
+    coauthored_works_count: Mapped[int] = mapped_column(Integer, default=0)
+    shared_citations_total: Mapped[int] = mapped_column(Integer, default=0)
+    first_collaboration_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_collaboration_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    citations_last_12m: Mapped[int] = mapped_column(Integer, default=0)
+    collaboration_strength_score: Mapped[float] = mapped_column(Float, default=0.0)
+    classification: Mapped[str] = mapped_column(String(16), default="UNCLASSIFIED")
+    status: Mapped[str] = mapped_column(String(16), default="READY")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    computed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    next_scheduled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    owner_user: Mapped[User] = relationship(back_populates="collaboration_metrics")
+    collaborator: Mapped[Collaborator] = relationship(back_populates="metrics")
+
+
+class ManuscriptAuthor(Base):
+    __tablename__ = "manuscript_authors"
+    __table_args__ = (
+        UniqueConstraint("manuscript_id", "owner_user_id", "author_order"),
+        Index("ix_manuscript_authors_owner", "owner_user_id"),
+        Index("ix_manuscript_authors_manuscript", "manuscript_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    manuscript_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("manuscripts.id", ondelete="CASCADE"), index=True
+    )
+    owner_user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    collaborator_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("collaborators.id", ondelete="SET NULL"), nullable=True
+    )
+    full_name: Mapped[str] = mapped_column(String(255))
+    orcid_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    institution: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    author_order: Mapped[int] = mapped_column(Integer, default=1)
+    is_corresponding: Mapped[bool] = mapped_column(Boolean, default=False)
+    equal_contribution: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_external: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    manuscript: Mapped[Manuscript] = relationship(back_populates="authors")
+    owner_user: Mapped[User] = relationship(back_populates="manuscript_authors")
+    collaborator: Mapped[Collaborator | None] = relationship(
+        back_populates="manuscript_authors"
+    )
+
+
+class ManuscriptAffiliation(Base):
+    __tablename__ = "manuscript_affiliations"
+    __table_args__ = (
+        UniqueConstraint("manuscript_id", "owner_user_id", "superscript_number"),
+        Index("ix_manuscript_affiliations_owner", "owner_user_id"),
+        Index("ix_manuscript_affiliations_manuscript", "manuscript_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    manuscript_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("manuscripts.id", ondelete="CASCADE"), index=True
+    )
+    owner_user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    institution_name: Mapped[str] = mapped_column(String(255))
+    department: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    superscript_number: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    manuscript: Mapped[Manuscript] = relationship(back_populates="affiliations")
+    owner_user: Mapped[User] = relationship(back_populates="manuscript_affiliations")
+
+
 class PersonaSyncJob(Base):
     __tablename__ = "persona_sync_jobs"
     __table_args__ = (Index("ix_persona_sync_jobs_user_created", "user_id", "created_at"),)
@@ -809,7 +1018,13 @@ def get_session_factory():
 
 
 def create_all_tables() -> None:
-    Base.metadata.create_all(bind=get_engine())
+    engine = get_engine()
+    try:
+        Base.metadata.create_all(bind=engine)
+    except OperationalError as exc:
+        # Concurrent startup/scheduler table checks can race in SQLite tests.
+        if "already exists" not in str(exc).lower():
+            raise
 
 
 @contextmanager

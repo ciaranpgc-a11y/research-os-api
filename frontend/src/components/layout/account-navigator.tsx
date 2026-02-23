@@ -19,6 +19,7 @@ const ACCOUNT_LINKS = [
   { label: 'Profile home', path: '/profile', end: true },
   { label: 'Integrations', path: '/profile/integrations' },
   { label: 'Publications', path: '/profile/publications' },
+  { label: 'Collaboration', path: '/account/collaboration' },
   { label: 'Impact', path: '/impact' },
   { label: 'Settings & preferences', path: '/settings' },
 ]

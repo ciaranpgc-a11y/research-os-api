@@ -26,6 +26,42 @@ export type ManuscriptRecord = {
   updated_at: string
 }
 
+export type ManuscriptAuthorSuggestion = {
+  collaborator_id: string
+  full_name: string
+  preferred_name: string | null
+  orcid_id: string | null
+  institution: string | null
+  classification: 'CORE' | 'ACTIVE' | 'OCCASIONAL' | 'HISTORIC' | 'UNCLASSIFIED'
+  collaboration_strength_score: number
+}
+
+export type ManuscriptAuthorRecord = {
+  author_order: number
+  collaborator_id: string | null
+  full_name: string
+  orcid_id: string | null
+  institution: string | null
+  is_corresponding: boolean
+  equal_contribution: boolean
+  is_external: boolean
+}
+
+export type ManuscriptAffiliationRecord = {
+  institution_name: string
+  department: string | null
+  city: string | null
+  country: string | null
+  superscript_number: number
+}
+
+export type ManuscriptAuthorsPayload = {
+  workspace_id: string
+  authors: ManuscriptAuthorRecord[]
+  affiliations: ManuscriptAffiliationRecord[]
+  rendered_authors_block: string
+}
+
 export type WizardQuestion = {
   id: string
   label: string

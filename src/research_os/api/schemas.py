@@ -1106,6 +1106,262 @@ class PublicationsAnalyticsResponse(BaseModel):
     last_update_failed: bool = False
 
 
+class CollaboratorMetricsResponse(BaseModel):
+    coauthored_works_count: int = 0
+    shared_citations_total: int = 0
+    first_collaboration_year: int | None = None
+    last_collaboration_year: int | None = None
+    citations_last_12m: int = 0
+    collaboration_strength_score: float = 0.0
+    classification: Literal["CORE", "ACTIVE", "OCCASIONAL", "HISTORIC", "UNCLASSIFIED"] = (
+        "UNCLASSIFIED"
+    )
+    computed_at: datetime | None = None
+    status: Literal["READY", "RUNNING", "FAILED"] = "READY"
+
+
+class CollaboratorResponse(BaseModel):
+    id: str
+    owner_user_id: str
+    full_name: str
+    preferred_name: str | None = None
+    email: str | None = None
+    orcid_id: str | None = None
+    openalex_author_id: str | None = None
+    primary_institution: str | None = None
+    department: str | None = None
+    country: str | None = None
+    current_position: str | None = None
+    research_domains: list[str] = Field(default_factory=list)
+    notes: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    metrics: CollaboratorMetricsResponse
+    duplicate_warnings: list[str] = Field(default_factory=list)
+
+
+class CollaboratorCreateRequest(BaseModel):
+    full_name: str
+    preferred_name: str | None = None
+    email: str | None = None
+    orcid_id: str | None = None
+    openalex_author_id: str | None = None
+    primary_institution: str | None = None
+    department: str | None = None
+    country: str | None = None
+    current_position: str | None = None
+    research_domains: list[str] = Field(default_factory=list)
+    notes: str | None = None
+
+
+class CollaboratorUpdateRequest(BaseModel):
+    full_name: str | None = None
+    preferred_name: str | None = None
+    email: str | None = None
+    orcid_id: str | None = None
+    openalex_author_id: str | None = None
+    primary_institution: str | None = None
+    department: str | None = None
+    country: str | None = None
+    current_position: str | None = None
+    research_domains: list[str] | None = None
+    notes: str | None = None
+
+
+class CollaboratorsListResponse(BaseModel):
+    items: list[CollaboratorResponse] = Field(default_factory=list)
+    page: int = 1
+    page_size: int = 50
+    total: int = 0
+    has_more: bool = False
+
+
+class CollaboratorDeleteResponse(BaseModel):
+    deleted: bool = False
+
+
+class CollaborationMetricsSummaryResponse(BaseModel):
+    total_collaborators: int = 0
+    core_collaborators: int = 0
+    active_collaborations_12m: int = 0
+    new_collaborators_12m: int = 0
+    last_computed_at: datetime | None = None
+    status: Literal["READY", "RUNNING", "FAILED"] = "READY"
+    is_stale: bool = False
+    is_updating: bool = False
+    last_update_failed: bool = False
+
+
+class CollaborationMetricsRecomputeResponse(BaseModel):
+    enqueued: bool = False
+
+
+class CollaborationImportOpenAlexResponse(BaseModel):
+    created_count: int = 0
+    updated_count: int = 0
+    skipped_count: int = 0
+    openalex_author_id: str | None = None
+    imported_candidates: int = 0
+
+
+class CollaborationAiInsightsResponse(BaseModel):
+    status: Literal["draft"] = "draft"
+    insights: list[str] = Field(default_factory=list)
+    suggested_actions: list[str] = Field(default_factory=list)
+    provenance: dict[str, Any] = Field(default_factory=dict)
+
+
+class CollaborationAiAuthorSuggestionsRequest(BaseModel):
+    topic_keywords: list[str] = Field(default_factory=list)
+    methods: list[str] = Field(default_factory=list)
+    limit: int = 5
+
+
+class CollaborationAiAuthorSuggestionItemResponse(BaseModel):
+    collaborator_id: str
+    full_name: str
+    institution: str | None = None
+    orcid_id: str | None = None
+    classification: Literal["CORE", "ACTIVE", "OCCASIONAL", "HISTORIC", "UNCLASSIFIED"] = (
+        "UNCLASSIFIED"
+    )
+    score: float = 0.0
+    explanation: str = ""
+    matched_keywords: list[str] = Field(default_factory=list)
+    matched_methods: list[str] = Field(default_factory=list)
+
+
+class CollaborationAiAuthorSuggestionsResponse(BaseModel):
+    status: Literal["draft"] = "draft"
+    topic_keywords: list[str] = Field(default_factory=list)
+    methods: list[str] = Field(default_factory=list)
+    suggestions: list[CollaborationAiAuthorSuggestionItemResponse] = Field(default_factory=list)
+    provenance: dict[str, Any] = Field(default_factory=dict)
+
+
+class CollaborationAiContributionAuthorInput(BaseModel):
+    full_name: str
+    roles: list[str] = Field(default_factory=list)
+    is_corresponding: bool = False
+    equal_contribution: bool = False
+    is_external: bool = False
+
+
+class CollaborationAiContributionDraftRequest(BaseModel):
+    authors: list[CollaborationAiContributionAuthorInput] = Field(default_factory=list)
+
+
+class CollaborationAiContributionRoleResponse(BaseModel):
+    full_name: str
+    roles: list[str] = Field(default_factory=list)
+    is_corresponding: bool = False
+    equal_contribution: bool = False
+    is_external: bool = False
+
+
+class CollaborationAiContributionDraftResponse(BaseModel):
+    status: Literal["draft"] = "draft"
+    credit_statements: list[CollaborationAiContributionRoleResponse] = Field(default_factory=list)
+    draft_text: str = ""
+    provenance: dict[str, Any] = Field(default_factory=dict)
+
+
+class CollaborationAiAffiliationAuthorInput(BaseModel):
+    full_name: str
+    institution: str | None = None
+    orcid_id: str | None = None
+
+
+class CollaborationAiAffiliationsNormaliseRequest(BaseModel):
+    authors: list[CollaborationAiAffiliationAuthorInput] = Field(default_factory=list)
+
+
+class CollaborationAiAffiliationAuthorResponse(BaseModel):
+    full_name: str
+    institution: str
+    orcid_id: str | None = None
+    superscript_number: int
+
+
+class CollaborationAiAffiliationResponse(BaseModel):
+    superscript_number: int
+    institution_name: str
+
+
+class CollaborationAiAffiliationsNormaliseResponse(BaseModel):
+    status: Literal["draft"] = "draft"
+    normalized_authors: list[CollaborationAiAffiliationAuthorResponse] = Field(default_factory=list)
+    affiliations: list[CollaborationAiAffiliationResponse] = Field(default_factory=list)
+    affiliations_block: str = ""
+    coi_boilerplate: str = ""
+    provenance: dict[str, Any] = Field(default_factory=dict)
+
+
+class ManuscriptAuthorSuggestionResponse(BaseModel):
+    collaborator_id: str
+    full_name: str
+    preferred_name: str | None = None
+    orcid_id: str | None = None
+    institution: str | None = None
+    classification: Literal["CORE", "ACTIVE", "OCCASIONAL", "HISTORIC", "UNCLASSIFIED"] = (
+        "UNCLASSIFIED"
+    )
+    collaboration_strength_score: float = 0.0
+
+
+class ManuscriptAuthorSuggestionsResponse(BaseModel):
+    items: list[ManuscriptAuthorSuggestionResponse] = Field(default_factory=list)
+
+
+class ManuscriptAuthorInput(BaseModel):
+    collaborator_id: str | None = None
+    full_name: str
+    orcid_id: str | None = None
+    institution: str | None = None
+    is_corresponding: bool = False
+    equal_contribution: bool = False
+    is_external: bool = False
+
+
+class ManuscriptAffiliationInput(BaseModel):
+    institution_name: str
+    department: str | None = None
+    city: str | None = None
+    country: str | None = None
+    superscript_number: int | None = None
+
+
+class ManuscriptAuthorsSaveRequest(BaseModel):
+    authors: list[ManuscriptAuthorInput] = Field(default_factory=list)
+    affiliations: list[ManuscriptAffiliationInput] = Field(default_factory=list)
+
+
+class ManuscriptAuthorRecordResponse(BaseModel):
+    author_order: int
+    collaborator_id: str | None = None
+    full_name: str
+    orcid_id: str | None = None
+    institution: str | None = None
+    is_corresponding: bool = False
+    equal_contribution: bool = False
+    is_external: bool = False
+
+
+class ManuscriptAffiliationRecordResponse(BaseModel):
+    institution_name: str
+    department: str | None = None
+    city: str | None = None
+    country: str | None = None
+    superscript_number: int
+
+
+class ManuscriptAuthorsResponse(BaseModel):
+    workspace_id: str
+    authors: list[ManuscriptAuthorRecordResponse] = Field(default_factory=list)
+    affiliations: list[ManuscriptAffiliationRecordResponse] = Field(default_factory=list)
+    rendered_authors_block: str = ""
+
+
 class PersonaEmbeddingsGenerateRequest(BaseModel):
     model_name: str | None = None
 

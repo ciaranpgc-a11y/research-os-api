@@ -2601,3 +2601,338 @@ def test_v1_plan_sections_can_include_persona_context(monkeypatch, tmp_path) -> 
     payload = response.json()
     evidence_expectations = payload["items"][0]["evidence_expectations"]
     assert any("Persona context from works:" in item for item in evidence_expectations)
+
+
+def test_v1_collaboration_crud_and_summary(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "research_os.services.collaboration_service.enqueue_collaboration_metrics_recompute",
+        lambda **_: True,
+    )
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "collab-crud@example.com",
+                "password": "StrongPassword123",
+                "name": "Collab CRUD User",
+            },
+        )
+        token = register_response.json()["session_token"]
+        headers = _auth_headers(token)
+
+        create_response = client.post(
+            "/v1/account/collaboration/collaborators",
+            headers=headers,
+            json={
+                "full_name": "Jane Collaborator",
+                "email": "jane@example.com",
+                "orcid_id": "0000-0002-1825-0097",
+                "primary_institution": "AAWE Institute",
+                "research_domains": ["Cardiology"],
+            },
+        )
+        assert create_response.status_code == 200
+        collaborator_id = create_response.json()["id"]
+
+        list_response = client.get(
+            "/v1/account/collaboration/collaborators?query=jane&sort=name&page=1&page_size=20",
+            headers=headers,
+        )
+        assert list_response.status_code == 200
+        assert list_response.json()["total"] == 1
+
+        get_response = client.get(
+            f"/v1/account/collaboration/collaborators/{collaborator_id}",
+            headers=headers,
+        )
+        assert get_response.status_code == 200
+        assert get_response.json()["full_name"] == "Jane Collaborator"
+
+        patch_response = client.patch(
+            f"/v1/account/collaboration/collaborators/{collaborator_id}",
+            headers=headers,
+            json={"country": "GB", "current_position": "Professor"},
+        )
+        assert patch_response.status_code == 200
+        assert patch_response.json()["country"] == "GB"
+
+        summary_response = client.get(
+            "/v1/account/collaboration/metrics/summary",
+            headers=headers,
+        )
+        assert summary_response.status_code == 200
+        assert summary_response.json()["total_collaborators"] == 1
+
+        delete_response = client.delete(
+            f"/v1/account/collaboration/collaborators/{collaborator_id}",
+            headers=headers,
+        )
+        assert delete_response.status_code == 200
+        assert delete_response.json()["deleted"] is True
+
+
+def test_v1_collaboration_scoped_to_authenticated_user(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "research_os.services.collaboration_service.enqueue_collaboration_metrics_recompute",
+        lambda **_: True,
+    )
+
+    with TestClient(app) as client:
+        register_a = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "collab-a@example.com",
+                "password": "StrongPassword123",
+                "name": "Collab User A",
+            },
+        )
+        register_b = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "collab-b@example.com",
+                "password": "StrongPassword123",
+                "name": "Collab User B",
+            },
+        )
+        headers_a = _auth_headers(register_a.json()["session_token"])
+        headers_b = _auth_headers(register_b.json()["session_token"])
+
+        create_response = client.post(
+            "/v1/account/collaboration/collaborators",
+            headers=headers_a,
+            json={
+                "full_name": "Scoped Collaborator",
+                "primary_institution": "Institute X",
+            },
+        )
+        collaborator_id = create_response.json()["id"]
+
+        forbidden_read = client.get(
+            f"/v1/account/collaboration/collaborators/{collaborator_id}",
+            headers=headers_b,
+        )
+        assert forbidden_read.status_code == 404
+
+
+def test_v1_collaboration_import_openalex_endpoint(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "research_os.api.app.import_collaborators_from_openalex",
+        lambda **_: {
+            "created_count": 3,
+            "updated_count": 2,
+            "skipped_count": 1,
+            "openalex_author_id": "https://openalex.org/A123",
+            "imported_candidates": 6,
+        },
+    )
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "collab-import@example.com",
+                "password": "StrongPassword123",
+                "name": "Collab Import User",
+            },
+        )
+        headers = _auth_headers(register_response.json()["session_token"])
+        response = client.post(
+            "/v1/account/collaboration/import/openalex",
+            headers=headers,
+        )
+
+    assert response.status_code == 200
+    assert response.json()["created_count"] == 3
+    assert response.json()["imported_candidates"] == 6
+
+
+def test_v1_collaboration_ai_tools_endpoints(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "research_os.services.collaboration_service.enqueue_collaboration_metrics_recompute",
+        lambda **_: True,
+    )
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "collab-ai@example.com",
+                "password": "StrongPassword123",
+                "name": "Collab AI User",
+            },
+        )
+        token = register_response.json()["session_token"]
+        headers = _auth_headers(token)
+
+        create_response = client.post(
+            "/v1/account/collaboration/collaborators",
+            headers=headers,
+            json={
+                "full_name": "AI Collaborator",
+                "orcid_id": "0000-0002-1825-0097",
+                "primary_institution": "AI Institute",
+                "research_domains": ["Cardiology", "Machine Learning"],
+            },
+        )
+        assert create_response.status_code == 200
+
+        insights = client.post(
+            "/v1/account/collaboration/ai/insights",
+            headers=headers,
+        )
+        assert insights.status_code == 200
+        assert insights.json()["status"] == "draft"
+        assert isinstance(insights.json()["insights"], list)
+
+        suggestions = client.post(
+            "/v1/account/collaboration/ai/author-suggestions",
+            headers=headers,
+            json={
+                "topic_keywords": ["cardiology"],
+                "methods": ["machine learning"],
+                "limit": 5,
+            },
+        )
+        assert suggestions.status_code == 200
+        assert suggestions.json()["status"] == "draft"
+        assert isinstance(suggestions.json()["suggestions"], list)
+
+        contribution = client.post(
+            "/v1/account/collaboration/ai/contribution-statement",
+            headers=headers,
+            json={
+                "authors": [
+                    {
+                        "full_name": "AI Collaborator",
+                        "roles": ["Conceptualization"],
+                        "is_corresponding": True,
+                    }
+                ]
+            },
+        )
+        assert contribution.status_code == 200
+        assert contribution.json()["status"] == "draft"
+        assert "AI Collaborator" in contribution.json()["draft_text"]
+
+        affiliations = client.post(
+            "/v1/account/collaboration/ai/affiliations-normaliser",
+            headers=headers,
+            json={
+                "authors": [
+                    {
+                        "full_name": "AI Collaborator",
+                        "institution": "AI Institute",
+                        "orcid_id": "0000-0002-1825-0097",
+                    }
+                ]
+            },
+        )
+        assert affiliations.status_code == 200
+        assert affiliations.json()["status"] == "draft"
+        assert "AI Institute" in affiliations.json()["affiliations_block"]
+
+
+def test_v1_manuscript_author_suggestions_and_save(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "research_os.services.collaboration_service.enqueue_collaboration_metrics_recompute",
+        lambda **_: True,
+    )
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "manu-authors@example.com",
+                "password": "StrongPassword123",
+                "name": "Manuscript Authors User",
+            },
+        )
+        token = register_response.json()["session_token"]
+        headers = _auth_headers(token)
+
+        create_collab = client.post(
+            "/v1/account/collaboration/collaborators",
+            headers=headers,
+            json={
+                "full_name": "Suggested Collaborator",
+                "orcid_id": "0000-0002-1825-0097",
+                "primary_institution": "Institution Suggestion",
+            },
+        )
+        assert create_collab.status_code == 200
+        collaborator_id = create_collab.json()["id"]
+
+        project_response = client.post(
+            "/v1/projects",
+            json={
+                "title": "Authors Project",
+                "target_journal": "ehj",
+                "study_type": "cohort",
+            },
+        )
+        assert project_response.status_code == 200
+        project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            json={"branch_name": "main", "sections": ["introduction"]},
+        )
+        assert manuscript_response.status_code == 200
+        manuscript_id = manuscript_response.json()["id"]
+
+        suggestions_response = client.get(
+            "/v1/manuscript/authors/suggestions?query=suggested&limit=20",
+            headers=headers,
+        )
+        assert suggestions_response.status_code == 200
+        assert len(suggestions_response.json()["items"]) >= 1
+
+        save_response = client.post(
+            f"/v1/manuscript/{manuscript_id}/authors",
+            headers=headers,
+            json={
+                "authors": [
+                    {
+                        "collaborator_id": collaborator_id,
+                        "full_name": "Suggested Collaborator",
+                        "orcid_id": "0000-0002-1825-0097",
+                        "institution": "Institution Suggestion",
+                        "is_corresponding": True,
+                        "equal_contribution": False,
+                        "is_external": False,
+                    },
+                    {
+                        "full_name": "External Author",
+                        "institution": "External Institution",
+                        "is_corresponding": False,
+                        "equal_contribution": True,
+                        "is_external": True,
+                    },
+                ],
+                "affiliations": [
+                    {
+                        "institution_name": "Institution Suggestion",
+                        "superscript_number": 1,
+                    },
+                    {
+                        "institution_name": "External Institution",
+                        "superscript_number": 2,
+                    },
+                ],
+            },
+        )
+        assert save_response.status_code == 200
+        assert len(save_response.json()["authors"]) == 2
+        assert "Corresponding author" in save_response.json()["rendered_authors_block"]
+
+        get_response = client.get(
+            f"/v1/manuscript/{manuscript_id}/authors",
+            headers=headers,
+        )
+        assert get_response.status_code == 200
+        assert len(get_response.json()["authors"]) == 2

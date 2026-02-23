@@ -555,8 +555,16 @@ def update_current_user(
             from research_os.services.publications_analytics_service import (
                 enqueue_publications_analytics_recompute,
             )
+            from research_os.services.collaboration_service import (
+                enqueue_collaboration_metrics_recompute,
+            )
 
             enqueue_publications_analytics_recompute(
+                user_id=updated_user_id,
+                force=True,
+                reason="profile_identity_updated",
+            )
+            enqueue_collaboration_metrics_recompute(
                 user_id=updated_user_id,
                 force=True,
                 reason="profile_identity_updated",

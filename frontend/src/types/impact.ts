@@ -143,6 +143,129 @@ export type PublicationsAnalyticsResponsePayload = {
   last_update_failed: boolean
 }
 
+export type CollaboratorMetricsPayload = {
+  coauthored_works_count: number
+  shared_citations_total: number
+  first_collaboration_year: number | null
+  last_collaboration_year: number | null
+  citations_last_12m: number
+  collaboration_strength_score: number
+  classification: 'CORE' | 'ACTIVE' | 'OCCASIONAL' | 'HISTORIC' | 'UNCLASSIFIED'
+  computed_at: string | null
+  status: 'READY' | 'RUNNING' | 'FAILED'
+}
+
+export type CollaboratorPayload = {
+  id: string
+  owner_user_id: string
+  full_name: string
+  preferred_name: string | null
+  email: string | null
+  orcid_id: string | null
+  openalex_author_id: string | null
+  primary_institution: string | null
+  department: string | null
+  country: string | null
+  current_position: string | null
+  research_domains: string[]
+  notes: string | null
+  created_at: string
+  updated_at: string
+  metrics: CollaboratorMetricsPayload
+  duplicate_warnings: string[]
+}
+
+export type CollaboratorsListPayload = {
+  items: CollaboratorPayload[]
+  page: number
+  page_size: number
+  total: number
+  has_more: boolean
+}
+
+export type CollaborationMetricsSummaryPayload = {
+  total_collaborators: number
+  core_collaborators: number
+  active_collaborations_12m: number
+  new_collaborators_12m: number
+  last_computed_at: string | null
+  status: 'READY' | 'RUNNING' | 'FAILED'
+  is_stale: boolean
+  is_updating: boolean
+  last_update_failed: boolean
+}
+
+export type CollaborationImportOpenAlexPayload = {
+  created_count: number
+  updated_count: number
+  skipped_count: number
+  openalex_author_id: string | null
+  imported_candidates: number
+}
+
+export type CollaborationAiInsightsPayload = {
+  status: 'draft'
+  insights: string[]
+  suggested_actions: string[]
+  provenance: Record<string, unknown>
+}
+
+export type CollaborationAiAuthorSuggestionItem = {
+  collaborator_id: string
+  full_name: string
+  institution: string | null
+  orcid_id: string | null
+  classification: 'CORE' | 'ACTIVE' | 'OCCASIONAL' | 'HISTORIC' | 'UNCLASSIFIED'
+  score: number
+  explanation: string
+  matched_keywords: string[]
+  matched_methods: string[]
+}
+
+export type CollaborationAiAuthorSuggestionsPayload = {
+  status: 'draft'
+  topic_keywords: string[]
+  methods: string[]
+  suggestions: CollaborationAiAuthorSuggestionItem[]
+  provenance: Record<string, unknown>
+}
+
+export type CollaborationAiContributionRoleItem = {
+  full_name: string
+  roles: string[]
+  is_corresponding: boolean
+  equal_contribution: boolean
+  is_external: boolean
+}
+
+export type CollaborationAiContributionDraftPayload = {
+  status: 'draft'
+  credit_statements: CollaborationAiContributionRoleItem[]
+  draft_text: string
+  provenance: Record<string, unknown>
+}
+
+export type CollaborationAiAffiliationAuthorItem = {
+  full_name: string
+  institution: string
+  orcid_id: string | null
+  superscript_number: number
+}
+
+export type CollaborationAiAffiliationItem = {
+  superscript_number: number
+  institution_name: string
+}
+
+export type CollaborationAiAffiliationsNormalisePayload = {
+  status: 'draft'
+  normalized_authors: CollaborationAiAffiliationAuthorItem[]
+  affiliations: CollaborationAiAffiliationItem[]
+  affiliations_block: string
+  coi_boilerplate: string
+  provenance: Record<string, unknown>
+}
+
 export type PersonaEmbeddingsGeneratePayload = {
   generated_embeddings: number
   model_name: string

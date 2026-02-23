@@ -19,6 +19,7 @@ import { OverviewPage } from '@/pages/overview-page'
 import { ImpactPage } from '@/pages/impact-page'
 import { ProfileIntegrationsPage } from '@/pages/profile-integrations-page'
 import { ProfilePage } from '@/pages/profile-page'
+import { ProfileCollaborationPage } from '@/pages/profile-collaboration-page'
 import { ProfilePublicationsPage } from '@/pages/profile-publications-page'
 import { QCDashboardPage } from '@/pages/qc-dashboard-page'
 import { ResultsPage } from '@/pages/results-page'
@@ -79,6 +80,7 @@ export function AppRouter() {
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/profile/integrations" element={<ProfileIntegrationsPage />} />
           <Route path="/profile/publications" element={<ProfilePublicationsPage />} />
+          <Route path="/account/collaboration" element={<ProfileCollaborationPage />} />
           <Route path="/impact" element={<ImpactPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>

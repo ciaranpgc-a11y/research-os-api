@@ -24,6 +24,8 @@ import type {
   GroundedDraftPayload,
   GenerationJobPayload,
   JournalOption,
+  ManuscriptAuthorSuggestion,
+  ManuscriptAuthorsPayload,
   PlanClarificationHistoryItem,
   PlanClarificationNextQuestionPayload,
   PlanClarificationQuestionsPayload,
@@ -43,6 +45,14 @@ async function parseApiError(response: Response, fallback: string): Promise<stri
   } catch {
     return fallback
   }
+}
+
+function authHeaders(token: string): Record<string, string> {
+  const clean = token.trim()
+  if (!clean) {
+    return {}
+  }
+  return { Authorization: `Bearer ${clean}` }
 }
 
 export async function fetchJournalOptions(): Promise<JournalOption[]> {
@@ -827,6 +837,84 @@ export async function fetchManuscript(projectId: string, manuscriptId: string): 
     throw new Error(await parseApiError(response, `Manuscript lookup failed (${response.status})`))
   }
   return (await response.json()) as ManuscriptRecord
+}
+
+export async function fetchManuscriptAuthorSuggestions(input: {
+  token: string
+  query?: string
+  limit?: number
+}): Promise<ManuscriptAuthorSuggestion[]> {
+  const params = new URLSearchParams()
+  if ((input.query || '').trim()) {
+    params.set('query', (input.query || '').trim())
+  }
+  params.set('limit', String(Math.max(1, Math.min(200, Number(input.limit || 50)))))
+  const response = await fetch(
+    `${API_BASE_URL}/v1/manuscript/authors/suggestions?${params.toString()}`,
+    {
+      method: 'GET',
+      headers: authHeaders(input.token),
+    },
+  )
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Author suggestions failed (${response.status})`))
+  }
+  const payload = (await response.json()) as { items: ManuscriptAuthorSuggestion[] }
+  return payload.items || []
+}
+
+export async function fetchManuscriptAuthors(input: {
+  token: string
+  workspaceId: string
+}): Promise<ManuscriptAuthorsPayload> {
+  const response = await fetch(
+    `${API_BASE_URL}/v1/manuscript/${encodeURIComponent(input.workspaceId)}/authors`,
+    {
+      method: 'GET',
+      headers: authHeaders(input.token),
+    },
+  )
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Manuscript authors lookup failed (${response.status})`))
+  }
+  return (await response.json()) as ManuscriptAuthorsPayload
+}
+
+export async function saveManuscriptAuthors(input: {
+  token: string
+  workspaceId: string
+  authors: Array<{
+    collaborator_id?: string | null
+    full_name: string
+    orcid_id?: string | null
+    institution?: string | null
+    is_corresponding?: boolean
+    equal_contribution?: boolean
+    is_external?: boolean
+  }>
+  affiliations?: Array<{
+    institution_name: string
+    department?: string | null
+    city?: string | null
+    country?: string | null
+    superscript_number?: number | null
+  }>
+}): Promise<ManuscriptAuthorsPayload> {
+  const response = await fetch(
+    `${API_BASE_URL}/v1/manuscript/${encodeURIComponent(input.workspaceId)}/authors`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(input.token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        authors: input.authors,
+        affiliations: input.affiliations || [],
+      }),
+    },
+  )
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Manuscript authors save failed (${response.status})`))
+  }
+  return (await response.json()) as ManuscriptAuthorsPayload
 }
 
 export async function fetchProject(projectId: string): Promise<ProjectRecord | null> {

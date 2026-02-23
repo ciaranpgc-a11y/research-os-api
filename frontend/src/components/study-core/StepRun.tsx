@@ -3,14 +3,23 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { getAuthSessionToken } from '@/lib/auth-session'
 import {
   cancelGeneration,
   enqueueGeneration,
   estimateGeneration,
+  fetchManuscriptAuthorSuggestions,
+  fetchManuscriptAuthors,
   fetchGenerationJob,
   retryGeneration,
+  saveManuscriptAuthors,
 } from '@/lib/study-core-api'
-import type { GenerationEstimate, GenerationJobPayload } from '@/types/study-core'
+import type {
+  GenerationEstimate,
+  GenerationJobPayload,
+  ManuscriptAuthorSuggestion,
+  ManuscriptAuthorsPayload,
+} from '@/types/study-core'
 
 type RunContext = { projectId: string; manuscriptId: string } | null
 
@@ -18,6 +27,16 @@ type RunRecommendations = {
   conservativeWithLimitations: boolean
   uncertaintyInResults: boolean
   mechanisticAsHypothesis: boolean
+}
+
+type AuthorDraft = {
+  collaborator_id: string | null
+  full_name: string
+  orcid_id: string | null
+  institution: string | null
+  is_corresponding: boolean
+  equal_contribution: boolean
+  is_external: boolean
 }
 
 type StepRunProps = {
@@ -95,6 +114,33 @@ function titleCaseSection(section: string): string {
     .join(' ')
 }
 
+function draftsFromPayload(payload: ManuscriptAuthorsPayload | null): AuthorDraft[] {
+  if (!payload) {
+    return []
+  }
+  return (payload.authors || []).map((item) => ({
+    collaborator_id: item.collaborator_id || null,
+    full_name: item.full_name || '',
+    orcid_id: item.orcid_id || null,
+    institution: item.institution || null,
+    is_corresponding: Boolean(item.is_corresponding),
+    equal_contribution: Boolean(item.equal_contribution),
+    is_external: Boolean(item.is_external),
+  }))
+}
+
+function emptyExternalAuthor(): AuthorDraft {
+  return {
+    collaborator_id: null,
+    full_name: '',
+    orcid_id: null,
+    institution: null,
+    is_corresponding: false,
+    equal_contribution: false,
+    is_external: true,
+  }
+}
+
 export function StepRun({
   runContext,
   selectedSections,
@@ -123,6 +169,13 @@ export function StepRun({
   const [attemptedRun, setAttemptedRun] = useState(false)
   const [busy, setBusy] = useState<'estimate' | 'run' | 'cancel' | 'retry' | ''>('')
   const [inlineError, setInlineError] = useState('')
+  const [authorQuery, setAuthorQuery] = useState('')
+  const [authorSuggestions, setAuthorSuggestions] = useState<ManuscriptAuthorSuggestion[]>([])
+  const [authorsDraft, setAuthorsDraft] = useState<AuthorDraft[]>([])
+  const [authorsBlock, setAuthorsBlock] = useState('')
+  const [authorsStatus, setAuthorsStatus] = useState('')
+  const [authorsError, setAuthorsError] = useState('')
+  const [authorsBusy, setAuthorsBusy] = useState(false)
 
   useEffect(() => {
     if (!activeJob || !isActive(activeJob)) {
@@ -147,6 +200,69 @@ export function StepRun({
     }
     onJobStatusChange(toWizardStatus(activeJob))
   }, [activeJob, onJobStatusChange])
+
+  useEffect(() => {
+    if (!runContext) {
+      setAuthorsDraft([])
+      setAuthorsBlock('')
+      return
+    }
+    const token = getAuthSessionToken()
+    if (!token) {
+      return
+    }
+    let cancelled = false
+    setAuthorsBusy(true)
+    Promise.allSettled([
+      fetchManuscriptAuthors({
+        token,
+        workspaceId: runContext.manuscriptId,
+      }),
+      fetchManuscriptAuthorSuggestions({
+        token,
+        query: '',
+        limit: 80,
+      }),
+    ])
+      .then(([authorsResult, suggestionsResult]) => {
+        if (cancelled) {
+          return
+        }
+        if (authorsResult.status === 'fulfilled') {
+          setAuthorsDraft(draftsFromPayload(authorsResult.value))
+          setAuthorsBlock(authorsResult.value.rendered_authors_block || '')
+        }
+        if (suggestionsResult.status === 'fulfilled') {
+          setAuthorSuggestions(suggestionsResult.value)
+        }
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return
+        }
+        setAuthorsError(error instanceof Error ? error.message : 'Could not load manuscript authors.')
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAuthorsBusy(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [runContext])
+
+  const filteredSuggestions = useMemo(() => {
+    const query = authorQuery.trim().toLowerCase()
+    if (!query) {
+      return authorSuggestions.slice(0, 8)
+    }
+    return authorSuggestions
+      .filter((item) =>
+        `${item.full_name} ${item.institution || ''} ${item.orcid_id || ''}`.toLowerCase().includes(query),
+      )
+      .slice(0, 8)
+  }, [authorQuery, authorSuggestions])
 
   const recommendationLines = useMemo(() => {
     const lines: string[] = []
@@ -314,11 +430,203 @@ export function StepRun({
     }
   }
 
+  const addSuggestedAuthor = (suggestion: ManuscriptAuthorSuggestion) => {
+    setAuthorsStatus('')
+    setAuthorsError('')
+    setAuthorsDraft((current) => {
+      if (current.some((item) => item.collaborator_id && item.collaborator_id === suggestion.collaborator_id)) {
+        return current
+      }
+      return [
+        ...current,
+        {
+          collaborator_id: suggestion.collaborator_id,
+          full_name: suggestion.full_name,
+          orcid_id: suggestion.orcid_id || null,
+          institution: suggestion.institution || null,
+          is_corresponding: false,
+          equal_contribution: false,
+          is_external: false,
+        },
+      ]
+    })
+  }
+
+  const addExternalAuthor = () => {
+    setAuthorsStatus('')
+    setAuthorsError('')
+    setAuthorsDraft((current) => [...current, emptyExternalAuthor()])
+  }
+
+  const updateAuthor = (index: number, patch: Partial<AuthorDraft>) => {
+    setAuthorsDraft((current) =>
+      current.map((item, rowIndex) => {
+        if (rowIndex !== index) {
+          return item
+        }
+        return { ...item, ...patch }
+      }),
+    )
+  }
+
+  const removeAuthor = (index: number) => {
+    setAuthorsDraft((current) => current.filter((_, rowIndex) => rowIndex !== index))
+  }
+
+  const onSaveAuthors = async () => {
+    if (!runContext) {
+      setAuthorsError('Save context first, then configure authors.')
+      return
+    }
+    const token = getAuthSessionToken()
+    if (!token) {
+      setAuthorsError('Session token is required.')
+      return
+    }
+    const cleaned = authorsDraft
+      .map((item) => ({
+        collaborator_id: item.collaborator_id || null,
+        full_name: item.full_name.trim(),
+        orcid_id: item.orcid_id?.trim() || null,
+        institution: item.institution?.trim() || null,
+        is_corresponding: Boolean(item.is_corresponding),
+        equal_contribution: Boolean(item.equal_contribution),
+        is_external: Boolean(item.is_external),
+      }))
+      .filter((item) => item.full_name.length > 0)
+    if (cleaned.length === 0) {
+      setAuthorsError('At least one author is required.')
+      return
+    }
+    setAuthorsBusy(true)
+    setAuthorsStatus('')
+    setAuthorsError('')
+    try {
+      const payload = await saveManuscriptAuthors({
+        token,
+        workspaceId: runContext.manuscriptId,
+        authors: cleaned,
+      })
+      setAuthorsDraft(draftsFromPayload(payload))
+      setAuthorsBlock(payload.rendered_authors_block || '')
+      setAuthorsStatus('Manuscript authors saved.')
+    } catch (error) {
+      setAuthorsError(error instanceof Error ? error.message : 'Could not save manuscript authors.')
+    } finally {
+      setAuthorsBusy(false)
+    }
+  }
+
   return (
     <div className="space-y-4 rounded-lg border border-border bg-card p-4">
       <div className="space-y-1">
         <h2 className="text-base font-semibold">Step 3: Run Generation</h2>
         <p className="text-sm text-muted-foreground">Select sections and run generation.</p>
+      </div>
+
+      <div className="space-y-3 rounded-md border border-border/70 bg-muted/20 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium">Authors</p>
+          <Button type="button" size="sm" variant="outline" onClick={addExternalAuthor}>
+            Add external author
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Pick collaborators for the manuscript author block. Institutions and ORCID are auto-filled and editable.
+        </p>
+
+        <div className="space-y-2">
+          <Input
+            value={authorQuery}
+            onChange={(event) => setAuthorQuery(event.target.value)}
+            placeholder="Search collaborators..."
+          />
+          <div className="flex flex-wrap gap-2">
+            {filteredSuggestions.map((suggestion) => (
+              <Button
+                key={suggestion.collaborator_id}
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => addSuggestedAuthor(suggestion)}
+              >
+                {suggestion.full_name}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          {authorsDraft.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No authors selected yet.</p>
+          ) : null}
+          {authorsDraft.map((item, index) => (
+            <div key={`${item.collaborator_id || 'external'}-${index}`} className="space-y-2 rounded border border-border p-2">
+              <div className="grid gap-2 md:grid-cols-3">
+                <Input
+                  value={item.full_name}
+                  onChange={(event) => updateAuthor(index, { full_name: event.target.value })}
+                  placeholder="Full name"
+                />
+                <Input
+                  value={item.institution || ''}
+                  onChange={(event) => updateAuthor(index, { institution: event.target.value })}
+                  placeholder="Institution"
+                />
+                <Input
+                  value={item.orcid_id || ''}
+                  onChange={(event) => updateAuthor(index, { orcid_id: event.target.value })}
+                  placeholder="ORCID"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-4 text-xs">
+                <label className="inline-flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={item.is_corresponding}
+                    onChange={(event) => updateAuthor(index, { is_corresponding: event.target.checked })}
+                  />
+                  Corresponding author
+                </label>
+                <label className="inline-flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={item.equal_contribution}
+                    onChange={(event) => updateAuthor(index, { equal_contribution: event.target.checked })}
+                  />
+                  Equal contribution
+                </label>
+                <label className="inline-flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={item.is_external}
+                    onChange={(event) => updateAuthor(index, { is_external: event.target.checked })}
+                  />
+                  External author
+                </label>
+                <Button type="button" size="sm" variant="ghost" onClick={() => removeAuthor(index)}>
+                  Remove
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" size="sm" onClick={onSaveAuthors} disabled={authorsBusy || !runContext}>
+            Save authors
+          </Button>
+          {authorsBusy ? <p className="text-xs text-muted-foreground">Saving...</p> : null}
+        </div>
+        {authorsStatus ? <p className="text-xs text-emerald-700">{authorsStatus}</p> : null}
+        {authorsError ? <p className="text-xs text-destructive">{authorsError}</p> : null}
+        {authorsBlock ? (
+          <textarea
+            className="min-h-24 w-full rounded-md border border-border bg-background px-3 py-2 text-xs"
+            value={authorsBlock}
+            readOnly
+          />
+        ) : null}
       </div>
 
       <div className="space-y-2">

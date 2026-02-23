@@ -12,6 +12,14 @@ import type {
   AuthTwoFactorSetupPayload,
   AuthTwoFactorStatePayload,
   AuthUser,
+  CollaboratorPayload,
+  CollaboratorsListPayload,
+  CollaborationAiAffiliationsNormalisePayload,
+  CollaborationAiAuthorSuggestionsPayload,
+  CollaborationAiContributionDraftPayload,
+  CollaborationAiInsightsPayload,
+  CollaborationImportOpenAlexPayload,
+  CollaborationMetricsSummaryPayload,
   ImpactAnalysePayload,
   ImpactCollaboratorsPayload,
   ImpactRecomputePayload,
@@ -614,6 +622,238 @@ export async function fetchPublicationsAnalyticsTopDrivers(
     },
     'Publications analytics top drivers lookup failed',
     { timeoutMs: 120_000, retryCount: 2 },
+  )
+}
+
+export async function fetchCollaborationMetricsSummary(
+  token: string,
+): Promise<CollaborationMetricsSummaryPayload> {
+  return requestJson<CollaborationMetricsSummaryPayload>(
+    `${API_BASE_URL}/v1/account/collaboration/metrics/summary`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Collaboration summary lookup failed',
+    { timeoutMs: 60_000, retryCount: 2 },
+  )
+}
+
+export async function listCollaborators(
+  token: string,
+  options?: {
+    query?: string
+    sort?: string
+    page?: number
+    pageSize?: number
+  },
+): Promise<CollaboratorsListPayload> {
+  const params = new URLSearchParams()
+  if ((options?.query || '').trim()) {
+    params.set('query', String(options?.query || '').trim())
+  }
+  if ((options?.sort || '').trim()) {
+    params.set('sort', String(options?.sort || '').trim())
+  }
+  params.set('page', String(Math.max(1, Number(options?.page || 1))))
+  params.set('page_size', String(Math.max(1, Math.min(200, Number(options?.pageSize || 50)))))
+  return requestJson<CollaboratorsListPayload>(
+    `${API_BASE_URL}/v1/account/collaboration/collaborators?${params.toString()}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Collaborators lookup failed',
+  )
+}
+
+export async function createCollaborator(
+  token: string,
+  input: {
+    full_name: string
+    preferred_name?: string | null
+    email?: string | null
+    orcid_id?: string | null
+    openalex_author_id?: string | null
+    primary_institution?: string | null
+    department?: string | null
+    country?: string | null
+    current_position?: string | null
+    research_domains?: string[]
+    notes?: string | null
+  },
+): Promise<CollaboratorPayload> {
+  return requestJson<CollaboratorPayload>(
+    `${API_BASE_URL}/v1/account/collaboration/collaborators`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+    'Collaborator create failed',
+  )
+}
+
+export async function getCollaborator(token: string, collaboratorId: string): Promise<CollaboratorPayload> {
+  return requestJson<CollaboratorPayload>(
+    `${API_BASE_URL}/v1/account/collaboration/collaborators/${encodeURIComponent(collaboratorId)}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Collaborator lookup failed',
+  )
+}
+
+export async function updateCollaborator(
+  token: string,
+  collaboratorId: string,
+  input: {
+    full_name?: string
+    preferred_name?: string | null
+    email?: string | null
+    orcid_id?: string | null
+    openalex_author_id?: string | null
+    primary_institution?: string | null
+    department?: string | null
+    country?: string | null
+    current_position?: string | null
+    research_domains?: string[]
+    notes?: string | null
+  },
+): Promise<CollaboratorPayload> {
+  return requestJson<CollaboratorPayload>(
+    `${API_BASE_URL}/v1/account/collaboration/collaborators/${encodeURIComponent(collaboratorId)}`,
+    {
+      method: 'PATCH',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+    'Collaborator update failed',
+  )
+}
+
+export async function deleteCollaborator(token: string, collaboratorId: string): Promise<{ deleted: boolean }> {
+  return requestJson<{ deleted: boolean }>(
+    `${API_BASE_URL}/v1/account/collaboration/collaborators/${encodeURIComponent(collaboratorId)}`,
+    {
+      method: 'DELETE',
+      headers: authHeaders(token),
+    },
+    'Collaborator delete failed',
+  )
+}
+
+export async function importCollaboratorsFromOpenAlex(
+  token: string,
+): Promise<CollaborationImportOpenAlexPayload> {
+  return requestJson<CollaborationImportOpenAlexPayload>(
+    `${API_BASE_URL}/v1/account/collaboration/import/openalex`,
+    {
+      method: 'POST',
+      headers: authHeaders(token),
+    },
+    'OpenAlex collaborator import failed',
+    { timeoutMs: 120_000, retryCount: 2 },
+  )
+}
+
+export async function exportCollaboratorsCsv(
+  token: string,
+): Promise<{ filename: string; content: string }> {
+  const response = await fetch(`${API_BASE_URL}/v1/account/collaboration/collaborators/export`, {
+    method: 'GET',
+    headers: authHeaders(token),
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Collaborator export failed (${response.status})`))
+  }
+  const content = await response.text()
+  const filename = response.headers.get('content-disposition')?.match(/filename=\"?([^\";]+)\"?/i)?.[1] || 'collaborators.csv'
+  return { filename, content }
+}
+
+export async function generateCollaborationAiInsights(
+  token: string,
+): Promise<CollaborationAiInsightsPayload> {
+  return requestJson<CollaborationAiInsightsPayload>(
+    `${API_BASE_URL}/v1/account/collaboration/ai/insights`,
+    {
+      method: 'POST',
+      headers: authHeaders(token),
+    },
+    'Collaboration insights draft failed',
+  )
+}
+
+export async function generateCollaborationAiAuthorSuggestions(
+  token: string,
+  input: {
+    topicKeywords?: string[]
+    methods?: string[]
+    limit?: number
+  },
+): Promise<CollaborationAiAuthorSuggestionsPayload> {
+  return requestJson<CollaborationAiAuthorSuggestionsPayload>(
+    `${API_BASE_URL}/v1/account/collaboration/ai/author-suggestions`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        topic_keywords: input.topicKeywords || [],
+        methods: input.methods || [],
+        limit: Math.max(1, Math.min(20, Number(input.limit || 5))),
+      }),
+    },
+    'Author suggestion draft failed',
+  )
+}
+
+export async function generateCollaborationAiContributionStatement(
+  token: string,
+  input: {
+    authors: Array<{
+      full_name: string
+      roles?: string[]
+      is_corresponding?: boolean
+      equal_contribution?: boolean
+      is_external?: boolean
+    }>
+  },
+): Promise<CollaborationAiContributionDraftPayload> {
+  return requestJson<CollaborationAiContributionDraftPayload>(
+    `${API_BASE_URL}/v1/account/collaboration/ai/contribution-statement`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        authors: input.authors || [],
+      }),
+    },
+    'Contribution statement draft failed',
+  )
+}
+
+export async function generateCollaborationAiAffiliationsNormaliser(
+  token: string,
+  input: {
+    authors: Array<{
+      full_name: string
+      institution?: string | null
+      orcid_id?: string | null
+    }>
+  },
+): Promise<CollaborationAiAffiliationsNormalisePayload> {
+  return requestJson<CollaborationAiAffiliationsNormalisePayload>(
+    `${API_BASE_URL}/v1/account/collaboration/ai/affiliations-normaliser`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        authors: input.authors || [],
+      }),
+    },
+    'Affiliation normalisation draft failed',
   )
 }
 

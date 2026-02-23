@@ -52,6 +52,21 @@ from research_os.api.schemas import (
     CitationAutofillResponse,
     CitationExportRequest,
     CitationRecordResponse,
+    CollaboratorCreateRequest,
+    CollaboratorDeleteResponse,
+    CollaboratorResponse,
+    CollaboratorsListResponse,
+    CollaboratorUpdateRequest,
+    CollaborationAiAffiliationsNormaliseRequest,
+    CollaborationAiAffiliationsNormaliseResponse,
+    CollaborationAiAuthorSuggestionsRequest,
+    CollaborationAiAuthorSuggestionsResponse,
+    CollaborationAiContributionDraftRequest,
+    CollaborationAiContributionDraftResponse,
+    CollaborationAiInsightsResponse,
+    CollaborationImportOpenAlexResponse,
+    CollaborationMetricsRecomputeResponse,
+    CollaborationMetricsSummaryResponse,
     ClaimCitationStateResponse,
     ClaimCitationUpdateRequest,
     ConsistencyCheckRequest,
@@ -88,6 +103,9 @@ from research_os.api.schemas import (
     ResearchOverviewSuggestionsResponse,
     SelectionInsightResponse,
     ManuscriptCreateRequest,
+    ManuscriptAuthorSuggestionsResponse,
+    ManuscriptAuthorsResponse,
+    ManuscriptAuthorsSaveRequest,
     ManuscriptGenerateRequest,
     ManuscriptSnapshotCreateRequest,
     ManuscriptSnapshotRestoreRequest,
@@ -286,6 +304,28 @@ from research_os.services.publications_analytics_service import (
     start_publications_analytics_scheduler,
     stop_publications_analytics_scheduler,
 )
+from research_os.services.collaboration_service import (
+    CollaborationNotFoundError,
+    CollaborationValidationError,
+    create_collaborator_for_user,
+    delete_collaborator_for_user,
+    draft_contribution_statement,
+    export_collaborators_csv,
+    generate_collaboration_ai_insights_draft,
+    get_collaboration_metrics_summary,
+    get_collaborator_for_user,
+    get_manuscript_author_suggestions,
+    get_manuscript_authors,
+    import_collaborators_from_openalex,
+    list_collaborators_for_user,
+    normalize_affiliations_and_coi_draft,
+    save_manuscript_authors,
+    suggest_collaborators_for_manuscript_draft,
+    start_collaboration_metrics_scheduler,
+    stop_collaboration_metrics_scheduler,
+    trigger_collaboration_metrics_recompute,
+    update_collaborator_for_user,
+)
 from research_os.services.impact_service import (
     ImpactNotFoundError,
     ImpactValidationError,
@@ -408,10 +448,21 @@ async def app_lifespan(_: FastAPI):
             extra={"detail": str(exc)},
         )
     try:
+        start_collaboration_metrics_scheduler()
+    except Exception as exc:
+        logger.warning(
+            "collaboration_scheduler_start_failed",
+            extra={"detail": str(exc)},
+        )
+    try:
         yield
     finally:
         try:
             stop_publications_analytics_scheduler()
+        except Exception:
+            pass
+        try:
+            stop_collaboration_metrics_scheduler()
         except Exception:
             pass
 
@@ -1555,6 +1606,424 @@ def v1_publications_analytics_top_drivers(
     except (PersonaNotFoundError, PublicationsAnalyticsNotFoundError) as exc:
         return _build_not_found_response(str(exc))
     except (PublicationsAnalyticsValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/account/collaboration/collaborators",
+    response_model=CollaboratorsListResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_collaboration_list_collaborators(
+    request: Request,
+    query: str = Query(default=""),
+    sort: str = Query(default="name"),
+    page: int = Query(default=1, ge=1, le=100000),
+    page_size: int = Query(default=50, ge=1, le=200),
+) -> CollaboratorsListResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = list_collaborators_for_user(
+            user_id=str(user["id"]),
+            query=query,
+            sort=sort,
+            page=page,
+            page_size=page_size,
+        )
+        return CollaboratorsListResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (CollaborationValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/account/collaboration/collaborators/export",
+    response_model=None,
+    responses=UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_collaboration_export_collaborators_csv(
+    request: Request,
+) -> PlainTextResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        filename, body = export_collaborators_csv(user_id=str(user["id"]))
+        return PlainTextResponse(
+            content=body,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+
+
+@app.post(
+    "/v1/account/collaboration/collaborators",
+    response_model=CollaboratorResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_collaboration_create_collaborator(
+    request: Request,
+    payload: CollaboratorCreateRequest,
+) -> CollaboratorResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        item = create_collaborator_for_user(
+            user_id=str(user["id"]),
+            payload=payload.model_dump(),
+        )
+        return CollaboratorResponse(**item)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (CollaborationValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/account/collaboration/collaborators/{collaborator_id}",
+    response_model=CollaboratorResponse,
+    responses=NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_collaboration_get_collaborator(
+    request: Request,
+    collaborator_id: str,
+) -> CollaboratorResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        item = get_collaborator_for_user(
+            user_id=str(user["id"]),
+            collaborator_id=collaborator_id,
+        )
+        return CollaboratorResponse(**item)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except CollaborationNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.patch(
+    "/v1/account/collaboration/collaborators/{collaborator_id}",
+    response_model=CollaboratorResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_collaboration_update_collaborator(
+    request: Request,
+    collaborator_id: str,
+    payload: CollaboratorUpdateRequest,
+) -> CollaboratorResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        item = update_collaborator_for_user(
+            user_id=str(user["id"]),
+            collaborator_id=collaborator_id,
+            payload=payload.model_dump(exclude_unset=True),
+        )
+        return CollaboratorResponse(**item)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except CollaborationNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except (CollaborationValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.delete(
+    "/v1/account/collaboration/collaborators/{collaborator_id}",
+    response_model=CollaboratorDeleteResponse,
+    responses=NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_collaboration_delete_collaborator(
+    request: Request,
+    collaborator_id: str,
+) -> CollaboratorDeleteResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = delete_collaborator_for_user(
+            user_id=str(user["id"]),
+            collaborator_id=collaborator_id,
+        )
+        return CollaboratorDeleteResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except CollaborationNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.get(
+    "/v1/account/collaboration/metrics/summary",
+    response_model=CollaborationMetricsSummaryResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_collaboration_metrics_summary(
+    request: Request,
+) -> CollaborationMetricsSummaryResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = get_collaboration_metrics_summary(user_id=str(user["id"]))
+        return CollaborationMetricsSummaryResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (CollaborationValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/account/collaboration/metrics/recompute",
+    response_model=CollaborationMetricsRecomputeResponse,
+    responses=UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_collaboration_metrics_recompute(
+    request: Request,
+) -> CollaborationMetricsRecomputeResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = trigger_collaboration_metrics_recompute(
+            user_id=str(user["id"]),
+            force=True,
+        )
+        return CollaborationMetricsRecomputeResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+
+
+@app.post(
+    "/v1/account/collaboration/import/openalex",
+    response_model=CollaborationImportOpenAlexResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_collaboration_import_openalex(
+    request: Request,
+) -> CollaborationImportOpenAlexResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = import_collaborators_from_openalex(user_id=str(user["id"]))
+        return CollaborationImportOpenAlexResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (CollaborationValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/account/collaboration/ai/insights",
+    response_model=CollaborationAiInsightsResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_collaboration_ai_insights(
+    request: Request,
+) -> CollaborationAiInsightsResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = generate_collaboration_ai_insights_draft(user_id=str(user["id"]))
+        return CollaborationAiInsightsResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (CollaborationValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/account/collaboration/ai/author-suggestions",
+    response_model=CollaborationAiAuthorSuggestionsResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_collaboration_ai_author_suggestions(
+    request: Request,
+    payload: CollaborationAiAuthorSuggestionsRequest,
+) -> CollaborationAiAuthorSuggestionsResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = suggest_collaborators_for_manuscript_draft(
+            user_id=str(user["id"]),
+            topic_keywords=payload.topic_keywords,
+            methods=payload.methods,
+            limit=payload.limit,
+        )
+        return CollaborationAiAuthorSuggestionsResponse(**result)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (CollaborationValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/account/collaboration/ai/contribution-statement",
+    response_model=CollaborationAiContributionDraftResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_collaboration_ai_contribution_statement(
+    request: Request,
+    payload: CollaborationAiContributionDraftRequest,
+) -> CollaborationAiContributionDraftResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = draft_contribution_statement(
+            user_id=str(user["id"]),
+            authors=[item.model_dump() for item in payload.authors],
+        )
+        return CollaborationAiContributionDraftResponse(**result)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (CollaborationValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/account/collaboration/ai/affiliations-normaliser",
+    response_model=CollaborationAiAffiliationsNormaliseResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_collaboration_ai_affiliations_normaliser(
+    request: Request,
+    payload: CollaborationAiAffiliationsNormaliseRequest,
+) -> CollaborationAiAffiliationsNormaliseResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = normalize_affiliations_and_coi_draft(
+            user_id=str(user["id"]),
+            authors=[item.model_dump() for item in payload.authors],
+        )
+        return CollaborationAiAffiliationsNormaliseResponse(**result)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (CollaborationValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/manuscript/authors/suggestions",
+    response_model=ManuscriptAuthorSuggestionsResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_manuscript_author_suggestions(
+    request: Request,
+    query: str = Query(default=""),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> ManuscriptAuthorSuggestionsResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = get_manuscript_author_suggestions(
+            user_id=str(user["id"]),
+            query=query,
+            limit=limit,
+        )
+        return ManuscriptAuthorSuggestionsResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (CollaborationValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/manuscript/{workspace_id}/authors",
+    response_model=ManuscriptAuthorsResponse,
+    responses=NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_get_manuscript_authors(
+    request: Request,
+    workspace_id: str,
+) -> ManuscriptAuthorsResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = get_manuscript_authors(
+            user_id=str(user["id"]),
+            workspace_id=workspace_id,
+        )
+        return ManuscriptAuthorsResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except CollaborationNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.post(
+    "/v1/manuscript/{workspace_id}/authors",
+    response_model=ManuscriptAuthorsResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_save_manuscript_authors(
+    request: Request,
+    workspace_id: str,
+    payload: ManuscriptAuthorsSaveRequest,
+) -> ManuscriptAuthorsResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = save_manuscript_authors(
+            user_id=str(user["id"]),
+            workspace_id=workspace_id,
+            authors=[item.model_dump() for item in payload.authors],
+            affiliations=[item.model_dump() for item in payload.affiliations],
+        )
+        return ManuscriptAuthorsResponse(**result)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except CollaborationNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except (CollaborationValidationError, ValueError) as exc:
         return _build_bad_request_response(str(exc))
 
 

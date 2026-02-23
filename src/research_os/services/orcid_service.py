@@ -239,8 +239,16 @@ def disconnect_orcid(*, user_id: str) -> dict[str, Any]:
         from research_os.services.publications_analytics_service import (
             enqueue_publications_analytics_recompute,
         )
+        from research_os.services.collaboration_service import (
+            enqueue_collaboration_metrics_recompute,
+        )
 
         enqueue_publications_analytics_recompute(
+            user_id=user_id,
+            force=True,
+            reason="orcid_disconnected",
+        )
+        enqueue_collaboration_metrics_recompute(
             user_id=user_id,
             force=True,
             reason="orcid_disconnected",
@@ -353,8 +361,16 @@ def complete_orcid_callback(*, state: str, code: str) -> dict[str, Any]:
         from research_os.services.publications_analytics_service import (
             enqueue_publications_analytics_recompute,
         )
+        from research_os.services.collaboration_service import (
+            enqueue_collaboration_metrics_recompute,
+        )
 
         enqueue_publications_analytics_recompute(
+            user_id=str(result_payload.get("user_id", "")).strip(),
+            force=True,
+            reason="orcid_connected",
+        )
+        enqueue_collaboration_metrics_recompute(
             user_id=str(result_payload.get("user_id", "")).strip(),
             force=True,
             reason="orcid_connected",
