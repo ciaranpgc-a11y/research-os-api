@@ -45,6 +45,9 @@ ORCID_IMPORT_DETAIL_FETCH_WORKERS = max(
 ORCID_HTTP_TIMEOUT_SECONDS = max(
     5.0, float(os.getenv("ORCID_HTTP_TIMEOUT_SECONDS", "20"))
 )
+ORCID_IMPORT_SKIP_EXISTING_WORKS = os.getenv(
+    "ORCID_IMPORT_SKIP_EXISTING_WORKS", "1"
+).strip().lower() in {"1", "true", "yes"}
 UPSERT_WORK_ACCEPTS_SESSION = "session" in inspect.signature(upsert_work).parameters
 
 
@@ -147,6 +150,17 @@ def _resolve_user_or_raise(session, user_id: str) -> User:
     if user is None:
         raise OrcidNotFoundError(f"User '{user_id}' was not found.")
     return user
+
+
+def _extract_orcid_put_code_from_url(url: str, *, orcid_id: str) -> str:
+    text = str(url or "").strip().rstrip("/")
+    if not text:
+        return ""
+    pattern = rf"^https?://orcid\.org/{re.escape(orcid_id)}/work/([^/?#]+)$"
+    match = re.match(pattern, text, re.IGNORECASE)
+    if not match:
+        return ""
+    return str(match.group(1) or "").strip()
 
 
 def _orcid_config_issues() -> list[str]:
@@ -493,6 +507,7 @@ def import_orcid_works(
     *, user_id: str, overwrite_user_metadata: bool = False
 ) -> dict[str, Any]:
     create_all_tables()
+    existing_put_codes: set[str] = set()
     with session_scope() as session:
         user = _resolve_user_or_raise(session, user_id)
         if not user.orcid_id:
@@ -500,6 +515,17 @@ def import_orcid_works(
         access_token = _ensure_valid_access_token(session, user)
         orcid_id = user.orcid_id
         has_refresh_token = bool(user.orcid_refresh_token)
+        if ORCID_IMPORT_SKIP_EXISTING_WORKS and not overwrite_user_metadata:
+            existing_urls = session.scalars(
+                select(Work.url).where(
+                    Work.user_id == user_id,
+                    Work.provenance == "orcid",
+                )
+            ).all()
+            for url in existing_urls:
+                code = _extract_orcid_put_code_from_url(str(url), orcid_id=orcid_id)
+                if code:
+                    existing_put_codes.add(code)
 
     works_url = f"{_orcid_api_base()}/{orcid_id}/works"
     try:
@@ -555,6 +581,12 @@ def import_orcid_works(
                 if put_code_key in seen_put_codes:
                     continue
                 seen_put_codes.add(put_code_key)
+                if (
+                    ORCID_IMPORT_SKIP_EXISTING_WORKS
+                    and not overwrite_user_metadata
+                    and put_code_key in existing_put_codes
+                ):
+                    continue
             candidates.append((summary, put_code))
 
     detail_fetch_cap = (

@@ -31,6 +31,9 @@ type PublicationSortField = 'citations' | 'year' | 'title' | 'venue' | 'work_typ
 type SortDirection = 'asc' | 'desc'
 const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
+const PUBLICATIONS_ANALYTICS_SUMMARY_CACHE_KEY = 'aawe_publications_analytics_summary_cache'
+const PUBLICATIONS_ANALYTICS_TIMESERIES_CACHE_KEY = 'aawe_publications_analytics_timeseries_cache'
+const PUBLICATIONS_ANALYTICS_TOP_DRIVERS_CACHE_KEY = 'aawe_publications_analytics_top_drivers_cache'
 
 const WORK_TYPE_LABELS: Record<string, string> = {
   'journal-article': 'Journal article',
@@ -230,6 +233,72 @@ function saveCachedUser(value: AuthUser): void {
   window.localStorage.setItem(INTEGRATIONS_USER_CACHE_KEY, JSON.stringify(value))
 }
 
+function loadCachedAnalyticsSummary(): PublicationsAnalyticsSummaryPayload | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const raw = window.localStorage.getItem(PUBLICATIONS_ANALYTICS_SUMMARY_CACHE_KEY)
+  if (!raw) {
+    return null
+  }
+  try {
+    return JSON.parse(raw) as PublicationsAnalyticsSummaryPayload
+  } catch {
+    return null
+  }
+}
+
+function saveCachedAnalyticsSummary(value: PublicationsAnalyticsSummaryPayload): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(PUBLICATIONS_ANALYTICS_SUMMARY_CACHE_KEY, JSON.stringify(value))
+}
+
+function loadCachedAnalyticsTimeseries(): PublicationsAnalyticsTimeseriesPayload | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const raw = window.localStorage.getItem(PUBLICATIONS_ANALYTICS_TIMESERIES_CACHE_KEY)
+  if (!raw) {
+    return null
+  }
+  try {
+    return JSON.parse(raw) as PublicationsAnalyticsTimeseriesPayload
+  } catch {
+    return null
+  }
+}
+
+function saveCachedAnalyticsTimeseries(value: PublicationsAnalyticsTimeseriesPayload): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(PUBLICATIONS_ANALYTICS_TIMESERIES_CACHE_KEY, JSON.stringify(value))
+}
+
+function loadCachedAnalyticsTopDrivers(): PublicationsAnalyticsTopDriversPayload | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const raw = window.localStorage.getItem(PUBLICATIONS_ANALYTICS_TOP_DRIVERS_CACHE_KEY)
+  if (!raw) {
+    return null
+  }
+  try {
+    return JSON.parse(raw) as PublicationsAnalyticsTopDriversPayload
+  } catch {
+    return null
+  }
+}
+
+function saveCachedAnalyticsTopDrivers(value: PublicationsAnalyticsTopDriversPayload): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(PUBLICATIONS_ANALYTICS_TOP_DRIVERS_CACHE_KEY, JSON.stringify(value))
+}
+
 function normalizeAuthorName(value: string): string {
   return value
     .toLowerCase()
@@ -403,13 +472,16 @@ export function ProfilePublicationsPage() {
   const initialCachedPersonaState = readCachedPersonaState()
   const initialCachedOrcidStatus = loadCachedOrcidStatus()
   const initialCachedUser = loadCachedUser()
+  const initialCachedAnalyticsSummary = loadCachedAnalyticsSummary()
+  const initialCachedAnalyticsTimeseries = loadCachedAnalyticsTimeseries()
+  const initialCachedAnalyticsTopDrivers = loadCachedAnalyticsTopDrivers()
   const [token, setToken] = useState<string>(() => getAuthSessionToken())
   const [user, setUser] = useState<AuthUser | null>(initialCachedUser)
   const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(initialCachedPersonaState)
   const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(initialCachedOrcidStatus)
-  const [analyticsSummary, setAnalyticsSummary] = useState<PublicationsAnalyticsSummaryPayload | null>(null)
-  const [analyticsTimeseries, setAnalyticsTimeseries] = useState<PublicationsAnalyticsTimeseriesPayload | null>(null)
-  const [analyticsTopDrivers, setAnalyticsTopDrivers] = useState<PublicationsAnalyticsTopDriversPayload | null>(null)
+  const [analyticsSummary, setAnalyticsSummary] = useState<PublicationsAnalyticsSummaryPayload | null>(initialCachedAnalyticsSummary)
+  const [analyticsTimeseries, setAnalyticsTimeseries] = useState<PublicationsAnalyticsTimeseriesPayload | null>(initialCachedAnalyticsTimeseries)
+  const [analyticsTopDrivers, setAnalyticsTopDrivers] = useState<PublicationsAnalyticsTopDriversPayload | null>(initialCachedAnalyticsTopDrivers)
   const [query, setQuery] = useState('')
   const [filterKey, setFilterKey] = useState<PublicationFilterKey>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
@@ -429,13 +501,16 @@ export function ProfilePublicationsPage() {
     resetMessages = true,
     refreshAnalytics = false,
     refreshAnalyticsMetrics = false,
+    background = false,
   ) => {
-    if (refreshAnalytics) {
+    if (!background && refreshAnalytics) {
       setRefreshingAnalytics(true)
-    } else {
+    } else if (!background) {
       setLoading(true)
     }
-    setError('')
+    if (!background) {
+      setError('')
+    }
     if (resetMessages) {
       setStatus('')
     }
@@ -479,22 +554,29 @@ export function ProfilePublicationsPage() {
       }
       if (summaryResult.status === 'fulfilled') {
         setAnalyticsSummary(summaryResult.value)
+        saveCachedAnalyticsSummary(summaryResult.value)
       }
       if (timeseriesResult.status === 'fulfilled') {
         setAnalyticsTimeseries(timeseriesResult.value)
+        saveCachedAnalyticsTimeseries(timeseriesResult.value)
       }
       if (topDriversResult.status === 'fulfilled') {
         setAnalyticsTopDrivers(topDriversResult.value)
+        saveCachedAnalyticsTopDrivers(topDriversResult.value)
       }
       const failedCount = settled.filter((item) => item.status === 'rejected').length
       if (failedCount > 0) {
         setStatus(`Publications loaded with ${failedCount} unavailable source${failedCount === 1 ? '' : 's'}.`)
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Could not load publications.')
+      if (!background) {
+        setError(loadError instanceof Error ? loadError.message : 'Could not load publications.')
+      }
     } finally {
-      setLoading(false)
-      setRefreshingAnalytics(false)
+      if (!background) {
+        setLoading(false)
+        setRefreshingAnalytics(false)
+      }
     }
   }, [])
 
@@ -505,7 +587,7 @@ export function ProfilePublicationsPage() {
       navigate('/auth', { replace: true })
       return
     }
-    void loadData(sessionToken)
+    void loadData(sessionToken, false, false, false, true)
   }, [loadData, navigate])
 
   const metricsByWorkId = useMemo(() => {

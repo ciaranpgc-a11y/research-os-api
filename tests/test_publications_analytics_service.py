@@ -208,6 +208,76 @@ def _seed_user_with_openalex_yearly_history() -> str:
     return user_id
 
 
+def _seed_user_with_single_snapshots_no_yearly_history() -> str:
+    now = datetime.now(timezone.utc)
+    with session_scope() as session:
+        user = User(
+            email="analytics-fallback@example.com",
+            password_hash="test-hash",
+            name="Analytics Fallback User",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+        work_a = Work(
+            user_id=user_id,
+            title="Fallback Work A",
+            title_lower="fallback work a",
+            year=2018,
+            doi="10.1000/fallback-a",
+            work_type="journal-article",
+            venue_name="BMJ Open",
+            publisher="BMJ",
+            abstract="Fallback A abstract",
+            keywords=["fallback-a"],
+            url="https://example.org/fallback-a",
+            provenance="manual",
+            user_edited=False,
+        )
+        work_b = Work(
+            user_id=user_id,
+            title="Fallback Work B",
+            title_lower="fallback work b",
+            year=2021,
+            doi="10.1000/fallback-b",
+            work_type="journal-article",
+            venue_name="Heart",
+            publisher="BMJ",
+            abstract="Fallback B abstract",
+            keywords=["fallback-b"],
+            url="https://example.org/fallback-b",
+            provenance="manual",
+            user_edited=False,
+        )
+        session.add_all([work_a, work_b])
+        session.flush()
+
+        session.add_all(
+            [
+                MetricsSnapshot(
+                    work_id=str(work_a.id),
+                    provider="openalex",
+                    citations_count=70,
+                    influential_citations=None,
+                    altmetric_score=None,
+                    metric_payload={},
+                    captured_at=now - timedelta(days=1),
+                ),
+                MetricsSnapshot(
+                    work_id=str(work_b.id),
+                    provider="openalex",
+                    citations_count=35,
+                    influential_citations=None,
+                    altmetric_score=None,
+                    metric_payload={},
+                    captured_at=now - timedelta(days=1),
+                ),
+            ]
+        )
+    return user_id
+
+
 def test_publications_analytics_compute_and_store(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
@@ -305,3 +375,39 @@ def test_publications_analytics_uses_openalex_yearly_history(monkeypatch, tmp_pa
 
     assert len(top_drivers["drivers"]) == 2
     assert top_drivers["drivers"][0]["citations_last_12_months"] < top_drivers["drivers"][0]["current_citations"]
+
+
+def test_publications_analytics_publication_year_fallback_for_timeseries(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user_with_single_snapshots_no_yearly_history()
+
+    summary = get_publications_analytics_summary(
+        user_id=user_id,
+        refresh=True,
+        refresh_metrics=False,
+    )
+    timeseries = get_publications_analytics_timeseries(
+        user_id=user_id,
+        refresh=False,
+        refresh_metrics=False,
+    )
+    top_drivers = get_publications_analytics_top_drivers(
+        user_id=user_id,
+        limit=5,
+        refresh=False,
+        refresh_metrics=False,
+    )
+
+    points = timeseries["points"]
+    assert [point["year"] for point in points] == [2018, 2021]
+    assert [point["citations_added"] for point in points] == [70, 35]
+    assert points[-1]["total_citations_end_year"] == 105
+
+    assert summary["total_citations"] == 105
+    assert summary["citations_last_12_months"] == 0
+    assert summary["citations_previous_12_months"] == 0
+    assert summary["yoy_percent"] is None
+    assert top_drivers["drivers"] == []

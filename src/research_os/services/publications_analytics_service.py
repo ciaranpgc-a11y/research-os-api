@@ -20,6 +20,7 @@ SUMMARY_KEY = "summary"
 TIMESERIES_KEY = "timeseries"
 TOP_DRIVERS_KEY = "top_drivers"
 DEFAULT_TOP_DRIVERS_LIMIT = 5
+ANALYTICS_SCHEMA_VERSION = 2
 
 
 class PublicationsAnalyticsValidationError(RuntimeError):
@@ -301,6 +302,11 @@ def _upsert_metric(
     existing.computed_at = computed_at
 
 
+def _is_metric_payload_current(payload: dict[str, Any]) -> bool:
+    version = _safe_int(payload.get("schema_version"))
+    return version == ANALYTICS_SCHEMA_VERSION
+
+
 def _compute_bundle(
     session,
     *,
@@ -382,7 +388,9 @@ def _compute_bundle(
                 now=now,
             )
         else:
-            last_12 = current_citations
+            # Without historical checkpoints, avoid attributing all-time citations to
+            # the last 12 months.
+            last_12 = 0
 
         if at_12_snapshot is not None and at_24_snapshot is not None:
             previous_12 = max(
@@ -424,6 +432,10 @@ def _compute_bundle(
             aggregated_yearly_counts[year] += max(0, int(count or 0))
         timeseries_points = _build_timeseries_points_from_yearly_counts(
             aggregated_yearly_counts
+        )
+    elif fallback_yearly_counts:
+        timeseries_points = _build_timeseries_points_from_yearly_counts(
+            fallback_yearly_counts
         )
     else:
         first_snapshot_at = session.scalar(
@@ -491,6 +503,7 @@ def _compute_bundle(
     )
 
     summary = {
+        "schema_version": ANALYTICS_SCHEMA_VERSION,
         "total_citations": latest_total,
         "h_index": h_index,
         "citation_velocity_12m": citation_velocity_12m,
@@ -499,8 +512,13 @@ def _compute_bundle(
         "yoy_percent": yoy_percent,
         "computed_at": now_iso,
     }
-    timeseries = {"computed_at": now_iso, "points": timeseries_points}
+    timeseries = {
+        "schema_version": ANALYTICS_SCHEMA_VERSION,
+        "computed_at": now_iso,
+        "points": timeseries_points,
+    }
     top_drivers_payload = {
+        "schema_version": ANALYTICS_SCHEMA_VERSION,
         "computed_at": now_iso,
         "window": "last_12_months",
         "drivers": top_drivers,
@@ -571,7 +589,9 @@ def _get_metric_or_refresh(
             )
         ).first()
         if row is not None and isinstance(row.metric_json, dict):
-            return dict(row.metric_json)
+            payload = dict(row.metric_json)
+            if _is_metric_payload_current(payload):
+                return payload
     bundle = _compute_and_store(user_id=user_id, refresh_metrics=refresh_metrics)
     return bundle[metric_key]
 

@@ -209,9 +209,18 @@ def test_orcid_import_reports_zero_new_works_on_repeat_sync(
         "research_os.services.orcid_service._ensure_valid_access_token",
         lambda session, user: "access-token",
     )
+    call_urls: list[str] = []
+
+    class _TrackingOrcidClient(_FakeOrcidClient):
+        def get(
+            self, url: str, headers: dict[str, str] | None = None
+        ) -> _FakeResponse:
+            call_urls.append(url)
+            return super().get(url, headers=headers)
+
     monkeypatch.setattr(
         "research_os.services.orcid_service.httpx.Client",
-        lambda timeout=20.0: _FakeOrcidClient(responses),
+        lambda timeout=20.0: _TrackingOrcidClient(responses),
     )
     sync_calls: list[dict[str, Any]] = []
 
@@ -236,6 +245,8 @@ def test_orcid_import_reports_zero_new_works_on_repeat_sync(
     assert sync_calls[0].get("user_id") == user_id
     assert isinstance(sync_calls[0].get("work_ids"), list)
     assert len(sync_calls[0]["work_ids"]) == 1
+    assert call_urls.count(works_url) == 2
+    assert call_urls.count(work_404_url) == 1
 
 
 def test_disconnect_orcid_blocks_orcid_only_placeholder_account(
