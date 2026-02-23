@@ -14,6 +14,27 @@ REQUEST_RETRY_COUNT = 2
 REQUEST_RETRY_BASE_DELAY_SECONDS = 0.35
 
 
+def _openalex_abstract_from_inverted_index(value: Any) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    tokens_with_positions: list[tuple[int, str]] = []
+    for token, positions in value.items():
+        if not isinstance(token, str) or not isinstance(positions, list):
+            continue
+        for position in positions:
+            if isinstance(position, int) and position >= 0:
+                tokens_with_positions.append((position, token))
+    if not tokens_with_positions:
+        return None
+    tokens_with_positions.sort(key=lambda item: item[0])
+    abstract = re.sub(
+        r"\s+",
+        " ",
+        " ".join(token for _, token in tokens_with_positions).strip(),
+    )
+    return abstract or None
+
+
 class MetricsProvider(ABC):
     provider_name: str
 
@@ -219,6 +240,9 @@ class OpenAlexMetricsProvider(MetricsProvider):
         source = primary_location.get("source") or {}
         summary_stats = source.get("summary_stats") or {}
         journal_2yr_mean_citedness = summary_stats.get("2yr_mean_citedness")
+        abstract = _openalex_abstract_from_inverted_index(
+            candidate.get("abstract_inverted_index")
+        )
         return {
             "provider": self.provider_name,
             "citations_count": cited_by,
@@ -232,6 +256,7 @@ class OpenAlexMetricsProvider(MetricsProvider):
                 "pmid": pmid_value,
                 "journal_2yr_mean_citedness": journal_2yr_mean_citedness,
                 "journal_name": source.get("display_name"),
+                "abstract": abstract,
             },
         }
 
@@ -338,7 +363,7 @@ class SemanticScholarMetricsProvider(MetricsProvider):
                         client,
                         url=url,
                         params={
-                            "fields": "title,year,citationCount,influentialCitationCount,url,paperId"
+                            "fields": "title,year,citationCount,influentialCitationCount,url,paperId,abstract"
                         },
                     )
                     if response.status_code < 400:
@@ -349,7 +374,7 @@ class SemanticScholarMetricsProvider(MetricsProvider):
                         client,
                         url=f"{self._base_url}/PMID:{quote(pmid, safe='')}",
                         params={
-                            "fields": "title,year,citationCount,influentialCitationCount,url,paperId"
+                            "fields": "title,year,citationCount,influentialCitationCount,url,paperId,abstract"
                         },
                     )
                     if response.status_code < 400:
@@ -363,7 +388,7 @@ class SemanticScholarMetricsProvider(MetricsProvider):
                         params={
                             "query": title,
                             "limit": 5,
-                            "fields": "title,year,citationCount,influentialCitationCount,url,paperId",
+                            "fields": "title,year,citationCount,influentialCitationCount,url,paperId,abstract",
                         },
                     )
                     if response.status_code >= 400:
@@ -424,6 +449,10 @@ class SemanticScholarMetricsProvider(MetricsProvider):
                 "influential_citation_count": influential,
                 "match_method": match_method,
                 "captured_year": datetime.now(timezone.utc).year,
+                "abstract": re.sub(
+                    r"\s+", " ", str(payload.get("abstract", "")).strip()
+                )
+                or None,
             },
         }
 

@@ -721,10 +721,34 @@ def sync_metrics(
                     }
                 )
 
+    best_abstract_by_work: dict[str, tuple[int, str]] = {}
+    for row in metric_rows:
+        work_id = str(row.get("work_id", "")).strip()
+        if not work_id:
+            continue
+        payload = dict(row.get("metric_payload") or {})
+        abstract = re.sub(r"\s+", " ", str(payload.get("abstract", "")).strip())
+        if not abstract:
+            continue
+        provider_name = str(row.get("provider", "")).strip().lower()
+        priority = METRICS_PROVIDER_PRIORITY.get(provider_name, 0)
+        existing = best_abstract_by_work.get(work_id)
+        if existing is None or priority > existing[0]:
+            best_abstract_by_work[work_id] = (priority, abstract)
+
     synced = 0
     provider_counts: dict[str, int] = defaultdict(int)
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
+        works_by_id: dict[str, Work] = {}
+        if best_abstract_by_work:
+            works = session.scalars(
+                select(Work).where(
+                    Work.user_id == user_id,
+                    Work.id.in_(list(best_abstract_by_work.keys())),
+                )
+            ).all()
+            works_by_id = {str(work.id): work for work in works}
         for row in metric_rows:
             snapshot = MetricsSnapshot(
                 work_id=str(row["work_id"]),
@@ -738,6 +762,15 @@ def sync_metrics(
             session.add(snapshot)
             synced += 1
             provider_counts[snapshot.provider] += 1
+        for work_id, (_, abstract) in best_abstract_by_work.items():
+            work = works_by_id.get(work_id)
+            if work is None:
+                continue
+            if work.user_edited:
+                continue
+            if re.sub(r"\s+", " ", str(work.abstract or "").strip()):
+                continue
+            work.abstract = abstract
         session.flush()
 
     collaboration = recompute_collaborator_edges(user_id=user_id)

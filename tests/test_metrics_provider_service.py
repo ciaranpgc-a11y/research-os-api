@@ -113,3 +113,80 @@ def test_semantic_scholar_provider_matches_with_pmid(monkeypatch) -> None:
     assert payload["citations_count"] == 144
     assert payload["influential_citations"] == 12
     assert payload["payload_subset"]["match_method"] == "pmid"
+
+
+def test_openalex_provider_extracts_abstract_from_inverted_index(monkeypatch) -> None:
+    doi = "10.1000/test"
+    responses = {
+        f"https://api.openalex.org/works|doi:https://doi.org/{doi}": _FakeResponse(
+            200,
+            {
+                "results": [
+                    {
+                        "id": "https://openalex.org/W777",
+                        "cited_by_count": 12,
+                        "ids": {},
+                        "abstract_inverted_index": {
+                            "Pulmonary": [0],
+                            "hypertension": [1],
+                            "analysis": [2],
+                        },
+                        "primary_location": {
+                            "source": {"display_name": "Test Journal"}
+                        },
+                    }
+                ]
+            },
+        )
+    }
+    monkeypatch.setattr(
+        "research_os.services.metrics_provider_service.httpx.Client",
+        lambda timeout=12.0: _FakeClient(responses),
+    )
+
+    provider = OpenAlexMetricsProvider()
+    payload = provider.fetch_metrics(
+        {
+            "title": "Pulmonary hypertension analysis",
+            "doi": doi,
+            "url": "",
+        }
+    )
+
+    assert payload["provider"] == "openalex"
+    assert payload["payload_subset"]["abstract"] == "Pulmonary hypertension analysis"
+
+
+def test_semantic_scholar_provider_returns_abstract(monkeypatch) -> None:
+    doi = "10.1000/test"
+    responses = {
+        "https://api.semanticscholar.org/graph/v1/paper/DOI:10.1000%2Ftest": _FakeResponse(
+            200,
+            {
+                "paperId": "paper-42",
+                "citationCount": 18,
+                "influentialCitationCount": 2,
+                "url": "https://api.semanticscholar.org/paper/paper-42",
+                "abstract": "This study evaluates pulmonary vascular patterns.",
+            },
+        )
+    }
+    monkeypatch.setattr(
+        "research_os.services.metrics_provider_service.httpx.Client",
+        lambda timeout=12.0: _FakeClient(responses),
+    )
+
+    provider = SemanticScholarMetricsProvider()
+    payload = provider.fetch_metrics(
+        {
+            "title": "Pulmonary vascular patterns",
+            "doi": doi,
+            "url": "",
+        }
+    )
+
+    assert payload["provider"] == "semantic_scholar"
+    assert (
+        payload["payload_subset"]["abstract"]
+        == "This study evaluates pulmonary vascular patterns."
+    )

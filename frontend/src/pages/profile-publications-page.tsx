@@ -5,15 +5,16 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { fetchOrcidStatus, fetchPersonaState, importOrcidWorks, syncPersonaMetrics } from '@/lib/impact-api'
+import { fetchMe, fetchOrcidStatus, fetchPersonaState, importOrcidWorks, syncPersonaMetrics } from '@/lib/impact-api'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
 import { getAuthSessionToken } from '@/lib/auth-session'
-import type { OrcidStatusPayload, PersonaStatePayload } from '@/types/impact'
+import type { AuthUser, OrcidStatusPayload, PersonaStatePayload } from '@/types/impact'
 
 type PublicationFilterKey = 'all' | 'cited' | 'with_doi' | 'with_abstract' | 'with_pmid'
 type PublicationSortField = 'citations' | 'year' | 'title' | 'venue' | 'work_type'
 type SortDirection = 'asc' | 'desc'
 const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
+const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 
 const WORK_TYPE_LABELS: Record<string, string> = {
   'journal-article': 'Journal article',
@@ -165,6 +166,68 @@ function saveCachedOrcidStatus(value: OrcidStatusPayload): void {
   window.localStorage.setItem(INTEGRATIONS_ORCID_STATUS_CACHE_KEY, JSON.stringify(value))
 }
 
+function loadCachedUser(): AuthUser | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const raw = window.localStorage.getItem(INTEGRATIONS_USER_CACHE_KEY)
+  if (!raw) {
+    return null
+  }
+  try {
+    return JSON.parse(raw) as AuthUser
+  } catch {
+    return null
+  }
+}
+
+function saveCachedUser(value: AuthUser): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(INTEGRATIONS_USER_CACHE_KEY, JSON.stringify(value))
+}
+
+function normalizeAuthorName(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function isOwnerAuthor(author: string, userName: string): boolean {
+  const authorKey = normalizeAuthorName(author)
+  const userKey = normalizeAuthorName(userName)
+  if (!authorKey || !userKey) {
+    return false
+  }
+  if (authorKey === userKey) {
+    return true
+  }
+  return authorKey.includes(userKey) || userKey.includes(authorKey)
+}
+
+function citationCellTone(citations: number, hIndex: number): string {
+  const value = Math.max(0, Number(citations || 0))
+  if (value <= 0) {
+    return 'text-muted-foreground'
+  }
+  if (hIndex <= 0) {
+    return 'bg-emerald-50 text-emerald-800 font-medium'
+  }
+  if (value >= hIndex * 2) {
+    return 'bg-emerald-100 text-emerald-900 font-semibold'
+  }
+  if (value >= hIndex) {
+    return 'bg-emerald-50 text-emerald-800 font-semibold'
+  }
+  if (value >= Math.max(1, Math.ceil(hIndex / 2))) {
+    return 'bg-amber-50 text-amber-800 font-medium'
+  }
+  return 'bg-slate-50 text-slate-700'
+}
+
 function SortHeader({
   label,
   column,
@@ -203,7 +266,9 @@ export function ProfilePublicationsPage() {
   const navigate = useNavigate()
   const initialCachedPersonaState = readCachedPersonaState()
   const initialCachedOrcidStatus = loadCachedOrcidStatus()
+  const initialCachedUser = loadCachedUser()
   const [token, setToken] = useState<string>(() => getAuthSessionToken())
+  const [user, setUser] = useState<AuthUser | null>(initialCachedUser)
   const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(initialCachedPersonaState)
   const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(initialCachedOrcidStatus)
   const [query, setQuery] = useState('')
@@ -226,8 +291,12 @@ export function ProfilePublicationsPage() {
       setStatus('')
     }
     try {
-      const settled = await Promise.allSettled([fetchPersonaState(sessionToken), fetchOrcidStatus(sessionToken)])
-      const [stateResult, orcidResult] = settled
+      const settled = await Promise.allSettled([
+        fetchPersonaState(sessionToken),
+        fetchOrcidStatus(sessionToken),
+        fetchMe(sessionToken),
+      ])
+      const [stateResult, orcidResult, userResult] = settled
       if (stateResult.status === 'fulfilled') {
         setPersonaState(stateResult.value)
         writeCachedPersonaState(stateResult.value)
@@ -241,6 +310,10 @@ export function ProfilePublicationsPage() {
       if (orcidResult.status === 'fulfilled') {
         setOrcidStatus(orcidResult.value)
         saveCachedOrcidStatus(orcidResult.value)
+      }
+      if (userResult.status === 'fulfilled') {
+        setUser(userResult.value)
+        saveCachedUser(userResult.value)
       }
       const failedCount = settled.filter((item) => item.status === 'rejected').length
       if (failedCount > 0) {
@@ -369,6 +442,7 @@ export function ProfilePublicationsPage() {
   const totalCitations = useMemo(() => citationCounts.reduce((sum, value) => sum + value, 0), [citationCounts])
   const hIndex = useMemo(() => computeHIndex(citationCounts), [citationCounts])
   const citedWorksCount = useMemo(() => citationCounts.filter((value) => value > 0).length, [citationCounts])
+  const ownerName = user?.name || ''
   const worksCount = personaState?.works.length ?? 0
   const busy = loading || richImporting || syncing || fullSyncing
   const canSyncCitations = worksCount > 0 && !busy
@@ -533,10 +607,6 @@ export function ProfilePublicationsPage() {
                 </select>
               </div>
 
-              <p className="text-xs text-muted-foreground">
-                {filteredWorks.length} work{filteredWorks.length === 1 ? '' : 's'} shown.
-              </p>
-
               {filteredWorks.length === 0 ? (
                 <div className="rounded border border-dashed border-border p-4 text-sm text-muted-foreground">
                   <p className="mb-2 text-foreground">No works in your library yet.</p>
@@ -614,7 +684,14 @@ export function ProfilePublicationsPage() {
                             <td className="px-2 py-2 font-semibold">{work.year ?? 'n/a'}</td>
                             <td className="px-2 py-2 font-medium">{formatJournalName(work.venue_name) || 'n/a'}</td>
                             <td className="px-2 py-2">{formatWorkType(work.work_type)}</td>
-                            <td className="px-2 py-2">{metrics?.citations ?? 0}</td>
+                            <td
+                              className={`px-2 py-2 transition-colors ${citationCellTone(
+                                metrics?.citations ?? 0,
+                                hIndex,
+                              )}`}
+                            >
+                              {metrics?.citations ?? 0}
+                            </td>
                           </tr>
                         )
                       })}
@@ -690,7 +767,21 @@ export function ProfilePublicationsPage() {
                     <div className="space-y-1">
                       <p className="text-[11px] uppercase text-muted-foreground">Authors</p>
                       {(selectedWork.authors || []).length > 0 ? (
-                        <p className="whitespace-pre-wrap leading-relaxed">{(selectedWork.authors || []).join(', ')}</p>
+                        <p className="whitespace-pre-wrap leading-relaxed">
+                          {(selectedWork.authors || []).map((author, index, list) => {
+                            const owner = Boolean(ownerName) && isOwnerAuthor(author, ownerName)
+                            return (
+                              <span
+                                key={`${author}-${index}`}
+                                className={owner ? 'font-semibold text-emerald-700' : undefined}
+                              >
+                                {author}
+                                {owner ? ' (you)' : ''}
+                                {index < list.length - 1 ? ', ' : ''}
+                              </span>
+                            )
+                          })}
+                        </p>
                       ) : (
                         <p className="text-muted-foreground">Not available</p>
                       )}
