@@ -159,6 +159,11 @@ export function AuthPage() {
       matches: registerPassword === registerConfirmPassword && registerConfirmPassword.length > 0,
     }
   }, [registerConfirmPassword, registerPassword])
+  const hasRegisterInput =
+    registerName.trim().length > 0 ||
+    registerEmail.trim().length > 0 ||
+    registerPassword.length > 0 ||
+    registerConfirmPassword.length > 0
 
   const resetValidationMessage = useMemo(() => {
     if (!isLikelyEmail(resetEmail)) {
@@ -600,13 +605,15 @@ export function AuthPage() {
                 <Button
                   type="button"
                   className="w-full bg-emerald-600 hover:bg-emerald-700"
-                  disabled={loading || !!registerValidationMessage}
+                  disabled={loading}
                   onClick={() => void onRegister()}
                 >
                   {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Create account
                 </Button>
-                {attemptedRegister && registerValidationMessage ? <p className="text-xs text-amber-700">{registerValidationMessage}</p> : null}
+                {(attemptedRegister || hasRegisterInput) && registerValidationMessage ? (
+                  <p className="text-xs text-amber-700">{registerValidationMessage}</p>
+                ) : null}
               </div>
             )}
 
