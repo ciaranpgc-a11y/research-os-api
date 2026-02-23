@@ -91,7 +91,9 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     role: Mapped[str] = mapped_column(String(16), default="user")
     orcid_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    google_sub: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    google_sub: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
     microsoft_sub: Mapped[str | None] = mapped_column(
         String(128), nullable=True, index=True
     )
@@ -266,7 +268,10 @@ class AuthOAuthState(Base):
         String(36), primary_key=True, default=lambda: str(uuid4())
     )
     user_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
     provider: Mapped[str] = mapped_column(String(32), index=True)
     state_token: Mapped[str] = mapped_column(String(128), unique=True, index=True)
@@ -528,9 +533,7 @@ class ImpactSnapshot(Base):
 
 class ManuscriptAssetLink(Base):
     __tablename__ = "manuscript_asset_links"
-    __table_args__ = (
-        UniqueConstraint("manuscript_id", "asset_id", "section_context"),
-    )
+    __table_args__ = (UniqueConstraint("manuscript_id", "asset_id", "section_context"),)
 
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid4())
@@ -692,9 +695,7 @@ def get_engine():
     if _engine is None:
         database_url = get_database_url()
         connect_args = (
-            {"check_same_thread": False}
-            if database_url.startswith("sqlite")
-            else {}
+            {"check_same_thread": False} if database_url.startswith("sqlite") else {}
         )
         _engine = create_engine(
             database_url,

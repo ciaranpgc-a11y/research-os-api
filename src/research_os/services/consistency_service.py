@@ -80,7 +80,9 @@ def _find_results_discussion_number_drift(
     ]
 
 
-def _find_directionality_conflict(results: str, discussion: str) -> list[dict[str, str]]:
+def _find_directionality_conflict(
+    results: str, discussion: str
+) -> list[dict[str, str]]:
     lowered_results = results.lower()
     lowered_discussion = discussion.lower()
     if not lowered_results or not lowered_discussion:

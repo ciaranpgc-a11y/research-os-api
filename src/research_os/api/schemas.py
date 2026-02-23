@@ -700,7 +700,9 @@ class ClaimCitationAutofillStateResponse(BaseModel):
 class CitationAutofillResponse(BaseModel):
     run_id: str
     generated_at: datetime
-    updated_claims: list[ClaimCitationAutofillStateResponse] = Field(default_factory=list)
+    updated_claims: list[ClaimCitationAutofillStateResponse] = Field(
+        default_factory=list
+    )
 
 
 class SubmissionPackRequest(BaseModel):

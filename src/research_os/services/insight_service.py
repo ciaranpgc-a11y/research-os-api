@@ -42,7 +42,10 @@ _CLAIM_INSIGHTS: dict[str, dict[str, object]] = {
             "population_filter": "Adults with index HF admission",
             "model": "Descriptive prevalence extraction",
             "covariates": [],
-            "validation_checks": ["Cross-check vs admissions cube", "Range sanity pass"],
+            "validation_checks": [
+                "Cross-check vs admissions cube",
+                "Range sanity pass",
+            ],
             "notes": ["Generated from structured cohort summary template."],
         },
         "citations": [
@@ -76,7 +79,10 @@ _CLAIM_INSIGHTS: dict[str, dict[str, object]] = {
             "population_filter": "ICD-10 primary HF codes with exclusions",
             "model": "Rule-based phenotype assembly",
             "covariates": ["Age", "Sex"],
-            "validation_checks": ["Dual review sample n=120", "Code-set version pinning"],
+            "validation_checks": [
+                "Dual review sample n=120",
+                "Code-set version pinning",
+            ],
             "notes": ["Phenotype promoted to production in release 2025.2."],
         },
         "citations": ["STROBE Checklist", "ICD-10 Coding Validation Framework"],
@@ -296,7 +302,10 @@ _QC_INSIGHTS: dict[str, dict[str, object]] = {
             "population_filter": "Discussion section claims",
             "model": "Rule-based classification",
             "covariates": [],
-            "validation_checks": ["Rule parity check", "Manual adjudication sample n=25"],
+            "validation_checks": [
+                "Rule parity check",
+                "Manual adjudication sample n=25",
+            ],
             "notes": ["Triggered by rule UNSUPPORTED_INFERENTIAL_CLAIM."],
         },
         "citations": [
@@ -402,7 +411,10 @@ _QC_INSIGHTS: dict[str, dict[str, object]] = {
             "population_filter": "Methods + Discussion sections",
             "model": "Budget variance scoring",
             "covariates": [],
-            "validation_checks": ["Word count normalization", "Section target policy match"],
+            "validation_checks": [
+                "Word count normalization",
+                "Section target policy match",
+            ],
             "notes": ["Triggered by WORD_BUDGET_VARIANCE threshold breach."],
         },
         "citations": ["Internal Word Budget Policy"],
@@ -410,11 +422,15 @@ _QC_INSIGHTS: dict[str, dict[str, object]] = {
 }
 
 
-def _with_claim_citations(item_id: str, payload: dict[str, object]) -> dict[str, object]:
+def _with_claim_citations(
+    item_id: str, payload: dict[str, object]
+) -> dict[str, object]:
     base_citations = payload.get("citations")
     required_slots = len(base_citations) if isinstance(base_citations, list) else 0
     try:
-        citation_state = get_claim_citation_state(item_id, required_slots=required_slots)
+        citation_state = get_claim_citation_state(
+            item_id, required_slots=required_slots
+        )
     except CitationRecordNotFoundError:
         return payload
 
@@ -442,7 +458,9 @@ def _with_claim_citations(item_id: str, payload: dict[str, object]) -> dict[str,
     }
 
 
-def get_selection_insight(selection_type: SelectionType, item_id: str) -> dict[str, object]:
+def get_selection_insight(
+    selection_type: SelectionType, item_id: str
+) -> dict[str, object]:
     lookup = {
         "claim": _CLAIM_INSIGHTS,
         "result": _RESULT_INSIGHTS,

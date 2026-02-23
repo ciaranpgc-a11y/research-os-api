@@ -30,11 +30,21 @@ def _smtp_from() -> str:
 
 
 def _smtp_use_ssl() -> bool:
-    return os.getenv("AAWE_SMTP_USE_SSL", "0").strip().lower() in {"1", "true", "yes", "on"}
+    return os.getenv("AAWE_SMTP_USE_SSL", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def _smtp_use_tls() -> bool:
-    return os.getenv("AAWE_SMTP_USE_TLS", "1").strip().lower() in {"1", "true", "yes", "on"}
+    return os.getenv("AAWE_SMTP_USE_TLS", "1").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def _can_send_email() -> bool:
@@ -62,7 +72,9 @@ def send_plain_email(*, to_email: str, subject: str, body: str) -> bool:
 
     try:
         if _smtp_use_ssl():
-            with smtplib.SMTP_SSL(host, port, context=ssl.create_default_context()) as smtp:
+            with smtplib.SMTP_SSL(
+                host, port, context=ssl.create_default_context()
+            ) as smtp:
                 if user and password:
                     smtp.login(user, password)
                 smtp.send_message(message)
@@ -77,4 +89,3 @@ def send_plain_email(*, to_email: str, subject: str, body: str) -> bool:
         return True
     except Exception:
         return False
-

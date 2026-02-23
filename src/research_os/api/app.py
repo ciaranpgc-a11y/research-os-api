@@ -333,6 +333,7 @@ if AUTH_COOKIE_SAMESITE not in {"lax", "strict", "none"}:
 _AUTH_RATE_LIMIT_EVENTS: dict[str, deque[float]] = defaultdict(deque)
 _AUTH_RATE_LIMIT_LOCK = Lock()
 
+
 @asynccontextmanager
 async def app_lifespan(_: FastAPI):
     # In local development, allow API startup even if OPENAI_API_KEY is not set so
@@ -598,7 +599,9 @@ def _extract_session_token(request: Request) -> str:
 
 
 def _session_response(payload: dict[str, object]) -> JSONResponse:
-    response = JSONResponse(content=AuthSessionResponse(**payload).model_dump(mode="json"))
+    response = JSONResponse(
+        content=AuthSessionResponse(**payload).model_dump(mode="json")
+    )
     session_token = str(payload.get("session_token", "")).strip()
     if session_token:
         response.set_cookie(
@@ -891,7 +894,9 @@ def v1_auth_oauth_provider_statuses() -> AuthOAuthProviderStatusesResponse:
     responses=BAD_REQUEST_RESPONSES,
     tags=["v1"],
 )
-def v1_auth_oauth_connect(provider: str = Query(default="orcid")) -> AuthOAuthConnectResponse | JSONResponse:
+def v1_auth_oauth_connect(
+    provider: str = Query(default="orcid"),
+) -> AuthOAuthConnectResponse | JSONResponse:
     try:
         payload = create_oauth_connect_url(provider=provider)
         return AuthOAuthConnectResponse(**payload)
@@ -1452,7 +1457,9 @@ async def v1_upload_library_assets(
 
             raw_files = payload.get("files", [])
             if not isinstance(raw_files, list):
-                return _build_bad_request_response("JSON payload field 'files' must be a list.")
+                return _build_bad_request_response(
+                    "JSON payload field 'files' must be a list."
+                )
 
             for item in raw_files:
                 if not isinstance(item, dict):
@@ -1855,9 +1862,10 @@ def v1_research_overview_suggestions(
 def v1_generate_aawe_grounded_draft(
     request: GroundedDraftRequest,
 ) -> GroundedDraftResponse | JSONResponse:
-    if request.generation_mode == "targeted" and not (
-        request.target_instruction or ""
-    ).strip():
+    if (
+        request.generation_mode == "targeted"
+        and not (request.target_instruction or "").strip()
+    ):
         return _build_bad_request_response(
             "target_instruction is required when generation_mode is 'targeted'."
         )
@@ -2346,7 +2354,10 @@ def v1_list_manuscript_snapshots(
             manuscript_id=manuscript_id,
             limit=limit,
         )
-        return [ManuscriptSnapshotResponse.model_validate(snapshot) for snapshot in snapshots]
+        return [
+            ManuscriptSnapshotResponse.model_validate(snapshot)
+            for snapshot in snapshots
+        ]
     except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
         return _build_not_found_response(str(exc))
 

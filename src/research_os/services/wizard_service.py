@@ -223,9 +223,7 @@ def infer_wizard_state(
     required = _required_fields(inferred_study_type)
     missing = [field for field in required if field not in sanitized_answers]
     next_questions = [
-        _QUESTION_BANK[field]
-        for field in missing
-        if field in _QUESTION_BANK
+        _QUESTION_BANK[field] for field in missing if field in _QUESTION_BANK
     ]
     return {
         "target_journal": target_journal,

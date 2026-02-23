@@ -100,7 +100,11 @@ def _orcid_token_url() -> str:
 
 
 def _orcid_api_base() -> str:
-    return os.getenv("ORCID_API_BASE_URL", "https://pub.orcid.org/v3.0").strip().rstrip("/")
+    return (
+        os.getenv("ORCID_API_BASE_URL", "https://pub.orcid.org/v3.0")
+        .strip()
+        .rstrip("/")
+    )
 
 
 def _orcid_auto_sync_metrics_enabled() -> bool:
@@ -189,7 +193,9 @@ def _exchange_authorization_code(code: str) -> dict[str, Any]:
         "redirect_uri": _orcid_redirect_uri(),
     }
     with httpx.Client(timeout=15.0) as client:
-        response = client.post(_orcid_token_url(), data=payload, headers=_token_headers())
+        response = client.post(
+            _orcid_token_url(), data=payload, headers=_token_headers()
+        )
     if response.status_code >= 400:
         raise OrcidValidationError("ORCID token exchange failed.")
     return response.json()
@@ -203,7 +209,9 @@ def _refresh_access_token(refresh_token: str) -> dict[str, Any]:
         "refresh_token": refresh_token,
     }
     with httpx.Client(timeout=15.0) as client:
-        response = client.post(_orcid_token_url(), data=payload, headers=_token_headers())
+        response = client.post(
+            _orcid_token_url(), data=payload, headers=_token_headers()
+        )
     if response.status_code >= 400:
         raise OrcidValidationError("ORCID token refresh failed.")
     return response.json()
@@ -245,7 +253,9 @@ def complete_orcid_callback(*, state: str, code: str) -> dict[str, Any]:
         user = _resolve_user_or_raise(session, state_row.user_id)
         user.orcid_id = orcid_id
         user.orcid_access_token = encrypt_secret(access_token)
-        user.orcid_refresh_token = encrypt_secret(refresh_token) if refresh_token else None
+        user.orcid_refresh_token = (
+            encrypt_secret(refresh_token) if refresh_token else None
+        )
         user.orcid_token_expires_at = expires_at
         state_row.consumed_at = _utcnow()
         session.flush()
@@ -268,7 +278,9 @@ def _ensure_valid_access_token(session, user: User) -> str:
     if not encrypted:
         raise OrcidValidationError("ORCID access token is not linked for this user.")
     access_token = decrypt_secret(encrypted) or ""
-    refresh_token = decrypt_secret(user.orcid_refresh_token) if user.orcid_refresh_token else None
+    refresh_token = (
+        decrypt_secret(user.orcid_refresh_token) if user.orcid_refresh_token else None
+    )
     token_expires_at = _as_utc(user.orcid_token_expires_at)
     if token_expires_at and token_expires_at <= _utcnow() and refresh_token:
         access_token = _refresh_user_access_token(
@@ -311,7 +323,7 @@ def _extract_external_id(summary: dict[str, Any], target_type: str) -> str | Non
 
 
 def _extract_authors(work_detail: dict[str, Any]) -> list[dict[str, str]]:
-    contributors = ((work_detail.get("contributors") or {}).get("contributor") or [])
+    contributors = (work_detail.get("contributors") or {}).get("contributor") or []
     authors: list[dict[str, str]] = []
     for item in contributors:
         if not isinstance(item, dict):
@@ -320,8 +332,8 @@ def _extract_authors(work_detail: dict[str, Any]) -> list[dict[str, str]]:
         if not credit_name:
             continue
         contributor_orcid = (
-            ((item.get("contributor-orcid") or {}).get("path") or "").strip() or None
-        )
+            (item.get("contributor-orcid") or {}).get("path") or ""
+        ).strip() or None
         authors.append(
             {
                 "name": str(credit_name).strip(),
@@ -331,13 +343,21 @@ def _extract_authors(work_detail: dict[str, Any]) -> list[dict[str, str]]:
     return authors
 
 
-def _extract_work_payload(summary: dict[str, Any], detail: dict[str, Any] | None) -> dict[str, Any]:
+def _extract_work_payload(
+    summary: dict[str, Any], detail: dict[str, Any] | None
+) -> dict[str, Any]:
     source = detail or summary
-    title = (((source.get("title") or {}).get("title") or {}).get("value") or "").strip()
-    year_raw = (((source.get("publication-date") or {}).get("year") or {}).get("value") or "").strip()
+    title = (
+        ((source.get("title") or {}).get("title") or {}).get("value") or ""
+    ).strip()
+    year_raw = (
+        ((source.get("publication-date") or {}).get("year") or {}).get("value") or ""
+    ).strip()
     work_type = str(source.get("type", "")).strip()
     doi = _extract_external_id(source, "doi")
-    pmid = _extract_external_id(source, "pmid") or _extract_external_id(source, "pubmed-id")
+    pmid = _extract_external_id(source, "pmid") or _extract_external_id(
+        source, "pubmed-id"
+    )
     venue = str((source.get("journal-title") or {}).get("value") or "").strip()
     publisher = str((source.get("publisher") or {}).get("value") or "").strip()
     url = str((source.get("url") or {}).get("value") or "").strip()
@@ -345,7 +365,7 @@ def _extract_work_payload(summary: dict[str, Any], detail: dict[str, Any] | None
         url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
     if not url and doi:
         url = f"https://doi.org/{doi}"
-    keywords_raw = ((source.get("keywords") or {}).get("keyword") or [])
+    keywords_raw = (source.get("keywords") or {}).get("keyword") or []
     keywords: list[str] = []
     for item in keywords_raw:
         if not isinstance(item, dict):
@@ -360,7 +380,9 @@ def _extract_work_payload(summary: dict[str, Any], detail: dict[str, Any] | None
         "work_type": work_type,
         "venue_name": venue,
         "publisher": publisher,
-        "abstract": str((source.get("short-description") or "").strip()) if source.get("short-description") else "",
+        "abstract": str((source.get("short-description") or "").strip())
+        if source.get("short-description")
+        else "",
         "keywords": keywords,
         "url": url,
         "authors": _extract_authors(source),
@@ -377,7 +399,9 @@ def _fetch_orcid_work_detail(
     detail_url = f"{_orcid_api_base()}/{orcid_id}/work/{put_code}"
     try:
         with httpx.Client(timeout=ORCID_HTTP_TIMEOUT_SECONDS) as client:
-            detail_response = client.get(detail_url, headers=_orcid_headers(access_token))
+            detail_response = client.get(
+                detail_url, headers=_orcid_headers(access_token)
+            )
         if detail_response.status_code >= 400:
             return None
         payload = detail_response.json()
@@ -388,7 +412,9 @@ def _fetch_orcid_work_detail(
         return None
 
 
-def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -> dict[str, Any]:
+def import_orcid_works(
+    *, user_id: str, overwrite_user_metadata: bool = False
+) -> dict[str, Any]:
     create_all_tables()
     with session_scope() as session:
         user = _resolve_user_or_raise(session, user_id)
@@ -403,13 +429,17 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
         with httpx.Client(timeout=ORCID_HTTP_TIMEOUT_SECONDS) as client:
             works_response = client.get(works_url, headers=_orcid_headers(access_token))
     except httpx.HTTPError as exc:
-        raise OrcidValidationError("Failed to fetch ORCID works list due to network timeout.") from exc
+        raise OrcidValidationError(
+            "Failed to fetch ORCID works list due to network timeout."
+        ) from exc
 
     if works_response.status_code == 401 and has_refresh_token:
         with session_scope() as session:
             user = _resolve_user_or_raise(session, user_id)
             refresh_token = (
-                decrypt_secret(user.orcid_refresh_token) if user.orcid_refresh_token else None
+                decrypt_secret(user.orcid_refresh_token)
+                if user.orcid_refresh_token
+                else None
             )
             if refresh_token:
                 access_token = _refresh_user_access_token(
@@ -419,9 +449,13 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
                 )
         try:
             with httpx.Client(timeout=ORCID_HTTP_TIMEOUT_SECONDS) as client:
-                works_response = client.get(works_url, headers=_orcid_headers(access_token))
+                works_response = client.get(
+                    works_url, headers=_orcid_headers(access_token)
+                )
         except httpx.HTTPError as exc:
-            raise OrcidValidationError("Failed to fetch ORCID works list after token refresh.") from exc
+            raise OrcidValidationError(
+                "Failed to fetch ORCID works list after token refresh."
+            ) from exc
 
     if works_response.status_code >= 400:
         raise OrcidValidationError(
@@ -492,9 +526,7 @@ def import_orcid_works(*, user_id: str, overwrite_user_metadata: bool = False) -
                 detail_payload = detail_payload_by_put_code.get(put_code_key)
         work_payload = _extract_work_payload(summary, detail_payload)
         if not work_payload.get("url") and put_code is not None:
-            work_payload["url"] = (
-                f"https://orcid.org/{orcid_id}/work/{put_code}"
-            )
+            work_payload["url"] = f"https://orcid.org/{orcid_id}/work/{put_code}"
         if not work_payload["title"]:
             fallback_ref = str(work_payload.get("doi") or put_code or "").strip()
             if not fallback_ref:

@@ -107,18 +107,32 @@ def recompute_impact_snapshot(*, user_id: str) -> dict[str, Any]:
         career_length = 1
     m_index = round(h_index / career_length, 4)
 
-    velocity_points = [(int(item["year"]), float(item["citations"])) for item in timeline if int(item["year"]) > 0]
+    velocity_points = [
+        (int(item["year"]), float(item["citations"]))
+        for item in timeline
+        if int(item["year"]) > 0
+    ]
     citation_velocity = round(_linear_regression_slope(velocity_points), 4)
 
     most_cited_work = works[0] if works else None
-    top_collaborator = collaborators_payload["collaborators"][0] if collaborators_payload["collaborators"] else None
+    top_collaborator = (
+        collaborators_payload["collaborators"][0]
+        if collaborators_payload["collaborators"]
+        else None
+    )
     collaboration_density = round(
         (len(collaborators_payload["collaborators"]) / max(1, total_works)),
         4,
     )
-    dominant_theme = themes_payload["clusters"][0]["label"] if themes_payload["clusters"] else ""
+    dominant_theme = (
+        themes_payload["clusters"][0]["label"] if themes_payload["clusters"] else ""
+    )
     theme_citation_averages = [
-        {"cluster_id": item["cluster_id"], "label": item["label"], "citation_mean": item["citation_mean"]}
+        {
+            "cluster_id": item["cluster_id"],
+            "label": item["label"],
+            "citation_mean": item["citation_mean"],
+        }
         for item in themes_payload["clusters"]
     ]
 
@@ -218,7 +232,9 @@ def _build_analysis_evidence_pack(*, user_id: str) -> dict[str, Any]:
     works_with_abstract = sum(
         1 for work in works if str(work.get("abstract") or "").strip()
     )
-    works_with_citations = sum(1 for item in ranked if int(item.get("citations", 0) or 0) > 0)
+    works_with_citations = sum(
+        1 for item in ranked if int(item.get("citations", 0) or 0) > 0
+    )
     return {
         "counts": {
             "total_works": len(works),
@@ -337,8 +353,12 @@ Rules:
                     "Citation records are absent across imported works."
                 )
         return {
-            "scholarly_impact_summary": str(parsed.get("scholarly_impact_summary", "")).strip(),
-            "collaboration_analysis": str(parsed.get("collaboration_analysis", "")).strip(),
+            "scholarly_impact_summary": str(
+                parsed.get("scholarly_impact_summary", "")
+            ).strip(),
+            "collaboration_analysis": str(
+                parsed.get("collaboration_analysis", "")
+            ).strip(),
             "thematic_evolution": str(parsed.get("thematic_evolution", "")).strip(),
             "strengths": strengths,
             "blind_spots": blind_spots,
@@ -356,10 +376,16 @@ Rules:
         if not themes.get("clusters"):
             confidence_markers.append("Theme clustering is not yet available.")
         if evidence_pack["counts"]["works_with_abstract"] == 0:
-            confidence_markers.append("No abstracts are available for thematic interpretation.")
+            confidence_markers.append(
+                "No abstracts are available for thematic interpretation."
+            )
         if evidence_pack["counts"]["works_with_citations"] == 0:
             confidence_markers.append("Citation coverage is currently unavailable.")
-        top_work = evidence_pack["top_cited_works"][0] if evidence_pack["top_cited_works"] else None
+        top_work = (
+            evidence_pack["top_cited_works"][0]
+            if evidence_pack["top_cited_works"]
+            else None
+        )
         top_work_line = (
             f"Most cited work currently visible is '{top_work.get('title', 'n/a')}' "
             f"({top_work.get('citations', 0)} citations)."

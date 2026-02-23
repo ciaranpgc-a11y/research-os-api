@@ -100,7 +100,8 @@ def _build_prompt(
     freeform_instruction: str | None,
 ) -> str:
     constraint_lines = [
-        f"- {constraint}: {_CONSTRAINT_GUIDANCE[constraint]}" for constraint in constraints
+        f"- {constraint}: {_CONSTRAINT_GUIDANCE[constraint]}"
+        for constraint in constraints
     ]
     if not constraint_lines:
         constraint_lines = ["- None"]
@@ -178,7 +179,9 @@ def regenerate_paragraph_text(
     normalized_constraints = _normalize_constraints(constraints)
     normalized_evidence = _normalize_evidence_links(evidence_links)
     normalized_citations = [
-        citation_id.strip() for citation_id in (citation_ids or []) if citation_id.strip()
+        citation_id.strip()
+        for citation_id in (citation_ids or [])
+        if citation_id.strip()
     ]
 
     prompt = _build_prompt(

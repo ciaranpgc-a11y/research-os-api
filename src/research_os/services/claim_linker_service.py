@@ -61,7 +61,9 @@ _LINK_SUGGESTIONS: list[dict[str, str]] = [
 def _normalize_claim_ids(claim_ids: list[str] | None) -> set[str]:
     if not claim_ids:
         return set()
-    normalized = {claim_id.strip().lower() for claim_id in claim_ids if claim_id.strip()}
+    normalized = {
+        claim_id.strip().lower() for claim_id in claim_ids if claim_id.strip()
+    }
     return normalized
 
 
@@ -87,4 +89,3 @@ def suggest_claim_links(
         "generated_at": datetime.now(timezone.utc),
         "suggestions": suggestions,
     }
-

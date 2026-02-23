@@ -34,7 +34,10 @@ def _wait_for_job_terminal_status(
 def _assert_job_cost_estimates(payload: dict) -> None:
     assert payload["estimated_input_tokens"] > 0
     assert payload["estimated_output_tokens_low"] > 0
-    assert payload["estimated_output_tokens_high"] >= payload["estimated_output_tokens_low"]
+    assert (
+        payload["estimated_output_tokens_high"]
+        >= payload["estimated_output_tokens_low"]
+    )
     assert payload["estimated_cost_usd_low"] >= 0
     assert payload["estimated_cost_usd_high"] >= payload["estimated_cost_usd_low"]
     assert payload["pricing_model"] == "gpt-4.1-mini"
@@ -288,10 +291,7 @@ def test_v1_library_asset_upload_returns_400_when_multipart_parser_unavailable(
 
     assert response.status_code == 400
     assert response.json()["error"]["type"] == "bad_request"
-    assert (
-        "Multipart parsing is unavailable"
-        in response.json()["error"]["detail"]
-    )
+    assert "Multipart parsing is unavailable" in response.json()["error"]["detail"]
 
 
 def test_v1_aawe_selection_insight_returns_claim_payload(monkeypatch) -> None:
@@ -411,7 +411,9 @@ def test_v1_put_aawe_claim_citations_updates_claim_state(monkeypatch) -> None:
     assert get_payload["missing_slots"] == 1
 
 
-def test_v1_put_aawe_claim_citations_returns_404_for_unknown_citation(monkeypatch) -> None:
+def test_v1_put_aawe_claim_citations_returns_404_for_unknown_citation(
+    monkeypatch,
+) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     _set_citation_state(monkeypatch)
 
@@ -440,11 +442,14 @@ def test_v1_export_aawe_citations_returns_references_text(monkeypatch) -> None:
         )
 
     assert response.status_code == 200
-    assert "attachment; filename=\"aawe-references.txt\"" in response.headers.get(
+    assert 'attachment; filename="aawe-references.txt"' in response.headers.get(
         "content-disposition", ""
     )
     assert "# AAWE References Export" in response.text
-    assert "McDonagh TA, Metra M, Adamo M, et al. Eur Heart J. 2023;44:3599-3726." in response.text
+    assert (
+        "McDonagh TA, Metra M, Adamo M, et al. Eur Heart J. 2023;44:3599-3726."
+        in response.text
+    )
 
 
 def test_v1_aawe_selection_insight_reflects_claim_citation_updates(monkeypatch) -> None:
@@ -483,7 +488,10 @@ def test_v1_estimate_aawe_generation_returns_cost_projection(monkeypatch) -> Non
     payload = response.json()
     assert payload["pricing_model"] == "gpt-4.1-mini"
     assert payload["estimated_cost_usd_high"] >= payload["estimated_cost_usd_low"]
-    assert payload["estimated_output_tokens_high"] >= payload["estimated_output_tokens_low"]
+    assert (
+        payload["estimated_output_tokens_high"]
+        >= payload["estimated_output_tokens_low"]
+    )
 
 
 def test_v1_plan_aawe_sections_returns_section_plan(monkeypatch) -> None:
@@ -512,7 +520,10 @@ def test_v1_plan_aawe_sections_returns_section_plan(monkeypatch) -> None:
     assert payload["inferred_study_type"] in {"observational", "cohort"}
     assert len(payload["items"]) == 3
     assert payload["items"][0]["section"] == "introduction"
-    assert payload["total_estimated_cost_usd_high"] >= payload["total_estimated_cost_usd_low"]
+    assert (
+        payload["total_estimated_cost_usd_high"]
+        >= payload["total_estimated_cost_usd_low"]
+    )
 
 
 def test_v1_generate_aawe_grounded_draft_returns_generated_payload(monkeypatch) -> None:
@@ -616,7 +627,12 @@ def test_v1_generate_aawe_grounded_draft_persists_section_when_requested(
             "style_profile": "technical",
             "generation_mode": "full",
             "draft": "Methods draft with anchors [E1] [CIT-003].",
-            "passes": [{"name": "polish", "content": "Methods draft with anchors [E1] [CIT-003]."}],
+            "passes": [
+                {
+                    "name": "polish",
+                    "content": "Methods draft with anchors [E1] [CIT-003].",
+                }
+            ],
             "evidence_anchor_labels": ["Adjusted denominator compatibility"],
             "citation_ids": ["CIT-003"],
             "unsupported_sentences": [],
@@ -653,7 +669,10 @@ def test_v1_generate_aawe_grounded_draft_persists_section_when_requested(
     payload = draft_response.json()
     assert payload["persisted"] is True
     assert payload["manuscript"]["id"] == manuscript_id
-    assert payload["manuscript"]["sections"]["methods"] == "Methods draft with anchors [E1] [CIT-003]."
+    assert (
+        payload["manuscript"]["sections"]["methods"]
+        == "Methods draft with anchors [E1] [CIT-003]."
+    )
 
     assert manuscript_fetch.status_code == 200
     assert (
@@ -828,7 +847,9 @@ def test_v1_cross_section_consistency_check_returns_issue_summary(
     assert payload["low_severity_count"] == 0
 
 
-def test_v1_regenerate_paragraph_updates_manuscript_section(monkeypatch, tmp_path) -> None:
+def test_v1_regenerate_paragraph_updates_manuscript_section(
+    monkeypatch, tmp_path
+) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     monkeypatch.setattr(
         "research_os.api.app.regenerate_paragraph_text",
@@ -883,12 +904,15 @@ def test_v1_regenerate_paragraph_updates_manuscript_section(monkeypatch, tmp_pat
     payload = regen_response.json()
     assert payload["paragraph_index"] == 1
     assert payload["persisted"] is True
-    assert "Revised discussion sentence with caution" in payload["regenerated_paragraph"]
+    assert (
+        "Revised discussion sentence with caution" in payload["regenerated_paragraph"]
+    )
 
     assert manuscript_fetch.status_code == 200
-    assert "Revised discussion sentence with caution" in manuscript_fetch.json()["sections"][
-        "discussion"
-    ]
+    assert (
+        "Revised discussion sentence with caution"
+        in manuscript_fetch.json()["sections"]["discussion"]
+    )
 
 
 def test_v1_citation_autofill_returns_updated_claim_states(monkeypatch) -> None:
@@ -952,15 +976,20 @@ def test_v1_export_aawe_reference_pack_returns_ama_style(monkeypatch) -> None:
         )
 
     assert response.status_code == 200
-    assert "attachment; filename=\"aawe-reference-pack-ama.txt\"" in response.headers.get(
+    assert 'attachment; filename="aawe-reference-pack-ama.txt"' in response.headers.get(
         "content-disposition",
         "",
     )
     assert "- Style: AMA" in response.text
-    assert "TRIPOD+AI: Updated reporting guidance for clinical prediction models." in response.text
+    assert (
+        "TRIPOD+AI: Updated reporting guidance for clinical prediction models."
+        in response.text
+    )
 
 
-def test_v1_qc_gated_export_markdown_blocks_on_high_severity(monkeypatch, tmp_path) -> None:
+def test_v1_qc_gated_export_markdown_blocks_on_high_severity(
+    monkeypatch, tmp_path
+) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     monkeypatch.setattr(
         "research_os.api.app.run_qc_checks",
@@ -1172,9 +1201,7 @@ def test_v1_get_project_manuscript_returns_404_for_missing_manuscript(
     assert response.json()["error"]["type"] == "not_found"
 
 
-def test_v1_create_list_and_restore_manuscript_snapshot(
-    monkeypatch, tmp_path
-) -> None:
+def test_v1_create_list_and_restore_manuscript_snapshot(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
 
     with TestClient(app) as client:
@@ -1225,7 +1252,9 @@ def test_v1_create_list_and_restore_manuscript_snapshot(
     assert create_snapshot_response.status_code == 200
     snapshot_payload = create_snapshot_response.json()
     assert snapshot_payload["label"] == "Baseline before edits"
-    assert snapshot_payload["sections"]["methods"] == "Original methods snapshot content"
+    assert (
+        snapshot_payload["sections"]["methods"] == "Original methods snapshot content"
+    )
 
     assert list_snapshots_response.status_code == 200
     assert len(list_snapshots_response.json()) == 1
@@ -2197,7 +2226,9 @@ def test_v1_auth_oauth_connect_and_callback_endpoints(monkeypatch, tmp_path) -> 
     )
 
     with TestClient(app) as client:
-        connect_response = client.get("/v1/auth/oauth/connect", params={"provider": "orcid"})
+        connect_response = client.get(
+            "/v1/auth/oauth/connect", params={"provider": "orcid"}
+        )
         callback_response = client.post(
             "/v1/auth/oauth/callback",
             json={"provider": "orcid", "state": "state-123", "code": "code-123"},
@@ -2226,7 +2257,10 @@ def test_v1_orcid_connect_callback_and_import(monkeypatch, tmp_path) -> None:
 
         monkeypatch.setattr(
             "research_os.api.app.create_orcid_connect_url",
-            lambda user_id: {"url": "https://orcid.org/oauth/authorize?state=test", "state": "test"},
+            lambda user_id: {
+                "url": "https://orcid.org/oauth/authorize?state=test",
+                "state": "test",
+            },
         )
         connect_response = client.get("/v1/orcid/connect", headers=_auth_headers(token))
 
@@ -2437,6 +2471,4 @@ def test_v1_plan_sections_can_include_persona_context(monkeypatch, tmp_path) -> 
     assert response.status_code == 200
     payload = response.json()
     evidence_expectations = payload["items"][0]["evidence_expectations"]
-    assert any(
-        "Persona context from works:" in item for item in evidence_expectations
-    )
+    assert any("Persona context from works:" in item for item in evidence_expectations)

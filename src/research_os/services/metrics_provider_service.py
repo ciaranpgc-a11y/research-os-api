@@ -27,7 +27,9 @@ class ManualMetricsProvider(MetricsProvider):
         return {
             "provider": self.provider_name,
             "citations_count": citations,
-            "influential_citations": int(influential) if influential is not None else None,
+            "influential_citations": int(influential)
+            if influential is not None
+            else None,
             "altmetric_score": float(altmetric) if altmetric is not None else None,
             "payload_subset": {"source": "manual"},
         }
@@ -270,7 +272,9 @@ class SemanticScholarMetricsProvider(MetricsProvider):
                     best, score = self._best_match_from_search(
                         title=title,
                         year=year,
-                        candidates=[item for item in candidates if isinstance(item, dict)],
+                        candidates=[
+                            item for item in candidates if isinstance(item, dict)
+                        ],
                     )
                     if best is not None and score >= 0.65:
                         payload = best
@@ -306,7 +310,9 @@ class SemanticScholarMetricsProvider(MetricsProvider):
         return {
             "provider": self.provider_name,
             "citations_count": citations,
-            "influential_citations": int(influential) if influential is not None else None,
+            "influential_citations": int(influential)
+            if influential is not None
+            else None,
             "altmetric_score": None,
             "payload_subset": {
                 "paper_id": payload.get("paperId"),

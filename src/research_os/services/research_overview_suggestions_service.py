@@ -170,7 +170,6 @@ JOURNAL_GUIDANCE_URLS: dict[str, list[str]] = {
     "bmj-open": [
         "https://bmjopen.bmj.com/pages/authors/",
     ],
-
     # Backward-compatible aliases
     "ehj-cardiovascular-imaging": [
         "https://academic.oup.com/ehjcimaging/pages/General_Instructions",
@@ -339,11 +338,11 @@ _ARTICLE_TYPE_HINTS: tuple[tuple[str, str], ...] = (
 
 
 def _html_to_candidate_lines(html: str) -> list[str]:
-    without_scripts = re.sub(
-        r"(?is)<(script|style|noscript).*?>.*?</\1>", " ", html
-    )
+    without_scripts = re.sub(r"(?is)<(script|style|noscript).*?>.*?</\1>", " ", html)
     normalized_breaks = re.sub(
-        r"(?i)</(p|li|h1|h2|h3|h4|h5|h6|div|tr|br|section|article)>", "\n", without_scripts
+        r"(?i)</(p|li|h1|h2|h3|h4|h5|h6|div|tr|br|section|article)>",
+        "\n",
+        without_scripts,
     )
     text = re.sub(r"(?s)<[^>]+>", " ", normalized_breaks)
     text = unescape(text)
@@ -422,7 +421,9 @@ def _is_same_site(host_a: str, host_b: str) -> bool:
     return left.endswith(f".{right}") or right.endswith(f".{left}")
 
 
-def _extract_candidate_guidance_links(base_url: str, html: str, limit: int = 2) -> list[str]:
+def _extract_candidate_guidance_links(
+    base_url: str, html: str, limit: int = 2
+) -> list[str]:
     parsed_base = urlparse(base_url)
     base_host = parsed_base.netloc
     if not base_host:
@@ -446,7 +447,9 @@ def _extract_candidate_guidance_links(base_url: str, html: str, limit: int = 2) 
         parsed_candidate = urlparse(absolute_url)
         if parsed_candidate.scheme not in {"http", "https"}:
             continue
-        if not parsed_candidate.netloc or not _is_same_site(base_host, parsed_candidate.netloc):
+        if not parsed_candidate.netloc or not _is_same_site(
+            base_host, parsed_candidate.netloc
+        ):
             continue
 
         if absolute_url in seen:
@@ -483,7 +486,10 @@ def _fetch_journal_guidance(target_journal: str) -> tuple[list[str], str]:
         if response.status_code >= 400:
             return None, None
         content_type = response.headers.get("content-type", "").lower()
-        if "text/html" not in content_type and "application/xhtml+xml" not in content_type:
+        if (
+            "text/html" not in content_type
+            and "application/xhtml+xml" not in content_type
+        ):
             return None, None
         excerpt = _extract_relevant_excerpt(response.text)
         if not excerpt:
@@ -633,7 +639,11 @@ def _extract_word_length_hint_from_excerpt(guidance_excerpt: str) -> str | None:
 
 
 def _infer_article_type_from_context(
-    *, research_category: str, research_type: str, article_type: str, summary_of_research: str
+    *,
+    research_category: str,
+    research_type: str,
+    article_type: str,
+    summary_of_research: str,
 ) -> str:
     current = article_type.strip()
     if current:
@@ -879,7 +889,10 @@ def _resolve_canonical_option(raw_choice: str, options: list[str]) -> str | None
         normalized_option = _normalize_choice_label(option)
         if not normalized_option:
             continue
-        if normalized_option in normalized_choice or normalized_choice in normalized_option:
+        if (
+            normalized_option in normalized_choice
+            or normalized_choice in normalized_option
+        ):
             return option
 
     choice_tokens = set(normalized_choice.split(" "))
@@ -911,7 +924,8 @@ def _coerce_recommendation(value: Any) -> dict[str, str] | None:
         return None
     return {
         "value": recommendation,
-        "rationale": rationale or "Recommended from journal requirements and study framing.",
+        "rationale": rationale
+        or "Recommended from journal requirements and study framing.",
     }
 
 
@@ -968,7 +982,12 @@ def _fallback_research_category_recommendation(
 
     heuristics: tuple[tuple[tuple[str, ...], str, str], ...] = (
         (
-            ("literature review", "narrative review", "review article", "scoping review"),
+            (
+                "literature review",
+                "narrative review",
+                "review article",
+                "scoping review",
+            ),
             "Methodological / Analytical",
             "The summary is framed as evidence synthesis rather than primary cohort data collection.",
         ),
@@ -978,12 +997,24 @@ def _fallback_research_category_recommendation(
             "The summary emphasises diagnostic performance framing.",
         ),
         (
-            ("prognostic", "risk model", "prediction model", "survival", "time-to-event"),
+            (
+                "prognostic",
+                "risk model",
+                "prediction model",
+                "survival",
+                "time-to-event",
+            ),
             "Prognostic / Risk Modelling",
             "The summary is centred on prognosis or risk prediction.",
         ),
         (
-            ("reproducibility", "repeatability", "inter-reader", "intra-observer", "test-retest"),
+            (
+                "reproducibility",
+                "repeatability",
+                "inter-reader",
+                "intra-observer",
+                "test-retest",
+            ),
             "Reproducibility / Technical Validation",
             "The summary focuses on technical repeatability or measurement reliability.",
         ),
@@ -993,17 +1024,34 @@ def _fallback_research_category_recommendation(
             "The summary references AI or radiomics methods.",
         ),
         (
-            ("haemodynamic integration", "hemodynamic integration", "multimodality", "integration study"),
+            (
+                "haemodynamic integration",
+                "hemodynamic integration",
+                "multimodality",
+                "integration study",
+            ),
             "Multimodality Integration",
             "The summary describes integration across modalities or linked physiological datasets.",
         ),
         (
-            ("biomarker", "cross-sectional", "longitudinal imaging", "mechanistic imaging"),
+            (
+                "biomarker",
+                "cross-sectional",
+                "longitudinal imaging",
+                "mechanistic imaging",
+            ),
             "Imaging Biomarker Study",
             "The summary focuses on imaging-derived biomarker characterization.",
         ),
         (
-            ("retrospective", "prospective", "cohort", "registry", "case-control", "case series"),
+            (
+                "retrospective",
+                "prospective",
+                "cohort",
+                "registry",
+                "case-control",
+                "case series",
+            ),
             "Observational Clinical Cohort",
             "The summary describes an observational clinical cohort design.",
         ),
@@ -1191,7 +1239,9 @@ def _is_valid_summary_rewrite(candidate: str, source_summary: str) -> bool:
         overlap_count = len(source_tokens.intersection(candidate_tokens))
         if overlap_count < 2 and len(source_tokens) >= 4:
             return False
-    new_token_ratio = len(candidate_tokens.difference(source_tokens)) / max(1, len(candidate_tokens))
+    new_token_ratio = len(candidate_tokens.difference(source_tokens)) / max(
+        1, len(candidate_tokens)
+    )
     if new_token_ratio > 0.85:
         return False
     return True
@@ -1220,7 +1270,9 @@ def _sanitize_summary_refinements(
     return accepted
 
 
-def _merge_unique_strings(primary: list[str], fallback: list[str], max_items: int = 3) -> list[str]:
+def _merge_unique_strings(
+    primary: list[str], fallback: list[str], max_items: int = 3
+) -> list[str]:
     merged: list[str] = []
     seen: set[str] = set()
     for source in (primary, fallback):
@@ -1308,11 +1360,13 @@ def generate_research_overview_suggestions(
     allowed_study_types = _clean_option_list(study_type_options)
     if research_type.strip():
         allowed_study_types = _clean_option_list([*allowed_study_types, research_type])
-    fallback_research_category_recommendation = _fallback_research_category_recommendation(
-        research_category=research_category,
-        research_type=research_type,
-        article_type=article_type,
-        summary_of_research=summary_of_research,
+    fallback_research_category_recommendation = (
+        _fallback_research_category_recommendation(
+            research_category=research_category,
+            research_type=research_type,
+            article_type=article_type,
+            summary_of_research=summary_of_research,
+        )
     )
     fallback_study_type_recommendation = _fallback_study_type_recommendation(
         allowed_study_types=allowed_study_types,
@@ -1330,21 +1384,24 @@ def generate_research_overview_suggestions(
         interpretation_mode=interpretation_mode,
         preferred_model=preferred_model,
     )
-    journal_article_recommendation, journal_word_length_recommendation, journal_model = (
-        _generate_journal_format_recommendations(
-            target_journal=target_journal,
-            research_category=research_category,
-            research_type=research_type,
-            article_type=article_type,
-            interpretation_mode=interpretation_mode,
-            summary_of_research=summary_of_research,
-            guidance_excerpt=guidance_excerpt,
-            preferred_model=preferred_model,
-        )
+    (
+        journal_article_recommendation,
+        journal_word_length_recommendation,
+        journal_model,
+    ) = _generate_journal_format_recommendations(
+        target_journal=target_journal,
+        research_category=research_category,
+        research_type=research_type,
+        article_type=article_type,
+        interpretation_mode=interpretation_mode,
+        summary_of_research=summary_of_research,
+        guidance_excerpt=guidance_excerpt,
+        preferred_model=preferred_model,
     )
-    allowed_study_type_block = "\n".join(
-        f"- {option}" for option in allowed_study_types
-    ) or "- No canonical study types provided."
+    allowed_study_type_block = (
+        "\n".join(f"- {option}" for option in allowed_study_types)
+        or "- No canonical study types provided."
+    )
 
     prompt = f"""
 You are helping draft a rigorous manuscript plan for a small retrospective observational cardiovascular/imaging study.
@@ -1404,7 +1461,9 @@ Rules:
         model_used=combined_model_used,
         summary_refinements=summary_editor_refinements,
     )
-    base_payload["research_category_suggestion"] = fallback_research_category_recommendation
+    base_payload["research_category_suggestion"] = (
+        fallback_research_category_recommendation
+    )
     base_payload["research_type_suggestion"] = fallback_study_type_recommendation
     base_payload["article_type_recommendation"] = journal_article_recommendation
     base_payload["word_length_recommendation"] = journal_word_length_recommendation
@@ -1416,7 +1475,9 @@ Rules:
             summary_of_research,
             max_items=1,
         )
-        guidance_suggestions = _coerce_str_list(parsed.get("guidance_suggestions"), max_items=3)
+        guidance_suggestions = _coerce_str_list(
+            parsed.get("guidance_suggestions"), max_items=3
+        )
         payload = _empty_payload(
             fetched_urls=fetched_urls,
             model_used=combined_model_used,
@@ -1426,14 +1487,22 @@ Rules:
                 max_items=1,
             ),
         )
-        payload["research_category_suggestion"] = _coerce_research_category_recommendation(
-            parsed.get("research_category_suggestion")
-        ) or fallback_research_category_recommendation
-        payload["research_type_suggestion"] = _coerce_study_type_recommendation(
-            parsed.get("research_type_suggestion"), allowed_study_types
-        ) or fallback_study_type_recommendation
-        payload["interpretation_mode_recommendation"] = _coerce_interpretation_mode_recommendation(
-            parsed.get("interpretation_mode_recommendation")
+        payload["research_category_suggestion"] = (
+            _coerce_research_category_recommendation(
+                parsed.get("research_category_suggestion")
+            )
+            or fallback_research_category_recommendation
+        )
+        payload["research_type_suggestion"] = (
+            _coerce_study_type_recommendation(
+                parsed.get("research_type_suggestion"), allowed_study_types
+            )
+            or fallback_study_type_recommendation
+        )
+        payload["interpretation_mode_recommendation"] = (
+            _coerce_interpretation_mode_recommendation(
+                parsed.get("interpretation_mode_recommendation")
+            )
         )
         payload["article_type_recommendation"] = journal_article_recommendation
         payload["word_length_recommendation"] = journal_word_length_recommendation

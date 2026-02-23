@@ -102,7 +102,9 @@ def _create_generation_jobs_table() -> None:
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(["manuscript_id"], ["manuscripts.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["manuscript_id"], ["manuscripts.id"], ondelete="CASCADE"
+        ),
         sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -117,7 +119,9 @@ def _create_manuscript_snapshots_table() -> None:
         sa.Column("label", sa.String(length=255), nullable=False),
         sa.Column("sections", sa.JSON(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(["manuscript_id"], ["manuscripts.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["manuscript_id"], ["manuscripts.id"], ondelete="CASCADE"
+        ),
         sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -130,8 +134,15 @@ def _create_users_table() -> None:
         sa.Column("email", sa.String(length=320), nullable=False),
         sa.Column("password_hash", sa.String(length=512), nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("1")),
-        sa.Column("role", sa.String(length=16), nullable=False, server_default=sa.text("'user'")),
+        sa.Column(
+            "is_active", sa.Boolean(), nullable=False, server_default=sa.text("1")
+        ),
+        sa.Column(
+            "role",
+            sa.String(length=16),
+            nullable=False,
+            server_default=sa.text("'user'"),
+        ),
         sa.Column("orcid_id", sa.String(length=64), nullable=True),
         sa.Column("google_sub", sa.String(length=128), nullable=True),
         sa.Column("microsoft_sub", sa.String(length=128), nullable=True),
@@ -140,9 +151,19 @@ def _create_users_table() -> None:
         sa.Column("orcid_token_expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("impact_last_computed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("orcid_last_synced_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("two_factor_enabled", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column(
+            "two_factor_enabled",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("0"),
+        ),
         sa.Column("two_factor_secret", sa.Text(), nullable=True),
-        sa.Column("two_factor_backup_codes", sa.JSON(), nullable=False, server_default=sa.text("'[]'")),
+        sa.Column(
+            "two_factor_backup_codes",
+            sa.JSON(),
+            nullable=False,
+            server_default=sa.text("'[]'"),
+        ),
         sa.Column("two_factor_confirmed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("email_verified_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_sign_in_at", sa.DateTime(timezone=True), nullable=True),
@@ -170,8 +191,12 @@ def _create_auth_sessions_table() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("token_hash"),
     )
-    op.create_index("ix_auth_sessions_user_id", "auth_sessions", ["user_id"], unique=False)
-    op.create_index("ix_auth_sessions_token_hash", "auth_sessions", ["token_hash"], unique=False)
+    op.create_index(
+        "ix_auth_sessions_user_id", "auth_sessions", ["user_id"], unique=False
+    )
+    op.create_index(
+        "ix_auth_sessions_token_hash", "auth_sessions", ["token_hash"], unique=False
+    )
 
 
 def _create_orcid_oauth_states_table() -> None:
@@ -187,8 +212,15 @@ def _create_orcid_oauth_states_table() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("state_token"),
     )
-    op.create_index("ix_orcid_oauth_states_user_id", "orcid_oauth_states", ["user_id"], unique=False)
-    op.create_index("ix_orcid_oauth_states_state_token", "orcid_oauth_states", ["state_token"], unique=False)
+    op.create_index(
+        "ix_orcid_oauth_states_user_id", "orcid_oauth_states", ["user_id"], unique=False
+    )
+    op.create_index(
+        "ix_orcid_oauth_states_state_token",
+        "orcid_oauth_states",
+        ["state_token"],
+        unique=False,
+    )
 
 
 def _create_auth_login_challenges_table() -> None:
@@ -323,7 +355,9 @@ def _create_works_table() -> None:
         sa.Column("url", sa.Text(), nullable=False),
         sa.Column("provenance", sa.String(length=32), nullable=False),
         sa.Column("cluster_id", sa.String(length=64), nullable=True),
-        sa.Column("user_edited", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column(
+            "user_edited", sa.Boolean(), nullable=False, server_default=sa.text("0")
+        ),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
@@ -344,7 +378,12 @@ def _create_authors_table() -> None:
         sa.Column("orcid_id", sa.String(length=64), nullable=True),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_authors_canonical_name_lower", "authors", ["canonical_name_lower"], unique=False)
+    op.create_index(
+        "ix_authors_canonical_name_lower",
+        "authors",
+        ["canonical_name_lower"],
+        unique=False,
+    )
     op.create_index("ix_authors_orcid_id", "authors", ["orcid_id"], unique=False)
 
 
@@ -378,7 +417,9 @@ def _create_metrics_snapshots_table() -> None:
         sa.ForeignKeyConstraint(["work_id"], ["works.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_metrics_snapshots_work_id", "metrics_snapshots", ["work_id"], unique=False)
+    op.create_index(
+        "ix_metrics_snapshots_work_id", "metrics_snapshots", ["work_id"], unique=False
+    )
 
 
 def _create_embeddings_table() -> None:
@@ -407,12 +448,16 @@ def _create_collaborator_edges_table() -> None:
         sa.Column("last_year", sa.Integer(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(["collaborator_author_id"], ["authors.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["collaborator_author_id"], ["authors.id"], ondelete="CASCADE"
+        ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("user_id", "collaborator_author_id"),
     )
-    op.create_index("ix_collaborator_edges_user_id", "collaborator_edges", ["user_id"], unique=False)
+    op.create_index(
+        "ix_collaborator_edges_user_id", "collaborator_edges", ["user_id"], unique=False
+    )
     op.create_index(
         "ix_collaborator_edges_collaborator_author_id",
         "collaborator_edges",
@@ -437,7 +482,9 @@ def _create_impact_snapshots_table() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("ix_impact_snapshots_user_id", "impact_snapshots", ["user_id"], unique=False)
+    op.create_index(
+        "ix_impact_snapshots_user_id", "impact_snapshots", ["user_id"], unique=False
+    )
 
 
 def _add_generation_job_column_if_missing(
@@ -542,10 +589,13 @@ def upgrade() -> None:
         _create_users_table()
     else:
         if not _column_exists("users", "google_sub"):
-            op.add_column("users", sa.Column("google_sub", sa.String(length=128), nullable=True))
+            op.add_column(
+                "users", sa.Column("google_sub", sa.String(length=128), nullable=True)
+            )
         if not _column_exists("users", "microsoft_sub"):
             op.add_column(
-                "users", sa.Column("microsoft_sub", sa.String(length=128), nullable=True)
+                "users",
+                sa.Column("microsoft_sub", sa.String(length=128), nullable=True),
             )
         if not _column_exists("users", "two_factor_enabled"):
             op.add_column(
@@ -558,7 +608,9 @@ def upgrade() -> None:
                 ),
             )
         if not _column_exists("users", "two_factor_secret"):
-            op.add_column("users", sa.Column("two_factor_secret", sa.Text(), nullable=True))
+            op.add_column(
+                "users", sa.Column("two_factor_secret", sa.Text(), nullable=True)
+            )
         if not _column_exists("users", "two_factor_backup_codes"):
             op.add_column(
                 "users",
@@ -572,12 +624,16 @@ def upgrade() -> None:
         if not _column_exists("users", "two_factor_confirmed_at"):
             op.add_column(
                 "users",
-                sa.Column("two_factor_confirmed_at", sa.DateTime(timezone=True), nullable=True),
+                sa.Column(
+                    "two_factor_confirmed_at", sa.DateTime(timezone=True), nullable=True
+                ),
             )
         if not _column_exists("users", "email_verified_at"):
             op.add_column(
                 "users",
-                sa.Column("email_verified_at", sa.DateTime(timezone=True), nullable=True),
+                sa.Column(
+                    "email_verified_at", sa.DateTime(timezone=True), nullable=True
+                ),
             )
         if not _column_exists("users", "last_sign_in_at"):
             op.add_column(

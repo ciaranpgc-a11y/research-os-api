@@ -195,9 +195,7 @@ def _exchange_oauth_code(
     with httpx.Client(timeout=20.0) as client:
         response = client.post(config["token_url"], data=payload, headers=headers)
     if response.status_code >= 400:
-        raise AuthValidationError(
-            f"{provider.capitalize()} token exchange failed."
-        )
+        raise AuthValidationError(f"{provider.capitalize()} token exchange failed.")
     return response.json()
 
 
@@ -277,7 +275,7 @@ def _prune_sessions(*, session, user_id: str) -> None:
         return
     active.sort(key=lambda row: _as_utc(row.created_at) or now)
     surplus = len(active) - (MAX_ACTIVE_SESSIONS - 1)
-    for row in active[:max(0, surplus)]:
+    for row in active[: max(0, surplus)]:
         row.revoked_at = now
 
 
@@ -345,7 +343,9 @@ def _resolve_user_for_oauth(
         return user, is_new_user
 
     if provider == "google":
-        user = session.scalars(select(User).where(User.google_sub == provider_subject)).first()
+        user = session.scalars(
+            select(User).where(User.google_sub == provider_subject)
+        ).first()
     elif provider == "microsoft":
         user = session.scalars(
             select(User).where(User.microsoft_sub == provider_subject)

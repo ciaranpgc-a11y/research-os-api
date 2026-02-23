@@ -57,7 +57,13 @@ _SECTION_OUTPUT_TOKEN_RANGES = {
     "conclusion": (70, 180),
 }
 _ACTIVE_JOB_STATUSES = ("queued", "running", "cancel_requested")
-_DAILY_BUDGET_STATUSES = ("queued", "running", "cancel_requested", "completed", "failed")
+_DAILY_BUDGET_STATUSES = (
+    "queued",
+    "running",
+    "cancel_requested",
+    "completed",
+    "failed",
+)
 _RETRYABLE_STATUSES = ("failed", "cancelled")
 _TERMINAL_STATUSES = ("completed", "failed", "cancelled")
 
@@ -132,14 +138,12 @@ def estimate_generation_cost(
         output_low += low
         output_high += high
 
-    estimated_cost_usd_low = (
-        (estimated_input_tokens / 1_000_000) * pricing["input"]
-        + (output_low / 1_000_000) * pricing["output"]
-    )
-    estimated_cost_usd_high = (
-        (estimated_input_tokens / 1_000_000) * pricing["input"]
-        + (output_high / 1_000_000) * pricing["output"]
-    )
+    estimated_cost_usd_low = (estimated_input_tokens / 1_000_000) * pricing["input"] + (
+        output_low / 1_000_000
+    ) * pricing["output"]
+    estimated_cost_usd_high = (estimated_input_tokens / 1_000_000) * pricing[
+        "input"
+    ] + (output_high / 1_000_000) * pricing["output"]
     return {
         "pricing_model": model,
         "estimated_input_tokens": estimated_input_tokens,
@@ -150,7 +154,9 @@ def estimate_generation_cost(
     }
 
 
-def _project_daily_estimated_spend_high(session, project_id: str, today_utc: date) -> float:
+def _project_daily_estimated_spend_high(
+    session, project_id: str, today_utc: date
+) -> float:
     jobs = session.scalars(
         select(GenerationJob).where(
             GenerationJob.project_id == project_id,
@@ -412,7 +418,9 @@ def get_generation_job_record(job_id: str) -> GenerationJob:
     try:
         job = session.get(GenerationJob, job_id)
         if job is None:
-            raise GenerationJobNotFoundError(f"Generation job '{job_id}' was not found.")
+            raise GenerationJobNotFoundError(
+                f"Generation job '{job_id}' was not found."
+            )
         session.expunge(job)
         return job
     finally:
@@ -459,7 +467,9 @@ def cancel_generation_job(job_id: str) -> GenerationJob:
     try:
         job = session.get(GenerationJob, job_id)
         if job is None:
-            raise GenerationJobNotFoundError(f"Generation job '{job_id}' was not found.")
+            raise GenerationJobNotFoundError(
+                f"Generation job '{job_id}' was not found."
+            )
 
         if job.status in _TERMINAL_STATUSES:
             session.expunge(job)

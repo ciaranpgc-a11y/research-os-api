@@ -127,7 +127,9 @@ def _safe_float(value: Any) -> float | None:
         return None
 
 
-def _extract_pmid_and_journal_metric(metric_payload: dict[str, Any]) -> tuple[str | None, float | None]:
+def _extract_pmid_and_journal_metric(
+    metric_payload: dict[str, Any],
+) -> tuple[str | None, float | None]:
     pmid = _extract_pmid(metric_payload.get("pmid"))
     if not pmid:
         pmid = _extract_pmid(metric_payload.get("pubmed_id"))
@@ -197,14 +199,18 @@ def _author_name_key(value: str) -> str:
     return _normalize_author_name(value).lower()
 
 
-def _upsert_author(session, *, canonical_name: str, orcid_id: str | None = None) -> Author:
+def _upsert_author(
+    session, *, canonical_name: str, orcid_id: str | None = None
+) -> Author:
     clean_name = _normalize_author_name(canonical_name)
     if not clean_name:
         raise PersonaValidationError("Author name cannot be empty.")
     clean_orcid = re.sub(r"\s+", "", (orcid_id or "").strip()) or None
 
     if clean_orcid:
-        author = session.scalars(select(Author).where(Author.orcid_id == clean_orcid)).first()
+        author = session.scalars(
+            select(Author).where(Author.orcid_id == clean_orcid)
+        ).first()
         if author is not None:
             author.canonical_name = clean_name
             author.canonical_name_lower = _author_name_key(clean_name)
@@ -271,7 +277,8 @@ def upsert_work(
             "work_type": re.sub(r"\s+", " ", str(work.get("work_type", "")).strip()),
             "venue_name": re.sub(r"\s+", " ", str(work.get("venue_name", "")).strip()),
             "publisher": re.sub(r"\s+", " ", str(work.get("publisher", "")).strip()),
-            "abstract": re.sub(r"\s+", " ", str(work.get("abstract", "")).strip()) or None,
+            "abstract": re.sub(r"\s+", " ", str(work.get("abstract", "")).strip())
+            or None,
             "keywords": _normalize_keywords(work.get("keywords")),
             "url": url,
             "provenance": provenance,
@@ -322,9 +329,10 @@ def upsert_work(
                 author_name = _normalize_author_name(str(author_item.get("name", "")))
                 if not author_name:
                     continue
-                author_orcid = re.sub(
-                    r"\s+", "", str(author_item.get("orcid_id", "")).strip()
-                ) or None
+                author_orcid = (
+                    re.sub(r"\s+", "", str(author_item.get("orcid_id", "")).strip())
+                    or None
+                )
                 author = _upsert_author(
                     session,
                     canonical_name=author_name,
@@ -368,7 +376,9 @@ def list_works(*, user_id: str) -> list[dict[str, Any]]:
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
         works = session.scalars(
-            select(Work).where(Work.user_id == user_id).order_by(Work.year.desc(), Work.updated_at.desc())
+            select(Work)
+            .where(Work.user_id == user_id)
+            .order_by(Work.year.desc(), Work.updated_at.desc())
         ).all()
         work_ids = [work.id for work in works]
         latest_metrics = _latest_metrics_by_work(session, work_ids)
@@ -398,7 +408,9 @@ def list_works(*, user_id: str) -> list[dict[str, Any]]:
             metric_payload = dict(snapshot.metric_payload or {}) if snapshot else {}
             pmid = _extract_pmid(work.url)
             journal_metric = None
-            derived_pmid, derived_metric = _extract_pmid_and_journal_metric(metric_payload)
+            derived_pmid, derived_metric = _extract_pmid_and_journal_metric(
+                metric_payload
+            )
             if not pmid:
                 pmid = derived_pmid
             if derived_metric is not None:
@@ -524,10 +536,14 @@ def list_collaborators(*, user_id: str) -> dict[str, Any]:
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
         edges = session.scalars(
-            select(CollaboratorEdge).where(CollaboratorEdge.user_id == user_id).order_by(CollaboratorEdge.n_shared_works.desc())
+            select(CollaboratorEdge)
+            .where(CollaboratorEdge.user_id == user_id)
+            .order_by(CollaboratorEdge.n_shared_works.desc())
         ).all()
         author_ids = [edge.collaborator_author_id for edge in edges]
-        authors = session.scalars(select(Author).where(Author.id.in_(author_ids or [""]))).all()
+        authors = session.scalars(
+            select(Author).where(Author.id.in_(author_ids or [""]))
+        ).all()
         author_name = {author.id: author.canonical_name for author in authors}
 
         collaborators = [
@@ -677,7 +693,9 @@ def sync_metrics(
                 metric_rows.append(
                     {
                         "work_id": work_id,
-                        "provider": str(metrics.get("provider", provider.provider_name)),
+                        "provider": str(
+                            metrics.get("provider", provider.provider_name)
+                        ),
                         "citations_count": int(metrics.get("citations_count", 0) or 0),
                         "influential_citations": (
                             int(metrics["influential_citations"])
@@ -733,7 +751,9 @@ def _local_embedding(text: str, size: int = 96) -> list[float]:
     return [value / norm for value in vector]
 
 
-def _embed_text(text: str, preferred_model: str = DEFAULT_EMBEDDING_MODEL) -> tuple[list[float], str]:
+def _embed_text(
+    text: str, preferred_model: str = DEFAULT_EMBEDDING_MODEL
+) -> tuple[list[float], str]:
     clean = re.sub(r"\s+", " ", text).strip()
     if not clean:
         return [], FALLBACK_EMBEDDING_MODEL
@@ -767,7 +787,9 @@ def _label_theme_from_text(cluster_key: str, titles: list[str]) -> str:
     return "General"
 
 
-def generate_embeddings(*, user_id: str, model_name: str = DEFAULT_EMBEDDING_MODEL) -> dict[str, Any]:
+def generate_embeddings(
+    *, user_id: str, model_name: str = DEFAULT_EMBEDDING_MODEL
+) -> dict[str, Any]:
     create_all_tables()
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
@@ -812,7 +834,9 @@ def _cluster_themes_in_session(session, user_id: str) -> list[dict[str, Any]]:
     grouped: dict[str, list[Work]] = defaultdict(list)
     for work in works:
         key = _work_theme_key(work)
-        cluster_id = f"cluster-{re.sub(r'[^a-z0-9]+', '-', key.lower()).strip('-') or 'general'}"
+        cluster_id = (
+            f"cluster-{re.sub(r'[^a-z0-9]+', '-', key.lower()).strip('-') or 'general'}"
+        )
         work.cluster_id = cluster_id
         grouped[cluster_id].append(work)
 
@@ -820,7 +844,11 @@ def _cluster_themes_in_session(session, user_id: str) -> list[dict[str, Any]]:
     latest = _latest_metrics_by_work(session, work_ids)
     payload: list[dict[str, Any]] = []
     for cluster_id, cluster_works in grouped.items():
-        citations = [int(latest[work.id].citations_count) for work in cluster_works if work.id in latest]
+        citations = [
+            int(latest[work.id].citations_count)
+            for work in cluster_works
+            if work.id in latest
+        ]
         label = _label_theme_from_text(
             cluster_id.removeprefix("cluster-"),
             [work.title for work in cluster_works],
@@ -877,7 +905,9 @@ def get_persona_context(*, user_id: str) -> dict[str, Any]:
 
         supporting_works = sorted(
             works,
-            key=lambda work: int(latest[work.id].citations_count) if work.id in latest else 0,
+            key=lambda work: (
+                int(latest[work.id].citations_count) if work.id in latest else 0
+            ),
             reverse=True,
         )[:8]
         cited_works = [
@@ -906,14 +936,18 @@ def persona_timeline(*, user_id: str) -> list[dict[str, Any]]:
         _resolve_user_or_raise(session, user_id)
         works = session.scalars(select(Work).where(Work.user_id == user_id)).all()
         latest = _latest_metrics_by_work(session, [work.id for work in works])
-        timeline: dict[int, dict[str, Any]] = defaultdict(lambda: {"year": 0, "n_works": 0, "citations": 0})
+        timeline: dict[int, dict[str, Any]] = defaultdict(
+            lambda: {"year": 0, "n_works": 0, "citations": 0}
+        )
         for work in works:
             if not isinstance(work.year, int):
                 continue
             row = timeline[work.year]
             row["year"] = work.year
             row["n_works"] += 1
-            row["citations"] += int(latest[work.id].citations_count) if work.id in latest else 0
+            row["citations"] += (
+                int(latest[work.id].citations_count) if work.id in latest else 0
+            )
         return [timeline[year] for year in sorted(timeline.keys())]
 
 
@@ -932,7 +966,9 @@ def serialise_metrics_distribution(*, user_id: str) -> dict[str, Any]:
                     "title": work.title,
                     "year": work.year,
                     "citations": citations,
-                    "provider": latest[work.id].provider if work.id in latest else "none",
+                    "provider": latest[work.id].provider
+                    if work.id in latest
+                    else "none",
                 }
             )
         rows.sort(key=lambda item: item["citations"], reverse=True)

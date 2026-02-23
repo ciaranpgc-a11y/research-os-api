@@ -84,7 +84,9 @@ def verify_password(password: str, stored_hash: str) -> bool:
             pass
         return values
 
-    def _verify_pbkdf2(*, iterations: int, salts: list[bytes], digests: list[bytes]) -> bool:
+    def _verify_pbkdf2(
+        *, iterations: int, salts: list[bytes], digests: list[bytes]
+    ) -> bool:
         for salt in salts:
             candidate = hashlib.pbkdf2_hmac("sha256", clean_password, salt, iterations)
             for digest in digests:

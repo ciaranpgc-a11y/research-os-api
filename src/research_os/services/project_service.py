@@ -321,10 +321,7 @@ def restore_manuscript_snapshot(
             raise ManuscriptSnapshotNotFoundError(
                 f"Snapshot '{snapshot_id}' was not found."
             )
-        if (
-            snapshot.project_id != project_id
-            or snapshot.manuscript_id != manuscript_id
-        ):
+        if snapshot.project_id != project_id or snapshot.manuscript_id != manuscript_id:
             raise ManuscriptSnapshotNotFoundError(
                 (
                     f"Snapshot '{snapshot_id}' was not found for manuscript "

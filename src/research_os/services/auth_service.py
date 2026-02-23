@@ -304,7 +304,9 @@ def _issue_password_reset_code(*, session, user: User) -> tuple[str, datetime]:
     return plain_code, code_row.expires_at
 
 
-def _resolve_user_from_session_token(*, session, token: str) -> tuple[User, AuthSession]:
+def _resolve_user_from_session_token(
+    *, session, token: str
+) -> tuple[User, AuthSession]:
     clean_token = (token or "").strip()
     if not clean_token:
         raise AuthValidationError("Session token is required.")
@@ -408,7 +410,7 @@ def _prune_sessions(*, session, user_id: str) -> None:
 
     active.sort(key=lambda row: _as_utc(row.created_at) or now)
     surplus = len(active) - (MAX_ACTIVE_SESSIONS - 1)
-    for row in active[:max(0, surplus)]:
+    for row in active[: max(0, surplus)]:
         row.revoked_at = now
 
 
@@ -450,7 +452,9 @@ def register_user(*, email: str, password: str, name: str) -> dict[str, object]:
         try:
             session.flush()
         except IntegrityError as exc:
-            raise AuthConflictError("An account with this email already exists.") from exc
+            raise AuthConflictError(
+                "An account with this email already exists."
+            ) from exc
         token, auth_session = _create_session(session=session, user=user)
         session.refresh(user)
         return _serialize_session_payload(
@@ -532,7 +536,9 @@ def update_current_user(
         try:
             session.flush()
         except IntegrityError as exc:
-            raise AuthConflictError("An account with this email already exists.") from exc
+            raise AuthConflictError(
+                "An account with this email already exists."
+            ) from exc
         session.refresh(user)
         return _serialize_user(user)
 
@@ -631,7 +637,9 @@ def request_email_verification(*, session_token: str) -> dict[str, object]:
                 "delivery_hint": "Email already verified.",
                 "code_preview": None,
             }
-        plain_code, expires_at = _issue_email_verification_code(session=session, user=user)
+        plain_code, expires_at = _issue_email_verification_code(
+            session=session, user=user
+        )
         expires_hint = _as_utc(expires_at)
         expires_text = (
             expires_hint.strftime("%d %b %Y %H:%M UTC")
@@ -693,7 +701,9 @@ def request_password_reset(*, email: str) -> dict[str, object]:
     create_all_tables()
     normalized_email = _normalize_email(email)
     with session_scope() as session:
-        user = session.scalars(select(User).where(User.email == normalized_email)).first()
+        user = session.scalars(
+            select(User).where(User.email == normalized_email)
+        ).first()
         if user is None or not user.is_active:
             return {
                 "requested": True,
@@ -730,7 +740,9 @@ def request_password_reset(*, email: str) -> dict[str, object]:
         }
 
 
-def confirm_password_reset(*, email: str, code: str, new_password: str) -> dict[str, object]:
+def confirm_password_reset(
+    *, email: str, code: str, new_password: str
+) -> dict[str, object]:
     create_all_tables()
     normalized_email = _normalize_email(email)
     clean_code = (code or "").strip().upper()
@@ -743,7 +755,9 @@ def confirm_password_reset(*, email: str, code: str, new_password: str) -> dict[
         raise AuthValidationError(str(exc)) from exc
 
     with session_scope() as session:
-        user = session.scalars(select(User).where(User.email == normalized_email)).first()
+        user = session.scalars(
+            select(User).where(User.email == normalized_email)
+        ).first()
         if user is None or not user.is_active:
             raise AuthValidationError("Reset request is invalid.")
         _prune_password_reset_codes(session=session, user_id=user.id)

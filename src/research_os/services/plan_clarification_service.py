@@ -300,10 +300,23 @@ def _summarise_data_profile_for_prompt(data_profile_json: dict[str, Any] | None)
     outcomes = []
     exposures = []
     if isinstance(role_guesses, dict):
-        outcomes = [str(item).strip() for item in role_guesses.get("outcomes", []) if str(item).strip()]
-        exposures = [str(item).strip() for item in role_guesses.get("exposures", []) if str(item).strip()]
-    hints_text = "; ".join(str(item).strip() for item in hints if str(item).strip()) or "none"
-    unresolved_text = "; ".join(str(item).strip() for item in unresolved if str(item).strip()) or "none"
+        outcomes = [
+            str(item).strip()
+            for item in role_guesses.get("outcomes", [])
+            if str(item).strip()
+        ]
+        exposures = [
+            str(item).strip()
+            for item in role_guesses.get("exposures", [])
+            if str(item).strip()
+        ]
+    hints_text = (
+        "; ".join(str(item).strip() for item in hints if str(item).strip()) or "none"
+    )
+    unresolved_text = (
+        "; ".join(str(item).strip() for item in unresolved if str(item).strip())
+        or "none"
+    )
     outcomes_text = ", ".join(outcomes[:4]) or "none"
     exposures_text = ", ".join(exposures[:4]) or "none"
     return (
@@ -378,7 +391,10 @@ def _resolve_canonical_option(raw_choice: str, options: list[str]) -> str:
         normalized_option = _normalise_choice_label(option)
         if not normalized_option:
             continue
-        if normalized_option in normalized_choice or normalized_choice in normalized_option:
+        if (
+            normalized_option in normalized_choice
+            or normalized_choice in normalized_option
+        ):
             return option
 
     choice_tokens = set(normalized_choice.split(" "))
@@ -450,7 +466,9 @@ def generate_plan_clarification_questions(
         summary_of_research,
     )
 
-    raw_output, first_model = _ask_model(context_prompt, preferred_model=preferred_model)
+    raw_output, first_model = _ask_model(
+        context_prompt, preferred_model=preferred_model
+    )
     parsed = json.loads(_extract_json_object(raw_output))
     questions = _coerce_questions(parsed.get("questions"), context_tokens)
 
@@ -465,7 +483,9 @@ def generate_plan_clarification_questions(
             completion_prompt, preferred_model=preferred_model
         )
         completion_parsed = json.loads(_extract_json_object(completion_output))
-        additional = _coerce_questions(completion_parsed.get("questions"), context_tokens)
+        additional = _coerce_questions(
+            completion_parsed.get("questions"), context_tokens
+        )
         existing = {item["prompt"].strip().lower() for item in questions}
         for item in additional:
             key = item["prompt"].strip().lower()
@@ -565,7 +585,9 @@ def _coerce_single_question(
     rationale = re.sub(r"\s+", " ", str(raw_question.get("rationale", "")).strip())
     if not rationale:
         rationale = "Clarifies a key planning decision before section generation."
-    question_id = str(raw_question.get("id", "")).strip() or _normalise_id(next_index, prompt)
+    question_id = str(raw_question.get("id", "")).strip() or _normalise_id(
+        next_index, prompt
+    )
     return {"id": question_id, "prompt": prompt, "rationale": rationale}
 
 
@@ -589,9 +611,12 @@ def _coerce_updated_fields(
         summary_candidate = current_summary.strip()
 
     category_options = list(RESEARCH_CATEGORY_OPTIONS)
-    research_category = _resolve_canonical_option(
-        str(payload.get("research_category", "")), category_options
-    ) or current_research_category.strip()
+    research_category = (
+        _resolve_canonical_option(
+            str(payload.get("research_category", "")), category_options
+        )
+        or current_research_category.strip()
+    )
 
     resolved_study_type = _resolve_canonical_option(
         str(payload.get("study_type", "")),
@@ -599,13 +624,20 @@ def _coerce_updated_fields(
     )
     study_type = resolved_study_type or current_study_type.strip()
 
-    interpretation_mode = _resolve_canonical_option(
-        str(payload.get("interpretation_mode", "")),
-        list(INTERPRETATION_MODE_OPTIONS),
-    ) or current_interpretation_mode.strip()
+    interpretation_mode = (
+        _resolve_canonical_option(
+            str(payload.get("interpretation_mode", "")),
+            list(INTERPRETATION_MODE_OPTIONS),
+        )
+        or current_interpretation_mode.strip()
+    )
 
-    article_type = str(payload.get("article_type", "")).strip() or current_article_type.strip()
-    word_length = str(payload.get("word_length", "")).strip() or current_word_length.strip()
+    article_type = (
+        str(payload.get("article_type", "")).strip() or current_article_type.strip()
+    )
+    word_length = (
+        str(payload.get("word_length", "")).strip() or current_word_length.strip()
+    )
 
     return {
         "summary_of_research": summary_candidate,
@@ -657,9 +689,15 @@ def _build_next_question_prompt(
         if profile_unresolved_questions
         else "- none"
     )
-    study_type_block = "\n".join(f"- {item}" for item in study_type_options) or "- none supplied"
-    research_category_block = "\n".join(f"- {item}" for item in RESEARCH_CATEGORY_OPTIONS)
-    interpretation_mode_block = "\n".join(f"- {item}" for item in INTERPRETATION_MODE_OPTIONS)
+    study_type_block = (
+        "\n".join(f"- {item}" for item in study_type_options) or "- none supplied"
+    )
+    research_category_block = "\n".join(
+        f"- {item}" for item in RESEARCH_CATEGORY_OPTIONS
+    )
+    interpretation_mode_block = "\n".join(
+        f"- {item}" for item in INTERPRETATION_MODE_OPTIONS
+    )
     return f"""
 You are generating the next single clarification question for manuscript planning.
 This is an adaptive sequence; each prior answer must influence the next question choice.
@@ -804,9 +842,7 @@ def generate_next_plan_clarification_question(
         for unresolved_prompt in normalized_profile_unresolved:
             if unresolved_prompt.lower() in existing_prompts:
                 continue
-            fallback_summary = (
-                "The plan will structure the manuscript across Introduction, Methods, Results, Discussion, and Conclusion using clarified profile-aware context."
-            )
+            fallback_summary = "The plan will structure the manuscript across Introduction, Methods, Results, Discussion, and Conclusion using clarified profile-aware context."
             return {
                 "question": {
                     "id": _normalise_id(asked_count, unresolved_prompt),
@@ -911,7 +947,9 @@ Rules:
 force_next_question: {"true" if force_next_question else "false"}
 """.strip()
 
-    first_output, first_model = _ask_model(readiness_prompt, preferred_model=preferred_model)
+    first_output, first_model = _ask_model(
+        readiness_prompt, preferred_model=preferred_model
+    )
     first_parsed = json.loads(_extract_json_object(first_output))
     ready_for_plan = _safe_bool(first_parsed.get("ready_for_plan"), default=False)
     confidence_percent = _safe_int(first_parsed.get("confidence_percent", 0), default=0)
@@ -947,9 +985,7 @@ force_next_question: {"true" if force_next_question else "false"}
         str(first_parsed.get("manuscript_plan_summary", "")).strip(),
     )
     if len(manuscript_plan_summary) < 24:
-        manuscript_plan_summary = (
-            "The plan will structure the manuscript across Introduction, Methods, Results, Discussion, and Conclusion using the clarified context."
-        )
+        manuscript_plan_summary = "The plan will structure the manuscript across Introduction, Methods, Results, Discussion, and Conclusion using the clarified context."
     manuscript_plan_sections = _coerce_manuscript_plan_sections(
         first_parsed.get("manuscript_plan_sections"),
         fallback_summary=manuscript_plan_summary,

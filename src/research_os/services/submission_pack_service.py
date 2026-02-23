@@ -155,4 +155,3 @@ def build_submission_pack(
         "highlights": highlights,
         "plain_language_summary": plain_language_summary,
     }
-

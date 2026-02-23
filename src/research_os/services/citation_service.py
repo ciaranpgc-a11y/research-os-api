@@ -80,7 +80,9 @@ def _citation_lookup() -> dict[str, dict[str, str | int]]:
     return {record["id"]: record for record in _CITATION_LIBRARY}
 
 
-def list_citation_records(query: str = "", limit: int = 50) -> list[dict[str, str | int]]:
+def list_citation_records(
+    query: str = "", limit: int = 50
+) -> list[dict[str, str | int]]:
     normalized = query.strip().lower()
     candidates = _CITATION_LIBRARY
     if normalized:
@@ -127,7 +129,9 @@ def _build_claim_citation_state(
     }
 
 
-def get_claim_citation_state(claim_id: str, required_slots: int = 0) -> dict[str, object]:
+def get_claim_citation_state(
+    claim_id: str, required_slots: int = 0
+) -> dict[str, object]:
     citation_ids = list(_CLAIM_CITATION_IDS.get(claim_id, []))
     citation_ids = _validate_citation_ids(citation_ids)
     return _build_claim_citation_state(claim_id, citation_ids, required_slots)
