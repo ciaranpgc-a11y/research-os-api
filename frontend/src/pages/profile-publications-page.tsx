@@ -1,25 +1,40 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
+  deletePublicationFile,
+  downloadPublicationFile,
   enqueueMetricsSyncJob,
   enqueueOrcidImportSyncJob,
+  fetchPublicationAiInsights,
+  fetchPublicationAuthors,
+  fetchPublicationDetail,
+  fetchPublicationFiles,
+  fetchPublicationImpact,
   fetchPersonaSyncJob,
   fetchMe,
   fetchOrcidStatus,
   fetchPersonaState,
   fetchPublicationsAnalytics,
+  linkPublicationOpenAccessPdf,
   listPersonaSyncJobs,
+  uploadPublicationFile,
 } from '@/lib/impact-api'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import type {
   AuthUser,
   OrcidStatusPayload,
+  PublicationAiInsightsResponsePayload,
+  PublicationAuthorsPayload,
+  PublicationDetailPayload,
+  PublicationFilesListPayload,
+  PublicationImpactResponsePayload,
   PersonaStatePayload,
   PersonaSyncJobPayload,
   PublicationsAnalyticsResponsePayload,
@@ -31,10 +46,12 @@ import type {
 type PublicationFilterKey = 'all' | 'cited' | 'with_doi' | 'with_abstract' | 'with_pmid'
 type PublicationSortField = 'citations' | 'year' | 'title' | 'venue' | 'work_type'
 type SortDirection = 'asc' | 'desc'
+type PublicationDetailTab = 'overview' | 'content' | 'impact' | 'files' | 'ai'
 const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const PUBLICATIONS_ANALYTICS_CACHE_KEY = 'aawe_publications_analytics_cache'
 const PUBLICATIONS_ACTIVE_SYNC_JOB_STORAGE_PREFIX = 'aawe_publications_active_sync_job:'
+const PUBLICATION_DETAIL_ACTIVE_TAB_STORAGE_KEY = 'aawe.pubDetail.activeTab'
 
 const WORK_TYPE_LABELS: Record<string, string> = {
   'journal-article': 'Journal article',
@@ -304,6 +321,61 @@ function clearPublicationsActiveSyncJobId(userId: string): void {
   window.localStorage.removeItem(publicationsActiveSyncJobStorageKey(userId))
 }
 
+function loadActivePublicationDetailTab(): PublicationDetailTab {
+  if (typeof window === 'undefined') {
+    return 'overview'
+  }
+  const raw = (window.localStorage.getItem(PUBLICATION_DETAIL_ACTIVE_TAB_STORAGE_KEY) || '').trim()
+  if (raw === 'overview' || raw === 'content' || raw === 'impact' || raw === 'files' || raw === 'ai') {
+    return raw
+  }
+  return 'overview'
+}
+
+function saveActivePublicationDetailTab(tab: PublicationDetailTab): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(PUBLICATION_DETAIL_ACTIVE_TAB_STORAGE_KEY, tab)
+}
+
+function publicationPaneKey(workId: string, tab: PublicationDetailTab): string {
+  return `${workId}:${tab}`
+}
+
+function extractAuthorNamesFromAuthorsJson(items: Array<Record<string, unknown>>): string[] {
+  const names: string[] = []
+  for (const item of items || []) {
+    const name = String(item?.name || item?.full_name || '').trim()
+    if (!name || names.includes(name)) {
+      continue
+    }
+    names.push(name)
+  }
+  return names
+}
+
+function formatVancouverCitation(input: {
+  title: string
+  journal: string
+  year: number | null
+  authors: string[]
+  doi: string | null
+}): string {
+  const names = (input.authors || []).filter((item) => item.trim())
+  const authorText =
+    names.length === 0
+      ? 'Author unavailable.'
+      : names.length > 6
+        ? `${names.slice(0, 6).join(', ')}, et al.`
+        : names.join(', ')
+  const title = input.title.trim() || 'Untitled'
+  const journal = input.journal.trim() || 'Journal unavailable'
+  const year = input.year ?? 'n.d.'
+  const doi = (input.doi || '').trim()
+  return `${authorText} ${title}. ${journal}. ${year}.${doi ? ` doi:${doi}.` : ''}`
+}
+
 function normalizeAuthorName(value: string): string {
   return value
     .toLowerCase()
@@ -502,6 +574,22 @@ export function ProfilePublicationsPage() {
   const [activeSyncJob, setActiveSyncJob] = useState<PersonaSyncJobPayload | null>(null)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const [activeDetailTab, setActiveDetailTab] = useState<PublicationDetailTab>(() => loadActivePublicationDetailTab())
+  const [detailCacheByWorkId, setDetailCacheByWorkId] = useState<Record<string, PublicationDetailPayload>>({})
+  const [authorsCacheByWorkId, setAuthorsCacheByWorkId] = useState<Record<string, PublicationAuthorsPayload>>({})
+  const [impactCacheByWorkId, setImpactCacheByWorkId] = useState<Record<string, PublicationImpactResponsePayload>>({})
+  const [aiCacheByWorkId, setAiCacheByWorkId] = useState<Record<string, PublicationAiInsightsResponsePayload>>({})
+  const [filesCacheByWorkId, setFilesCacheByWorkId] = useState<Record<string, PublicationFilesListPayload>>({})
+  const [paneLoadingByKey, setPaneLoadingByKey] = useState<Record<string, boolean>>({})
+  const [paneErrorByKey, setPaneErrorByKey] = useState<Record<string, string>>({})
+  const [expandedAbstractByWorkId, setExpandedAbstractByWorkId] = useState<Record<string, boolean>>({})
+  const [contentModeByWorkId, setContentModeByWorkId] = useState<Record<string, 'plain' | 'highlighted'>>({})
+  const [uploadingFile, setUploadingFile] = useState(false)
+  const [findingOa, setFindingOa] = useState(false)
+  const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null)
+  const [deletingFileId, setDeletingFileId] = useState<string | null>(null)
+  const [filesDragOver, setFilesDragOver] = useState(false)
+  const filePickerRef = useRef<HTMLInputElement | null>(null)
 
   const loadData = useCallback(async (
     sessionToken: string,
@@ -597,6 +685,142 @@ export function ProfilePublicationsPage() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    saveActivePublicationDetailTab(activeDetailTab)
+  }, [activeDetailTab])
+
+  const setPaneLoading = useCallback((workId: string, tab: PublicationDetailTab, loadingValue: boolean) => {
+    const key = publicationPaneKey(workId, tab)
+    setPaneLoadingByKey((current) => ({ ...current, [key]: loadingValue }))
+  }, [])
+
+  const setPaneError = useCallback((workId: string, tab: PublicationDetailTab, message: string) => {
+    const key = publicationPaneKey(workId, tab)
+    setPaneErrorByKey((current) => ({ ...current, [key]: message }))
+  }, [])
+
+  const loadPublicationDetailData = useCallback(async (workId: string, force = false) => {
+    if (!token || !workId) {
+      return
+    }
+    if (!force && detailCacheByWorkId[workId]) {
+      return
+    }
+    setPaneLoading(workId, 'overview', true)
+    setPaneError(workId, 'overview', '')
+    try {
+      const payload = await fetchPublicationDetail(token, workId)
+      setDetailCacheByWorkId((current) => ({ ...current, [workId]: payload }))
+    } catch (loadError) {
+      setPaneError(workId, 'overview', loadError instanceof Error ? loadError.message : 'Could not load publication details.')
+    } finally {
+      setPaneLoading(workId, 'overview', false)
+    }
+  }, [detailCacheByWorkId, setPaneError, setPaneLoading, token])
+
+  const loadPublicationAuthorsData = useCallback(async (workId: string, force = false) => {
+    if (!token || !workId) {
+      return
+    }
+    if (!force && authorsCacheByWorkId[workId] && authorsCacheByWorkId[workId].status !== 'RUNNING') {
+      return
+    }
+    setPaneLoading(workId, 'overview', true)
+    try {
+      const payload = await fetchPublicationAuthors(token, workId)
+      setAuthorsCacheByWorkId((current) => ({ ...current, [workId]: payload }))
+    } catch (loadError) {
+      setPaneError(workId, 'overview', loadError instanceof Error ? loadError.message : 'Could not load publication authors.')
+    } finally {
+      setPaneLoading(workId, 'overview', false)
+    }
+  }, [authorsCacheByWorkId, setPaneError, setPaneLoading, token])
+
+  const loadPublicationImpactData = useCallback(async (workId: string, force = false) => {
+    if (!token || !workId) {
+      return
+    }
+    if (!force && impactCacheByWorkId[workId] && impactCacheByWorkId[workId].status !== 'RUNNING') {
+      return
+    }
+    setPaneLoading(workId, 'impact', true)
+    setPaneError(workId, 'impact', '')
+    try {
+      const payload = await fetchPublicationImpact(token, workId)
+      setImpactCacheByWorkId((current) => ({ ...current, [workId]: payload }))
+    } catch (loadError) {
+      setPaneError(workId, 'impact', loadError instanceof Error ? loadError.message : 'Could not load impact insights.')
+    } finally {
+      setPaneLoading(workId, 'impact', false)
+    }
+  }, [impactCacheByWorkId, setPaneError, setPaneLoading, token])
+
+  const loadPublicationAiData = useCallback(async (workId: string, force = false) => {
+    if (!token || !workId) {
+      return
+    }
+    if (!force && aiCacheByWorkId[workId] && aiCacheByWorkId[workId].status !== 'RUNNING') {
+      return
+    }
+    setPaneLoading(workId, 'ai', true)
+    setPaneError(workId, 'ai', '')
+    try {
+      const payload = await fetchPublicationAiInsights(token, workId)
+      setAiCacheByWorkId((current) => ({ ...current, [workId]: payload }))
+    } catch (loadError) {
+      setPaneError(workId, 'ai', loadError instanceof Error ? loadError.message : 'Could not load AI insights.')
+    } finally {
+      setPaneLoading(workId, 'ai', false)
+    }
+  }, [aiCacheByWorkId, setPaneError, setPaneLoading, token])
+
+  const loadPublicationFilesData = useCallback(async (workId: string, force = false) => {
+    if (!token || !workId) {
+      return
+    }
+    if (!force && filesCacheByWorkId[workId]) {
+      return
+    }
+    setPaneLoading(workId, 'files', true)
+    setPaneError(workId, 'files', '')
+    try {
+      const payload = await fetchPublicationFiles(token, workId)
+      setFilesCacheByWorkId((current) => ({ ...current, [workId]: payload }))
+    } catch (loadError) {
+      setPaneError(workId, 'files', loadError instanceof Error ? loadError.message : 'Could not load files.')
+    } finally {
+      setPaneLoading(workId, 'files', false)
+    }
+  }, [filesCacheByWorkId, setPaneError, setPaneLoading, token])
+
+  const ensureActiveTabData = useCallback(async (workId: string, tab: PublicationDetailTab) => {
+    if (!workId) {
+      return
+    }
+    if (tab === 'overview') {
+      await loadPublicationDetailData(workId)
+      await loadPublicationAuthorsData(workId)
+      return
+    }
+    if (tab === 'content') {
+      await loadPublicationDetailData(workId)
+      const mode = contentModeByWorkId[workId] || 'plain'
+      if (mode === 'highlighted') {
+        await loadPublicationAiData(workId)
+      }
+      return
+    }
+    if (tab === 'impact') {
+      await loadPublicationImpactData(workId)
+      return
+    }
+    if (tab === 'files') {
+      await loadPublicationFilesData(workId)
+      return
+    }
+    await loadPublicationAiData(workId)
+  }, [contentModeByWorkId, loadPublicationAiData, loadPublicationAuthorsData, loadPublicationDetailData, loadPublicationFilesData, loadPublicationImpactData])
 
   useEffect(() => {
     const sessionToken = getAuthSessionToken()
@@ -820,6 +1044,104 @@ export function ProfilePublicationsPage() {
     return (personaState?.works ?? []).find((work) => work.id === selectedWorkId) ?? null
   }, [personaState?.works, selectedWorkId])
 
+  useEffect(() => {
+    if (!selectedWorkId) {
+      return
+    }
+    void ensureActiveTabData(selectedWorkId, activeDetailTab)
+  }, [activeDetailTab, ensureActiveTabData, selectedWorkId])
+
+  const selectedDetail = selectedWorkId ? detailCacheByWorkId[selectedWorkId] || null : null
+  const selectedAuthorsPayload = selectedWorkId ? authorsCacheByWorkId[selectedWorkId] || null : null
+  const selectedImpactResponse = selectedWorkId ? impactCacheByWorkId[selectedWorkId] || null : null
+  const selectedAiResponse = selectedWorkId ? aiCacheByWorkId[selectedWorkId] || null : null
+  const selectedFilesPayload = selectedWorkId ? filesCacheByWorkId[selectedWorkId] || null : null
+
+  const selectedAuthorNames = useMemo(() => {
+    if (selectedAuthorsPayload?.authors_json?.length) {
+      const extracted = extractAuthorNamesFromAuthorsJson(selectedAuthorsPayload.authors_json)
+      if (extracted.length > 0) {
+        return extracted
+      }
+    }
+    if (selectedDetail?.authors_json?.length) {
+      const extracted = extractAuthorNamesFromAuthorsJson(selectedDetail.authors_json)
+      if (extracted.length > 0) {
+        return extracted
+      }
+    }
+    return selectedWork?.authors || []
+  }, [selectedAuthorsPayload?.authors_json, selectedDetail?.authors_json, selectedWork?.authors])
+
+  useEffect(() => {
+    if (!token || !selectedWorkId || activeDetailTab !== 'overview') {
+      return
+    }
+    if (selectedAuthorsPayload?.status !== 'RUNNING') {
+      return
+    }
+    let cancelled = false
+    let attempts = 0
+    const timer = window.setInterval(() => {
+      attempts += 1
+      if (cancelled || attempts > 20) {
+        window.clearInterval(timer)
+        return
+      }
+      void loadPublicationAuthorsData(selectedWorkId, true)
+    }, 4000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [activeDetailTab, loadPublicationAuthorsData, selectedAuthorsPayload?.status, selectedWorkId, token])
+
+  useEffect(() => {
+    if (!token || !selectedWorkId || activeDetailTab !== 'impact') {
+      return
+    }
+    if (selectedImpactResponse?.status !== 'RUNNING') {
+      return
+    }
+    let cancelled = false
+    let attempts = 0
+    const timer = window.setInterval(() => {
+      attempts += 1
+      if (cancelled || attempts > 20) {
+        window.clearInterval(timer)
+        return
+      }
+      void loadPublicationImpactData(selectedWorkId, true)
+    }, 7000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [activeDetailTab, loadPublicationImpactData, selectedImpactResponse?.status, selectedWorkId, token])
+
+  useEffect(() => {
+    if (!token || !selectedWorkId || activeDetailTab !== 'ai') {
+      return
+    }
+    if (selectedAiResponse?.status !== 'RUNNING') {
+      return
+    }
+    let cancelled = false
+    let attempts = 0
+    const timer = window.setInterval(() => {
+      attempts += 1
+      if (cancelled || attempts > 20) {
+        window.clearInterval(timer)
+        return
+      }
+      void loadPublicationAiData(selectedWorkId, true)
+    }, 7000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [activeDetailTab, loadPublicationAiData, selectedAiResponse?.status, selectedWorkId, token])
+
   const ownerName = user?.name || ''
   const ownerEmail = user?.email || ''
   const totalCitations = analyticsSummary?.total_citations ?? 0
@@ -931,6 +1253,155 @@ export function ProfilePublicationsPage() {
       setError(syncError instanceof Error ? syncError.message : 'Could not run full citation sync.')
     } finally {
       // state is controlled by active background job
+    }
+  }
+
+  const activePaneLoading = selectedWorkId
+    ? Boolean(paneLoadingByKey[publicationPaneKey(selectedWorkId, activeDetailTab)])
+    : false
+  const activePaneError = selectedWorkId
+    ? paneErrorByKey[publicationPaneKey(selectedWorkId, activeDetailTab)] || ''
+    : ''
+  const detailYear = selectedDetail?.year ?? selectedWork?.year ?? null
+  const detailJournal = selectedDetail?.journal || formatJournalName(selectedWork?.venue_name || '')
+  const detailPublicationType = selectedDetail?.publication_type || (selectedWork ? derivePublicationTypeLabel(selectedWork) : 'Not available')
+  const detailCitations = selectedDetail?.citations_total ?? (selectedWork ? Number(metricsByWorkId.get(selectedWork.id)?.citations || 0) : 0)
+  const detailDoi = selectedDetail?.doi || selectedWork?.doi || null
+  const detailPmid = selectedDetail?.pmid || selectedWork?.pmid || null
+  const detailAbstract = selectedDetail?.abstract || selectedWork?.abstract || ''
+  const detailKeywords = selectedDetail?.keywords_json?.length ? selectedDetail.keywords_json : (selectedWork?.keywords || [])
+  const contentMode = selectedWorkId ? (contentModeByWorkId[selectedWorkId] || 'plain') : 'plain'
+  const abstractExpanded = selectedWorkId ? Boolean(expandedAbstractByWorkId[selectedWorkId]) : false
+  const abstractPreview = abstractExpanded ? detailAbstract : detailAbstract.slice(0, 700)
+
+  const onDetailTabChange = (tabValue: string) => {
+    if (tabValue === 'overview' || tabValue === 'content' || tabValue === 'impact' || tabValue === 'files' || tabValue === 'ai') {
+      setActiveDetailTab(tabValue)
+    }
+  }
+
+  const onToggleAbstractExpanded = () => {
+    if (!selectedWorkId) {
+      return
+    }
+    setExpandedAbstractByWorkId((current) => ({
+      ...current,
+      [selectedWorkId]: !current[selectedWorkId],
+    }))
+  }
+
+  const onContentModeChange = async (nextMode: 'plain' | 'highlighted') => {
+    if (!selectedWorkId) {
+      return
+    }
+    setContentModeByWorkId((current) => ({ ...current, [selectedWorkId]: nextMode }))
+    if (nextMode === 'highlighted') {
+      await loadPublicationAiData(selectedWorkId)
+    }
+  }
+
+  const onCopyVancouverCitation = async () => {
+    if (!selectedWork) {
+      return
+    }
+    const citation = formatVancouverCitation({
+      title: selectedDetail?.title || selectedWork.title,
+      journal: detailJournal,
+      year: detailYear,
+      authors: selectedAuthorNames,
+      doi: detailDoi,
+    })
+    try {
+      await navigator.clipboard.writeText(citation)
+      setStatus('Citation copied to clipboard.')
+    } catch {
+      setError('Could not copy citation to clipboard.')
+    }
+  }
+
+  const refreshFilesTab = async (workId: string) => {
+    await loadPublicationFilesData(workId, true)
+  }
+
+  const onFindOpenAccessPdf = async () => {
+    if (!token || !selectedWorkId) {
+      return
+    }
+    setFindingOa(true)
+    setPaneError(selectedWorkId, 'files', '')
+    try {
+      const payload = await linkPublicationOpenAccessPdf(token, selectedWorkId)
+      if (payload.file) {
+        setStatus(payload.message || 'Open-access PDF link added.')
+      } else {
+        setStatus(payload.message || 'Open-access PDF link checked.')
+      }
+      await refreshFilesTab(selectedWorkId)
+    } catch (linkError) {
+      setPaneError(selectedWorkId, 'files', linkError instanceof Error ? linkError.message : 'Could not resolve open-access PDF.')
+    } finally {
+      setFindingOa(false)
+    }
+  }
+
+  const onUploadFiles = async (files: FileList | null) => {
+    if (!token || !selectedWorkId || !files || files.length === 0) {
+      return
+    }
+    setUploadingFile(true)
+    setPaneError(selectedWorkId, 'files', '')
+    try {
+      for (const file of Array.from(files)) {
+        await uploadPublicationFile(token, selectedWorkId, file)
+      }
+      setStatus('File upload completed.')
+      await refreshFilesTab(selectedWorkId)
+    } catch (uploadError) {
+      setPaneError(selectedWorkId, 'files', uploadError instanceof Error ? uploadError.message : 'Could not upload publication file.')
+    } finally {
+      setUploadingFile(false)
+      if (filePickerRef.current) {
+        filePickerRef.current.value = ''
+      }
+    }
+  }
+
+  const onDeletePublicationFile = async (fileId: string) => {
+    if (!token || !selectedWorkId) {
+      return
+    }
+    setDeletingFileId(fileId)
+    setPaneError(selectedWorkId, 'files', '')
+    try {
+      await deletePublicationFile(token, selectedWorkId, fileId)
+      await refreshFilesTab(selectedWorkId)
+    } catch (deleteError) {
+      setPaneError(selectedWorkId, 'files', deleteError instanceof Error ? deleteError.message : 'Could not delete publication file.')
+    } finally {
+      setDeletingFileId(null)
+    }
+  }
+
+  const onDownloadPublicationFile = async (fileId: string, fallbackName: string) => {
+    if (!token || !selectedWorkId) {
+      return
+    }
+    setDownloadingFileId(fileId)
+    setPaneError(selectedWorkId, 'files', '')
+    try {
+      const payload = await downloadPublicationFile(token, selectedWorkId, fileId)
+      const objectUrl = URL.createObjectURL(payload.blob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = payload.fileName || fallbackName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(objectUrl)
+    } catch (downloadError) {
+      setPaneError(selectedWorkId, 'files', downloadError instanceof Error ? downloadError.message : 'Could not download publication file.')
+    } finally {
+      setDownloadingFileId(null)
     }
   }
 

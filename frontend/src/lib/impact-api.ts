@@ -29,6 +29,13 @@ import type {
   OrcidStatusPayload,
   OrcidImportPayload,
   PersonaSyncJobPayload,
+  PublicationAiInsightsResponsePayload,
+  PublicationAuthorsPayload,
+  PublicationDetailPayload,
+  PublicationFileLinkPayload,
+  PublicationFilePayload,
+  PublicationFilesListPayload,
+  PublicationImpactResponsePayload,
   PersonaStatePayload,
   PersonaContextPayload,
   PersonaEmbeddingsGeneratePayload,
@@ -623,6 +630,172 @@ export async function fetchPublicationsAnalyticsTopDrivers(
     'Publications analytics top drivers lookup failed',
     { timeoutMs: 120_000, retryCount: 2 },
   )
+}
+
+export async function fetchPublicationDetail(
+  token: string,
+  publicationId: string,
+): Promise<PublicationDetailPayload> {
+  return requestJson<PublicationDetailPayload>(
+    `${API_BASE_URL}/v1/publications/${encodeURIComponent(publicationId)}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Publication detail lookup failed',
+    { timeoutMs: 60_000, retryCount: 2 },
+  )
+}
+
+export async function fetchPublicationAuthors(
+  token: string,
+  publicationId: string,
+): Promise<PublicationAuthorsPayload> {
+  return requestJson<PublicationAuthorsPayload>(
+    `${API_BASE_URL}/v1/publications/${encodeURIComponent(publicationId)}/authors`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Publication authors lookup failed',
+    { timeoutMs: 60_000, retryCount: 2 },
+  )
+}
+
+export async function fetchPublicationImpact(
+  token: string,
+  publicationId: string,
+): Promise<PublicationImpactResponsePayload> {
+  return requestJson<PublicationImpactResponsePayload>(
+    `${API_BASE_URL}/v1/publications/${encodeURIComponent(publicationId)}/impact`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Publication impact lookup failed',
+    { timeoutMs: 120_000, retryCount: 2 },
+  )
+}
+
+export async function fetchPublicationAiInsights(
+  token: string,
+  publicationId: string,
+): Promise<PublicationAiInsightsResponsePayload> {
+  return requestJson<PublicationAiInsightsResponsePayload>(
+    `${API_BASE_URL}/v1/publications/${encodeURIComponent(publicationId)}/ai-insights`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Publication AI insights lookup failed',
+    { timeoutMs: 120_000, retryCount: 2 },
+  )
+}
+
+export async function fetchPublicationFiles(
+  token: string,
+  publicationId: string,
+): Promise<PublicationFilesListPayload> {
+  return requestJson<PublicationFilesListPayload>(
+    `${API_BASE_URL}/v1/publications/${encodeURIComponent(publicationId)}/files`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Publication files lookup failed',
+    { timeoutMs: 60_000, retryCount: 2 },
+  )
+}
+
+export async function uploadPublicationFile(
+  token: string,
+  publicationId: string,
+  file: File,
+): Promise<PublicationFilePayload> {
+  const body = new FormData()
+  body.append('file', file)
+  return requestJson<PublicationFilePayload>(
+    `${API_BASE_URL}/v1/publications/${encodeURIComponent(publicationId)}/files/upload`,
+    {
+      method: 'POST',
+      headers: authHeaders(token),
+      body,
+    },
+    'Publication file upload failed',
+    { timeoutMs: 120_000, retryCount: 1 },
+  )
+}
+
+export async function linkPublicationOpenAccessPdf(
+  token: string,
+  publicationId: string,
+): Promise<PublicationFileLinkPayload> {
+  return requestJson<PublicationFileLinkPayload>(
+    `${API_BASE_URL}/v1/publications/${encodeURIComponent(publicationId)}/files/link-oa`,
+    {
+      method: 'POST',
+      headers: authHeaders(token),
+    },
+    'Open-access PDF lookup failed',
+    { timeoutMs: 60_000, retryCount: 1 },
+  )
+}
+
+export async function deletePublicationFile(
+  token: string,
+  publicationId: string,
+  fileId: string,
+): Promise<{ deleted: boolean }> {
+  return requestJson<{ deleted: boolean }>(
+    `${API_BASE_URL}/v1/publications/${encodeURIComponent(publicationId)}/files/${encodeURIComponent(fileId)}`,
+    {
+      method: 'DELETE',
+      headers: authHeaders(token),
+    },
+    'Publication file delete failed',
+  )
+}
+
+function parseDispositionFilename(disposition: string | null): string | null {
+  const raw = String(disposition || '')
+  if (!raw) {
+    return null
+  }
+  const utf8Match = raw.match(/filename\\*=UTF-8''([^;]+)/i)
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]).trim()
+    } catch {
+      // fall through
+    }
+  }
+  const plainMatch = raw.match(/filename=\"?([^\";]+)\"?/i)
+  if (plainMatch?.[1]) {
+    return plainMatch[1].trim()
+  }
+  return null
+}
+
+export async function downloadPublicationFile(
+  token: string,
+  publicationId: string,
+  fileId: string,
+): Promise<{ fileName: string; blob: Blob }> {
+  const response = await fetch(
+    `${API_BASE_URL}/v1/publications/${encodeURIComponent(publicationId)}/files/${encodeURIComponent(fileId)}/download`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+  )
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, 'Publication file download failed'))
+  }
+  const fileName =
+    parseDispositionFilename(response.headers.get('content-disposition')) ||
+    `publication-file-${fileId}`
+  const blob = await response.blob()
+  return { fileName, blob }
 }
 
 export async function fetchCollaborationMetricsSummary(

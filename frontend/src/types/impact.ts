@@ -143,6 +143,124 @@ export type PublicationsAnalyticsResponsePayload = {
   last_update_failed: boolean
 }
 
+export type PublicationDetailPayload = {
+  id: string
+  title: string
+  year: number | null
+  journal: string
+  publication_type: string
+  citations_total: number
+  doi: string | null
+  pmid: string | null
+  openalex_work_id: string | null
+  abstract: string | null
+  keywords_json: string[]
+  authors_json: Array<Record<string, unknown>>
+  affiliations_json: Array<Record<string, unknown>>
+  created_at: string
+  updated_at: string
+}
+
+export type PublicationAuthorsPayload = {
+  status: 'READY' | 'RUNNING' | 'FAILED'
+  authors_json: Array<Record<string, unknown>>
+  affiliations_json: Array<Record<string, unknown>>
+  computed_at: string | null
+  is_stale: boolean
+  is_updating: boolean
+  last_error: string | null
+}
+
+export type PublicationImpactPayload = {
+  citations_total: number
+  citations_last_12m: number
+  citations_prev_12m: number
+  yoy_pct: number | null
+  acceleration_citations_per_month: number
+  per_year: Array<{
+    year: number
+    citations: number
+    yoy_delta: number | null
+    yoy_pct: number | null
+  }>
+  portfolio_context: {
+    paper_share_total_pct: number
+    paper_share_12m_pct: number
+    portfolio_rank_total: number | null
+    portfolio_rank_12m: number | null
+  }
+  top_citing_journals: Array<{ name: string; count: number }>
+  top_citing_countries: Array<{ name: string; count: number }>
+  key_citing_papers: Array<{
+    title: string
+    year: number | null
+    journal: string
+    doi: string | null
+    pmid: string | null
+    citations_total: number
+  }>
+  metadata: Record<string, unknown>
+}
+
+export type PublicationImpactResponsePayload = {
+  payload: PublicationImpactPayload
+  computed_at: string | null
+  status: 'READY' | 'RUNNING' | 'FAILED'
+  is_stale: boolean
+  is_updating: boolean
+  last_error: string | null
+}
+
+export type PublicationAiInsightsPayload = {
+  label: string
+  performance_summary: string
+  trajectory_classification:
+    | 'EARLY_SPIKE'
+    | 'SLOW_BURN'
+    | 'CONSISTENT'
+    | 'DECLINING'
+    | 'ACCELERATING'
+    | 'UNKNOWN'
+  extractive_key_points: {
+    objective: string
+    methods: string
+    main_findings: string
+    conclusion: string
+  }
+  reuse_suggestions: string[]
+  caution_flags: string[]
+}
+
+export type PublicationAiInsightsResponsePayload = {
+  payload: PublicationAiInsightsPayload
+  computed_at: string | null
+  status: 'READY' | 'RUNNING' | 'FAILED'
+  is_stale: boolean
+  is_updating: boolean
+  last_error: string | null
+}
+
+export type PublicationFilePayload = {
+  id: string
+  file_name: string
+  file_type: 'PDF' | 'DOCX' | 'OTHER'
+  source: 'OA_LINK' | 'USER_UPLOAD'
+  oa_url: string | null
+  checksum: string | null
+  created_at: string
+  download_url: string | null
+}
+
+export type PublicationFilesListPayload = {
+  items: PublicationFilePayload[]
+}
+
+export type PublicationFileLinkPayload = {
+  created: boolean
+  file: PublicationFilePayload | null
+  message: string
+}
+
 export type CollaboratorMetricsPayload = {
   coauthored_works_count: number
   shared_citations_total: number

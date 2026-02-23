@@ -1106,6 +1106,146 @@ class PublicationsAnalyticsResponse(BaseModel):
     last_update_failed: bool = False
 
 
+class PublicationDetailResponse(BaseModel):
+    id: str
+    title: str
+    year: int | None = None
+    journal: str = "Not available"
+    publication_type: str = "Not available"
+    citations_total: int = 0
+    doi: str | None = None
+    pmid: str | None = None
+    openalex_work_id: str | None = None
+    abstract: str | None = None
+    keywords_json: list[str] = Field(default_factory=list)
+    authors_json: list[dict[str, Any]] = Field(default_factory=list)
+    affiliations_json: list[dict[str, Any]] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class PublicationAuthorsResponse(BaseModel):
+    status: Literal["READY", "RUNNING", "FAILED"] = "READY"
+    authors_json: list[dict[str, Any]] = Field(default_factory=list)
+    affiliations_json: list[dict[str, Any]] = Field(default_factory=list)
+    computed_at: datetime | None = None
+    is_stale: bool = False
+    is_updating: bool = False
+    last_error: str | None = None
+
+
+class PublicationImpactSeriesPointResponse(BaseModel):
+    year: int
+    citations: int = 0
+    yoy_delta: int | None = None
+    yoy_pct: float | None = None
+
+
+class PublicationImpactPortfolioContextResponse(BaseModel):
+    paper_share_total_pct: float = 0.0
+    paper_share_12m_pct: float = 0.0
+    portfolio_rank_total: int | None = None
+    portfolio_rank_12m: int | None = None
+
+
+class PublicationImpactNamedCountResponse(BaseModel):
+    name: str
+    count: int = 0
+
+
+class PublicationImpactCitingPaperResponse(BaseModel):
+    title: str
+    year: int | None = None
+    journal: str = "Not available"
+    doi: str | None = None
+    pmid: str | None = None
+    citations_total: int = 0
+
+
+class PublicationImpactPayloadResponse(BaseModel):
+    citations_total: int = 0
+    citations_last_12m: int = 0
+    citations_prev_12m: int = 0
+    yoy_pct: float | None = None
+    acceleration_citations_per_month: float = 0.0
+    per_year: list[PublicationImpactSeriesPointResponse] = Field(default_factory=list)
+    portfolio_context: PublicationImpactPortfolioContextResponse = Field(
+        default_factory=PublicationImpactPortfolioContextResponse
+    )
+    top_citing_journals: list[PublicationImpactNamedCountResponse] = Field(default_factory=list)
+    top_citing_countries: list[PublicationImpactNamedCountResponse] = Field(default_factory=list)
+    key_citing_papers: list[PublicationImpactCitingPaperResponse] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class PublicationImpactResponse(BaseModel):
+    payload: PublicationImpactPayloadResponse
+    computed_at: datetime | None = None
+    status: Literal["READY", "RUNNING", "FAILED"] = "RUNNING"
+    is_stale: bool = False
+    is_updating: bool = False
+    last_error: str | None = None
+
+
+class PublicationAiExtractiveKeyPointsResponse(BaseModel):
+    objective: str = "Not stated in abstract."
+    methods: str = "Not stated in abstract."
+    main_findings: str = "Not stated in abstract."
+    conclusion: str = "Not stated in abstract."
+
+
+class PublicationAiPayloadResponse(BaseModel):
+    label: str = "AI-generated draft insights"
+    performance_summary: str = ""
+    trajectory_classification: Literal[
+        "EARLY_SPIKE",
+        "SLOW_BURN",
+        "CONSISTENT",
+        "DECLINING",
+        "ACCELERATING",
+        "UNKNOWN",
+    ] = "UNKNOWN"
+    extractive_key_points: PublicationAiExtractiveKeyPointsResponse = Field(
+        default_factory=PublicationAiExtractiveKeyPointsResponse
+    )
+    reuse_suggestions: list[str] = Field(default_factory=list)
+    caution_flags: list[str] = Field(default_factory=list)
+
+
+class PublicationAiInsightsResponse(BaseModel):
+    payload: PublicationAiPayloadResponse
+    computed_at: datetime | None = None
+    status: Literal["READY", "RUNNING", "FAILED"] = "RUNNING"
+    is_stale: bool = False
+    is_updating: bool = False
+    last_error: str | None = None
+
+
+class PublicationFileResponse(BaseModel):
+    id: str
+    file_name: str
+    file_type: Literal["PDF", "DOCX", "OTHER"] = "OTHER"
+    source: Literal["OA_LINK", "USER_UPLOAD"] = "USER_UPLOAD"
+    oa_url: str | None = None
+    checksum: str | None = None
+    created_at: datetime
+    download_url: str | None = None
+
+
+class PublicationFilesListResponse(BaseModel):
+    items: list[PublicationFileResponse] = Field(default_factory=list)
+
+
+class PublicationFileLinkResponse(BaseModel):
+    created: bool = False
+    file: PublicationFileResponse | None = None
+    message: str = ""
+
+
+class PublicationFileDeleteResponse(BaseModel):
+    deleted: bool = False
+
+
 class CollaboratorMetricsResponse(BaseModel):
     coauthored_works_count: int = 0
     shared_citations_total: int = 0

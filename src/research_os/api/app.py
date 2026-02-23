@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.responses import PlainTextResponse
 from fastapi.responses import RedirectResponse
+from fastapi.responses import Response
 from sqlalchemy import text
 
 from research_os.config import get_openai_api_key
@@ -132,6 +133,14 @@ from research_os.api.schemas import (
     PersonaSyncJobResponse,
     PersonaOpenAccessDiscoverRequest,
     PersonaOpenAccessDiscoverResponse,
+    PublicationAiInsightsResponse,
+    PublicationAuthorsResponse,
+    PublicationDetailResponse,
+    PublicationFileDeleteResponse,
+    PublicationFileLinkResponse,
+    PublicationFileResponse,
+    PublicationFilesListResponse,
+    PublicationImpactResponse,
     PublicationsAnalyticsResponse,
     PublicationsAnalyticsSummaryResponse,
     PublicationsAnalyticsTimeseriesResponse,
@@ -303,6 +312,19 @@ from research_os.services.publications_analytics_service import (
     get_publications_analytics_top_drivers,
     start_publications_analytics_scheduler,
     stop_publications_analytics_scheduler,
+)
+from research_os.services.publication_console_service import (
+    PublicationConsoleNotFoundError,
+    PublicationConsoleValidationError,
+    delete_publication_file,
+    get_publication_ai_insights,
+    get_publication_authors,
+    get_publication_details,
+    get_publication_file_download,
+    get_publication_impact,
+    link_publication_open_access_pdf,
+    list_publication_files,
+    upload_publication_file,
 )
 from research_os.services.collaboration_service import (
     CollaborationNotFoundError,
@@ -1606,6 +1628,310 @@ def v1_publications_analytics_top_drivers(
     except (PersonaNotFoundError, PublicationsAnalyticsNotFoundError) as exc:
         return _build_not_found_response(str(exc))
     except (PublicationsAnalyticsValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/publications/{publication_id}",
+    response_model=PublicationDetailResponse,
+    responses=NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_publication_detail(
+    request: Request,
+    publication_id: str,
+) -> PublicationDetailResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = get_publication_details(
+            user_id=str(user["id"]),
+            publication_id=publication_id,
+        )
+        return PublicationDetailResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PublicationConsoleNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.get(
+    "/v1/publications/{publication_id}/authors",
+    response_model=PublicationAuthorsResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_publication_authors(
+    request: Request,
+    publication_id: str,
+) -> PublicationAuthorsResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = get_publication_authors(
+            user_id=str(user["id"]),
+            publication_id=publication_id,
+        )
+        return PublicationAuthorsResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PublicationConsoleNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PublicationConsoleValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/publications/{publication_id}/impact",
+    response_model=PublicationImpactResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_publication_impact(
+    request: Request,
+    publication_id: str,
+) -> PublicationImpactResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = get_publication_impact(
+            user_id=str(user["id"]),
+            publication_id=publication_id,
+        )
+        return PublicationImpactResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PublicationConsoleNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PublicationConsoleValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/publications/{publication_id}/ai-insights",
+    response_model=PublicationAiInsightsResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_publication_ai_insights(
+    request: Request,
+    publication_id: str,
+) -> PublicationAiInsightsResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = get_publication_ai_insights(
+            user_id=str(user["id"]),
+            publication_id=publication_id,
+        )
+        return PublicationAiInsightsResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PublicationConsoleNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PublicationConsoleValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/publications/{publication_id}/files",
+    response_model=PublicationFilesListResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_publication_files_list(
+    request: Request,
+    publication_id: str,
+) -> PublicationFilesListResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = list_publication_files(
+            user_id=str(user["id"]),
+            publication_id=publication_id,
+        )
+        return PublicationFilesListResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PublicationConsoleNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PublicationConsoleValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/publications/{publication_id}/files/upload",
+    response_model=PublicationFileResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+async def v1_publication_files_upload(
+    request: Request,
+    publication_id: str,
+) -> PublicationFileResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        content_type = request.headers.get("content-type", "").lower()
+        file_name = "publication-file.bin"
+        file_content_type: str | None = None
+        content: bytes = b""
+
+        if "application/json" in content_type:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                return _build_bad_request_response("JSON payload must be an object.")
+            file_name = str(payload.get("filename") or "").strip() or "publication-file.bin"
+            file_content_type = str(payload.get("mime_type") or "").strip() or None
+            raw = str(payload.get("content_base64") or "").strip()
+            if not raw:
+                return _build_bad_request_response("content_base64 is required.")
+            try:
+                content = base64.b64decode(raw, validate=False)
+            except Exception:
+                return _build_bad_request_response("content_base64 is invalid.")
+        else:
+            try:
+                form = await request.form()
+            except (RuntimeError, AssertionError):
+                return _build_bad_request_response(
+                    (
+                        "Multipart parsing is unavailable in this deployment. "
+                        "Install python-multipart or send JSON fallback payload."
+                    )
+                )
+            file = form.get("file")
+            if file is None or not hasattr(file, "read"):
+                files = form.getlist("files")
+                file = files[0] if files else None
+            if file is None or not hasattr(file, "read"):
+                return _build_bad_request_response("No upload file was provided.")
+            file_name = str(getattr(file, "filename", "") or "").strip() or "publication-file.bin"
+            file_content_type = getattr(file, "content_type", None)
+            content = await file.read()
+
+        saved = upload_publication_file(
+            user_id=str(user["id"]),
+            publication_id=publication_id,
+            filename=file_name,
+            content_type=file_content_type,
+            content=content,
+        )
+        return PublicationFileResponse(**saved)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PublicationConsoleNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PublicationConsoleValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/publications/{publication_id}/files/link-oa",
+    response_model=PublicationFileLinkResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_publication_files_link_oa(
+    request: Request,
+    publication_id: str,
+) -> PublicationFileLinkResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = link_publication_open_access_pdf(
+            user_id=str(user["id"]),
+            publication_id=publication_id,
+        )
+        return PublicationFileLinkResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PublicationConsoleNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PublicationConsoleValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.delete(
+    "/v1/publications/{publication_id}/files/{file_id}",
+    response_model=PublicationFileDeleteResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_publication_files_delete(
+    request: Request,
+    publication_id: str,
+    file_id: str,
+) -> PublicationFileDeleteResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = delete_publication_file(
+            user_id=str(user["id"]),
+            publication_id=publication_id,
+            file_id=file_id,
+        )
+        return PublicationFileDeleteResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PublicationConsoleNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PublicationConsoleValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/publications/{publication_id}/files/{file_id}/download",
+    response_model=None,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_publication_files_download(
+    request: Request,
+    publication_id: str,
+    file_id: str,
+) -> Response | RedirectResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = get_publication_file_download(
+            user_id=str(user["id"]),
+            publication_id=publication_id,
+            file_id=file_id,
+        )
+        if payload.get("mode") == "redirect":
+            url = str(payload.get("url") or "").strip()
+            if not url:
+                return _build_not_found_response("Download URL is unavailable.")
+            return RedirectResponse(url=url)
+        file_name = str(payload.get("file_name") or "file.bin")
+        media_type = str(payload.get("content_type") or "application/octet-stream")
+        content = payload.get("content") or b""
+        headers = {"Content-Disposition": f'attachment; filename="{file_name}"'}
+        return Response(content=content, media_type=media_type, headers=headers)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PublicationConsoleNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PublicationConsoleValidationError as exc:
         return _build_bad_request_response(str(exc))
 
 
