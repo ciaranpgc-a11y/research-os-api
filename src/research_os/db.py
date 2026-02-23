@@ -148,6 +148,15 @@ class User(Base):
     publications_metrics: Mapped[list["PublicationMetric"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    publication_impact_caches: Mapped[list["PublicationImpactCache"]] = relationship(
+        back_populates="owner_user", cascade="all, delete-orphan"
+    )
+    publication_ai_caches: Mapped[list["PublicationAiCache"]] = relationship(
+        back_populates="owner_user", cascade="all, delete-orphan"
+    )
+    publication_files: Mapped[list["PublicationFile"]] = relationship(
+        back_populates="owner_user", cascade="all, delete-orphan"
+    )
     collaborators: Mapped[list["Collaborator"]] = relationship(
         back_populates="owner_user", cascade="all, delete-orphan"
     )
@@ -400,11 +409,25 @@ class Work(Base):
     title_lower: Mapped[str] = mapped_column(String(512), default="")
     year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     doi: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    pmid: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    openalex_work_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
+    journal: Mapped[str] = mapped_column(String(255), default="")
+    publication_type: Mapped[str] = mapped_column(String(128), default="")
+    citations_total: Mapped[int] = mapped_column(Integer, default=0)
     work_type: Mapped[str] = mapped_column(String(128), default="")
     venue_name: Mapped[str] = mapped_column(String(255), default="")
     publisher: Mapped[str] = mapped_column(String(255), default="")
     abstract: Mapped[str | None] = mapped_column(Text, nullable=True)
     keywords: Mapped[list[str]] = mapped_column(JSON, default=list)
+    authors_json: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    affiliations_json: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    authors_status: Mapped[str] = mapped_column(String(16), default="READY")
+    authors_last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    authors_computed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     url: Mapped[str] = mapped_column(Text, default="")
     provenance: Mapped[str] = mapped_column(String(32), default="manual")
     cluster_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -425,6 +448,15 @@ class Work(Base):
     )
     embeddings: Mapped[list["Embedding"]] = relationship(
         back_populates="work", cascade="all, delete-orphan"
+    )
+    impact_cache_rows: Mapped[list["PublicationImpactCache"]] = relationship(
+        back_populates="publication", cascade="all, delete-orphan"
+    )
+    ai_cache_rows: Mapped[list["PublicationAiCache"]] = relationship(
+        back_populates="publication", cascade="all, delete-orphan"
+    )
+    files: Mapped[list["PublicationFile"]] = relationship(
+        back_populates="publication", cascade="all, delete-orphan"
     )
 
 
@@ -593,6 +625,100 @@ class PublicationMetric(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="publications_metrics")
+
+
+class PublicationImpactCache(Base):
+    __tablename__ = "publication_impact_cache"
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "publication_id"),
+        Index("ix_publication_impact_cache_owner", "owner_user_id"),
+        Index("ix_publication_impact_cache_publication", "publication_id"),
+        Index("ix_publication_impact_cache_computed", "computed_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    publication_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("works.id", ondelete="CASCADE"), index=True
+    )
+    owner_user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    computed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(16), default="READY")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    publication: Mapped[Work] = relationship(back_populates="impact_cache_rows")
+    owner_user: Mapped[User] = relationship(back_populates="publication_impact_caches")
+
+
+class PublicationAiCache(Base):
+    __tablename__ = "publication_ai_cache"
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "publication_id"),
+        Index("ix_publication_ai_cache_owner", "owner_user_id"),
+        Index("ix_publication_ai_cache_publication", "publication_id"),
+        Index("ix_publication_ai_cache_computed", "computed_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    publication_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("works.id", ondelete="CASCADE"), index=True
+    )
+    owner_user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    computed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(16), default="READY")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    publication: Mapped[Work] = relationship(back_populates="ai_cache_rows")
+    owner_user: Mapped[User] = relationship(back_populates="publication_ai_caches")
+
+
+class PublicationFile(Base):
+    __tablename__ = "publication_files"
+    __table_args__ = (
+        Index("ix_publication_files_owner", "owner_user_id"),
+        Index("ix_publication_files_publication", "publication_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    publication_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("works.id", ondelete="CASCADE"), index=True
+    )
+    owner_user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    file_name: Mapped[str] = mapped_column(String(255), default="")
+    file_type: Mapped[str] = mapped_column(String(16), default="OTHER")
+    storage_key: Mapped[str] = mapped_column(Text, default="")
+    source: Mapped[str] = mapped_column(String(16), default="USER_UPLOAD")
+    oa_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+
+    publication: Mapped[Work] = relationship(back_populates="files")
+    owner_user: Mapped[User] = relationship(back_populates="publication_files")
 
 
 class Collaborator(Base):
