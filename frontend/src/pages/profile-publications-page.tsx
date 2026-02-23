@@ -317,7 +317,14 @@ function analyticsTopDriversFromResponse(
   response: PublicationsAnalyticsResponsePayload | null,
 ): PublicationsAnalyticsTopDriversPayload | null {
   const topDrivers = response?.payload?.top_drivers
-  return topDrivers ? topDrivers : null
+  if (!topDrivers) {
+    return null
+  }
+  const drivers = Array.isArray(topDrivers.drivers) ? topDrivers.drivers.slice(0, 5) : []
+  return {
+    ...topDrivers,
+    drivers,
+  }
 }
 
 function publicationsActiveSyncJobStorageKey(userId: string): string {
@@ -1217,7 +1224,7 @@ export function ProfilePublicationsPage() {
   const worksCount = personaState?.works.length ?? 0
   const busy = loading || richImporting || syncing || fullSyncing
   const canSyncCitations = worksCount > 0 && !busy
-  const topDrivers = analyticsTopDrivers?.drivers || []
+  const topDrivers = (analyticsTopDrivers?.drivers || []).slice(0, 5)
   const timeseriesPoints = analyticsTimeseries?.points || []
   const maxYearlyCitations = Math.max(1, ...timeseriesPoints.map((point) => Number(point.citations_added || 0)))
 

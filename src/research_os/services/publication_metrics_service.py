@@ -504,12 +504,95 @@ def compute_citation_momentum_score(monthly_last_12: list[int]) -> float:
     return round(score, 2)
 
 
+def compute_momentum_index(monthly_last_12: list[int]) -> float:
+    values = [max(0, int(value or 0)) for value in (monthly_last_12 or [])][-12:]
+    if len(values) < 12:
+        values = [0] * (12 - len(values)) + values
+    older_nine = values[:9]
+    latest_three = values[9:]
+    avg_old = float(sum(older_nine)) / 9.0
+    avg_new = float(sum(latest_three)) / 3.0
+    if avg_old <= 0.0:
+        return 150.0 if avg_new > 0.0 else 100.0
+    index_value = (avg_new / avg_old) * 100.0
+    return round(max(0.0, min(300.0, index_value)), 1)
+
+
+def momentum_index_label(index_value: float) -> str:
+    if index_value < 95.0:
+        return "Slowing"
+    if index_value <= 105.0:
+        return "Stable"
+    return "Accelerating"
+
+
 def compute_concentration_risk_percent(*, total_citations: int, top3_citations: int) -> float:
     total = max(0, int(total_citations or 0))
     head = max(0, int(top3_citations or 0))
     if total <= 0:
         return 0.0
     return round((head / total) * 100.0, 2)
+
+
+def project_h_index(
+    *,
+    current_h_index: int,
+    publications: list[dict[str, Any]],
+) -> dict[str, Any]:
+    h_now = max(0, int(current_h_index or 0))
+    next_h = h_now + 1
+    if next_h <= 0:
+        return {
+            "current_h_index": h_now,
+            "projected_h_index": h_now,
+            "projection_probability": 0.0,
+            "progress_to_next_pct": 0.0,
+            "candidate_papers": [],
+            "label": "Likely stable",
+        }
+
+    candidate_papers: list[dict[str, Any]] = []
+    expected_above = 0.0
+    for item in publications:
+        citations_now = max(0, int(item.get("citations_lifetime") or 0))
+        citations_last_12 = max(0, int(item.get("citations_last_12m") or 0))
+        if citations_now >= next_h:
+            probability = 1.0
+        else:
+            needed = max(1, next_h - citations_now)
+            probability = min(1.0, float(citations_last_12) / float(needed))
+        expected_above += probability
+
+        if (h_now - 2) <= citations_now <= (h_now + 2):
+            candidate_papers.append(
+                {
+                    **item,
+                    "citations_to_next_h": max(0, next_h - citations_now),
+                    "projection_probability": round(probability, 2),
+                    "projected_citations_12m": citations_now + citations_last_12,
+                }
+            )
+
+    projection_probability = max(0.0, min(1.0, expected_above - float(h_now)))
+    projected_h = next_h if projection_probability > 0.5 else h_now
+    progress_to_next = round(min(100.0, (expected_above / float(next_h)) * 100.0), 1)
+    label = (
+        f"{h_now} -> {projected_h} ({round(projection_probability * 100)}%)"
+        if projected_h > h_now
+        else f"{h_now} (likely)"
+    )
+    candidate_papers.sort(
+        key=lambda row: (int(row.get("citations_lifetime") or 0), float(row.get("projection_probability") or 0.0)),
+        reverse=True,
+    )
+    return {
+        "current_h_index": h_now,
+        "projected_h_index": projected_h,
+        "projection_probability": round(projection_probability, 2),
+        "progress_to_next_pct": progress_to_next,
+        "candidate_papers": candidate_papers[:20],
+        "label": label,
+    }
 
 
 def _extract_match_method(snapshot: MetricsSnapshot | None) -> str:
@@ -589,6 +672,10 @@ def _metric_tile(
     unit: str | None,
     sparkline: list[int | float],
     sparkline_overlay: list[int | float] | None = None,
+    subtext: str | None = None,
+    badge: dict[str, Any] | None = None,
+    chart_type: str = "line",
+    chart_data: dict[str, Any] | None = None,
     tooltip: str,
     tooltip_details: dict[str, Any],
     data_source: list[str],
@@ -613,6 +700,10 @@ def _metric_tile(
         "delta_tone": tone,
         "delta_color_code": color,
         "unit": unit,
+        "subtext": str(subtext or delta_display or ""),
+        "badge": badge or {"label": "Neutral", "severity": "info"},
+        "chart_type": chart_type,
+        "chart_data": chart_data or {},
         "sparkline": _series_to_sparkline(sparkline),
         "sparkline_overlay": _series_to_sparkline(sparkline_overlay or []),
         "tooltip": tooltip,
@@ -736,6 +827,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     monthly_added_totals = [0] * 24
     monthly_cumulative_totals = [0] * 25
     provider_counts_latest: dict[str, int] = {}
+    aggregate_yearly_totals: dict[int, int] = defaultdict(int)
     window_basis_counts = {
         "yearly_counts": 0,
         "snapshot_delta": 0,
@@ -763,6 +855,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
 
         yearly_counts = _extract_counts_by_year(rows, now_year=now.year)
         if yearly_counts:
+            for year, value in yearly_counts.items():
+                if year <= now.year:
+                    aggregate_yearly_totals[int(year)] += max(0, int(value or 0))
             monthly_added = _monthly_from_yearly_counts(yearly_counts, now=now, months=24)
             monthly_added = _normalize_monthly_to_total(
                 monthly_added=monthly_added,
@@ -793,6 +888,12 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             latest_provider = (
                 str(latest.provider or "").strip().lower() if latest is not None else None
             )
+            fallback_year = (
+                int(work.year)
+                if isinstance(work.year, int) and 1900 <= int(work.year) <= now.year
+                else now.year
+            )
+            aggregate_yearly_totals[fallback_year] += latest_citations
             best_12 = _best_snapshot_at_or_before(
                 rows,
                 cutoff=cutoff_12,
@@ -1214,13 +1315,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     momentum_delta = round(momentum_score - momentum_previous_score, 2)
     concentration_previous = concentration_series[0] if concentration_series else 0.0
     concentration_delta = round(concentration_risk - concentration_previous, 2)
-    yoy_series_numbers = [0.0 if value is None else float(value) for value in yoy_series]
     has_insufficient_history = window_basis_counts["insufficient_history"] > 0
-    yoy_stability = (
-        "stable"
-        if citations_prev_12m > 0 and not has_insufficient_history
-        else "unstable"
-    )
     last12_stability = "unstable" if has_insufficient_history else "stable"
 
     rolling_last_12_series_24 = [
@@ -1230,6 +1325,32 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         round(float(value) * (1.5 if index >= 9 else 1.0), 2)
         for index, value in enumerate(monthly_added_totals[-12:])
     ]
+    monthly_last_12 = monthly_added_totals[-12:]
+    momentum_index = compute_momentum_index(monthly_last_12)
+    momentum_index_state = momentum_index_label(momentum_index)
+
+    # Fixed 5-year bars for intuitive trend reading in the total-citations tile.
+    last5_years = [now.year - 4, now.year - 3, now.year - 2, now.year - 1, now.year]
+    last5_year_values = [max(0, int(aggregate_yearly_totals.get(year, 0))) for year in last5_years]
+    five_year_delta = int(last5_year_values[-1] - last5_year_values[0]) if last5_year_values else 0
+    five_year_threshold = max(3, int(max(last5_year_values or [0]) * 0.08))
+    if five_year_delta > five_year_threshold:
+        trend_label = "Rising"
+        trend_severity = "positive"
+    elif five_year_delta < -five_year_threshold:
+        trend_label = "Falling"
+        trend_severity = "negative"
+    else:
+        trend_label = "Stable"
+        trend_severity = "neutral"
+
+    this_vs_last_label = "Up" if yoy_delta > 0 else "Down" if yoy_delta < 0 else "Flat"
+    this_vs_last_severity = "positive" if yoy_delta > 0 else "negative" if yoy_delta < 0 else "neutral"
+    this_vs_last_subtext = (
+        f"{this_vs_last_label} {abs(yoy_delta):,} citations"
+        if yoy_delta != 0
+        else "No material change"
+    )
     influence_monthly_added_totals = [0 for _ in range(24)]
     for row in influence_candidates:
         additions = row.get("semantic_monthly_added_24")
@@ -1239,207 +1360,265 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             influence_monthly_added_totals[idx] += max(0, int(additions[idx] or 0))
 
     concentration_label = _concentration_risk_label(float(concentration_risk))
+    concentration_classification = (
+        "Diversified" if concentration_risk < 30.0 else "Moderate" if concentration_risk <= 50.0 else "Concentrated"
+    )
+    influence_prev_12m = max(0, int(sum(influence_monthly_added_totals[:12])))
+    influence_delta = influence_last_12m - influence_prev_12m
+    influential_ratio = round((influence_total / total_citations) * 100.0, 1) if total_citations > 0 else 0.0
+    influential_subtext = (
+        f"{influential_ratio:.1f}% of total citations · Updated monthly"
+        if abs(influence_delta) <= 1
+        else f"{influential_ratio:.1f}% of total citations · {influence_delta:+,} vs previous 12m"
+    )
+    if not influence_available:
+        influential_subtext = "Semantic Scholar influential signal unavailable"
+
+    h_projection = project_h_index(current_h_index=h_index, publications=per_work_rows)
+    h_projection_publications = [
+        _publication_item_with_links(dict(item))
+        for item in (h_projection.get("candidate_papers") or [])
+        if isinstance(item, dict)
+    ]
 
     total_tooltip, total_tooltip_details = _build_tooltip(
-        definition="Lifetime citations across all publications in your portfolio.",
-        data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-        computation="sum(latest_citations_per_publication)",
+        definition="What is this: lifetime citations across your publication portfolio.",
+        data_sources=["OpenAlex"] if "OpenAlex" in data_sources else data_sources,
+        computation="sum(latest citations per publication); mini chart shows last 5 years by year",
     )
-    h_tooltip, h_tooltip_details = _build_tooltip(
-        definition="h-index and m-index summarize sustained publication impact over career length.",
+    this_year_tooltip, this_year_tooltip_details = _build_tooltip(
+        definition="What is this: citations in the latest 12 months compared with the previous 12 months.",
         data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-        computation=(
-            "h = max(h such that >= h papers have >= h citations); "
-            "m = h / years_since_first_publication"
-        ),
-    )
-    roll12_tooltip, roll12_tooltip_details = _build_tooltip(
-        definition=(
-            "Citations gained in the most recent rolling 12-month window; delta compares with the previous 12-month window."
-        ),
-        data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-        computation="sum(monthly_citation_growth[-12:]) vs sum(monthly_citation_growth[-24:-12])",
-    )
-    yoy_tooltip, yoy_tooltip_details = _build_tooltip(
-        definition="Year-over-year change in citations comparing last 12 months with previous 12 months.",
-        data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-        computation="((citations_last_12m - citations_prev_12m) / citations_prev_12m) * 100",
+        computation="delta = last_12m_citations - previous_12m_citations",
     )
     momentum_tooltip, momentum_tooltip_details = _build_tooltip(
-        definition="Weighted citation momentum emphasizing the most recent quarter.",
+        definition="What is this: MomentumIndex compares recent citation pace with prior pace.",
         data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-        computation="(sum(months[-3:]) * 1.5) + sum(months[-12:-3])",
+        computation="MomentumIndex = (avg/month last 3m)/(avg/month prior 9m)*100",
+    )
+    h_tooltip, h_tooltip_details = _build_tooltip(
+        definition="What is this: current h-index with a one-year projection.",
+        data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+        computation="projection from papers near threshold [h-2,h+2] using last-12m velocity",
     )
     concentration_tooltip, concentration_tooltip_details = _build_tooltip(
-        definition=(
-            "Citation concentration risk is the percentage of lifetime citations coming from your top 3 publications."
-        ),
+        definition="What is this: percentage of lifetime citations coming from your top 3 papers.",
         data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-        computation="(sum(top_3_paper_citations) / total_citations) * 100",
+        computation="(sum(top3 citations)/total citations)*100",
     )
     influence_tooltip, influence_tooltip_details = _build_tooltip(
-        definition="Influence-weighted citations from Semantic Scholar influentialCitationCount.",
-        data_sources=["Semantic Scholar"],
-        computation="sum(semantic_scholar.influentialCitationCount)",
+        definition="What is this: influential citations from Semantic Scholar.",
+        data_sources=["Semantic Scholar"] if influence_available else ["OpenAlex"],
+        computation="sum(influentialCitationCount) when available",
     )
 
     tiles = [
         _metric_tile(
-            key="total_citations_lifetime",
+            key="total_citations",
             label="Total citations",
             value=total_citations,
             value_display=_format_int(total_citations),
-            delta_value=citations_last_12m,
-            delta_display=f"+{_format_int(citations_last_12m)} in last 12 months",
+            subtext=f"+{_format_int(citations_last_12m)} in last 12 months",
+            badge={"label": trend_label, "severity": trend_severity},
+            chart_type="bar_year_5",
+            chart_data={"years": last5_years, "values": last5_year_values},
+            delta_value=five_year_delta,
+            delta_display=f"{trend_label} over 5 years",
             unit="citations",
-            sparkline=monthly_cumulative_totals[1:],
+            sparkline=last5_year_values,
             tooltip=total_tooltip,
             tooltip_details=total_tooltip_details,
-            data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+            data_source=["OpenAlex"] if "OpenAlex" in data_sources else data_sources,
             confidence_score=_confidence_score_from_publications(total_citation_publications),
-            stability=stability,
+            stability="stable" if trend_label != "Falling" else "unstable",
             drilldown={
-                "title": "Total citations (lifetime)",
-                "definition": "Sum of latest known citation counts for all publications.",
-                "formula": "sum(latest_citations_per_publication)",
+                "title": "Total citations",
+                "definition": "Lifetime citations across all publications.",
+                "formula": "sum(latest citations per publication)",
                 "confidence_note": _confidence_note(),
                 "publications": total_citation_publications,
                 "metadata": {
                     "intermediate_values": {
                         "total_citations": total_citations,
                         "citations_last_12_months": citations_last_12m,
+                        "five_year_delta": five_year_delta,
                     },
-                    "data_sources": [src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+                    "year_bar_values": {"years": last5_years, "values": last5_year_values},
                 },
             },
         ),
         _metric_tile(
-            key="h_index_m_index",
-            label="h-index / m-index",
+            key="this_year_vs_last",
+            label="This year vs last",
+            value=citations_last_12m,
+            value_display=f"{_format_int(citations_last_12m)} vs {_format_int(citations_prev_12m)}",
+            subtext=this_vs_last_subtext,
+            badge={"label": this_vs_last_label, "severity": this_vs_last_severity},
+            chart_type="paired_bar",
+            chart_data={
+                "labels": ["Last 12m", "Previous 12m"],
+                "values": [citations_last_12m, citations_prev_12m],
+            },
+            delta_value=yoy_delta,
+            delta_display=_format_pct(yoy_pct),
+            unit="citations",
+            sparkline=[citations_prev_12m, citations_last_12m],
+            tooltip=this_year_tooltip,
+            tooltip_details=this_year_tooltip_details,
+            data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+            confidence_score=_confidence_score_from_publications(growth_publications),
+            stability="stable" if abs(yoy_delta) <= 10 else "unstable",
+            drilldown={
+                "title": "This year vs last",
+                "definition": "Compares citations in the last 12 months with the previous 12 months.",
+                "formula": "delta = last_12m_citations - previous_12m_citations",
+                "confidence_note": _confidence_note(),
+                "publications": growth_publications,
+                "metadata": {
+                    "intermediate_values": {
+                        "citations_last_12m": citations_last_12m,
+                        "citations_prev_12m": citations_prev_12m,
+                        "delta_citations": yoy_delta,
+                        "delta_pct": yoy_pct,
+                    }
+                },
+            },
+        ),
+        _metric_tile(
+            key="momentum",
+            label="Momentum",
+            value=momentum_index,
+            value_display=f"Momentum {int(round(momentum_index))}",
+            subtext=momentum_index_state,
+            badge={
+                "label": momentum_index_state,
+                "severity": "positive"
+                if momentum_index_state == "Accelerating"
+                else "caution"
+                if momentum_index_state == "Slowing"
+                else "neutral",
+            },
+            chart_type="gauge",
+            chart_data={
+                "min": 0,
+                "max": 150,
+                "value": momentum_index,
+                "zones": [
+                    {"label": "cool", "from": 0, "to": 95},
+                    {"label": "neutral", "from": 95, "to": 105},
+                    {"label": "hot", "from": 105, "to": 150},
+                ],
+                "monthly_values_12m": monthly_last_12,
+                "highlight_last_n": 3,
+            },
+            delta_value=momentum_delta,
+            delta_display=f"{momentum_delta:+.2f} vs previous window",
+            unit="index",
+            sparkline=monthly_last_12,
+            tooltip=momentum_tooltip,
+            tooltip_details=momentum_tooltip_details,
+            data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+            confidence_score=_confidence_score_from_publications(momentum_publications),
+            stability="stable" if momentum_index_state != "Slowing" else "unstable",
+            drilldown={
+                "title": "Momentum",
+                "definition": "Momentum index compares the latest 3-month citation pace vs prior 9 months.",
+                "formula": "MomentumIndex = (avg/month last 3m)/(avg/month prior 9m)*100",
+                "confidence_note": _confidence_note(),
+                "publications": momentum_publications,
+                "metadata": {
+                    "intermediate_values": {
+                        "momentum_index": momentum_index,
+                        "momentum_score_last_12m": momentum_score,
+                        "momentum_score_prev_12m": momentum_previous_score,
+                    },
+                    "monthly_values_12m": monthly_last_12,
+                    "weighted_monthly_values_12m": momentum_weighted_monthly,
+                },
+            },
+        ),
+        _metric_tile(
+            key="h_index_projection",
+            label="h-index",
             value=h_index,
-            value_display=f"h {h_index} | m {_format_float(m_index, digits=2)}",
-            delta_value=m_index,
-            delta_display=f"m-index {_format_float(m_index, digits=2)}",
+            value_display=f"{h_index}",
+            subtext=str(h_projection.get("label") or f"{h_index} (likely)"),
+            badge={
+                "label": "Likely up"
+                if int(h_projection.get("projected_h_index") or h_index) > h_index
+                else "Likely stable",
+                "severity": "positive"
+                if int(h_projection.get("projected_h_index") or h_index) > h_index
+                else "neutral",
+            },
+            chart_type="progress_ring",
+            chart_data={
+                "progress_to_next_pct": float(h_projection.get("progress_to_next_pct") or 0.0),
+                "current_h_index": h_index,
+                "next_h_index": h_index + 1,
+                "projection_probability": float(h_projection.get("projection_probability") or 0.0),
+            },
+            delta_value=float(h_projection.get("projection_probability") or 0.0) * 100.0,
+            delta_display=f"{round(float(h_projection.get('projection_probability') or 0.0) * 100)}% to next h",
             unit="index",
             sparkline=h_index_series,
             tooltip=h_tooltip,
             tooltip_details=h_tooltip_details,
             data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-            confidence_score=_confidence_score_from_publications(h_threshold_publications),
-            stability=stability,
-            drilldown={
-                "title": "h-index and m-index",
-                "definition": (
-                    "h-index captures scale and consistency of citation impact. "
-                    "m-index normalizes h-index by academic career length."
-                ),
-                "formula": (
-                    "h = max(h such that >= h papers have >= h citations); "
-                    "m = h / years_since_first_publication"
-                ),
-                "confidence_note": _confidence_note(),
-                "publications": h_threshold_publications,
-                "metadata": {
-                    "intermediate_values": {
-                        "h_index": h_index,
-                        "m_index": m_index,
-                        "first_publication_year": first_publication_year,
-                    },
-                    "data_sources": [src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-                },
-            },
-        ),
-        _metric_tile(
-            key="citations_last_12m",
-            label="Citations (rolling 12m)",
-            value=citations_last_12m,
-            value_display=_format_int(citations_last_12m),
-            delta_value=yoy_pct,
-            delta_display=_format_pct(yoy_pct),
-            unit="citations",
-            sparkline=monthly_added_totals[-12:],
-            tooltip=roll12_tooltip,
-            tooltip_details=roll12_tooltip_details,
-            data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-            confidence_score=_confidence_score_from_publications(growth_publications),
-            stability=last12_stability,
-            drilldown={
-                "title": "Citations (rolling last 12 months)",
-                "definition": "Sum of citation growth over the latest 12 months.",
-                "formula": "sum(monthly_citation_growth[-12:])",
-                "confidence_note": _confidence_note(),
-                "publications": growth_publications,
-                "metadata": {
-                    "intermediate_values": {
-                        "citations_last_12m": citations_last_12m,
-                        "citations_prev_12m": citations_prev_12m,
-                        "yoy_pct": yoy_pct,
-                    },
-                    "raw_monthly_citations_12m": monthly_added_totals[-12:],
-                },
-            },
-        ),
-        _metric_tile(
-            key="yoy_change",
-            label="YoY change",
-            value=yoy_pct,
-            value_display=_format_pct(yoy_pct),
-            delta_value=yoy_delta,
-            delta_display=f"{yoy_delta:+,} citations",
-            unit="percent",
-            sparkline=monthly_added_totals[-24:],
-            sparkline_overlay=rolling_last_12_series_24,
-            tooltip=yoy_tooltip,
-            tooltip_details=yoy_tooltip_details,
-            data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-            confidence_score=_confidence_score_from_publications(growth_publications),
-            stability=yoy_stability,
-            drilldown={
-                "title": "Year-over-year citation change",
-                "definition": "Compares recent 12-month citation gain to the prior 12-month window.",
-                "formula": "((citations_last_12m - citations_prev_12m) / citations_prev_12m) * 100",
-                "confidence_note": _confidence_note(),
-                "publications": growth_publications,
-                "metadata": {
-                    "intermediate_values": {
-                        "citations_last_12m": citations_last_12m,
-                        "citations_prev_12m": citations_prev_12m,
-                        "yoy_pct": yoy_pct,
-                        "yoy_delta": yoy_delta,
-                    },
-                    "raw_monthly_citations_24m": monthly_added_totals[-24:],
-                    "rolling_12m_overlay_24m": rolling_last_12_series_24,
-                    "yoy_series_12m": yoy_series_numbers,
-                },
-            },
-        ),
-        _metric_tile(
-            key="citation_momentum",
-            label="Citation momentum score",
-            value=momentum_score,
-            value_display=_format_float(momentum_score, digits=2),
-            delta_value=momentum_delta,
-            delta_display=f"{momentum_delta:+.2f} vs previous 12m window",
-            unit="score",
-            sparkline=momentum_weighted_monthly,
-            tooltip=momentum_tooltip,
-            tooltip_details=momentum_tooltip_details,
-            data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-            confidence_score=_confidence_score_from_publications(momentum_publications),
+            confidence_score=_confidence_score_from_publications(h_projection_publications),
             stability="stable",
             drilldown={
-                "title": "Citation momentum score",
-                "definition": "Weighted recency score emphasizing the latest quarter.",
-                "formula": "(sum(months[-3:]) * 1.5) + sum(months[-12:-3])",
+                "title": "h-index projection",
+                "definition": "Current h-index and a 12-month projection using near-threshold papers.",
+                "formula": "Use papers in [h-2,h+2] and last-12m velocity to estimate crossing probability.",
                 "confidence_note": _confidence_note(),
-                "publications": momentum_publications,
+                "publications": h_projection_publications,
+                "metadata": {
+                    "intermediate_values": h_projection,
+                },
+            },
+        ),
+        _metric_tile(
+            key="impact_concentration",
+            label="Impact concentration",
+            value=concentration_risk,
+            value_display=f"{concentration_risk:.1f}%",
+            subtext=concentration_classification,
+            badge={
+                "label": concentration_classification,
+                "severity": "positive"
+                if concentration_classification == "Diversified"
+                else "caution"
+                if concentration_classification == "Moderate"
+                else "negative",
+            },
+            chart_type="donut",
+            chart_data={
+                "labels": ["Top 3 papers", "All other papers"],
+                "values": [top3_citations, max(0, total_citations - top3_citations)],
+            },
+            delta_value=concentration_delta,
+            delta_display=f"{concentration_delta:+.2f}pp",
+            unit="percent",
+            sparkline=concentration_series,
+            tooltip=concentration_tooltip,
+            tooltip_details=concentration_tooltip_details,
+            data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+            confidence_score=_confidence_score_from_publications(concentration_publications),
+            stability="unstable" if concentration_classification == "Concentrated" else "stable",
+            drilldown={
+                "title": "Impact concentration",
+                "definition": "Share of lifetime citations attributable to the top 3 papers.",
+                "formula": "(top3 citations / total citations) * 100",
+                "confidence_note": _confidence_note(),
+                "publications": concentration_publications,
                 "metadata": {
                     "intermediate_values": {
-                        "momentum_score_last_12m": momentum_score,
-                        "momentum_score_prev_12m": momentum_previous_score,
-                        "momentum_delta": momentum_delta,
-                    },
-                    "weighted_monthly_values_12m": momentum_weighted_monthly,
+                        "top3_citations": top3_citations,
+                        "total_citations": total_citations,
+                        "concentration_pct": concentration_risk,
+                        "classification": concentration_classification,
+                    }
                 },
             },
         ),
