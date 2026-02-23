@@ -50,6 +50,11 @@ METRICS_PROVIDER_PRIORITY = {
     "manual": 10,
 }
 METRICS_SYNC_MAX_WORKERS = 6
+PMID_PATTERNS = [
+    re.compile(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", re.IGNORECASE),
+    re.compile(r"/pubmed/(\d+)", re.IGNORECASE),
+    re.compile(r"pmid[:\s]+(\d+)", re.IGNORECASE),
+]
 
 
 class PersonaValidationError(RuntimeError):
@@ -96,6 +101,47 @@ def _normalize_keywords(value: Any) -> list[str]:
         seen.add(key)
         keywords.append(text)
     return keywords
+
+
+def _extract_pmid(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.isdigit():
+        return text
+    for pattern in PMID_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _safe_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(str(value).strip())
+    except Exception:
+        return None
+
+
+def _extract_pmid_and_journal_metric(metric_payload: dict[str, Any]) -> tuple[str | None, float | None]:
+    pmid = _extract_pmid(metric_payload.get("pmid"))
+    if not pmid:
+        pmid = _extract_pmid(metric_payload.get("pubmed_id"))
+    if not pmid:
+        pmid = _extract_pmid((metric_payload.get("ids") or {}).get("pmid"))
+    if not pmid:
+        pmid = _extract_pmid(metric_payload.get("url"))
+
+    impact_factor = _safe_float(metric_payload.get("journal_impact_factor"))
+    if impact_factor is None:
+        impact_factor = _safe_float(metric_payload.get("impact_factor"))
+    if impact_factor is None:
+        impact_factor = _safe_float(metric_payload.get("journal_2yr_mean_citedness"))
+    return pmid, impact_factor
 
 
 def _resolve_user_or_raise(session, user_id: str) -> User:
@@ -322,8 +368,39 @@ def list_works(*, user_id: str) -> list[dict[str, Any]]:
         works = session.scalars(
             select(Work).where(Work.user_id == user_id).order_by(Work.year.desc(), Work.updated_at.desc())
         ).all()
+        work_ids = [work.id for work in works]
+        latest_metrics = _latest_metrics_by_work(session, work_ids)
+        authorship_rows = session.scalars(
+            select(WorkAuthorship)
+            .where(WorkAuthorship.work_id.in_(work_ids or [""]))
+            .order_by(WorkAuthorship.work_id.asc(), WorkAuthorship.author_order.asc())
+        ).all()
+        author_ids = [row.author_id for row in authorship_rows]
+        authors = session.scalars(
+            select(Author).where(Author.id.in_(author_ids or [""]))
+        ).all()
+        author_name_by_id = {author.id: author.canonical_name for author in authors}
+        authors_by_work: dict[str, list[str]] = defaultdict(list)
+        for link in authorship_rows:
+            author_name = author_name_by_id.get(link.author_id, "").strip()
+            if not author_name:
+                continue
+            existing = authors_by_work[link.work_id]
+            if author_name in existing:
+                continue
+            existing.append(author_name)
+
         payload: list[dict[str, Any]] = []
         for work in works:
+            snapshot = latest_metrics.get(work.id)
+            metric_payload = dict(snapshot.metric_payload or {}) if snapshot else {}
+            pmid = _extract_pmid(work.url)
+            journal_metric = None
+            derived_pmid, derived_metric = _extract_pmid_and_journal_metric(metric_payload)
+            if not pmid:
+                pmid = derived_pmid
+            if derived_metric is not None:
+                journal_metric = round(derived_metric, 3)
             payload.append(
                 {
                     "id": work.id,
@@ -338,6 +415,9 @@ def list_works(*, user_id: str) -> list[dict[str, Any]]:
                     "url": work.url,
                     "provenance": work.provenance,
                     "cluster_id": work.cluster_id,
+                    "authors": authors_by_work.get(work.id, []),
+                    "pmid": pmid,
+                    "journal_impact_factor": journal_metric,
                     "created_at": work.created_at,
                     "updated_at": work.updated_at,
                 }

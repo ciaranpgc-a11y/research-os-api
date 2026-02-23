@@ -941,6 +941,9 @@ class PersonaWorkResponse(BaseModel):
     url: str
     provenance: str
     cluster_id: str | None = None
+    authors: list[str] = Field(default_factory=list)
+    pmid: str | None = None
+    journal_impact_factor: float | None = None
     created_at: datetime
     updated_at: datetime
 

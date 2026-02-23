@@ -158,6 +158,12 @@ class OpenAlexMetricsProvider(MetricsProvider):
         cited_by = int(candidate.get("cited_by_count", 0) or 0)
         openalex_id = candidate.get("id")
         cited_by_api_url = candidate.get("cited_by_api_url")
+        ids = candidate.get("ids") or {}
+        pmid_value = ids.get("pmid")
+        primary_location = candidate.get("primary_location") or {}
+        source = primary_location.get("source") or {}
+        summary_stats = source.get("summary_stats") or {}
+        journal_2yr_mean_citedness = summary_stats.get("2yr_mean_citedness")
         return {
             "provider": self.provider_name,
             "citations_count": cited_by,
@@ -168,6 +174,9 @@ class OpenAlexMetricsProvider(MetricsProvider):
                 "cited_by_count": cited_by,
                 "cited_by_api_url": cited_by_api_url,
                 "match_method": match_method,
+                "pmid": pmid_value,
+                "journal_2yr_mean_citedness": journal_2yr_mean_citedness,
+                "journal_name": source.get("display_name"),
             },
         }
 

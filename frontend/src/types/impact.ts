@@ -51,6 +51,9 @@ export type PersonaWork = {
   url: string
   provenance: string
   cluster_id: string | null
+  authors: string[]
+  pmid: string | null
+  journal_impact_factor: number | null
   created_at: string
   updated_at: string
 }

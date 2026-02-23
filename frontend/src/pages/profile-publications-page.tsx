@@ -13,6 +13,18 @@ type PublicationFilterKey = 'all' | 'cited' | 'with_doi' | 'with_abstract'
 type PublicationSortField = 'updated' | 'citations' | 'year' | 'title' | 'venue'
 type SortDirection = 'asc' | 'desc'
 
+const WORK_TYPE_LABELS: Record<string, string> = {
+  'journal-article': 'Journal article',
+  'conference-paper': 'Conference paper',
+  'conference-abstract': 'Conference abstract',
+  'book-chapter': 'Book chapter',
+  book: 'Book',
+  preprint: 'Preprint',
+  dissertation: 'Dissertation',
+  'data-set': 'Dataset',
+  'review-article': 'Review article',
+}
+
 function formatTimestamp(value: string | null | undefined): string {
   if (!value) {
     return 'Not available'
@@ -56,6 +68,26 @@ function doiToUrl(doi: string | null | undefined): string | null {
   return `https://doi.org/${clean}`
 }
 
+function formatWorkType(value: string | null | undefined): string {
+  const raw = (value || '').trim()
+  if (!raw) {
+    return 'Not specified'
+  }
+  const byMap = WORK_TYPE_LABELS[raw.toLowerCase()]
+  if (byMap) {
+    return byMap
+  }
+  const text = raw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+  return text.replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function formatImpactMetric(value: number | null | undefined): string {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return 'Not available'
+  }
+  return value.toFixed(2)
+}
+
 export function ProfilePublicationsPage() {
   const navigate = useNavigate()
   const [token, setToken] = useState<string>(() => getAuthSessionToken())
@@ -63,6 +95,7 @@ export function ProfilePublicationsPage() {
   const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(null)
   const [query, setQuery] = useState('')
   const [filterKey, setFilterKey] = useState<PublicationFilterKey>('all')
+  const [typeFilter, setTypeFilter] = useState<string>('all')
   const [sortField, setSortField] = useState<PublicationSortField>('updated')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null)
@@ -132,6 +165,19 @@ export function ProfilePublicationsPage() {
     return map
   }, [personaState?.metrics.works])
 
+  const typeFilterOptions = useMemo(() => {
+    const values = new Set<string>()
+    for (const work of personaState?.works ?? []) {
+      const key = (work.work_type || '').trim()
+      if (key) {
+        values.add(key)
+      }
+    }
+    return Array.from(values).sort((left, right) =>
+      formatWorkType(left).localeCompare(formatWorkType(right)),
+    )
+  }, [personaState?.works])
+
   const filteredWorks = useMemo(() => {
     const cleanQuery = query.trim().toLowerCase()
     const works = [...(personaState?.works ?? [])]
@@ -140,8 +186,13 @@ export function ProfilePublicationsPage() {
         !cleanQuery ||
         work.title.toLowerCase().includes(cleanQuery) ||
         work.venue_name.toLowerCase().includes(cleanQuery) ||
-        (work.doi || '').toLowerCase().includes(cleanQuery)
+        (work.doi || '').toLowerCase().includes(cleanQuery) ||
+        (work.pmid || '').toLowerCase().includes(cleanQuery) ||
+        (work.authors || []).join(' ').toLowerCase().includes(cleanQuery)
       if (!matchesQuery) {
+        return false
+      }
+      if (typeFilter !== 'all' && (work.work_type || '').trim() !== typeFilter) {
         return false
       }
       if (filterKey === 'cited') {
@@ -177,7 +228,7 @@ export function ProfilePublicationsPage() {
       return (Date.parse(left.updated_at) - Date.parse(right.updated_at)) * direction
     })
     return filtered
-  }, [filterKey, metricsByWorkId, personaState?.works, query, sortDirection, sortField])
+  }, [filterKey, metricsByWorkId, personaState?.works, query, sortDirection, sortField, typeFilter])
 
   useEffect(() => {
     if (filteredWorks.length === 0) {
@@ -362,7 +413,7 @@ export function ProfilePublicationsPage() {
                 <Input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Filter by title, venue, DOI"
+                  placeholder="Filter by title, journal, DOI, PMID, author"
                   className="w-[280px]"
                 />
                 <select
@@ -374,6 +425,18 @@ export function ProfilePublicationsPage() {
                   <option value="cited">Cited only</option>
                   <option value="with_doi">With DOI</option>
                   <option value="with_abstract">With abstract</option>
+                </select>
+                <select
+                  value={typeFilter}
+                  onChange={(event) => setTypeFilter(event.target.value)}
+                  className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                >
+                  <option value="all">All types</option>
+                  {typeFilterOptions.map((value) => (
+                    <option key={value} value={value}>
+                      {formatWorkType(value)}
+                    </option>
+                  ))}
                 </select>
                 <select
                   value={sortField}
@@ -434,9 +497,9 @@ export function ProfilePublicationsPage() {
                             }`}
                           >
                             <td className="px-2 py-2 font-medium">{work.title}</td>
-                            <td className="px-2 py-2">{work.year ?? 'n/a'}</td>
-                            <td className="px-2 py-2">{work.venue_name || 'n/a'}</td>
-                            <td className="px-2 py-2">{work.work_type || 'n/a'}</td>
+                            <td className="px-2 py-2 font-semibold">{work.year ?? 'n/a'}</td>
+                            <td className="px-2 py-2 font-medium">{work.venue_name || 'n/a'}</td>
+                            <td className="px-2 py-2">{formatWorkType(work.work_type)}</td>
                             <td className="px-2 py-2">{metrics?.citations ?? 0}</td>
                           </tr>
                         )
@@ -457,30 +520,45 @@ export function ProfilePublicationsPage() {
                   <p className="text-muted-foreground">Select a publication to view details.</p>
                 ) : (
                   <>
-                    <div>
-                      <p className="font-semibold">{selectedWork.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {selectedWork.year ?? 'Year n/a'} | {selectedWork.venue_name || 'Venue n/a'}
-                      </p>
+                    <p className="font-semibold">{selectedWork.title}</p>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded border border-border bg-muted/20 px-2 py-1.5">
+                        <p className="text-[11px] uppercase text-muted-foreground">Year</p>
+                        <p className="text-lg font-semibold leading-tight">{selectedWork.year ?? 'n/a'}</p>
+                      </div>
+                      <div className="rounded border border-border bg-muted/20 px-2 py-1.5">
+                        <p className="text-[11px] uppercase text-muted-foreground">Journal</p>
+                        <p className="font-semibold leading-tight">{selectedWork.venue_name || 'Not available'}</p>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 gap-2">
                       <div className="rounded border border-border px-2 py-1.5">
                         <p className="text-[11px] uppercase text-muted-foreground">Type</p>
-                        <p>{selectedWork.work_type || 'Not available'}</p>
+                        <p>{formatWorkType(selectedWork.work_type)}</p>
                       </div>
                       <div className="rounded border border-border px-2 py-1.5">
                         <p className="text-[11px] uppercase text-muted-foreground">Citations</p>
                         <p>{metricsByWorkId.get(selectedWork.id)?.citations ?? 0}</p>
                       </div>
                       <div className="rounded border border-border px-2 py-1.5">
-                        <p className="text-[11px] uppercase text-muted-foreground">Metrics provider</p>
-                        <p>{metricsByWorkId.get(selectedWork.id)?.provider || 'Not synced'}</p>
+                        <p className="text-[11px] uppercase text-muted-foreground">PMID</p>
+                        <p>{selectedWork.pmid || 'Not available'}</p>
                       </div>
                       <div className="rounded border border-border px-2 py-1.5">
-                        <p className="text-[11px] uppercase text-muted-foreground">Source</p>
-                        <p>{selectedWork.provenance || 'Not available'}</p>
+                        <p className="text-[11px] uppercase text-muted-foreground">Journal IF / proxy</p>
+                        <p>{formatImpactMetric(selectedWork.journal_impact_factor)}</p>
                       </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase text-muted-foreground">Authors</p>
+                      {(selectedWork.authors || []).length > 0 ? (
+                        <p>{(selectedWork.authors || []).join(', ')}</p>
+                      ) : (
+                        <p className="text-muted-foreground">Not available</p>
+                      )}
                     </div>
 
                     <div className="space-y-1">
