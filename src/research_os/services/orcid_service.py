@@ -117,6 +117,26 @@ def _orcid_auto_sync_metrics_enabled() -> bool:
     }
 
 
+def _orcid_sync_metric_providers() -> list[str]:
+    raw = os.getenv("ORCID_IMPORT_SYNC_PROVIDERS", "openalex").strip()
+    if not raw:
+        return ["openalex"]
+    providers: list[str] = []
+    seen: set[str] = set()
+    for item in raw.split(","):
+        value = item.strip().lower()
+        if not value:
+            continue
+        normalized = "semantic_scholar" if value in {"semanticscholar"} else value
+        if normalized not in {"openalex", "semantic_scholar", "manual"}:
+            continue
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        providers.append(normalized)
+    return providers or ["openalex"]
+
+
 def _resolve_user_or_raise(session, user_id: str) -> User:
     user = session.get(User, user_id)
     if user is None:
@@ -616,10 +636,11 @@ def import_orcid_works(
         user.orcid_last_synced_at = _utcnow()
         session.flush()
     if _orcid_auto_sync_metrics_enabled() and upserted_ids:
+        providers = _orcid_sync_metric_providers()
         try:
             sync_metrics(
                 user_id=user_id,
-                providers=["openalex", "semantic_scholar"],
+                providers=providers,
                 work_ids=upserted_ids,
             )
         except Exception:

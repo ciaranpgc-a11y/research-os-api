@@ -1,20 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { readAccountSettings, settingsCompleteness } from '@/lib/account-preferences'
 import { getAuthSessionToken } from '@/lib/auth-session'
-import { fetchMe, fetchOrcidStatus, fetchPersonaState } from '@/lib/impact-api'
-import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
-import type { AuthUser, OrcidStatusPayload, PersonaStatePayload } from '@/types/impact'
-
-const CITATION_HISTORY_STORAGE_KEY = 'aawe-citation-history'
-
-type CitationSnapshot = {
-  at: string
-  total: number
-}
+import { fetchMe, fetchOrcidStatus, fetchPublicationsAnalyticsSummary } from '@/lib/impact-api'
+import type {
+  AuthUser,
+  OrcidStatusPayload,
+  PublicationsAnalyticsSummaryPayload,
+} from '@/types/impact'
 
 function formatTimestamp(value: string | null | undefined): string {
   if (!value) {
@@ -33,87 +29,38 @@ function formatTimestamp(value: string | null | undefined): string {
   })
 }
 
-function readCitationHistory(): CitationSnapshot[] {
-  if (typeof window === 'undefined') {
-    return []
+function formatSignedPercent(value: number | null): string {
+  if (value === null || Number.isNaN(value)) {
+    return 'n/a'
   }
-  const raw = window.localStorage.getItem(CITATION_HISTORY_STORAGE_KEY)
-  if (!raw) {
-    return []
+  const rounded = Math.round(value * 10) / 10
+  if (rounded > 0) {
+    return `+${rounded}%`
   }
-  try {
-    const parsed = JSON.parse(raw) as CitationSnapshot[]
-    if (!Array.isArray(parsed)) {
-      return []
-    }
-    return parsed
-      .filter((item) => typeof item?.at === 'string' && typeof item?.total === 'number')
-      .slice(-180)
-  } catch {
-    return []
-  }
+  return `${rounded}%`
 }
 
-function writeCitationHistory(history: CitationSnapshot[]): void {
-  if (typeof window === 'undefined') {
-    return
+function growthToneClass(value: number | null): string {
+  if (value === null || Number.isNaN(value)) {
+    return 'text-muted-foreground'
   }
-  window.localStorage.setItem(CITATION_HISTORY_STORAGE_KEY, JSON.stringify(history.slice(-180)))
-}
-
-function recordCitationSnapshot(totalCitations: number): void {
-  if (totalCitations < 0) {
-    return
+  if (value > 0) {
+    return 'text-emerald-700'
   }
-  const history = readCitationHistory()
-  const now = new Date().toISOString()
-  const last = history[history.length - 1]
-  if (last) {
-    const lastAt = Date.parse(last.at)
-    const sixHoursMs = 6 * 60 * 60 * 1000
-    if (last.total === totalCitations && !Number.isNaN(lastAt) && Date.now() - lastAt < sixHoursMs) {
-      return
-    }
+  if (value < 0) {
+    return 'text-rose-700'
   }
-  history.push({ at: now, total: totalCitations })
-  writeCitationHistory(history)
-}
-
-function newCitationsInLast30Days(currentTotal: number): number | null {
-  const history = readCitationHistory()
-  if (history.length === 0) {
-    return null
-  }
-  const threshold = Date.now() - 30 * 24 * 60 * 60 * 1000
-  let baseline: CitationSnapshot | null = null
-  for (const point of history) {
-    const parsed = Date.parse(point.at)
-    if (Number.isNaN(parsed)) {
-      continue
-    }
-    if (parsed <= threshold) {
-      baseline = point
-    }
-  }
-  if (!baseline) {
-    return null
-  }
-  return Math.max(0, currentTotal - baseline.total)
+  return 'text-muted-foreground'
 }
 
 export function ProfilePage() {
   const navigate = useNavigate()
   const [user, setUser] = useState<AuthUser | null>(null)
   const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(null)
-  const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(null)
+  const [citationSummary, setCitationSummary] = useState<PublicationsAnalyticsSummaryPayload | null>(null)
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
-  const syncStatus = personaState?.sync_status || {
-    orcid_last_synced_at: null,
-    works_last_updated_at: null,
-    impact_last_computed_at: null,
-  }
 
   useEffect(() => {
     const token = getAuthSessionToken()
@@ -129,21 +76,12 @@ export function ProfilePage() {
         const settled = await Promise.allSettled([
           fetchMe(token),
           fetchOrcidStatus(token),
-          fetchPersonaState(token),
+          fetchPublicationsAnalyticsSummary(token),
         ])
-        const [meResult, orcidResult, stateResult] = settled
+        const [meResult, orcidResult, summaryResult] = settled
         setUser(meResult.status === 'fulfilled' ? meResult.value : null)
         setOrcidStatus(orcidResult.status === 'fulfilled' ? orcidResult.value : null)
-        if (stateResult.status === 'fulfilled') {
-          setPersonaState(stateResult.value)
-          writeCachedPersonaState(stateResult.value)
-        } else {
-          const cached = readCachedPersonaState()
-          setPersonaState(cached)
-          if (cached) {
-            setStatus('Showing cached profile metrics while live data reloads.')
-          }
-        }
+        setCitationSummary(summaryResult.status === 'fulfilled' ? summaryResult.value : null)
         const failedCount = settled.filter((item) => item.status === 'rejected').length
         if (failedCount > 0) {
           setStatus(`Profile loaded with ${failedCount} unavailable source${failedCount === 1 ? '' : 's'}.`)
@@ -158,41 +96,6 @@ export function ProfilePage() {
   }, [navigate])
 
   const settings = readAccountSettings()
-  const works = personaState?.works ?? []
-  const metricsRows = personaState?.metrics.works ?? []
-  const totalCitations = useMemo(
-    () => metricsRows.reduce((sum, row) => sum + Math.max(0, Number(row.citations || 0)), 0),
-    [metricsRows],
-  )
-  const citationsLast30Days = useMemo(() => newCitationsInLast30Days(totalCitations), [totalCitations])
-  const topPapers = useMemo(
-    () =>
-      [...metricsRows]
-        .sort((a, b) => Number(b.citations || 0) - Number(a.citations || 0))
-        .slice(0, 5),
-    [metricsRows],
-  )
-  const topCollaborators = useMemo(
-    () => (personaState?.collaborators.collaborators ?? []).slice(0, 3),
-    [personaState?.collaborators.collaborators],
-  )
-
-  const profileCompleteness = useMemo(() => {
-    const identityFields = [
-      Boolean(user?.name.trim()),
-      Boolean(user?.email.trim()),
-      Boolean(orcidStatus?.linked || user?.orcid_id),
-    ]
-    const identityScore = Math.round((identityFields.filter(Boolean).length / identityFields.length) * 100)
-    const libraryScore = works.length > 0 ? 100 : 0
-    const preferenceScore = settingsCompleteness(settings)
-    return Math.round((identityScore + libraryScore + preferenceScore) / 3)
-  }, [orcidStatus?.linked, settings, user?.email, user?.name, user?.orcid_id, works.length])
-
-  useEffect(() => {
-    recordCitationSnapshot(totalCitations)
-  }, [totalCitations])
-
   return (
     <section className="space-y-4">
       <header className="space-y-1">
@@ -200,23 +103,15 @@ export function ProfilePage() {
       </header>
 
       <Card>
-        <CardContent className="grid gap-3 p-4 md:grid-cols-4">
+        <CardContent className="grid gap-3 p-4 md:grid-cols-2">
           <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">Profile completeness</p>
-            <p className="font-semibold">{profileCompleteness}%</p>
+            <p className="text-xs text-muted-foreground">Citations (12m)</p>
+            <p className="font-semibold">{citationSummary?.citations_last_12_months ?? 'n/a'}</p>
           </div>
           <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">Total works</p>
-            <p className="font-semibold">{works.length}</p>
-          </div>
-          <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">Total citations</p>
-            <p className="font-semibold">{totalCitations}</p>
-          </div>
-          <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">New citations (30 days)</p>
-            <p className="font-semibold">
-              {citationsLast30Days === null ? 'Insufficient history' : citationsLast30Days}
+            <p className="text-xs text-muted-foreground">YoY %</p>
+            <p className={`font-semibold ${growthToneClass(citationSummary?.yoy_percent ?? null)}`}>
+              {formatSignedPercent(citationSummary?.yoy_percent ?? null)}
             </p>
           </div>
         </CardContent>
@@ -225,44 +120,26 @@ export function ProfilePage() {
       <div className="grid gap-3 xl:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Top papers</CardTitle>
-            <CardDescription>Highest citations from latest metrics snapshot.</CardDescription>
+            <CardTitle className="text-sm">Citation executive summary</CardTitle>
+            <CardDescription>Computed in Publications analytics and surfaced here only.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            {topPapers.length > 0 ? (
-              topPapers.map((paper) => (
-                <div key={paper.work_id} className="rounded border border-border px-3 py-2">
-                  <p className="font-medium">{paper.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {paper.year ?? 'Year n/a'} | {paper.citations} citations | {paper.provider}
-                  </p>
-                </div>
-              ))
-            ) : (
-              <p className="text-muted-foreground">No citation metrics available yet.</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Top collaborators</CardTitle>
-            <CardDescription>Top three by shared publication count.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            {topCollaborators.length > 0 ? (
-              topCollaborators.map((collaborator) => (
-                <div
-                  key={collaborator.author_id}
-                  className="flex items-center justify-between rounded border border-border px-3 py-2"
-                >
-                  <span className="font-medium">{collaborator.name}</span>
-                  <span className="text-xs text-muted-foreground">{collaborator.n_shared_works} shared</span>
-                </div>
-              ))
-            ) : (
-              <p className="text-muted-foreground">No collaborator data available yet.</p>
-            )}
+            <p>
+              Citations (12m):{' '}
+              <strong>{citationSummary?.citations_last_12_months ?? 'n/a'}</strong>
+            </p>
+            <p>
+              YoY %:{' '}
+              <strong className={growthToneClass(citationSummary?.yoy_percent ?? null)}>
+                {formatSignedPercent(citationSummary?.yoy_percent ?? null)}
+              </strong>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Last computed: {formatTimestamp(citationSummary?.computed_at)}
+            </p>
+            <Button type="button" size="sm" variant="outline" onClick={() => navigate('/profile/publications')}>
+              Open publications analytics
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -276,9 +153,6 @@ export function ProfilePage() {
             <p>
               ORCID: <strong>{orcidStatus?.linked ? 'Connected' : 'Not connected'}</strong>
             </p>
-            <p className="text-muted-foreground">
-              Last ORCID sync: {formatTimestamp(syncStatus.orcid_last_synced_at)}
-            </p>
             <Button type="button" size="sm" variant="outline" onClick={() => navigate('/profile/integrations')}>
               Open integrations
             </Button>
@@ -291,10 +165,10 @@ export function ProfilePage() {
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p>
-              Library size: <strong>{works.length}</strong>
+              Citation metrics source: <strong>Publications analytics</strong>
             </p>
             <p className="text-muted-foreground">
-              Last update: {formatTimestamp(syncStatus.works_last_updated_at)}
+              Full citation intelligence lives in Publications.
             </p>
             <Button type="button" size="sm" variant="outline" onClick={() => navigate('/profile/publications')}>
               Open publications
@@ -308,7 +182,7 @@ export function ProfilePage() {
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p className="text-muted-foreground">
-              Last impact run: {formatTimestamp(syncStatus.impact_last_computed_at || user?.impact_last_computed_at)}
+              Last impact run: {formatTimestamp(user?.impact_last_computed_at)}
             </p>
             <Button type="button" size="sm" variant="outline" onClick={() => navigate('/impact')}>
               Open impact
@@ -334,7 +208,7 @@ export function ProfilePage() {
         </Card>
       </div>
 
-      {works.length === 0 ? (
+      {!citationSummary ? (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Start profile data</CardTitle>
@@ -342,8 +216,8 @@ export function ProfilePage() {
           <CardContent className="space-y-2 text-sm">
             <ol className="list-decimal space-y-1 pl-5">
               <li>Connect ORCID in Integrations.</li>
-              <li>Import works into Publications.</li>
-              <li>Run Impact analysis after citations sync.</li>
+              <li>Run citation sync in Publications.</li>
+              <li>Return here for executive citation summary.</li>
             </ol>
           </CardContent>
         </Card>

@@ -989,6 +989,43 @@ class PersonaOpenAccessDiscoverResponse(BaseModel):
     records: list[PersonaOpenAccessRecordResponse] = Field(default_factory=list)
 
 
+class PublicationsAnalyticsSummaryResponse(BaseModel):
+    total_citations: int = 0
+    h_index: int = 0
+    citation_velocity_12m: float = 0.0
+    citations_last_12_months: int = 0
+    citations_previous_12_months: int = 0
+    yoy_percent: float | None = None
+    computed_at: datetime
+
+
+class PublicationsAnalyticsTimePointResponse(BaseModel):
+    year: int
+    citations_added: int = 0
+    total_citations_end_year: int = 0
+
+
+class PublicationsAnalyticsTimeseriesResponse(BaseModel):
+    computed_at: datetime
+    points: list[PublicationsAnalyticsTimePointResponse] = Field(default_factory=list)
+
+
+class PublicationsAnalyticsDriverResponse(BaseModel):
+    work_id: str
+    title: str
+    year: int | None = None
+    doi: str | None = None
+    citations_last_12_months: int = 0
+    current_citations: int = 0
+    provider: str = "none"
+
+
+class PublicationsAnalyticsTopDriversResponse(BaseModel):
+    computed_at: datetime
+    window: str = "last_12_months"
+    drivers: list[PublicationsAnalyticsDriverResponse] = Field(default_factory=list)
+
+
 class PersonaEmbeddingsGenerateRequest(BaseModel):
     model_name: str | None = None
 

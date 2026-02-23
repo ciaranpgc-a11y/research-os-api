@@ -70,6 +70,39 @@ export type PersonaMetricsSyncPayload = {
   }>
 }
 
+export type PublicationsAnalyticsSummaryPayload = {
+  total_citations: number
+  h_index: number
+  citation_velocity_12m: number
+  citations_last_12_months: number
+  citations_previous_12_months: number
+  yoy_percent: number | null
+  computed_at: string
+}
+
+export type PublicationsAnalyticsTimeseriesPayload = {
+  computed_at: string
+  points: Array<{
+    year: number
+    citations_added: number
+    total_citations_end_year: number
+  }>
+}
+
+export type PublicationsAnalyticsTopDriversPayload = {
+  computed_at: string
+  window: string
+  drivers: Array<{
+    work_id: string
+    title: string
+    year: number | null
+    doi: string | null
+    citations_last_12_months: number
+    current_citations: number
+    provider: string
+  }>
+}
+
 export type PersonaEmbeddingsGeneratePayload = {
   generated_embeddings: number
   model_name: string

@@ -24,6 +24,9 @@ import type {
   PersonaContextPayload,
   PersonaEmbeddingsGeneratePayload,
   PersonaMetricsSyncPayload,
+  PublicationsAnalyticsSummaryPayload,
+  PublicationsAnalyticsTimeseriesPayload,
+  PublicationsAnalyticsTopDriversPayload,
   PersonaWork,
 } from '@/types/impact'
 
@@ -432,7 +435,7 @@ export async function importOrcidWorks(
       body: JSON.stringify({ overwrite_user_metadata: Boolean(options?.overwriteUserMetadata) }),
     },
     'ORCID import failed',
-    { timeoutMs: 180_000, retryCount: 2 },
+    { timeoutMs: 90_000, retryCount: 0 },
   )
 }
 
@@ -460,6 +463,68 @@ export async function syncPersonaMetrics(
     },
     'Metrics sync failed',
     { timeoutMs: 180_000, retryCount: 2 },
+  )
+}
+
+export async function fetchPublicationsAnalyticsSummary(
+  token: string,
+  options?: {
+    refresh?: boolean
+    refreshMetrics?: boolean
+  },
+): Promise<PublicationsAnalyticsSummaryPayload> {
+  const refresh = options?.refresh ? '1' : '0'
+  const refreshMetrics = options?.refreshMetrics ? '1' : '0'
+  return requestJson<PublicationsAnalyticsSummaryPayload>(
+    `${API_BASE_URL}/v1/publications/analytics/summary?refresh=${refresh}&refresh_metrics=${refreshMetrics}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Publications analytics summary lookup failed',
+    { timeoutMs: 120_000, retryCount: 2 },
+  )
+}
+
+export async function fetchPublicationsAnalyticsTimeseries(
+  token: string,
+  options?: {
+    refresh?: boolean
+    refreshMetrics?: boolean
+  },
+): Promise<PublicationsAnalyticsTimeseriesPayload> {
+  const refresh = options?.refresh ? '1' : '0'
+  const refreshMetrics = options?.refreshMetrics ? '1' : '0'
+  return requestJson<PublicationsAnalyticsTimeseriesPayload>(
+    `${API_BASE_URL}/v1/publications/analytics/timeseries?refresh=${refresh}&refresh_metrics=${refreshMetrics}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Publications analytics timeseries lookup failed',
+    { timeoutMs: 120_000, retryCount: 2 },
+  )
+}
+
+export async function fetchPublicationsAnalyticsTopDrivers(
+  token: string,
+  options?: {
+    limit?: number
+    refresh?: boolean
+    refreshMetrics?: boolean
+  },
+): Promise<PublicationsAnalyticsTopDriversPayload> {
+  const limit = Math.max(1, Math.min(25, Number(options?.limit || 5)))
+  const refresh = options?.refresh ? '1' : '0'
+  const refreshMetrics = options?.refreshMetrics ? '1' : '0'
+  return requestJson<PublicationsAnalyticsTopDriversPayload>(
+    `${API_BASE_URL}/v1/publications/analytics/top-drivers?limit=${limit}&refresh=${refresh}&refresh_metrics=${refreshMetrics}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Publications analytics top drivers lookup failed',
+    { timeoutMs: 120_000, retryCount: 2 },
   )
 }
 

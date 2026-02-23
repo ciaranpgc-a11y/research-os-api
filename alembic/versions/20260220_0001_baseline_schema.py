@@ -489,6 +489,33 @@ def _create_impact_snapshots_table() -> None:
     )
 
 
+def _create_publications_metrics_table() -> None:
+    op.create_table(
+        "publications_metrics",
+        sa.Column("id", sa.String(length=36), nullable=False),
+        sa.Column("user_id", sa.String(length=36), nullable=False),
+        sa.Column("metric_key", sa.String(length=64), nullable=False),
+        sa.Column("metric_json", sa.JSON(), nullable=False),
+        sa.Column("computed_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("user_id", "metric_key"),
+    )
+    op.create_index(
+        "ix_publications_metrics_user_id",
+        "publications_metrics",
+        ["user_id"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_publications_metrics_user_key",
+        "publications_metrics",
+        ["user_id", "metric_key"],
+        unique=False,
+    )
+
+
 def _add_generation_job_column_if_missing(
     column_name: str, column: sa.Column[sa.Any]
 ) -> None:
@@ -683,6 +710,15 @@ def upgrade() -> None:
 
     if not _table_exists("impact_snapshots"):
         _create_impact_snapshots_table()
+
+    if not _table_exists("publications_metrics"):
+        _create_publications_metrics_table()
+    else:
+        _create_index_if_missing(
+            "ix_publications_metrics_user_key",
+            "publications_metrics",
+            ["user_id", "metric_key"],
+        )
 
 
 def downgrade() -> None:

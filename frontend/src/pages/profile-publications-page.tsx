@@ -5,10 +5,26 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { fetchMe, fetchOrcidStatus, fetchPersonaState, importOrcidWorks, syncPersonaMetrics } from '@/lib/impact-api'
+import {
+  fetchMe,
+  fetchOrcidStatus,
+  fetchPersonaState,
+  fetchPublicationsAnalyticsSummary,
+  fetchPublicationsAnalyticsTimeseries,
+  fetchPublicationsAnalyticsTopDrivers,
+  importOrcidWorks,
+  syncPersonaMetrics,
+} from '@/lib/impact-api'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
 import { getAuthSessionToken } from '@/lib/auth-session'
-import type { AuthUser, OrcidStatusPayload, PersonaStatePayload } from '@/types/impact'
+import type {
+  AuthUser,
+  OrcidStatusPayload,
+  PersonaStatePayload,
+  PublicationsAnalyticsSummaryPayload,
+  PublicationsAnalyticsTimeseriesPayload,
+  PublicationsAnalyticsTopDriversPayload,
+} from '@/types/impact'
 
 type PublicationFilterKey = 'all' | 'cited' | 'with_doi' | 'with_abstract' | 'with_pmid'
 type PublicationSortField = 'citations' | 'year' | 'title' | 'venue' | 'work_type'
@@ -168,19 +184,6 @@ function formatJournalName(value: string | null | undefined): string {
       return `${leading}${core.charAt(0).toUpperCase()}${core.slice(1).toLowerCase()}${trailing}`
     })
     .join(' ')
-}
-
-function computeHIndex(citationCounts: number[]): number {
-  const sorted = [...citationCounts].sort((a, b) => b - a)
-  let hIndex = 0
-  for (let index = 0; index < sorted.length; index += 1) {
-    if (sorted[index] >= index + 1) {
-      hIndex = index + 1
-      continue
-    }
-    break
-  }
-  return hIndex
 }
 
 function loadCachedOrcidStatus(): OrcidStatusPayload | null {
@@ -404,6 +407,9 @@ export function ProfilePublicationsPage() {
   const [user, setUser] = useState<AuthUser | null>(initialCachedUser)
   const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(initialCachedPersonaState)
   const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(initialCachedOrcidStatus)
+  const [analyticsSummary, setAnalyticsSummary] = useState<PublicationsAnalyticsSummaryPayload | null>(null)
+  const [analyticsTimeseries, setAnalyticsTimeseries] = useState<PublicationsAnalyticsTimeseriesPayload | null>(null)
+  const [analyticsTopDrivers, setAnalyticsTopDrivers] = useState<PublicationsAnalyticsTopDriversPayload | null>(null)
   const [query, setQuery] = useState('')
   const [filterKey, setFilterKey] = useState<PublicationFilterKey>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
@@ -411,14 +417,24 @@ export function ProfilePublicationsPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [refreshingAnalytics, setRefreshingAnalytics] = useState(false)
   const [richImporting, setRichImporting] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [fullSyncing, setFullSyncing] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
 
-  const loadData = useCallback(async (sessionToken: string, resetMessages = true) => {
-    setLoading(true)
+  const loadData = useCallback(async (
+    sessionToken: string,
+    resetMessages = true,
+    refreshAnalytics = false,
+    refreshAnalyticsMetrics = false,
+  ) => {
+    if (refreshAnalytics) {
+      setRefreshingAnalytics(true)
+    } else {
+      setLoading(true)
+    }
     setError('')
     if (resetMessages) {
       setStatus('')
@@ -428,8 +444,21 @@ export function ProfilePublicationsPage() {
         fetchPersonaState(sessionToken),
         fetchOrcidStatus(sessionToken),
         fetchMe(sessionToken),
+        fetchPublicationsAnalyticsSummary(sessionToken, {
+          refresh: refreshAnalytics,
+          refreshMetrics: refreshAnalyticsMetrics,
+        }),
+        fetchPublicationsAnalyticsTimeseries(sessionToken, {
+          refresh: refreshAnalytics,
+          refreshMetrics: refreshAnalyticsMetrics,
+        }),
+        fetchPublicationsAnalyticsTopDrivers(sessionToken, {
+          limit: 5,
+          refresh: refreshAnalytics,
+          refreshMetrics: refreshAnalyticsMetrics,
+        }),
       ])
-      const [stateResult, orcidResult, userResult] = settled
+      const [stateResult, orcidResult, userResult, summaryResult, timeseriesResult, topDriversResult] = settled
       if (stateResult.status === 'fulfilled') {
         setPersonaState(stateResult.value)
         writeCachedPersonaState(stateResult.value)
@@ -448,6 +477,15 @@ export function ProfilePublicationsPage() {
         setUser(userResult.value)
         saveCachedUser(userResult.value)
       }
+      if (summaryResult.status === 'fulfilled') {
+        setAnalyticsSummary(summaryResult.value)
+      }
+      if (timeseriesResult.status === 'fulfilled') {
+        setAnalyticsTimeseries(timeseriesResult.value)
+      }
+      if (topDriversResult.status === 'fulfilled') {
+        setAnalyticsTopDrivers(topDriversResult.value)
+      }
       const failedCount = settled.filter((item) => item.status === 'rejected').length
       if (failedCount > 0) {
         setStatus(`Publications loaded with ${failedCount} unavailable source${failedCount === 1 ? '' : 's'}.`)
@@ -456,6 +494,7 @@ export function ProfilePublicationsPage() {
       setError(loadError instanceof Error ? loadError.message : 'Could not load publications.')
     } finally {
       setLoading(false)
+      setRefreshingAnalytics(false)
     }
   }, [])
 
@@ -569,22 +608,21 @@ export function ProfilePublicationsPage() {
     return (personaState?.works ?? []).find((work) => work.id === selectedWorkId) ?? null
   }, [personaState?.works, selectedWorkId])
 
-  const citationCounts = useMemo(
-    () => (personaState?.metrics.works ?? []).map((row) => Math.max(0, Number(row.citations || 0))),
-    [personaState?.metrics.works],
-  )
-  const totalCitations = useMemo(() => citationCounts.reduce((sum, value) => sum + value, 0), [citationCounts])
-  const hIndex = useMemo(() => computeHIndex(citationCounts), [citationCounts])
-  const citedWorksCount = useMemo(() => citationCounts.filter((value) => value > 0).length, [citationCounts])
   const ownerName = user?.name || ''
   const ownerEmail = user?.email || ''
-  const citationsLast12Months = personaState?.metrics.trend?.citations_last_12_months ?? 0
-  const citationsPrevious12Months = personaState?.metrics.trend?.citations_previous_12_months ?? 0
-  const yoyGrowthPercent = personaState?.metrics.trend?.yoy_growth_percent ?? null
-  const latestYearGrowth = personaState?.metrics.trend?.yearly_growth?.at(-1) || null
+  const totalCitations = analyticsSummary?.total_citations ?? 0
+  const hIndex = analyticsSummary?.h_index ?? 0
+  const citationsLast12Months = analyticsSummary?.citations_last_12_months ?? 0
+  const citationsPrevious12Months = analyticsSummary?.citations_previous_12_months ?? 0
+  const yoyGrowthPercent = analyticsSummary?.yoy_percent ?? null
+  const citationVelocity12m = analyticsSummary?.citation_velocity_12m ?? 0
+  const latestYearGrowth = analyticsTimeseries?.points?.at(-1) || null
   const worksCount = personaState?.works.length ?? 0
-  const busy = loading || richImporting || syncing || fullSyncing
+  const busy = loading || refreshingAnalytics || richImporting || syncing || fullSyncing
   const canSyncCitations = worksCount > 0 && !busy
+  const topDrivers = analyticsTopDrivers?.drivers || []
+  const timeseriesPoints = analyticsTimeseries?.points || []
+  const maxYearlyCitations = Math.max(1, ...timeseriesPoints.map((point) => Number(point.citations_added || 0)))
 
   const onSortColumn = (column: PublicationSortField) => {
     if (sortField === column) {
@@ -609,7 +647,7 @@ export function ProfilePublicationsPage() {
     try {
       const payload = await syncPersonaMetrics(token, ['openalex'])
       setStatus(`Citations synchronised via OpenAlex (${payload.synced_snapshots} snapshot(s)).`)
-      await loadData(token, false)
+      await loadData(token, false, true)
     } catch (syncError) {
       setError(syncError instanceof Error ? syncError.message : 'Could not synchronise citations.')
     } finally {
@@ -634,7 +672,7 @@ export function ProfilePublicationsPage() {
       setStatus(
         `Rich import complete: ${importPayload.imported_count} work(s) refreshed, ${syncPayload.synced_snapshots} citation snapshot(s) updated.`,
       )
-      await loadData(token, false)
+      await loadData(token, false, true)
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : 'Could not run rich ORCID import.')
     } finally {
@@ -656,11 +694,25 @@ export function ProfilePublicationsPage() {
     try {
       const payload = await syncPersonaMetrics(token, ['openalex', 'semantic_scholar', 'manual'])
       setStatus(`Full citation sync complete (${payload.synced_snapshots} snapshot(s)).`)
-      await loadData(token, false)
+      await loadData(token, false, true)
     } catch (syncError) {
       setError(syncError instanceof Error ? syncError.message : 'Could not run full citation sync.')
     } finally {
       setFullSyncing(false)
+    }
+  }
+
+  const onRefreshAnalytics = async () => {
+    if (!token) {
+      return
+    }
+    setStatus('')
+    setError('')
+    try {
+      await loadData(token, false, true)
+      setStatus('Publication analytics refreshed.')
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : 'Could not refresh publication analytics.')
     }
   }
 
@@ -673,6 +725,9 @@ export function ProfilePublicationsPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" onClick={onRichImportOrcid} disabled={!Boolean(orcidStatus?.can_import) || busy}>
             {richImporting ? 'Syncing ORCID...' : 'Sync ORCID now'}
+          </Button>
+          <Button type="button" variant="outline" onClick={onRefreshAnalytics} disabled={busy}>
+            {refreshingAnalytics ? 'Refreshing analytics...' : 'Refresh analytics'}
           </Button>
           <Button type="button" variant="outline" onClick={onSyncCitations} disabled={!canSyncCitations}>
             {syncing ? 'Syncing citations...' : 'Sync citations'}
@@ -689,10 +744,6 @@ export function ProfilePublicationsPage() {
       <Card>
         <CardContent className="grid gap-2 p-4 md:grid-cols-3 xl:grid-cols-6">
           <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">Total works</p>
-            <p className="font-semibold">{personaState?.works.length ?? 0}</p>
-          </div>
-          <div className="rounded border border-border px-3 py-2 text-sm">
             <p className="text-xs text-muted-foreground">Total citations</p>
             <p className="font-semibold">{totalCitations}</p>
           </div>
@@ -701,24 +752,88 @@ export function ProfilePublicationsPage() {
             <p className="font-semibold">{hIndex}</p>
           </div>
           <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">Cited works</p>
-            <p className="font-semibold">{citedWorksCount}</p>
+            <p className="text-xs text-muted-foreground">Citation velocity (12m)</p>
+            <p className="font-semibold">{citationVelocity12m}/month</p>
           </div>
           <div className="rounded border border-border px-3 py-2 text-sm">
             <p className="text-xs text-muted-foreground">Citations (last 12 months)</p>
             <p className="font-semibold">{citationsLast12Months}</p>
-            <p className="text-xs text-muted-foreground">Previous 12 months: {citationsPrevious12Months}</p>
           </div>
           <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">Citation growth (YoY)</p>
+            <p className="text-xs text-muted-foreground">Previous 12 months</p>
+            <p className="font-semibold">{citationsPrevious12Months}</p>
+          </div>
+          <div className="rounded border border-border px-3 py-2 text-sm">
+            <p className="text-xs text-muted-foreground">YoY %</p>
             <p className={`font-semibold ${growthToneClass(yoyGrowthPercent)}`}>
               {formatSignedPercent(yoyGrowthPercent)}
             </p>
-            <p className="text-xs text-muted-foreground">
-              {latestYearGrowth
-                ? `${latestYearGrowth.year}: +${latestYearGrowth.citations_added} citations`
-                : 'Awaiting enough sync history'}
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-3 xl:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Per-year citation graph</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {timeseriesPoints.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No year-by-year citation history yet.</p>
+            ) : (
+              timeseriesPoints.map((point) => {
+                const width = Math.max(2, Math.round((point.citations_added / maxYearlyCitations) * 100))
+                return (
+                  <div key={point.year} className="grid grid-cols-[56px_1fr_110px] items-center gap-2 text-sm">
+                    <span className="text-xs text-muted-foreground">{point.year}</span>
+                    <div className="h-2 rounded bg-muted">
+                      <div className="h-2 rounded bg-emerald-500" style={{ width: `${width}%` }} />
+                    </div>
+                    <span className="text-xs text-muted-foreground">+{point.citations_added} citations</span>
+                  </div>
+                )
+              })
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Top 5 growth-driving papers (last 12m)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {topDrivers.length === 0 ? (
+              <p className="text-muted-foreground">No growth-driving papers identified yet.</p>
+            ) : (
+              topDrivers.map((driver) => (
+                <div key={driver.work_id} className="rounded border border-border px-3 py-2">
+                  <p className="font-medium">{driver.title}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {driver.year ?? 'Year n/a'} | +{driver.citations_last_12_months} in last 12m | total {driver.current_citations}
+                  </p>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardContent className="grid gap-2 p-4 md:grid-cols-3 xl:grid-cols-3">
+          <div className="rounded border border-border px-3 py-2 text-sm">
+            <p className="text-xs text-muted-foreground">Total works</p>
+            <p className="font-semibold">{personaState?.works.length ?? 0}</p>
+            <p className="text-xs text-muted-foreground">Previous 12 months: {citationsPrevious12Months}</p>
+          </div>
+          <div className="rounded border border-border px-3 py-2 text-sm">
+            <p className="text-xs text-muted-foreground">Latest annual growth point</p>
+            <p className="font-semibold">
+              {latestYearGrowth ? `${latestYearGrowth.year}: +${latestYearGrowth.citations_added}` : 'n/a'}
             </p>
+          </div>
+          <div className="rounded border border-border px-3 py-2 text-sm">
+            <p className="text-xs text-muted-foreground">Analytics computed</p>
+            <p className="font-semibold">{formatShortDate(analyticsSummary?.computed_at)}</p>
           </div>
         </CardContent>
       </Card>

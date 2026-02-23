@@ -4,8 +4,6 @@ from dataclasses import dataclass
 import re
 import time
 from typing import Any
-from urllib.parse import quote
-
 import httpx
 from sqlalchemy import select
 

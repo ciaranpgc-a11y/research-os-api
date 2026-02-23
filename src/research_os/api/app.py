@@ -111,6 +111,9 @@ from research_os.api.schemas import (
     PersonaImportOrcidResponse,
     PersonaOpenAccessDiscoverRequest,
     PersonaOpenAccessDiscoverResponse,
+    PublicationsAnalyticsSummaryResponse,
+    PublicationsAnalyticsTimeseriesResponse,
+    PublicationsAnalyticsTopDriversResponse,
     PersonaMetricsSyncRequest,
     PersonaMetricsSyncResponse,
     PersonaWorkResponse,
@@ -259,6 +262,13 @@ from research_os.services.open_access_service import (
     OpenAccessNotFoundError,
     OpenAccessValidationError,
     discover_open_access_for_persona,
+)
+from research_os.services.publications_analytics_service import (
+    PublicationsAnalyticsNotFoundError,
+    PublicationsAnalyticsValidationError,
+    get_publications_analytics_summary,
+    get_publications_analytics_timeseries,
+    get_publications_analytics_top_drivers,
 )
 from research_os.services.impact_service import (
     ImpactNotFoundError,
@@ -1278,6 +1288,98 @@ def v1_persona_open_access_discover(
     except (PersonaNotFoundError, OpenAccessNotFoundError) as exc:
         return _build_not_found_response(str(exc))
     except (OpenAccessValidationError, PersonaValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/publications/analytics/summary",
+    response_model=PublicationsAnalyticsSummaryResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_publications_analytics_summary(
+    request: Request,
+    refresh: bool = Query(default=False),
+    refresh_metrics: bool = Query(default=False),
+) -> PublicationsAnalyticsSummaryResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = get_publications_analytics_summary(
+            user_id=str(user["id"]),
+            refresh=refresh,
+            refresh_metrics=refresh_metrics,
+        )
+        return PublicationsAnalyticsSummaryResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (PersonaNotFoundError, PublicationsAnalyticsNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+    except (PublicationsAnalyticsValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/publications/analytics/timeseries",
+    response_model=PublicationsAnalyticsTimeseriesResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_publications_analytics_timeseries(
+    request: Request,
+    refresh: bool = Query(default=False),
+    refresh_metrics: bool = Query(default=False),
+) -> PublicationsAnalyticsTimeseriesResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = get_publications_analytics_timeseries(
+            user_id=str(user["id"]),
+            refresh=refresh,
+            refresh_metrics=refresh_metrics,
+        )
+        return PublicationsAnalyticsTimeseriesResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (PersonaNotFoundError, PublicationsAnalyticsNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+    except (PublicationsAnalyticsValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/publications/analytics/top-drivers",
+    response_model=PublicationsAnalyticsTopDriversResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_publications_analytics_top_drivers(
+    request: Request,
+    limit: int = Query(default=5, ge=1, le=25),
+    refresh: bool = Query(default=False),
+    refresh_metrics: bool = Query(default=False),
+) -> PublicationsAnalyticsTopDriversResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = get_publications_analytics_top_drivers(
+            user_id=str(user["id"]),
+            limit=limit,
+            refresh=refresh,
+            refresh_metrics=refresh_metrics,
+        )
+        return PublicationsAnalyticsTopDriversResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (PersonaNotFoundError, PublicationsAnalyticsNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+    except (PublicationsAnalyticsValidationError, ValueError) as exc:
         return _build_bad_request_response(str(exc))
 
 

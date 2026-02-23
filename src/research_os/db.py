@@ -144,6 +144,9 @@ class User(Base):
     impact_snapshots: Mapped[list["ImpactSnapshot"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    publications_metrics: Mapped[list["PublicationMetric"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
     orcid_states: Mapped[list["OrcidOAuthState"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
@@ -534,6 +537,31 @@ class ImpactSnapshot(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="impact_snapshots")
+
+
+class PublicationMetric(Base):
+    __tablename__ = "publications_metrics"
+    __table_args__ = (
+        UniqueConstraint("user_id", "metric_key"),
+        Index("ix_publications_metrics_user_key", "user_id", "metric_key"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    metric_key: Mapped[str] = mapped_column(String(64), default="summary")
+    metric_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    user: Mapped[User] = relationship(back_populates="publications_metrics")
 
 
 class ManuscriptAssetLink(Base):

@@ -2422,6 +2422,18 @@ def test_v1_persona_metrics_embeddings_and_impact_flow(monkeypatch, tmp_path) ->
             headers=headers,
             json={"providers": ["manual"]},
         )
+        analytics_summary_response = client.get(
+            "/v1/publications/analytics/summary",
+            headers=headers,
+        )
+        analytics_timeseries_response = client.get(
+            "/v1/publications/analytics/timeseries",
+            headers=headers,
+        )
+        analytics_top_drivers_response = client.get(
+            "/v1/publications/analytics/top-drivers",
+            headers=headers,
+        )
         embeddings_response = client.post(
             "/v1/persona/embeddings/generate",
             headers=headers,
@@ -2437,6 +2449,13 @@ def test_v1_persona_metrics_embeddings_and_impact_flow(monkeypatch, tmp_path) ->
 
     assert metrics_response.status_code == 200
     assert metrics_response.json()["provider_attribution"]["manual"] >= 1
+    assert analytics_summary_response.status_code == 200
+    assert analytics_summary_response.json()["total_citations"] >= 0
+    assert "citation_velocity_12m" in analytics_summary_response.json()
+    assert analytics_timeseries_response.status_code == 200
+    assert "points" in analytics_timeseries_response.json()
+    assert analytics_top_drivers_response.status_code == 200
+    assert "drivers" in analytics_top_drivers_response.json()
     assert embeddings_response.status_code == 200
     assert embeddings_response.json()["generated_embeddings"] >= 1
     assert recompute_response.status_code == 200

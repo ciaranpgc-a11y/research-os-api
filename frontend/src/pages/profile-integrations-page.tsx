@@ -480,7 +480,6 @@ export function ProfileIntegrationsPage() {
       formatShortTimestamp(syncStatus.orcid_last_synced_at) ||
       'initial sync'
     try {
-      await pingApiHealth()
       await importOrcidWorks(token)
       const refreshed = await loadData(token, false)
       const worksAfterImport = refreshed?.personaState?.works?.length ?? worksBeforeImport
@@ -512,8 +511,7 @@ export function ProfileIntegrationsPage() {
       const maybeNetwork = detail.toLowerCase().includes('could not reach api') || detail.toLowerCase().includes('failed to fetch')
       if (maybeNetwork) {
         try {
-          setStatus('API connection looked unstable. Retrying import once...')
-          await pingApiHealth()
+          setStatus('Connection looked unstable. Retrying import once...')
           await importOrcidWorks(token)
           const refreshed = await loadData(token, false)
           const worksAfterImport = refreshed?.personaState?.works?.length ?? worksBeforeImport
@@ -540,10 +538,12 @@ export function ProfileIntegrationsPage() {
           return
         } catch (retryError) {
           const retryDetail = retryError instanceof Error ? retryError.message : detail
+          setStatus('')
           setError(retryDetail)
           return
         }
       }
+      setStatus('')
       setError(detail)
     } finally {
       setImporting(false)
