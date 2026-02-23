@@ -281,6 +281,8 @@ def test_counts_by_year_prevents_lifetime_lumping(monkeypatch, tmp_path) -> None
     last12_value = int(last12_tile["value"] or 0)
     assert total_value >= 900
     assert last12_value < int(total_value * 0.5)
+    assert total_tile["badge"]["label"] == ""
+    assert "Projected" in str(total_tile["delta_display"] or "")
     assert "%" in str(last12_tile["delta_display"] or "")
 
 

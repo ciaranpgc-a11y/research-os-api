@@ -61,6 +61,7 @@ function formatSignedPct(value: number | null): string {
 }
 
 function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayload }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
@@ -75,23 +76,31 @@ function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayloa
   const projectedValueRaw = Number(chartData.projected_value)
   const projectedConfidence = String(chartData.projected_confidence || 'low')
   const hasProjection = Number.isFinite(projectedYearRaw) && Number.isFinite(projectedValueRaw) && projectedValueRaw > 0
+  const currentYear = new Date().getUTCFullYear()
+  const projectionComponents = (chartData.projection_components || {}) as Record<string, unknown>
+  const ytdProjection = Number(projectionComponents.ytd_run_rate_projection ?? NaN)
+  const trendProjection = Number(projectionComponents.trend_projection ?? NaN)
   const bars: Array<{
     year: number
     value: number
     projected: boolean
-    title: string
+    delta: number | null
+    pct: number | null
+    relative: 'above' | 'near' | 'below'
+    detailLines: string[]
   }> = years.map((year, index) => {
     const value = values[index]
     const prev = index > 0 ? values[index - 1] : null
     const delta = prev === null ? null : value - prev
     const pct = prev && prev > 0 ? ((value - prev) / prev) * 100 : null
-    const tooltip = [
+    const relative = value >= meanValue * 1.1 ? 'above' : value <= meanValue * 0.9 ? 'below' : 'near'
+    const detailLines = [
       `Year: ${year}`,
       `Citations: ${formatInt(value)}`,
       `YoY: ${delta === null ? 'n/a' : `${formatSignedInt(delta)} (${formatSignedPct(pct)})`}`,
       `Relative to 5y mean (${formatInt(meanValue)}): ${value >= meanValue ? 'above' : 'below'}`,
-    ].join('\n')
-    return { year, value, projected: false, title: tooltip }
+    ]
+    return { year, value, projected: false, delta, pct, relative, detailLines }
   })
   if (hasProjection) {
     const projectedYear = Math.round(projectedYearRaw)
@@ -99,46 +108,71 @@ function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayloa
     const prev = values[values.length - 1] || 0
     const delta = projectedValue - prev
     const pct = prev > 0 ? ((projectedValue - prev) / prev) * 100 : null
-    const tooltip = [
+    const detailLines = [
       `Year: ${projectedYear} (projection)`,
       `Projected citations: ${formatInt(projectedValue)}`,
       `vs last complete year: ${formatSignedInt(delta)} (${formatSignedPct(pct)})`,
-      `Method: YTD run-rate projection`,
+      `Method: blended forecast`,
       `Confidence: ${projectedConfidence}`,
-    ].join('\n')
+      Number.isFinite(ytdProjection) ? `YTD run-rate component: ${formatInt(ytdProjection)}` : '',
+      Number.isFinite(trendProjection) ? `Trend component: ${formatInt(trendProjection)}` : '',
+    ].filter(Boolean)
     bars.push({
       year: projectedYear,
       value: projectedValue,
       projected: true,
-      title: tooltip,
+      delta,
+      pct,
+      relative: 'near',
+      detailLines,
     })
+  } else if (bars.length >= 1 && bars[bars.length - 1]?.year === currentYear) {
+    // Backward compatibility with cached payloads that include current year in the base bars.
+    bars[bars.length - 1].projected = true
+    bars[bars.length - 1].detailLines.push('Note: current year is partial (YTD).')
   }
   const maxValue = Math.max(1, ...bars.map((item) => item.value))
+  const hovered = hoveredIndex !== null ? bars[hoveredIndex] : null
   return (
     <div className="space-y-1">
       <div className="flex h-20 items-end gap-1">
         {bars.map((bar, index) => {
           const height = Math.max(12, Math.round((bar.value / maxValue) * 72))
-          const ratio = meanValue > 0 ? bar.value / meanValue : 1
           const toneClass = bar.projected
             ? 'border border-dashed border-slate-500 bg-slate-200/80'
-            : ratio >= 1.1
+            : bar.relative === 'above'
               ? 'bg-emerald-600/85'
-              : ratio <= 0.9
+              : bar.relative === 'below'
                 ? 'bg-amber-500/85'
                 : 'bg-slate-500/80'
           return (
             <div key={`${bar.year}-${index}`} className="flex w-full flex-col items-center gap-1">
-              <div
-                title={bar.title}
-                className={cn('w-full rounded-sm', toneClass)}
-                style={{ height: `${height}px` }}
-              />
+              <button
+                type="button"
+                onMouseEnter={() => setHoveredIndex(index)}
+                onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                onFocus={() => setHoveredIndex(index)}
+                onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
+                className="relative w-full"
+                aria-label={bar.detailLines.join(' | ')}
+              >
+                {hoveredIndex === index ? (
+                  <div className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm">
+                    {formatInt(bar.value)}
+                  </div>
+                ) : null}
+                <div className={cn('w-full rounded-sm', toneClass)} style={{ height: `${height}px` }} />
+              </button>
               <span className="text-[9px] text-muted-foreground">{String(bar.year).slice(-2)}</span>
             </div>
           )
         })}
       </div>
+      {hovered ? (
+        <div className="rounded border border-slate-200 bg-white/80 px-1.5 py-1 text-[10px] text-slate-700">
+          {hovered.detailLines.join(' | ')}
+        </div>
+      ) : null}
       <p className="text-[10px] text-muted-foreground">
         Bar colour is relative to 5-year mean ({formatInt(meanValue)}).
       </p>
@@ -498,6 +532,10 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                 const badgeLabel = String((tile.badge?.label as string) || '').trim()
                 const subtitle = String(tile.subtext || '').trim()
                 const isTotalCitationsTile = tile.key === 'total_citations'
+                const rawDeltaDisplay = String(tile.delta_display || '').trim()
+                const shouldHideLegacyTrendText =
+                  isTotalCitationsTile && /(falling|rising|stable over)/i.test(rawDeltaDisplay)
+                const effectiveDeltaDisplay = shouldHideLegacyTrendText ? '' : rawDeltaDisplay
                 return (
                   <button
                     key={tile.key}
@@ -511,7 +549,7 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <p className="text-xs text-muted-foreground">{tile.label}</p>
                       <div className="flex items-center gap-1">
-                        {badgeLabel ? (
+                        {!isTotalCitationsTile && badgeLabel ? (
                           <span className={cn('rounded border px-1.5 py-0.5 text-[10px]', badgeClass(tile))}>
                             {badgeLabel}
                           </span>
@@ -543,7 +581,7 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                           <p className="min-h-[18px] text-xs text-muted-foreground">
                             {subtitle || '\u00A0'}
                           </p>
-                          {tile.delta_display ? (
+                          {effectiveDeltaDisplay ? (
                             <p
                               className={cn(
                                 'mt-0.5 min-h-[16px] text-[11px]',
@@ -551,7 +589,7 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                                 tile.stability === 'unstable' && 'font-medium',
                               )}
                             >
-                              {tile.delta_display}
+                              {effectiveDeltaDisplay}
                             </p>
                           ) : (
                             <p className="mt-0.5 min-h-[16px] text-[11px] text-muted-foreground">&nbsp;</p>
@@ -566,7 +604,7 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                         <p className="mt-0.5 min-h-[18px] text-xs text-muted-foreground">
                           {subtitle || '\u00A0'}
                         </p>
-                        {tile.delta_display ? (
+                        {effectiveDeltaDisplay ? (
                           <p
                             className={cn(
                               'min-h-[16px] text-[11px]',
@@ -574,7 +612,7 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                               tile.stability === 'unstable' && 'font-medium',
                             )}
                           >
-                            {tile.delta_display}
+                            {effectiveDeltaDisplay}
                           </p>
                         ) : (
                           <p className="min-h-[16px] text-[11px] text-muted-foreground">&nbsp;</p>

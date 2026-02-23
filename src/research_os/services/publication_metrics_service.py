@@ -27,7 +27,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 4
+TOP_METRICS_SCHEMA_VERSION = 5
 
 DELTA_COLOR_BY_TONE = {
     "positive": "#166534",
@@ -1390,9 +1390,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     last5_complete_values = [
         max(0, int(aggregate_yearly_totals.get(year, 0))) for year in last5_complete_years
     ]
-    growth_label, growth_severity, growth_slope_norm = _growth_state_from_series(
-        last5_complete_values
-    )
+    growth_label, growth_severity, growth_slope_norm = _growth_state_from_series(last5_complete_values)
     five_year_delta = (
         int(last5_complete_values[-1] - last5_complete_values[0])
         if last5_complete_values
@@ -1407,11 +1405,24 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     start_of_year = datetime(now.year, 1, 1, tzinfo=timezone.utc)
     elapsed_days = max(1, int((now - start_of_year).days) + 1)
     elapsed_fraction = min(1.0, float(elapsed_days) / 365.25)
-    projected_current_year = (
-        max(current_year_ytd, int(round(current_year_ytd / max(0.01, elapsed_fraction))))
-        if current_year_ytd > 0
-        else 0
+    ytd_run_rate_projection = int(round(current_year_ytd / max(0.01, elapsed_fraction)))
+    trend_projection = int(
+        round(
+            (last5_complete_values[-1] if last5_complete_values else 0)
+            + _linear_slope(last5_complete_values)
+        )
     )
+    projected_current_year = max(
+        0,
+        int(
+            round(
+                (0.50 * float(max(0, ytd_run_rate_projection)))
+                + (0.30 * float(max(0, trend_projection)))
+                + (0.20 * float(max(0.0, five_year_mean)))
+            )
+        ),
+    )
+    projected_current_year = max(current_year_ytd, projected_current_year)
     projection_confidence = (
         "high"
         if elapsed_days >= 240
@@ -1501,7 +1512,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             value=total_citations,
             value_display=_format_int(total_citations),
             subtext=f"+{_format_int(citations_last_12m)} in last 12 months",
-            badge={"label": growth_label, "severity": growth_severity},
+            badge={"label": "", "severity": "neutral"},
             chart_type="bar_year_5",
             chart_data={
                 "years": last5_complete_years,
@@ -1511,8 +1522,18 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "projected_value": projected_current_year,
                 "projected_confidence": projection_confidence,
                 "current_year_ytd": current_year_ytd,
+                "projection_components": {
+                    "ytd_run_rate_projection": ytd_run_rate_projection,
+                    "trend_projection": trend_projection,
+                    "five_year_mean": round(five_year_mean, 2),
+                    "weights": {
+                        "ytd_run_rate": 0.5,
+                        "trend_projection": 0.3,
+                        "five_year_mean": 0.2,
+                    },
+                },
             },
-            delta_value=round(growth_slope_norm * 100.0, 2),
+            delta_value=None,
             delta_display=projection_subtext,
             unit="citations",
             sparkline=last5_complete_values,
@@ -1520,7 +1541,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             tooltip_details=total_tooltip_details,
             data_source=["OpenAlex"] if "OpenAlex" in data_sources else data_sources,
             confidence_score=_confidence_score_from_publications(total_citation_publications),
-            stability="unstable" if growth_severity in {"caution", "negative"} else "stable",
+            stability="stable",
             drilldown={
                 "title": "Total citations",
                 "definition": "Lifetime citations across all publications with annual growth context.",
@@ -1537,6 +1558,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                         "current_year_ytd": current_year_ytd,
                         "projected_current_year": projected_current_year,
                         "projection_confidence": projection_confidence,
+                        "ytd_run_rate_projection": ytd_run_rate_projection,
+                        "trend_projection": trend_projection,
                     },
                     "year_bar_values": {
                         "years": last5_complete_years,
