@@ -55,6 +55,7 @@ def test_alembic_upgrade_head_creates_schema_for_fresh_database(
     assert "generation_jobs" in table_names
     assert "manuscript_snapshots" in table_names
     assert "publications_metrics" in table_names
+    assert "app_runtime_locks" in table_names
     assert "alembic_version" in table_names
 
 

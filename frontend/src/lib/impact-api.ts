@@ -25,6 +25,7 @@ import type {
   PersonaContextPayload,
   PersonaEmbeddingsGeneratePayload,
   PersonaMetricsSyncPayload,
+  PublicationsAnalyticsResponsePayload,
   PublicationsAnalyticsSummaryPayload,
   PublicationsAnalyticsTimeseriesPayload,
   PublicationsAnalyticsTopDriversPayload,
@@ -556,6 +557,20 @@ export async function fetchPublicationsAnalyticsSummary(
       headers: authHeaders(token),
     },
     'Publications analytics summary lookup failed',
+    { timeoutMs: 120_000, retryCount: 2 },
+  )
+}
+
+export async function fetchPublicationsAnalytics(
+  token: string,
+): Promise<PublicationsAnalyticsResponsePayload> {
+  return requestJson<PublicationsAnalyticsResponsePayload>(
+    `${API_BASE_URL}/v1/publications/analytics`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Publications analytics lookup failed',
     { timeoutMs: 120_000, retryCount: 2 },
   )
 }

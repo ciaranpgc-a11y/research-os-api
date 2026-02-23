@@ -114,6 +114,7 @@ from research_os.api.schemas import (
     PersonaSyncJobResponse,
     PersonaOpenAccessDiscoverRequest,
     PersonaOpenAccessDiscoverResponse,
+    PublicationsAnalyticsResponse,
     PublicationsAnalyticsSummaryResponse,
     PublicationsAnalyticsTimeseriesResponse,
     PublicationsAnalyticsTopDriversResponse,
@@ -278,9 +279,12 @@ from research_os.services.open_access_service import (
 from research_os.services.publications_analytics_service import (
     PublicationsAnalyticsNotFoundError,
     PublicationsAnalyticsValidationError,
+    get_publications_analytics,
     get_publications_analytics_summary,
     get_publications_analytics_timeseries,
     get_publications_analytics_top_drivers,
+    start_publications_analytics_scheduler,
+    stop_publications_analytics_scheduler,
 )
 from research_os.services.impact_service import (
     ImpactNotFoundError,
@@ -396,7 +400,20 @@ async def app_lifespan(_: FastAPI):
             "bootstrap_user_seed_failed",
             extra={"detail": str(exc)},
         )
-    yield
+    try:
+        start_publications_analytics_scheduler()
+    except Exception as exc:
+        logger.warning(
+            "publications_scheduler_start_failed",
+            extra={"detail": str(exc)},
+        )
+    try:
+        yield
+    finally:
+        try:
+            stop_publications_analytics_scheduler()
+        except Exception:
+            pass
 
 
 app = FastAPI(title="Research OS API", version="0.1.0", lifespan=app_lifespan)
@@ -1422,6 +1439,30 @@ def v1_persona_open_access_discover(
     except (PersonaNotFoundError, OpenAccessNotFoundError) as exc:
         return _build_not_found_response(str(exc))
     except (OpenAccessValidationError, PersonaValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/publications/analytics",
+    response_model=PublicationsAnalyticsResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_publications_analytics(
+    request: Request,
+) -> PublicationsAnalyticsResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = get_publications_analytics(user_id=str(user["id"]))
+        return PublicationsAnalyticsResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (PersonaNotFoundError, PublicationsAnalyticsNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+    except (PublicationsAnalyticsValidationError, ValueError) as exc:
         return _build_bad_request_response(str(exc))
 
 

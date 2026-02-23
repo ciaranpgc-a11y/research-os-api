@@ -4,6 +4,7 @@ import logging
 import os
 import threading
 import time
+import copy
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -457,13 +458,13 @@ def _bundle_payload_from_row(row: PublicationMetric | None) -> dict[str, Any]:
         return {}
     payload = row.payload_json if isinstance(row.payload_json, dict) else {}
     if payload and isinstance(payload.get("summary"), dict):
-        return dict(payload)
+        return copy.deepcopy(payload)
     metric_json = row.metric_json if isinstance(row.metric_json, dict) else {}
     if metric_json and _is_metric_payload_current(metric_json):
         return {
             "schema_version": ANALYTICS_SCHEMA_VERSION,
             "computed_at": metric_json.get("computed_at"),
-            "summary": metric_json,
+            "summary": copy.deepcopy(metric_json),
             "timeseries": {"schema_version": ANALYTICS_SCHEMA_VERSION, "computed_at": metric_json.get("computed_at"), "points": []},
             "top_drivers": {"schema_version": ANALYTICS_SCHEMA_VERSION, "computed_at": metric_json.get("computed_at"), "window": "last_12_months", "drivers": []},
             "per_year": [],
@@ -958,3 +959,225 @@ def compute_publications_analytics(
         openalex_author_id=openalex_author_id,
     )
     return payload
+
+
+def _analytics_response(
+    *, payload: dict[str, Any], computed_at: datetime | None, status: str, is_stale: bool
+) -> dict[str, Any]:
+    clean_payload = dict(payload) if isinstance(payload, dict) else {}
+    if not clean_payload:
+        clean_payload = _build_empty_payload(computed_at=_utcnow())
+    normalized_status = _normalize_status(status)
+    return {
+        "payload": clean_payload,
+        "computed_at": _coerce_utc_or_none(computed_at),
+        "status": normalized_status,
+        "is_stale": bool(is_stale),
+        "is_updating": normalized_status == RUNNING_STATUS,
+        "last_update_failed": normalized_status == FAILED_STATUS,
+    }
+
+
+def get_publications_analytics(*, user_id: str) -> dict[str, Any]:
+    create_all_tables()
+    now = _utcnow()
+    should_enqueue = False
+    with session_scope() as session:
+        user = _resolve_user_or_raise(session, user_id)
+        row = _load_bundle_row(session, user_id=user_id)
+        if row is None:
+            legacy = _legacy_bundle_payload(session, user_id=user_id)
+            if legacy is not None:
+                row = PublicationMetric(
+                    user_id=user_id,
+                    metric_key=BUNDLE_METRIC_KEY,
+                    metric_json=legacy.get("summary", {}),
+                    payload_json=legacy,
+                    status=READY_STATUS,
+                    last_error=None,
+                    computed_at=_parse_metric_timestamp(legacy.get("computed_at")),
+                    updated_at=now,
+                    orcid_id=user.orcid_id,
+                    next_scheduled_at=now + timedelta(hours=_schedule_hours()),
+                )
+                session.add(row)
+                session.flush()
+
+        if row is None:
+            response = _analytics_response(
+                payload=_build_empty_payload(computed_at=now),
+                computed_at=None,
+                status=RUNNING_STATUS,
+                is_stale=False,
+            )
+            should_enqueue = True
+        else:
+            payload = _bundle_payload_from_row(row)
+            if not payload:
+                payload = _build_empty_payload(computed_at=now)
+            computed_at = _coerce_utc_or_none(row.computed_at)
+            stale = _is_stale(computed_at=computed_at, now=now) or not _is_metric_payload_current(payload)
+            status = _normalize_status(row.status)
+            should_enqueue = _should_enqueue_from_row(row, now=now, stale=stale, force=False)
+            response = _analytics_response(
+                payload=payload,
+                computed_at=computed_at,
+                status=RUNNING_STATUS if should_enqueue else status,
+                is_stale=stale,
+            )
+
+    if should_enqueue and enqueue_publications_analytics_recompute(user_id=user_id, reason="stale_read"):
+        response["status"] = RUNNING_STATUS
+        response["is_updating"] = True
+    return response
+
+
+def get_publications_analytics_summary(
+    *, user_id: str, refresh: bool = False, refresh_metrics: bool = False
+) -> dict[str, Any]:
+    if refresh:
+        payload = compute_publications_analytics(user_id=user_id, refresh_metrics=refresh_metrics)
+        summary = payload.get("summary")
+        return dict(summary) if isinstance(summary, dict) else {}
+    response = get_publications_analytics(user_id=user_id)
+    payload = response.get("payload") if isinstance(response, dict) else {}
+    summary = payload.get("summary") if isinstance(payload, dict) else {}
+    if not isinstance(summary, dict):
+        summary = _build_empty_payload(computed_at=_utcnow()).get("summary", {})
+    return dict(summary)
+
+
+def get_publications_analytics_timeseries(
+    *, user_id: str, refresh: bool = False, refresh_metrics: bool = False
+) -> dict[str, Any]:
+    if refresh:
+        payload = compute_publications_analytics(user_id=user_id, refresh_metrics=refresh_metrics)
+        timeseries = payload.get("timeseries")
+        return dict(timeseries) if isinstance(timeseries, dict) else {}
+    response = get_publications_analytics(user_id=user_id)
+    payload = response.get("payload") if isinstance(response, dict) else {}
+    timeseries = payload.get("timeseries") if isinstance(payload, dict) else {}
+    if not isinstance(timeseries, dict):
+        timeseries = _build_empty_payload(computed_at=_utcnow()).get("timeseries", {})
+    return dict(timeseries)
+
+
+def get_publications_analytics_top_drivers(
+    *,
+    user_id: str,
+    limit: int = DEFAULT_TOP_DRIVERS_LIMIT,
+    refresh: bool = False,
+    refresh_metrics: bool = False,
+) -> dict[str, Any]:
+    if limit < 1:
+        raise PublicationsAnalyticsValidationError("limit must be at least 1.")
+    if refresh:
+        payload = compute_publications_analytics(user_id=user_id, refresh_metrics=refresh_metrics)
+        top_drivers = payload.get("top_drivers")
+    else:
+        response = get_publications_analytics(user_id=user_id)
+        payload = response.get("payload") if isinstance(response, dict) else {}
+        top_drivers = payload.get("top_drivers") if isinstance(payload, dict) else {}
+    if not isinstance(top_drivers, dict):
+        top_drivers = _build_empty_payload(computed_at=_utcnow()).get("top_drivers", {})
+    result = dict(top_drivers)
+    drivers = [item for item in (result.get("drivers") or []) if isinstance(item, dict)]
+    result["drivers"] = drivers[:limit]
+    return result
+
+
+def _try_acquire_scheduler_leader(now: datetime) -> bool:
+    lease_seconds = max(300, min(_schedule_hours() * 3600, 3600))
+    lease_expires = now + timedelta(seconds=lease_seconds)
+    create_all_tables()
+    with session_scope() as session:
+        row = session.scalars(
+            select(AppRuntimeLock).where(AppRuntimeLock.lock_name == SCHEDULER_LOCK_NAME).with_for_update()
+        ).first()
+        if row is None:
+            session.add(
+                AppRuntimeLock(
+                    lock_name=SCHEDULER_LOCK_NAME,
+                    owner_id=_INSTANCE_ID,
+                    lease_expires_at=lease_expires,
+                )
+            )
+            session.flush()
+            return True
+        if _coerce_utc(row.lease_expires_at) <= now or str(row.owner_id or "") == _INSTANCE_ID:
+            row.owner_id = _INSTANCE_ID
+            row.lease_expires_at = lease_expires
+            session.flush()
+            return True
+        return False
+
+
+def run_publications_analytics_scheduler_tick() -> int:
+    now = _utcnow()
+    if not _try_acquire_scheduler_leader(now):
+        return 0
+    with session_scope() as session:
+        user_ids = [str(item) for item in session.scalars(select(User.id)).all()]
+        rows = session.scalars(
+            select(PublicationMetric).where(PublicationMetric.metric_key == BUNDLE_METRIC_KEY)
+        ).all()
+        rows_by_user = {
+            str(row.user_id): {
+                "status": _normalize_status(row.status),
+                "next_scheduled_at": _coerce_utc_or_none(row.next_scheduled_at),
+                "computed_at": _coerce_utc_or_none(row.computed_at),
+            }
+            for row in rows
+        }
+    enqueued = 0
+    for user_id in user_ids:
+        row = rows_by_user.get(user_id)
+        if row is None:
+            if enqueue_publications_analytics_recompute(user_id=user_id, reason="scheduled_missing"):
+                enqueued += 1
+            continue
+        if str(row["status"]) == RUNNING_STATUS:
+            continue
+        next_scheduled = _coerce_utc_or_none(row["next_scheduled_at"])
+        stale = _is_stale(computed_at=_coerce_utc_or_none(row["computed_at"]), now=now)
+        due = (next_scheduled is not None and next_scheduled <= now) or stale
+        if due and enqueue_publications_analytics_recompute(user_id=user_id, reason="scheduled_due"):
+            enqueued += 1
+    return enqueued
+
+
+def start_publications_analytics_scheduler() -> None:
+    global _scheduler
+    if BackgroundScheduler is None:
+        logger.warning("publications_scheduler_unavailable")
+        return
+    with _scheduler_lock:
+        if _scheduler is not None:
+            return
+        create_all_tables()
+        scheduler = BackgroundScheduler(timezone="UTC")
+        scheduler.add_job(
+            run_publications_analytics_scheduler_tick,
+            trigger="interval",
+            hours=_schedule_hours(),
+            id="publications-analytics-sweep",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            next_run_time=_utcnow() + timedelta(seconds=45),
+        )
+        scheduler.start()
+        _scheduler = scheduler
+
+
+def stop_publications_analytics_scheduler() -> None:
+    global _scheduler
+    with _scheduler_lock:
+        if _scheduler is not None:
+            _scheduler.shutdown(wait=False)
+            _scheduler = None
+    _shutdown_executor()
+
+
+def refresh_publications_analytics_now(*, user_id: str) -> dict[str, Any]:
+    return compute_publications_analytics(user_id=user_id)

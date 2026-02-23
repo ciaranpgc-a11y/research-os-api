@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
-from datetime import timedelta
-from datetime import timezone
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
-from sqlalchemy import select
-
+import research_os.services.publications_analytics_service as analytics_service
 from research_os.db import (
     MetricsSnapshot,
     PublicationMetric,
@@ -16,15 +14,19 @@ from research_os.db import (
     session_scope,
 )
 from research_os.services.publications_analytics_service import (
-    get_publications_analytics_summary,
-    get_publications_analytics_timeseries,
-    get_publications_analytics_top_drivers,
+    compute_publications_analytics,
+    enqueue_publications_analytics_recompute,
+    get_publications_analytics,
+    run_publications_analytics_scheduler_tick,
 )
 
 
 def _set_test_environment(monkeypatch, tmp_path) -> None:
     db_path = tmp_path / "research_os_test_publications_analytics.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{db_path}")
+    monkeypatch.setenv("PUB_ANALYTICS_TTL_SECONDS", "86400")
+    monkeypatch.setenv("PUB_ANALYTICS_SCHEDULE_HOURS", "24")
+    monkeypatch.setenv("PUB_ANALYTICS_MAX_CONCURRENT_JOBS", "2")
     reset_database_state()
 
 
@@ -50,7 +52,7 @@ def _seed_user_with_metrics() -> str:
             venue_name="BMJ Open",
             publisher="BMJ",
             abstract="Work A abstract",
-            keywords=["a"],
+            keywords=["cardiology"],
             url="https://example.org/a",
             provenance="manual",
             user_edited=False,
@@ -65,7 +67,7 @@ def _seed_user_with_metrics() -> str:
             venue_name="Heart",
             publisher="BMJ",
             abstract="Work B abstract",
-            keywords=["b"],
+            keywords=["education"],
             url="https://example.org/b",
             provenance="manual",
             user_edited=False,
@@ -75,15 +77,6 @@ def _seed_user_with_metrics() -> str:
 
         session.add_all(
             [
-                MetricsSnapshot(
-                    work_id=str(work_a.id),
-                    provider="openalex",
-                    citations_count=3,
-                    influential_citations=None,
-                    altmetric_score=None,
-                    metric_payload={},
-                    captured_at=now - timedelta(days=800),
-                ),
                 MetricsSnapshot(
                     work_id=str(work_a.id),
                     provider="openalex",
@@ -125,289 +118,218 @@ def _seed_user_with_metrics() -> str:
     return user_id
 
 
-def _seed_user_with_openalex_yearly_history() -> str:
-    now = datetime.now(timezone.utc)
+def _bundle_row(user_id: str) -> PublicationMetric:
     with session_scope() as session:
-        user = User(
-            email="analytics-history@example.com",
-            password_hash="test-hash",
-            name="Analytics History User",
-        )
-        session.add(user)
-        session.flush()
-        user_id = str(user.id)
-
-        work_a = Work(
-            user_id=user_id,
-            title="History Work A",
-            title_lower="history work a",
-            year=2021,
-            doi="10.1000/history-a",
-            work_type="journal-article",
-            venue_name="BMJ Open",
-            publisher="BMJ",
-            abstract="History A abstract",
-            keywords=["history-a"],
-            url="https://example.org/history-a",
-            provenance="manual",
-            user_edited=False,
-        )
-        work_b = Work(
-            user_id=user_id,
-            title="History Work B",
-            title_lower="history work b",
-            year=2022,
-            doi="10.1000/history-b",
-            work_type="journal-article",
-            venue_name="Heart",
-            publisher="BMJ",
-            abstract="History B abstract",
-            keywords=["history-b"],
-            url="https://example.org/history-b",
-            provenance="manual",
-            user_edited=False,
-        )
-        session.add_all([work_a, work_b])
-        session.flush()
-
-        session.add_all(
-            [
-                MetricsSnapshot(
-                    work_id=str(work_a.id),
-                    provider="openalex",
-                    citations_count=64,
-                    influential_citations=None,
-                    altmetric_score=None,
-                    metric_payload={
-                        "counts_by_year": [
-                            {"year": 2023, "cited_by_count": 10},
-                            {"year": 2024, "cited_by_count": 20},
-                            {"year": 2025, "cited_by_count": 30},
-                            {"year": 2026, "cited_by_count": 4},
-                        ]
-                    },
-                    captured_at=now - timedelta(days=1),
-                ),
-                MetricsSnapshot(
-                    work_id=str(work_b.id),
-                    provider="openalex",
-                    citations_count=21,
-                    influential_citations=None,
-                    altmetric_score=None,
-                    metric_payload={
-                        "counts_by_year": [
-                            {"year": 2022, "cited_by_count": 5},
-                            {"year": 2025, "cited_by_count": 15},
-                            {"year": 2026, "cited_by_count": 1},
-                        ]
-                    },
-                    captured_at=now - timedelta(days=1),
-                ),
-            ]
-        )
-    return user_id
+        row = session.scalars(
+            analytics_service._bundle_row_query(user_id)
+        ).first()
+        assert row is not None
+        session.expunge(row)
+        return row
 
 
-def _seed_user_with_single_snapshots_no_yearly_history() -> str:
-    now = datetime.now(timezone.utc)
-    with session_scope() as session:
-        user = User(
-            email="analytics-fallback@example.com",
-            password_hash="test-hash",
-            name="Analytics Fallback User",
-        )
-        session.add(user)
-        session.flush()
-        user_id = str(user.id)
-
-        work_a = Work(
-            user_id=user_id,
-            title="Fallback Work A",
-            title_lower="fallback work a",
-            year=2018,
-            doi="10.1000/fallback-a",
-            work_type="journal-article",
-            venue_name="BMJ Open",
-            publisher="BMJ",
-            abstract="Fallback A abstract",
-            keywords=["fallback-a"],
-            url="https://example.org/fallback-a",
-            provenance="manual",
-            user_edited=False,
-        )
-        work_b = Work(
-            user_id=user_id,
-            title="Fallback Work B",
-            title_lower="fallback work b",
-            year=2021,
-            doi="10.1000/fallback-b",
-            work_type="journal-article",
-            venue_name="Heart",
-            publisher="BMJ",
-            abstract="Fallback B abstract",
-            keywords=["fallback-b"],
-            url="https://example.org/fallback-b",
-            provenance="manual",
-            user_edited=False,
-        )
-        session.add_all([work_a, work_b])
-        session.flush()
-
-        session.add_all(
-            [
-                MetricsSnapshot(
-                    work_id=str(work_a.id),
-                    provider="openalex",
-                    citations_count=70,
-                    influential_citations=None,
-                    altmetric_score=None,
-                    metric_payload={},
-                    captured_at=now - timedelta(days=1),
-                ),
-                MetricsSnapshot(
-                    work_id=str(work_b.id),
-                    provider="openalex",
-                    citations_count=35,
-                    influential_citations=None,
-                    altmetric_score=None,
-                    metric_payload={},
-                    captured_at=now - timedelta(days=1),
-                ),
-            ]
-        )
-    return user_id
-
-
-def test_publications_analytics_compute_and_store(monkeypatch, tmp_path) -> None:
+def test_compute_publications_analytics_persists_bundle(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     user_id = _seed_user_with_metrics()
-
-    summary = get_publications_analytics_summary(
-        user_id=user_id,
-        refresh=True,
-        refresh_metrics=False,
-    )
-
-    assert summary["total_citations"] == 27
-    assert summary["h_index"] == 2
-    assert summary["citations_last_12_months"] == 12
-    assert summary["citations_previous_12_months"] == 12
-    assert summary["yoy_percent"] == 0.0
-    assert summary["citation_velocity_12m"] == 1.0
-    assert isinstance(summary.get("computed_at"), str)
-
-    with session_scope() as session:
-        rows = session.scalars(
-            select(PublicationMetric).where(PublicationMetric.user_id == user_id)
-        ).all()
-        keys = sorted(row.metric_key for row in rows)
-    assert keys == ["summary", "timeseries", "top_drivers"]
-
-
-def test_publications_analytics_timeseries_and_top_drivers(
-    monkeypatch, tmp_path
-) -> None:
-    _set_test_environment(monkeypatch, tmp_path)
-    create_all_tables()
-    user_id = _seed_user_with_metrics()
-
-    _ = get_publications_analytics_summary(
-        user_id=user_id,
-        refresh=True,
-        refresh_metrics=False,
-    )
-    timeseries = get_publications_analytics_timeseries(
-        user_id=user_id,
-        refresh=False,
-        refresh_metrics=False,
-    )
-    top_drivers = get_publications_analytics_top_drivers(
-        user_id=user_id,
-        limit=1,
-        refresh=False,
-        refresh_metrics=False,
-    )
-
-    assert isinstance(timeseries.get("points"), list)
-    assert len(timeseries["points"]) >= 1
-    assert timeseries["points"][-1]["year"] <= datetime.now(timezone.utc).year
-    assert len(top_drivers["drivers"]) == 1
-    assert top_drivers["drivers"][0]["citations_last_12_months"] >= 5
-
-
-def test_publications_analytics_uses_openalex_yearly_history(monkeypatch, tmp_path) -> None:
-    _set_test_environment(monkeypatch, tmp_path)
-    create_all_tables()
-    fixed_now = datetime(2026, 2, 23, tzinfo=timezone.utc)
     monkeypatch.setattr(
-        "research_os.services.publications_analytics_service._utcnow",
-        lambda: fixed_now,
-    )
-    user_id = _seed_user_with_openalex_yearly_history()
-
-    summary = get_publications_analytics_summary(
-        user_id=user_id,
-        refresh=True,
-        refresh_metrics=False,
-    )
-    timeseries = get_publications_analytics_timeseries(
-        user_id=user_id,
-        refresh=False,
-        refresh_metrics=False,
-    )
-    top_drivers = get_publications_analytics_top_drivers(
-        user_id=user_id,
-        limit=2,
-        refresh=False,
-        refresh_metrics=False,
+        "research_os.services.publications_analytics_service._resolve_openalex_author_id",
+        lambda **kwargs: "https://openalex.org/A123",
     )
 
-    points = timeseries["points"]
-    assert [point["year"] for point in points] == [2022, 2023, 2024, 2025, 2026]
-    assert [point["citations_added"] for point in points] == [5, 10, 20, 45, 5]
-    assert points[-1]["total_citations_end_year"] == 85
+    payload = compute_publications_analytics(user_id=user_id)
 
-    assert summary["total_citations"] == 85
-    assert summary["citations_last_12_months"] > 0
-    assert summary["citations_last_12_months"] < summary["total_citations"]
-    assert summary["citations_previous_12_months"] > 0
-
-    assert len(top_drivers["drivers"]) == 2
-    assert top_drivers["drivers"][0]["citations_last_12_months"] < top_drivers["drivers"][0]["current_citations"]
+    assert payload["summary"]["total_citations"] == 27
+    row = _bundle_row(user_id)
+    assert row.metric_key == "bundle"
+    assert row.status == "READY"
+    assert row.openalex_author_id == "https://openalex.org/A123"
+    assert isinstance(row.payload_json, dict)
+    assert "summary" in row.payload_json
 
 
-def test_publications_analytics_publication_year_fallback_for_timeseries(
-    monkeypatch, tmp_path
-) -> None:
+def test_stale_while_revalidate_returns_cache_and_enqueues(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
-    user_id = _seed_user_with_single_snapshots_no_yearly_history()
+    user_id = _seed_user_with_metrics()
+    compute_publications_analytics(user_id=user_id)
 
-    summary = get_publications_analytics_summary(
-        user_id=user_id,
-        refresh=True,
-        refresh_metrics=False,
+    old_time = datetime.now(timezone.utc) - timedelta(days=10)
+    with session_scope() as session:
+        row = session.scalars(analytics_service._bundle_row_query(user_id)).first()
+        assert row is not None
+        row.computed_at = old_time
+        row.status = "READY"
+        session.flush()
+
+    enqueued: list[str] = []
+    monkeypatch.setattr(
+        "research_os.services.publications_analytics_service.enqueue_publications_analytics_recompute",
+        lambda **kwargs: enqueued.append(str(kwargs["user_id"])) or True,
     )
-    timeseries = get_publications_analytics_timeseries(
-        user_id=user_id,
-        refresh=False,
-        refresh_metrics=False,
-    )
-    top_drivers = get_publications_analytics_top_drivers(
-        user_id=user_id,
-        limit=5,
-        refresh=False,
-        refresh_metrics=False,
+    monkeypatch.setenv("PUB_ANALYTICS_TTL_SECONDS", "60")
+
+    response = get_publications_analytics(user_id=user_id)
+
+    assert response["payload"]["summary"]["total_citations"] == 27
+    assert response["is_stale"] is True
+    assert response["status"] == "RUNNING"
+    assert enqueued == [user_id]
+
+
+def test_lock_prevents_duplicate_enqueue(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user_with_metrics()
+    compute_publications_analytics(user_id=user_id)
+
+    with session_scope() as session:
+        row = session.scalars(analytics_service._bundle_row_query(user_id)).first()
+        assert row is not None
+        row.status = "RUNNING"
+        session.flush()
+
+    assert enqueue_publications_analytics_recompute(user_id=user_id) is False
+
+    with session_scope() as session:
+        row = session.scalars(analytics_service._bundle_row_query(user_id)).first()
+        assert row is not None
+        row.status = "READY"
+        session.flush()
+
+    class _DummyExecutor:
+        def __init__(self) -> None:
+            self.submits = 0
+
+        def submit(self, fn, *args, **kwargs):  # noqa: ANN001
+            self.submits += 1
+            return None
+
+    dummy = _DummyExecutor()
+    monkeypatch.setattr(
+        "research_os.services.publications_analytics_service._get_executor",
+        lambda: dummy,
     )
 
-    points = timeseries["points"]
-    assert [point["year"] for point in points] == [2018, 2021]
-    assert [point["citations_added"] for point in points] == [70, 35]
-    assert points[-1]["total_citations_end_year"] == 105
+    first = enqueue_publications_analytics_recompute(user_id=user_id, force=True)
+    second = enqueue_publications_analytics_recompute(user_id=user_id, force=True)
+    assert first is True
+    assert second is False
+    assert dummy.submits == 1
 
-    assert summary["total_citations"] == 105
-    assert summary["citations_last_12_months"] == 0
-    assert summary["citations_previous_12_months"] == 0
-    assert summary["yoy_percent"] is None
-    assert top_drivers["drivers"] == []
+
+def test_failure_keeps_cached_payload_and_sets_failed(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user_with_metrics()
+    cached = compute_publications_analytics(user_id=user_id)
+    cached_total = int(cached["summary"]["total_citations"])
+
+    class _ImmediateExecutor:
+        def submit(self, fn, *args, **kwargs):  # noqa: ANN001
+            fn(*args, **kwargs)
+            return None
+
+    monkeypatch.setattr(
+        "research_os.services.publications_analytics_service._get_executor",
+        lambda: _ImmediateExecutor(),
+    )
+    monkeypatch.setattr(
+        "research_os.services.publications_analytics_service.compute_publications_analytics",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("upstream failure")),
+    )
+
+    queued = enqueue_publications_analytics_recompute(user_id=user_id, force=True)
+    assert queued is True
+
+    response = get_publications_analytics(user_id=user_id)
+    assert response["status"] == "FAILED"
+    assert response["last_update_failed"] is True
+    assert response["payload"]["summary"]["total_citations"] == cached_total
+
+
+def test_backoff_scheduling_sets_next_scheduled_at(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user_with_metrics()
+    compute_publications_analytics(user_id=user_id)
+
+    for expected_hours in (1, 3, 12):
+        analytics_service._persist_failed_bundle(user_id=user_id, detail="failure")
+        row = _bundle_row(user_id)
+        now = datetime.now(timezone.utc)
+        next_due = row.next_scheduled_at
+        assert next_due is not None
+        delta_hours = (_coerce_utc(next_due) - now).total_seconds() / 3600.0
+        assert expected_hours - 0.2 <= delta_hours <= expected_hours + 0.2
+
+
+def _coerce_utc(value: datetime | None) -> datetime:
+    if value is None:
+        return datetime(1970, 1, 1, tzinfo=timezone.utc)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def test_scheduler_tick_invokes_enqueue_for_due_records(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user_with_metrics()
+    compute_publications_analytics(user_id=user_id)
+
+    with session_scope() as session:
+        row = session.scalars(analytics_service._bundle_row_query(user_id)).first()
+        assert row is not None
+        row.status = "READY"
+        row.next_scheduled_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+        session.flush()
+
+    monkeypatch.setattr(
+        "research_os.services.publications_analytics_service._try_acquire_scheduler_leader",
+        lambda now: True,
+    )
+    enqueued_users: list[str] = []
+    monkeypatch.setattr(
+        "research_os.services.publications_analytics_service.enqueue_publications_analytics_recompute",
+        lambda **kwargs: enqueued_users.append(str(kwargs["user_id"])) or True,
+    )
+
+    count = run_publications_analytics_scheduler_tick()
+    assert count >= 1
+    assert user_id in enqueued_users
+
+
+def test_scheduler_registers_interval_job(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setenv("PUB_ANALYTICS_SCHEDULE_HOURS", "6")
+
+    captured: dict[str, Any] = {}
+
+    class _FakeScheduler:
+        def __init__(self, timezone: str | None = None):
+            captured["timezone"] = timezone
+
+        def add_job(self, fn, **kwargs):  # noqa: ANN001
+            captured["job_fn"] = fn
+            captured["job_kwargs"] = kwargs
+
+        def start(self) -> None:
+            captured["started"] = True
+
+        def shutdown(self, wait: bool = False) -> None:
+            captured["shutdown"] = wait
+
+    monkeypatch.setattr(
+        "research_os.services.publications_analytics_service.BackgroundScheduler",
+        _FakeScheduler,
+    )
+    analytics_service.stop_publications_analytics_scheduler()
+    analytics_service.start_publications_analytics_scheduler()
+    analytics_service.stop_publications_analytics_scheduler()
+
+    assert captured["timezone"] == "UTC"
+    assert captured["started"] is True
+    assert captured["job_fn"] == analytics_service.run_publications_analytics_scheduler_tick
+    assert captured["job_kwargs"]["trigger"] == "interval"
+    assert captured["job_kwargs"]["hours"] == 6

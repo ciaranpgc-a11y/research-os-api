@@ -235,6 +235,18 @@ def disconnect_orcid(*, user_id: str) -> dict[str, Any]:
         user.orcid_token_expires_at = None
         user.orcid_last_synced_at = None
         session.flush()
+    try:
+        from research_os.services.publications_analytics_service import (
+            enqueue_publications_analytics_recompute,
+        )
+
+        enqueue_publications_analytics_recompute(
+            user_id=user_id,
+            force=True,
+            reason="orcid_disconnected",
+        )
+    except Exception:
+        pass
     return get_orcid_status(user_id=user_id)
 
 
@@ -301,6 +313,7 @@ def complete_orcid_callback(*, state: str, code: str) -> dict[str, Any]:
     expires_in = int(token_payload.get("expires_in", 3600) or 3600)
     expires_at = _utcnow() + timedelta(seconds=max(0, expires_in))
 
+    result_payload: dict[str, Any] = {}
     with session_scope() as session:
         state_row = session.scalars(
             select(OrcidOAuthState).where(OrcidOAuthState.state_token == clean_state)
@@ -331,11 +344,24 @@ def complete_orcid_callback(*, state: str, code: str) -> dict[str, Any]:
         user.orcid_token_expires_at = expires_at
         state_row.consumed_at = _utcnow()
         session.flush()
-        return {
+        result_payload = {
             "user_id": user.id,
             "orcid_id": user.orcid_id,
             "connected": True,
         }
+    try:
+        from research_os.services.publications_analytics_service import (
+            enqueue_publications_analytics_recompute,
+        )
+
+        enqueue_publications_analytics_recompute(
+            user_id=str(result_payload.get("user_id", "")).strip(),
+            force=True,
+            reason="orcid_connected",
+        )
+    except Exception:
+        pass
+    return result_payload
 
 
 def _orcid_headers(access_token: str | None = None) -> dict[str, str]:
@@ -703,6 +729,18 @@ def import_orcid_works(
             # Keep ORCID import resilient even if external citation providers are unavailable.
             pass
     collaboration = recompute_collaborator_edges(user_id=user_id)
+    try:
+        from research_os.services.publications_analytics_service import (
+            enqueue_publications_analytics_recompute,
+        )
+
+        enqueue_publications_analytics_recompute(
+            user_id=user_id,
+            force=True,
+            reason="orcid_imported",
+        )
+    except Exception:
+        pass
     return {
         "imported_count": new_works_count,
         "work_ids": upserted_ids,

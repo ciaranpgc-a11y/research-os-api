@@ -12,9 +12,7 @@ import {
   fetchMe,
   fetchOrcidStatus,
   fetchPersonaState,
-  fetchPublicationsAnalyticsSummary,
-  fetchPublicationsAnalyticsTimeseries,
-  fetchPublicationsAnalyticsTopDrivers,
+  fetchPublicationsAnalytics,
   listPersonaSyncJobs,
 } from '@/lib/impact-api'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
@@ -24,6 +22,7 @@ import type {
   OrcidStatusPayload,
   PersonaStatePayload,
   PersonaSyncJobPayload,
+  PublicationsAnalyticsResponsePayload,
   PublicationsAnalyticsSummaryPayload,
   PublicationsAnalyticsTimeseriesPayload,
   PublicationsAnalyticsTopDriversPayload,
@@ -34,9 +33,7 @@ type PublicationSortField = 'citations' | 'year' | 'title' | 'venue' | 'work_typ
 type SortDirection = 'asc' | 'desc'
 const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
-const PUBLICATIONS_ANALYTICS_SUMMARY_CACHE_KEY = 'aawe_publications_analytics_summary_cache'
-const PUBLICATIONS_ANALYTICS_TIMESERIES_CACHE_KEY = 'aawe_publications_analytics_timeseries_cache'
-const PUBLICATIONS_ANALYTICS_TOP_DRIVERS_CACHE_KEY = 'aawe_publications_analytics_top_drivers_cache'
+const PUBLICATIONS_ANALYTICS_CACHE_KEY = 'aawe_publications_analytics_cache'
 const PUBLICATIONS_ACTIVE_SYNC_JOB_STORAGE_PREFIX = 'aawe_publications_active_sync_job:'
 
 const WORK_TYPE_LABELS: Record<string, string> = {
@@ -237,70 +234,47 @@ function saveCachedUser(value: AuthUser): void {
   window.localStorage.setItem(INTEGRATIONS_USER_CACHE_KEY, JSON.stringify(value))
 }
 
-function loadCachedAnalyticsSummary(): PublicationsAnalyticsSummaryPayload | null {
+function loadCachedAnalyticsResponse(): PublicationsAnalyticsResponsePayload | null {
   if (typeof window === 'undefined') {
     return null
   }
-  const raw = window.localStorage.getItem(PUBLICATIONS_ANALYTICS_SUMMARY_CACHE_KEY)
+  const raw = window.localStorage.getItem(PUBLICATIONS_ANALYTICS_CACHE_KEY)
   if (!raw) {
     return null
   }
   try {
-    return JSON.parse(raw) as PublicationsAnalyticsSummaryPayload
+    return JSON.parse(raw) as PublicationsAnalyticsResponsePayload
   } catch {
     return null
   }
 }
 
-function saveCachedAnalyticsSummary(value: PublicationsAnalyticsSummaryPayload): void {
+function saveCachedAnalyticsResponse(value: PublicationsAnalyticsResponsePayload): void {
   if (typeof window === 'undefined') {
     return
   }
-  window.localStorage.setItem(PUBLICATIONS_ANALYTICS_SUMMARY_CACHE_KEY, JSON.stringify(value))
+  window.localStorage.setItem(PUBLICATIONS_ANALYTICS_CACHE_KEY, JSON.stringify(value))
 }
 
-function loadCachedAnalyticsTimeseries(): PublicationsAnalyticsTimeseriesPayload | null {
-  if (typeof window === 'undefined') {
-    return null
-  }
-  const raw = window.localStorage.getItem(PUBLICATIONS_ANALYTICS_TIMESERIES_CACHE_KEY)
-  if (!raw) {
-    return null
-  }
-  try {
-    return JSON.parse(raw) as PublicationsAnalyticsTimeseriesPayload
-  } catch {
-    return null
-  }
+function analyticsSummaryFromResponse(
+  response: PublicationsAnalyticsResponsePayload | null,
+): PublicationsAnalyticsSummaryPayload | null {
+  const summary = response?.payload?.summary
+  return summary ? summary : null
 }
 
-function saveCachedAnalyticsTimeseries(value: PublicationsAnalyticsTimeseriesPayload): void {
-  if (typeof window === 'undefined') {
-    return
-  }
-  window.localStorage.setItem(PUBLICATIONS_ANALYTICS_TIMESERIES_CACHE_KEY, JSON.stringify(value))
+function analyticsTimeseriesFromResponse(
+  response: PublicationsAnalyticsResponsePayload | null,
+): PublicationsAnalyticsTimeseriesPayload | null {
+  const timeseries = response?.payload?.timeseries
+  return timeseries ? timeseries : null
 }
 
-function loadCachedAnalyticsTopDrivers(): PublicationsAnalyticsTopDriversPayload | null {
-  if (typeof window === 'undefined') {
-    return null
-  }
-  const raw = window.localStorage.getItem(PUBLICATIONS_ANALYTICS_TOP_DRIVERS_CACHE_KEY)
-  if (!raw) {
-    return null
-  }
-  try {
-    return JSON.parse(raw) as PublicationsAnalyticsTopDriversPayload
-  } catch {
-    return null
-  }
-}
-
-function saveCachedAnalyticsTopDrivers(value: PublicationsAnalyticsTopDriversPayload): void {
-  if (typeof window === 'undefined') {
-    return
-  }
-  window.localStorage.setItem(PUBLICATIONS_ANALYTICS_TOP_DRIVERS_CACHE_KEY, JSON.stringify(value))
+function analyticsTopDriversFromResponse(
+  response: PublicationsAnalyticsResponsePayload | null,
+): PublicationsAnalyticsTopDriversPayload | null {
+  const topDrivers = response?.payload?.top_drivers
+  return topDrivers ? topDrivers : null
 }
 
 function publicationsActiveSyncJobStorageKey(userId: string): string {
@@ -503,13 +477,15 @@ export function ProfilePublicationsPage() {
   const initialCachedPersonaState = readCachedPersonaState()
   const initialCachedOrcidStatus = loadCachedOrcidStatus()
   const initialCachedUser = loadCachedUser()
-  const initialCachedAnalyticsSummary = loadCachedAnalyticsSummary()
-  const initialCachedAnalyticsTimeseries = loadCachedAnalyticsTimeseries()
-  const initialCachedAnalyticsTopDrivers = loadCachedAnalyticsTopDrivers()
+  const initialCachedAnalyticsResponse = loadCachedAnalyticsResponse()
+  const initialCachedAnalyticsSummary = analyticsSummaryFromResponse(initialCachedAnalyticsResponse)
+  const initialCachedAnalyticsTimeseries = analyticsTimeseriesFromResponse(initialCachedAnalyticsResponse)
+  const initialCachedAnalyticsTopDrivers = analyticsTopDriversFromResponse(initialCachedAnalyticsResponse)
   const [token, setToken] = useState<string>(() => getAuthSessionToken())
   const [user, setUser] = useState<AuthUser | null>(initialCachedUser)
   const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(initialCachedPersonaState)
   const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(initialCachedOrcidStatus)
+  const [analyticsResponse, setAnalyticsResponse] = useState<PublicationsAnalyticsResponsePayload | null>(initialCachedAnalyticsResponse)
   const [analyticsSummary, setAnalyticsSummary] = useState<PublicationsAnalyticsSummaryPayload | null>(initialCachedAnalyticsSummary)
   const [analyticsTimeseries, setAnalyticsTimeseries] = useState<PublicationsAnalyticsTimeseriesPayload | null>(initialCachedAnalyticsTimeseries)
   const [analyticsTopDrivers, setAnalyticsTopDrivers] = useState<PublicationsAnalyticsTopDriversPayload | null>(initialCachedAnalyticsTopDrivers)
@@ -520,7 +496,6 @@ export function ProfilePublicationsPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [refreshingAnalytics, setRefreshingAnalytics] = useState(false)
   const [richImporting, setRichImporting] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [fullSyncing, setFullSyncing] = useState(false)
@@ -531,16 +506,10 @@ export function ProfilePublicationsPage() {
   const loadData = useCallback(async (
     sessionToken: string,
     resetMessages = true,
-    refreshAnalytics = false,
-    refreshAnalyticsMetrics = false,
     background = false,
   ) => {
-    if (!background && refreshAnalytics) {
-      setRefreshingAnalytics(true)
-    } else if (!background) {
-      setLoading(true)
-    }
     if (!background) {
+      setLoading(true)
       setError('')
     }
     if (resetMessages) {
@@ -552,21 +521,9 @@ export function ProfilePublicationsPage() {
         fetchOrcidStatus(sessionToken),
         fetchMe(sessionToken),
         listPersonaSyncJobs(sessionToken, 5),
-        fetchPublicationsAnalyticsSummary(sessionToken, {
-          refresh: refreshAnalytics,
-          refreshMetrics: refreshAnalyticsMetrics,
-        }),
-        fetchPublicationsAnalyticsTimeseries(sessionToken, {
-          refresh: refreshAnalytics,
-          refreshMetrics: refreshAnalyticsMetrics,
-        }),
-        fetchPublicationsAnalyticsTopDrivers(sessionToken, {
-          limit: 5,
-          refresh: refreshAnalytics,
-          refreshMetrics: refreshAnalyticsMetrics,
-        }),
+        fetchPublicationsAnalytics(sessionToken),
       ])
-      const [stateResult, orcidResult, userResult, jobsResult, summaryResult, timeseriesResult, topDriversResult] = settled
+      const [stateResult, orcidResult, userResult, jobsResult, analyticsResult] = settled
       if (stateResult.status === 'fulfilled') {
         setPersonaState(stateResult.value)
         writeCachedPersonaState(stateResult.value)
@@ -585,8 +542,8 @@ export function ProfilePublicationsPage() {
         setUser(userResult.value)
         saveCachedUser(userResult.value)
         const activeJobId = loadPublicationsActiveSyncJobId(userResult.value.id)
-        if (activeJobId && !activeSyncJob) {
-          setActiveSyncJob({
+        if (activeJobId) {
+          setActiveSyncJob((current) => current || {
             id: activeJobId,
             user_id: userResult.value.id,
             job_type: 'metrics_sync',
@@ -619,17 +576,12 @@ export function ProfilePublicationsPage() {
           setActiveSyncJob(null)
         }
       }
-      if (summaryResult.status === 'fulfilled') {
-        setAnalyticsSummary(summaryResult.value)
-        saveCachedAnalyticsSummary(summaryResult.value)
-      }
-      if (timeseriesResult.status === 'fulfilled') {
-        setAnalyticsTimeseries(timeseriesResult.value)
-        saveCachedAnalyticsTimeseries(timeseriesResult.value)
-      }
-      if (topDriversResult.status === 'fulfilled') {
-        setAnalyticsTopDrivers(topDriversResult.value)
-        saveCachedAnalyticsTopDrivers(topDriversResult.value)
+      if (analyticsResult.status === 'fulfilled') {
+        setAnalyticsResponse(analyticsResult.value)
+        saveCachedAnalyticsResponse(analyticsResult.value)
+        setAnalyticsSummary(analyticsSummaryFromResponse(analyticsResult.value))
+        setAnalyticsTimeseries(analyticsTimeseriesFromResponse(analyticsResult.value))
+        setAnalyticsTopDrivers(analyticsTopDriversFromResponse(analyticsResult.value))
       }
       const failedCount = settled.filter((item) => item.status === 'rejected').length
       if (failedCount > 0) {
@@ -642,7 +594,6 @@ export function ProfilePublicationsPage() {
     } finally {
       if (!background) {
         setLoading(false)
-        setRefreshingAnalytics(false)
       }
     }
   }, [])
@@ -654,7 +605,7 @@ export function ProfilePublicationsPage() {
       navigate('/auth', { replace: true })
       return
     }
-    void loadData(sessionToken, false, false, false, true)
+    void loadData(sessionToken, false, true)
   }, [loadData, navigate])
 
   useEffect(() => {
@@ -709,7 +660,7 @@ export function ProfilePublicationsPage() {
           }
           setActiveSyncJob(null)
           setStatus('Background sync completed.')
-          await loadData(token, false, false, false, true)
+          await loadData(token, false, true)
           return
         }
         if (user?.id) {
@@ -734,6 +685,40 @@ export function ProfilePublicationsPage() {
       window.clearInterval(timer)
     }
   }, [activeSyncJob?.id, loadData, token, user?.id])
+
+  useEffect(() => {
+    if (!token || analyticsResponse?.status !== 'RUNNING') {
+      return
+    }
+    let cancelled = false
+
+    const poll = async () => {
+      try {
+        const next = await fetchPublicationsAnalytics(token)
+        if (cancelled) {
+          return
+        }
+        setAnalyticsResponse(next)
+        saveCachedAnalyticsResponse(next)
+        setAnalyticsSummary(analyticsSummaryFromResponse(next))
+        setAnalyticsTimeseries(analyticsTimeseriesFromResponse(next))
+        setAnalyticsTopDrivers(analyticsTopDriversFromResponse(next))
+      } catch {
+        if (cancelled) {
+          return
+        }
+      }
+    }
+
+    void poll()
+    const timer = window.setInterval(() => {
+      void poll()
+    }, 7000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [analyticsResponse?.status, token])
 
   const metricsByWorkId = useMemo(() => {
     const map = new Map<string, { citations: number; provider: string }>()
@@ -843,9 +828,12 @@ export function ProfilePublicationsPage() {
   const citationsPrevious12Months = analyticsSummary?.citations_previous_12_months ?? 0
   const yoyGrowthPercent = analyticsSummary?.yoy_percent ?? null
   const citationVelocity12m = analyticsSummary?.citation_velocity_12m ?? 0
+  const analyticsComputedAt = analyticsResponse?.computed_at || analyticsSummary?.computed_at || null
+  const analyticsUpdating = analyticsResponse?.status === 'RUNNING'
+  const analyticsFailed = analyticsResponse?.status === 'FAILED' || analyticsResponse?.last_update_failed
   const latestYearGrowth = analyticsTimeseries?.points?.at(-1) || null
   const worksCount = personaState?.works.length ?? 0
-  const busy = loading || refreshingAnalytics || richImporting || syncing || fullSyncing
+  const busy = loading || richImporting || syncing || fullSyncing
   const canSyncCitations = worksCount > 0 && !busy
   const topDrivers = analyticsTopDrivers?.drivers || []
   const timeseriesPoints = analyticsTimeseries?.points || []
@@ -946,20 +934,6 @@ export function ProfilePublicationsPage() {
     }
   }
 
-  const onRefreshAnalytics = async () => {
-    if (!token) {
-      return
-    }
-    setStatus('')
-    setError('')
-    try {
-      await loadData(token, false, true)
-      setStatus('Publication analytics refreshed.')
-    } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : 'Could not refresh publication analytics.')
-    }
-  }
-
   return (
     <section className="space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -969,9 +943,6 @@ export function ProfilePublicationsPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" onClick={onRichImportOrcid} disabled={!Boolean(orcidStatus?.can_import) || busy}>
             {richImporting ? 'Syncing ORCID...' : 'Sync ORCID now'}
-          </Button>
-          <Button type="button" variant="outline" onClick={onRefreshAnalytics} disabled={busy}>
-            {refreshingAnalytics ? 'Refreshing analytics...' : 'Refresh analytics'}
           </Button>
           <Button type="button" variant="outline" onClick={onSyncCitations} disabled={!canSyncCitations}>
             {syncing ? 'Syncing citations...' : 'Sync citations'}
@@ -1077,7 +1048,10 @@ export function ProfilePublicationsPage() {
           </div>
           <div className="rounded border border-border px-3 py-2 text-sm">
             <p className="text-xs text-muted-foreground">Analytics computed</p>
-            <p className="font-semibold">{formatShortDate(analyticsSummary?.computed_at)}</p>
+            <p className="font-semibold">{formatShortDate(analyticsComputedAt)}</p>
+            <p className="text-xs text-muted-foreground">Auto-updates daily</p>
+            {analyticsUpdating ? <p className="text-xs text-muted-foreground">Updating...</p> : null}
+            {analyticsFailed ? <p className="text-xs text-amber-700">Last update failed</p> : null}
           </div>
         </CardContent>
       </Card>

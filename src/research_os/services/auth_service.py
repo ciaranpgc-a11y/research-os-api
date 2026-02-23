@@ -516,16 +516,23 @@ def update_current_user(
     password: str | None = None,
 ) -> dict[str, object]:
     create_all_tables()
+    identity_changed = False
+    updated_user_id = ""
+    response_payload: dict[str, object] = {}
     with session_scope() as session:
         user, _ = _resolve_user_from_session_token(session=session, token=session_token)
 
         if name is not None:
-            user.name = _normalize_name(name)
+            normalized_name = _normalize_name(name)
+            if normalized_name != user.name:
+                identity_changed = True
+            user.name = normalized_name
         if email is not None:
             normalized_email = _normalize_email(email)
             if normalized_email != user.email:
                 user.email = normalized_email
                 user.email_verified_at = None
+                identity_changed = True
         if password is not None:
             normalized_password = _normalize_password_input(password)
             try:
@@ -540,7 +547,23 @@ def update_current_user(
                 "An account with this email already exists."
             ) from exc
         session.refresh(user)
-        return _serialize_user(user)
+        updated_user_id = str(user.id)
+        response_payload = _serialize_user(user)
+
+    if identity_changed and updated_user_id:
+        try:
+            from research_os.services.publications_analytics_service import (
+                enqueue_publications_analytics_recompute,
+            )
+
+            enqueue_publications_analytics_recompute(
+                user_id=updated_user_id,
+                force=True,
+                reason="profile_identity_updated",
+            )
+        except Exception:
+            pass
+    return response_payload
 
 
 def start_login_challenge(*, email: str, password: str) -> dict[str, object]:

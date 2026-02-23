@@ -1033,7 +1033,17 @@ class PublicationsAnalyticsSummaryResponse(BaseModel):
     citation_velocity_12m: float = 0.0
     citations_last_12_months: int = 0
     citations_previous_12_months: int = 0
+    citations_per_month_12m: float = 0.0
+    citations_per_month_previous_12m: float = 0.0
+    acceleration_citations_per_month: float = 0.0
     yoy_percent: float | None = None
+    yoy_pct: float | None = None
+    citations_ytd: int = 0
+    ytd_year: int | None = None
+    cagr_3y: float | None = None
+    slope_3y: float | None = None
+    top5_share_12m_pct: float = 0.0
+    top10_share_12m_pct: float = 0.0
     computed_at: datetime
 
 
@@ -1056,12 +1066,44 @@ class PublicationsAnalyticsDriverResponse(BaseModel):
     citations_last_12_months: int = 0
     current_citations: int = 0
     provider: str = "none"
+    share_12m_pct: float = 0.0
+    primary_domain_label: str = "General"
+    momentum_badge: str = "steady"
 
 
 class PublicationsAnalyticsTopDriversResponse(BaseModel):
     computed_at: datetime
     window: str = "last_12_months"
     drivers: list[PublicationsAnalyticsDriverResponse] = Field(default_factory=list)
+
+
+class PublicationsAnalyticsDomainBreakdownResponse(BaseModel):
+    label: str
+    citations_last_12_months: int = 0
+    share_12m_pct: float = 0.0
+    works_count: int = 0
+
+
+class PublicationsAnalyticsPayloadResponse(BaseModel):
+    schema_version: int = 0
+    computed_at: datetime | None = None
+    summary: PublicationsAnalyticsSummaryResponse
+    timeseries: PublicationsAnalyticsTimeseriesResponse
+    top_drivers: PublicationsAnalyticsTopDriversResponse
+    per_year: list[dict[str, Any]] = Field(default_factory=list)
+    domain_breakdown_12m: list[PublicationsAnalyticsDomainBreakdownResponse] = (
+        Field(default_factory=list)
+    )
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class PublicationsAnalyticsResponse(BaseModel):
+    payload: PublicationsAnalyticsPayloadResponse
+    computed_at: datetime | None = None
+    status: Literal["READY", "RUNNING", "FAILED"] = "RUNNING"
+    is_stale: bool = False
+    is_updating: bool = False
+    last_update_failed: bool = False
 
 
 class PersonaEmbeddingsGenerateRequest(BaseModel):

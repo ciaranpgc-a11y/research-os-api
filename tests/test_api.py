@@ -2505,6 +2505,10 @@ def test_v1_persona_metrics_embeddings_and_impact_flow(monkeypatch, tmp_path) ->
             "/v1/publications/analytics/top-drivers",
             headers=headers,
         )
+        analytics_bundle_response = client.get(
+            "/v1/publications/analytics",
+            headers=headers,
+        )
         embeddings_response = client.post(
             "/v1/persona/embeddings/generate",
             headers=headers,
@@ -2527,6 +2531,9 @@ def test_v1_persona_metrics_embeddings_and_impact_flow(monkeypatch, tmp_path) ->
     assert "points" in analytics_timeseries_response.json()
     assert analytics_top_drivers_response.status_code == 200
     assert "drivers" in analytics_top_drivers_response.json()
+    assert analytics_bundle_response.status_code == 200
+    assert "payload" in analytics_bundle_response.json()
+    assert "status" in analytics_bundle_response.json()
     assert embeddings_response.status_code == 200
     assert embeddings_response.json()["generated_embeddings"] >= 1
     assert recompute_response.status_code == 200

@@ -76,7 +76,17 @@ export type PublicationsAnalyticsSummaryPayload = {
   citation_velocity_12m: number
   citations_last_12_months: number
   citations_previous_12_months: number
+  citations_per_month_12m: number
+  citations_per_month_previous_12m: number
+  acceleration_citations_per_month: number
   yoy_percent: number | null
+  yoy_pct: number | null
+  citations_ytd: number
+  ytd_year: number | null
+  cagr_3y: number | null
+  slope_3y: number | null
+  top5_share_12m_pct: number
+  top10_share_12m_pct: number
   computed_at: string
 }
 
@@ -100,7 +110,37 @@ export type PublicationsAnalyticsTopDriversPayload = {
     citations_last_12_months: number
     current_citations: number
     provider: string
+    share_12m_pct: number
+    primary_domain_label: string
+    momentum_badge: string
   }>
+}
+
+export type PublicationsAnalyticsDomainBreakdownPayload = {
+  label: string
+  citations_last_12_months: number
+  share_12m_pct: number
+  works_count: number
+}
+
+export type PublicationsAnalyticsPayload = {
+  schema_version: number
+  computed_at: string | null
+  summary: PublicationsAnalyticsSummaryPayload
+  timeseries: PublicationsAnalyticsTimeseriesPayload
+  top_drivers: PublicationsAnalyticsTopDriversPayload
+  per_year: Array<Record<string, unknown>>
+  domain_breakdown_12m: PublicationsAnalyticsDomainBreakdownPayload[]
+  metadata: Record<string, unknown>
+}
+
+export type PublicationsAnalyticsResponsePayload = {
+  payload: PublicationsAnalyticsPayload
+  computed_at: string | null
+  status: 'READY' | 'RUNNING' | 'FAILED'
+  is_stale: boolean
+  is_updating: boolean
+  last_update_failed: boolean
 }
 
 export type PersonaEmbeddingsGeneratePayload = {
