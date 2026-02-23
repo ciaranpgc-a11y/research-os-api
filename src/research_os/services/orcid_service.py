@@ -110,7 +110,7 @@ def _orcid_api_base() -> str:
 
 
 def _orcid_auto_sync_metrics_enabled() -> bool:
-    return os.getenv("ORCID_IMPORT_AUTO_SYNC_METRICS", "0").strip().lower() in {
+    return os.getenv("ORCID_IMPORT_AUTO_SYNC_METRICS", "1").strip().lower() in {
         "1",
         "true",
         "yes",
@@ -181,6 +181,15 @@ def disconnect_orcid(*, user_id: str) -> dict[str, Any]:
     create_all_tables()
     with session_scope() as session:
         user = _resolve_user_or_raise(session, user_id)
+        has_alternative_oauth = bool(user.google_sub or user.microsoft_sub)
+        has_placeholder_email = (
+            str(user.email or "").strip().lower().endswith("@orcid.local")
+        )
+        if has_placeholder_email and not has_alternative_oauth:
+            raise OrcidValidationError(
+                "Cannot disconnect ORCID yet. This account currently depends on ORCID sign-in. "
+                "First add another sign-in method (set a standard email/password or link Google/Microsoft)."
+            )
         user.orcid_id = None
         user.orcid_access_token = None
         user.orcid_refresh_token = None

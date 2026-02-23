@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Unplug } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -265,7 +266,7 @@ export function ProfileIntegrationsPage() {
       await pingApiHealth()
       const payload = await importOrcidWorks(token)
       if (payload.imported_count > 0) {
-        setStatus(`Imported ${payload.imported_count} ORCID work(s). Run citation sync next.`)
+        setStatus(`Imported ${payload.imported_count} ORCID work(s). Citation sync ran automatically.`)
       } else {
         setStatus('No new ORCID works were imported. Library is already up to date.')
       }
@@ -283,7 +284,7 @@ export function ProfileIntegrationsPage() {
           await pingApiHealth()
           const retryPayload = await importOrcidWorks(token)
           if (retryPayload.imported_count > 0) {
-            setStatus(`Imported ${retryPayload.imported_count} ORCID work(s). Run citation sync next.`)
+            setStatus(`Imported ${retryPayload.imported_count} ORCID work(s). Citation sync ran automatically.`)
           } else {
             setStatus('No new ORCID works were imported. Library is already up to date.')
           }
@@ -388,18 +389,33 @@ export function ProfileIntegrationsPage() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#A6CE39] text-xs font-semibold text-white">
-                iD
-              </span>
-              <span>ORCID</span>
-              <span
-                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                  orcidLinked ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'
-                }`}
-              >
-                {connectionStatusLabel}
-              </span>
+            <div className="flex w-full items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#A6CE39] text-xs font-semibold text-white">
+                  iD
+                </span>
+                <span>ORCID</span>
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                    orcidLinked ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'
+                  }`}
+                >
+                  {connectionStatusLabel}
+                </span>
+              </div>
+              {orcidLinked ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onDisconnectOrcid}
+                  disabled={!canDisconnectOrcid}
+                  className="border-red-300 text-red-700 hover:border-red-400 hover:bg-red-50 hover:text-red-800"
+                >
+                  <Unplug className="mr-1 h-3.5 w-3.5" />
+                  {disconnecting ? 'Disconnecting...' : 'Disconnect'}
+                </Button>
+              ) : null}
             </div>
           </CardTitle>
           <CardDescription>Primary source for publication import.</CardDescription>
@@ -440,11 +456,6 @@ export function ProfileIntegrationsPage() {
                 {syncing ? 'Syncing...' : 'Sync citations'}
               </Button>
             ) : null}
-            {orcidLinked ? (
-              <Button type="button" variant="outline" onClick={onDisconnectOrcid} disabled={!canDisconnectOrcid}>
-                {disconnecting ? 'Disconnecting...' : 'Disconnect ORCID'}
-              </Button>
-            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -457,9 +468,9 @@ export function ProfileIntegrationsPage() {
           {!orcidConfigured ? (
             <p className="text-xs text-amber-700">ORCID provider is not configured in backend environment.</p>
           ) : null}
-          {worksCount === 0 ? (
-            <p className="text-xs text-muted-foreground">Import works first. Citation sync appears once works are available.</p>
-          ) : null}
+          <p className="text-xs text-muted-foreground">
+            ORCID import runs citation sync automatically.
+          </p>
           {worksCount > 0 ? (
             <p className="text-xs text-muted-foreground">
               Citation sync uses OpenAlex and updates your latest citation totals.

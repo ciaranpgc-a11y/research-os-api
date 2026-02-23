@@ -3,7 +3,13 @@ from __future__ import annotations
 from typing import Any
 
 from research_os.db import User, create_all_tables, reset_database_state, session_scope
-from research_os.services.orcid_service import import_orcid_works
+import pytest
+
+from research_os.services.orcid_service import (
+    OrcidValidationError,
+    disconnect_orcid,
+    import_orcid_works,
+)
 from research_os.services.persona_service import list_works
 from research_os.services.security_service import encrypt_secret
 
@@ -150,7 +156,7 @@ def test_orcid_import_skips_auto_metrics_sync_by_default(monkeypatch, tmp_path) 
         ),
     }
 
-    monkeypatch.delenv("ORCID_IMPORT_AUTO_SYNC_METRICS", raising=False)
+    monkeypatch.setenv("ORCID_IMPORT_AUTO_SYNC_METRICS", "0")
     monkeypatch.setattr(
         "research_os.services.orcid_service._ensure_valid_access_token",
         lambda session, user: "access-token",
@@ -172,3 +178,40 @@ def test_orcid_import_skips_auto_metrics_sync_by_default(monkeypatch, tmp_path) 
 
     result = import_orcid_works(user_id=user_id)
     assert result["imported_count"] == 1
+
+
+def test_disconnect_orcid_blocks_orcid_only_placeholder_account(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    user_id = _create_orcid_user(
+        email="orcid-0000000285370806@orcid.local",
+        orcid_id="0000-0002-8537-0806",
+    )
+
+    with pytest.raises(OrcidValidationError) as exc:
+        disconnect_orcid(user_id=user_id)
+
+    assert "depends on ORCID sign-in" in str(exc.value)
+
+
+def test_disconnect_orcid_clears_link_for_standard_account(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    user_id = _create_orcid_user(
+        email="standard-user@example.com",
+        orcid_id="0000-0002-8537-0806",
+    )
+
+    payload = disconnect_orcid(user_id=user_id)
+    assert payload["linked"] is False
+    assert payload["orcid_id"] is None
+    assert payload["can_import"] is False
+
+    with session_scope() as session:
+        user = session.get(User, user_id)
+        assert user is not None
+        assert user.orcid_id is None
+        assert user.orcid_access_token is None
+        assert user.orcid_refresh_token is None
