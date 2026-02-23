@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -26,7 +27,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 3
+TOP_METRICS_SCHEMA_VERSION = 4
 
 DELTA_COLOR_BY_TONE = {
     "positive": "#166534",
@@ -164,23 +165,46 @@ def _delta_tone_for_metric(*, key: str, delta_value: float | int | None) -> str:
         return "neutral"
     metric_key = str(key or "").strip().lower()
 
-    if metric_key in {"citations_last_12m", "yoy_change"}:
+    if metric_key in {"this_year_vs_last"}:
+        if parsed <= -25.0:
+            return "negative"
+        if parsed < 0.0:
+            return "caution"
+        if parsed <= 10.0:
+            return "neutral"
+        return "positive"
+
+    if metric_key in {"momentum"}:
         if parsed < -10.0:
             return "negative"
         if parsed < 0.0:
             return "caution"
         if parsed <= 10.0:
-            return "caution"
+            return "neutral"
         return "positive"
 
-    if metric_key == "citation_concentration_risk":
-        # Lower concentration is better (less risk concentration).
+    if metric_key in {"h_index_projection"}:
+        if parsed >= 60.0:
+            return "positive"
+        if parsed >= 35.0:
+            return "neutral"
+        return "caution"
+
+    if metric_key in {"impact_concentration"}:
+        # Lower concentration is better (more diversified impact).
         if parsed < 0:
             return "positive"
         if parsed > 10:
             return "negative"
         if parsed > 0:
             return "caution"
+        return "neutral"
+
+    if metric_key in {"influential_citations"}:
+        if parsed > 5.0:
+            return "positive"
+        if parsed < -5.0:
+            return "negative"
         return "neutral"
 
     if parsed > 0:
@@ -1358,8 +1382,6 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             continue
         for idx in range(min(24, len(additions))):
             influence_monthly_added_totals[idx] += max(0, int(additions[idx] or 0))
-
-    concentration_label = _concentration_risk_label(float(concentration_risk))
     concentration_classification = (
         "Diversified" if concentration_risk < 30.0 else "Moderate" if concentration_risk <= 50.0 else "Concentrated"
     )
@@ -1367,9 +1389,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     influence_delta = influence_last_12m - influence_prev_12m
     influential_ratio = round((influence_total / total_citations) * 100.0, 1) if total_citations > 0 else 0.0
     influential_subtext = (
-        f"{influential_ratio:.1f}% of total citations · Updated monthly"
+        f"{influential_ratio:.1f}% of total citations | Updated monthly"
         if abs(influence_delta) <= 1
-        else f"{influential_ratio:.1f}% of total citations · {influence_delta:+,} vs previous 12m"
+        else f"{influential_ratio:.1f}% of total citations | {influence_delta:+,} vs previous 12m"
     )
     if not influence_available:
         influential_subtext = "Semantic Scholar influential signal unavailable"
@@ -1451,7 +1473,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             key="this_year_vs_last",
             label="This year vs last",
             value=citations_last_12m,
-            value_display=f"{_format_int(citations_last_12m)} vs {_format_int(citations_prev_12m)}",
+            value_display=_format_int(citations_last_12m),
             subtext=this_vs_last_subtext,
             badge={"label": this_vs_last_label, "severity": this_vs_last_severity},
             chart_type="paired_bar",
@@ -1623,74 +1645,48 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             },
         ),
         _metric_tile(
-            key="citation_concentration_risk",
-            label="Citation concentration risk",
-            value=concentration_risk,
-            value_display=f"{concentration_risk:.2f}%",
-            delta_value=concentration_delta,
-            delta_display=f"{concentration_label} risk | {concentration_delta:+.2f}pp",
-            unit="percent",
-            sparkline=concentration_series,
-            tooltip=concentration_tooltip,
-            tooltip_details=concentration_tooltip_details,
-            data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-            confidence_score=_confidence_score_from_publications(concentration_publications),
-            stability="unstable" if concentration_risk >= 70.0 else "stable",
+            key="influential_citations",
+            label="Influential citations",
+            value=influence_total if influence_available else None,
+            value_display=_format_int(influence_total) if influence_available else "Not available",
+            subtext=influential_subtext,
+            badge={
+                "label": "Available" if influence_available else "Unavailable",
+                "severity": "neutral" if influence_available else "caution",
+            },
+            chart_type="bar_month_12",
+            chart_data={
+                "months": list(range(1, 13)),
+                "values": influence_monthly_added_totals[-12:],
+            },
+            delta_value=float(influence_delta) if influence_available else None,
+            delta_display=f"{influence_delta:+,} vs previous 12m" if influence_available else None,
+            unit="influential citations",
+            sparkline=influence_monthly_added_totals[-12:],
+            tooltip=influence_tooltip,
+            tooltip_details=influence_tooltip_details,
+            data_source=["Semantic Scholar"] if influence_available else ["OpenAlex"],
+            confidence_score=_confidence_score_from_publications(influence_publications),
+            stability="stable",
             drilldown={
-                "title": "Citation concentration risk",
-                "definition": "Share of lifetime citations concentrated in the top 3 papers.",
-                "formula": "(sum(top_3_paper_citations) / total_citations) * 100",
+                "title": "Influential citations",
+                "definition": "Citations judged influential by Semantic Scholar for your publications.",
+                "formula": "sum(semantic_scholar.influentialCitationCount)",
                 "confidence_note": _confidence_note(),
-                "publications": concentration_publications,
+                "publications": influence_publications if influence_available else [],
                 "metadata": {
                     "intermediate_values": {
-                        "top3_citations": top3_citations,
-                        "total_citations": total_citations,
-                        "risk_percent": concentration_risk,
-                        "risk_label": concentration_label,
+                        "influence_total": influence_total,
+                        "influence_last_12m": influence_last_12m,
+                        "influence_prev_12m": influence_prev_12m,
+                        "influence_delta": influence_delta,
+                        "influential_ratio_pct": influential_ratio,
                     },
-                    "concentration_series_12m": concentration_series,
+                    "influential_monthly_counts_24m": influence_monthly_added_totals,
                 },
             },
         ),
     ]
-
-    if influence_available:
-        influence_prev_12m = max(0, int(sum(influence_monthly_added_totals[:12])))
-        influence_delta = influence_last_12m - influence_prev_12m
-        tiles.append(
-            _metric_tile(
-                key="influence_weighted_citations",
-                label="Influence-weighted citations",
-                value=influence_total,
-                value_display=_format_int(influence_total),
-                delta_value=influence_delta,
-                delta_display=f"{influence_delta:+,} vs previous 12m",
-                unit="influential citations",
-                sparkline=influence_monthly_added_totals[-12:],
-                tooltip=influence_tooltip,
-                tooltip_details=influence_tooltip_details,
-                data_source=["Semantic Scholar"],
-                confidence_score=_confidence_score_from_publications(influence_publications),
-                stability="stable",
-                drilldown={
-                    "title": "Influence-weighted citations",
-                    "definition": "Total influential citations aggregated from Semantic Scholar.",
-                    "formula": "sum(semantic_scholar.influentialCitationCount)",
-                    "confidence_note": _confidence_note(),
-                    "publications": influence_publications,
-                    "metadata": {
-                        "intermediate_values": {
-                            "influence_total": influence_total,
-                            "influence_last_12m": influence_last_12m,
-                            "influence_prev_12m": influence_prev_12m,
-                            "influence_delta": influence_delta,
-                        },
-                        "influential_monthly_counts_24m": influence_monthly_added_totals,
-                    },
-                },
-            )
-        )
 
     if dimensions_tile is not None:
         tiles.append(dimensions_tile)
@@ -1712,7 +1708,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         )
 
     return {
-        "tiles": tiles[:8],
+        "tiles": tiles[:7],
         "data_sources": data_sources,
         "data_last_refreshed": now.isoformat(),
         "metadata": {
@@ -1988,3 +1984,6 @@ def trigger_publication_top_metrics_refresh(*, user_id: str) -> dict[str, Any]:
         "status": status,
         "metric_key": TOP_METRICS_KEY,
     }
+
+
+

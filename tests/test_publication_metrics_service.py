@@ -21,10 +21,13 @@ from research_os.services.publication_metrics_service import (
     compute_citation_momentum_score,
     compute_concentration_risk_percent,
     compute_m_index,
+    compute_momentum_index,
     compute_publication_top_metrics,
     compute_yoy_percent,
     enqueue_publication_top_metrics_refresh,
     get_publication_top_metrics,
+    momentum_index_label,
+    project_h_index,
 )
 
 
@@ -161,31 +164,53 @@ def test_metric_compute_helpers() -> None:
     assert compute_yoy_percent(citations_last_12m=120, citations_prev_12m=80) == 50.0
     assert compute_yoy_percent(citations_last_12m=100, citations_prev_12m=0) is None
     assert compute_citation_momentum_score([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) == 94.5
+    assert compute_momentum_index([10] * 9 + [20, 20, 20]) == 200.0
+    assert momentum_index_label(92.0) == "Slowing"
+    assert momentum_index_label(100.0) == "Stable"
+    assert momentum_index_label(120.0) == "Accelerating"
     assert compute_concentration_risk_percent(total_citations=200, top3_citations=80) == 40.0
     assert (
         publication_metrics_service._delta_tone_for_metric(
-            key="citations_last_12m", delta_value=5.0
+            key="this_year_vs_last", delta_value=5.0
+        )
+        == "neutral"
+    )
+    assert (
+        publication_metrics_service._delta_tone_for_metric(
+            key="this_year_vs_last", delta_value=15.0
+        )
+        == "positive"
+    )
+    assert (
+        publication_metrics_service._delta_tone_for_metric(
+            key="this_year_vs_last", delta_value=-12.0
         )
         == "caution"
     )
     assert (
         publication_metrics_service._delta_tone_for_metric(
-            key="citations_last_12m", delta_value=15.0
+            key="impact_concentration", delta_value=-2.0
         )
         == "positive"
     )
-    assert (
-        publication_metrics_service._delta_tone_for_metric(
-            key="citations_last_12m", delta_value=-12.0
-        )
-        == "negative"
+
+
+def test_h_index_projection_helper_is_deterministic() -> None:
+    projection = project_h_index(
+        current_h_index=18,
+        publications=[
+            {"citations_lifetime": 25, "citations_last_12m": 2, "title": "A"},
+            {"citations_lifetime": 19, "citations_last_12m": 1, "title": "B"},
+            {"citations_lifetime": 18, "citations_last_12m": 3, "title": "C"},
+            {"citations_lifetime": 17, "citations_last_12m": 2, "title": "D"},
+            {"citations_lifetime": 16, "citations_last_12m": 0, "title": "E"},
+        ],
     )
-    assert (
-        publication_metrics_service._delta_tone_for_metric(
-            key="citation_concentration_risk", delta_value=-2.0
-        )
-        == "positive"
-    )
+    assert projection["current_h_index"] == 18
+    assert int(projection["projected_h_index"]) >= 18
+    assert 0.0 <= float(projection["projection_probability"]) <= 1.0
+    assert 0.0 <= float(projection["progress_to_next_pct"]) <= 100.0
+    assert isinstance(projection["candidate_papers"], list)
 
 
 def test_counts_by_year_prevents_lifetime_lumping(monkeypatch, tmp_path) -> None:
@@ -249,15 +274,14 @@ def test_counts_by_year_prevents_lifetime_lumping(monkeypatch, tmp_path) -> None
         )
 
     payload = compute_publication_top_metrics(user_id=user_id)
-    total_tile = _tile(payload, "total_citations_lifetime")
-    last12_tile = _tile(payload, "citations_last_12m")
-    yoy_tile = _tile(payload, "yoy_change")
+    total_tile = _tile(payload, "total_citations")
+    last12_tile = _tile(payload, "this_year_vs_last")
 
     total_value = int(total_tile["value"] or 0)
     last12_value = int(last12_tile["value"] or 0)
     assert total_value >= 900
     assert last12_value < int(total_value * 0.5)
-    assert float(yoy_tile["value"] or 0.0) < 1000.0
+    assert "%" in str(last12_tile["delta_display"] or "")
 
 
 def test_single_snapshot_without_history_is_conservative(monkeypatch, tmp_path) -> None:
@@ -308,10 +332,9 @@ def test_single_snapshot_without_history_is_conservative(monkeypatch, tmp_path) 
         )
 
     payload = compute_publication_top_metrics(user_id=user_id)
-    last12_tile = _tile(payload, "citations_last_12m")
-    yoy_tile = _tile(payload, "yoy_change")
+    last12_tile = _tile(payload, "this_year_vs_last")
     assert int(last12_tile["value"] or 0) == 0
-    assert str(yoy_tile["value_display"]) == "n/a"
+    assert str(last12_tile["delta_display"]) == "n/a"
 
 
 def test_snapshot_delta_ignores_mismatched_provider_baseline(monkeypatch, tmp_path) -> None:
@@ -373,10 +396,9 @@ def test_snapshot_delta_ignores_mismatched_provider_baseline(monkeypatch, tmp_pa
         )
 
     payload = compute_publication_top_metrics(user_id=user_id)
-    last12_tile = _tile(payload, "citations_last_12m")
-    yoy_tile = _tile(payload, "yoy_change")
+    last12_tile = _tile(payload, "this_year_vs_last")
     assert int(last12_tile["value"] or 0) == 0
-    assert str(yoy_tile["value_display"]) == "n/a"
+    assert str(last12_tile["delta_display"]) == "n/a"
 
 
 def test_stale_while_revalidate_serves_cache_and_enqueues(monkeypatch, tmp_path) -> None:
@@ -527,6 +549,10 @@ def test_publications_metrics_api_response_contract(monkeypatch, tmp_path) -> No
         "delta_tone",
         "delta_color_code",
         "unit",
+        "subtext",
+        "badge",
+        "chart_type",
+        "chart_data",
         "sparkline",
         "sparkline_overlay",
         "tooltip",
@@ -544,6 +570,15 @@ def test_publications_metrics_api_response_contract(monkeypatch, tmp_path) -> No
         "publications",
         "metadata",
     }.issubset(first_tile["drilldown"].keys())
+    tile_keys = {str(item.get("key")) for item in payload["tiles"] if isinstance(item, dict)}
+    assert {
+        "total_citations",
+        "this_year_vs_last",
+        "momentum",
+        "h_index_projection",
+        "impact_concentration",
+        "influential_citations",
+    }.issubset(tile_keys)
 
 
 def test_refresh_endpoint_returns_status(monkeypatch, tmp_path) -> None:
@@ -626,13 +661,13 @@ def test_metric_detail_endpoint_returns_drilldown(monkeypatch, tmp_path) -> None
 
         compute_publication_top_metrics(user_id=user_id)
         response = client.get(
-            "/v1/publications/metric/total_citations_lifetime",
+            "/v1/publications/metric/total_citations",
             headers=_auth_headers(token),
         )
         assert response.status_code == 200
         payload = response.json()
 
-    assert payload["metric_id"] == "total_citations_lifetime"
-    assert payload["tile"]["key"] == "total_citations_lifetime"
+    assert payload["metric_id"] == "total_citations"
+    assert payload["tile"]["key"] == "total_citations"
     assert "drilldown" in payload["tile"]
     assert "publications" in payload["tile"]["drilldown"]

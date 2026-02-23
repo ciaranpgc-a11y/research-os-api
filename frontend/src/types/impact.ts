@@ -166,6 +166,10 @@ export type PublicationMetricTilePayload = {
   delta_tone: 'positive' | 'neutral' | 'caution' | 'negative'
   delta_color_code: string
   unit: string | null
+  subtext: string
+  badge: Record<string, unknown>
+  chart_type: string
+  chart_data: Record<string, unknown>
   sparkline: number[]
   sparkline_overlay: number[]
   tooltip: string

@@ -31,7 +31,147 @@ function formatRefreshedAt(value: string | null | undefined): string {
   })
 }
 
-function Sparkline({
+function toNumberArray(value: unknown): number[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value
+    .map((item) => {
+      const parsed = Number(item)
+      return Number.isFinite(parsed) ? parsed : 0
+    })
+    .filter((item) => Number.isFinite(item))
+}
+
+function MiniBars({
+  values,
+  className = '',
+  highlightFrom = -1,
+}: {
+  values: number[]
+  className?: string
+  highlightFrom?: number
+}) {
+  if (!values.length) {
+    return <div className="h-8 rounded bg-muted/70" />
+  }
+  const max = Math.max(1, ...values)
+  return (
+    <div className={cn('flex h-8 items-end gap-1', className)}>
+      {values.map((value, index) => {
+        const height = Math.max(12, Math.round((Math.max(0, value) / max) * 30))
+        const highlighted = highlightFrom >= 0 && index >= highlightFrom
+        return (
+          <div
+            key={`${index}-${value}`}
+            className={cn('w-full rounded-sm bg-slate-500/70', highlighted && 'bg-slate-900/85')}
+            style={{ height: `${height}px` }}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+function MiniPairedBars({
+  values,
+}: {
+  values: number[]
+}) {
+  const safe = values.slice(0, 2)
+  if (safe.length < 2) {
+    return <div className="h-8 rounded bg-muted/70" />
+  }
+  const max = Math.max(1, ...safe)
+  return (
+    <div className="flex h-8 items-end gap-2">
+      {safe.map((value, index) => (
+        <div key={`${index}-${value}`} className="flex w-full flex-col items-center gap-1">
+          <div
+            className={cn('w-full rounded-sm', index === 0 ? 'bg-slate-900/85' : 'bg-slate-500/70')}
+            style={{ height: `${Math.max(12, Math.round((Math.max(0, value) / max) * 30))}px` }}
+          />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function MiniGauge({
+  value,
+  min,
+  max,
+}: {
+  value: number
+  min: number
+  max: number
+}) {
+  const lo = Number.isFinite(min) ? min : 0
+  const hi = Number.isFinite(max) && max > lo ? max : 150
+  const clamped = Math.max(lo, Math.min(hi, Number.isFinite(value) ? value : lo))
+  const pct = ((clamped - lo) / (hi - lo)) * 100
+  return (
+    <div className="space-y-1">
+      <div className="relative h-2 overflow-hidden rounded-full bg-slate-200">
+        <div className="absolute inset-y-0 left-0 w-[63%] bg-slate-400/70" />
+        <div className="absolute inset-y-0 left-[63%] w-[7%] bg-slate-600/70" />
+        <div className="absolute inset-y-0 right-0 w-[30%] bg-slate-900/70" />
+        <div className="absolute inset-y-0 left-0 bg-transparent" style={{ width: `${pct}%`, borderRight: '2px solid #0f172a' }} />
+      </div>
+      <div className="text-[10px] text-muted-foreground">0-150 index</div>
+    </div>
+  )
+}
+
+function MiniProgressRing({
+  progress,
+}: {
+  progress: number
+}) {
+  const pct = Math.max(0, Math.min(100, Number.isFinite(progress) ? progress : 0))
+  const radius = 12
+  const circumference = 2 * Math.PI * radius
+  const offset = circumference - (pct / 100) * circumference
+  return (
+    <svg viewBox="0 0 36 36" className="h-8 w-8">
+      <circle cx="18" cy="18" r={radius} fill="none" stroke="#e2e8f0" strokeWidth="4" />
+      <circle
+        cx="18"
+        cy="18"
+        r={radius}
+        fill="none"
+        stroke="#0f172a"
+        strokeWidth="4"
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        transform="rotate(-90 18 18)"
+      />
+    </svg>
+  )
+}
+
+function MiniDonut({
+  values,
+}: {
+  values: number[]
+}) {
+  const safe = values.slice(0, 2).map((item) => Math.max(0, item))
+  const total = safe.reduce((sum, item) => sum + item, 0)
+  if (total <= 0) {
+    return <div className="h-8 w-8 rounded-full bg-muted/70" />
+  }
+  const pct = safe[0] / total
+  const angle = pct * 360
+  const gradient = `conic-gradient(#0f172a 0deg ${angle}deg, #94a3b8 ${angle}deg 360deg)`
+  return (
+    <div className="h-8 w-8 rounded-full" style={{ background: gradient }}>
+      <div className="relative left-[7px] top-[7px] h-[18px] w-[18px] rounded-full bg-white" />
+    </div>
+  )
+}
+
+function MiniLine({
   values,
   overlay = [],
   colorCode = '#475569',
@@ -41,10 +181,10 @@ function Sparkline({
   colorCode?: string
 }) {
   if (!values.length) {
-    return <div className="h-7 rounded bg-muted/70" />
+    return <div className="h-8 rounded bg-muted/70" />
   }
-  const max = Math.max(...values)
-  const min = Math.min(...values)
+  const max = Math.max(...values, ...(overlay.length ? overlay : [0]))
+  const min = Math.min(...values, ...(overlay.length ? overlay : [0]))
   const range = Math.max(1e-6, max - min)
   const points = values
     .map((value, index) => {
@@ -63,7 +203,7 @@ function Sparkline({
         .join(' ')
     : ''
   return (
-    <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-7 w-full">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-8 w-full">
       {overlayPoints ? (
         <polyline
           fill="none"
@@ -86,24 +226,69 @@ function Sparkline({
   )
 }
 
+function MiniChart({ tile }: { tile: PublicationMetricTilePayload }) {
+  const chartType = String(tile.chart_type || '').trim().toLowerCase()
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  if (chartType === 'bar_year_5') {
+    const values = toNumberArray(chartData.values)
+    return <MiniBars values={values} />
+  }
+  if (chartType === 'paired_bar') {
+    const values = toNumberArray(chartData.values)
+    return <MiniPairedBars values={values} />
+  }
+  if (chartType === 'gauge') {
+    const min = Number(chartData.min ?? 0)
+    const max = Number(chartData.max ?? 150)
+    const value = Number(chartData.value ?? 0)
+    const monthly = toNumberArray(chartData.monthly_values_12m)
+    const highlightLast = Math.max(0, monthly.length - Number(chartData.highlight_last_n ?? 3))
+    return (
+      <div className="space-y-1">
+        <MiniGauge value={value} min={min} max={max} />
+        {monthly.length ? <MiniBars values={monthly} highlightFrom={highlightLast} /> : null}
+      </div>
+    )
+  }
+  if (chartType === 'progress_ring') {
+    const progress = Number(chartData.progress_to_next_pct ?? 0)
+    return <MiniProgressRing progress={progress} />
+  }
+  if (chartType === 'donut') {
+    const values = toNumberArray(chartData.values)
+    return <MiniDonut values={values} />
+  }
+  if (chartType === 'bar_month_12') {
+    const values = toNumberArray(chartData.values)
+    return <MiniBars values={values} />
+  }
+  return (
+    <MiniLine
+      values={tile.sparkline || []}
+      overlay={tile.sparkline_overlay || []}
+      colorCode={tile.delta_color_code || '#475569'}
+    />
+  )
+}
+
 function metricSummary(tile: PublicationMetricTilePayload, publication: Record<string, unknown>): string {
   const key = tile.key
-  if (key === 'total_citations_lifetime' || key === 'h_index_m_index') {
+  if (key === 'total_citations' || key === 'h_index_projection') {
     return `Citations: ${Number(publication.citations_lifetime || 0)}`
   }
-  if (key === 'citations_last_12m' || key === 'yoy_change') {
+  if (key === 'this_year_vs_last') {
     const value = Number(publication.citations_last_12m || 0)
     const prev = Number(publication.citations_prev_12m || 0)
     const delta = value - prev
     return `Last 12m: ${value} (${delta >= 0 ? '+' : ''}${delta})`
   }
-  if (key === 'citation_momentum') {
-    return `Momentum: ${Number(publication.momentum_contribution || 0).toFixed(2)}`
+  if (key === 'momentum') {
+    return `Momentum contribution: ${Number(publication.momentum_contribution || 0).toFixed(2)}`
   }
-  if (key === 'citation_concentration_risk') {
-    return `Share: ${Number(publication.share_of_total_pct || 0).toFixed(2)}%`
+  if (key === 'impact_concentration') {
+    return `Share of total: ${Number(publication.share_of_total_pct || 0).toFixed(2)}%`
   }
-  if (key === 'influence_weighted_citations') {
+  if (key === 'influential_citations') {
     return `Influential citations: ${Number(publication.influential_citations || 0)}`
   }
   if (key === 'field_normalized_impact') {
@@ -124,6 +309,20 @@ function deltaTextClass(tile: PublicationMetricTilePayload): string {
     return 'text-red-700'
   }
   return 'text-slate-600'
+}
+
+function badgeClass(tile: PublicationMetricTilePayload): string {
+  const severity = String((tile.badge?.severity as string) || tile.delta_tone || 'neutral').toLowerCase()
+  if (severity === 'positive') {
+    return 'bg-emerald-50 text-emerald-700 border-emerald-200'
+  }
+  if (severity === 'caution') {
+    return 'bg-amber-50 text-amber-700 border-amber-200'
+  }
+  if (severity === 'negative') {
+    return 'bg-red-50 text-red-700 border-red-200'
+  }
+  return 'bg-slate-100 text-slate-700 border-slate-200'
 }
 
 function metricDataSources(tile: PublicationMetricTilePayload): string {
@@ -185,67 +384,77 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
           </div>
 
           {loading && tiles.length === 0 ? (
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="h-24 rounded border border-border bg-muted/40" />
+                <div key={index} className="h-28 rounded border border-border bg-muted/40" />
               ))}
             </div>
           ) : (
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {tiles.map((tile) => (
-                <button
-                  key={tile.key}
-                  type="button"
-                  onClick={() => onSelectTile(tile)}
-                  className={cn(
-                    'rounded border border-border px-3 py-2 text-left transition-colors hover:bg-muted/30',
-                    tile.stability === 'unstable' && 'border-amber-300/70 bg-amber-50/40',
-                  )}
-                >
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <p className="text-xs text-muted-foreground">{tile.label}</p>
-                    <TooltipProvider delayDuration={120}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="inline-flex h-4 w-4 items-center justify-center text-muted-foreground">
-                            <Info className="h-3.5 w-3.5" />
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {tiles.map((tile) => {
+                const badgeLabel = String((tile.badge?.label as string) || '').trim()
+                const subtitle = String(tile.subtext || '').trim()
+                return (
+                  <button
+                    key={tile.key}
+                    type="button"
+                    onClick={() => onSelectTile(tile)}
+                    className={cn(
+                      'rounded border border-border px-3 py-2 text-left transition-colors hover:bg-muted/30',
+                      tile.stability === 'unstable' && 'border-amber-300/70 bg-amber-50/40',
+                    )}
+                  >
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">{tile.label}</p>
+                      <div className="flex items-center gap-1">
+                        {badgeLabel ? (
+                          <span className={cn('rounded border px-1.5 py-0.5 text-[10px]', badgeClass(tile))}>
+                            {badgeLabel}
                           </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-[280px] leading-relaxed">
-                          <p>{tile.tooltip}</p>
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            Source: {metricDataSources(tile)}
-                          </p>
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            Update: {String((tile.tooltip_details?.update_frequency as string) || 'Daily')}
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                  <p className="text-lg font-semibold leading-tight">{tile.value_display}</p>
-                  {tile.delta_display ? (
-                    <p
-                      className={cn(
-                        'mt-0.5 text-xs',
-                        deltaTextClass(tile),
-                        tile.stability === 'unstable' && 'font-medium',
-                      )}
-                    >
-                      {tile.delta_display}
+                        ) : null}
+                        <TooltipProvider delayDuration={120}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex h-4 w-4 items-center justify-center text-muted-foreground">
+                                <Info className="h-3.5 w-3.5" />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-[300px] leading-relaxed">
+                              <p>{tile.tooltip}</p>
+                              <p className="mt-1 text-[11px] text-muted-foreground">
+                                Source: {metricDataSources(tile)}
+                              </p>
+                              <p className="mt-1 text-[11px] text-muted-foreground">
+                                Update: {String((tile.tooltip_details?.update_frequency as string) || 'Daily')}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    </div>
+                    <p className="text-lg font-semibold leading-tight">{tile.value_display}</p>
+                    <p className="mt-0.5 min-h-[18px] text-xs text-muted-foreground">
+                      {subtitle || '\u00A0'}
                     </p>
-                  ) : (
-                    <p className="mt-0.5 text-xs text-muted-foreground">&nbsp;</p>
-                  )}
-                  <div className="mt-1.5">
-                    <Sparkline
-                      values={tile.sparkline || []}
-                      overlay={tile.sparkline_overlay || []}
-                      colorCode={tile.delta_color_code || '#475569'}
-                    />
-                  </div>
-                </button>
-              ))}
+                    {tile.delta_display ? (
+                      <p
+                        className={cn(
+                          'min-h-[16px] text-[11px]',
+                          deltaTextClass(tile),
+                          tile.stability === 'unstable' && 'font-medium',
+                        )}
+                      >
+                        {tile.delta_display}
+                      </p>
+                    ) : (
+                      <p className="min-h-[16px] text-[11px] text-muted-foreground">&nbsp;</p>
+                    )}
+                    <div className="mt-1.5">
+                      <MiniChart tile={tile} />
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           )}
         </CardContent>

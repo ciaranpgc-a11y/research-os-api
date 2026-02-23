@@ -1129,6 +1129,10 @@ class PublicationMetricTileResponse(BaseModel):
     delta_tone: Literal["positive", "neutral", "caution", "negative"] = "neutral"
     delta_color_code: str = "#475569"
     unit: str | None = None
+    subtext: str = ""
+    badge: dict[str, Any] = Field(default_factory=dict)
+    chart_type: str = "line"
+    chart_data: dict[str, Any] = Field(default_factory=dict)
     sparkline: list[float] = Field(default_factory=list)
     sparkline_overlay: list[float] = Field(default_factory=list)
     tooltip: str = ""
