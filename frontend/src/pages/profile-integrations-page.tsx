@@ -183,7 +183,7 @@ export function ProfileIntegrationsPage() {
   const orcidConfigured = Boolean(orcidStatus?.configured)
   const orcidLinked = Boolean(orcidStatus?.linked || user?.orcid_id)
   const busy = loading || connecting || importing || syncing
-  const canConnectOrcid = emailVerified && orcidConfigured && !busy
+  const canConnectOrcid = orcidConfigured && !busy
   const canImportOrcid = emailVerified && orcidConfigured && orcidLinked && !busy
   const canSyncCitations = worksCount > 0 && !busy
   const shortLastSync = formatShortTimestamp(syncStatus.orcid_last_synced_at)
@@ -349,9 +349,6 @@ export function ProfileIntegrationsPage() {
               {refreshing ? 'Refreshing...' : 'Refresh'}
             </Button>
           </div>
-          {!emailVerified ? (
-            <p className="text-xs text-amber-700">Verify your email to enable ORCID connect and import.</p>
-          ) : null}
           {!orcidConfigured ? (
             <p className="text-xs text-amber-700">ORCID provider is not configured in backend environment.</p>
           ) : null}

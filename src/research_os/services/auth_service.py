@@ -18,6 +18,7 @@ from research_os.db import (
     create_all_tables,
     session_scope,
 )
+from research_os.services.email_delivery_service import send_plain_email
 from research_os.services.security_service import (
     SecurityValidationError,
     build_totp_otpauth_uri,
@@ -631,11 +632,31 @@ def request_email_verification(*, session_token: str) -> dict[str, object]:
                 "code_preview": None,
             }
         plain_code, expires_at = _issue_email_verification_code(session=session, user=user)
+        expires_hint = _as_utc(expires_at)
+        expires_text = (
+            expires_hint.strftime("%d %b %Y %H:%M UTC")
+            if isinstance(expires_hint, datetime)
+            else "soon"
+        )
+        delivered = send_plain_email(
+            to_email=user.email,
+            subject="AAWE email verification code",
+            body=(
+                "Use this AAWE verification code to confirm your email address:\n\n"
+                f"{plain_code}\n\n"
+                f"Code expiry: {expires_text}\n\n"
+                "If you did not create an AAWE account, you can ignore this email."
+            ),
+        )
         return {
             "requested": True,
             "already_verified": False,
             "expires_at": expires_at,
-            "delivery_hint": "Verification code generated. Connect an outbound email provider for delivery.",
+            "delivery_hint": (
+                "Verification code sent to your email."
+                if delivered
+                else "Verification code generated. Connect an outbound email provider for delivery."
+            ),
             "code_preview": plain_code if EXPOSE_AUTH_CODES_IN_RESPONSE else None,
         }
 
@@ -681,10 +702,30 @@ def request_password_reset(*, email: str) -> dict[str, object]:
                 "code_preview": None,
             }
         plain_code, expires_at = _issue_password_reset_code(session=session, user=user)
+        expires_hint = _as_utc(expires_at)
+        expires_text = (
+            expires_hint.strftime("%d %b %Y %H:%M UTC")
+            if isinstance(expires_hint, datetime)
+            else "soon"
+        )
+        delivered = send_plain_email(
+            to_email=user.email,
+            subject="AAWE password reset code",
+            body=(
+                "Use this AAWE reset code to set a new password:\n\n"
+                f"{plain_code}\n\n"
+                f"Code expiry: {expires_text}\n\n"
+                "If you did not request this, you can ignore this email."
+            ),
+        )
         return {
             "requested": True,
             "expires_at": expires_at,
-            "delivery_hint": "Reset code generated. Connect an outbound email provider for delivery.",
+            "delivery_hint": (
+                "Reset code sent to your email."
+                if delivered
+                else "Reset code generated. Connect an outbound email provider for delivery."
+            ),
             "code_preview": plain_code if EXPOSE_AUTH_CODES_IN_RESPONSE else None,
         }
 

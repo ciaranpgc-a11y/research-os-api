@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { getAuthSessionToken, setAuthSessionToken } from '@/lib/auth-session'
 import {
+  confirmEmailVerification,
   confirmPasswordReset,
   fetchOAuthConnect,
   fetchOAuthProviderStatuses,
@@ -14,6 +15,7 @@ import {
   loginAuthChallenge,
   pingApiHealth,
   registerAuth,
+  requestEmailVerification,
   requestPasswordReset,
   verifyLoginTwoFactor,
 } from '@/lib/impact-api'
@@ -70,6 +72,11 @@ export function AuthPage() {
   const [showSignInPassword, setShowSignInPassword] = useState(false)
   const [showRegisterPassword, setShowRegisterPassword] = useState(false)
   const [showResetPanel, setShowResetPanel] = useState(false)
+  const [awaitingEmailVerification, setAwaitingEmailVerification] = useState(false)
+  const [verificationCode, setVerificationCode] = useState('')
+  const [verificationPreviewCode, setVerificationPreviewCode] = useState('')
+  const [verificationDeliveryHint, setVerificationDeliveryHint] = useState('')
+  const [verificationToken, setVerificationToken] = useState('')
 
   const hasTestAccountShortcut = Boolean(TEST_ACCOUNT_EMAIL && TEST_ACCOUNT_PASSWORD)
 
@@ -188,11 +195,70 @@ export function AuthPage() {
     try {
       const payload = await registerAuth({ email: registerEmail, password: registerPassword, name: registerName })
       setAuthSessionToken(payload.session_token)
+      setVerificationToken(payload.session_token)
       persistLastEmail(payload.user.email)
-      setStatus('Account created. Redirecting to profile...')
-      navigate('/profile', { replace: true })
+      setAwaitingEmailVerification(true)
+      setVerificationCode('')
+      try {
+        const verificationPayload = await requestEmailVerification(payload.session_token)
+        setVerificationDeliveryHint(verificationPayload.delivery_hint || 'Verification code generated.')
+        setVerificationPreviewCode(verificationPayload.code_preview || '')
+        setStatus('Account created. Enter the verification code to continue.')
+      } catch (verificationError) {
+        setVerificationDeliveryHint('')
+        setVerificationPreviewCode('')
+        setStatus('Account created. We could not send a verification code automatically. Use resend below.')
+        setError(verificationError instanceof Error ? verificationError.message : 'Could not request verification code.')
+      }
     } catch (registerError) {
       setError(registerError instanceof Error ? registerError.message : 'Registration failed.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const onResendVerification = async () => {
+    const token = verificationToken || getAuthSessionToken()
+    if (!token) {
+      setError('Session expired. Sign in again to continue verification.')
+      return
+    }
+    setLoading(true)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await requestEmailVerification(token)
+      setVerificationDeliveryHint(payload.delivery_hint || 'Verification code generated.')
+      setVerificationPreviewCode(payload.code_preview || '')
+      setStatus('Verification code refreshed.')
+    } catch (verificationError) {
+      setError(verificationError instanceof Error ? verificationError.message : 'Could not resend verification code.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const onConfirmVerification = async () => {
+    const token = verificationToken || getAuthSessionToken()
+    if (!token) {
+      setError('Session expired. Sign in again to continue verification.')
+      return
+    }
+    if (!verificationCode.trim()) {
+      setError('Verification code is required.')
+      return
+    }
+    setLoading(true)
+    setError('')
+    setStatus('')
+    try {
+      const user = await confirmEmailVerification({ token, code: verificationCode })
+      persistLastEmail(user.email)
+      setAwaitingEmailVerification(false)
+      setStatus('Email verified. Redirecting to profile...')
+      navigate('/profile', { replace: true })
+    } catch (verificationError) {
+      setError(verificationError instanceof Error ? verificationError.message : 'Email verification failed.')
     } finally {
       setLoading(false)
     }
@@ -538,6 +604,50 @@ export function AuthPage() {
                     </Button>
                     {resetValidationMessage ? <p className="text-xs text-amber-700">{resetValidationMessage}</p> : null}
                   </div>
+                ) : null}
+              </div>
+            ) : awaitingEmailVerification ? (
+              <div className="space-y-3 rounded-md border border-emerald-300 bg-emerald-50/70 p-3">
+                <p className="text-sm font-medium text-emerald-900">Verify your email</p>
+                <p className="text-xs text-emerald-800">
+                  We sent a verification code to <span className="font-semibold">{registerEmail.trim()}</span>.
+                </p>
+                {verificationDeliveryHint ? <p className="text-xs text-slate-700">{verificationDeliveryHint}</p> : null}
+                <Input
+                  autoComplete="one-time-code"
+                  placeholder="Enter verification code"
+                  value={verificationCode}
+                  onChange={(event) => setVerificationCode(event.target.value)}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                    onClick={() => void onConfirmVerification()}
+                    disabled={loading || !verificationCode.trim()}
+                  >
+                    {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Verify and continue
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => void onResendVerification()} disabled={loading}>
+                    Resend code
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setAwaitingEmailVerification(false)
+                      setMode('signin')
+                    }}
+                    disabled={loading}
+                  >
+                    Verify later
+                  </Button>
+                </div>
+                {verificationPreviewCode ? (
+                  <p className="text-xs text-emerald-700">
+                    Verification code (debug preview): <span className="font-mono">{verificationPreviewCode}</span>
+                  </p>
                 ) : null}
               </div>
             ) : (
