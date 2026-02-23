@@ -1187,7 +1187,7 @@ def v1_orcid_callback(
             return OrcidCallbackResponse(**payload)
         frontend_base = _frontend_redirect_base()
         redirect_url = (
-            f"{frontend_base}/profile/integrations?orcid=linked"
+            f"{frontend_base}/profile/integrations/?orcid=linked"
             f"&orcid_id={str(payload.get('orcid_id', '')).strip()}"
         )
         return RedirectResponse(url=redirect_url, status_code=303)
