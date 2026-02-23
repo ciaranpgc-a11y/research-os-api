@@ -201,13 +201,11 @@ export function AuthPage() {
       return
     }
     const storedEmail = window.localStorage.getItem(LAST_AUTH_EMAIL_STORAGE_KEY) || ''
-    if (storedEmail && !signInEmail) {
+    if (storedEmail) {
       setSignInEmail(storedEmail)
-      if (!resetEmail) {
-        setResetEmail(storedEmail)
-      }
+      setResetEmail(storedEmail)
     }
-  }, [resetEmail, signInEmail])
+  }, [])
 
   useEffect(() => {
     void (async () => {
@@ -495,7 +493,12 @@ export function AuthPage() {
         setLoading(false)
       }, 500)
     } catch (oauthError) {
-      setError(oauthError instanceof Error ? oauthError.message : `${providerLabel(provider)} sign-in failed.`)
+      const detail = oauthError instanceof Error ? oauthError.message : `${providerLabel(provider)} sign-in failed.`
+      if (detail.includes('(404)')) {
+        setError(`${detail} Check backend deployment/API base configuration.`)
+      } else {
+        setError(detail)
+      }
       setLoading(false)
     }
   }
