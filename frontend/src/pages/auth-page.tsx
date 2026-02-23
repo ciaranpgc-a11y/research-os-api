@@ -461,8 +461,8 @@ export function AuthPage() {
 
   const onOAuth = async (provider: SocialProvider) => {
     const providerState = providerByName.get(provider)
-    if (!providerState?.configured) {
-      setStatus(providerState?.reason || `${providerLabel(provider)} sign-in is not configured.`)
+    if (providerState && !providerState.configured) {
+      setStatus(providerState.reason || `${providerLabel(provider)} sign-in is not configured.`)
       return
     }
     setLoading(true)
@@ -882,6 +882,7 @@ export function AuthPage() {
             <div className="grid grid-cols-3 gap-2">
               {SOCIAL_PROVIDERS.map((provider) => {
                 const config = providerByName.get(provider)
+                const providerExplicitlyDisabled = Boolean(config && !config.configured)
                 return (
                   <Button
                     key={provider}
@@ -889,8 +890,12 @@ export function AuthPage() {
                     variant="outline"
                     className="w-full"
                     onClick={() => void onOAuth(provider)}
-                    disabled={loading || oauthPending || !config?.configured}
-                    title={!config?.configured ? config?.reason || `${providerLabel(provider)} is not configured` : ''}
+                    disabled={loading || oauthPending || providerExplicitlyDisabled}
+                    title={
+                      providerExplicitlyDisabled
+                        ? config?.reason || `${providerLabel(provider)} is not configured`
+                        : ''
+                    }
                   >
                     {providerLabel(provider)}
                   </Button>
