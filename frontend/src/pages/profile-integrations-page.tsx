@@ -13,7 +13,6 @@ import {
   fetchPersonaState,
   importOrcidWorks,
   pingApiHealth,
-  syncPersonaMetrics,
 } from '@/lib/impact-api'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
@@ -64,7 +63,6 @@ export function ProfileIntegrationsPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [importing, setImporting] = useState(false)
-  const [syncing, setSyncing] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
   const [status, setStatus] = useState('')
   const [googleStatus, setGoogleStatus] = useState('')
@@ -187,10 +185,9 @@ export function ProfileIntegrationsPage() {
   const emailVerified = Boolean(user?.email_verified_at)
   const orcidConfigured = Boolean(orcidStatus?.configured)
   const orcidLinked = Boolean(orcidStatus?.linked || user?.orcid_id)
-  const busy = loading || connecting || importing || syncing || disconnecting
+  const busy = loading || connecting || importing || disconnecting
   const canConnectOrcid = orcidConfigured && !busy
   const canImportOrcid = emailVerified && orcidConfigured && orcidLinked && !busy
-  const canSyncCitations = worksCount > 0 && !busy
   const canDisconnectOrcid = orcidLinked && !busy
   const shortLastSync = formatShortTimestamp(syncStatus.orcid_last_synced_at)
   const connectionStatusLabel = orcidLinked
@@ -207,10 +204,7 @@ export function ProfileIntegrationsPage() {
       return 'Opening ORCID sign-in...'
     }
     if (importing) {
-      return 'Importing ORCID works...'
-    }
-    if (syncing) {
-      return 'Syncing citations...'
+      return 'Importing ORCID works and syncing citations...'
     }
     if (disconnecting) {
       return 'Disconnecting ORCID...'
@@ -219,7 +213,7 @@ export function ProfileIntegrationsPage() {
       return 'Refreshing ORCID integration status...'
     }
     return ''
-  }, [connecting, importing, syncing, disconnecting, refreshing])
+  }, [connecting, importing, disconnecting, refreshing])
 
   const onConnectOrcid = async () => {
     if (!token) {
@@ -266,9 +260,13 @@ export function ProfileIntegrationsPage() {
       await pingApiHealth()
       const payload = await importOrcidWorks(token)
       if (payload.imported_count > 0) {
-        setStatus(`Imported ${payload.imported_count} ORCID work(s). Citation sync ran automatically.`)
+        setStatus(
+          `Imported ${payload.imported_count} ORCID work(s). Citation sync ran automatically.`,
+        )
       } else {
-        setStatus('No new ORCID works were imported. Library is already up to date.')
+        setStatus(
+          'No new ORCID works were imported. Citation sync still ran on your current library.',
+        )
       }
       await loadData(token, false)
     } catch (importError) {
@@ -284,9 +282,13 @@ export function ProfileIntegrationsPage() {
           await pingApiHealth()
           const retryPayload = await importOrcidWorks(token)
           if (retryPayload.imported_count > 0) {
-            setStatus(`Imported ${retryPayload.imported_count} ORCID work(s). Citation sync ran automatically.`)
+            setStatus(
+              `Imported ${retryPayload.imported_count} ORCID work(s). Citation sync ran automatically.`,
+            )
           } else {
-            setStatus('No new ORCID works were imported. Library is already up to date.')
+            setStatus(
+              'No new ORCID works were imported. Citation sync still ran on your current library.',
+            )
           }
           await loadData(token, false)
           return
@@ -318,32 +320,6 @@ export function ProfileIntegrationsPage() {
       setError(retryError instanceof Error ? retryError.message : 'API connection retry failed.')
     } finally {
       setRefreshing(false)
-    }
-  }
-
-  const onSyncMetrics = async () => {
-    if (!token) {
-      return
-    }
-    if (worksCount === 0) {
-      setStatus('Import at least one work before syncing citations.')
-      return
-    }
-    setSyncing(true)
-    setError('')
-    setStatus('')
-    setGoogleStatus('')
-    try {
-      const payload = await syncPersonaMetrics(token, ['openalex'])
-      setStatus(`Citations synchronised via OpenAlex (${payload.synced_snapshots} snapshot(s)).`)
-      await loadData(token, false)
-    } catch (syncError) {
-      if (handleSessionExpiry(syncError)) {
-        return
-      }
-      setError(syncError instanceof Error ? syncError.message : 'Could not synchronise citations.')
-    } finally {
-      setSyncing(false)
     }
   }
 
@@ -448,12 +424,11 @@ export function ProfileIntegrationsPage() {
             ) : null}
             {orcidLinked ? (
               <Button type="button" variant="outline" onClick={onImportOrcid} disabled={!canImportOrcid}>
-                {importing ? 'Importing...' : worksCount > 0 ? 'Refresh ORCID works' : 'Import ORCID works'}
-              </Button>
-            ) : null}
-            {orcidLinked ? (
-              <Button type="button" variant="outline" onClick={onSyncMetrics} disabled={!canSyncCitations}>
-                {syncing ? 'Syncing...' : 'Sync citations'}
+                {importing
+                  ? 'Importing + syncing...'
+                  : worksCount > 0
+                    ? 'Refresh works + sync citations'
+                    : 'Import works + sync citations'}
               </Button>
             ) : null}
             <Button
@@ -469,11 +444,11 @@ export function ProfileIntegrationsPage() {
             <p className="text-xs text-amber-700">ORCID provider is not configured in backend environment.</p>
           ) : null}
           <p className="text-xs text-muted-foreground">
-            ORCID import runs citation sync automatically.
+            ORCID import always runs citation sync automatically.
           </p>
           {worksCount > 0 ? (
             <p className="text-xs text-muted-foreground">
-              Citation sync uses OpenAlex and updates your latest citation totals.
+              Citation sync uses OpenAlex and updates your latest citation totals during import.
             </p>
           ) : null}
           {orcidProgressLabel ? (
