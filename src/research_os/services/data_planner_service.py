@@ -52,6 +52,8 @@ def _slugify_filename(value: str) -> str:
 
 def _guess_kind(filename: str) -> str:
     lowered = filename.lower()
+    if lowered.endswith(".pdf"):
+        return "pdf"
     if lowered.endswith(".csv"):
         return "csv"
     if lowered.endswith(".tsv"):

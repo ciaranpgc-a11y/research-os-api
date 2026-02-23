@@ -962,6 +962,33 @@ class PersonaMetricsSyncResponse(BaseModel):
     core_collaborators: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class PersonaOpenAccessDiscoverRequest(BaseModel):
+    work_ids: list[str] = Field(default_factory=list)
+    include_pdf_upload: bool = False
+    project_id: str | None = None
+    max_items: int = Field(default=200, ge=1, le=1000)
+
+
+class PersonaOpenAccessRecordResponse(BaseModel):
+    work_id: str
+    title: str
+    doi: str | None = None
+    is_open_access: bool = False
+    source: str = "openalex"
+    open_access_url: str | None = None
+    pdf_url: str | None = None
+    pdf_asset_id: str | None = None
+    status: str
+    note: str | None = None
+
+
+class PersonaOpenAccessDiscoverResponse(BaseModel):
+    checked_count: int = 0
+    open_access_count: int = 0
+    uploaded_pdf_count: int = 0
+    records: list[PersonaOpenAccessRecordResponse] = Field(default_factory=list)
+
+
 class PersonaEmbeddingsGenerateRequest(BaseModel):
     model_name: str | None = None
 
