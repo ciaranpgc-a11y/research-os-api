@@ -20,12 +20,60 @@ const WORK_TYPE_LABELS: Record<string, string> = {
   'journal-article': 'Journal article',
   'conference-paper': 'Conference paper',
   'conference-abstract': 'Conference abstract',
+  'conference-poster': 'Conference poster',
+  'conference-presentation': 'Conference presentation',
+  'meeting-abstract': 'Conference abstract',
+  'proceedings-article': 'Conference paper',
+  proceedings: 'Conference paper',
   'book-chapter': 'Book chapter',
   book: 'Book',
   preprint: 'Preprint',
   dissertation: 'Dissertation',
   'data-set': 'Dataset',
   'review-article': 'Review article',
+}
+
+const CONFERENCE_HINT_PATTERN =
+  /\b(conference|congress|symposium|workshop|annual meeting|scientific sessions|proceedings|poster session)\b/i
+const CONFERENCE_TYPE_HINT_PATTERN =
+  /\b(conference|proceedings|meeting|congress|symposium|workshop)\b/i
+
+function normalizeWorkType(value: string | null | undefined): string {
+  return (value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, '-')
+}
+
+function derivePublicationTypeLabel(work: {
+  work_type?: string | null
+  title?: string | null
+  venue_name?: string | null
+}): string {
+  const raw = normalizeWorkType(work.work_type)
+  const mapped = WORK_TYPE_LABELS[raw]
+  if (mapped) {
+    return mapped
+  }
+  if (raw && CONFERENCE_TYPE_HINT_PATTERN.test(raw)) {
+    return 'Conference paper'
+  }
+  const title = (work.title || '').trim()
+  const venue = (work.venue_name || '').trim()
+  if (
+    (!raw || raw === 'other') &&
+    CONFERENCE_HINT_PATTERN.test(`${title} ${venue}`)
+  ) {
+    return 'Conference paper'
+  }
+  if (!raw) {
+    return 'Other'
+  }
+  const text = raw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+  if (!text) {
+    return 'Other'
+  }
+  return text.replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
 function formatShortDate(value: string | null | undefined): string {
@@ -52,19 +100,6 @@ function doiToUrl(doi: string | null | undefined): string | null {
     return clean
   }
   return `https://doi.org/${clean}`
-}
-
-function formatWorkType(value: string | null | undefined): string {
-  const raw = (value || '').trim()
-  if (!raw) {
-    return 'Not specified'
-  }
-  const byMap = WORK_TYPE_LABELS[raw.toLowerCase()]
-  if (byMap) {
-    return byMap
-  }
-  const text = raw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
-  return text.replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
 function formatJournalName(value: string | null | undefined): string {
@@ -350,14 +385,12 @@ export function ProfilePublicationsPage() {
   const typeFilterOptions = useMemo(() => {
     const values = new Set<string>()
     for (const work of personaState?.works ?? []) {
-      const key = (work.work_type || '').trim()
+      const key = derivePublicationTypeLabel(work)
       if (key) {
         values.add(key)
       }
     }
-    return Array.from(values).sort((left, right) =>
-      formatWorkType(left).localeCompare(formatWorkType(right)),
-    )
+    return Array.from(values).sort((left, right) => left.localeCompare(right))
   }, [personaState?.works])
 
   const filteredWorks = useMemo(() => {
@@ -374,7 +407,7 @@ export function ProfilePublicationsPage() {
       if (!matchesQuery) {
         return false
       }
-      if (typeFilter !== 'all' && (work.work_type || '').trim() !== typeFilter) {
+      if (typeFilter !== 'all' && derivePublicationTypeLabel(work) !== typeFilter) {
         return false
       }
       if (filterKey === 'cited') {
@@ -410,7 +443,10 @@ export function ProfilePublicationsPage() {
       if (sortField === 'venue') {
         return left.venue_name.localeCompare(right.venue_name) * direction
       }
-      return formatWorkType(left.work_type).localeCompare(formatWorkType(right.work_type)) * direction
+      return (
+        derivePublicationTypeLabel(left).localeCompare(derivePublicationTypeLabel(right)) *
+        direction
+      )
     })
     return filtered
   }, [filterKey, metricsByWorkId, personaState?.works, query, sortDirection, sortField, typeFilter])
@@ -601,7 +637,7 @@ export function ProfilePublicationsPage() {
                   <option value="all">All types</option>
                   {typeFilterOptions.map((value) => (
                     <option key={value} value={value}>
-                      {formatWorkType(value)}
+                      {value}
                     </option>
                   ))}
                 </select>
@@ -683,7 +719,7 @@ export function ProfilePublicationsPage() {
                             <td className="px-2 py-2 font-medium">{work.title}</td>
                             <td className="px-2 py-2 font-semibold">{work.year ?? 'n/a'}</td>
                             <td className="px-2 py-2 font-medium">{formatJournalName(work.venue_name) || 'n/a'}</td>
-                            <td className="px-2 py-2">{formatWorkType(work.work_type)}</td>
+                            <td className="px-2 py-2">{derivePublicationTypeLabel(work)}</td>
                             <td
                               className={`px-2 py-2 transition-colors ${citationCellTone(
                                 metrics?.citations ?? 0,
@@ -723,7 +759,7 @@ export function ProfilePublicationsPage() {
                     <div className="grid grid-cols-2 gap-2">
                       <div className="rounded border border-border px-2 py-1.5">
                         <p className="text-[11px] uppercase text-muted-foreground">Publication type</p>
-                        <p className="font-medium">{formatWorkType(selectedWork.work_type)}</p>
+                        <p className="font-medium">{derivePublicationTypeLabel(selectedWork)}</p>
                       </div>
                       <div className="rounded border border-border px-2 py-1.5">
                         <p className="text-[11px] uppercase text-muted-foreground">Citations</p>
