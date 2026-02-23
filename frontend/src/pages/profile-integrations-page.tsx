@@ -10,6 +10,7 @@ import {
   fetchOrcidStatus,
   fetchPersonaState,
   importOrcidWorks,
+  pingApiHealth,
   syncPersonaMetrics,
 } from '@/lib/impact-api'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
@@ -246,9 +247,30 @@ export function ProfileIntegrationsPage() {
       await loadData(token, false)
     } catch (importError) {
       if (handleSessionExpiry(importError)) {
+        setImporting(false)
         return
       }
-      setError(importError instanceof Error ? importError.message : 'Could not import ORCID works.')
+      const detail = importError instanceof Error ? importError.message : 'Could not import ORCID works.'
+      const maybeNetwork = detail.toLowerCase().includes('could not reach api') || detail.toLowerCase().includes('failed to fetch')
+      if (maybeNetwork) {
+        try {
+          setStatus('API connection looked unstable. Retrying import once...')
+          await pingApiHealth()
+          const retryPayload = await importOrcidWorks(token)
+          if (retryPayload.imported_count > 0) {
+            setStatus(`Imported ${retryPayload.imported_count} ORCID work(s). Run citation sync next.`)
+          } else {
+            setStatus('No new ORCID works were imported. Library is already up to date.')
+          }
+          await loadData(token, false)
+          return
+        } catch (retryError) {
+          const retryDetail = retryError instanceof Error ? retryError.message : detail
+          setError(retryDetail)
+          return
+        }
+      }
+      setError(detail)
     } finally {
       setImporting(false)
     }
