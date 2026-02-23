@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
+  disconnectOrcid,
   fetchMe,
   fetchOAuthProviderStatuses,
   fetchOrcidConnect,
@@ -63,7 +64,9 @@ export function ProfileIntegrationsPage() {
   const [connecting, setConnecting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [disconnecting, setDisconnecting] = useState(false)
   const [status, setStatus] = useState('')
+  const [googleStatus, setGoogleStatus] = useState('')
   const [error, setError] = useState('')
   const syncStatus = personaState?.sync_status || {
     orcid_last_synced_at: null,
@@ -183,10 +186,11 @@ export function ProfileIntegrationsPage() {
   const emailVerified = Boolean(user?.email_verified_at)
   const orcidConfigured = Boolean(orcidStatus?.configured)
   const orcidLinked = Boolean(orcidStatus?.linked || user?.orcid_id)
-  const busy = loading || connecting || importing || syncing
+  const busy = loading || connecting || importing || syncing || disconnecting
   const canConnectOrcid = orcidConfigured && !busy
   const canImportOrcid = emailVerified && orcidConfigured && orcidLinked && !busy
   const canSyncCitations = worksCount > 0 && !busy
+  const canDisconnectOrcid = orcidLinked && !busy
   const shortLastSync = formatShortTimestamp(syncStatus.orcid_last_synced_at)
   const connectionStatusLabel = orcidLinked
     ? shortLastSync
@@ -197,6 +201,24 @@ export function ProfileIntegrationsPage() {
     () => metricsRows.reduce((sum, row) => sum + Math.max(0, Number(row.citations || 0)), 0),
     [metricsRows],
   )
+  const orcidProgressLabel = useMemo(() => {
+    if (connecting) {
+      return 'Opening ORCID sign-in...'
+    }
+    if (importing) {
+      return 'Importing ORCID works...'
+    }
+    if (syncing) {
+      return 'Syncing citations...'
+    }
+    if (disconnecting) {
+      return 'Disconnecting ORCID...'
+    }
+    if (refreshing) {
+      return 'Refreshing ORCID integration status...'
+    }
+    return ''
+  }, [connecting, importing, syncing, disconnecting, refreshing])
 
   const onConnectOrcid = async () => {
     if (!token) {
@@ -213,6 +235,7 @@ export function ProfileIntegrationsPage() {
     setError('')
     setStatus('')
     setConnecting(true)
+    setGoogleStatus('')
     try {
       const payload = await fetchOrcidConnect(token)
       window.location.assign(payload.url)
@@ -237,6 +260,7 @@ export function ProfileIntegrationsPage() {
     setImporting(true)
     setError('')
     setStatus('')
+    setGoogleStatus('')
     try {
       await pingApiHealth()
       const payload = await importOrcidWorks(token)
@@ -284,6 +308,7 @@ export function ProfileIntegrationsPage() {
     setRefreshing(true)
     setError('')
     setStatus('')
+    setGoogleStatus('')
     try {
       await pingApiHealth()
       setStatus('API connection restored. Reloading integrations...')
@@ -306,6 +331,7 @@ export function ProfileIntegrationsPage() {
     setSyncing(true)
     setError('')
     setStatus('')
+    setGoogleStatus('')
     try {
       const payload = await syncPersonaMetrics(token, ['openalex'])
       setStatus(`Citations synchronised via OpenAlex (${payload.synced_snapshots} snapshot(s)).`)
@@ -317,6 +343,39 @@ export function ProfileIntegrationsPage() {
       setError(syncError instanceof Error ? syncError.message : 'Could not synchronise citations.')
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const onDisconnectOrcid = async () => {
+    if (!token || !orcidLinked) {
+      return
+    }
+    const confirmed = window.confirm(
+      'Disconnect ORCID from this account? Existing imported works stay in your library.',
+    )
+    if (!confirmed) {
+      return
+    }
+    setDisconnecting(true)
+    setError('')
+    setStatus('')
+    setGoogleStatus('')
+    try {
+      const payload = await disconnectOrcid(token)
+      setOrcidStatus(payload)
+      setStatus('ORCID disconnected successfully.')
+      await loadData(token, false)
+    } catch (disconnectError) {
+      if (handleSessionExpiry(disconnectError)) {
+        return
+      }
+      setError(
+        disconnectError instanceof Error
+          ? disconnectError.message
+          : 'Could not disconnect ORCID.',
+      )
+    } finally {
+      setDisconnecting(false)
     }
   }
 
@@ -381,6 +440,11 @@ export function ProfileIntegrationsPage() {
                 {syncing ? 'Syncing...' : 'Sync citations'}
               </Button>
             ) : null}
+            {orcidLinked ? (
+              <Button type="button" variant="outline" onClick={onDisconnectOrcid} disabled={!canDisconnectOrcid}>
+                {disconnecting ? 'Disconnecting...' : 'Disconnect ORCID'}
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -400,6 +464,20 @@ export function ProfileIntegrationsPage() {
             <p className="text-xs text-muted-foreground">
               Citation sync uses OpenAlex and updates your latest citation totals.
             </p>
+          ) : null}
+          {orcidProgressLabel ? (
+            <p className="text-xs text-muted-foreground">{orcidProgressLabel}</p>
+          ) : null}
+          {status ? <p className="text-sm text-emerald-700">{status}</p> : null}
+          {error ? (
+            <div className="space-y-2">
+              <p className="text-sm text-destructive">{error}</p>
+              {error.toLowerCase().includes('could not reach api') || error.toLowerCase().includes('failed to fetch') ? (
+                <Button type="button" variant="outline" size="sm" onClick={() => void onRetryApiConnection()} disabled={refreshing}>
+                  {refreshing ? 'Retrying...' : 'Retry API connection'}
+                </Button>
+              ) : null}
+            </div>
           ) : null}
         </CardContent>
       </Card>
@@ -430,11 +508,16 @@ export function ProfileIntegrationsPage() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => setStatus('BibTeX / DOI list import scaffold is ready. Direct Google Scholar scraping is not supported.')}
+              onClick={() => {
+                setGoogleStatus(
+                  'BibTeX / DOI list import scaffold is ready. Direct Google Scholar scraping is not supported.',
+                )
+              }}
             >
               Open import scaffold
             </Button>
           </div>
+          {googleStatus ? <p className="text-xs text-muted-foreground">{googleStatus}</p> : null}
         </CardContent>
       </Card>
 
@@ -458,20 +541,6 @@ export function ProfileIntegrationsPage() {
         </CardContent>
       </Card>
 
-      {status ? <p className="text-sm text-emerald-700">{status}</p> : null}
-      {error ? (
-        <div className="space-y-2">
-          <p className="text-sm text-destructive">{error}</p>
-          {error.toLowerCase().includes('could not reach api') || error.toLowerCase().includes('failed to fetch') ? (
-            <Button type="button" variant="outline" size="sm" onClick={() => void onRetryApiConnection()} disabled={refreshing}>
-              {refreshing ? 'Retrying...' : 'Retry API connection'}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-      {(loading || connecting || importing || syncing) ? (
-        <p className="text-xs text-muted-foreground">Working...</p>
-      ) : null}
     </section>
   )
 }

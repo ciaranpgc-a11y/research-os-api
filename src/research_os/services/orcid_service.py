@@ -177,6 +177,19 @@ def get_orcid_status(*, user_id: str) -> dict[str, Any]:
         }
 
 
+def disconnect_orcid(*, user_id: str) -> dict[str, Any]:
+    create_all_tables()
+    with session_scope() as session:
+        user = _resolve_user_or_raise(session, user_id)
+        user.orcid_id = None
+        user.orcid_access_token = None
+        user.orcid_refresh_token = None
+        user.orcid_token_expires_at = None
+        user.orcid_last_synced_at = None
+        session.flush()
+    return get_orcid_status(user_id=user_id)
+
+
 def _token_headers() -> dict[str, str]:
     return {"Accept": "application/json"}
 

@@ -392,6 +392,17 @@ export async function fetchOrcidStatus(token: string): Promise<OrcidStatusPayloa
   )
 }
 
+export async function disconnectOrcid(token: string): Promise<OrcidStatusPayload> {
+  return requestJson<OrcidStatusPayload>(
+    `${API_BASE_URL}/v1/orcid/disconnect`,
+    {
+      method: 'POST',
+      headers: authHeaders(token),
+    },
+    'ORCID disconnect failed',
+  )
+}
+
 export async function completeOrcidLink(input: {
   state: string
   code: string

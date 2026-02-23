@@ -229,6 +229,7 @@ from research_os.services.auth_service import (
     update_current_user,
 )
 from research_os.services.orcid_service import (
+    disconnect_orcid,
     OrcidNotFoundError,
     OrcidValidationError,
     complete_orcid_callback,
@@ -1121,6 +1122,28 @@ def v1_orcid_status(request: Request) -> OrcidStatusResponse | JSONResponse:
     try:
         user = get_user_by_session_token(token)
         payload = get_orcid_status(user_id=str(user["id"]))
+        return OrcidStatusResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except OrcidNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except (OrcidValidationError, AuthValidationError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/orcid/disconnect",
+    response_model=OrcidStatusResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_orcid_disconnect(request: Request) -> OrcidStatusResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = disconnect_orcid(user_id=str(user["id"]))
         return OrcidStatusResponse(**payload)
     except AuthNotFoundError as exc:
         return _build_unauthorized_response(str(exc))

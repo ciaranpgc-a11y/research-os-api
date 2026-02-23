@@ -2328,6 +2328,38 @@ def test_v1_orcid_status(monkeypatch, tmp_path) -> None:
     assert payload["redirect_uri"] == "http://localhost:5173/orcid/callback"
 
 
+def test_v1_orcid_disconnect(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "orcid-disconnect@example.com",
+                "password": "StrongPassword123",
+                "name": "ORCID Disconnect User",
+            },
+        )
+        token = register_response.json()["session_token"]
+        monkeypatch.setattr(
+            "research_os.api.app.disconnect_orcid",
+            lambda user_id: {
+                "configured": True,
+                "linked": False,
+                "orcid_id": None,
+                "redirect_uri": "http://localhost:5173/orcid/callback",
+                "can_import": False,
+                "issues": [],
+            },
+        )
+        response = client.post("/v1/orcid/disconnect", headers=_auth_headers(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["linked"] is False
+    assert payload["orcid_id"] is None
+
+
 def test_v1_persona_metrics_embeddings_and_impact_flow(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
 
