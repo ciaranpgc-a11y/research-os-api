@@ -2301,6 +2301,77 @@ def test_v1_orcid_connect_callback_and_import(monkeypatch, tmp_path) -> None:
     assert import_response.json()["imported_count"] == 1
 
 
+def test_v1_persona_sync_jobs_metrics_flow(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    import research_os.services.persona_sync_job_service as sync_job_service
+
+    monkeypatch.setattr(
+        "research_os.services.persona_sync_job_service.sync_metrics",
+        lambda user_id, providers: {
+            "synced_snapshots": 2,
+            "provider_attribution": {"openalex": 2},
+            "core_collaborators": [],
+        },
+    )
+    monkeypatch.setattr(
+        "research_os.services.persona_sync_job_service.get_publications_analytics_summary",
+        lambda **kwargs: {
+            "total_citations": 50,
+            "h_index": 4,
+            "citation_velocity_12m": 1.2,
+            "citations_last_12_months": 14,
+            "citations_previous_12_months": 9,
+            "yoy_percent": 55.5,
+            "computed_at": "2026-02-23T00:00:00Z",
+        },
+    )
+    monkeypatch.setattr(
+        "research_os.services.persona_sync_job_service._start_persona_sync_thread",
+        lambda job_id: sync_job_service._run_persona_sync_job(job_id),
+    )
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "persona-sync-jobs@example.com",
+                "password": "StrongPassword123",
+                "name": "Persona Sync Jobs User",
+            },
+        )
+        token = register_response.json()["session_token"]
+        headers = _auth_headers(token)
+
+        enqueue_response = client.post(
+            "/v1/persona/jobs/metrics-sync",
+            headers=headers,
+            json={
+                "providers": ["openalex"],
+                "refresh_analytics": True,
+                "refresh_metrics": False,
+            },
+        )
+        assert enqueue_response.status_code == 200
+        enqueue_payload = enqueue_response.json()
+        job_id = enqueue_payload["id"]
+        assert enqueue_payload["status"] in {"queued", "running", "completed"}
+
+        fetch_response = client.get(f"/v1/persona/jobs/{job_id}", headers=headers)
+        assert fetch_response.status_code == 200
+        assert fetch_response.json()["status"] == "completed"
+        assert (
+            fetch_response.json()["result_json"]["metrics_sync"]["synced_snapshots"]
+            == 2
+        )
+
+        list_response = client.get("/v1/persona/jobs?limit=5", headers=headers)
+        assert list_response.status_code == 200
+        rows = list_response.json()
+        assert len(rows) >= 1
+        assert rows[0]["id"] == job_id
+
+
 def test_v1_orcid_status(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     monkeypatch.setenv("ORCID_CLIENT_ID", "client-id")

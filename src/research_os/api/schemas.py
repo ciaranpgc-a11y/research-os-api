@@ -930,6 +930,44 @@ class PersonaImportOrcidResponse(BaseModel):
     core_collaborators: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class PersonaSyncJobOrcidImportRequest(BaseModel):
+    overwrite_user_metadata: bool = False
+    run_metrics_sync: bool = False
+    providers: list[Literal["openalex", "semantic_scholar", "manual"]] = Field(
+        default_factory=lambda: ["openalex", "semantic_scholar"]
+    )
+    refresh_analytics: bool = True
+    refresh_metrics: bool = False
+
+
+class PersonaSyncJobMetricsRequest(BaseModel):
+    providers: list[Literal["openalex", "semantic_scholar", "manual"]] = Field(
+        default_factory=lambda: ["openalex"]
+    )
+    refresh_analytics: bool = True
+    refresh_metrics: bool = False
+
+
+class PersonaSyncJobResponse(BaseModel):
+    id: str
+    user_id: str
+    job_type: str
+    status: str
+    overwrite_user_metadata: bool = False
+    run_metrics_sync: bool = False
+    refresh_analytics: bool = True
+    refresh_metrics: bool = False
+    providers: list[str] = Field(default_factory=list)
+    progress_percent: int = 0
+    current_stage: str | None = None
+    result_json: dict[str, Any] = Field(default_factory=dict)
+    error_detail: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class PersonaWorkResponse(BaseModel):
     id: str
     title: str

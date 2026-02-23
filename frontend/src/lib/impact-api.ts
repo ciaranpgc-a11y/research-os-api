@@ -20,6 +20,7 @@ import type {
   OrcidConnectPayload,
   OrcidStatusPayload,
   OrcidImportPayload,
+  PersonaSyncJobPayload,
   PersonaStatePayload,
   PersonaContextPayload,
   PersonaEmbeddingsGeneratePayload,
@@ -436,6 +437,79 @@ export async function importOrcidWorks(
     },
     'ORCID import failed',
     { timeoutMs: 90_000, retryCount: 1 },
+  )
+}
+
+export async function enqueueOrcidImportSyncJob(
+  token: string,
+  options?: {
+    overwriteUserMetadata?: boolean
+    runMetricsSync?: boolean
+    providers?: Array<'openalex' | 'semantic_scholar' | 'manual'>
+    refreshAnalytics?: boolean
+    refreshMetrics?: boolean
+  },
+): Promise<PersonaSyncJobPayload> {
+  return requestJson<PersonaSyncJobPayload>(
+    `${API_BASE_URL}/v1/persona/jobs/orcid-import`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        overwrite_user_metadata: Boolean(options?.overwriteUserMetadata),
+        run_metrics_sync: Boolean(options?.runMetricsSync),
+        providers: options?.providers || ['openalex', 'semantic_scholar'],
+        refresh_analytics: options?.refreshAnalytics ?? true,
+        refresh_metrics: Boolean(options?.refreshMetrics),
+      }),
+    },
+    'Could not start ORCID sync job',
+  )
+}
+
+export async function enqueueMetricsSyncJob(
+  token: string,
+  options?: {
+    providers?: Array<'openalex' | 'semantic_scholar' | 'manual'>
+    refreshAnalytics?: boolean
+    refreshMetrics?: boolean
+  },
+): Promise<PersonaSyncJobPayload> {
+  return requestJson<PersonaSyncJobPayload>(
+    `${API_BASE_URL}/v1/persona/jobs/metrics-sync`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        providers: options?.providers || ['openalex'],
+        refresh_analytics: options?.refreshAnalytics ?? true,
+        refresh_metrics: Boolean(options?.refreshMetrics),
+      }),
+    },
+    'Could not start metrics sync job',
+  )
+}
+
+export async function fetchPersonaSyncJob(token: string, jobId: string): Promise<PersonaSyncJobPayload> {
+  return requestJson<PersonaSyncJobPayload>(
+    `${API_BASE_URL}/v1/persona/jobs/${encodeURIComponent(jobId)}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Persona sync job lookup failed',
+  )
+}
+
+export async function listPersonaSyncJobs(token: string, limit = 10): Promise<PersonaSyncJobPayload[]> {
+  const cleanLimit = Math.max(1, Math.min(50, Number(limit || 10)))
+  return requestJson<PersonaSyncJobPayload[]>(
+    `${API_BASE_URL}/v1/persona/jobs?limit=${cleanLimit}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Persona sync jobs lookup failed',
   )
 }
 

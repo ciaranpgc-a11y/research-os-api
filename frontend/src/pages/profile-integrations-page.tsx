@@ -6,17 +6,19 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   disconnectOrcid,
+  enqueueOrcidImportSyncJob,
+  fetchPersonaSyncJob,
   fetchMe,
   fetchOAuthProviderStatuses,
   fetchOrcidConnect,
   fetchOrcidStatus,
   fetchPersonaState,
-  importOrcidWorks,
+  listPersonaSyncJobs,
   pingApiHealth,
 } from '@/lib/impact-api'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
-import type { AuthOAuthProviderStatusItem, AuthUser, OrcidStatusPayload, PersonaStatePayload } from '@/types/impact'
+import type { AuthOAuthProviderStatusItem, AuthUser, OrcidStatusPayload, PersonaStatePayload, PersonaSyncJobPayload } from '@/types/impact'
 
 function formatTimestamp(value: string | null | undefined): string {
   if (!value) {
@@ -74,6 +76,7 @@ function totalCitationsFromPersonaState(state: PersonaStatePayload | null | unde
 const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const ORCID_SYNC_SUMMARY_STORAGE_PREFIX = 'aawe_orcid_sync_summary:'
+const ORCID_ACTIVE_SYNC_JOB_STORAGE_PREFIX = 'aawe_orcid_active_sync_job:'
 
 type OrcidSyncSummaryStorage = {
   lastImportedCount: number | null
@@ -128,6 +131,33 @@ function clearSyncSummary(userId: string): void {
     return
   }
   window.localStorage.removeItem(syncSummaryStorageKey(userId))
+}
+
+function activeSyncJobStorageKey(userId: string): string {
+  return `${ORCID_ACTIVE_SYNC_JOB_STORAGE_PREFIX}${userId}`
+}
+
+function loadActiveSyncJobId(userId: string): string | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const raw = window.localStorage.getItem(activeSyncJobStorageKey(userId))
+  const clean = (raw || '').trim()
+  return clean || null
+}
+
+function saveActiveSyncJobId(userId: string, jobId: string): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(activeSyncJobStorageKey(userId), jobId)
+}
+
+function clearActiveSyncJobId(userId: string): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.removeItem(activeSyncJobStorageKey(userId))
 }
 
 function loadCachedIntegrationsUser(): AuthUser | null {
@@ -215,6 +245,7 @@ export function ProfileIntegrationsPage() {
   const [lastReferencesSyncedCount, setLastReferencesSyncedCount] = useState<number | null>(null)
   const [lastSyncSinceLabel, setLastSyncSinceLabel] = useState<string | null>(null)
   const [lastSyncOutcome, setLastSyncOutcome] = useState<string | null>(null)
+  const [activeSyncJob, setActiveSyncJob] = useState<PersonaSyncJobPayload | null>(null)
   const syncStatus = personaState?.sync_status || {
     orcid_last_synced_at: null,
     metrics_last_synced_at: null,
@@ -256,11 +287,34 @@ export function ProfileIntegrationsPage() {
         fetchOrcidStatus(sessionToken),
         fetchPersonaState(sessionToken),
         fetchOAuthProviderStatuses(),
+        listPersonaSyncJobs(sessionToken, 5),
       ])
-      const [meResult, orcidResult, stateResult, providerResult] = settled
+      const [meResult, orcidResult, stateResult, providerResult, jobsResult] = settled
       if (meResult.status === 'fulfilled') {
         setUser(meResult.value)
         saveCachedIntegrationsUser(meResult.value)
+        const activeJobId = loadActiveSyncJobId(meResult.value.id)
+        if (activeJobId && !activeSyncJob) {
+          setActiveSyncJob({
+            id: activeJobId,
+            user_id: meResult.value.id,
+            job_type: 'orcid_import',
+            status: 'queued',
+            overwrite_user_metadata: false,
+            run_metrics_sync: false,
+            refresh_analytics: true,
+            refresh_metrics: false,
+            providers: [],
+            progress_percent: 0,
+            current_stage: 'queued',
+            result_json: {},
+            error_detail: null,
+            started_at: null,
+            completed_at: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+        }
       }
       if (orcidResult.status === 'fulfilled') {
         setOrcidStatus(orcidResult.value)
@@ -280,6 +334,18 @@ export function ProfileIntegrationsPage() {
         }
       }
       setProviderStatuses(providerResult.status === 'fulfilled' ? providerResult.value.providers || [] : [])
+      if (jobsResult.status === 'fulfilled') {
+        const activeJob = (jobsResult.value || []).find((item) => item.status === 'queued' || item.status === 'running') || null
+        if (activeJob) {
+          setActiveSyncJob(activeJob)
+          if (activeJob.user_id) {
+            saveActiveSyncJobId(activeJob.user_id, activeJob.id)
+          }
+        } else if (meResult.status === 'fulfilled') {
+          clearActiveSyncJobId(meResult.value.id)
+          setActiveSyncJob(null)
+        }
+      }
       const failedCount = settled.filter((item) => item.status === 'rejected').length
       if (failedCount > 0) {
         setStatus(`Integrations loaded with ${failedCount} unavailable source${failedCount === 1 ? '' : 's'}.`)
@@ -351,6 +417,14 @@ export function ProfileIntegrationsPage() {
     }
     clearCachedOrcidStatus()
   }, [orcidStatus])
+
+  useEffect(() => {
+    if (activeSyncJob && (activeSyncJob.status === 'queued' || activeSyncJob.status === 'running')) {
+      setImporting(true)
+      return
+    }
+    setImporting(false)
+  }, [activeSyncJob])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -473,82 +547,111 @@ export function ProfileIntegrationsPage() {
     setError('')
     setStatus('')
     setGoogleStatus('')
-    const worksBeforeImport = worksCount
-    const citationsBeforeImport = totalCitations
-    const syncSinceLabel =
-      formatShortTimestamp(syncStatus.metrics_last_synced_at) ||
-      formatShortTimestamp(syncStatus.orcid_last_synced_at) ||
-      'initial sync'
     try {
-      await importOrcidWorks(token)
-      const refreshed = await loadData(token, false)
-      const worksAfterImport = refreshed?.personaState?.works?.length ?? worksBeforeImport
-      const citationsAfterImport = totalCitationsFromPersonaState(refreshed?.personaState)
-      const newWorksImported = Math.max(0, worksAfterImport - worksBeforeImport)
-      const newReferencesSynced = Math.max(0, citationsAfterImport - citationsBeforeImport)
-      const syncOutcome =
-        newWorksImported > 0 || newReferencesSynced > 0
-          ? `+${newWorksImported} works, +${newReferencesSynced} citations`
-          : 'No new records'
-      setLastImportedCount(newWorksImported)
-      setLastReferencesSyncedCount(newReferencesSynced)
-      setLastSyncSinceLabel(syncSinceLabel)
-      setLastSyncOutcome(syncOutcome)
+      const job = await enqueueOrcidImportSyncJob(token, {
+        overwriteUserMetadata: false,
+        runMetricsSync: false,
+        providers: ['openalex'],
+        refreshAnalytics: true,
+        refreshMetrics: false,
+      })
+      setActiveSyncJob(job)
       if (user?.id) {
-        saveSyncSummary(user.id, {
-          lastImportedCount: newWorksImported,
-          lastReferencesSyncedCount: newReferencesSynced,
-          lastSyncSinceLabel: syncSinceLabel,
-          lastSyncOutcome: syncOutcome,
-        })
+        saveActiveSyncJobId(user.id, job.id)
       }
+      setStatus('ORCID sync started in background. You can leave this page.')
     } catch (importError) {
       if (handleSessionExpiry(importError)) {
         setImporting(false)
         return
       }
-      const detail = importError instanceof Error ? importError.message : 'Could not import ORCID works.'
-      const maybeNetwork = detail.toLowerCase().includes('could not reach api') || detail.toLowerCase().includes('failed to fetch')
-      if (maybeNetwork) {
-        try {
-          setStatus('Connection looked unstable. Retrying import once...')
-          await importOrcidWorks(token)
-          const refreshed = await loadData(token, false)
-          const worksAfterImport = refreshed?.personaState?.works?.length ?? worksBeforeImport
-          const citationsAfterImport = totalCitationsFromPersonaState(refreshed?.personaState)
-          const newWorksImported = Math.max(0, worksAfterImport - worksBeforeImport)
-          const newReferencesSynced = Math.max(0, citationsAfterImport - citationsBeforeImport)
-          const syncOutcome =
-            newWorksImported > 0 || newReferencesSynced > 0
-              ? `+${newWorksImported} works, +${newReferencesSynced} citations`
-              : 'No new records'
-          setLastImportedCount(newWorksImported)
-          setLastReferencesSyncedCount(newReferencesSynced)
-          setLastSyncSinceLabel(syncSinceLabel)
-          setLastSyncOutcome(syncOutcome)
-          if (user?.id) {
-            saveSyncSummary(user.id, {
-              lastImportedCount: newWorksImported,
-              lastReferencesSyncedCount: newReferencesSynced,
-              lastSyncSinceLabel: syncSinceLabel,
-              lastSyncOutcome: syncOutcome,
-            })
-          }
-          setStatus('')
+      setStatus('')
+      setError(importError instanceof Error ? importError.message : 'Could not queue ORCID sync.')
+    } finally {
+      // `importing` remains controlled by active background job state.
+    }
+  }
+
+  useEffect(() => {
+    if (!token || !activeSyncJob?.id) {
+      return
+    }
+    let cancelled = false
+
+    const stageLabel = (value: string | null | undefined): string => {
+      const clean = (value || '').trim().replace(/[_-]+/g, ' ')
+      if (!clean) {
+        return 'processing'
+      }
+      return clean
+    }
+
+    const poll = async () => {
+      try {
+        const job = await fetchPersonaSyncJob(token, activeSyncJob.id)
+        if (cancelled) {
           return
-        } catch (retryError) {
-          const retryDetail = retryError instanceof Error ? retryError.message : detail
-          setStatus('')
-          setError(retryDetail)
+        }
+        setActiveSyncJob(job)
+        if (job.status === 'queued' || job.status === 'running') {
+          setStatus(
+            `ORCID sync running in background (${job.progress_percent}% • ${stageLabel(job.current_stage)}).`,
+          )
+          return
+        }
+
+        if (job.status === 'completed') {
+          if (user?.id) {
+            clearActiveSyncJobId(user.id)
+          }
+          setActiveSyncJob(null)
+          const result = (job.result_json || {}) as Record<string, unknown>
+          const importPayload = (result.orcid_import || {}) as Record<string, unknown>
+          const importedCount = Number(importPayload.imported_count || 0)
+          if (Number.isFinite(importedCount)) {
+            const cleanImported = Math.max(0, Math.round(importedCount))
+            setLastImportedCount(cleanImported)
+            setLastSyncSinceLabel(formatShortTimestamp(new Date().toISOString()))
+            setLastSyncOutcome(cleanImported > 0 ? `+${cleanImported} works` : 'No new records')
+            if (user?.id) {
+              saveSyncSummary(user.id, {
+                lastImportedCount: cleanImported,
+                lastReferencesSyncedCount: lastReferencesSyncedCount,
+                lastSyncSinceLabel: formatShortTimestamp(new Date().toISOString()),
+                lastSyncOutcome: cleanImported > 0 ? `+${cleanImported} works` : 'No new records',
+              })
+            }
+          }
+          setStatus('ORCID sync completed in background.')
+          await loadData(token, false)
+          return
+        }
+
+        if (user?.id) {
+          clearActiveSyncJobId(user.id)
+        }
+        setActiveSyncJob(null)
+        setStatus('')
+        setError(job.error_detail || 'ORCID sync failed in background.')
+      } catch (pollError) {
+        if (cancelled) {
+          return
+        }
+        if (handleSessionExpiry(pollError)) {
           return
         }
       }
-      setStatus('')
-      setError(detail)
-    } finally {
-      setImporting(false)
     }
-  }
+
+    void poll()
+    const timer = window.setInterval(() => {
+      void poll()
+    }, 2500)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [activeSyncJob?.id, handleSessionExpiry, loadData, token, user?.id])
 
   const onRetryApiConnection = async () => {
     if (!token) {
@@ -591,7 +694,9 @@ export function ProfileIntegrationsPage() {
       setStatus('ORCID disconnected successfully.')
       if (user?.id) {
         clearSyncSummary(user.id)
+        clearActiveSyncJobId(user.id)
       }
+      setActiveSyncJob(null)
       setLastImportedCount(null)
       setLastReferencesSyncedCount(null)
       setLastSyncSinceLabel(null)

@@ -6,14 +6,16 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
+  enqueueMetricsSyncJob,
+  enqueueOrcidImportSyncJob,
+  fetchPersonaSyncJob,
   fetchMe,
   fetchOrcidStatus,
   fetchPersonaState,
   fetchPublicationsAnalyticsSummary,
   fetchPublicationsAnalyticsTimeseries,
   fetchPublicationsAnalyticsTopDrivers,
-  importOrcidWorks,
-  syncPersonaMetrics,
+  listPersonaSyncJobs,
 } from '@/lib/impact-api'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
 import { getAuthSessionToken } from '@/lib/auth-session'
@@ -21,6 +23,7 @@ import type {
   AuthUser,
   OrcidStatusPayload,
   PersonaStatePayload,
+  PersonaSyncJobPayload,
   PublicationsAnalyticsSummaryPayload,
   PublicationsAnalyticsTimeseriesPayload,
   PublicationsAnalyticsTopDriversPayload,
@@ -34,6 +37,7 @@ const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const PUBLICATIONS_ANALYTICS_SUMMARY_CACHE_KEY = 'aawe_publications_analytics_summary_cache'
 const PUBLICATIONS_ANALYTICS_TIMESERIES_CACHE_KEY = 'aawe_publications_analytics_timeseries_cache'
 const PUBLICATIONS_ANALYTICS_TOP_DRIVERS_CACHE_KEY = 'aawe_publications_analytics_top_drivers_cache'
+const PUBLICATIONS_ACTIVE_SYNC_JOB_STORAGE_PREFIX = 'aawe_publications_active_sync_job:'
 
 const WORK_TYPE_LABELS: Record<string, string> = {
   'journal-article': 'Journal article',
@@ -299,6 +303,33 @@ function saveCachedAnalyticsTopDrivers(value: PublicationsAnalyticsTopDriversPay
   window.localStorage.setItem(PUBLICATIONS_ANALYTICS_TOP_DRIVERS_CACHE_KEY, JSON.stringify(value))
 }
 
+function publicationsActiveSyncJobStorageKey(userId: string): string {
+  return `${PUBLICATIONS_ACTIVE_SYNC_JOB_STORAGE_PREFIX}${userId}`
+}
+
+function loadPublicationsActiveSyncJobId(userId: string): string | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const raw = window.localStorage.getItem(publicationsActiveSyncJobStorageKey(userId))
+  const clean = (raw || '').trim()
+  return clean || null
+}
+
+function savePublicationsActiveSyncJobId(userId: string, jobId: string): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(publicationsActiveSyncJobStorageKey(userId), jobId)
+}
+
+function clearPublicationsActiveSyncJobId(userId: string): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.removeItem(publicationsActiveSyncJobStorageKey(userId))
+}
+
 function normalizeAuthorName(value: string): string {
   return value
     .toLowerCase()
@@ -493,6 +524,7 @@ export function ProfilePublicationsPage() {
   const [richImporting, setRichImporting] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [fullSyncing, setFullSyncing] = useState(false)
+  const [activeSyncJob, setActiveSyncJob] = useState<PersonaSyncJobPayload | null>(null)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
 
@@ -519,6 +551,7 @@ export function ProfilePublicationsPage() {
         fetchPersonaState(sessionToken),
         fetchOrcidStatus(sessionToken),
         fetchMe(sessionToken),
+        listPersonaSyncJobs(sessionToken, 5),
         fetchPublicationsAnalyticsSummary(sessionToken, {
           refresh: refreshAnalytics,
           refreshMetrics: refreshAnalyticsMetrics,
@@ -533,7 +566,7 @@ export function ProfilePublicationsPage() {
           refreshMetrics: refreshAnalyticsMetrics,
         }),
       ])
-      const [stateResult, orcidResult, userResult, summaryResult, timeseriesResult, topDriversResult] = settled
+      const [stateResult, orcidResult, userResult, jobsResult, summaryResult, timeseriesResult, topDriversResult] = settled
       if (stateResult.status === 'fulfilled') {
         setPersonaState(stateResult.value)
         writeCachedPersonaState(stateResult.value)
@@ -551,6 +584,40 @@ export function ProfilePublicationsPage() {
       if (userResult.status === 'fulfilled') {
         setUser(userResult.value)
         saveCachedUser(userResult.value)
+        const activeJobId = loadPublicationsActiveSyncJobId(userResult.value.id)
+        if (activeJobId && !activeSyncJob) {
+          setActiveSyncJob({
+            id: activeJobId,
+            user_id: userResult.value.id,
+            job_type: 'metrics_sync',
+            status: 'queued',
+            overwrite_user_metadata: false,
+            run_metrics_sync: false,
+            refresh_analytics: true,
+            refresh_metrics: false,
+            providers: [],
+            progress_percent: 0,
+            current_stage: 'queued',
+            result_json: {},
+            error_detail: null,
+            started_at: null,
+            completed_at: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+        }
+      }
+      if (jobsResult.status === 'fulfilled') {
+        const activeJob = (jobsResult.value || []).find((item) => item.status === 'queued' || item.status === 'running') || null
+        if (activeJob) {
+          setActiveSyncJob(activeJob)
+          if (activeJob.user_id) {
+            savePublicationsActiveSyncJobId(activeJob.user_id, activeJob.id)
+          }
+        } else if (userResult.status === 'fulfilled') {
+          clearPublicationsActiveSyncJobId(userResult.value.id)
+          setActiveSyncJob(null)
+        }
       }
       if (summaryResult.status === 'fulfilled') {
         setAnalyticsSummary(summaryResult.value)
@@ -589,6 +656,84 @@ export function ProfilePublicationsPage() {
     }
     void loadData(sessionToken, false, false, false, true)
   }, [loadData, navigate])
+
+  useEffect(() => {
+    if (!activeSyncJob || activeSyncJob.status === 'completed' || activeSyncJob.status === 'failed') {
+      setRichImporting(false)
+      setSyncing(false)
+      setFullSyncing(false)
+      return
+    }
+    if (activeSyncJob.job_type === 'orcid_import') {
+      setRichImporting(true)
+      return
+    }
+    const providers = new Set((activeSyncJob.providers || []).map((value) => String(value).trim().toLowerCase()))
+    if (providers.has('semantic_scholar') && providers.has('manual')) {
+      setFullSyncing(true)
+      return
+    }
+    setSyncing(true)
+  }, [activeSyncJob])
+
+  useEffect(() => {
+    if (!token || !activeSyncJob?.id) {
+      return
+    }
+    let cancelled = false
+
+    const stageLabel = (value: string | null | undefined): string => {
+      const clean = (value || '').trim().replace(/[_-]+/g, ' ')
+      if (!clean) {
+        return 'processing'
+      }
+      return clean
+    }
+
+    const poll = async () => {
+      try {
+        const job = await fetchPersonaSyncJob(token, activeSyncJob.id)
+        if (cancelled) {
+          return
+        }
+        setActiveSyncJob(job)
+        if (job.status === 'queued' || job.status === 'running') {
+          setStatus(
+            `Background sync running (${job.progress_percent}% • ${stageLabel(job.current_stage)}).`,
+          )
+          return
+        }
+        if (job.status === 'completed') {
+          if (user?.id) {
+            clearPublicationsActiveSyncJobId(user.id)
+          }
+          setActiveSyncJob(null)
+          setStatus('Background sync completed.')
+          await loadData(token, false, false, false, true)
+          return
+        }
+        if (user?.id) {
+          clearPublicationsActiveSyncJobId(user.id)
+        }
+        setActiveSyncJob(null)
+        setStatus('')
+        setError(job.error_detail || 'Background sync failed.')
+      } catch (pollError) {
+        if (cancelled) {
+          return
+        }
+      }
+    }
+
+    void poll()
+    const timer = window.setInterval(() => {
+      void poll()
+    }, 2500)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [activeSyncJob?.id, loadData, token, user?.id])
 
   const metricsByWorkId = useMemo(() => {
     const map = new Map<string, { citations: number; provider: string }>()
@@ -727,13 +872,19 @@ export function ProfilePublicationsPage() {
     setError('')
     setStatus('')
     try {
-      const payload = await syncPersonaMetrics(token, ['openalex'])
-      setStatus(`Citations synchronised via OpenAlex (${payload.synced_snapshots} snapshot(s)).`)
-      await loadData(token, false, true)
+      const job = await enqueueMetricsSyncJob(token, {
+        providers: ['openalex'],
+        refreshAnalytics: true,
+      })
+      setActiveSyncJob(job)
+      if (user?.id) {
+        savePublicationsActiveSyncJobId(user.id, job.id)
+      }
+      setStatus('Citation sync started in background.')
     } catch (syncError) {
       setError(syncError instanceof Error ? syncError.message : 'Could not synchronise citations.')
     } finally {
-      setSyncing(false)
+      // state is controlled by active background job
     }
   }
 
@@ -749,16 +900,21 @@ export function ProfilePublicationsPage() {
     setError('')
     setStatus('')
     try {
-      const importPayload = await importOrcidWorks(token, { overwriteUserMetadata: true })
-      const syncPayload = await syncPersonaMetrics(token, ['openalex', 'semantic_scholar'])
-      setStatus(
-        `Rich import complete: ${importPayload.imported_count} work(s) refreshed, ${syncPayload.synced_snapshots} citation snapshot(s) updated.`,
-      )
-      await loadData(token, false, true)
+      const job = await enqueueOrcidImportSyncJob(token, {
+        overwriteUserMetadata: true,
+        runMetricsSync: true,
+        providers: ['openalex', 'semantic_scholar'],
+        refreshAnalytics: true,
+      })
+      setActiveSyncJob(job)
+      if (user?.id) {
+        savePublicationsActiveSyncJobId(user.id, job.id)
+      }
+      setStatus('Rich ORCID sync started in background.')
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : 'Could not run rich ORCID import.')
     } finally {
-      setRichImporting(false)
+      // state is controlled by active background job
     }
   }
 
@@ -774,13 +930,19 @@ export function ProfilePublicationsPage() {
     setError('')
     setStatus('')
     try {
-      const payload = await syncPersonaMetrics(token, ['openalex', 'semantic_scholar', 'manual'])
-      setStatus(`Full citation sync complete (${payload.synced_snapshots} snapshot(s)).`)
-      await loadData(token, false, true)
+      const job = await enqueueMetricsSyncJob(token, {
+        providers: ['openalex', 'semantic_scholar', 'manual'],
+        refreshAnalytics: true,
+      })
+      setActiveSyncJob(job)
+      if (user?.id) {
+        savePublicationsActiveSyncJobId(user.id, job.id)
+      }
+      setStatus('Full citation sync started in background.')
     } catch (syncError) {
       setError(syncError instanceof Error ? syncError.message : 'Could not run full citation sync.')
     } finally {
-      setFullSyncing(false)
+      // state is controlled by active background job
     }
   }
 

@@ -147,6 +147,9 @@ class User(Base):
     publications_metrics: Mapped[list["PublicationMetric"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    persona_sync_jobs: Mapped[list["PersonaSyncJob"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
     orcid_states: Mapped[list["OrcidOAuthState"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
@@ -544,6 +547,7 @@ class PublicationMetric(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "metric_key"),
         Index("ix_publications_metrics_user_key", "user_id", "metric_key"),
+        Index("ix_publications_metrics_next_scheduled_at", "next_scheduled_at"),
     )
 
     id: Mapped[str] = mapped_column(
@@ -552,8 +556,16 @@ class PublicationMetric(Base):
     user_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
+    orcid_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    openalex_author_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     metric_key: Mapped[str] = mapped_column(String(64), default="summary")
     metric_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(16), default="READY")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_scheduled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow
     )
@@ -562,6 +574,54 @@ class PublicationMetric(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="publications_metrics")
+
+
+class PersonaSyncJob(Base):
+    __tablename__ = "persona_sync_jobs"
+    __table_args__ = (Index("ix_persona_sync_jobs_user_created", "user_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    job_type: Mapped[str] = mapped_column(String(32), default="orcid_import")
+    status: Mapped[str] = mapped_column(String(32), default="queued")
+    overwrite_user_metadata: Mapped[bool] = mapped_column(Boolean, default=False)
+    run_metrics_sync: Mapped[bool] = mapped_column(Boolean, default=False)
+    refresh_analytics: Mapped[bool] = mapped_column(Boolean, default=True)
+    refresh_metrics: Mapped[bool] = mapped_column(Boolean, default=False)
+    providers: Mapped[list[str]] = mapped_column(JSON, default=list)
+    progress_percent: Mapped[int] = mapped_column(Integer, default=0)
+    current_stage: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    result_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    user: Mapped[User] = relationship(back_populates="persona_sync_jobs")
+
+
+class AppRuntimeLock(Base):
+    __tablename__ = "app_runtime_locks"
+
+    lock_name: Mapped[str] = mapped_column(String(128), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(128), default="")
+    lease_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
 
 
 class ManuscriptAssetLink(Base):

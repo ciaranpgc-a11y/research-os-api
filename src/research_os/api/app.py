@@ -109,6 +109,9 @@ from research_os.api.schemas import (
     PersonaEmbeddingsGenerateResponse,
     PersonaImportOrcidRequest,
     PersonaImportOrcidResponse,
+    PersonaSyncJobMetricsRequest,
+    PersonaSyncJobOrcidImportRequest,
+    PersonaSyncJobResponse,
     PersonaOpenAccessDiscoverRequest,
     PersonaOpenAccessDiscoverResponse,
     PublicationsAnalyticsSummaryResponse,
@@ -257,6 +260,15 @@ from research_os.services.persona_service import (
     list_collaborators,
     list_works,
     sync_metrics,
+)
+from research_os.services.persona_sync_job_service import (
+    PersonaSyncJobConflictError,
+    PersonaSyncJobNotFoundError,
+    PersonaSyncJobValidationError,
+    enqueue_persona_sync_job,
+    get_persona_sync_job,
+    list_persona_sync_jobs,
+    serialize_persona_sync_job,
 )
 from research_os.services.open_access_service import (
     OpenAccessNotFoundError,
@@ -1238,6 +1250,128 @@ def v1_persona_import_orcid(
         return _build_not_found_response(str(exc))
     except OrcidValidationError as exc:
         return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/persona/jobs/orcid-import",
+    response_model=PersonaSyncJobResponse,
+    responses=(
+        BAD_REQUEST_RESPONSES
+        | NOT_FOUND_RESPONSES
+        | CONFLICT_RESPONSES
+        | UNAUTHORIZED_RESPONSES
+    ),
+    tags=["v1"],
+)
+def v1_persona_enqueue_orcid_import_job(
+    request: Request,
+    payload: PersonaSyncJobOrcidImportRequest,
+) -> PersonaSyncJobResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        job = enqueue_persona_sync_job(
+            user_id=str(user["id"]),
+            job_type="orcid_import",
+            overwrite_user_metadata=payload.overwrite_user_metadata,
+            run_metrics_sync=payload.run_metrics_sync,
+            providers=payload.providers,
+            refresh_analytics=payload.refresh_analytics,
+            refresh_metrics=payload.refresh_metrics,
+        )
+        return PersonaSyncJobResponse(**serialize_persona_sync_job(job))
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (PersonaSyncJobNotFoundError, OrcidNotFoundError) as exc:
+        return _build_not_found_response(str(exc))
+    except PersonaSyncJobConflictError as exc:
+        return _build_conflict_response(str(exc))
+    except (PersonaSyncJobValidationError, OrcidValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/persona/jobs/metrics-sync",
+    response_model=PersonaSyncJobResponse,
+    responses=(
+        BAD_REQUEST_RESPONSES
+        | NOT_FOUND_RESPONSES
+        | CONFLICT_RESPONSES
+        | UNAUTHORIZED_RESPONSES
+    ),
+    tags=["v1"],
+)
+def v1_persona_enqueue_metrics_sync_job(
+    request: Request,
+    payload: PersonaSyncJobMetricsRequest,
+) -> PersonaSyncJobResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        job = enqueue_persona_sync_job(
+            user_id=str(user["id"]),
+            job_type="metrics_sync",
+            providers=payload.providers,
+            refresh_analytics=payload.refresh_analytics,
+            refresh_metrics=payload.refresh_metrics,
+        )
+        return PersonaSyncJobResponse(**serialize_persona_sync_job(job))
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PersonaSyncJobNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PersonaSyncJobConflictError as exc:
+        return _build_conflict_response(str(exc))
+    except (PersonaSyncJobValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/persona/jobs/{job_id}",
+    response_model=PersonaSyncJobResponse,
+    responses=NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_persona_get_sync_job(
+    request: Request, job_id: str
+) -> PersonaSyncJobResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        job = get_persona_sync_job(user_id=str(user["id"]), job_id=job_id)
+        return PersonaSyncJobResponse(**serialize_persona_sync_job(job))
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PersonaSyncJobNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.get(
+    "/v1/persona/jobs",
+    response_model=list[PersonaSyncJobResponse],
+    responses=NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_persona_list_sync_jobs(
+    request: Request, limit: int = Query(default=10, ge=1, le=50)
+) -> list[PersonaSyncJobResponse] | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        jobs = list_persona_sync_jobs(user_id=str(user["id"]), limit=limit)
+        return [PersonaSyncJobResponse(**serialize_persona_sync_job(job)) for job in jobs]
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except PersonaSyncJobNotFoundError as exc:
+        return _build_not_found_response(str(exc))
 
 
 @app.get(

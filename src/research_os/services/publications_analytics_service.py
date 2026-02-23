@@ -1,12 +1,20 @@
 from __future__ import annotations
 
+import logging
+import os
+import threading
+import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from uuid import uuid4
 
+import httpx
 from sqlalchemy import select
 
 from research_os.db import (
+    AppRuntimeLock,
     MetricsSnapshot,
     PublicationMetric,
     User,
@@ -14,13 +22,33 @@ from research_os.db import (
     create_all_tables,
     session_scope,
 )
-from research_os.services.persona_service import sync_metrics
+
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+except Exception:  # pragma: no cover
+    BackgroundScheduler = None  # type: ignore[assignment]
+
+
+logger = logging.getLogger(__name__)
 
 SUMMARY_KEY = "summary"
 TIMESERIES_KEY = "timeseries"
 TOP_DRIVERS_KEY = "top_drivers"
 DEFAULT_TOP_DRIVERS_LIMIT = 5
-ANALYTICS_SCHEMA_VERSION = 2
+ANALYTICS_SCHEMA_VERSION = 3
+
+READY_STATUS = "READY"
+RUNNING_STATUS = "RUNNING"
+FAILED_STATUS = "FAILED"
+BUNDLE_METRIC_KEY = "bundle"
+SCHEDULER_LOCK_NAME = "publications_analytics_scheduler"
+RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
+
+_executor_lock = threading.Lock()
+_executor: ThreadPoolExecutor | None = None
+_scheduler_lock = threading.Lock()
+_scheduler: Any = None
+_INSTANCE_ID = f"pub-analytics-{uuid4().hex[:12]}"
 
 
 class PublicationsAnalyticsValidationError(RuntimeError):
@@ -35,8 +63,50 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _coerce_utc(value: datetime | None) -> datetime:
+    if not isinstance(value, datetime):
+        return datetime(1970, 1, 1, tzinfo=timezone.utc)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _coerce_utc_or_none(value: datetime | None) -> datetime | None:
+    if not isinstance(value, datetime):
+        return None
+    return _coerce_utc(value)
+
+
 def _to_iso_utc(value: datetime) -> str:
     return _coerce_utc(value).isoformat()
+
+
+def _safe_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value) if value.is_integer() else None
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except Exception:
+            return None
+    return None
+
+
+def _safe_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except Exception:
+            return None
+    return None
 
 
 def _parse_metric_timestamp(value: Any) -> datetime:
@@ -47,7 +117,7 @@ def _parse_metric_timestamp(value: Any) -> datetime:
         if text:
             try:
                 return _coerce_utc(datetime.fromisoformat(text.replace("Z", "+00:00")))
-            except ValueError:
+            except Exception:
                 return _utcnow()
     return _utcnow()
 
@@ -57,14 +127,6 @@ def _resolve_user_or_raise(session, user_id: str) -> User:
     if user is None:
         raise PublicationsAnalyticsNotFoundError(f"User '{user_id}' was not found.")
     return user
-
-
-def _coerce_utc(value: datetime | None) -> datetime:
-    if not isinstance(value, datetime):
-        return datetime(1970, 1, 1, tzinfo=timezone.utc)
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
 
 
 def _provider_priority(name: str) -> int:
@@ -79,16 +141,10 @@ def _provider_priority(name: str) -> int:
 
 
 def _snapshot_rank(row: MetricsSnapshot) -> tuple[int, datetime]:
-    provider_rank = _provider_priority(row.provider)
-    captured = _coerce_utc(row.captured_at)
-    return provider_rank, captured
+    return _provider_priority(row.provider), _coerce_utc(row.captured_at)
 
 
-def _latest_metrics_by_work(
-    session,
-    *,
-    work_ids: list[str],
-) -> dict[str, MetricsSnapshot]:
+def _latest_metrics_by_work(session, *, work_ids: list[str]) -> dict[str, MetricsSnapshot]:
     if not work_ids:
         return {}
     rows = session.scalars(
@@ -103,18 +159,14 @@ def _latest_metrics_by_work(
 
 
 def _latest_metrics_by_work_at_or_before(
-    session,
-    *,
-    work_ids: list[str],
-    cutoff: datetime,
+    session, *, work_ids: list[str], cutoff: datetime
 ) -> dict[str, MetricsSnapshot]:
     if not work_ids:
         return {}
-    cutoff_utc = _coerce_utc(cutoff)
     rows = session.scalars(
         select(MetricsSnapshot).where(
             MetricsSnapshot.work_id.in_(work_ids),
-            MetricsSnapshot.captured_at <= cutoff_utc,
+            MetricsSnapshot.captured_at <= _coerce_utc(cutoff),
         )
     ).all()
     best: dict[str, MetricsSnapshot] = {}
@@ -126,43 +178,10 @@ def _latest_metrics_by_work_at_or_before(
 
 
 def _sum_citations(rows: dict[str, MetricsSnapshot]) -> int:
-    total = 0
-    for snapshot in rows.values():
-        total += max(0, int(snapshot.citations_count or 0))
-    return total
+    return sum(max(0, int(snapshot.citations_count or 0)) for snapshot in rows.values())
 
 
-def _safe_int(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        if value.is_integer():
-            return int(value)
-        return None
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return None
-        try:
-            return int(text)
-        except ValueError:
-            return None
-    return None
-
-
-def _fallback_year_for_work(work: Work | None, *, now_year: int) -> int:
-    if work is not None and isinstance(work.year, int) and 1900 <= work.year <= now_year:
-        return int(work.year)
-    return now_year
-
-
-def _extract_counts_by_year(
-    snapshot: MetricsSnapshot,
-    *,
-    now_year: int,
-) -> dict[int, int]:
+def _extract_counts_by_year(snapshot: MetricsSnapshot, *, now_year: int) -> dict[int, int]:
     payload = snapshot.metric_payload if isinstance(snapshot.metric_payload, dict) else {}
     raw = payload.get("counts_by_year")
     if not isinstance(raw, list):
@@ -172,43 +191,25 @@ def _extract_counts_by_year(
         if not isinstance(item, dict):
             continue
         year = _safe_int(item.get("year"))
-        citations = _safe_int(item.get("cited_by_count"))
-        if citations is None:
-            citations = _safe_int(item.get("citation_count"))
-        if citations is None:
-            citations = _safe_int(item.get("citations"))
-        if year is None or citations is None:
+        count = _safe_int(item.get("cited_by_count"))
+        if count is None:
+            count = _safe_int(item.get("citation_count"))
+        if count is None:
+            count = _safe_int(item.get("citations"))
+        if year is None or count is None or year < 1900 or year > now_year:
             continue
-        if year < 1900 or year > now_year:
-            continue
-        yearly[year] = max(0, citations)
+        yearly[year] = max(0, count)
     return yearly
 
 
-def _window_overlap_fraction(
-    *,
-    start: datetime,
-    end: datetime,
-    segment_start: datetime,
-    segment_end: datetime,
-) -> float:
-    overlap_start = max(start, segment_start)
-    overlap_end = min(end, segment_end)
-    if overlap_end <= overlap_start:
-        return 0.0
-    segment_seconds = (segment_end - segment_start).total_seconds()
-    if segment_seconds <= 0:
-        return 0.0
-    overlap_seconds = (overlap_end - overlap_start).total_seconds()
-    return max(0.0, min(1.0, overlap_seconds / segment_seconds))
+def _fallback_year_for_work(work: Work | None, *, now_year: int) -> int:
+    if work is not None and isinstance(work.year, int) and 1900 <= work.year <= now_year:
+        return int(work.year)
+    return now_year
 
 
 def _estimate_window_citations(
-    yearly_counts: dict[int, int],
-    *,
-    start: datetime,
-    end: datetime,
-    now: datetime,
+    yearly_counts: dict[int, int], *, start: datetime, end: datetime, now: datetime
 ) -> int:
     start_utc = _coerce_utc(start)
     end_utc = _coerce_utc(end)
@@ -220,41 +221,34 @@ def _estimate_window_citations(
         citations = max(0, int(count or 0))
         if citations <= 0:
             continue
-        year_start = datetime(year, 1, 1, tzinfo=timezone.utc)
-        year_end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+        segment_start = datetime(year, 1, 1, tzinfo=timezone.utc)
+        segment_end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
         if year == now_utc.year:
-            ytd_end = min(now_utc, year_end)
-            if ytd_end <= year_start:
-                continue
-            fraction = _window_overlap_fraction(
-                start=start_utc,
-                end=end_utc,
-                segment_start=year_start,
-                segment_end=ytd_end,
-            )
-        else:
-            fraction = _window_overlap_fraction(
-                start=start_utc,
-                end=end_utc,
-                segment_start=year_start,
-                segment_end=year_end,
-            )
-        estimated += citations * fraction
+            segment_end = min(segment_end, now_utc)
+        if segment_end <= segment_start:
+            continue
+        overlap_start = max(start_utc, segment_start)
+        overlap_end = min(end_utc, segment_end)
+        if overlap_end <= overlap_start:
+            continue
+        overlap_seconds = (overlap_end - overlap_start).total_seconds()
+        segment_seconds = (segment_end - segment_start).total_seconds()
+        estimated += citations * max(0.0, min(1.0, overlap_seconds / segment_seconds))
     return max(0, int(round(estimated)))
 
 
 def _build_timeseries_points_from_yearly_counts(
-    yearly_counts: dict[int, int],
+    yearly_counts: dict[int, int]
 ) -> list[dict[str, Any]]:
     points: list[dict[str, Any]] = []
     running_total = 0
-    for year in sorted(yearly_counts.keys()):
-        citations_added = max(0, int(yearly_counts[year] or 0))
-        running_total += citations_added
+    for year in sorted(yearly_counts):
+        added = max(0, int(yearly_counts[year] or 0))
+        running_total += added
         points.append(
             {
                 "year": year,
-                "citations_added": citations_added,
+                "citations_added": added,
                 "total_citations_end_year": running_total,
             }
         )
@@ -262,385 +256,256 @@ def _build_timeseries_points_from_yearly_counts(
 
 
 def _compute_h_index(citations: list[int]) -> int:
-    sorted_values = sorted(
-        [max(0, int(value or 0)) for value in citations], reverse=True
-    )
+    values = sorted([max(0, int(v or 0)) for v in citations], reverse=True)
     h_index = 0
-    for idx, value in enumerate(sorted_values, start=1):
+    for idx, value in enumerate(values, start=1):
         if value >= idx:
             h_index = idx
-            continue
-        break
+        else:
+            break
     return h_index
 
 
-def _upsert_metric(
-    session,
-    *,
-    user_id: str,
-    metric_key: str,
-    metric_json: dict[str, Any],
-    computed_at: datetime,
-) -> None:
-    existing = session.scalars(
-        select(PublicationMetric).where(
-            PublicationMetric.user_id == user_id,
-            PublicationMetric.metric_key == metric_key,
+def _compute_per_year_with_yoy(points: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    prev_added: int | None = None
+    for point in points:
+        added = max(0, int(point.get("citations_added") or 0))
+        yoy_delta: int | None = None
+        yoy_pct: float | None = None
+        if prev_added is not None:
+            yoy_delta = added - prev_added
+            if prev_added > 0:
+                yoy_pct = round((yoy_delta / prev_added) * 100.0, 1)
+        rows.append(
+            {
+                "year": int(point.get("year") or 0),
+                "citations_added": added,
+                "total_citations_end_year": max(0, int(point.get("total_citations_end_year") or 0)),
+                "yoy_delta": yoy_delta,
+                "yoy_pct": yoy_pct,
+            }
         )
-    ).first()
-    if existing is None:
-        session.add(
-            PublicationMetric(
-                user_id=user_id,
-                metric_key=metric_key,
-                metric_json=metric_json,
-                computed_at=computed_at,
-            )
-        )
-        return
-    existing.metric_json = metric_json
-    existing.computed_at = computed_at
+        prev_added = added
+    return rows
+
+
+def _domain_label(work: Work | None) -> str:
+    if work is None:
+        return "General"
+    text = " ".join(
+        [
+            str(work.title or ""),
+            str(work.venue_name or ""),
+            str(work.publisher or ""),
+            " ".join(str(x) for x in (work.keywords or [])),
+        ]
+    ).lower()
+    if any(token in text for token in ["cardio", "heart", "aortic", "vascular", "hypertension"]):
+        return "Cardiovascular"
+    if any(token in text for token in ["cancer", "oncology", "tumour", "tumor", "carcinoma"]):
+        return "Oncology"
+    if any(token in text for token in ["education", "learning", "training", "beme", "curriculum"]):
+        return "Medical Education"
+    if any(token in text for token in ["respiratory", "pulmonary", "lung"]):
+        return "Respiratory"
+    return "General"
+
+
+def _momentum_badge(*, citations_last_12: int, share_12m_pct: float) -> str:
+    if citations_last_12 >= 120 or share_12m_pct >= 30.0:
+        return "surging"
+    if citations_last_12 >= 40 or share_12m_pct >= 12.0:
+        return "rising"
+    return "steady"
+
+
+def _ttl_seconds() -> int:
+    value = _safe_int(os.getenv("PUB_ANALYTICS_TTL_SECONDS", "86400"))
+    return max(900, value if value is not None else 86400)
+
+
+def _schedule_hours() -> int:
+    value = _safe_int(os.getenv("PUB_ANALYTICS_SCHEDULE_HOURS", "24"))
+    return max(1, value if value is not None else 24)
+
+
+def _max_concurrent_jobs() -> int:
+    value = _safe_int(os.getenv("PUB_ANALYTICS_MAX_CONCURRENT_JOBS", "2"))
+    return max(1, value if value is not None else 2)
+
+
+def _failure_backoff_seconds(failures_in_row: int) -> int:
+    if failures_in_row <= 1:
+        return 60 * 60
+    if failures_in_row == 2:
+        return 3 * 60 * 60
+    if failures_in_row == 3:
+        return 12 * 60 * 60
+    return 24 * 60 * 60
+
+
+def _openalex_timeout_seconds() -> float:
+    value = _safe_float(os.getenv("PUB_ANALYTICS_OPENALEX_TIMEOUT_SECONDS", "12"))
+    return max(5.0, value if value is not None else 12.0)
+
+
+def _openalex_retry_count() -> int:
+    value = _safe_int(os.getenv("PUB_ANALYTICS_OPENALEX_RETRY_COUNT", "2"))
+    return max(0, min(6, value if value is not None else 2))
+
+
+def _is_stale(*, computed_at: datetime | None, now: datetime) -> bool:
+    if computed_at is None:
+        return True
+    return (now - _coerce_utc(computed_at)).total_seconds() > _ttl_seconds()
+
+
+def _normalize_status(value: str | None) -> str:
+    clean = str(value or "").strip().upper()
+    if clean in {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}:
+        return clean
+    return READY_STATUS
 
 
 def _is_metric_payload_current(payload: dict[str, Any]) -> bool:
-    version = _safe_int(payload.get("schema_version"))
-    return version == ANALYTICS_SCHEMA_VERSION
+    return _safe_int(payload.get("schema_version")) == ANALYTICS_SCHEMA_VERSION
 
 
-def _compute_bundle(
-    session,
-    *,
-    user_id: str,
-    computed_at: datetime | None = None,
-) -> dict[str, dict[str, Any]]:
-    _resolve_user_or_raise(session, user_id)
-    works = session.scalars(select(Work).where(Work.user_id == user_id)).all()
-    work_ids = [str(work.id) for work in works]
-    now = _coerce_utc(computed_at or _utcnow())
-    now_iso = _to_iso_utc(now)
-    cutoff_12 = now - timedelta(days=365)
-    cutoff_24 = now - timedelta(days=730)
-
-    latest = _latest_metrics_by_work(session, work_ids=work_ids)
-    at_12 = _latest_metrics_by_work_at_or_before(
-        session,
-        work_ids=work_ids,
-        cutoff=cutoff_12,
-    )
-    at_24 = _latest_metrics_by_work_at_or_before(
-        session,
-        work_ids=work_ids,
-        cutoff=cutoff_24,
-    )
-
-    latest_total = _sum_citations(latest)
-    work_by_id = {str(work.id): work for work in works}
-    yearly_citations_by_work: dict[str, dict[int, int]] = {}
-    has_provider_yearly_history = False
-    fallback_yearly_counts: dict[int, int] = defaultdict(int)
-    aggregated_yearly_counts: dict[int, int] = defaultdict(int)
-    for work_id in work_ids:
-        current_snapshot = latest.get(work_id)
-        if current_snapshot is None:
-            continue
-        current_citations = max(0, int(current_snapshot.citations_count or 0))
-        yearly_counts = _extract_counts_by_year(current_snapshot, now_year=now.year)
-        if yearly_counts:
-            has_provider_yearly_history = True
-            distributed_total = sum(yearly_counts.values())
-            if distributed_total < current_citations:
-                fallback_year = _fallback_year_for_work(
-                    work_by_id.get(work_id), now_year=now.year
-                )
-                yearly_counts[fallback_year] = yearly_counts.get(fallback_year, 0) + (
-                    current_citations - distributed_total
-                )
-            yearly_citations_by_work[work_id] = yearly_counts
-            for year, count in yearly_counts.items():
-                aggregated_yearly_counts[year] += max(0, int(count or 0))
-        elif current_citations > 0:
-            fallback_year = _fallback_year_for_work(
-                work_by_id.get(work_id), now_year=now.year
-            )
-            fallback_yearly_counts[fallback_year] += current_citations
-
-    growth_last_12_by_work: dict[str, int] = {}
-    citations_last_12 = 0
-    citations_previous_12 = 0
-    for work_id in work_ids:
-        current_snapshot = latest.get(work_id)
-        current_citations = (
-            max(0, int(current_snapshot.citations_count or 0))
-            if current_snapshot is not None
-            else 0
-        )
-        at_12_snapshot = at_12.get(work_id)
-        at_24_snapshot = at_24.get(work_id)
-        yearly_counts = yearly_citations_by_work.get(work_id, {})
-
-        if at_12_snapshot is not None:
-            last_12 = max(0, current_citations - int(at_12_snapshot.citations_count or 0))
-        elif yearly_counts:
-            last_12 = _estimate_window_citations(
-                yearly_counts,
-                start=cutoff_12,
-                end=now,
-                now=now,
-            )
-        else:
-            # Without historical checkpoints, avoid attributing all-time citations to
-            # the last 12 months.
-            last_12 = 0
-
-        if at_12_snapshot is not None and at_24_snapshot is not None:
-            previous_12 = max(
-                0,
-                int(at_12_snapshot.citations_count or 0)
-                - int(at_24_snapshot.citations_count or 0),
-            )
-        elif yearly_counts:
-            previous_12 = _estimate_window_citations(
-                yearly_counts,
-                start=cutoff_24,
-                end=cutoff_12,
-                now=now,
-            )
-        elif at_12_snapshot is not None:
-            previous_12 = max(0, int(at_12_snapshot.citations_count or 0))
-        else:
-            previous_12 = 0
-
-        growth_last_12_by_work[work_id] = last_12
-        citations_last_12 += last_12
-        citations_previous_12 += previous_12
-
-    yoy_percent: float | None = None
-    if citations_previous_12 > 0:
-        yoy_percent = round(
-            ((citations_last_12 - citations_previous_12) / citations_previous_12)
-            * 100.0,
-            1,
-        )
-    citation_velocity_12m = round(citations_last_12 / 12.0, 2)
-    h_index = _compute_h_index(
-        [int(snapshot.citations_count or 0) for snapshot in latest.values()]
-    )
-
-    timeseries_points: list[dict[str, Any]] = []
-    if has_provider_yearly_history:
-        for year, count in fallback_yearly_counts.items():
-            aggregated_yearly_counts[year] += max(0, int(count or 0))
-        timeseries_points = _build_timeseries_points_from_yearly_counts(
-            aggregated_yearly_counts
-        )
-    elif fallback_yearly_counts:
-        timeseries_points = _build_timeseries_points_from_yearly_counts(
-            fallback_yearly_counts
-        )
-    else:
-        first_snapshot_at = session.scalar(
-            select(MetricsSnapshot.captured_at)
-            .where(MetricsSnapshot.work_id.in_(work_ids or [""]))
-            .order_by(MetricsSnapshot.captured_at.asc())
-            .limit(1)
-        )
-        if isinstance(first_snapshot_at, datetime):
-            start_year = _coerce_utc(first_snapshot_at).year
-            end_year = now.year
-            for year in range(start_year, end_year + 1):
-                year_end = datetime(year, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
-                prev_year_end = datetime(
-                    year - 1, 12, 31, 23, 59, 59, tzinfo=timezone.utc
-                )
-                at_year_end = _latest_metrics_by_work_at_or_before(
-                    session,
-                    work_ids=work_ids,
-                    cutoff=year_end,
-                )
-                at_prev_year_end = _latest_metrics_by_work_at_or_before(
-                    session,
-                    work_ids=work_ids,
-                    cutoff=prev_year_end,
-                )
-                total_year = _sum_citations(at_year_end)
-                total_prev = _sum_citations(at_prev_year_end)
-                timeseries_points.append(
-                    {
-                        "year": year,
-                        "citations_added": max(0, total_year - total_prev),
-                        "total_citations_end_year": total_year,
-                    }
-                )
-
-    top_drivers: list[dict[str, Any]] = []
-    for work_id in work_ids:
-        current_snapshot = latest.get(work_id)
-        current_citations = (
-            int(current_snapshot.citations_count or 0) if current_snapshot else 0
-        )
-        growth = int(growth_last_12_by_work.get(work_id, 0))
-        if growth <= 0:
-            continue
-        work = work_by_id[work_id]
-        top_drivers.append(
-            {
-                "work_id": work_id,
-                "title": work.title,
-                "year": work.year,
-                "doi": work.doi,
-                "citations_last_12_months": growth,
-                "current_citations": current_citations,
-                "provider": current_snapshot.provider if current_snapshot else "none",
-            }
-        )
-    top_drivers.sort(
-        key=lambda item: (
-            int(item["citations_last_12_months"]),
-            int(item["current_citations"]),
-            int(item["year"] or 0),
-        ),
-        reverse=True,
-    )
-
-    summary = {
-        "schema_version": ANALYTICS_SCHEMA_VERSION,
-        "total_citations": latest_total,
-        "h_index": h_index,
-        "citation_velocity_12m": citation_velocity_12m,
-        "citations_last_12_months": citations_last_12,
-        "citations_previous_12_months": citations_previous_12,
-        "yoy_percent": yoy_percent,
-        "computed_at": now_iso,
-    }
-    timeseries = {
-        "schema_version": ANALYTICS_SCHEMA_VERSION,
-        "computed_at": now_iso,
-        "points": timeseries_points,
-    }
-    top_drivers_payload = {
-        "schema_version": ANALYTICS_SCHEMA_VERSION,
-        "computed_at": now_iso,
-        "window": "last_12_months",
-        "drivers": top_drivers,
-    }
+def _build_empty_payload(*, computed_at: datetime, failures_in_row: int = 0) -> dict[str, Any]:
+    now_iso = _to_iso_utc(computed_at)
     return {
-        SUMMARY_KEY: summary,
-        TIMESERIES_KEY: timeseries,
-        TOP_DRIVERS_KEY: top_drivers_payload,
+        "schema_version": ANALYTICS_SCHEMA_VERSION,
+        "computed_at": now_iso,
+        "summary": {
+            "schema_version": ANALYTICS_SCHEMA_VERSION,
+            "total_citations": 0,
+            "h_index": 0,
+            "citation_velocity_12m": 0.0,
+            "citations_last_12_months": 0,
+            "citations_previous_12_months": 0,
+            "citations_per_month_12m": 0.0,
+            "citations_per_month_previous_12m": 0.0,
+            "acceleration_citations_per_month": 0.0,
+            "yoy_percent": None,
+            "yoy_pct": None,
+            "citations_ytd": 0,
+            "ytd_year": computed_at.year,
+            "cagr_3y": None,
+            "slope_3y": None,
+            "top5_share_12m_pct": 0.0,
+            "top10_share_12m_pct": 0.0,
+            "computed_at": now_iso,
+        },
+        "timeseries": {
+            "schema_version": ANALYTICS_SCHEMA_VERSION,
+            "computed_at": now_iso,
+            "points": [],
+        },
+        "top_drivers": {
+            "schema_version": ANALYTICS_SCHEMA_VERSION,
+            "computed_at": now_iso,
+            "window": "last_12_months",
+            "drivers": [],
+        },
+        "per_year": [],
+        "domain_breakdown_12m": [],
+        "metadata": {
+            "window_start_12m": _to_iso_utc(computed_at - timedelta(days=365)),
+            "window_end_12m": now_iso,
+            "window_start_previous_12m": _to_iso_utc(computed_at - timedelta(days=730)),
+            "window_end_previous_12m": _to_iso_utc(computed_at - timedelta(days=365)),
+            "schema_version": ANALYTICS_SCHEMA_VERSION,
+            "failures_in_row": max(0, int(failures_in_row)),
+        },
     }
 
 
-def _compute_and_store(
-    *,
-    user_id: str,
-    refresh_metrics: bool = False,
-) -> dict[str, dict[str, Any]]:
-    create_all_tables()
-    if refresh_metrics:
-        sync_metrics(user_id=user_id, providers=["openalex"])
-    computed_at = _utcnow()
-    with session_scope() as session:
-        bundle = _compute_bundle(session, user_id=user_id, computed_at=computed_at)
-        persisted_at = _parse_metric_timestamp(bundle[SUMMARY_KEY].get("computed_at"))
-        _upsert_metric(
-            session,
-            user_id=user_id,
-            metric_key=SUMMARY_KEY,
-            metric_json=bundle[SUMMARY_KEY],
-            computed_at=persisted_at,
-        )
-        _upsert_metric(
-            session,
-            user_id=user_id,
-            metric_key=TIMESERIES_KEY,
-            metric_json=bundle[TIMESERIES_KEY],
-            computed_at=persisted_at,
-        )
-        _upsert_metric(
-            session,
-            user_id=user_id,
-            metric_key=TOP_DRIVERS_KEY,
-            metric_json=bundle[TOP_DRIVERS_KEY],
-            computed_at=persisted_at,
-        )
-        session.flush()
-        return bundle
+def _read_failures_in_row(payload: dict[str, Any]) -> int:
+    metadata = payload.get("metadata") if isinstance(payload, dict) else None
+    if not isinstance(metadata, dict):
+        return 0
+    value = _safe_int(metadata.get("failures_in_row"))
+    return max(0, value if value is not None else 0)
 
 
-def _get_metric_or_refresh(
-    *,
-    user_id: str,
-    metric_key: str,
-    refresh: bool = False,
-    refresh_metrics: bool = False,
-) -> dict[str, Any]:
-    if refresh:
-        return _compute_and_store(
-            user_id=user_id,
-            refresh_metrics=refresh_metrics,
-        )[metric_key]
-    create_all_tables()
-    with session_scope() as session:
-        _resolve_user_or_raise(session, user_id)
-        row = session.scalars(
-            select(PublicationMetric).where(
-                PublicationMetric.user_id == user_id,
-                PublicationMetric.metric_key == metric_key,
-            )
-        ).first()
-        if row is not None and isinstance(row.metric_json, dict):
-            payload = dict(row.metric_json)
-            if _is_metric_payload_current(payload):
-                return payload
-    bundle = _compute_and_store(user_id=user_id, refresh_metrics=refresh_metrics)
-    return bundle[metric_key]
-
-
-def get_publications_analytics_summary(
-    *,
-    user_id: str,
-    refresh: bool = False,
-    refresh_metrics: bool = False,
-) -> dict[str, Any]:
-    return _get_metric_or_refresh(
-        user_id=user_id,
-        metric_key=SUMMARY_KEY,
-        refresh=refresh,
-        refresh_metrics=refresh_metrics,
-    )
-
-
-def get_publications_analytics_timeseries(
-    *,
-    user_id: str,
-    refresh: bool = False,
-    refresh_metrics: bool = False,
-) -> dict[str, Any]:
-    return _get_metric_or_refresh(
-        user_id=user_id,
-        metric_key=TIMESERIES_KEY,
-        refresh=refresh,
-        refresh_metrics=refresh_metrics,
-    )
-
-
-def get_publications_analytics_top_drivers(
-    *,
-    user_id: str,
-    limit: int = DEFAULT_TOP_DRIVERS_LIMIT,
-    refresh: bool = False,
-    refresh_metrics: bool = False,
-) -> dict[str, Any]:
-    if limit < 1:
-        raise PublicationsAnalyticsValidationError("limit must be at least 1.")
-    payload = _get_metric_or_refresh(
-        user_id=user_id,
-        metric_key=TOP_DRIVERS_KEY,
-        refresh=refresh,
-        refresh_metrics=refresh_metrics,
-    )
-    drivers = [
-        item for item in (payload.get("drivers") or []) if isinstance(item, dict)
-    ]
-    payload["drivers"] = drivers[:limit]
+def _set_failures_in_row(payload: dict[str, Any], failures_in_row: int) -> dict[str, Any]:
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+    metadata["failures_in_row"] = max(0, int(failures_in_row))
+    payload["metadata"] = metadata
     return payload
+
+
+def _bundle_row_query(user_id: str):
+    return select(PublicationMetric).where(
+        PublicationMetric.user_id == user_id,
+        PublicationMetric.metric_key == BUNDLE_METRIC_KEY,
+    )
+
+
+def _load_bundle_row(session, *, user_id: str, for_update: bool = False) -> PublicationMetric | None:
+    query = _bundle_row_query(user_id)
+    if for_update:
+        query = query.with_for_update()
+    return session.scalars(query).first()
+
+
+def _bundle_payload_from_row(row: PublicationMetric | None) -> dict[str, Any]:
+    if row is None:
+        return {}
+    payload = row.payload_json if isinstance(row.payload_json, dict) else {}
+    if payload and isinstance(payload.get("summary"), dict):
+        return dict(payload)
+    metric_json = row.metric_json if isinstance(row.metric_json, dict) else {}
+    if metric_json and _is_metric_payload_current(metric_json):
+        return {
+            "schema_version": ANALYTICS_SCHEMA_VERSION,
+            "computed_at": metric_json.get("computed_at"),
+            "summary": metric_json,
+            "timeseries": {"schema_version": ANALYTICS_SCHEMA_VERSION, "computed_at": metric_json.get("computed_at"), "points": []},
+            "top_drivers": {"schema_version": ANALYTICS_SCHEMA_VERSION, "computed_at": metric_json.get("computed_at"), "window": "last_12_months", "drivers": []},
+            "per_year": [],
+            "domain_breakdown_12m": [],
+            "metadata": {"schema_version": ANALYTICS_SCHEMA_VERSION, "failures_in_row": 0},
+        }
+    return {}
+
+
+def _legacy_bundle_payload(session, *, user_id: str) -> dict[str, Any] | None:
+    rows = session.scalars(
+        select(PublicationMetric).where(
+            PublicationMetric.user_id == user_id,
+            PublicationMetric.metric_key.in_([SUMMARY_KEY, TIMESERIES_KEY, TOP_DRIVERS_KEY]),
+        )
+    ).all()
+    if not rows:
+        return None
+    by_key = {str(row.metric_key): row for row in rows}
+    summary_row = by_key.get(SUMMARY_KEY)
+    if summary_row is None or not isinstance(summary_row.metric_json, dict):
+        return None
+    summary = dict(summary_row.metric_json)
+    timeseries = (
+        dict(by_key[TIMESERIES_KEY].metric_json)
+        if TIMESERIES_KEY in by_key and isinstance(by_key[TIMESERIES_KEY].metric_json, dict)
+        else {"schema_version": ANALYTICS_SCHEMA_VERSION, "computed_at": summary.get("computed_at"), "points": []}
+    )
+    top_drivers = (
+        dict(by_key[TOP_DRIVERS_KEY].metric_json)
+        if TOP_DRIVERS_KEY in by_key and isinstance(by_key[TOP_DRIVERS_KEY].metric_json, dict)
+        else {"schema_version": ANALYTICS_SCHEMA_VERSION, "computed_at": summary.get("computed_at"), "window": "last_12_months", "drivers": []}
+    )
+    computed_at = _parse_metric_timestamp(summary.get("computed_at"))
+    return {
+        "schema_version": ANALYTICS_SCHEMA_VERSION,
+        "computed_at": _to_iso_utc(computed_at),
+        "summary": summary,
+        "timeseries": timeseries,
+        "top_drivers": top_drivers,
+        "per_year": _compute_per_year_with_yoy(timeseries.get("points") if isinstance(timeseries.get("points"), list) else []),
+        "domain_breakdown_12m": [],
+        "metadata": {"schema_version": ANALYTICS_SCHEMA_VERSION, "failures_in_row": 0},
+    }
+

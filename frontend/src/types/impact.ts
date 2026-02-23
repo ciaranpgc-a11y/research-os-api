@@ -251,6 +251,26 @@ export type OrcidImportPayload = {
   core_collaborators: Array<Record<string, unknown>>
 }
 
+export type PersonaSyncJobPayload = {
+  id: string
+  user_id: string
+  job_type: string
+  status: 'queued' | 'running' | 'completed' | 'failed'
+  overwrite_user_metadata: boolean
+  run_metrics_sync: boolean
+  refresh_analytics: boolean
+  refresh_metrics: boolean
+  providers: string[]
+  progress_percent: number
+  current_stage: string | null
+  result_json: Record<string, unknown>
+  error_detail: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 export type PersonaStatePayload = {
   works: PersonaWork[]
   collaborators: ImpactCollaboratorsPayload
