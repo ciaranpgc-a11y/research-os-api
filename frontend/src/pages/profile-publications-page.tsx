@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -9,8 +10,8 @@ import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-c
 import { getAuthSessionToken } from '@/lib/auth-session'
 import type { OrcidStatusPayload, PersonaStatePayload } from '@/types/impact'
 
-type PublicationFilterKey = 'all' | 'cited' | 'with_doi' | 'with_abstract' | 'with_pmid' | 'with_if'
-type PublicationSortField = 'updated' | 'citations' | 'year' | 'title' | 'venue'
+type PublicationFilterKey = 'all' | 'cited' | 'with_doi' | 'with_abstract' | 'with_pmid'
+type PublicationSortField = 'citations' | 'year' | 'title' | 'venue' | 'work_type'
 type SortDirection = 'asc' | 'desc'
 
 const WORK_TYPE_LABELS: Record<string, string> = {
@@ -81,6 +82,59 @@ function formatWorkType(value: string | null | undefined): string {
   return text.replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
+function formatJournalName(value: string | null | undefined): string {
+  const clean = (value || '').trim()
+  if (!clean) {
+    return 'Not available'
+  }
+  return clean
+    .split(/\s+/)
+    .map((word) => {
+      if (!word) {
+        return word
+      }
+      if (/^[A-Z0-9&.\-]{2,}$/.test(word)) {
+        return word
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    })
+    .join(' ')
+}
+
+function SortHeader({
+  label,
+  column,
+  sortField,
+  sortDirection,
+  onSort,
+}: {
+  label: string
+  column: PublicationSortField
+  sortField: PublicationSortField
+  sortDirection: SortDirection
+  onSort: (column: PublicationSortField) => void
+}) {
+  const active = sortField === column
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <span>{label}</span>
+      {active ? (
+        sortDirection === 'desc' ? (
+          <ChevronDown className="h-3.5 w-3.5 text-foreground" />
+        ) : (
+          <ChevronUp className="h-3.5 w-3.5 text-foreground" />
+        )
+      ) : (
+        <ChevronsUpDown className="h-3.5 w-3.5" />
+      )}
+    </button>
+  )
+}
+
 export function ProfilePublicationsPage() {
   const navigate = useNavigate()
   const [token, setToken] = useState<string>(() => getAuthSessionToken())
@@ -89,7 +143,7 @@ export function ProfilePublicationsPage() {
   const [query, setQuery] = useState('')
   const [filterKey, setFilterKey] = useState<PublicationFilterKey>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
-  const [sortField, setSortField] = useState<PublicationSortField>('updated')
+  const [sortField, setSortField] = useState<PublicationSortField>('year')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -197,9 +251,6 @@ export function ProfilePublicationsPage() {
       if (filterKey === 'with_pmid') {
         return Boolean((work.pmid || '').trim())
       }
-      if (filterKey === 'with_if') {
-        return typeof work.journal_impact_factor === 'number' && !Number.isNaN(work.journal_impact_factor)
-      }
       return true
     })
 
@@ -221,7 +272,7 @@ export function ProfilePublicationsPage() {
       if (sortField === 'venue') {
         return left.venue_name.localeCompare(right.venue_name) * direction
       }
-      return (Date.parse(left.updated_at) - Date.parse(right.updated_at)) * direction
+      return formatWorkType(left.work_type).localeCompare(formatWorkType(right.work_type)) * direction
     })
     return filtered
   }, [filterKey, metricsByWorkId, personaState?.works, query, sortDirection, sortField, typeFilter])
@@ -256,6 +307,15 @@ export function ProfilePublicationsPage() {
   const worksCount = personaState?.works.length ?? 0
   const busy = loading || richImporting || syncing || fullSyncing
   const canSyncCitations = worksCount > 0 && !busy
+
+  const onSortColumn = (column: PublicationSortField) => {
+    if (sortField === column) {
+      setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'))
+      return
+    }
+    setSortField(column)
+    setSortDirection('desc')
+  }
 
   const onSyncCitations = async () => {
     if (!token) {
@@ -371,7 +431,7 @@ export function ProfilePublicationsPage() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Library explorer</CardTitle>
+          <CardTitle className="text-sm">Publication library</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
@@ -393,7 +453,6 @@ export function ProfilePublicationsPage() {
                   <option value="with_doi">With DOI</option>
                   <option value="with_abstract">With abstract</option>
                   <option value="with_pmid">With PMID</option>
-                  <option value="with_if">With journal IF/proxy</option>
                 </select>
                 <select
                   value={typeFilter}
@@ -407,25 +466,6 @@ export function ProfilePublicationsPage() {
                     </option>
                   ))}
                 </select>
-                <select
-                  value={sortField}
-                  onChange={(event) => setSortField(event.target.value as PublicationSortField)}
-                  className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                >
-                  <option value="updated">Sort: Updated</option>
-                  <option value="citations">Sort: Citations</option>
-                  <option value="year">Sort: Year</option>
-                  <option value="title">Sort: Title</option>
-                  <option value="venue">Sort: Journal</option>
-                </select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'))}
-                >
-                  {sortDirection === 'desc' ? 'Descending' : 'Ascending'}
-                </Button>
               </div>
 
               <p className="text-xs text-muted-foreground">
@@ -446,11 +486,51 @@ export function ProfilePublicationsPage() {
                   <table className="w-full min-w-[760px] text-sm">
                     <thead className="bg-muted/35 text-left text-xs text-muted-foreground">
                       <tr>
-                        <th className="px-2 py-2">Title</th>
-                        <th className="px-2 py-2">Year</th>
-                        <th className="px-2 py-2">Journal</th>
-                        <th className="px-2 py-2">Publication type</th>
-                        <th className="px-2 py-2">Citations</th>
+                        <th className="px-2 py-2">
+                          <SortHeader
+                            label="Title"
+                            column="title"
+                            sortField={sortField}
+                            sortDirection={sortDirection}
+                            onSort={onSortColumn}
+                          />
+                        </th>
+                        <th className="px-2 py-2">
+                          <SortHeader
+                            label="Year"
+                            column="year"
+                            sortField={sortField}
+                            sortDirection={sortDirection}
+                            onSort={onSortColumn}
+                          />
+                        </th>
+                        <th className="px-2 py-2">
+                          <SortHeader
+                            label="Journal"
+                            column="venue"
+                            sortField={sortField}
+                            sortDirection={sortDirection}
+                            onSort={onSortColumn}
+                          />
+                        </th>
+                        <th className="px-2 py-2">
+                          <SortHeader
+                            label="Publication type"
+                            column="work_type"
+                            sortField={sortField}
+                            sortDirection={sortDirection}
+                            onSort={onSortColumn}
+                          />
+                        </th>
+                        <th className="px-2 py-2">
+                          <SortHeader
+                            label="Citations"
+                            column="citations"
+                            sortField={sortField}
+                            sortDirection={sortDirection}
+                            onSort={onSortColumn}
+                          />
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -467,7 +547,7 @@ export function ProfilePublicationsPage() {
                           >
                             <td className="px-2 py-2 font-medium">{work.title}</td>
                             <td className="px-2 py-2 font-semibold">{work.year ?? 'n/a'}</td>
-                            <td className="px-2 py-2 font-medium">{work.venue_name || 'n/a'}</td>
+                            <td className="px-2 py-2 font-medium">{formatJournalName(work.venue_name) || 'n/a'}</td>
                             <td className="px-2 py-2">{formatWorkType(work.work_type)}</td>
                             <td className="px-2 py-2">{metrics?.citations ?? 0}</td>
                           </tr>
@@ -494,19 +574,22 @@ export function ProfilePublicationsPage() {
                       </div>
                       <div className="rounded border border-border bg-muted/20 px-2 py-1.5">
                         <p className="text-[11px] uppercase text-muted-foreground">Journal</p>
-                        <p className="text-sm font-medium leading-tight">{selectedWork.venue_name || 'Not available'}</p>
+                        <p className="text-sm font-medium leading-tight">{formatJournalName(selectedWork.venue_name)}</p>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-2">
+                    <div className="grid grid-cols-2 gap-2">
                       <div className="rounded border border-border px-2 py-1.5">
                         <p className="text-[11px] uppercase text-muted-foreground">Publication type</p>
-                        <p>{formatWorkType(selectedWork.work_type)}</p>
+                        <p className="font-medium">{formatWorkType(selectedWork.work_type)}</p>
                       </div>
                       <div className="rounded border border-border px-2 py-1.5">
                         <p className="text-[11px] uppercase text-muted-foreground">Citations</p>
-                        <p>{metricsByWorkId.get(selectedWork.id)?.citations ?? 0}</p>
+                        <p className="font-medium">{metricsByWorkId.get(selectedWork.id)?.citations ?? 0}</p>
                       </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
                       <div className="rounded border border-border px-2 py-1.5">
                         <p className="text-[11px] uppercase text-muted-foreground">PMID</p>
                         {selectedWork.pmid ? (
@@ -522,28 +605,27 @@ export function ProfilePublicationsPage() {
                           <p>Not available</p>
                         )}
                       </div>
+                      <div className="rounded border border-border px-2 py-1.5">
+                        <p className="text-[11px] uppercase text-muted-foreground">DOI</p>
+                        {selectedWork.doi ? (
+                          <a
+                            className="break-all text-emerald-700 underline-offset-2 hover:underline"
+                            href={doiToUrl(selectedWork.doi) || undefined}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {selectedWork.doi}
+                          </a>
+                        ) : (
+                          <p className="text-muted-foreground">Not available</p>
+                        )}
+                      </div>
                     </div>
 
                     <div className="space-y-1">
                       <p className="text-[11px] uppercase text-muted-foreground">Authors</p>
                       {(selectedWork.authors || []).length > 0 ? (
-                        <p>{(selectedWork.authors || []).join(', ')}</p>
-                      ) : (
-                        <p className="text-muted-foreground">Not available</p>
-                      )}
-                    </div>
-
-                    <div className="space-y-1">
-                      <p className="text-[11px] uppercase text-muted-foreground">DOI</p>
-                      {selectedWork.doi ? (
-                        <a
-                          className="text-emerald-700 underline-offset-2 hover:underline"
-                          href={doiToUrl(selectedWork.doi) || undefined}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {selectedWork.doi}
-                        </a>
+                        <p className="whitespace-pre-wrap leading-relaxed">{(selectedWork.authors || []).join(', ')}</p>
                       ) : (
                         <p className="text-muted-foreground">Not available</p>
                       )}
@@ -556,7 +638,7 @@ export function ProfilePublicationsPage() {
                           {selectedWork.keywords.slice(0, 8).map((keyword) => (
                             <span
                               key={keyword}
-                              className="rounded border border-border bg-muted/40 px-1.5 py-0.5 text-xs"
+                              className="rounded border border-border bg-muted/40 px-1.5 py-0.5 text-xs text-foreground"
                             >
                               {keyword}
                             </span>
@@ -574,7 +656,7 @@ export function ProfilePublicationsPage() {
                       </p>
                     </div>
 
-                    <div className="space-y-1 text-xs text-muted-foreground">
+                    <div className="rounded border border-border bg-muted/15 px-2 py-1.5 text-xs text-muted-foreground">
                       <p>Added: {formatShortDate(selectedWork.created_at)}</p>
                       <p>Updated: {formatShortDate(selectedWork.updated_at)}</p>
                     </div>
