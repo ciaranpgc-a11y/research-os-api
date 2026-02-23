@@ -238,6 +238,7 @@ export function ProfileIntegrationsPage() {
     setError('')
     setStatus('')
     try {
+      await pingApiHealth()
       const payload = await importOrcidWorks(token)
       if (payload.imported_count > 0) {
         setStatus(`Imported ${payload.imported_count} ORCID work(s). Run citation sync next.`)
@@ -273,6 +274,24 @@ export function ProfileIntegrationsPage() {
       setError(detail)
     } finally {
       setImporting(false)
+    }
+  }
+
+  const onRetryApiConnection = async () => {
+    if (!token) {
+      return
+    }
+    setRefreshing(true)
+    setError('')
+    setStatus('')
+    try {
+      await pingApiHealth()
+      setStatus('API connection restored. Reloading integrations...')
+      await loadData(token, false)
+    } catch (retryError) {
+      setError(retryError instanceof Error ? retryError.message : 'API connection retry failed.')
+    } finally {
+      setRefreshing(false)
     }
   }
 
@@ -440,7 +459,16 @@ export function ProfileIntegrationsPage() {
       </Card>
 
       {status ? <p className="text-sm text-emerald-700">{status}</p> : null}
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <div className="space-y-2">
+          <p className="text-sm text-destructive">{error}</p>
+          {error.toLowerCase().includes('could not reach api') || error.toLowerCase().includes('failed to fetch') ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => void onRetryApiConnection()} disabled={refreshing}>
+              {refreshing ? 'Retrying...' : 'Retry API connection'}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       {(loading || connecting || importing || syncing) ? (
         <p className="text-xs text-muted-foreground">Working...</p>
       ) : null}
