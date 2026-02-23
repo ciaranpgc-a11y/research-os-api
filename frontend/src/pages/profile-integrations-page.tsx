@@ -402,42 +402,13 @@ export function ProfileIntegrationsPage() {
           <CardDescription>Primary source for publication import.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
-          <div className="grid gap-2 md:grid-cols-1">
-            <div className="rounded border border-border px-3 py-2">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-6">
+            <div className="rounded border border-border px-3 py-2 md:col-span-2 xl:col-span-2">
               <p className="text-xs text-muted-foreground">ORCID id</p>
               <p className="font-medium">{orcidStatus?.orcid_id || user?.orcid_id || 'Not linked'}</p>
             </div>
-          </div>
-          {orcidIssues.length ? (
-            <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              {orcidIssues[0]}
-            </div>
-          ) : null}
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex flex-wrap gap-2">
-              {!orcidLinked ? (
-                <Button type="button" onClick={onConnectOrcid} disabled={!canConnectOrcid}>
-                  {connecting ? 'Opening ORCID...' : 'Connect ORCID'}
-                </Button>
-              ) : null}
-              {orcidLinked ? (
-                <Button
-                  type="button"
-                  variant={importing ? 'default' : 'outline'}
-                  onClick={onImportOrcid}
-                  disabled={!canImportOrcid}
-                  className={importing ? 'bg-emerald-600 text-white hover:bg-emerald-700' : ''}
-                >
-                  {importing
-                    ? 'Importing + syncing...'
-                    : syncStatus.orcid_last_synced_at || worksCount > 0
-                      ? 'Refresh works + sync citations'
-                      : 'Import works + sync citations'}
-                </Button>
-              ) : null}
-            </div>
             {orcidLinked ? (
-              <div className="grid w-full gap-2 sm:grid-cols-2 lg:w-[520px]">
+              <>
                 <div className="rounded border border-border px-3 py-2">
                   <p className="text-xs text-muted-foreground">Total works</p>
                   <p className="text-sm font-semibold">{worksCount}</p>
@@ -454,7 +425,34 @@ export function ProfileIntegrationsPage() {
                   <p className="text-xs text-muted-foreground">New references synced</p>
                   <p className="text-sm font-semibold">{lastReferencesSyncedCount ?? 0}</p>
                 </div>
-              </div>
+              </>
+            ) : null}
+          </div>
+          {orcidIssues.length ? (
+            <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              {orcidIssues[0]}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {!orcidLinked ? (
+              <Button type="button" onClick={onConnectOrcid} disabled={!canConnectOrcid}>
+                {connecting ? 'Opening ORCID...' : 'Connect ORCID'}
+              </Button>
+            ) : null}
+            {orcidLinked ? (
+              <Button
+                type="button"
+                variant={importing ? 'default' : 'outline'}
+                onClick={onImportOrcid}
+                disabled={!canImportOrcid}
+                className={importing ? 'bg-emerald-600 text-white hover:bg-emerald-700' : ''}
+              >
+                {importing
+                  ? 'Importing + syncing...'
+                  : syncStatus.orcid_last_synced_at || worksCount > 0
+                    ? 'Refresh works + sync citations'
+                    : 'Import works + sync citations'}
+              </Button>
             ) : null}
           </div>
           {!orcidConfigured ? (
