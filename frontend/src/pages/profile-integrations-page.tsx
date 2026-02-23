@@ -563,7 +563,6 @@ export function ProfileIntegrationsPage() {
               ) : null}
             </div>
           </CardTitle>
-          <CardDescription>Primary source for publication import.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           {orcidLinked ? (
