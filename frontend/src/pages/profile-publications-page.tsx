@@ -13,6 +13,7 @@ import type { OrcidStatusPayload, PersonaStatePayload } from '@/types/impact'
 type PublicationFilterKey = 'all' | 'cited' | 'with_doi' | 'with_abstract' | 'with_pmid'
 type PublicationSortField = 'citations' | 'year' | 'title' | 'venue' | 'work_type'
 type SortDirection = 'asc' | 'desc'
+const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 
 const WORK_TYPE_LABELS: Record<string, string> = {
   'journal-article': 'Journal article',
@@ -142,6 +143,28 @@ function computeHIndex(citationCounts: number[]): number {
   return hIndex
 }
 
+function loadCachedOrcidStatus(): OrcidStatusPayload | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  const raw = window.localStorage.getItem(INTEGRATIONS_ORCID_STATUS_CACHE_KEY)
+  if (!raw) {
+    return null
+  }
+  try {
+    return JSON.parse(raw) as OrcidStatusPayload
+  } catch {
+    return null
+  }
+}
+
+function saveCachedOrcidStatus(value: OrcidStatusPayload): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(INTEGRATIONS_ORCID_STATUS_CACHE_KEY, JSON.stringify(value))
+}
+
 function SortHeader({
   label,
   column,
@@ -178,9 +201,11 @@ function SortHeader({
 
 export function ProfilePublicationsPage() {
   const navigate = useNavigate()
+  const initialCachedPersonaState = readCachedPersonaState()
+  const initialCachedOrcidStatus = loadCachedOrcidStatus()
   const [token, setToken] = useState<string>(() => getAuthSessionToken())
-  const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(null)
-  const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(null)
+  const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(initialCachedPersonaState)
+  const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(initialCachedOrcidStatus)
   const [query, setQuery] = useState('')
   const [filterKey, setFilterKey] = useState<PublicationFilterKey>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
@@ -213,7 +238,10 @@ export function ProfilePublicationsPage() {
           setStatus('Showing cached publications while live data reloads.')
         }
       }
-      setOrcidStatus(orcidResult.status === 'fulfilled' ? orcidResult.value : null)
+      if (orcidResult.status === 'fulfilled') {
+        setOrcidStatus(orcidResult.value)
+        saveCachedOrcidStatus(orcidResult.value)
+      }
       const failedCount = settled.filter((item) => item.status === 'rejected').length
       if (failedCount > 0) {
         setStatus(`Publications loaded with ${failedCount} unavailable source${failedCount === 1 ? '' : 's'}.`)
