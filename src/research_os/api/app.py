@@ -6,6 +6,7 @@ from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from threading import Lock
 from typing import Literal
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from fastapi import FastAPI
@@ -387,6 +388,32 @@ allow_origin_regex = os.getenv(
     "CORS_ALLOW_ORIGIN_REGEX",
     r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$|^https://[a-z0-9\-]+\.onrender\.com$",
 )
+
+
+def _is_local_url(value: str) -> bool:
+    try:
+        parsed = urlparse(value)
+    except Exception:
+        return True
+    host = (parsed.hostname or "").strip().lower()
+    return host in {"localhost", "127.0.0.1"} or host.endswith(".local")
+
+
+def _frontend_redirect_base() -> str:
+    configured = os.getenv("FRONTEND_BASE_URL", "").strip().rstrip("/")
+    if configured and not _is_local_url(configured):
+        return configured
+    for origin in allow_origins:
+        candidate = str(origin).strip().rstrip("/")
+        if not candidate:
+            continue
+        if _is_local_url(candidate):
+            continue
+        if candidate.startswith("https://"):
+            return candidate
+    return configured or "http://localhost:5173"
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
@@ -1130,7 +1157,7 @@ def v1_orcid_callback(
             wants_json = not is_browser_navigation
         if wants_json:
             return OrcidCallbackResponse(**payload)
-        frontend_base = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173").strip().rstrip("/")
+        frontend_base = _frontend_redirect_base()
         redirect_url = (
             f"{frontend_base}/profile/integrations?orcid=linked"
             f"&orcid_id={str(payload.get('orcid_id', '')).strip()}"
