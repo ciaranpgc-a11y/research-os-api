@@ -36,6 +36,7 @@ export function ProfilePublicationsPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [importing, setImporting] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [fullSyncing, setFullSyncing] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
   const syncStatus = personaState?.sync_status || {
@@ -120,7 +121,7 @@ export function ProfilePublicationsPage() {
     return count
   }, [personaState?.metrics.works])
   const worksCount = personaState?.works.length ?? 0
-  const busy = loading || importing || syncing
+  const busy = loading || importing || syncing || fullSyncing
   const canImportOrcid = Boolean(orcidStatus?.can_import) && !busy
   const canSyncCitations = worksCount > 0 && !busy
 
@@ -172,6 +173,28 @@ export function ProfilePublicationsPage() {
     }
   }
 
+  const onFullSyncCitations = async () => {
+    if (!token) {
+      return
+    }
+    if (worksCount === 0) {
+      setStatus('Import at least one work before syncing citations.')
+      return
+    }
+    setFullSyncing(true)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await syncPersonaMetrics(token, ['openalex', 'semantic_scholar', 'manual'])
+      setStatus(`Full citation sync complete (${payload.synced_snapshots} snapshot(s)).`)
+      await loadData(token, false)
+    } catch (syncError) {
+      setError(syncError instanceof Error ? syncError.message : 'Could not run full citation sync.')
+    } finally {
+      setFullSyncing(false)
+    }
+  }
+
   const onCreateCollection = () => {
     setStatus('Collection creation scaffold is ready. Named collections will be added next.')
   }
@@ -214,6 +237,9 @@ export function ProfilePublicationsPage() {
           </Button>
           <Button type="button" variant="outline" onClick={onSyncCitations} disabled={!canSyncCitations}>
             {syncing ? 'Syncing...' : 'Sync citations'}
+          </Button>
+          <Button type="button" variant="outline" onClick={onFullSyncCitations} disabled={!canSyncCitations}>
+            {fullSyncing ? 'Full sync...' : 'Full sync (slower)'}
           </Button>
           <Button
             type="button"
@@ -301,7 +327,9 @@ export function ProfilePublicationsPage() {
 
       {status ? <p className="text-sm text-emerald-700">{status}</p> : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      {(loading || importing || syncing) ? <p className="text-xs text-muted-foreground">Working...</p> : null}
+      {(loading || importing || syncing || fullSyncing) ? (
+        <p className="text-xs text-muted-foreground">Working...</p>
+      ) : null}
     </section>
   )
 }

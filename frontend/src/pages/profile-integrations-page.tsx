@@ -46,6 +46,7 @@ export function ProfileIntegrationsPage() {
   const [connecting, setConnecting] = useState(false)
   const [importing, setImporting] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [fullSyncing, setFullSyncing] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
   const syncStatus = personaState?.sync_status || {
@@ -144,7 +145,7 @@ export function ProfileIntegrationsPage() {
   const emailVerified = Boolean(user?.email_verified_at)
   const orcidConfigured = Boolean(orcidStatus?.configured)
   const orcidLinked = Boolean(orcidStatus?.linked || user?.orcid_id)
-  const busy = loading || connecting || importing || syncing
+  const busy = loading || connecting || importing || syncing || fullSyncing
   const canConnectOrcid = emailVerified && orcidConfigured && !busy
   const canImportOrcid = emailVerified && orcidConfigured && orcidLinked && !busy
   const canSyncCitations = worksCount > 0 && !busy
@@ -227,6 +228,28 @@ export function ProfileIntegrationsPage() {
     }
   }
 
+  const onFullSyncMetrics = async () => {
+    if (!token) {
+      return
+    }
+    if (worksCount === 0) {
+      setStatus('Import at least one work before syncing citations.')
+      return
+    }
+    setFullSyncing(true)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await syncPersonaMetrics(token, ['openalex', 'semantic_scholar', 'manual'])
+      setStatus(`Full citation sync complete (${payload.synced_snapshots} snapshot(s)).`)
+      await loadData(token, false)
+    } catch (syncError) {
+      setError(syncError instanceof Error ? syncError.message : 'Could not run full citation sync.')
+    } finally {
+      setFullSyncing(false)
+    }
+  }
+
   return (
     <section className="space-y-4">
       <header className="space-y-1">
@@ -272,6 +295,9 @@ export function ProfileIntegrationsPage() {
             <Button type="button" variant="outline" onClick={onSyncMetrics} disabled={!canSyncCitations}>
               {syncing ? 'Syncing...' : 'Sync citations'}
             </Button>
+            <Button type="button" variant="outline" onClick={onFullSyncMetrics} disabled={!canSyncCitations}>
+              {fullSyncing ? 'Full sync...' : 'Full sync (slower)'}
+            </Button>
             <Button
               type="button"
               variant="outline"
@@ -289,6 +315,11 @@ export function ProfileIntegrationsPage() {
           ) : null}
           {worksCount === 0 ? (
             <p className="text-xs text-muted-foreground">Citation sync becomes available after your first works import.</p>
+          ) : null}
+          {worksCount > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Quick sync uses OpenAlex. Full sync also queries Semantic Scholar.
+            </p>
           ) : null}
         </CardContent>
       </Card>
@@ -349,7 +380,7 @@ export function ProfileIntegrationsPage() {
 
       {status ? <p className="text-sm text-emerald-700">{status}</p> : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      {(loading || connecting || importing || syncing) ? (
+      {(loading || connecting || importing || syncing || fullSyncing) ? (
         <p className="text-xs text-muted-foreground">Working...</p>
       ) : null}
     </section>
