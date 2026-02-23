@@ -10,9 +10,9 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 
-from research_os.db import OrcidOAuthState, User, create_all_tables, session_scope
+from research_os.db import OrcidOAuthState, User, Work, create_all_tables, session_scope
 from research_os.services.persona_service import (
     recompute_collaborator_edges,
     sync_metrics,
@@ -579,9 +579,16 @@ def import_orcid_works(
 
     upserted_ids: list[str] = []
     seen_upserted_ids: set[str] = set()
+    new_works_count = 0
     create_all_tables()
     with session_scope() as session:
         user = _resolve_user_or_raise(session, user_id)
+        baseline_works_count = (
+            session.scalar(
+                select(func.count(Work.id)).where(Work.user_id == user_id)
+            )
+            or 0
+        )
         for work in imported:
             record = _upsert_imported_orcid_work(
                 user_id=user_id,
@@ -594,6 +601,13 @@ def import_orcid_works(
                 continue
             seen_upserted_ids.add(work_id)
             upserted_ids.append(work_id)
+        current_works_count = (
+            session.scalar(
+                select(func.count(Work.id)).where(Work.user_id == user_id)
+            )
+            or 0
+        )
+        new_works_count = max(0, int(current_works_count) - int(baseline_works_count))
         user.orcid_last_synced_at = _utcnow()
         session.flush()
     if _orcid_auto_sync_metrics_enabled() and upserted_ids:
@@ -608,7 +622,7 @@ def import_orcid_works(
             pass
     collaboration = recompute_collaborator_edges(user_id=user_id)
     return {
-        "imported_count": len(upserted_ids),
+        "imported_count": new_works_count,
         "work_ids": upserted_ids,
         "provenance": "orcid",
         "last_synced_at": _utcnow(),

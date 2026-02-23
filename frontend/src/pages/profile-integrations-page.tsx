@@ -268,13 +268,15 @@ export function ProfileIntegrationsPage() {
     setError('')
     setStatus('')
     setGoogleStatus('')
+    const worksBeforeImport = worksCount
     const citationsBeforeImport = totalCitations
     try {
       await pingApiHealth()
-      const payload = await importOrcidWorks(token)
-      setLastImportedCount(payload.imported_count)
+      await importOrcidWorks(token)
       const refreshed = await loadData(token, false)
+      const worksAfterImport = refreshed?.personaState?.works?.length ?? worksBeforeImport
       const citationsAfterImport = totalCitationsFromPersonaState(refreshed?.personaState)
+      setLastImportedCount(Math.max(0, worksAfterImport - worksBeforeImport))
       setLastReferencesSyncedCount(Math.max(0, citationsAfterImport - citationsBeforeImport))
     } catch (importError) {
       if (handleSessionExpiry(importError)) {
@@ -287,10 +289,11 @@ export function ProfileIntegrationsPage() {
         try {
           setStatus('API connection looked unstable. Retrying import once...')
           await pingApiHealth()
-          const retryPayload = await importOrcidWorks(token)
-          setLastImportedCount(retryPayload.imported_count)
+          await importOrcidWorks(token)
           const refreshed = await loadData(token, false)
+          const worksAfterImport = refreshed?.personaState?.works?.length ?? worksBeforeImport
           const citationsAfterImport = totalCitationsFromPersonaState(refreshed?.personaState)
+          setLastImportedCount(Math.max(0, worksAfterImport - worksBeforeImport))
           setLastReferencesSyncedCount(Math.max(0, citationsAfterImport - citationsBeforeImport))
           setStatus('')
           return
