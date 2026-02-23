@@ -5,12 +5,13 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { getAuthSessionToken, setAuthSessionToken } from '@/lib/auth-session'
+import { clearAuthSessionToken, getAuthSessionToken, setAuthSessionToken } from '@/lib/auth-session'
 import {
   confirmEmailVerification,
   confirmPasswordReset,
   fetchOAuthConnect,
   fetchOAuthProviderStatuses,
+  fetchMe,
   loginAuth,
   loginAuthChallenge,
   pingApiHealth,
@@ -91,9 +92,52 @@ export function AuthPage() {
     window.localStorage.setItem(LAST_AUTH_EMAIL_STORAGE_KEY, clean)
   }
 
+  const beginEmailVerificationGate = async (sessionToken: string, email: string, entryMessage: string) => {
+    setVerificationToken(sessionToken)
+    setAwaitingEmailVerification(true)
+    setVerificationCode('')
+    setMode('register')
+    setRegisterEmail((previous) => previous || email)
+    setSignInEmail((previous) => previous || email)
+    setStatus(entryMessage)
+    try {
+      const verificationPayload = await requestEmailVerification(sessionToken)
+      setVerificationDeliveryHint(verificationPayload.delivery_hint || 'Verification code generated.')
+      setVerificationPreviewCode(verificationPayload.code_preview || '')
+    } catch (verificationError) {
+      setVerificationDeliveryHint('')
+      setVerificationPreviewCode('')
+      setError(verificationError instanceof Error ? verificationError.message : 'Could not request verification code.')
+    }
+  }
+
   useEffect(() => {
-    if (getAuthSessionToken()) {
-      navigate('/profile', { replace: true })
+    const token = getAuthSessionToken()
+    if (!token) {
+      return
+    }
+    let active = true
+    void (async () => {
+      try {
+        const user = await fetchMe(token)
+        if (!active) {
+          return
+        }
+        if (user.email_verified_at) {
+          navigate('/profile', { replace: true })
+          return
+        }
+        await beginEmailVerificationGate(
+          token,
+          user.email,
+          'Email verification is required before you can continue.',
+        )
+      } catch {
+        clearAuthSessionToken()
+      }
+    })()
+    return () => {
+      active = false
     }
   }, [navigate])
 
@@ -194,24 +238,23 @@ export function AuthPage() {
     setStatus('')
     try {
       const payload = await registerAuth({ email: registerEmail, password: registerPassword, name: registerName })
-      setAuthSessionToken(payload.session_token)
-      setVerificationToken(payload.session_token)
       persistLastEmail(payload.user.email)
-      setAwaitingEmailVerification(true)
-      setVerificationCode('')
-      try {
-        const verificationPayload = await requestEmailVerification(payload.session_token)
-        setVerificationDeliveryHint(verificationPayload.delivery_hint || 'Verification code generated.')
-        setVerificationPreviewCode(verificationPayload.code_preview || '')
-        setStatus('Account created. Enter the verification code to continue.')
-      } catch (verificationError) {
-        setVerificationDeliveryHint('')
-        setVerificationPreviewCode('')
-        setStatus('Account created. We could not send a verification code automatically. Use resend below.')
-        setError(verificationError instanceof Error ? verificationError.message : 'Could not request verification code.')
-      }
+      await beginEmailVerificationGate(
+        payload.session_token,
+        payload.user.email,
+        'Account created. Enter the verification code to continue.',
+      )
     } catch (registerError) {
-      setError(registerError instanceof Error ? registerError.message : 'Registration failed.')
+      const detail = registerError instanceof Error ? registerError.message : 'Registration failed.'
+      if (detail.toLowerCase().includes('already exists')) {
+        setMode('signin')
+        setSignInEmail(registerEmail.trim())
+        setShowResetPanel(false)
+        setStatus('An account with this email already exists. Sign in or reset your password.')
+        setError('')
+      } else {
+        setError(detail)
+      }
     } finally {
       setLoading(false)
     }
@@ -253,6 +296,7 @@ export function AuthPage() {
     setStatus('')
     try {
       const user = await confirmEmailVerification({ token, code: verificationCode })
+      setAuthSessionToken(token)
       persistLastEmail(user.email)
       setAwaitingEmailVerification(false)
       setStatus('Email verified. Redirecting to profile...')
@@ -278,10 +322,18 @@ export function AuthPage() {
     try {
       const payload = await loginAuthChallenge({ email: signInEmail, password: signInPassword })
       if (payload.status === 'authenticated' && payload.session) {
-        setAuthSessionToken(payload.session.session_token)
         persistLastEmail(payload.session.user.email)
-        setStatus('Signed in. Redirecting to profile...')
-        navigate('/profile', { replace: true })
+        if (payload.session.user.email_verified_at) {
+          setAuthSessionToken(payload.session.session_token)
+          setStatus('Signed in. Redirecting to profile...')
+          navigate('/profile', { replace: true })
+          return
+        }
+        await beginEmailVerificationGate(
+          payload.session.session_token,
+          payload.session.user.email,
+          'Email verification is required before you can continue.',
+        )
         return
       }
       if (payload.status === 'two_factor_required' && payload.challenge_token) {
@@ -300,10 +352,18 @@ export function AuthPage() {
       }
       try {
         const session = await loginAuth({ email: signInEmail, password: signInPassword })
-        setAuthSessionToken(session.session_token)
         persistLastEmail(session.user.email)
-        setStatus('Signed in. Redirecting to profile...')
-        navigate('/profile', { replace: true })
+        if (session.user.email_verified_at) {
+          setAuthSessionToken(session.session_token)
+          setStatus('Signed in. Redirecting to profile...')
+          navigate('/profile', { replace: true })
+          return
+        }
+        await beginEmailVerificationGate(
+          session.session_token,
+          session.user.email,
+          'Email verification is required before you can continue.',
+        )
       } catch (fallbackError) {
         const fallbackDetail = fallbackError instanceof Error ? fallbackError.message : 'Sign-in failed.'
         setError(fallbackDetail)
@@ -325,10 +385,18 @@ export function AuthPage() {
     setStatus('')
     try {
       const payload = await verifyLoginTwoFactor({ challengeToken, code: twoFactorCode })
-      setAuthSessionToken(payload.session_token)
       persistLastEmail(payload.user.email)
-      setStatus('Two-factor verification complete. Redirecting...')
-      navigate('/profile', { replace: true })
+      if (payload.user.email_verified_at) {
+        setAuthSessionToken(payload.session_token)
+        setStatus('Two-factor verification complete. Redirecting...')
+        navigate('/profile', { replace: true })
+        return
+      }
+      await beginEmailVerificationGate(
+        payload.session_token,
+        payload.user.email,
+        'Two-factor complete. Verify email before continuing.',
+      )
     } catch (verifyError) {
       setError(verifyError instanceof Error ? verifyError.message : 'Two-factor verification failed.')
     } finally {
