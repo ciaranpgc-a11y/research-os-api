@@ -43,6 +43,109 @@ function toNumberArray(value: unknown): number[] {
     .filter((item) => Number.isFinite(item))
 }
 
+function formatInt(value: number): string {
+  return Math.round(Number.isFinite(value) ? value : 0).toLocaleString('en-GB')
+}
+
+function formatSignedInt(value: number): string {
+  const safe = Math.round(Number.isFinite(value) ? value : 0)
+  return `${safe >= 0 ? '+' : ''}${safe.toLocaleString('en-GB')}`
+}
+
+function formatSignedPct(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) {
+    return 'n/a'
+  }
+  const safe = Number(value)
+  return `${safe >= 0 ? '+' : ''}${safe.toFixed(1)}%`
+}
+
+function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayload }) {
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const years = toNumberArray(chartData.years).map((item) => Math.round(item))
+  const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
+  if (!years.length || !values.length || years.length !== values.length) {
+    return <div className="h-20 rounded bg-muted/60" />
+  }
+  const meanValueRaw = Number(chartData.mean_value)
+  const meanValue = Number.isFinite(meanValueRaw) && meanValueRaw > 0
+    ? meanValueRaw
+    : values.reduce((sum, item) => sum + item, 0) / Math.max(1, values.length)
+  const projectedYearRaw = Number(chartData.projected_year)
+  const projectedValueRaw = Number(chartData.projected_value)
+  const projectedConfidence = String(chartData.projected_confidence || 'low')
+  const hasProjection = Number.isFinite(projectedYearRaw) && Number.isFinite(projectedValueRaw) && projectedValueRaw > 0
+  const bars: Array<{
+    year: number
+    value: number
+    projected: boolean
+    title: string
+  }> = years.map((year, index) => {
+    const value = values[index]
+    const prev = index > 0 ? values[index - 1] : null
+    const delta = prev === null ? null : value - prev
+    const pct = prev && prev > 0 ? ((value - prev) / prev) * 100 : null
+    const tooltip = [
+      `Year: ${year}`,
+      `Citations: ${formatInt(value)}`,
+      `YoY: ${delta === null ? 'n/a' : `${formatSignedInt(delta)} (${formatSignedPct(pct)})`}`,
+      `Relative to 5y mean (${formatInt(meanValue)}): ${value >= meanValue ? 'above' : 'below'}`,
+    ].join('\n')
+    return { year, value, projected: false, title: tooltip }
+  })
+  if (hasProjection) {
+    const projectedYear = Math.round(projectedYearRaw)
+    const projectedValue = Math.max(0, projectedValueRaw)
+    const prev = values[values.length - 1] || 0
+    const delta = projectedValue - prev
+    const pct = prev > 0 ? ((projectedValue - prev) / prev) * 100 : null
+    const tooltip = [
+      `Year: ${projectedYear} (projection)`,
+      `Projected citations: ${formatInt(projectedValue)}`,
+      `vs last complete year: ${formatSignedInt(delta)} (${formatSignedPct(pct)})`,
+      `Method: YTD run-rate projection`,
+      `Confidence: ${projectedConfidence}`,
+    ].join('\n')
+    bars.push({
+      year: projectedYear,
+      value: projectedValue,
+      projected: true,
+      title: tooltip,
+    })
+  }
+  const maxValue = Math.max(1, ...bars.map((item) => item.value))
+  return (
+    <div className="space-y-1">
+      <div className="flex h-20 items-end gap-1">
+        {bars.map((bar, index) => {
+          const height = Math.max(12, Math.round((bar.value / maxValue) * 72))
+          const ratio = meanValue > 0 ? bar.value / meanValue : 1
+          const toneClass = bar.projected
+            ? 'border border-dashed border-slate-500 bg-slate-200/80'
+            : ratio >= 1.1
+              ? 'bg-emerald-600/85'
+              : ratio <= 0.9
+                ? 'bg-amber-500/85'
+                : 'bg-slate-500/80'
+          return (
+            <div key={`${bar.year}-${index}`} className="flex w-full flex-col items-center gap-1">
+              <div
+                title={bar.title}
+                className={cn('w-full rounded-sm', toneClass)}
+                style={{ height: `${height}px` }}
+              />
+              <span className="text-[9px] text-muted-foreground">{String(bar.year).slice(-2)}</span>
+            </div>
+          )
+        })}
+      </div>
+      <p className="text-[10px] text-muted-foreground">
+        Bar colour is relative to 5-year mean ({formatInt(meanValue)}).
+      </p>
+    </div>
+  )
+}
+
 function MiniBars({
   values,
   className = '',
@@ -394,6 +497,7 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
               {tiles.map((tile) => {
                 const badgeLabel = String((tile.badge?.label as string) || '').trim()
                 const subtitle = String(tile.subtext || '').trim()
+                const isTotalCitationsTile = tile.key === 'total_citations'
                 return (
                   <button
                     key={tile.key}
@@ -433,25 +537,53 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                       </div>
                     </div>
                     <p className="text-lg font-semibold leading-tight">{tile.value_display}</p>
-                    <p className="mt-0.5 min-h-[18px] text-xs text-muted-foreground">
-                      {subtitle || '\u00A0'}
-                    </p>
-                    {tile.delta_display ? (
-                      <p
-                        className={cn(
-                          'min-h-[16px] text-[11px]',
-                          deltaTextClass(tile),
-                          tile.stability === 'unstable' && 'font-medium',
-                        )}
-                      >
-                        {tile.delta_display}
-                      </p>
+                    {isTotalCitationsTile ? (
+                      <div className="mt-1.5 flex items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="min-h-[18px] text-xs text-muted-foreground">
+                            {subtitle || '\u00A0'}
+                          </p>
+                          {tile.delta_display ? (
+                            <p
+                              className={cn(
+                                'mt-0.5 min-h-[16px] text-[11px]',
+                                deltaTextClass(tile),
+                                tile.stability === 'unstable' && 'font-medium',
+                              )}
+                            >
+                              {tile.delta_display}
+                            </p>
+                          ) : (
+                            <p className="mt-0.5 min-h-[16px] text-[11px] text-muted-foreground">&nbsp;</p>
+                          )}
+                        </div>
+                        <div className="w-[48%] min-w-[160px]">
+                          <TotalCitationsGrowthChart tile={tile} />
+                        </div>
+                      </div>
                     ) : (
-                      <p className="min-h-[16px] text-[11px] text-muted-foreground">&nbsp;</p>
+                      <>
+                        <p className="mt-0.5 min-h-[18px] text-xs text-muted-foreground">
+                          {subtitle || '\u00A0'}
+                        </p>
+                        {tile.delta_display ? (
+                          <p
+                            className={cn(
+                              'min-h-[16px] text-[11px]',
+                              deltaTextClass(tile),
+                              tile.stability === 'unstable' && 'font-medium',
+                            )}
+                          >
+                            {tile.delta_display}
+                          </p>
+                        ) : (
+                          <p className="min-h-[16px] text-[11px] text-muted-foreground">&nbsp;</p>
+                        )}
+                        <div className="mt-1.5">
+                          <MiniChart tile={tile} />
+                        </div>
+                      </>
                     )}
-                    <div className="mt-1.5">
-                      <MiniChart tile={tile} />
-                    </div>
                   </button>
                 )
               })}

@@ -550,6 +550,38 @@ def momentum_index_label(index_value: float) -> str:
     return "Accelerating"
 
 
+def _linear_slope(values: list[int | float]) -> float:
+    if len(values) < 2:
+        return 0.0
+    clean = [float(max(0.0, float(item))) for item in values]
+    n = len(clean)
+    x_mean = (n - 1) / 2.0
+    y_mean = sum(clean) / float(n)
+    numerator = sum((idx - x_mean) * (value - y_mean) for idx, value in enumerate(clean))
+    denominator = sum((idx - x_mean) ** 2 for idx in range(n))
+    if denominator <= 0.0:
+        return 0.0
+    return numerator / denominator
+
+
+def _growth_state_from_series(values: list[int]) -> tuple[str, str, float]:
+    clean = [max(0, int(item or 0)) for item in values]
+    if len(clean) < 3:
+        return ("Limited history", "neutral", 0.0)
+    mean_value = sum(clean) / float(len(clean))
+    if mean_value <= 0.0:
+        return ("Limited history", "neutral", 0.0)
+    slope = _linear_slope(clean)
+    normalized_slope = slope / max(1.0, mean_value)
+    if normalized_slope <= -0.08:
+        return ("Growth slowing", "negative", normalized_slope)
+    if normalized_slope < -0.03:
+        return ("Growth slowing", "caution", normalized_slope)
+    if normalized_slope >= 0.03:
+        return ("Growth accelerating", "positive", normalized_slope)
+    return ("Growth steady", "neutral", normalized_slope)
+
+
 def compute_concentration_risk_percent(*, total_citations: int, top3_citations: int) -> float:
     total = max(0, int(total_citations or 0))
     head = max(0, int(top3_citations or 0))
@@ -1353,20 +1385,45 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     momentum_index = compute_momentum_index(monthly_last_12)
     momentum_index_state = momentum_index_label(momentum_index)
 
-    # Fixed 5-year bars for intuitive trend reading in the total-citations tile.
-    last5_years = [now.year - 4, now.year - 3, now.year - 2, now.year - 1, now.year]
-    last5_year_values = [max(0, int(aggregate_yearly_totals.get(year, 0))) for year in last5_years]
-    five_year_delta = int(last5_year_values[-1] - last5_year_values[0]) if last5_year_values else 0
-    five_year_threshold = max(3, int(max(last5_year_values or [0]) * 0.08))
-    if five_year_delta > five_year_threshold:
-        trend_label = "Rising"
-        trend_severity = "positive"
-    elif five_year_delta < -five_year_threshold:
-        trend_label = "Falling"
-        trend_severity = "negative"
-    else:
-        trend_label = "Stable"
-        trend_severity = "neutral"
+    # Growth badge is based on complete years only (exclude the in-progress year).
+    last5_complete_years = [now.year - 5, now.year - 4, now.year - 3, now.year - 2, now.year - 1]
+    last5_complete_values = [
+        max(0, int(aggregate_yearly_totals.get(year, 0))) for year in last5_complete_years
+    ]
+    growth_label, growth_severity, growth_slope_norm = _growth_state_from_series(
+        last5_complete_values
+    )
+    five_year_delta = (
+        int(last5_complete_values[-1] - last5_complete_values[0])
+        if last5_complete_values
+        else 0
+    )
+    five_year_mean = (
+        float(sum(last5_complete_values)) / float(len(last5_complete_values))
+        if last5_complete_values
+        else 0.0
+    )
+    current_year_ytd = max(0, int(aggregate_yearly_totals.get(now.year, 0)))
+    start_of_year = datetime(now.year, 1, 1, tzinfo=timezone.utc)
+    elapsed_days = max(1, int((now - start_of_year).days) + 1)
+    elapsed_fraction = min(1.0, float(elapsed_days) / 365.25)
+    projected_current_year = (
+        max(current_year_ytd, int(round(current_year_ytd / max(0.01, elapsed_fraction))))
+        if current_year_ytd > 0
+        else 0
+    )
+    projection_confidence = (
+        "high"
+        if elapsed_days >= 240
+        else "medium"
+        if elapsed_days >= 120
+        else "low"
+    )
+    projection_subtext = (
+        f"Projected {now.year}: {_format_int(projected_current_year)} ({projection_confidence} confidence)"
+        if projected_current_year > 0
+        else "Projection unavailable"
+    )
 
     this_vs_last_label = "Up" if yoy_delta > 0 else "Down" if yoy_delta < 0 else "Flat"
     this_vs_last_severity = "positive" if yoy_delta > 0 else "negative" if yoy_delta < 0 else "neutral"
@@ -1404,9 +1461,12 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     ]
 
     total_tooltip, total_tooltip_details = _build_tooltip(
-        definition="What is this: lifetime citations across your publication portfolio.",
+        definition="What is this: lifetime citations and annual citation growth across your portfolio.",
         data_sources=["OpenAlex"] if "OpenAlex" in data_sources else data_sources,
-        computation="sum(latest citations per publication); mini chart shows last 5 years by year",
+        computation=(
+            "sum(latest citations per publication); growth badge from last 5 complete years; "
+            "ghost bar is current-year projection from YTD run-rate"
+        ),
     )
     this_year_tooltip, this_year_tooltip_details = _build_tooltip(
         definition="What is this: citations in the latest 12 months compared with the previous 12 months.",
@@ -1441,21 +1501,29 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             value=total_citations,
             value_display=_format_int(total_citations),
             subtext=f"+{_format_int(citations_last_12m)} in last 12 months",
-            badge={"label": trend_label, "severity": trend_severity},
+            badge={"label": growth_label, "severity": growth_severity},
             chart_type="bar_year_5",
-            chart_data={"years": last5_years, "values": last5_year_values},
-            delta_value=five_year_delta,
-            delta_display=f"{trend_label} over 5 years",
+            chart_data={
+                "years": last5_complete_years,
+                "values": last5_complete_values,
+                "mean_value": round(five_year_mean, 2),
+                "projected_year": now.year,
+                "projected_value": projected_current_year,
+                "projected_confidence": projection_confidence,
+                "current_year_ytd": current_year_ytd,
+            },
+            delta_value=round(growth_slope_norm * 100.0, 2),
+            delta_display=projection_subtext,
             unit="citations",
-            sparkline=last5_year_values,
+            sparkline=last5_complete_values,
             tooltip=total_tooltip,
             tooltip_details=total_tooltip_details,
             data_source=["OpenAlex"] if "OpenAlex" in data_sources else data_sources,
             confidence_score=_confidence_score_from_publications(total_citation_publications),
-            stability="stable" if trend_label != "Falling" else "unstable",
+            stability="unstable" if growth_severity in {"caution", "negative"} else "stable",
             drilldown={
                 "title": "Total citations",
-                "definition": "Lifetime citations across all publications.",
+                "definition": "Lifetime citations across all publications with annual growth context.",
                 "formula": "sum(latest citations per publication)",
                 "confidence_note": _confidence_note(),
                 "publications": total_citation_publications,
@@ -1464,8 +1532,19 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                         "total_citations": total_citations,
                         "citations_last_12_months": citations_last_12m,
                         "five_year_delta": five_year_delta,
+                        "five_year_growth_state": growth_label,
+                        "five_year_growth_slope_norm": round(growth_slope_norm, 4),
+                        "current_year_ytd": current_year_ytd,
+                        "projected_current_year": projected_current_year,
+                        "projection_confidence": projection_confidence,
                     },
-                    "year_bar_values": {"years": last5_years, "values": last5_year_values},
+                    "year_bar_values": {
+                        "years": last5_complete_years,
+                        "values": last5_complete_values,
+                        "mean_value": round(five_year_mean, 2),
+                        "projected_year": now.year,
+                        "projected_value": projected_current_year,
+                    },
                 },
             },
         ),
