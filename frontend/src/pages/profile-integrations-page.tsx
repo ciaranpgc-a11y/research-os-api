@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Unplug } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -63,13 +63,6 @@ function formatMetricNumber(value: number | null | undefined): string {
   return Math.max(0, Math.round(numeric)).toLocaleString('en-GB')
 }
 
-function formatSyncStageLabel(value: string | null | undefined): string {
-  const clean = (value || '').trim().replace(/[_-]+/g, ' ')
-  if (!clean) {
-    return 'processing'
-  }
-  return clean.charAt(0).toUpperCase() + clean.slice(1)
-}
 const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const ORCID_SYNC_SUMMARY_STORAGE_PREFIX = 'aawe_orcid_sync_summary:'
@@ -287,6 +280,16 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     ...(fixture?.orcidPermissions || {}),
   }
   const [orcidPermissions, setOrcidPermissions] = useState<Record<OrcidPermissionKey, boolean>>(initialOrcidPermissions)
+  const [animateWorksCount, setAnimateWorksCount] = useState(false)
+  const [animateNewWorks, setAnimateNewWorks] = useState(false)
+  const [animateTotalCitations, setAnimateTotalCitations] = useState(false)
+  const [animateNewCitations, setAnimateNewCitations] = useState(false)
+  const previousMetricSnapshotRef = useRef<{
+    worksCount: number
+    totalCitations: number
+    normalizedNewWorks: number
+    normalizedNewCitations: number
+  } | null>(null)
   const syncStatus = personaState?.sync_status || {
     orcid_last_synced_at: null,
     metrics_last_synced_at: null,
@@ -520,33 +523,67 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   const canImportOrcid =
     !isFixtureMode && !orcidStatusPending && emailVerified && orcidConfigured && orcidLinked && !busy
   const canDisconnectOrcid = !isFixtureMode && !orcidStatusPending && orcidLinked && !busy
-  const shortLastSync = formatShortTimestamp(syncStatus.orcid_last_synced_at)
   const connectionStatusLabel = orcidStatusPending
     ? 'Checking status...'
     : orcidLinked
-      ? shortLastSync
-        ? `Connected (${shortLastSync})`
-        : 'Connected'
+      ? 'Connected'
       : 'Not connected'
   const totalCitations = useMemo(() => totalCitationsFromPersonaState(personaState), [personaState])
-  const worksLastSyncDate = formatDateOnly(syncStatus.orcid_last_synced_at)
-  const referencesLastSyncDate = formatDateOnly(
-    syncStatus.metrics_last_synced_at || syncStatus.orcid_last_synced_at,
+  const sharedLastSyncDate = formatDateOnly(
+    syncStatus.orcid_last_synced_at || syncStatus.metrics_last_synced_at,
   )
   const normalizedNewWorks = Math.max(0, Math.round(Number(lastImportedCount || 0)))
   const normalizedNewCitations = Math.max(0, Math.round(Number(lastReferencesSyncedCount || 0)))
+  const newWorksDeltaLabel =
+    normalizedNewWorks > 0 ? `+${formatMetricNumber(normalizedNewWorks)}` : '0'
+  const newCitationsDeltaLabel =
+    normalizedNewCitations > 0 ? `+${formatMetricNumber(normalizedNewCitations)}` : '0'
+  const worksPermissionEnabled = Boolean(orcidPermissions.works)
+  const citationsPermissionEnabled = Boolean(orcidPermissions.citations)
   const syncInProgress =
     activeSyncJob?.status === 'queued' || activeSyncJob?.status === 'running'
   const syncProgressPercent = syncInProgress
     ? Math.min(100, Math.max(0, Math.round(Number(activeSyncJob?.progress_percent || 0))))
     : 0
-  const syncStageLabel = formatSyncStageLabel(activeSyncJob?.current_stage)
+  const syncButtonBusy = importing || syncInProgress
   const statusLower = status.toLowerCase()
   const statusToneClass = error
     ? 'border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-800))]'
     : statusLower.includes('verify') || statusLower.includes('not configured')
       ? 'border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--tone-warning-50))] text-[hsl(var(--tone-warning-800))]'
       : 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))]'
+
+  useEffect(() => {
+    const previous = previousMetricSnapshotRef.current
+    previousMetricSnapshotRef.current = {
+      worksCount,
+      totalCitations,
+      normalizedNewWorks,
+      normalizedNewCitations,
+    }
+    if (!previous) {
+      return
+    }
+
+    const timers: number[] = []
+    const trigger = (changed: boolean, setter: (value: boolean) => void) => {
+      if (!changed) {
+        return
+      }
+      setter(true)
+      timers.push(window.setTimeout(() => setter(false), 520))
+    }
+
+    trigger(previous.worksCount !== worksCount, setAnimateWorksCount)
+    trigger(previous.normalizedNewWorks !== normalizedNewWorks, setAnimateNewWorks)
+    trigger(previous.totalCitations !== totalCitations, setAnimateTotalCitations)
+    trigger(previous.normalizedNewCitations !== normalizedNewCitations, setAnimateNewCitations)
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer))
+    }
+  }, [worksCount, totalCitations, normalizedNewWorks, normalizedNewCitations])
+
   const onConnectOrcid = async () => {
     if (!token) {
       return
@@ -604,7 +641,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
       if (user?.id) {
         saveActiveSyncJobId(user.id, job.id)
       }
-      setStatus('ORCID sync started in background. You can leave this page.')
+      setStatus('')
     } catch (importError) {
       if (handleSessionExpiry(importError)) {
         setImporting(false)
@@ -794,10 +831,10 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
             ) : null}
           </div>
         </CardHeader>
-        <CardContent className="space-y-4 pt-4 text-sm">
+        <CardContent className="space-y-3 pt-3 text-sm">
 
-          <div className={`grid gap-3 md:grid-cols-[260px_1fr] ${orcidLinked ? 'xl:grid-cols-[260px_minmax(0,1fr)_230px]' : ''}`}>
-            <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3">
+          <div className="grid gap-2.5 md:grid-cols-[260px_1fr]">
+            <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2.5">
               <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">ORCID iD</p>
               <p className="mt-1 text-base font-semibold text-[hsl(var(--tone-neutral-900))]">
                 {orcidStatusPending ? 'Loading...' : orcidStatus?.orcid_id || user?.orcid_id || 'Not linked'}
@@ -807,90 +844,80 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
                   href={`https://orcid.org/${orcidStatus?.orcid_id || user?.orcid_id}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-2 inline-flex text-label font-medium text-[hsl(var(--tone-accent-700))] underline underline-offset-2"
+                  className="mt-1.5 inline-flex text-label font-medium text-[hsl(var(--tone-accent-700))] underline underline-offset-2"
                 >
                   Open ORCID profile
                 </a>
               ) : (
-                <p className="mt-2 text-xs text-[hsl(var(--tone-neutral-500))]">Link ORCID to enable full citation sync.</p>
+                <p className="mt-1.5 text-xs text-[hsl(var(--tone-neutral-500))]">Link ORCID to enable full citation sync.</p>
               )}
+
+              {orcidLinked ? (
+                <div className="mt-3 space-y-2 border-t border-[hsl(var(--tone-neutral-200))] pt-2.5">
+                  <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Sync permissions</p>
+                  <div className="space-y-1.5">
+                    {ORCID_PERMISSION_OPTIONS.map((option) => (
+                      <label key={option.key} className="group flex cursor-pointer items-start gap-2 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-2 py-1.5 transition-colors hover:border-[hsl(var(--tone-accent-200))]">
+                        <input
+                          type="checkbox"
+                          checked={orcidPermissions[option.key]}
+                          onChange={() => onToggleOrcidPermission(option.key)}
+                          className="mt-0.5 h-4 w-4 rounded border-[hsl(var(--tone-neutral-300))] text-[hsl(var(--tone-accent-700))] focus:ring-[hsl(var(--tone-accent-500))]"
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-label font-medium text-[hsl(var(--tone-neutral-900))]">{option.label}</span>
+                          <span className="mt-0.5 block text-micro text-[hsl(var(--tone-neutral-600))]">{option.detail}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             {orcidLinked ? (
-              <>
-              <div className="grid gap-3 sm:grid-cols-2 md:col-start-2">
-                <div className="flex min-h-sz-96 flex-col justify-between rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
-                  <div>
-                    <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Total works</p>
-                    <p className="mt-1 text-2xl font-semibold leading-tight text-[hsl(var(--tone-neutral-900))]">{formatMetricNumber(worksCount)}</p>
-                  </div>
-                  {worksLastSyncDate ? (
-                    <p className="text-xs text-[hsl(var(--tone-neutral-500))]">Last sync {worksLastSyncDate}</p>
-                  ) : <span />}
-                </div>
-                <div className="flex min-h-sz-96 flex-col justify-between rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
-                  <div>
-                    <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">New works</p>
-                    <p className="mt-1 text-2xl font-semibold leading-tight text-[hsl(var(--tone-neutral-900))]">{formatMetricNumber(normalizedNewWorks)}</p>
-                  </div>
-                  <p className={`text-xs ${normalizedNewWorks > 0 ? 'text-[hsl(var(--tone-positive-700))]' : 'text-[hsl(var(--tone-neutral-500))]'}`}>
-                    {normalizedNewWorks > 0 ? 'In latest sync' : 'No new works'}
+              <div className="grid gap-2 sm:grid-cols-2 md:col-start-2 xl:max-w-xl">
+                <div className={`flex min-h-sz-84 flex-col items-center justify-center gap-1 rounded-md border px-2.5 py-1.5 text-center ${worksPermissionEnabled ? 'border-[hsl(var(--tone-neutral-200))] bg-card' : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] opacity-60'}`}>
+                  <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Total works</p>
+                  <p className={`mt-0.5 text-2xl font-semibold leading-tight transition-transform duration-500 ease-out ${worksPermissionEnabled ? 'text-[hsl(var(--tone-neutral-900))]' : 'text-[hsl(var(--tone-neutral-500))]'}`} style={{ transform: animateWorksCount ? 'scale(1.04)' : 'scale(1)' }}>{formatMetricNumber(worksCount)}</p>
+                  <p className="text-xs text-[hsl(var(--tone-neutral-500))]">
+                    {worksPermissionEnabled ? sharedLastSyncDate ? `Last sync ${sharedLastSyncDate}` : 'No sync yet' : 'Permission disabled'}
                   </p>
                 </div>
-                <div className="flex min-h-sz-96 flex-col justify-between rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
-                  <div>
-                    <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Total citations</p>
-                    <p className="mt-1 text-2xl font-semibold leading-tight text-[hsl(var(--tone-neutral-900))]">{formatMetricNumber(totalCitations)}</p>
-                  </div>
-                  {referencesLastSyncDate ? (
-                    <p className="text-xs text-[hsl(var(--tone-neutral-500))]">Last sync {referencesLastSyncDate}</p>
-                  ) : <span />}
+                <div className={`flex min-h-sz-84 flex-col items-center justify-center gap-1 rounded-md border px-2.5 py-1.5 text-center ${worksPermissionEnabled ? 'border-[hsl(var(--tone-neutral-200))] bg-card' : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] opacity-60'}`}>
+                  <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">New works</p>
+                  <p className={`mt-0.5 text-2xl font-semibold leading-tight transition-transform duration-500 ease-out ${worksPermissionEnabled && normalizedNewWorks > 0 ? 'text-[hsl(var(--tone-positive-700))]' : 'text-[hsl(var(--tone-neutral-900))]'}`} style={{ transform: animateNewWorks ? 'scale(1.04)' : 'scale(1)' }}>{newWorksDeltaLabel}</p>
+                  <p className="text-xs text-[hsl(var(--tone-neutral-500))]">
+                    {worksPermissionEnabled ? normalizedNewWorks > 0 ? 'Added in latest sync' : 'No new works' : 'Permission disabled'}
+                  </p>
                 </div>
-                <div className="flex min-h-sz-96 flex-col justify-between rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
-                  <div>
-                    <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">New citations</p>
-                    <p className="mt-1 text-2xl font-semibold leading-tight text-[hsl(var(--tone-neutral-900))]">{formatMetricNumber(normalizedNewCitations)}</p>
-                  </div>
-                  <p className={`text-xs ${normalizedNewCitations > 0 ? 'text-[hsl(var(--tone-positive-700))]' : 'text-[hsl(var(--tone-neutral-500))]'}`}>
-                    {normalizedNewCitations > 0 ? 'In latest sync' : 'No new citations'}
+                <div className={`flex min-h-sz-84 flex-col items-center justify-center gap-1 rounded-md border px-2.5 py-1.5 text-center ${citationsPermissionEnabled ? 'border-[hsl(var(--tone-neutral-200))] bg-card' : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] opacity-60'}`}>
+                  <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Total citations</p>
+                  <p className={`mt-0.5 text-2xl font-semibold leading-tight transition-transform duration-500 ease-out ${citationsPermissionEnabled ? 'text-[hsl(var(--tone-neutral-900))]' : 'text-[hsl(var(--tone-neutral-500))]'}`} style={{ transform: animateTotalCitations ? 'scale(1.04)' : 'scale(1)' }}>{formatMetricNumber(totalCitations)}</p>
+                  <p className="text-xs text-[hsl(var(--tone-neutral-500))]">
+                    {citationsPermissionEnabled ? sharedLastSyncDate ? `Last sync ${sharedLastSyncDate}` : 'No sync yet' : 'Permission disabled'}
+                  </p>
+                </div>
+                <div className={`flex min-h-sz-84 flex-col items-center justify-center gap-1 rounded-md border px-2.5 py-1.5 text-center ${citationsPermissionEnabled ? 'border-[hsl(var(--tone-neutral-200))] bg-card' : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] opacity-60'}`}>
+                  <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">New citations</p>
+                  <p className={`mt-0.5 text-2xl font-semibold leading-tight transition-transform duration-500 ease-out ${citationsPermissionEnabled && normalizedNewCitations > 0 ? 'text-[hsl(var(--tone-positive-700))]' : 'text-[hsl(var(--tone-neutral-900))]'}`} style={{ transform: animateNewCitations ? 'scale(1.04)' : 'scale(1)' }}>{newCitationsDeltaLabel}</p>
+                  <p className="text-xs text-[hsl(var(--tone-neutral-500))]">
+                    {citationsPermissionEnabled ? normalizedNewCitations > 0 ? 'Added in latest sync' : 'No new citations' : 'Permission disabled'}
                   </p>
                 </div>
               </div>
-              <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-3 md:col-span-2 xl:col-span-1 xl:col-start-3 xl:row-start-1">
-                <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Sync permissions</p>
-                <p className="mt-1 text-xs text-[hsl(var(--tone-neutral-600))]">Choose what to include when syncing ORCID data.</p>
-                <div className="mt-3 space-y-2">
-                  {ORCID_PERMISSION_OPTIONS.map((option) => (
-                    <label key={option.key} className="flex cursor-pointer items-start gap-2 rounded-sm border border-[hsl(var(--tone-neutral-200))] bg-card px-2 py-1.5">
-                      <input
-                        type="checkbox"
-                        checked={orcidPermissions[option.key]}
-                        onChange={() => onToggleOrcidPermission(option.key)}
-                        className="mt-0.5 h-4 w-4 rounded border-[hsl(var(--tone-neutral-300))] text-[hsl(var(--tone-accent-700))] focus:ring-[hsl(var(--tone-accent-500))]"
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-label font-medium text-[hsl(var(--tone-neutral-900))]">{option.label}</span>
-                        <span className="block text-xs text-[hsl(var(--tone-neutral-600))]">{option.detail}</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                <p className="mt-2 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">UI preference preview only</p>
-              </div>
-              </>
             ) : (
-              <div className="flex min-h-sz-96 flex-col justify-center rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-4 py-4 md:col-start-2">
+              <div className="flex min-h-sz-84 flex-col justify-center rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3 md:col-start-2">
                 <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">No ORCID connection</p>
                 <p className="mt-1 text-sm text-[hsl(var(--tone-neutral-600))]">
                   Connect ORCID to import your publications, citations, and profile metrics.
                 </p>
-                <p className="mt-2 text-xs uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                <p className="mt-1.5 text-xs uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
                   Expected sync: works, citation deltas, and source timestamps
                 </p>
               </div>
             )}
           </div>
-
           {orcidIssues.length ? (
             <div className="rounded-md border border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--tone-warning-50))] px-3 py-2 text-xs text-[hsl(var(--tone-warning-800))]">
               {orcidIssues[0]}
@@ -911,33 +938,28 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
             {!orcidStatusPending && orcidLinked ? (
               <Button
                 type="button"
-                variant={importing ? 'default' : 'outline'}
+                variant="outline"
                 onClick={onImportOrcid}
                 disabled={!canImportOrcid}
-                className={importing ? 'bg-[hsl(var(--tone-positive-600))] text-white hover:bg-[hsl(var(--tone-positive-700))]' : ''}
+                className={`relative overflow-hidden ${syncButtonBusy ? 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-900))] hover:bg-[hsl(var(--tone-neutral-100))]' : ''}`}
               >
-                {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                {importing ? 'Syncing ORCID...' : 'Sync ORCID now'}
+                {syncInProgress ? (
+                  <span
+                    aria-hidden
+                    className="absolute inset-y-0 left-0 bg-[hsl(var(--tone-accent-200))] transition-[width] duration-700 ease-out"
+                    style={{ width: `${syncProgressPercent}%` }}
+                  />
+                ) : null}
+                <span className="relative z-10 inline-flex items-center">
+                  {syncButtonBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  {syncButtonBusy ? `Syncing ORCID ${syncProgressPercent}%` : 'Sync ORCID now'}
+                </span>
               </Button>
             ) : null}
             {orcidStatusPending ? (
               <p className="text-xs text-[hsl(var(--tone-neutral-500))]">Checking ORCID connection...</p>
             ) : null}
           </div>
-
-          {syncInProgress ? (
-            <div className="rounded-md border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] px-3 py-2">
-              <div className="flex items-center justify-between gap-2 text-xs text-[hsl(var(--tone-accent-800))]">
-                <p className="font-medium">ORCID sync in progress</p>
-                <p>{syncProgressPercent}%</p>
-              </div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[hsl(var(--tone-accent-100))]">
-                <div className="h-full bg-[hsl(var(--tone-accent-600))] transition-[width] duration-300" style={{ width: `${syncProgressPercent}%` }} />
-              </div>
-              <p className="mt-1 text-xs text-[hsl(var(--tone-accent-700))]">Stage: {syncStageLabel}</p>
-            </div>
-          ) : null}
-
           {!orcidStatusPending && !orcidConfigured ? (
             <p className="text-xs text-[hsl(var(--tone-warning-700))]">ORCID provider is not configured in backend environment.</p>
           ) : null}

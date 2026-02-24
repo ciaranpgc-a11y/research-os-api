@@ -13,11 +13,12 @@ type AccountNavigatorPreviewProps = {
 
 const PATH_PRESETS: Array<{ label: string; path: string }> = [
   { label: 'Profile home', path: '/profile' },
-  { label: 'Integrations', path: '/profile/integrations' },
   { label: 'Publications', path: '/profile/publications' },
   { label: 'Collaboration', path: '/account/collaboration' },
   { label: 'Impact', path: '/impact' },
   { label: 'Settings & preferences', path: '/settings' },
+  { label: 'Personal details', path: '/profile/personal-details' },
+  { label: 'Integrations', path: '/profile/integrations' },
 ]
 
 function AccountNavigatorPreview({ initialPath, panelWidthClass, darkMode }: AccountNavigatorPreviewProps) {

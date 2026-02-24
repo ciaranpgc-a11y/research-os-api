@@ -17,11 +17,12 @@ const PROFILE_PREFETCH_MIN_INTERVAL_MS = 45_000
 
 const ACCOUNT_LINKS = [
   { label: 'Profile home', path: '/profile', end: true },
-  { label: 'Integrations', path: '/profile/integrations' },
   { label: 'Publications', path: '/profile/publications' },
   { label: 'Collaboration', path: '/account/collaboration' },
   { label: 'Impact', path: '/impact' },
   { label: 'Settings & preferences', path: '/settings' },
+  { label: 'Personal details', path: '/profile/personal-details' },
+  { label: 'Integrations', path: '/profile/integrations' },
 ]
 
 const accountNavItemBase =
@@ -76,6 +77,7 @@ export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
           {ACCOUNT_LINKS.map((item) => {
             const shouldPrefetch =
               item.path === '/profile' ||
+              item.path === '/profile/personal-details' ||
               item.path === '/profile/integrations' ||
               item.path === '/profile/publications'
             return (
