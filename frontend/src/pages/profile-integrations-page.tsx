@@ -280,7 +280,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   const [lastImportedCount, setLastImportedCount] = useState<number | null>(fixture?.lastImportedCount ?? null)
   const [lastReferencesSyncedCount, setLastReferencesSyncedCount] = useState<number | null>(fixture?.lastReferencesSyncedCount ?? null)
   const [lastSyncSinceLabel, setLastSyncSinceLabel] = useState<string | null>(fixture?.lastSyncSinceLabel ?? null)
-  const [lastSyncOutcome, setLastSyncOutcome] = useState<string | null>(fixture?.lastSyncOutcome ?? null)
+  const [, setLastSyncOutcome] = useState<string | null>(fixture?.lastSyncOutcome ?? null)
   const [activeSyncJob, setActiveSyncJob] = useState<PersonaSyncJobPayload | null>(fixture?.activeSyncJob ?? null)
   const initialOrcidPermissions: Record<OrcidPermissionKey, boolean> = {
     ...DEFAULT_ORCID_PERMISSIONS,
@@ -779,7 +779,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
                 {connectionStatusLabel}
               </span>
             </div>
-            {orcidLinked ? (`r`n              <>
+            {orcidLinked ? (
               <Button
                 type="button"
                 variant="outline"
@@ -816,7 +816,8 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
               )}
             </div>
 
-            {orcidLinked ? (`r`n              <>
+            {orcidLinked ? (
+              <>
               <div className="grid gap-3 sm:grid-cols-2 md:col-start-2">
                 <div className="flex min-h-sz-96 flex-col justify-between rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
                   <div>
@@ -876,6 +877,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
                 </div>
                 <p className="mt-2 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">UI preference preview only</p>
               </div>
+              </>
             ) : (
               <div className="flex min-h-sz-96 flex-col justify-center rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-4 py-4 md:col-start-2">
                 <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">No ORCID connection</p>
@@ -1006,26 +1008,4 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     </section>
   )
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
