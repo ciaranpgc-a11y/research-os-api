@@ -48,10 +48,7 @@ export function LoginCard({
   className,
 }: LoginCardProps) {
   return (
-    <div
-      className={cn('mx-auto w-full max-w-md', className)}
-      style={{ fontFamily: '"IBM Plex Sans", var(--font-family-base)' }}
-    >
+    <div className={cn('mx-auto w-full max-w-md', className)}>
       <Card aria-busy={loading} className="rounded-xl border-[hsl(var(--tone-neutral-200))] bg-card shadow-none">
         <CardContent className="space-y-5 p-6 sm:p-7">
           <header className="space-y-4">
@@ -161,5 +158,3 @@ export function LoginCard({
     </div>
   )
 }
-
-
