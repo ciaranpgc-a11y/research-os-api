@@ -17,6 +17,7 @@ from research_os.db import (
     PublicationMetricsSourceCache,
     User,
     Work,
+    WorkAuthorship,
     create_all_tables,
     session_scope,
 )
@@ -28,7 +29,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 9
+TOP_METRICS_SCHEMA_VERSION = 10
 
 DELTA_COLOR_BY_TONE = {
     "positive": "#166534",
@@ -888,6 +889,32 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         }
 
     work_ids = [str(work.id) for work in works]
+    authorship_rows = session.scalars(
+        select(WorkAuthorship).where(WorkAuthorship.work_id.in_(work_ids))
+    ).all()
+    author_count_by_work: dict[str, int] = defaultdict(int)
+    user_author_position_by_work: dict[str, int] = {}
+    for link in authorship_rows:
+        work_id = str(link.work_id)
+        author_count_by_work[work_id] = author_count_by_work.get(work_id, 0) + 1
+        if bool(link.is_user) and work_id not in user_author_position_by_work:
+            parsed_order = _safe_int(link.author_order)
+            if parsed_order is not None and parsed_order > 0:
+                user_author_position_by_work[work_id] = int(parsed_order)
+
+    def _authorship_role_for_work(*, work_id: str) -> str | None:
+        position = user_author_position_by_work.get(work_id)
+        author_count = int(author_count_by_work.get(work_id, 0) or 0)
+        if position is None or position <= 0 or author_count <= 0:
+            return None
+        if position == 1:
+            return "first"
+        if position == 2:
+            return "second"
+        if author_count > 1 and position == author_count:
+            return "last"
+        return "other"
+
     snapshot_rows = session.scalars(
         select(MetricsSnapshot).where(MetricsSnapshot.work_id.in_(work_ids))
     ).all()
@@ -1100,6 +1127,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "semantic_cumulative_25": semantic_cumulative_series,
                 "yearly_counts": {int(year): int(count) for year, count in yearly_counts.items()} if yearly_counts else {},
                 "fallback_year": fallback_year_for_row,
+                "user_author_position": user_author_position_by_work.get(work_id),
+                "author_count": int(author_count_by_work.get(work_id, 0) or 0),
+                "user_author_role": _authorship_role_for_work(work_id=work_id),
             }
         )
 
@@ -1312,6 +1342,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                     "year": row["year"],
                     "journal": row["journal"],
                     "publication_count": 1,
+                    "user_author_position": row.get("user_author_position"),
+                    "author_count": row.get("author_count"),
+                    "user_author_role": row.get("user_author_role"),
                     "confidence_score": row["confidence_score"],
                     "confidence_label": row["confidence_label"],
                     "match_source": row["match_source"],
@@ -1530,6 +1563,19 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             continue
         publication_counts_by_year[int(parsed_year)] += 1
     total_publications = len(per_work_rows)
+    author_role_counts = {
+        "first": 0,
+        "second": 0,
+        "last": 0,
+        "other": 0,
+    }
+    author_role_unknown = 0
+    for row in per_work_rows:
+        role = str(row.get("user_author_role") or "").strip().lower()
+        if role in author_role_counts:
+            author_role_counts[role] += 1
+        else:
+            author_role_unknown += 1
     last5_publication_values = [
         max(0, int(publication_counts_by_year.get(year, 0))) for year in last5_complete_years
     ]
@@ -1695,6 +1741,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "projected_value": projected_current_publications,
                 "projected_confidence": projection_confidence,
                 "current_year_ytd": current_year_publications,
+                "author_role_counts": author_role_counts,
+                "author_role_unknown": author_role_unknown,
             },
             delta_value=None,
             delta_display=None,
@@ -1721,6 +1769,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                         "current_year_ytd": current_year_publications,
                         "projected_current_year": projected_current_publications,
                         "projection_confidence": projection_confidence,
+                        "author_role_counts": author_role_counts,
+                        "author_role_unknown": author_role_unknown,
                     }
                 },
             },

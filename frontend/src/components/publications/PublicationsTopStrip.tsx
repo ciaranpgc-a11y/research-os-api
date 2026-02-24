@@ -99,23 +99,11 @@ function TotalCitationsMiniTrend({
   onModeChange: (next: TotalTrendMode) => void
 }) {
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
-  const years = toNumberArray(chartData.years).map((item) => Math.round(item))
   const yearlyValues = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const monthlyValues = toNumberArray(chartData.monthly_values_12m).map((item) => Math.max(0, item))
   const monthModeAvailable = monthlyValues.length >= 12
   const effectiveMode: TotalTrendMode = mode === 'month' && !monthModeAvailable ? 'year' : mode
-  const projectedYear = Math.round(Number(chartData.projected_year || 0))
-  const projectedValue = Math.max(0, Number(chartData.projected_value || 0))
-  const showYearProjection =
-    effectiveMode === 'year' &&
-    years.length > 0 &&
-    Number.isFinite(projectedYear) &&
-    projectedYear > 0 &&
-    Number.isFinite(projectedValue) &&
-    projectedValue > 0
-
-  const baseValues = effectiveMode === 'year' ? yearlyValues : monthlyValues
-  const values = showYearProjection ? [...baseValues, projectedValue] : baseValues
+  const values = effectiveMode === 'year' ? yearlyValues : monthlyValues
   useEffect(() => {
     if (mode === 'month' && !monthModeAvailable) {
       onModeChange('year')
@@ -128,13 +116,6 @@ function TotalCitationsMiniTrend({
   const width = 180
   const height = 44
   const path = smoothPath(values, width, height)
-  const max = Math.max(...values)
-  const min = Math.min(...values)
-  const range = Math.max(1e-6, max - min)
-  const step = values.length > 1 ? (width - 8) / (values.length - 1) : 0
-  const lastIndex = values.length - 1
-  const lastX = 4 + lastIndex * step
-  const lastY = height - 4 - ((values[lastIndex] - min) / range) * (height - 8)
 
   return (
     <div className="space-y-1.5">
@@ -178,7 +159,6 @@ function TotalCitationsMiniTrend({
         >
           12m
         </button>
-        {showYearProjection ? <span className="text-muted-foreground">includes projected {String(projectedYear).slice(-2)}</span> : null}
       </div>
       <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-12 w-full">
         <path
@@ -189,17 +169,6 @@ function TotalCitationsMiniTrend({
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        {showYearProjection ? (
-          <circle
-            cx={lastX}
-            cy={lastY}
-            r="2.6"
-            fill="#ffffff"
-            stroke="#0f172a"
-            strokeDasharray="2 2"
-            strokeWidth="1.5"
-          />
-        ) : null}
       </svg>
     </div>
   )
@@ -218,16 +187,11 @@ function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayloa
     ? meanValueRaw
     : values.reduce((sum, item) => sum + item, 0) / Math.max(1, values.length)
   const projectedYearRaw = Number(chartData.projected_year)
-  const projectedValueRaw = Number(chartData.projected_value)
   const currentYearYtdRaw = Number(chartData.current_year_ytd)
   const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
-  const projectionComponents = (chartData.projection_components || {}) as Record<string, unknown>
-  const ytdProjection = Number(projectionComponents.ytd_run_rate_projection ?? Number.NaN)
-  const trendProjection = Number(projectionComponents.trend_projection ?? Number.NaN)
   const bars: Array<{
     year: number
     value: number
-    projectedValue: number
     current: boolean
     delta: number | null
     pct: number | null
@@ -248,7 +212,6 @@ function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayloa
     return {
       year,
       value,
-      projectedValue: value,
       current: false,
       delta,
       pct,
@@ -266,10 +229,6 @@ function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayloa
         ? existingCurrentBar.value
         : 0,
   )
-  const projectedCurrentValue = Math.max(
-    currentYearValue,
-    Number.isFinite(projectedValueRaw) ? Math.max(0, projectedValueRaw) : currentYearValue,
-  )
   const previousCompleteValue = baseWithoutCurrent.length
     ? baseWithoutCurrent[baseWithoutCurrent.length - 1].value
     : 0
@@ -280,7 +239,6 @@ function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayloa
   baseWithoutCurrent.push({
     year: projectedYear,
     value: currentYearValue,
-    projectedValue: projectedCurrentValue,
     current: true,
     delta: currentDelta,
     pct: currentPct,
@@ -288,20 +246,15 @@ function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayloa
     detailLines: [
       `Year: ${projectedYear} (in progress)`,
       `Current citations (YTD): ${formatInt(currentYearValue)}`,
-      `Projected citations: ${formatInt(projectedCurrentValue)}`,
       `vs last complete year: ${formatSignedInt(currentDelta)} (${formatSignedPct(currentPct)})`,
-      Number.isFinite(ytdProjection) ? `YTD run-rate component: ${formatInt(ytdProjection)}` : '',
-      Number.isFinite(trendProjection) ? `Trend component: ${formatInt(trendProjection)}` : '',
     ].filter(Boolean),
   })
-  const maxValue = Math.max(1, ...baseWithoutCurrent.map((item) => Math.max(item.value, item.projectedValue)))
+  const maxValue = Math.max(1, ...baseWithoutCurrent.map((item) => item.value))
   return (
     <div className="space-y-1">
       <div className="flex h-20 items-end gap-1">
         {baseWithoutCurrent.map((bar, index) => {
           const baseHeight = Math.max(12, Math.round((bar.value / maxValue) * 72))
-          const projectedHeight = Math.max(baseHeight, Math.round((bar.projectedValue / maxValue) * 72))
-          const capHeight = Math.max(0, projectedHeight - baseHeight)
           const toneClass = bar.current
             ? 'border border-dashed border-slate-500 bg-slate-200/80'
             : bar.relative === 'above'
@@ -309,7 +262,6 @@ function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayloa
               : bar.relative === 'below'
                 ? 'bg-amber-500/85'
                 : 'bg-slate-500/80'
-          const hoverValue = bar.current ? bar.value : bar.value
           return (
             <div key={`${bar.year}-${index}`} className="flex w-full flex-col items-center gap-1">
               <button
@@ -326,18 +278,10 @@ function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayloa
               >
                 {hoveredIndex === index ? (
                   <div className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm">
-                    {formatInt(hoverValue)}
+                    {formatInt(bar.value)}
                   </div>
                 ) : null}
-                <div className="relative mx-auto flex w-full items-end" style={{ height: `${projectedHeight}px` }}>
-                  <div className={cn('w-full rounded-sm', toneClass)} style={{ height: `${baseHeight}px` }} />
-                  {bar.current && capHeight > 0 ? (
-                    <div
-                      className="pointer-events-none absolute inset-x-0 rounded-t-sm border border-dashed border-slate-700/80 bg-slate-500/35"
-                      style={{ bottom: `${baseHeight}px`, height: `${capHeight}px` }}
-                    />
-                  ) : null}
-                </div>
+                <div className={cn('w-full rounded-sm', toneClass)} style={{ height: `${baseHeight}px` }} />
               </button>
               <span className="text-[9px] text-muted-foreground">{String(bar.year).slice(-2)}</span>
             </div>
@@ -345,7 +289,7 @@ function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayloa
         })}
       </div>
       <p className="text-[10px] text-muted-foreground">
-        Bar colour is relative to 5-year mean ({formatInt(meanValue)}); current year shows YTD + projected cap.
+        Bar colour is relative to 5-year mean ({formatInt(meanValue)}); dashed bar is current year to date.
       </p>
     </div>
   )
@@ -357,7 +301,6 @@ function HIndexYearChart({ tile }: { tile: PublicationMetricTilePayload }) {
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const projectedYearRaw = Number(chartData.projected_year)
-  const projectedValueRaw = Number(chartData.projected_value)
   const currentHIndexRaw = Number(chartData.current_h_index)
   const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
 
@@ -365,10 +308,9 @@ function HIndexYearChart({ tile }: { tile: PublicationMetricTilePayload }) {
     return <div className="h-20 rounded bg-muted/60" />
   }
 
-  const baseBars: Array<{ year: number; value: number; projectedValue: number; current: boolean }> = years.map((year, index) => ({
+  const baseBars: Array<{ year: number; value: number; current: boolean }> = years.map((year, index) => ({
     year,
     value: values[index],
-    projectedValue: values[index],
     current: false,
   }))
   const existingCurrentBar = baseBars.find((item) => item.year === projectedYear)
@@ -383,26 +325,19 @@ function HIndexYearChart({ tile }: { tile: PublicationMetricTilePayload }) {
           ? bars[bars.length - 1].value
           : 0,
   )
-  const projectedValue = Math.max(
-    currentValue,
-    Number.isFinite(projectedValueRaw) ? Math.max(0, projectedValueRaw) : currentValue,
-  )
   bars.push({
     year: projectedYear,
     value: currentValue,
-    projectedValue: projectedValue,
     current: true,
   })
 
-  const maxValue = Math.max(1, ...bars.map((item) => Math.max(item.value, item.projectedValue)))
+  const maxValue = Math.max(1, ...bars.map((item) => item.value))
 
   return (
     <div className="space-y-1">
       <div className="flex h-20 items-end gap-1">
         {bars.map((bar, index) => {
           const baseHeight = Math.max(12, Math.round((bar.value / maxValue) * 72))
-          const projectedHeight = Math.max(baseHeight, Math.round((bar.projectedValue / maxValue) * 72))
-          const capHeight = Math.max(0, projectedHeight - baseHeight)
           const toneClass = bar.current
             ? 'border border-dashed border-slate-500 bg-slate-200/80'
             : 'bg-slate-500/80'
@@ -418,29 +353,21 @@ function HIndexYearChart({ tile }: { tile: PublicationMetricTilePayload }) {
                 onClick={(event) => event.stopPropagation()}
                 onMouseDown={(event) => event.stopPropagation()}
                 className="relative w-full"
-                aria-label={`${bar.current ? 'Current ' : ''}h-index ${formatInt(bar.value)} in ${bar.year}${bar.current && bar.projectedValue > bar.value ? ` (projected ${formatInt(bar.projectedValue)})` : ''}`}
+                aria-label={`${bar.current ? 'Current ' : ''}h-index ${formatInt(bar.value)} in ${bar.year}`}
               >
                 {hoveredIndex === index ? (
                   <div className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm">
                     h {formatInt(bar.value)}
                   </div>
                 ) : null}
-                <div className="relative mx-auto flex w-full items-end" style={{ height: `${projectedHeight}px` }}>
-                  <div className={cn('w-full rounded-sm', toneClass)} style={{ height: `${baseHeight}px` }} />
-                  {bar.current && capHeight > 0 ? (
-                    <div
-                      className="pointer-events-none absolute inset-x-0 rounded-t-sm border border-dashed border-slate-700/80 bg-slate-500/35"
-                      style={{ bottom: `${baseHeight}px`, height: `${capHeight}px` }}
-                    />
-                  ) : null}
-                </div>
+                <div className={cn('w-full rounded-sm', toneClass)} style={{ height: `${baseHeight}px` }} />
               </button>
               <span className="text-[9px] text-muted-foreground">{String(bar.year).slice(-2)}</span>
             </div>
           )
         })}
       </div>
-      <p className="text-[10px] text-muted-foreground">h-index by year; current year shows current value + projected cap.</p>
+      <p className="text-[10px] text-muted-foreground">h-index by year; dashed bar is current year.</p>
     </div>
   )
 }
@@ -458,19 +385,17 @@ function PublicationsPerYearChart({ tile }: { tile: PublicationMetricTilePayload
     ? meanValueRaw
     : values.reduce((sum, item) => sum + item, 0) / Math.max(1, values.length)
   const projectedYearRaw = Number(chartData.projected_year)
-  const projectedValueRaw = Number(chartData.projected_value)
   const currentYearYtdRaw = Number(chartData.current_year_ytd)
   const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
   const bars: Array<{
     year: number
     value: number
-    projectedValue: number
     current: boolean
     relative: 'above' | 'near' | 'below'
   }> = years.map((year, index) => {
     const value = values[index]
     const relative = value >= meanValue * 1.1 ? 'above' : value <= meanValue * 0.9 ? 'below' : 'near'
-    return { year, value, projectedValue: value, current: false, relative }
+    return { year, value, current: false, relative }
   })
   const existingCurrentBar = bars.find((item) => item.year === projectedYear)
   const historyBars = bars.filter((item) => item.year !== projectedYear)
@@ -482,25 +407,18 @@ function PublicationsPerYearChart({ tile }: { tile: PublicationMetricTilePayload
         ? existingCurrentBar.value
         : 0,
   )
-  const projectedCurrentValue = Math.max(
-    currentYearValue,
-    Number.isFinite(projectedValueRaw) ? Math.max(0, projectedValueRaw) : currentYearValue,
-  )
   historyBars.push({
     year: projectedYear,
     value: currentYearValue,
-    projectedValue: projectedCurrentValue,
     current: true,
     relative: 'near',
   })
-  const maxValue = Math.max(1, ...historyBars.map((item) => Math.max(item.value, item.projectedValue)))
+  const maxValue = Math.max(1, ...historyBars.map((item) => item.value))
   return (
     <div className="space-y-1">
       <div className="flex h-20 items-end gap-1">
         {historyBars.map((bar, index) => {
           const baseHeight = Math.max(12, Math.round((bar.value / maxValue) * 72))
-          const projectedHeight = Math.max(baseHeight, Math.round((bar.projectedValue / maxValue) * 72))
-          const capHeight = Math.max(0, projectedHeight - baseHeight)
           const toneClass = bar.current
             ? 'border border-dashed border-slate-500 bg-slate-200/80'
             : bar.relative === 'above'
@@ -520,22 +438,14 @@ function PublicationsPerYearChart({ tile }: { tile: PublicationMetricTilePayload
                 onClick={(event) => event.stopPropagation()}
                 onMouseDown={(event) => event.stopPropagation()}
                 className="relative w-full"
-                aria-label={`${bar.current ? 'Current ' : ''}publications ${formatInt(bar.value)} in ${bar.year}${bar.current && bar.projectedValue > bar.value ? ` (projected ${formatInt(bar.projectedValue)})` : ''}`}
+                aria-label={`${bar.current ? 'Current ' : ''}publications ${formatInt(bar.value)} in ${bar.year}`}
               >
                 {hoveredIndex === index ? (
                   <div className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm">
                     {formatInt(bar.value)}
                   </div>
                 ) : null}
-                <div className="relative mx-auto flex w-full items-end" style={{ height: `${projectedHeight}px` }}>
-                  <div className={cn('w-full rounded-sm', toneClass)} style={{ height: `${baseHeight}px` }} />
-                  {bar.current && capHeight > 0 ? (
-                    <div
-                      className="pointer-events-none absolute inset-x-0 rounded-t-sm border border-dashed border-slate-700/80 bg-slate-500/35"
-                      style={{ bottom: `${baseHeight}px`, height: `${capHeight}px` }}
-                    />
-                  ) : null}
-                </div>
+                <div className={cn('w-full rounded-sm', toneClass)} style={{ height: `${baseHeight}px` }} />
               </button>
               <span className="text-[9px] text-muted-foreground">{String(bar.year).slice(-2)}</span>
             </div>
@@ -543,8 +453,126 @@ function PublicationsPerYearChart({ tile }: { tile: PublicationMetricTilePayload
         })}
       </div>
       <p className="text-[10px] text-muted-foreground">
-        Bar colour is relative to 5-year mean ({formatInt(meanValue)}); current year shows YTD + projected cap.
+        Bar colour is relative to 5-year mean ({formatInt(meanValue)}); dashed bar is current year to date.
       </p>
+    </div>
+  )
+}
+
+function AuthorRoleRing({ tile }: { tile: PublicationMetricTilePayload }) {
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const roleCountsRaw = (chartData.author_role_counts || {}) as Record<string, unknown>
+  const unknownRaw = Number(chartData.author_role_unknown)
+  const unknown = Number.isFinite(unknownRaw) ? Math.max(0, Math.round(unknownRaw)) : 0
+  const segments = [
+    {
+      key: 'first',
+      label: '1st author',
+      short: '1st',
+      color: '#10b981',
+      chip: 'bg-emerald-500',
+      count: Math.max(0, Math.round(Number(roleCountsRaw.first || 0))),
+    },
+    {
+      key: 'second',
+      label: '2nd author',
+      short: '2nd',
+      color: '#0ea5e9',
+      chip: 'bg-sky-500',
+      count: Math.max(0, Math.round(Number(roleCountsRaw.second || 0))),
+    },
+    {
+      key: 'last',
+      label: 'Last author',
+      short: 'Last',
+      color: '#8b5cf6',
+      chip: 'bg-violet-500',
+      count: Math.max(0, Math.round(Number(roleCountsRaw.last || 0))),
+    },
+    {
+      key: 'other',
+      label: 'Other author',
+      short: 'Other',
+      color: '#64748b',
+      chip: 'bg-slate-500',
+      count: Math.max(0, Math.round(Number(roleCountsRaw.other || 0))),
+    },
+  ].filter((item) => item.count > 0)
+  const total = segments.reduce((sum, item) => sum + item.count, 0)
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null)
+  const hovered = segments.find((item) => item.key === hoveredKey) || null
+
+  if (total <= 0) {
+    return (
+      <p className="mt-1 text-[10px] text-muted-foreground">
+        No authorship-position data yet.
+      </p>
+    )
+  }
+
+  const radius = 13
+  const circumference = 2 * Math.PI * radius
+  let strokeOffset = 0
+
+  return (
+    <div className="mt-1.5 flex items-center gap-2">
+      <div className="relative">
+        <svg viewBox="0 0 36 36" className="h-10 w-10">
+          <circle cx="18" cy="18" r={radius} fill="none" stroke="#e2e8f0" strokeWidth="5" />
+          {segments.map((segment) => {
+            const ratio = segment.count / total
+            const length = Math.max(1, ratio * circumference)
+            const circle = (
+              <circle
+                key={segment.key}
+                cx="18"
+                cy="18"
+                r={radius}
+                fill="none"
+                stroke={segment.color}
+                strokeWidth="5"
+                strokeDasharray={`${length} ${circumference - length}`}
+                strokeDashoffset={-strokeOffset}
+                strokeLinecap="butt"
+                transform="rotate(-90 18 18)"
+                data-stop-tile-open="true"
+                onMouseEnter={() => setHoveredKey(segment.key)}
+                onMouseLeave={() => setHoveredKey((current) => (current === segment.key ? null : current))}
+              />
+            )
+            strokeOffset += length
+            return circle
+          })}
+        </svg>
+        <div className="pointer-events-none absolute inset-0 grid place-items-center text-[9px] font-medium text-slate-700">
+          {total}
+        </div>
+      </div>
+      <div className="min-w-0">
+        <p className="text-[10px] text-muted-foreground">
+          {hovered ? `${hovered.label}: ${hovered.count}` : '1st / 2nd / last / other'}
+        </p>
+        <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] text-muted-foreground">
+          {segments.map((segment) => (
+            <button
+              key={segment.key}
+              type="button"
+              data-stop-tile-open="true"
+              onMouseEnter={() => setHoveredKey(segment.key)}
+              onMouseLeave={() => setHoveredKey((current) => (current === segment.key ? null : current))}
+              onFocus={() => setHoveredKey(segment.key)}
+              onBlur={() => setHoveredKey((current) => (current === segment.key ? null : current))}
+              onClick={(event) => event.stopPropagation()}
+              onMouseDown={(event) => event.stopPropagation()}
+              className="inline-flex items-center gap-1 rounded border border-border px-1 py-0.5"
+            >
+              <span className={cn('inline-block h-1.5 w-1.5 rounded-full', segment.chip)} />
+              <span>{segment.short} {segment.count}</span>
+            </button>
+          ))}
+          {unknown > 0 ? <span className="inline-flex items-center">Unknown {unknown}</span> : null}
+        </div>
+      </div>
     </div>
   )
 }
@@ -1010,6 +1038,7 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                           <p className="min-h-[18px] text-xs text-muted-foreground">
                             {subtitle || '\u00A0'}
                           </p>
+                          <AuthorRoleRing tile={tile} />
                         </div>
                         <div className="w-[54%] min-w-[180px]">
                           <PublicationsPerYearChart tile={tile} />
