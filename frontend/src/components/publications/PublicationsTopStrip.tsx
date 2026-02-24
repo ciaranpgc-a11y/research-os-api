@@ -491,9 +491,19 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
     <div className="mt-1.5 flex items-start gap-3">
       <div className="min-w-0 flex-1">
         <p className="min-h-[18px] text-xs text-muted-foreground">{meaning}</p>
-        <p className="mt-0.5 min-h-[16px] text-[11px] text-muted-foreground">
-          Uncited publications: {uncitedPct}% ({uncitedCount})
-        </p>
+        <div className="mt-1 rounded border border-amber-200/80 bg-amber-50/60 px-2 py-1.5">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-amber-800">Uncited publications</p>
+          <div className="mt-0.5 flex items-end justify-between gap-2">
+            <p className="text-sm font-semibold text-amber-900">{uncitedPct}%</p>
+            <p className="text-[11px] text-amber-800">{uncitedCount} paper{uncitedCount === 1 ? '' : 's'}</p>
+          </div>
+          <div className="mt-1 h-1.5 overflow-hidden rounded bg-amber-100">
+            <div
+              className="h-full bg-amber-500/85"
+              style={{ width: `${Math.max(0, Math.min(100, uncitedPct))}%` }}
+            />
+          </div>
+        </div>
       </div>
       <div className="w-[52%] min-w-[170px]">
         <div className="space-y-1">
@@ -508,38 +518,38 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
             ) : null}
             <div className="h-6 overflow-hidden rounded border border-border/70 bg-muted/40">
               <div className="flex h-full">
-              {top3Width > 0 ? (
-                <button
-                  type="button"
-                  data-stop-tile-open="true"
-                  onMouseEnter={() => setHoveredSegment('top3')}
-                  onMouseLeave={() => setHoveredSegment((current) => (current === 'top3' ? null : current))}
-                  onFocus={() => setHoveredSegment('top3')}
-                  onBlur={() => setHoveredSegment((current) => (current === 'top3' ? null : current))}
-                  onClick={(event) => event.stopPropagation()}
-                  onMouseDown={(event) => event.stopPropagation()}
-                  className="h-full bg-slate-800/85"
-                  style={{ width: `${top3Width}%` }}
-                  aria-label={`Top 3 papers ${top3PctRounded}%`}
-                  title={`Top 3 papers: ${top3.toLocaleString('en-GB')} citations`}
-                />
-              ) : null}
-              {restWidth > 0 ? (
-                <button
-                  type="button"
-                  data-stop-tile-open="true"
-                  onMouseEnter={() => setHoveredSegment('rest')}
-                  onMouseLeave={() => setHoveredSegment((current) => (current === 'rest' ? null : current))}
-                  onFocus={() => setHoveredSegment('rest')}
-                  onBlur={() => setHoveredSegment((current) => (current === 'rest' ? null : current))}
-                  onClick={(event) => event.stopPropagation()}
-                  onMouseDown={(event) => event.stopPropagation()}
-                  className="h-full bg-slate-300/80"
-                  style={{ width: `${restWidth}%` }}
-                  aria-label={`Rest papers ${restPctRounded}%`}
-                  title={`Other papers: ${rest.toLocaleString('en-GB')} citations`}
-                />
-              ) : null}
+                {top3Width > 0 ? (
+                  <button
+                    type="button"
+                    data-stop-tile-open="true"
+                    onMouseEnter={() => setHoveredSegment('top3')}
+                    onMouseLeave={() => setHoveredSegment((current) => (current === 'top3' ? null : current))}
+                    onFocus={() => setHoveredSegment('top3')}
+                    onBlur={() => setHoveredSegment((current) => (current === 'top3' ? null : current))}
+                    onClick={(event) => event.stopPropagation()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    className="h-full bg-slate-800/85"
+                    style={{ width: `${top3Width}%` }}
+                    aria-label={`Top 3 papers ${top3PctRounded}%`}
+                    title={`Top 3 papers: ${top3.toLocaleString('en-GB')} citations`}
+                  />
+                ) : null}
+                {restWidth > 0 ? (
+                  <button
+                    type="button"
+                    data-stop-tile-open="true"
+                    onMouseEnter={() => setHoveredSegment('rest')}
+                    onMouseLeave={() => setHoveredSegment((current) => (current === 'rest' ? null : current))}
+                    onFocus={() => setHoveredSegment('rest')}
+                    onBlur={() => setHoveredSegment((current) => (current === 'rest' ? null : current))}
+                    onClick={(event) => event.stopPropagation()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    className="h-full bg-slate-300/80"
+                    style={{ width: `${restWidth}%` }}
+                    aria-label={`Rest papers ${restPctRounded}%`}
+                    title={`Other papers: ${rest.toLocaleString('en-GB')} citations`}
+                  />
+                ) : null}
               </div>
             </div>
           </div>
