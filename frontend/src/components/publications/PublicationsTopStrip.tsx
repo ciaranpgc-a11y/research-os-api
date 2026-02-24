@@ -227,12 +227,6 @@ function areaPathFromPoints(points: Array<{ x: number; y: number }>, height: num
   return `${topPath} L ${last.x} ${baselineY} L ${first.x} ${baselineY} Z`
 }
 
-function smoothPath(values: number[], width: number, height: number, padding = 6): string {
-  const labels = Array.from({ length: values.length }, (_, index) => String(index))
-  const points = buildLinePoints(values, width, height, labels, padding)
-  return smoothPathFromPoints(points)
-}
-
 function MetricBarsChart({
   items,
   emptyLabel,
@@ -678,6 +672,82 @@ function PublicationsPerYearChart({ tile }: { tile: PublicationMetricTilePayload
   )
 }
 
+type ImpactStackedSegment = {
+  key: string
+  widthPct: number
+  label: string
+  valueText: string
+  toneClass: string
+  tooltip: ReactNode
+}
+
+function ImpactStackedRow({
+  rowLabel,
+  segments,
+}: {
+  rowLabel: string
+  segments: ImpactStackedSegment[]
+}) {
+  const [hoveredSegment, setHoveredSegment] = useState<string | null>(null)
+  const hasSegments = segments.some((segment) => segment.widthPct > 0)
+  if (!hasSegments) {
+    return (
+      <div className="space-y-1">
+        <p className={dashboardTileStyles.tileMicroLabel}>{rowLabel}</p>
+        <div className="h-8 rounded-[6px] border border-dashed border-border/70 bg-muted/25" />
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-1">
+      <p className={dashboardTileStyles.tileMicroLabel}>{rowLabel}</p>
+      <div className="flex h-8 overflow-hidden rounded-[6px] border border-border/70 bg-muted/25">
+        {segments
+          .filter((segment) => segment.widthPct > 0)
+          .map((segment) => {
+            const isActive = hoveredSegment === segment.key
+            return (
+              <Tooltip key={segment.key}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    data-stop-tile-open="true"
+                    tabIndex={dashboardTileBarTabIndex}
+                    onMouseEnter={() => setHoveredSegment(segment.key)}
+                    onMouseLeave={() => setHoveredSegment((current) => (current === segment.key ? null : current))}
+                    onFocus={() => setHoveredSegment(segment.key)}
+                    onBlur={() => setHoveredSegment((current) => (current === segment.key ? null : current))}
+                    onClick={(event) => event.stopPropagation()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    style={{ width: `${segment.widthPct}%` }}
+                    className={cn(
+                      'relative h-full min-w-[20px]',
+                      dashboardTileStyles.barFocusRing,
+                    )}
+                    aria-label={`${segment.label} ${segment.valueText}`}
+                  >
+                    {isActive ? (
+                      <div className={dashboardTileStyles.valuePill}>{segment.valueText}</div>
+                    ) : null}
+                    <span
+                      className={cn(
+                        'block h-full w-full origin-bottom transition-transform duration-150 group-hover/tile:scale-[1.03]',
+                        segment.toneClass,
+                      )}
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="px-2 py-1 text-[10px] leading-snug">
+                  {segment.tooltip}
+                </TooltipContent>
+              </Tooltip>
+            )
+          })}
+      </div>
+    </div>
+  )
+}
+
 function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload }) {
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
@@ -690,225 +760,278 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const uncitedCountRaw = Number(chartData.uncited_publications_count)
   const uncitedPctRaw = Number(chartData.uncited_publications_pct)
   const uncitedCount = Number.isFinite(uncitedCountRaw) ? Math.max(0, Math.round(uncitedCountRaw)) : 0
-  const uncitedPct = Number.isFinite(uncitedPctRaw) ? Math.max(0, Math.round(uncitedPctRaw)) : 0
+  const uncitedPct = Number.isFinite(uncitedPctRaw) ? Math.max(0, Math.min(100, Math.round(uncitedPctRaw))) : 0
   const citedPct = Math.max(0, 100 - uncitedPct)
-  const meaning = `Top 3 papers account for ${top3PctRounded}% of lifetime citations`
-  const uncitedMeaning = `Uncited publications account for ${uncitedPct}% of library (${uncitedCount})`
-  const [hoveredCitationSegment, setHoveredCitationSegment] = useState<'top3' | 'rest' | null>(null)
-  const [hoveredUncitedSegment, setHoveredUncitedSegment] = useState<'uncited' | 'cited' | null>(null)
-  const top3Width = Math.max(0, Math.min(100, top3PctRounded))
-  const restWidth = Math.max(0, Math.min(100, restPctRounded))
-  const hoverCitationLabel = hoveredCitationSegment === 'top3'
-    ? `Top 3 ${top3PctRounded}%`
-    : hoveredCitationSegment === 'rest'
-      ? `Rest ${restPctRounded}%`
-      : ''
-  const hoverCitationLeft = hoveredCitationSegment === 'top3'
-    ? top3Width / 2
-    : hoveredCitationSegment === 'rest'
-      ? top3Width + restWidth / 2
-      : 50
-  const uncitedWidth = Math.max(0, Math.min(100, uncitedPct))
-  const citedWidth = Math.max(0, Math.min(100, citedPct))
-  const hoverUncitedLabel = hoveredUncitedSegment === 'uncited'
-    ? `Uncited ${uncitedPct}%`
-    : hoveredUncitedSegment === 'cited'
-      ? `Cited ${citedPct}%`
-      : ''
-  const hoverUncitedLeft = hoveredUncitedSegment === 'uncited'
-    ? uncitedWidth / 2
-    : hoveredUncitedSegment === 'cited'
-      ? uncitedWidth + citedWidth / 2
-      : 50
+  const rawTopShares = toNumberArray(
+    chartData.top_3_paper_shares_pct || chartData.top3_paper_shares_pct || chartData.top_3_paper_shares,
+  )
+  const topShares = rawTopShares
+    .slice(0, 3)
+    .map((item) => (item <= 1 ? item * 100 : item))
+    .map((item) => `${Math.max(0, item).toFixed(1)}%`)
 
   return (
-    <div className="mt-1.5 flex items-start gap-3">
-      <div className="min-w-0 flex-1">
-        <p className="min-h-[18px] text-xs text-muted-foreground">{meaning}</p>
-        <p className="mt-1 min-h-[18px] text-xs text-muted-foreground">{uncitedMeaning}</p>
+    <TooltipProvider delayDuration={90}>
+      <div className="space-y-2">
+        <p className={dashboardTileStyles.tileMicroLabel}>Lifetime citation distribution</p>
+        <ImpactStackedRow
+          rowLabel="Top 3 papers vs rest"
+          segments={[
+            {
+              key: 'top3',
+              widthPct: top3PctRounded,
+              label: 'Top 3 papers',
+              valueText: `${top3PctRounded}%`,
+              toneClass: 'bg-foreground/80',
+              tooltip: (
+                <div className="space-y-0.5">
+                  <p>Top 3 papers: {top3PctRounded}% ({formatInt(top3)} citations)</p>
+                  <p>
+                    {topShares.length
+                      ? `Top paper shares: ${topShares.join(', ')}`
+                      : 'Top-paper share details not available'}
+                  </p>
+                </div>
+              ),
+            },
+            {
+              key: 'rest',
+              widthPct: restPctRounded,
+              label: 'Rest of portfolio',
+              valueText: `${restPctRounded}%`,
+              toneClass: 'bg-foreground/35',
+              tooltip: (
+                <div className="space-y-0.5">
+                  <p>Rest of portfolio: {restPctRounded}% ({formatInt(rest)} citations)</p>
+                  <p>Total lifetime citations: {formatInt(total)}</p>
+                </div>
+              ),
+            },
+          ]}
+        />
+        <ImpactStackedRow
+          rowLabel="Cited vs uncited papers"
+          segments={[
+            {
+              key: 'uncited',
+              widthPct: uncitedPct,
+              label: 'Uncited publications',
+              valueText: `${uncitedPct}%`,
+              toneClass: 'bg-foreground/65',
+              tooltip: (
+                <div className="space-y-0.5">
+                  <p>Uncited: {uncitedPct}% ({formatInt(uncitedCount)} works)</p>
+                </div>
+              ),
+            },
+            {
+              key: 'cited',
+              widthPct: citedPct,
+              label: 'Cited publications',
+              valueText: `${citedPct}%`,
+              toneClass: 'bg-foreground/25',
+              tooltip: (
+                <div className="space-y-0.5">
+                  <p>Cited: {citedPct}% of portfolio</p>
+                </div>
+              ),
+            },
+          ]}
+        />
       </div>
-      <div className="w-[52%] min-w-[170px]">
-        <div className="space-y-2">
-          <div className="relative">
-            {hoveredCitationSegment ? (
-              <div
-                className="pointer-events-none absolute -top-7 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm"
-                style={{ left: `${Math.max(0, Math.min(100, hoverCitationLeft))}%` }}
-              >
-                {hoverCitationLabel}
-              </div>
-            ) : null}
-            <div className="h-6 overflow-hidden rounded border border-border/70 bg-muted/40">
-              <div className="flex h-full">
-                {top3Width > 0 ? (
-                  <button
-                    type="button"
-                    data-stop-tile-open="true"
-                    onMouseEnter={() => setHoveredCitationSegment('top3')}
-                    onMouseLeave={() => setHoveredCitationSegment((current) => (current === 'top3' ? null : current))}
-                    onFocus={() => setHoveredCitationSegment('top3')}
-                    onBlur={() => setHoveredCitationSegment((current) => (current === 'top3' ? null : current))}
-                    onClick={(event) => event.stopPropagation()}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    className="h-full bg-slate-800/85"
-                    style={{ width: `${top3Width}%` }}
-                    aria-label={`Top 3 papers ${top3PctRounded}%`}
-                    title={`Top 3 papers: ${top3.toLocaleString('en-GB')} citations`}
-                  />
-                ) : null}
-                {restWidth > 0 ? (
-                  <button
-                    type="button"
-                    data-stop-tile-open="true"
-                    onMouseEnter={() => setHoveredCitationSegment('rest')}
-                    onMouseLeave={() => setHoveredCitationSegment((current) => (current === 'rest' ? null : current))}
-                    onFocus={() => setHoveredCitationSegment('rest')}
-                    onBlur={() => setHoveredCitationSegment((current) => (current === 'rest' ? null : current))}
-                    onClick={(event) => event.stopPropagation()}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    className="h-full bg-slate-300/80"
-                    style={{ width: `${restWidth}%` }}
-                    aria-label={`Rest papers ${restPctRounded}%`}
-                    title={`Other papers: ${rest.toLocaleString('en-GB')} citations`}
-                  />
-                ) : null}
-              </div>
-            </div>
-          </div>
-          <div className="relative">
-            {hoveredUncitedSegment ? (
-              <div
-                className="pointer-events-none absolute -top-7 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm"
-                style={{ left: `${Math.max(0, Math.min(100, hoverUncitedLeft))}%` }}
-              >
-                {hoverUncitedLabel}
-              </div>
-            ) : null}
-            <div className="h-6 overflow-hidden rounded border border-border/70 bg-muted/40">
-              <div className="flex h-full">
-                {uncitedWidth > 0 ? (
-                  <button
-                    type="button"
-                    data-stop-tile-open="true"
-                    onMouseEnter={() => setHoveredUncitedSegment('uncited')}
-                    onMouseLeave={() => setHoveredUncitedSegment((current) => (current === 'uncited' ? null : current))}
-                    onFocus={() => setHoveredUncitedSegment('uncited')}
-                    onBlur={() => setHoveredUncitedSegment((current) => (current === 'uncited' ? null : current))}
-                    onClick={(event) => event.stopPropagation()}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    className="h-full bg-slate-700/85"
-                    style={{ width: `${uncitedWidth}%` }}
-                    aria-label={`Uncited publications ${uncitedPct}%`}
-                    title={`Uncited publications: ${uncitedCount.toLocaleString('en-GB')} works`}
-                  />
-                ) : null}
-                {citedWidth > 0 ? (
-                  <button
-                    type="button"
-                    data-stop-tile-open="true"
-                    onMouseEnter={() => setHoveredUncitedSegment('cited')}
-                    onMouseLeave={() => setHoveredUncitedSegment((current) => (current === 'cited' ? null : current))}
-                    onFocus={() => setHoveredUncitedSegment('cited')}
-                    onBlur={() => setHoveredUncitedSegment((current) => (current === 'cited' ? null : current))}
-                    onClick={(event) => event.stopPropagation()}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    className="h-full bg-slate-300/80"
-                    style={{ width: `${citedWidth}%` }}
-                    aria-label={`Cited publications ${citedPct}%`}
-                    title="Publications with at least one citation"
-                  />
-                ) : null}
-              </div>
-            </div>
-          </div>
+    </TooltipProvider>
+  )
+}
+
+function MomentumTilePanel({ tile }: { tile: PublicationMetricTilePayload }) {
+  const breakdown = buildMomentumBreakdown(tile)
+  const summaryLift = breakdown.liftPct !== null ? formatSignedPercentCompact(breakdown.liftPct) : 'New'
+  const monthlyBaseline = breakdown.rate9m !== null && breakdown.rate9m > 1e-6 ? breakdown.rate9m : null
+  const highlightStart = Math.max(0, breakdown.bars.length - 3)
+  const chartItems: MetricBarDatum[] = breakdown.bars.map((bar, index) => {
+    const baselineDelta = monthlyBaseline === null ? null : ((bar.value - monthlyBaseline) / monthlyBaseline) * 100
+    const baselineText = baselineDelta === null ? 'n/a' : formatSignedPercentCompact(baselineDelta)
+    return {
+      key: `${bar.label}-${index}`,
+      label: bar.label,
+      value: bar.value,
+      toneClass: index >= highlightStart ? 'bg-foreground/80' : 'bg-foreground/45',
+      valueText: formatInt(bar.value),
+      ariaLabel: `${bar.label}: ${formatInt(bar.value)} citations, ${baselineText} vs baseline`,
+      tooltip: (
+        <div className="space-y-0.5">
+          <p>{bar.label}: {formatInt(bar.value)} citations</p>
+          <p>% vs baseline: {baselineText}</p>
+          <p>
+            3m total {breakdown.recent3Total === null ? 'n/a' : formatInt(breakdown.recent3Total)} | 9m total {breakdown.baseline9Total === null ? 'n/a' : formatInt(breakdown.baseline9Total)}
+          </p>
+          <p>rate_3m {formatRate(breakdown.rate3m)} | rate_9m {formatRate(breakdown.rate9m)} | lift {summaryLift}</p>
         </div>
+      ),
+    }
+  })
+  return (
+    <div className={dashboardTileStyles.chartSplit}>
+      <div className={dashboardTileStyles.chartColumn}>
+        <p className={dashboardTileStyles.tileMicroLabel}>Calculated vs trailing 9-month baseline</p>
+        <p className={cn(dashboardTileStyles.tileMicroLabel, 'mt-1')}>
+          {breakdown.insufficientBaseline
+            ? 'Insufficient baseline'
+            : `3m total ${breakdown.recent3Total === null ? 'n/a' : formatInt(breakdown.recent3Total)}, 9m total ${breakdown.baseline9Total === null ? 'n/a' : formatInt(breakdown.baseline9Total)}`}
+        </p>
+      </div>
+      <div className={dashboardTileStyles.chartPanel}>
+        <MetricBarsChart items={chartItems} emptyLabel="No monthly citation data" />
       </div>
     </div>
   )
 }
 
-function MomentumTilePanel({ tile }: { tile: PublicationMetricTilePayload }) {
+function HIndexTrajectoryPanel({ tile }: { tile: PublicationMetricTilePayload }) {
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const hGapText = String(chartData.gap_text || '').trim()
+  const hNextTargetRaw = Number(chartData.next_h_index)
+  const hNextTarget = Number.isFinite(hNextTargetRaw) ? Math.round(hNextTargetRaw) : null
+  const hProgressRaw = Number(chartData.progress_to_next_pct)
+  const hProgressPct = Number.isFinite(hProgressRaw) ? Math.max(0, Math.min(100, hProgressRaw)) : 0
+  const hCandidateGaps = toNumberArray(chartData.candidate_gaps)
+    .map((item) => Math.round(item))
+    .filter((item) => item > 0)
+    .slice(0, 3)
+  return (
+    <div className={dashboardTileStyles.chartSplit}>
+      <div className={dashboardTileStyles.chartColumn}>
+        <p className={dashboardTileStyles.tileMicroLabel}>
+          {hNextTarget !== null ? `${Math.round(hProgressPct)}% to h=${hNextTarget}` : `${Math.round(hProgressPct)}% to next h`}
+        </p>
+        <div className="relative mt-1">
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-foreground/80" style={{ width: `${hProgressPct}%` }} />
+          </div>
+          <div className="pointer-events-none absolute right-0 top-1/2 h-4 -translate-y-1/2 border-l border-dashed border-muted-foreground/70" />
+        </div>
+        <p className={cn(dashboardTileStyles.tileMicroLabel, 'mt-1')}>
+          Next threshold {hNextTarget !== null ? `h=${hNextTarget}` : 'not available'}
+        </p>
+        <div className="mt-2 min-h-[22px]">
+          {hCandidateGaps.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1">
+              <span className={dashboardTileStyles.tileMicroLabel}>Nearest papers need:</span>
+              {hCandidateGaps.map((gap, index) => (
+                <span
+                  key={`${gap}-${index}`}
+                  className={cn(
+                    dashboardTileStyles.tagPill,
+                    dashboardTileStyles.tagNeutral,
+                    'h-5 px-2',
+                  )}
+                >
+                  +{gap}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className={dashboardTileStyles.tileMicroLabel}>{hGapText || '\u2014'}</p>
+          )}
+        </div>
+      </div>
+      <div className={dashboardTileStyles.chartPanel}>
+        <HIndexYearChart tile={tile} />
+      </div>
+    </div>
+  )
+}
+
+function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
-  const breakdown = buildMomentumBreakdown(tile)
-  const primaryValue = breakdown.liftPct !== null
-    ? formatSignedPercentCompact(breakdown.liftPct)
-    : breakdown.insufficientBaseline
-      ? 'New'
-      : '\u2014'
-  const secondary = breakdown.insufficientBaseline ? 'Insufficient baseline' : '3m vs 9m baseline'
-  const summaryLift = breakdown.liftPct !== null ? formatSignedPercentCompact(breakdown.liftPct) : 'New'
-  const maxValue = breakdown.bars.length ? Math.max(1, ...breakdown.bars.map((item) => item.value)) : 1
-  const highlightStart = Math.max(0, breakdown.bars.length - 3)
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const primarySeries = toNumberArray(chartData.values).map((item) => Math.max(0, item))
+  const fallbackSeries = toNumberArray(tile.sparkline || []).map((item) => Math.max(0, item))
+  const values = primarySeries.length ? primarySeries : fallbackSeries
+  const overlaySeries = toNumberArray(tile.sparkline_overlay || []).map((item) => Math.max(0, item))
+  const labels = normalizeSeriesLabels(
+    chartData.window_labels || chartData.labels || chartData.years,
+    values.length,
+    'W',
+  )
+  if (!values.length) {
+    return <div className={dashboardTileStyles.emptyChart}>No influential citation trend</div>
+  }
+  const width = 220
+  const height = 92
+  const points = buildLinePoints(values, width, height, labels, 8)
+  const overlayPoints = overlaySeries.length
+    ? buildLinePoints(overlaySeries, width, height, normalizeSeriesLabels([], overlaySeries.length, 'W'), 8)
+    : []
+  const path = smoothPathFromPoints(points)
+  const areaPath = areaPathFromPoints(points, height, 8)
+  const overlayPath = overlayPoints.length ? smoothPathFromPoints(overlayPoints) : ''
 
   return (
-    <div className={dashboardTileStyles.container}>
-      <div className={dashboardTileStyles.leftColumn}>
-        <p className={dashboardTileStyles.leftPrimary} data-testid={`metric-value-${tile.key}`}>
-          {primaryValue}
-        </p>
-        <p className={dashboardTileStyles.leftSecondary}>{secondary}</p>
-      </div>
-      <div className={dashboardTileStyles.rightChartColumn}>
-        {breakdown.bars.length ? (
-          <TooltipProvider delayDuration={90}>
-            <div className={dashboardTileStyles.rightChartSurface}>
-              {breakdown.bars.map((bar, index) => {
-                const height = Math.max(14, Math.round((bar.value / maxValue) * 78))
-                const highlighted = index >= highlightStart
-                const isActive = hoveredIndex === index
-                const valueText = formatInt(bar.value)
-                const barSummary = `3m total ${breakdown.recent3Total === null ? 'n/a' : formatInt(breakdown.recent3Total)}; 9m total ${breakdown.baseline9Total === null ? 'n/a' : formatInt(breakdown.baseline9Total)}; rate_3m ${formatRate(breakdown.rate3m)}; rate_9m ${formatRate(breakdown.rate9m)}; lift ${summaryLift}`
-                return (
-                  <div key={`${bar.label}-${index}`} className={dashboardTileStyles.barWrapper}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          data-stop-tile-open="true"
-                          tabIndex={dashboardTileBarTabIndex}
-                          onMouseEnter={() => setHoveredIndex(index)}
-                          onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
-                          onFocus={() => setHoveredIndex(index)}
-                          onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
-                          onClick={(event) => event.stopPropagation()}
-                          onMouseDown={(event) => event.stopPropagation()}
-                          className={cn(
-                            dashboardTileStyles.barTrigger,
-                            dashboardTileStyles.barFocusRing,
-                          )}
-                          aria-label={`${bar.label}: ${valueText} citations. ${barSummary}`}
-                        >
-                          {isActive ? (
-                            <div className={dashboardTileStyles.valuePill}>
-                              {valueText}
-                            </div>
-                          ) : null}
-                          <div
-                            className={cn(
-                              'w-full rounded-sm transition-colors',
-                              highlighted ? 'bg-slate-900/85' : 'bg-slate-500/70',
-                              isActive && 'bg-slate-900',
-                            )}
-                            style={{ height: `${height}px` }}
-                          />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="px-2 py-1 text-[10px]">
-                        <p>{bar.label}: {valueText} citations</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <span className="text-[9px] text-muted-foreground">{bar.label}</span>
-                  </div>
-                )
-              })}
-            </div>
-          </TooltipProvider>
-        ) : (
-          <div className={dashboardTileStyles.emptyChart}>
-            No monthly citation data
-          </div>
-        )}
-      </div>
+    <div className="relative h-24 rounded-md border border-border/70 bg-muted/20 p-2">
+      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-full w-full">
+        <path d={areaPath} className="fill-foreground/10" />
+        {overlayPath ? (
+          <path
+            d={overlayPath}
+            fill="none"
+            className="stroke-muted-foreground/55"
+            strokeWidth="2.25"
+            strokeDasharray="4 3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : null}
+        <path
+          d={path}
+          fill="none"
+          className="stroke-foreground/85"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <TooltipProvider delayDuration={90}>
+        {points.map((point, index) => {
+          const previous = index > 0 ? values[index - 1] : null
+          const delta = previous === null ? null : point.value - previous
+          return (
+            <Tooltip key={`${point.label}-${index}`}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  data-stop-tile-open="true"
+                  tabIndex={dashboardTileBarTabIndex}
+                  onMouseEnter={() => setHoveredIndex(index)}
+                  onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                  onFocus={() => setHoveredIndex(index)}
+                  onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
+                  onClick={(event) => event.stopPropagation()}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  className={cn(
+                    'absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full',
+                    dashboardTileStyles.barFocusRing,
+                  )}
+                  style={{
+                    left: `${(point.x / width) * 100}%`,
+                    top: `${(point.y / height) * 100}%`,
+                  }}
+                  aria-label={`${point.label}: ${formatInt(point.value)} influential citations`}
+                >
+                  {hoveredIndex === index ? (
+                    <span className={dashboardTileStyles.valuePill}>{formatInt(point.value)}</span>
+                  ) : null}
+                  <span className="pointer-events-none absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background bg-foreground" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="px-2 py-1 text-[10px] leading-snug">
+                <p>{point.label}: {formatInt(point.value)} influential citations</p>
+                <p>Delta vs prior window: {delta === null ? 'n/a' : formatSignedInt(delta)}</p>
+              </TooltipContent>
+            </Tooltip>
+          )
+        })}
+      </TooltipProvider>
     </div>
   )
 }
@@ -1152,18 +1275,18 @@ function deltaTextClass(tile: PublicationMetricTilePayload): string {
   return 'text-slate-600'
 }
 
-function badgeClass(tile: PublicationMetricTilePayload): string {
+function badgeTone(tile: PublicationMetricTilePayload): 'positive' | 'neutral' | 'caution' | 'negative' {
   const severity = String((tile.badge?.severity as string) || tile.delta_tone || 'neutral').toLowerCase()
   if (severity === 'positive') {
-    return 'bg-emerald-50 text-emerald-700 border-emerald-200'
+    return 'positive'
   }
   if (severity === 'caution') {
-    return 'bg-amber-50 text-amber-700 border-amber-200'
+    return 'caution'
   }
   if (severity === 'negative') {
-    return 'bg-red-50 text-red-700 border-red-200'
+    return 'negative'
   }
-  return 'bg-slate-100 text-slate-700 border-slate-200'
+  return 'neutral'
 }
 
 function metricDataSources(tile: PublicationMetricTilePayload): string {
@@ -1189,7 +1312,7 @@ export function PublicationsTopStrip({
   const [detailError, setDetailError] = useState('')
   const [totalTrendMode, setTotalTrendMode] = useState<TotalTrendMode>('year')
 
-  const tiles = metrics?.tiles || []
+  const tiles = useMemo(() => metrics?.tiles ?? [], [metrics?.tiles])
   const selectedTile = useMemo(
     () => tiles.find((tile) => tile.key === activeTileKey) || null,
     [activeTileKey, tiles],
@@ -1248,192 +1371,139 @@ export function PublicationsTopStrip({
               {tiles.map((tile) => {
                 const badgeLabel = String((tile.badge?.label as string) || '').trim()
                 const subtitle = String(tile.subtext || '').trim()
-                const isTotalCitationsTile = tile.key === 'total_citations'
-                const isTotalPublicationsTile = tile.key === 'this_year_vs_last'
-                const isHIndexTile = tile.key === 'h_index_projection'
-                const isImpactConcentrationTile = tile.key === 'impact_concentration'
-                const isMomentumTile = tile.key === 'momentum'
                 const rawDeltaDisplay = String(tile.delta_display || '').trim()
                 const shouldHideLegacyTrendText =
-                  isTotalCitationsTile && /(falling|rising|stable over)/i.test(rawDeltaDisplay)
+                  tile.key === 'total_citations' && /(falling|rising|stable over)/i.test(rawDeltaDisplay)
                 const effectiveDeltaDisplay = shouldHideLegacyTrendText ? '' : rawDeltaDisplay
+                const sourceText = metricDataSources(tile)
+                const updateText = String((tile.tooltip_details?.update_frequency as string) || 'Daily')
+                const resolvedTagTone = badgeTone(tile)
                 const tileValueSource = tile.main_value ?? tile.value
                 const tileValueNumberRaw = typeof tileValueSource === 'number' ? tileValueSource : Number.NaN
-                const mainValueDisplay = isImpactConcentrationTile && Number.isFinite(tileValueNumberRaw)
+                const mainValueDisplay = tile.key === 'impact_concentration' && Number.isFinite(tileValueNumberRaw)
                   ? `${Math.round(tileValueNumberRaw)}%`
-                  : tile.value_display
-                const hChartData = (tile.chart_data || {}) as Record<string, unknown>
-                const hGapText = String(hChartData.gap_text || '').trim()
-                const hNextTargetRaw = Number(hChartData.next_h_index)
-                const hNextTarget = Number.isFinite(hNextTargetRaw) ? Math.round(hNextTargetRaw) : null
-                const hProgressRaw = Number(hChartData.progress_to_next_pct)
-                const hProgressPct = Number.isFinite(hProgressRaw) ? Math.max(0, Math.min(100, hProgressRaw)) : 0
-                const hCandidateGaps = toNumberArray(hChartData.candidate_gaps)
-                  .map((item) => Math.round(item))
-                  .filter((item) => item > 0)
-                  .slice(0, 3)
-                const hSubtitleRaw = String(tile.subtext || '').trim()
-                const hSubtitle = /(target|projection)/i.test(hSubtitleRaw) ? '' : hSubtitleRaw
-                const hProgressLabel = hNextTarget !== null
-                  ? `${Math.round(hProgressPct)}% to h=${hNextTarget}`
-                  : `${Math.round(hProgressPct)}% to next h`
-                return (
-                  <div
-                    key={tile.key}
-                    role="button"
-                    tabIndex={0}
-                    data-metric-key={tile.key}
-                    onClick={(event) => {
-                      if (shouldIgnoreTileOpen(event.target)) {
-                        return
-                      }
-                      void onSelectTile(tile)
-                    }}
-                    onKeyDown={(event) => {
-                      if (shouldIgnoreTileOpen(event.target)) {
-                        return
-                      }
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        void onSelectTile(tile)
-                      }
-                    }}
+                  : tile.value_display || '\u2014'
+                const momentumBreakdown = tile.key === 'momentum' ? buildMomentumBreakdown(tile) : null
+                const momentumPrimary = momentumBreakdown
+                  ? momentumBreakdown.liftPct !== null
+                    ? formatSignedPercentCompact(momentumBreakdown.liftPct)
+                    : momentumBreakdown.insufficientBaseline
+                      ? 'New'
+                      : '\u2014'
+                  : '\u2014'
+                const momentumSecondary = momentumBreakdown?.insufficientBaseline
+                  ? 'Insufficient baseline'
+                  : 'Calculated vs trailing 9-month baseline'
+                const footerDelta = effectiveDeltaDisplay || '\u2014'
+                const footerNode = (
+                  <p
                     className={cn(
-                      'cursor-pointer rounded border border-border px-3 py-2 text-left transition-colors hover:bg-muted/30',
-                      tile.stability === 'unstable' && 'border-amber-300/70 bg-amber-50/40',
+                      dashboardTileStyles.tileFooterText,
+                      effectiveDeltaDisplay && deltaTextClass(tile),
+                      tile.stability === 'unstable' && effectiveDeltaDisplay && 'font-medium',
                     )}
                   >
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <p className="text-xs text-muted-foreground" data-testid={`metric-label-${tile.key}`}>{tile.label}</p>
-                      <div className="flex items-center gap-1">
-                        {!isTotalCitationsTile && !isTotalPublicationsTile && !isHIndexTile && !isImpactConcentrationTile && !isMomentumTile && badgeLabel ? (
-                          <span
-                            className={cn('rounded border px-1.5 py-0.5 text-[10px]', badgeClass(tile))}
-                            data-testid={`metric-badge-${tile.key}`}
-                          >
-                            {badgeLabel}
-                          </span>
-                        ) : null}
-                        {isImpactConcentrationTile && badgeLabel ? (
-                          <span
-                            className={cn('rounded border px-1.5 py-0.5 text-[10px]', badgeClass(tile))}
-                            data-testid={`metric-badge-${tile.key}`}
-                          >
-                            {badgeLabel}
-                          </span>
-                        ) : null}
-                        <TooltipProvider delayDuration={120}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="inline-flex h-4 w-4 items-center justify-center text-muted-foreground">
-                                <Info className="h-3.5 w-3.5" />
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="max-w-[300px] leading-relaxed">
-                              <p>{tile.tooltip}</p>
-                              <p className="mt-1 text-[11px] text-muted-foreground">
-                                Source: {metricDataSources(tile)}
-                              </p>
-                              <p className="mt-1 text-[11px] text-muted-foreground">
-                                Update: {String((tile.tooltip_details?.update_frequency as string) || 'Daily')}
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
-                    </div>
-                    {!isTotalPublicationsTile && !isMomentumTile ? (
-                      <p className="text-lg font-semibold leading-tight" data-testid={`metric-value-${tile.key}`}>{mainValueDisplay}</p>
-                    ) : null}
-                    {isTotalCitationsTile ? (
-                      <div className="mt-1.5 flex items-start gap-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="min-h-[18px] text-xs text-muted-foreground">
-                            {subtitle || '\u00A0'}
+                    {footerDelta}
+                  </p>
+                )
+
+                let primaryValue: ReactNode = mainValueDisplay
+                let secondaryText: ReactNode = subtitle || '\u2014'
+                let visual: ReactNode = (
+                  <div className={dashboardTileStyles.tileVisualWrap}>
+                    <MiniChart tile={tile} />
+                  </div>
+                )
+                let footerText: ReactNode | undefined = footerNode
+                let tagLabel: string | undefined = badgeLabel || undefined
+                const tileTagTone: 'positive' | 'neutral' | 'caution' | 'negative' | undefined = resolvedTagTone
+
+                if (tile.key === 'total_citations') {
+                  primaryValue = mainValueDisplay
+                  secondaryText = subtitle || '5-year citation trajectory'
+                  visual = (
+                    <div className={dashboardTileStyles.tileVisualWrap}>
+                      <div className={dashboardTileStyles.chartSplit}>
+                        <div className={dashboardTileStyles.chartColumn}>
+                          <TotalCitationsMiniTrend
+                            tile={tile}
+                            mode={totalTrendMode}
+                            onModeChange={setTotalTrendMode}
+                          />
+                          <p className={cn(dashboardTileStyles.tileMicroLabel, 'mt-2 min-h-[16px]')}>
+                            vs prior window: {effectiveDeltaDisplay || '\u2014'}
                           </p>
-                          <div className="mt-1.5">
-                            <TotalCitationsMiniTrend
-                              tile={tile}
-                              mode={totalTrendMode}
-                              onModeChange={setTotalTrendMode}
-                            />
-                          </div>
                         </div>
-                        <div className="w-[48%] min-w-[160px]">
+                        <div className={dashboardTileStyles.chartPanel}>
                           <TotalCitationsGrowthChart tile={tile} />
                         </div>
                       </div>
-                    ) : isTotalPublicationsTile ? (
-                      <div className="mt-1.5 flex items-start gap-3">
-                        <div className="min-w-0 flex-[0.9]">
-                          <p className="text-lg font-semibold leading-tight">{tile.value_display}</p>
-                          <p className="min-h-[18px] text-xs text-muted-foreground">
-                            {subtitle || '\u00A0'}
-                          </p>
-                        </div>
-                        <div className="w-[54%] min-w-[180px]">
-                          <PublicationsPerYearChart tile={tile} />
-                        </div>
-                      </div>
-                    ) : isHIndexTile ? (
-                      <div className="mt-1.5 flex items-start gap-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="min-h-[18px] text-xs text-muted-foreground">
-                            {hProgressLabel}
-                          </p>
-                          <div className="mt-1">
-                            <div className="h-1.5 overflow-hidden rounded bg-slate-200">
-                              <div className="h-full rounded bg-slate-800" style={{ width: `${hProgressPct}%` }} />
-                            </div>
-                            <p className="mt-0.5 text-[11px] text-muted-foreground">{hSubtitle || '\u00A0'}</p>
-                          </div>
-                          <div className="mt-1 min-h-[16px] text-[11px] text-muted-foreground">
-                            {hCandidateGaps.length > 0 ? (
-                              <div className="flex flex-wrap items-center gap-1">
-                                <span>Nearest papers need:</span>
-                                {hCandidateGaps.map((gap, index) => (
-                                  <span key={`${gap}-${index}`} className="rounded border border-slate-300 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-700">
-                                    +{gap}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              hGapText || '\u00A0'
-                            )}
-                          </div>
-                        </div>
-                        <div className="w-[48%] min-w-[160px]">
-                          <HIndexYearChart tile={tile} />
-                        </div>
-                      </div>
-                    ) : isMomentumTile ? (
+                    </div>
+                  )
+                  footerText = undefined
+                  tagLabel = undefined
+                } else if (tile.key === 'this_year_vs_last') {
+                  primaryValue = tile.value_display || mainValueDisplay
+                  secondaryText = subtitle || 'Publications per year'
+                  visual = (
+                    <div className={dashboardTileStyles.tileVisualWrap}>
+                      <PublicationsPerYearChart tile={tile} />
+                    </div>
+                  )
+                  tagLabel = undefined
+                } else if (tile.key === 'momentum') {
+                  primaryValue = momentumPrimary
+                  secondaryText = momentumSecondary
+                  visual = (
+                    <div className={dashboardTileStyles.tileVisualWrap}>
                       <MomentumTilePanel tile={tile} />
-                    ) : isImpactConcentrationTile ? (
+                    </div>
+                  )
+                  footerText = undefined
+                } else if (tile.key === 'h_index_projection') {
+                  primaryValue = mainValueDisplay
+                  secondaryText = subtitle || 'h-index trajectory'
+                  visual = (
+                    <div className={dashboardTileStyles.tileVisualWrap}>
+                      <HIndexTrajectoryPanel tile={tile} />
+                    </div>
+                  )
+                  tagLabel = undefined
+                } else if (tile.key === 'impact_concentration') {
+                  primaryValue = mainValueDisplay
+                  secondaryText = subtitle || 'Lifetime citation distribution'
+                  visual = (
+                    <div className={dashboardTileStyles.tileVisualWrap}>
                       <ImpactConcentrationPanel tile={tile} />
-                    ) : (
-                      <>
-                        <p className="mt-0.5 min-h-[18px] text-xs text-muted-foreground">
-                          {subtitle || '\u00A0'}
-                        </p>
-                        {effectiveDeltaDisplay ? (
-                          <p
-                            className={cn(
-                              'min-h-[16px] text-[11px]',
-                              deltaTextClass(tile),
-                              tile.stability === 'unstable' && 'font-medium',
-                            )}
-                          >
-                            {effectiveDeltaDisplay}
-                          </p>
-                        ) : (
-                          <p className="min-h-[16px] text-[11px] text-muted-foreground">&nbsp;</p>
-                        )}
-                        <div className="mt-1.5">
-                          <MiniChart tile={tile} />
-                        </div>
-                      </>
-                    )}
-                  </div>
+                    </div>
+                  )
+                } else if (tile.key === 'influential_citations') {
+                  primaryValue = mainValueDisplay
+                  secondaryText = subtitle || 'Influential citation trend'
+                  visual = (
+                    <div className={dashboardTileStyles.tileVisualWrap}>
+                      <InfluentialTrendPanel tile={tile} />
+                    </div>
+                  )
+                }
+
+                return (
+                  <MetricTile
+                    key={tile.key}
+                    tile={tile}
+                    onOpen={() => {
+                      void onSelectTile(tile)
+                    }}
+                    shouldIgnoreTileOpen={shouldIgnoreTileOpen}
+                    sourceText={sourceText}
+                    updateText={updateText}
+                    primaryValue={primaryValue}
+                    secondaryText={secondaryText}
+                    visual={visual}
+                    footerText={footerText}
+                    tagLabel={tagLabel}
+                    tagTone={tileTagTone}
+                  />
                 )
               })}
             </div>

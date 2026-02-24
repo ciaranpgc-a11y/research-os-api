@@ -6,9 +6,9 @@ import { PublicationsTopStrip } from './PublicationsTopStrip'
 
 const FIXTURE_TIME = '2026-02-24T09:30:00Z'
 
-function buildMetricsFixture(tile: PublicationMetricTilePayload): PublicationsTopMetricsPayload {
+function buildMetricsFixture(tiles: PublicationMetricTilePayload[]): PublicationsTopMetricsPayload {
   return {
-    tiles: [tile],
+    tiles,
     data_sources: ['OpenAlex'],
     data_last_refreshed: FIXTURE_TIME,
     metadata: {},
@@ -20,8 +20,10 @@ function buildMetricsFixture(tile: PublicationMetricTilePayload): PublicationsTo
   }
 }
 
-function momentumTileFixture(input: {
+function buildTile(input: {
   id: string
+  key: string
+  label: string
   value: number | null
   valueDisplay: string
   deltaValue: number | null
@@ -29,16 +31,18 @@ function momentumTileFixture(input: {
   deltaDirection: 'up' | 'down' | 'flat' | 'na'
   deltaTone: 'positive' | 'neutral' | 'caution' | 'negative'
   deltaColorCode: string
-  badgeLabel: string
-  badgeSeverity: 'positive' | 'neutral' | 'caution' | 'negative'
-  monthlyValues: number[]
-  gaugeValue: number
+  chartType: string
+  chartData: Record<string, unknown>
+  sparkline: number[]
+  sparklineOverlay?: number[]
   subtext?: string
+  badgeLabel?: string
+  badgeSeverity?: 'positive' | 'neutral' | 'caution' | 'negative'
 }): PublicationMetricTilePayload {
   return {
     id: input.id,
-    key: 'momentum',
-    label: 'Citation momentum',
+    key: input.key,
+    label: input.label,
     main_value: input.value,
     value: input.value,
     main_value_display: input.valueDisplay,
@@ -48,112 +52,291 @@ function momentumTileFixture(input: {
     delta_direction: input.deltaDirection,
     delta_tone: input.deltaTone,
     delta_color_code: input.deltaColorCode,
-    unit: '%',
-    subtext: input.subtext || '12m velocity versus prior 12m',
+    unit: null,
+    subtext: input.subtext || '',
     badge: {
-      label: input.badgeLabel,
-      severity: input.badgeSeverity,
+      label: input.badgeLabel || '',
+      severity: input.badgeSeverity || 'neutral',
     },
-    chart_type: 'gauge',
-    chart_data: {
-      min: 0,
-      max: 150,
-      value: input.gaugeValue,
-      monthly_values_12m: input.monthlyValues,
-      highlight_last_n: 3,
-    },
-    sparkline: input.monthlyValues,
-    sparkline_overlay: [],
-    tooltip: 'Tracks change in citation velocity over rolling windows.',
+    chart_type: input.chartType,
+    chart_data: input.chartData,
+    sparkline: input.sparkline,
+    sparkline_overlay: input.sparklineOverlay || [],
+    tooltip: `${input.label} fixture`,
     tooltip_details: {
       update_frequency: 'Daily',
       data_sources: ['OpenAlex'],
     },
     data_source: ['OpenAlex'],
-    confidence_score: 0.91,
+    confidence_score: 0.9,
     stability: 'stable',
     drilldown: {
-      title: 'Citation momentum',
-      definition: 'Relative lift in citation velocity in the most recent period.',
-      formula: '(citations_last_12m - citations_previous_12m) / max(citations_previous_12m, 1)',
-      confidence_note: 'Fixture data for UI-only story rendering.',
+      title: input.label,
+      definition: 'Fixture drilldown for Storybook rendering.',
+      formula: 'Fixture only',
+      confidence_note: 'No backend request required.',
       publications: [],
       metadata: {},
     },
   }
 }
 
-const acceleratingFixture = buildMetricsFixture(
-  momentumTileFixture({
-    id: 'tile-momentum-accelerating',
+const totalCitationsTile = buildTile({
+  id: 'tile-total-citations',
+  key: 'total_citations',
+  label: 'Total citations',
+  value: 483,
+  valueDisplay: '483',
+  deltaValue: 29.8,
+  deltaDisplay: '+29.8% vs prior window',
+  deltaDirection: 'up',
+  deltaTone: 'positive',
+  deltaColorCode: '#166534',
+  subtext: '5-year citation trajectory',
+  chartType: 'bar_year_5',
+  chartData: {
+    years: [2021, 2022, 2023, 2024, 2025],
+    values: [64, 78, 121, 108, 112],
+    monthly_values_12m: [8, 9, 10, 10, 9, 9, 10, 11, 12, 13, 11, 10],
+    month_labels_12m: ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb'],
+    mean_value: 96.6,
+    projected_year: 2026,
+    current_year_ytd: 58,
+  },
+  sparkline: [64, 78, 121, 108, 112],
+})
+
+const totalPublicationsTile = buildTile({
+  id: 'tile-total-publications',
+  key: 'this_year_vs_last',
+  label: 'Total publications',
+  value: 5,
+  valueDisplay: '5 papers',
+  deltaValue: 1,
+  deltaDisplay: '+1 vs prior year',
+  deltaDirection: 'up',
+  deltaTone: 'positive',
+  deltaColorCode: '#166534',
+  subtext: 'Current library year profile',
+  chartType: 'bar_year_5',
+  chartData: {
+    years: [2021, 2022, 2023, 2024, 2025],
+    values: [1, 1, 1, 1, 1],
+    mean_value: 1,
+    projected_year: 2026,
+    current_year_ytd: 0,
+  },
+  sparkline: [1, 1, 1, 1, 1],
+})
+
+const citationMomentumTile = buildTile({
+  id: 'tile-citation-momentum',
+  key: 'momentum',
+  label: 'Citation momentum',
+  value: 176,
+  valueDisplay: 'Momentum 176',
+  deltaValue: 76,
+  deltaDisplay: '+76% vs prior window',
+  deltaDirection: 'up',
+  deltaTone: 'positive',
+  deltaColorCode: '#166534',
+  subtext: '12m velocity versus prior 12m',
+  badgeLabel: 'Accelerating',
+  badgeSeverity: 'positive',
+  chartType: 'gauge',
+  chartData: {
+    min: 0,
+    max: 150,
     value: 176,
-    valueDisplay: 'Momentum 176',
-    deltaValue: 76,
-    deltaDisplay: '+76% vs prior window',
-    deltaDirection: 'up',
-    deltaTone: 'positive',
-    deltaColorCode: '#166534',
-    badgeLabel: 'Accelerating',
-    badgeSeverity: 'positive',
-    monthlyValues: [90, 95, 98, 100, 102, 104, 106, 103, 102, 170, 176, 182],
-    gaugeValue: 176,
-  }),
-)
+    monthly_values_12m: [90, 95, 98, 100, 102, 104, 106, 103, 102, 170, 176, 182],
+    month_labels_12m: ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb'],
+    highlight_last_n: 3,
+  },
+  sparkline: [90, 95, 98, 100, 102, 104, 106, 103, 102, 170, 176, 182],
+})
 
-const deceleratingFixture = buildMetricsFixture(
-  momentumTileFixture({
-    id: 'tile-momentum-decelerating',
-    value: 92,
-    valueDisplay: 'Momentum 92',
-    deltaValue: -22,
-    deltaDisplay: '-22% vs prior window',
-    deltaDirection: 'down',
-    deltaTone: 'caution',
-    deltaColorCode: '#b45309',
-    badgeLabel: 'Decelerating',
-    badgeSeverity: 'caution',
-    monthlyValues: [130, 126, 124, 121, 120, 118, 117, 114, 111, 95, 93, 93],
-    gaugeValue: 92,
-  }),
-)
+const hIndexTile = buildTile({
+  id: 'tile-h-index',
+  key: 'h_index_projection',
+  label: 'h-index trajectory',
+  value: 19,
+  valueDisplay: 'h 19',
+  deltaValue: 1,
+  deltaDisplay: '+1 vs prior year',
+  deltaDirection: 'up',
+  deltaTone: 'positive',
+  deltaColorCode: '#166534',
+  subtext: 'Progress to next h-index threshold',
+  chartType: 'progress_ring',
+  chartData: {
+    years: [2021, 2022, 2023, 2024, 2025],
+    values: [13, 15, 17, 18, 19],
+    projected_year: 2026,
+    current_h_index: 19,
+    next_h_index: 20,
+    progress_to_next_pct: 74,
+    candidate_gaps: [1, 2, 2],
+  },
+  sparkline: [13, 15, 17, 18, 19],
+})
 
-const flatFixture = buildMetricsFixture(
-  momentumTileFixture({
-    id: 'tile-momentum-flat',
-    value: 101,
-    valueDisplay: 'Momentum 101',
-    deltaValue: 2,
-    deltaDisplay: '+2% vs prior window',
-    deltaDirection: 'flat',
-    deltaTone: 'neutral',
-    deltaColorCode: '#475569',
-    badgeLabel: 'Flat',
-    badgeSeverity: 'neutral',
-    monthlyValues: [98, 99, 100, 100, 101, 100, 99, 101, 102, 101, 102, 103],
-    gaugeValue: 101,
-  }),
-)
+const impactConcentrationTile = buildTile({
+  id: 'tile-impact-concentration',
+  key: 'impact_concentration',
+  label: 'Impact concentration',
+  value: 68,
+  valueDisplay: '68%',
+  deltaValue: 0,
+  deltaDisplay: 'Stable',
+  deltaDirection: 'flat',
+  deltaTone: 'neutral',
+  deltaColorCode: '#475569',
+  subtext: 'Share of citations in top papers',
+  badgeLabel: 'Watch',
+  badgeSeverity: 'neutral',
+  chartType: 'donut',
+  chartData: {
+    values: [330, 153],
+    uncited_publications_count: 1,
+    uncited_publications_pct: 20,
+    top_3_paper_shares_pct: [42, 17, 9],
+  },
+  sparkline: [62, 64, 65, 66, 68],
+})
 
-const noDataFixture = buildMetricsFixture(
-  momentumTileFixture({
-    id: 'tile-momentum-no-data',
-    value: null,
-    valueDisplay: 'No data',
-    deltaValue: null,
-    deltaDisplay: null,
-    deltaDirection: 'na',
-    deltaTone: 'neutral',
-    deltaColorCode: '#64748b',
-    badgeLabel: 'No data',
-    badgeSeverity: 'neutral',
-    monthlyValues: [],
-    gaugeValue: 0,
-    subtext: 'Not enough citation history yet',
-  }),
-)
+const influentialCitationsTile = buildTile({
+  id: 'tile-influential-citations',
+  key: 'influential_citations',
+  label: 'Influential citations',
+  value: 42,
+  valueDisplay: '42',
+  deltaValue: 8,
+  deltaDisplay: '+8 vs prior window',
+  deltaDirection: 'up',
+  deltaTone: 'positive',
+  deltaColorCode: '#166534',
+  subtext: 'Highly weighted citations trend',
+  badgeLabel: 'Rising',
+  badgeSeverity: 'positive',
+  chartType: 'line',
+  chartData: {
+    values: [24, 27, 30, 33, 37, 42],
+    window_labels: ['Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb'],
+  },
+  sparkline: [24, 27, 30, 33, 37, 42],
+  sparklineOverlay: [22, 24, 26, 28, 31, 34],
+})
+
+const totalCitationsEmptyTile = buildTile({
+  id: 'tile-total-citations-empty',
+  key: 'total_citations',
+  label: 'Total citations',
+  value: null,
+  valueDisplay: '\u2014',
+  deltaValue: null,
+  deltaDisplay: null,
+  deltaDirection: 'na',
+  deltaTone: 'neutral',
+  deltaColorCode: '#64748b',
+  subtext: 'No citation history yet',
+  chartType: 'bar_year_5',
+  chartData: { years: [], values: [], monthly_values_12m: [] },
+  sparkline: [],
+})
+
+const totalPublicationsEmptyTile = buildTile({
+  id: 'tile-total-publications-empty',
+  key: 'this_year_vs_last',
+  label: 'Total publications',
+  value: null,
+  valueDisplay: '\u2014',
+  deltaValue: null,
+  deltaDisplay: null,
+  deltaDirection: 'na',
+  deltaTone: 'neutral',
+  deltaColorCode: '#64748b',
+  subtext: 'No publication timeline yet',
+  chartType: 'bar_year_5',
+  chartData: { years: [], values: [] },
+  sparkline: [],
+})
+
+const citationMomentumEmptyTile = buildTile({
+  id: 'tile-citation-momentum-empty',
+  key: 'momentum',
+  label: 'Citation momentum',
+  value: null,
+  valueDisplay: 'No data',
+  deltaValue: null,
+  deltaDisplay: null,
+  deltaDirection: 'na',
+  deltaTone: 'neutral',
+  deltaColorCode: '#64748b',
+  subtext: 'Not enough citation history yet',
+  badgeLabel: 'No data',
+  badgeSeverity: 'neutral',
+  chartType: 'gauge',
+  chartData: { monthly_values_12m: [] },
+  sparkline: [],
+})
+
+const hIndexEmptyTile = buildTile({
+  id: 'tile-h-index-empty',
+  key: 'h_index_projection',
+  label: 'h-index trajectory',
+  value: null,
+  valueDisplay: '\u2014',
+  deltaValue: null,
+  deltaDisplay: null,
+  deltaDirection: 'na',
+  deltaTone: 'neutral',
+  deltaColorCode: '#64748b',
+  subtext: 'No h-index projection yet',
+  chartType: 'progress_ring',
+  chartData: { years: [], values: [], progress_to_next_pct: 0 },
+  sparkline: [],
+})
+
+const impactConcentrationEmptyTile = buildTile({
+  id: 'tile-impact-concentration-empty',
+  key: 'impact_concentration',
+  label: 'Impact concentration',
+  value: null,
+  valueDisplay: '\u2014',
+  deltaValue: null,
+  deltaDisplay: null,
+  deltaDirection: 'na',
+  deltaTone: 'neutral',
+  deltaColorCode: '#64748b',
+  subtext: 'No distribution data yet',
+  badgeLabel: 'Watch',
+  badgeSeverity: 'neutral',
+  chartType: 'donut',
+  chartData: { values: [] },
+  sparkline: [],
+})
+
+const influentialCitationsEmptyTile = buildTile({
+  id: 'tile-influential-citations-empty',
+  key: 'influential_citations',
+  label: 'Influential citations',
+  value: null,
+  valueDisplay: '\u2014',
+  deltaValue: null,
+  deltaDisplay: null,
+  deltaDirection: 'na',
+  deltaTone: 'neutral',
+  deltaColorCode: '#64748b',
+  subtext: 'No influential trend yet',
+  badgeLabel: 'Rising',
+  badgeSeverity: 'positive',
+  chartType: 'line',
+  chartData: { values: [] },
+  sparkline: [],
+})
 
 const meta: Meta<typeof PublicationsTopStrip> = {
-  title: 'Publications/PublicationsTopStrip',
+  title: 'Publications/Tiles',
   component: PublicationsTopStrip,
 }
 
@@ -161,34 +344,68 @@ export default meta
 
 type Story = StoryObj<typeof PublicationsTopStrip>
 
-export const CitationMomentumTile: Story = {
+function singleTileArgs(tile: PublicationMetricTilePayload) {
+  return {
+    metrics: buildMetricsFixture([tile]),
+    loading: false,
+    token: null,
+  }
+}
+
+const loadingArgs = {
+  metrics: null,
+  loading: true,
+  token: null,
+}
+
+const overviewTiles = [
+  totalCitationsTile,
+  totalPublicationsTile,
+  citationMomentumTile,
+  hIndexTile,
+  impactConcentrationTile,
+  influentialCitationsTile,
+]
+
+export const TilesOverview: Story = {
   args: {
-    metrics: acceleratingFixture,
+    metrics: buildMetricsFixture(overviewTiles),
     loading: false,
     token: null,
   },
 }
 
-export const CitationMomentumDecelerating: Story = {
+export const TilesOverviewDark: Story = {
   args: {
-    metrics: deceleratingFixture,
+    metrics: buildMetricsFixture(overviewTiles),
     loading: false,
     token: null,
+  },
+  globals: {
+    theme: 'dark',
   },
 }
 
-export const CitationMomentumFlat: Story = {
-  args: {
-    metrics: flatFixture,
-    loading: false,
-    token: null,
-  },
-}
+export const TotalCitationsDefault: Story = { args: singleTileArgs(totalCitationsTile) }
+export const TotalCitationsNoData: Story = { args: singleTileArgs(totalCitationsEmptyTile) }
+export const TotalCitationsLoading: Story = { args: loadingArgs }
 
-export const CitationMomentumNoData: Story = {
-  args: {
-    metrics: noDataFixture,
-    loading: false,
-    token: null,
-  },
-}
+export const TotalPublicationsDefault: Story = { args: singleTileArgs(totalPublicationsTile) }
+export const TotalPublicationsNoData: Story = { args: singleTileArgs(totalPublicationsEmptyTile) }
+export const TotalPublicationsLoading: Story = { args: loadingArgs }
+
+export const CitationMomentumDefault: Story = { args: singleTileArgs(citationMomentumTile) }
+export const CitationMomentumNoData: Story = { args: singleTileArgs(citationMomentumEmptyTile) }
+export const CitationMomentumLoading: Story = { args: loadingArgs }
+
+export const HIndexTrajectoryDefault: Story = { args: singleTileArgs(hIndexTile) }
+export const HIndexTrajectoryNoData: Story = { args: singleTileArgs(hIndexEmptyTile) }
+export const HIndexTrajectoryLoading: Story = { args: loadingArgs }
+
+export const ImpactConcentrationDefault: Story = { args: singleTileArgs(impactConcentrationTile) }
+export const ImpactConcentrationNoData: Story = { args: singleTileArgs(impactConcentrationEmptyTile) }
+export const ImpactConcentrationLoading: Story = { args: loadingArgs }
+
+export const InfluentialCitationsDefault: Story = { args: singleTileArgs(influentialCitationsTile) }
+export const InfluentialCitationsNoData: Story = { args: singleTileArgs(influentialCitationsEmptyTile) }
+export const InfluentialCitationsLoading: Story = { args: loadingArgs }
