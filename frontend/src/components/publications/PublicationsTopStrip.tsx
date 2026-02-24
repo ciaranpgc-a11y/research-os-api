@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ExternalLink, Info } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui/card'
@@ -102,18 +102,25 @@ function TotalCitationsMiniTrend({
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
   const yearlyValues = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const monthlyValues = toNumberArray(chartData.monthly_values_12m).map((item) => Math.max(0, item))
+  const monthModeAvailable = monthlyValues.length >= 12
+  const effectiveMode: TotalTrendMode = mode === 'month' && !monthModeAvailable ? 'year' : mode
   const projectedYear = Math.round(Number(chartData.projected_year || 0))
   const projectedValue = Math.max(0, Number(chartData.projected_value || 0))
   const showYearProjection =
-    mode === 'year' &&
+    effectiveMode === 'year' &&
     years.length > 0 &&
     Number.isFinite(projectedYear) &&
     projectedYear > 0 &&
     Number.isFinite(projectedValue) &&
     projectedValue > 0
 
-  const baseValues = mode === 'year' ? yearlyValues : monthlyValues
+  const baseValues = effectiveMode === 'year' ? yearlyValues : monthlyValues
   const values = showYearProjection ? [...baseValues, projectedValue] : baseValues
+  useEffect(() => {
+    if (mode === 'month' && !monthModeAvailable) {
+      onModeChange('year')
+    }
+  }, [mode, monthModeAvailable, onModeChange])
   if (!values.length) {
     return <div className="h-12 rounded bg-muted/60" />
   }
@@ -150,15 +157,24 @@ function TotalCitationsMiniTrend({
         <button
           type="button"
           data-stop-tile-open="true"
+          disabled={!monthModeAvailable}
           onClick={(event) => {
             event.stopPropagation()
+            if (!monthModeAvailable) {
+              return
+            }
             onModeChange('month')
           }}
           onMouseDown={(event) => event.stopPropagation()}
           className={cn(
             'rounded border px-1.5 py-0.5',
-            mode === 'month' ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-300 text-slate-600',
+            !monthModeAvailable
+              ? 'cursor-not-allowed border-slate-200 text-slate-400'
+              : mode === 'month'
+                ? 'border-slate-700 bg-slate-700 text-white'
+                : 'border-slate-300 text-slate-600',
           )}
+          title={!monthModeAvailable ? '12-month curve will appear after metrics refresh completes.' : undefined}
         >
           12m
         </button>
