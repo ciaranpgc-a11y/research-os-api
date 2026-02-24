@@ -786,7 +786,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   }
 
   return (
-    <section className="mx-auto w-full max-w-6xl space-y-4">
+    <section className="mx-auto w-full max-w-5xl space-y-4">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Integrations</h1>
       </header>
@@ -833,8 +833,8 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
         </CardHeader>
         <CardContent className="space-y-3 pt-3 text-sm">
 
-          <div className="grid gap-2.5 md:grid-cols-[260px_1fr]">
-            <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2.5">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
+            <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
               <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">ORCID iD</p>
               <p className="mt-1 text-base font-semibold text-[hsl(var(--tone-neutral-900))]">
                 {orcidStatusPending ? 'Loading...' : orcidStatus?.orcid_id || user?.orcid_id || 'Not linked'}
@@ -876,7 +876,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
             </div>
 
             {orcidLinked ? (
-              <div className="grid gap-2 sm:grid-cols-2 md:col-start-2 xl:max-w-xl">
+              <div className="grid gap-2 sm:grid-cols-2 lg:col-start-2">
                 <div className={`flex min-h-sz-84 flex-col items-center justify-center gap-1 rounded-md border px-2.5 py-1.5 text-center ${worksPermissionEnabled ? 'border-[hsl(var(--tone-neutral-200))] bg-card' : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] opacity-60'}`}>
                   <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Total works</p>
                   <p className={`mt-0.5 text-2xl font-semibold leading-tight transition-transform duration-500 ease-out ${worksPermissionEnabled ? 'text-[hsl(var(--tone-neutral-900))]' : 'text-[hsl(var(--tone-neutral-500))]'}`} style={{ transform: animateWorksCount ? 'scale(1.04)' : 'scale(1)' }}>{formatMetricNumber(worksCount)}</p>
@@ -907,7 +907,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
                 </div>
               </div>
             ) : (
-              <div className="flex min-h-sz-84 flex-col justify-center rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3 md:col-start-2">
+              <div className="flex min-h-sz-84 flex-col justify-center rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3 lg:col-start-2">
                 <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">No ORCID connection</p>
                 <p className="mt-1 text-sm text-[hsl(var(--tone-neutral-600))]">
                   Connect ORCID to import your publications, citations, and profile metrics.

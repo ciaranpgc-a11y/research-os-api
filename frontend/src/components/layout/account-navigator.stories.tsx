@@ -16,8 +16,8 @@ const PATH_PRESETS: Array<{ label: string; path: string }> = [
   { label: 'Publications', path: '/profile/publications' },
   { label: 'Collaboration', path: '/account/collaboration' },
   { label: 'Impact', path: '/impact' },
-  { label: 'Settings & preferences', path: '/settings' },
   { label: 'Personal details', path: '/profile/personal-details' },
+  { label: 'Settings & preferences', path: '/settings' },
   { label: 'Integrations', path: '/profile/integrations' },
 ]
 

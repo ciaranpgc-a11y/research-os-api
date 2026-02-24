@@ -11,22 +11,53 @@ type AccountNavigatorProps = {
   onNavigate?: () => void
 }
 
+type AccountNavItem = {
+  label: string
+  path: string
+  end?: boolean
+}
+
+type AccountNavSection = {
+  label: string
+  items: AccountNavItem[]
+}
+
 const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const PROFILE_PREFETCH_LAST_AT_KEY = 'aawe_profile_prefetch_last_at'
 const PROFILE_PREFETCH_MIN_INTERVAL_MS = 45_000
 
-const ACCOUNT_LINKS = [
-  { label: 'Profile home', path: '/profile', end: true },
-  { label: 'Publications', path: '/profile/publications' },
-  { label: 'Collaboration', path: '/account/collaboration' },
-  { label: 'Impact', path: '/impact' },
-  { label: 'Settings & preferences', path: '/settings' },
-  { label: 'Personal details', path: '/profile/personal-details' },
-  { label: 'Integrations', path: '/profile/integrations' },
+const ACCOUNT_SECTIONS: AccountNavSection[] = [
+  {
+    label: 'Overview',
+    items: [{ label: 'Profile home', path: '/profile', end: true }],
+  },
+  {
+    label: 'Research',
+    items: [
+      { label: 'Publications', path: '/profile/publications' },
+      { label: 'Collaboration', path: '/account/collaboration' },
+      { label: 'Impact', path: '/impact' },
+    ],
+  },
+  {
+    label: 'Account',
+    items: [
+      { label: 'Personal details', path: '/profile/personal-details' },
+      { label: 'Settings & preferences', path: '/settings' },
+      { label: 'Integrations', path: '/profile/integrations' },
+    ],
+  },
 ]
 
+const PROFILE_PREFETCH_PATHS = new Set([
+  '/profile',
+  '/profile/publications',
+  '/profile/personal-details',
+  '/profile/integrations',
+])
+
 const accountNavItemBase =
-  'relative flex items-center rounded-md border px-3 py-1.5 text-label font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))]'
+  'relative flex items-center rounded-md border px-3 py-1.5 text-sm font-medium leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))]'
 const accountNavItemIdle =
   'border-transparent text-[hsl(var(--tone-neutral-700))] hover:border-[hsl(var(--tone-accent-200))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]'
 const accountNavItemActive =
@@ -34,6 +65,7 @@ const accountNavItemActive =
 
 export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
   const prefetchInFlight = useRef(false)
+
   const prefetchProfileData = useCallback(async () => {
     if (prefetchInFlight.current) {
       return
@@ -70,51 +102,53 @@ export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
   return (
     <aside className="flex h-full flex-col bg-card">
       <div className="border-b border-[hsl(var(--tone-neutral-200))] px-4 py-3.5">
-        <h1 className="text-label font-semibold text-[hsl(var(--tone-neutral-900))]">Profile sections</h1>
+        <h1 className="text-label font-semibold text-[hsl(var(--tone-neutral-900))]">Profile</h1>
       </div>
       <ScrollArea className="flex-1">
-        <nav className="space-y-1.5 p-3">
-          {ACCOUNT_LINKS.map((item) => {
-            const shouldPrefetch =
-              item.path === '/profile' ||
-              item.path === '/profile/personal-details' ||
-              item.path === '/profile/integrations' ||
-              item.path === '/profile/publications'
-            return (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                end={item.end}
-                onClick={onNavigate}
-                onMouseEnter={() => {
-                  if (shouldPrefetch) {
-                    void prefetchProfileData()
-                  }
-                }}
-                onFocus={() => {
-                  if (shouldPrefetch) {
-                    void prefetchProfileData()
-                  }
-                }}
-                className={({ isActive }) =>
-                  cn(accountNavItemBase, accountNavItemIdle, isActive && accountNavItemActive)
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <span
-                      aria-hidden
-                      className={cn(
-                        'absolute left-1.5 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-transparent transition-colors',
-                        isActive && 'bg-[hsl(var(--tone-accent-500))]',
-                      )}
-                    />
-                    <span className="truncate pl-2">{item.label}</span>
-                  </>
-                )}
-              </NavLink>
-            )
-          })}
+        <nav className="space-y-3 p-3">
+          {ACCOUNT_SECTIONS.map((section) => (
+            <section key={section.label} className="space-y-1.5">
+              <p className="px-3 text-caption uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
+                {section.label}
+              </p>
+              <div className="space-y-1">
+                {section.items.map((item) => (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    end={item.end}
+                    onClick={onNavigate}
+                    onMouseEnter={() => {
+                      if (PROFILE_PREFETCH_PATHS.has(item.path)) {
+                        void prefetchProfileData()
+                      }
+                    }}
+                    onFocus={() => {
+                      if (PROFILE_PREFETCH_PATHS.has(item.path)) {
+                        void prefetchProfileData()
+                      }
+                    }}
+                    className={({ isActive }) =>
+                      cn(accountNavItemBase, accountNavItemIdle, isActive && accountNavItemActive)
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <span
+                          aria-hidden
+                          className={cn(
+                            'absolute left-1.5 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-transparent transition-colors',
+                            isActive && 'bg-[hsl(var(--tone-accent-500))]',
+                          )}
+                        />
+                        <span className="truncate pl-2">{item.label}</span>
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            </section>
+          ))}
         </nav>
       </ScrollArea>
     </aside>
