@@ -542,15 +542,28 @@ function SortHeader({
   )
 }
 
-export function ProfilePublicationsPage() {
+export type ProfilePublicationsPageFixture = {
+  token?: string
+  user?: AuthUser | null
+  personaState?: PersonaStatePayload | null
+  analyticsResponse?: PublicationsAnalyticsResponsePayload | null
+  topMetricsResponse?: PublicationsTopMetricsPayload | null
+}
+
+type ProfilePublicationsPageProps = {
+  fixture?: ProfilePublicationsPageFixture
+}
+
+export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProps = {}) {
   const navigate = useNavigate()
-  const initialCachedPersonaState = readCachedPersonaState()
-  const initialCachedUser = loadCachedUser()
-  const initialCachedAnalyticsResponse = loadCachedAnalyticsResponse()
+  const isFixtureMode = Boolean(fixture)
+  const initialCachedPersonaState = fixture?.personaState ?? readCachedPersonaState()
+  const initialCachedUser = fixture?.user ?? loadCachedUser()
+  const initialCachedAnalyticsResponse = fixture?.analyticsResponse ?? loadCachedAnalyticsResponse()
   const initialCachedAnalyticsSummary = analyticsSummaryFromResponse(initialCachedAnalyticsResponse)
   const initialCachedAnalyticsTopDrivers = analyticsTopDriversFromResponse(initialCachedAnalyticsResponse)
-  const initialCachedTopMetricsResponse = loadCachedTopMetricsResponse()
-  const [token, setToken] = useState<string>(() => getAuthSessionToken())
+  const initialCachedTopMetricsResponse = fixture?.topMetricsResponse ?? loadCachedTopMetricsResponse()
+  const [token, setToken] = useState<string>(() => fixture?.token ?? getAuthSessionToken())
   const [user, setUser] = useState<AuthUser | null>(initialCachedUser)
   const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(initialCachedPersonaState)
   const [analyticsResponse, setAnalyticsResponse] = useState<PublicationsAnalyticsResponsePayload | null>(initialCachedAnalyticsResponse)
@@ -818,6 +831,9 @@ export function ProfilePublicationsPage() {
   }, [contentModeByWorkId, loadPublicationAiData, loadPublicationAuthorsData, loadPublicationDetailData, loadPublicationFilesData, loadPublicationImpactData])
 
   useEffect(() => {
+    if (isFixtureMode) {
+      return
+    }
     const sessionToken = getAuthSessionToken()
     setToken(sessionToken)
     if (!sessionToken) {
@@ -825,7 +841,7 @@ export function ProfilePublicationsPage() {
       return
     }
     void loadData(sessionToken, false, true)
-  }, [loadData, navigate])
+  }, [isFixtureMode, loadData, navigate])
 
   useEffect(() => {
     if (!activeSyncJob || activeSyncJob.status === 'completed' || activeSyncJob.status === 'failed') {
