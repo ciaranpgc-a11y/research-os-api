@@ -232,6 +232,16 @@ const highActivityFixture: ProfileIntegrationsPageFixture = {
   lastSyncOutcome: '+18 works',
 }
 
+const selectivePermissionsFixture: ProfileIntegrationsPageFixture = {
+  ...connectedFixture,
+  orcidPermissions: {
+    profile: true,
+    works: true,
+    citations: false,
+    analytics: false,
+  },
+}
+
 const unlinkedFixture: ProfileIntegrationsPageFixture = {
   token: 'storybook-session-token',
   user: {
@@ -323,6 +333,12 @@ export const HighActivity: Story = {
   },
 }
 
+export const SelectivePermissions: Story = {
+  args: {
+    fixture: selectivePermissionsFixture,
+  },
+}
+
 export const Unlinked: Story = {
   args: {
     fixture: unlinkedFixture,
@@ -367,3 +383,5 @@ export const HighActivityDarkMode: Story = {
     theme: 'dark',
   },
 }
+
+

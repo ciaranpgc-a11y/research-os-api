@@ -19,23 +19,6 @@ import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-c
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
 import type { AuthUser, OrcidStatusPayload, PersonaStatePayload, PersonaSyncJobPayload } from '@/types/impact'
 
-function formatTimestamp(value: string | null | undefined): string {
-  if (!value) {
-    return 'Not available'
-  }
-  const parsed = Date.parse(value)
-  if (Number.isNaN(parsed)) {
-    return 'Not available'
-  }
-  return new Date(parsed).toLocaleString('en-GB', {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 function formatShortTimestamp(value: string | null | undefined): string | null {
   if (!value) {
     return null
@@ -91,6 +74,28 @@ const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const ORCID_SYNC_SUMMARY_STORAGE_PREFIX = 'aawe_orcid_sync_summary:'
 const ORCID_ACTIVE_SYNC_JOB_STORAGE_PREFIX = 'aawe_orcid_active_sync_job:'
+
+type OrcidPermissionKey = 'profile' | 'works' | 'citations' | 'analytics'
+
+type OrcidPermissionOption = {
+  key: OrcidPermissionKey
+  label: string
+  detail: string
+}
+
+const ORCID_PERMISSION_OPTIONS: OrcidPermissionOption[] = [
+  { key: 'profile', label: 'Profile metadata', detail: 'Name, affiliation, and researcher identity fields' },
+  { key: 'works', label: 'Publications', detail: 'Works and bibliographic records from ORCID' },
+  { key: 'citations', label: 'Citation metrics', detail: 'Citation counts and references from connected sources' },
+  { key: 'analytics', label: 'Impact analytics', detail: 'Derived analytics and momentum signals' },
+]
+
+const DEFAULT_ORCID_PERMISSIONS: Record<OrcidPermissionKey, boolean> = {
+  profile: true,
+  works: true,
+  citations: true,
+  analytics: true,
+}
 
 type OrcidSyncSummaryStorage = {
   lastImportedCount: number | null
@@ -244,6 +249,7 @@ export type ProfileIntegrationsPageFixture = {
   lastSyncSinceLabel?: string | null
   lastSyncOutcome?: string | null
   activeSyncJob?: PersonaSyncJobPayload | null
+  orcidPermissions?: Partial<Record<OrcidPermissionKey, boolean>>
 }
 
 type ProfileIntegrationsPageProps = {
@@ -276,6 +282,11 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   const [lastSyncSinceLabel, setLastSyncSinceLabel] = useState<string | null>(fixture?.lastSyncSinceLabel ?? null)
   const [lastSyncOutcome, setLastSyncOutcome] = useState<string | null>(fixture?.lastSyncOutcome ?? null)
   const [activeSyncJob, setActiveSyncJob] = useState<PersonaSyncJobPayload | null>(fixture?.activeSyncJob ?? null)
+  const initialOrcidPermissions: Record<OrcidPermissionKey, boolean> = {
+    ...DEFAULT_ORCID_PERMISSIONS,
+    ...(fixture?.orcidPermissions || {}),
+  }
+  const [orcidPermissions, setOrcidPermissions] = useState<Record<OrcidPermissionKey, boolean>>(initialOrcidPermissions)
   const syncStatus = personaState?.sync_status || {
     orcid_last_synced_at: null,
     metrics_last_synced_at: null,
@@ -522,9 +533,6 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   const referencesLastSyncDate = formatDateOnly(
     syncStatus.metrics_last_synced_at || syncStatus.orcid_last_synced_at,
   )
-  const globalLastSync = formatTimestamp(
-    syncStatus.metrics_last_synced_at || syncStatus.orcid_last_synced_at,
-  )
   const normalizedNewWorks = Math.max(0, Math.round(Number(lastImportedCount || 0)))
   const normalizedNewCitations = Math.max(0, Math.round(Number(lastReferencesSyncedCount || 0)))
   const syncInProgress =
@@ -565,6 +573,13 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     } finally {
       setConnecting(false)
     }
+  }
+
+  const onToggleOrcidPermission = (key: OrcidPermissionKey) => {
+    setOrcidPermissions((previous) => ({
+      ...previous,
+      [key]: !previous[key],
+    }))
   }
 
   const onImportOrcid = async () => {
@@ -734,7 +749,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   }
 
   return (
-    <section className="space-y-4">
+    <section className="mx-auto w-full max-w-6xl space-y-4">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Integrations</h1>
       </header>
@@ -778,15 +793,10 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
               </Button>
             ) : null}
           </div>
-          {orcidLinked ? (
-            <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2 text-xs text-[hsl(var(--tone-neutral-600))]">
-              Last sync: {globalLastSync}
-            </div>
-          ) : null}
         </CardHeader>
         <CardContent className="space-y-4 pt-4 text-sm">
 
-          <div className="grid gap-3 md:grid-cols-[280px_1fr]">
+          <div className={`grid gap-3 md:grid-cols-[260px_1fr] ${orcidLinked ? 'xl:grid-cols-[260px_minmax(0,1fr)_230px]' : ''}`}>
             <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3">
               <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">ORCID iD</p>
               <p className="mt-1 text-base font-semibold text-[hsl(var(--tone-neutral-900))]">
@@ -807,7 +817,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
             </div>
 
             {orcidLinked ? (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 md:col-start-2">
                 <div className="flex min-h-sz-96 flex-col justify-between rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
                   <div>
                     <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Total works</p>
@@ -845,8 +855,29 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
                   </p>
                 </div>
               </div>
+              <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-3 md:col-span-2 xl:col-span-1 xl:col-start-3 xl:row-start-1">
+                <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Sync permissions</p>
+                <p className="mt-1 text-xs text-[hsl(var(--tone-neutral-600))]">Choose what to include when syncing ORCID data.</p>
+                <div className="mt-3 space-y-2">
+                  {ORCID_PERMISSION_OPTIONS.map((option) => (
+                    <label key={option.key} className="flex cursor-pointer items-start gap-2 rounded-sm border border-[hsl(var(--tone-neutral-200))] bg-card px-2 py-1.5">
+                      <input
+                        type="checkbox"
+                        checked={orcidPermissions[option.key]}
+                        onChange={() => onToggleOrcidPermission(option.key)}
+                        className="mt-0.5 h-4 w-4 rounded border-[hsl(var(--tone-neutral-300))] text-[hsl(var(--tone-accent-700))] focus:ring-[hsl(var(--tone-accent-500))]"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-label font-medium text-[hsl(var(--tone-neutral-900))]">{option.label}</span>
+                        <span className="block text-xs text-[hsl(var(--tone-neutral-600))]">{option.detail}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-2 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">UI preference preview only</p>
+              </div>
             ) : (
-              <div className="flex min-h-sz-96 flex-col justify-center rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-4 py-4">
+              <div className="flex min-h-sz-96 flex-col justify-center rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-4 py-4 md:col-start-2">
                 <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">No ORCID connection</p>
                 <p className="mt-1 text-sm text-[hsl(var(--tone-neutral-600))]">
                   Connect ORCID to import your publications, citations, and profile metrics.
@@ -884,25 +915,11 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
                 className={importing ? 'bg-[hsl(var(--tone-positive-600))] text-white hover:bg-[hsl(var(--tone-positive-700))]' : ''}
               >
                 {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                {importing
-                  ? 'Finding research work and citations...'
-                  : syncStatus.orcid_last_synced_at || worksCount > 0
-                    ? 'Sync ORCID now'
-                    : 'Import research work and citations'}
+                {importing ? 'Syncing ORCID...' : 'Sync ORCID now'}
               </Button>
             ) : null}
             {orcidStatusPending ? (
               <p className="text-xs text-[hsl(var(--tone-neutral-500))]">Checking ORCID connection...</p>
-            ) : null}
-            {orcidLinked && (lastSyncOutcome || lastSyncSinceLabel) ? (
-              <p className="text-xs text-[hsl(var(--tone-neutral-500))]">
-                {lastSyncOutcome ? (
-                  <span className="font-medium text-[hsl(var(--tone-positive-700))]">{lastSyncOutcome}</span>
-                ) : null}
-                {lastSyncSinceLabel ? (
-                  <span className={lastSyncOutcome ? 'ml-1' : ''}>since {lastSyncSinceLabel}</span>
-                ) : null}
-              </p>
             ) : null}
           </div>
 
@@ -989,6 +1006,21 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     </section>
   )
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
