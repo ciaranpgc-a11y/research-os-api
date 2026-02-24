@@ -60,6 +60,137 @@ function formatSignedPct(value: number | null): string {
   return `${safe >= 0 ? '+' : ''}${safe.toFixed(1)}%`
 }
 
+type TotalTrendMode = 'year' | 'month'
+
+function smoothPath(values: number[], width: number, height: number, padding = 4): string {
+  if (values.length === 0) {
+    return ''
+  }
+  const max = Math.max(...values)
+  const min = Math.min(...values)
+  const range = Math.max(1e-6, max - min)
+  const step = values.length > 1 ? (width - padding * 2) / (values.length - 1) : 0
+  const points = values.map((value, index) => {
+    const x = padding + index * step
+    const y = height - padding - ((value - min) / range) * (height - padding * 2)
+    return { x, y }
+  })
+  if (points.length === 1) {
+    const p = points[0]
+    return `M ${p.x} ${p.y}`
+  }
+  let d = `M ${points[0].x} ${points[0].y}`
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const current = points[index]
+    const next = points[index + 1]
+    const cx = (current.x + next.x) / 2
+    d += ` Q ${cx} ${current.y}, ${next.x} ${next.y}`
+  }
+  return d
+}
+
+function TotalCitationsMiniTrend({
+  tile,
+  mode,
+  onModeChange,
+}: {
+  tile: PublicationMetricTilePayload
+  mode: TotalTrendMode
+  onModeChange: (next: TotalTrendMode) => void
+}) {
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const years = toNumberArray(chartData.years).map((item) => Math.round(item))
+  const yearlyValues = toNumberArray(chartData.values).map((item) => Math.max(0, item))
+  const monthlyValues = toNumberArray(chartData.monthly_values_12m).map((item) => Math.max(0, item))
+  const projectedYear = Math.round(Number(chartData.projected_year || 0))
+  const projectedValue = Math.max(0, Number(chartData.projected_value || 0))
+  const showYearProjection =
+    mode === 'year' &&
+    years.length > 0 &&
+    Number.isFinite(projectedYear) &&
+    projectedYear > 0 &&
+    Number.isFinite(projectedValue) &&
+    projectedValue > 0
+
+  const baseValues = mode === 'year' ? yearlyValues : monthlyValues
+  const values = showYearProjection ? [...baseValues, projectedValue] : baseValues
+  if (!values.length) {
+    return <div className="h-12 rounded bg-muted/60" />
+  }
+
+  const width = 180
+  const height = 44
+  const basePath = smoothPath(baseValues, width, height)
+  const fullPath = smoothPath(values, width, height)
+  const max = Math.max(...values)
+  const min = Math.min(...values)
+  const range = Math.max(1e-6, max - min)
+  const step = values.length > 1 ? (width - 8) / (values.length - 1) : 0
+  const lastIndex = values.length - 1
+  const lastX = 4 + lastIndex * step
+  const lastY = height - 4 - ((values[lastIndex] - min) / range) * (height - 8)
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-1 text-[10px]">
+        <button
+          type="button"
+          onClick={() => onModeChange('year')}
+          className={cn(
+            'rounded border px-1.5 py-0.5',
+            mode === 'year' ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-300 text-slate-600',
+          )}
+        >
+          5y
+        </button>
+        <button
+          type="button"
+          onClick={() => onModeChange('month')}
+          className={cn(
+            'rounded border px-1.5 py-0.5',
+            mode === 'month' ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-300 text-slate-600',
+          )}
+        >
+          12m
+        </button>
+        {showYearProjection ? <span className="text-muted-foreground">includes projected {String(projectedYear).slice(-2)}</span> : null}
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-12 w-full">
+        {showYearProjection ? (
+          <path
+            d={basePath}
+            fill="none"
+            stroke="#475569"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : null}
+        <path
+          d={showYearProjection ? fullPath : basePath}
+          fill="none"
+          stroke="#0f172a"
+          strokeWidth="2.25"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray={showYearProjection ? '0 0 6 0' : undefined}
+        />
+        {showYearProjection ? (
+          <circle
+            cx={lastX}
+            cy={lastY}
+            r="2.6"
+            fill="#ffffff"
+            stroke="#0f172a"
+            strokeDasharray="2 2"
+            strokeWidth="1.5"
+          />
+        ) : null}
+      </svg>
+    </div>
+  )
+}
+
 function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayload }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
@@ -132,7 +263,6 @@ function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayloa
     bars[bars.length - 1].detailLines.push('Note: current year is partial (YTD).')
   }
   const maxValue = Math.max(1, ...bars.map((item) => item.value))
-  const hovered = hoveredIndex !== null ? bars[hoveredIndex] : null
   return (
     <div className="space-y-1">
       <div className="flex h-20 items-end gap-1">
@@ -168,11 +298,6 @@ function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayloa
           )
         })}
       </div>
-      {hovered ? (
-        <div className="rounded border border-slate-200 bg-white/80 px-1.5 py-1 text-[10px] text-slate-700">
-          {hovered.detailLines.join(' | ')}
-        </div>
-      ) : null}
       <p className="text-[10px] text-muted-foreground">
         Bar colour is relative to 5-year mean ({formatInt(meanValue)}).
       </p>
@@ -478,6 +603,7 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
   const [activeTileDetail, setActiveTileDetail] = useState<PublicationMetricTilePayload | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
+  const [totalTrendMode, setTotalTrendMode] = useState<TotalTrendMode>('year')
 
   const tiles = metrics?.tiles || []
   const selectedTile = useMemo(
@@ -581,19 +707,13 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                           <p className="min-h-[18px] text-xs text-muted-foreground">
                             {subtitle || '\u00A0'}
                           </p>
-                          {effectiveDeltaDisplay ? (
-                            <p
-                              className={cn(
-                                'mt-0.5 min-h-[16px] text-[11px]',
-                                deltaTextClass(tile),
-                                tile.stability === 'unstable' && 'font-medium',
-                              )}
-                            >
-                              {effectiveDeltaDisplay}
-                            </p>
-                          ) : (
-                            <p className="mt-0.5 min-h-[16px] text-[11px] text-muted-foreground">&nbsp;</p>
-                          )}
+                          <div className="mt-1.5">
+                            <TotalCitationsMiniTrend
+                              tile={tile}
+                              mode={totalTrendMode}
+                              onModeChange={setTotalTrendMode}
+                            />
+                          </div>
                         </div>
                         <div className="w-[48%] min-w-[160px]">
                           <TotalCitationsGrowthChart tile={tile} />

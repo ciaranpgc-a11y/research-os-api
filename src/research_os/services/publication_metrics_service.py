@@ -1517,6 +1517,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             chart_data={
                 "years": last5_complete_years,
                 "values": last5_complete_values,
+                "monthly_values_12m": monthly_last_12,
                 "mean_value": round(five_year_mean, 2),
                 "projected_year": now.year,
                 "projected_value": projected_current_year,
