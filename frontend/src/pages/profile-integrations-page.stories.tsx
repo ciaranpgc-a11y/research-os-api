@@ -189,6 +189,22 @@ const runningSyncJob: PersonaSyncJobPayload = {
   updated_at: '2026-02-24T17:02:00Z',
 }
 
+const queuedSyncJob: PersonaSyncJobPayload = {
+  ...runningSyncJob,
+  id: 'job-storybook-002',
+  status: 'queued',
+  progress_percent: 6,
+  current_stage: 'queued',
+  started_at: null,
+}
+
+const highProgressSyncJob: PersonaSyncJobPayload = {
+  ...runningSyncJob,
+  id: 'job-storybook-003',
+  progress_percent: 84,
+  current_stage: 'updating_metrics',
+}
+
 const connectedFixture: ProfileIntegrationsPageFixture = {
   token: 'storybook-session-token',
   user: fixtureUser,
@@ -245,6 +261,16 @@ const apiErrorFixture: ProfileIntegrationsPageFixture = {
 const runningFixture: ProfileIntegrationsPageFixture = {
   ...connectedFixture,
   activeSyncJob: runningSyncJob,
+}
+
+const queuedFixture: ProfileIntegrationsPageFixture = {
+  ...connectedFixture,
+  activeSyncJob: queuedSyncJob,
+}
+
+const runningHighProgressFixture: ProfileIntegrationsPageFixture = {
+  ...connectedFixture,
+  activeSyncJob: highProgressSyncJob,
 }
 
 function ProfileIntegrationsStoryShell({
@@ -315,10 +341,29 @@ export const ApiError: Story = {
   },
 }
 
+export const SyncQueued: Story = {
+  args: {
+    fixture: queuedFixture,
+  },
+}
+
 export const SyncRunning: Story = {
   args: {
     fixture: runningFixture,
   },
 }
 
+export const SyncRunningHighProgress: Story = {
+  args: {
+    fixture: runningHighProgressFixture,
+  },
+}
 
+export const HighActivityDarkMode: Story = {
+  args: {
+    fixture: highActivityFixture,
+  },
+  globals: {
+    theme: 'dark',
+  },
+}
