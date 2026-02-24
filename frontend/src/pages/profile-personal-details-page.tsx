@@ -10,6 +10,7 @@ import { fetchMe, fetchOrcidStatus, updateMe } from '@/lib/impact-api'
 import type { AuthUser, OrcidStatusPayload } from '@/types/impact'
 
 type PersonalDetailsDraft = {
+  salutation: string
   firstName: string
   lastName: string
   organisation: string
@@ -52,6 +53,7 @@ const PERSONAL_DETAILS_STORAGE_PREFIX = 'aawe_profile_personal_details:'
 const FOUNDING_MEMBER_USER_IDS = new Set<string>([])
 const FOUNDING_MEMBER_EMAILS = new Set<string>(['researcher@axiomos.studio'])
 const FOUNDING_MEMBER_ORCID_IDS = new Set<string>(['0000-0002-8537-0806'])
+const SALUTATION_OPTIONS = ['Dr', 'Prof', 'Mr', 'Ms', 'Mrs', 'Mx'] as const
 
 function formatTimestamp(value: string | null | undefined): string {
   if (!value) {
@@ -120,6 +122,7 @@ function splitName(value: string | null | undefined): { firstName: string; lastN
 
 function sanitizeDraft(value: Partial<PersonalDetailsDraft> | null | undefined): PersonalDetailsDraft {
   return {
+    salutation: trimValue(value?.salutation),
     firstName: trimValue(value?.firstName),
     lastName: trimValue(value?.lastName),
     organisation: trimValue(value?.organisation),
@@ -220,6 +223,7 @@ function draftFromSources(
       ? split.lastName
       : stored?.lastName || split.lastName
   return sanitizeDraft({
+    salutation: stored?.salutation || '',
     firstName: seededFirstName,
     lastName: seededLastName,
     organisation: stored?.organisation || '',
@@ -574,25 +578,44 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   />
                 </label>
 
-                <label className="space-y-1">
-                  <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">First name</span>
-                  <Input
-                    value={draft.firstName}
-                    onChange={(event) => onFieldChange('firstName', event.target.value)}
-                    placeholder="First name"
-                    autoComplete="given-name"
-                  />
-                </label>
+                <div className="grid gap-3 sm:col-span-2 sm:grid-cols-[140px_minmax(0,1fr)_minmax(0,1fr)]">
+                  <label className="space-y-1">
+                    <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Salutation</span>
+                    <select
+                      value={draft.salutation}
+                      onChange={(event) => onFieldChange('salutation', event.target.value)}
+                      className="h-9 w-full rounded-md border border-border bg-background px-3 py-1 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      autoComplete="honorific-prefix"
+                    >
+                      <option value="">Select</option>
+                      {SALUTATION_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-                <label className="space-y-1">
-                  <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Last name</span>
-                  <Input
-                    value={draft.lastName}
-                    onChange={(event) => onFieldChange('lastName', event.target.value)}
-                    placeholder="Last name"
-                    autoComplete="family-name"
-                  />
-                </label>
+                  <label className="space-y-1">
+                    <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">First name</span>
+                    <Input
+                      value={draft.firstName}
+                      onChange={(event) => onFieldChange('firstName', event.target.value)}
+                      placeholder="First name"
+                      autoComplete="given-name"
+                    />
+                  </label>
+
+                  <label className="space-y-1">
+                    <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Last name</span>
+                    <Input
+                      value={draft.lastName}
+                      onChange={(event) => onFieldChange('lastName', event.target.value)}
+                      placeholder="Last name"
+                      autoComplete="family-name"
+                    />
+                  </label>
+                </div>
 
                 <label className="space-y-1 sm:col-span-2">
                   <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Organisation</span>

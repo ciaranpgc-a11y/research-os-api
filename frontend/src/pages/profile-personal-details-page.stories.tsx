@@ -48,6 +48,7 @@ const connectedFixture: ProfilePersonalDetailsPageFixture = {
   user: fixtureUser,
   orcidStatus: linkedOrcidStatus,
   personalDetails: {
+    salutation: 'Dr',
     firstName: 'Ciaran',
     lastName: 'Clarke',
     organisation: 'Axiomos Labs',
@@ -69,6 +70,7 @@ const unlinkedFixture: ProfilePersonalDetailsPageFixture = {
   },
   orcidStatus: unlinkedOrcidStatus,
   personalDetails: {
+    salutation: '',
     firstName: 'New',
     lastName: 'Researcher',
     organisation: '',
