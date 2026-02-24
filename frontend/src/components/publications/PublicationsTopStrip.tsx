@@ -466,24 +466,25 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const rest = values[1] || 0
   const total = Math.max(0, top3 + rest)
   const top3Pct = total > 0 ? (top3 / total) * 100 : 0
-  const restPct = Math.max(0, 100 - top3Pct)
-  const trendValues = toNumberArray(tile.sparkline).map((item) => Math.max(0, item))
+  const top3PctRounded = Math.max(0, Math.min(100, Math.round(top3Pct)))
+  const restPctRounded = Math.max(0, 100 - top3PctRounded)
   const classification = String(tile.subtext || '').trim() || 'Not classified'
+  const classificationKey = classification.toLowerCase()
   const deltaRaw = Number(tile.delta_value)
-  const deltaLabel = Number.isFinite(deltaRaw) ? `${deltaRaw >= 0 ? '+' : ''}${deltaRaw.toFixed(2)}pp vs prior 12m` : ''
-  const meaning = `Top 3 papers account for ${top3Pct.toFixed(1)}% of lifetime citations`
+  const deltaLabel = Number.isFinite(deltaRaw) ? `${deltaRaw >= 0 ? '+' : ''}${Math.round(deltaRaw)}pp vs prior 12m` : ''
+  const meaning = `Top 3 papers account for ${top3PctRounded}% of lifetime citations`
+  const classificationClass = classificationKey === 'diversified'
+    ? 'text-emerald-700'
+    : classificationKey === 'moderate'
+      ? 'text-amber-700'
+      : 'text-red-700'
+  const deltaClass = classificationClass
 
   return (
     <div className="mt-1.5 flex items-start gap-3">
       <div className="min-w-0 flex-1">
         <p className="min-h-[18px] text-xs text-muted-foreground">{meaning}</p>
-        <p className="mt-0.5 min-h-[16px] text-[11px] text-muted-foreground">{deltaLabel || '\u00A0'}</p>
-        {trendValues.length > 0 ? (
-          <div className="mt-1.5">
-            <MiniLine values={trendValues} colorCode="#475569" />
-            <p className="mt-0.5 text-[10px] text-muted-foreground">12m concentration trend</p>
-          </div>
-        ) : null}
+        <p className="mt-0.5 min-h-[16px] text-[11px] text-muted-foreground">&nbsp;</p>
       </div>
       <div className="w-[52%] min-w-[170px]">
         <div className="space-y-1">
@@ -491,21 +492,24 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
             <div className="flex h-full">
               <div
                 className="h-full bg-slate-800/85"
-                style={{ width: `${Math.max(0, Math.min(100, top3Pct))}%` }}
+                style={{ width: `${top3PctRounded}%` }}
                 title={`Top 3 papers: ${top3.toLocaleString('en-GB')} citations`}
               />
               <div
                 className="h-full bg-slate-300/80"
-                style={{ width: `${Math.max(0, Math.min(100, restPct))}%` }}
+                style={{ width: `${restPctRounded}%` }}
                 title={`Other papers: ${rest.toLocaleString('en-GB')} citations`}
               />
             </div>
           </div>
           <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-            <span>Top 3 {top3Pct.toFixed(1)}%</span>
-            <span>Rest {restPct.toFixed(1)}%</span>
+            <span>Top 3 {top3PctRounded}%</span>
+            <span>Rest {restPctRounded}%</span>
           </div>
-          <p className="text-[10px] text-muted-foreground">{classification}</p>
+          <div className="flex items-center justify-between text-[10px]">
+            <p className={cn('font-medium', classificationClass)}>{classification}</p>
+            <p className={cn('font-medium', deltaClass)}>{deltaLabel || '\u00A0'}</p>
+          </div>
         </div>
       </div>
     </div>
@@ -878,6 +882,10 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                 const shouldHideLegacyTrendText =
                   isTotalCitationsTile && /(falling|rising|stable over)/i.test(rawDeltaDisplay)
                 const effectiveDeltaDisplay = shouldHideLegacyTrendText ? '' : rawDeltaDisplay
+                const tileValueNumberRaw = Number(tile.main_value ?? tile.value)
+                const mainValueDisplay = isImpactConcentrationTile && Number.isFinite(tileValueNumberRaw)
+                  ? `${Math.round(tileValueNumberRaw)}%`
+                  : tile.value_display
                 const hChartData = (tile.chart_data || {}) as Record<string, unknown>
                 const hGapText = String(hChartData.gap_text || '').trim()
                 const hNextTargetRaw = Number(hChartData.next_h_index)
@@ -952,7 +960,7 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                       </div>
                     </div>
                     {!isTotalPublicationsTile ? (
-                      <p className="text-lg font-semibold leading-tight">{tile.value_display}</p>
+                      <p className="text-lg font-semibold leading-tight">{mainValueDisplay}</p>
                     ) : null}
                     {isTotalCitationsTile ? (
                       <div className="mt-1.5 flex items-start gap-3">
