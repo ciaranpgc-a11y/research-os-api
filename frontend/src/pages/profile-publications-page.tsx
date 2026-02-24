@@ -1478,20 +1478,6 @@ export function ProfilePublicationsPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Publications</h1>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" onClick={onRichImportOrcid} disabled={!Boolean(orcidStatus?.can_import) || busy}>
-            {richImporting ? 'Syncing ORCID...' : 'Sync ORCID now'}
-          </Button>
-          <Button type="button" variant="outline" onClick={onSyncCitations} disabled={!canSyncCitations}>
-            {syncing ? 'Syncing citations...' : 'Sync citations'}
-          </Button>
-          <Button type="button" variant="outline" onClick={onFullSyncCitations} disabled={!canSyncCitations}>
-            {fullSyncing ? 'Full sync...' : 'Full sync (slower)'}
-          </Button>
-          <Button type="button" variant="outline" onClick={() => navigate('/profile/integrations')}>
-            Open integrations
-          </Button>
-        </div>
       </header>
 
       <PublicationsTopStrip metrics={topMetricsResponse} loading={loading || !topMetricsResponse} token={token || null} />
