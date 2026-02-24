@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -657,363 +657,401 @@ export function AuthPage() {
     }
   }
 
+  const authBrandVars: CSSProperties = {
+    ['--auth-brand-navy' as string]: '217 49% 8%',
+    ['--auth-brand-accent' as string]: '188 42% 30%',
+    ['--auth-brand-accent-strong' as string]: '188 42% 24%',
+  }
+
+  const authLabelClass =
+    'text-caption font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-600))]'
+  const authInputClass =
+    'h-10 border-[hsl(var(--tone-neutral-200))] bg-card text-[hsl(var(--auth-brand-navy))] placeholder:text-[hsl(var(--tone-neutral-400))] focus-visible:ring-[hsl(var(--auth-brand-accent))]'
+  const authPasswordWrapClass =
+    'flex rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card transition-colors focus-within:border-[hsl(var(--auth-brand-accent))] focus-within:ring-2 focus-within:ring-[hsl(var(--auth-brand-accent))]'
+  const authPasswordToggleClass =
+    'inline-flex h-10 w-10 shrink-0 items-center justify-center border-l border-[hsl(var(--tone-neutral-200))] text-[hsl(var(--tone-neutral-600))] transition-colors hover:text-[hsl(var(--auth-brand-navy))] focus-visible:outline-none'
+  const authPrimaryButtonClass =
+    'h-10 w-full bg-[hsl(var(--auth-brand-accent))] text-white hover:bg-[hsl(var(--auth-brand-accent-strong))]'
+  const authSubtleActionClass =
+    'text-label font-medium text-[hsl(var(--tone-neutral-600))] underline underline-offset-2 transition-colors hover:text-[hsl(var(--auth-brand-navy))]'
+
+  const oauthActions = SOCIAL_PROVIDERS.map((provider) => {
+    const config = providerByName.get(provider)
+    const providerExplicitlyDisabled = Boolean(config && !config.configured)
+    return {
+      id: provider,
+      label: providerLabel(provider),
+      icon: <ProviderIcon provider={provider} />,
+      onClick: () => {
+        void onOAuth(provider)
+      },
+      disabled: loading || oauthPending || providerExplicitlyDisabled,
+      title: providerExplicitlyDisabled
+        ? config?.reason || `${providerLabel(provider)} is not configured`
+        : providerLabel(provider),
+    }
+  })
+
   return (
-    <div className="min-h-screen bg-slate-100 px-4 py-10">
-      <div className="mx-auto flex w-full max-w-sz-520 flex-col items-center gap-5">
-        <div className="text-3xl font-semibold tracking-tight text-slate-900">AAWE</div>
-
-        <Card className="w-full border border-slate-200 bg-white shadow-sm">
-          <CardContent className="space-y-4 p-6 sm:p-8">
-            <div className="space-y-1">
-              <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-                {mode === 'signin' ? 'Welcome back' : 'Create account'}
-              </h1>
-              <p className="text-sm text-slate-600">
-                {mode === 'signin' ? 'Log in with your AAWE account' : 'Create your AAWE account'}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-1 rounded-md bg-slate-100 p-1">
+    <div
+      className="min-h-screen bg-[hsl(var(--tone-neutral-100))] px-4 py-8 sm:py-12"
+      style={authBrandVars}
+    >
+      <LoginCard
+        mode={mode}
+        title={mode === 'signin' ? 'Welcome back' : 'Create account'}
+        subtitle={
+          mode === 'signin'
+            ? 'Sign in to continue in your research workspace.'
+            : 'Create your account to start in Axiomos.'
+        }
+        loading={loading}
+        status={status}
+        error={error}
+        errorAction={
+          error.toLowerCase().includes('could not reach api') ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 text-label"
+              onClick={() => void onWakeApi()}
+              disabled={loading}
+            >
+              Retry API connection
+            </Button>
+          ) : null
+        }
+        oauthActions={oauthActions}
+        onModeChange={(nextMode) => setMode(nextMode)}
+        footer={
+          mode === 'signin' ? (
+            <p>
+              New to Axiomos?{' '}
               <button
                 type="button"
+                className={authSubtleActionClass}
+                onClick={() => setMode('register')}
+              >
+                Create an account
+              </button>
+            </p>
+          ) : (
+            <p>
+              Already have an account?{' '}
+              <button
+                type="button"
+                className={authSubtleActionClass}
                 onClick={() => setMode('signin')}
-                className={mode === 'signin' ? 'rounded bg-white px-3 py-1.5 text-sm font-medium shadow-sm' : 'rounded px-3 py-1.5 text-sm text-slate-600'}
               >
                 Sign in
               </button>
+            </p>
+          )
+        }
+      >
+        {mode === 'signin' ? (
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label htmlFor="signin-email" className={authLabelClass}>Email address</label>
+              <Input
+                id="signin-email"
+                autoComplete="email"
+                placeholder="email@address.com"
+                value={signInEmail}
+                onChange={(event) => setSignInEmail(event.target.value)}
+                className={authInputClass}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="signin-password" className={authLabelClass}>Password</label>
+              <div className={authPasswordWrapClass}>
+                <Input
+                  id="signin-password"
+                  autoComplete="current-password"
+                  type={showSignInPassword ? 'text' : 'password'}
+                  placeholder="Enter your password"
+                  value={signInPassword}
+                  onChange={(event) => setSignInPassword(event.target.value)}
+                  className="h-10 border-0 bg-transparent shadow-none focus-visible:ring-0"
+                />
+                <button
+                  type="button"
+                  className={authPasswordToggleClass}
+                  onClick={() => setShowSignInPassword((value) => !value)}
+                  aria-label={showSignInPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showSignInPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
               <button
                 type="button"
-                onClick={() => setMode('register')}
-                className={mode === 'register' ? 'rounded bg-white px-3 py-1.5 text-sm font-medium shadow-sm' : 'rounded px-3 py-1.5 text-sm text-slate-600'}
+                className={authSubtleActionClass}
+                onClick={() => {
+                  setShowResetPanel((value) => !value)
+                  if (!resetEmail) {
+                    setResetEmail(signInEmail)
+                  }
+                }}
               >
-                Register
+                Forgot password?
               </button>
             </div>
 
-            {mode === 'signin' ? (
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold tracking-wide text-slate-700">EMAIL ADDRESS</label>
-                  <Input
-                    autoComplete="email"
-                    placeholder="email@address.com"
-                    value={signInEmail}
-                    onChange={(event) => setSignInEmail(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold tracking-wide text-slate-700">PASSWORD</label>
-                  <div className="flex rounded-md border border-input bg-background">
-                    <Input
-                      autoComplete="current-password"
-                      type={showSignInPassword ? 'text' : 'password'}
-                      placeholder="Enter your password"
-                      value={signInPassword}
-                      onChange={(event) => setSignInPassword(event.target.value)}
-                      className="border-0 shadow-none focus-visible:ring-0"
-                    />
-                    <button
-                      type="button"
-                      className="border-l border-input px-3 text-slate-600"
-                      onClick={() => setShowSignInPassword((value) => !value)}
-                      aria-label={showSignInPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showSignInPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
+            <Button
+              type="button"
+              className={authPrimaryButtonClass}
+              disabled={loading || !!loginValidationMessage}
+              onClick={() => void onSignIn()}
+            >
+              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Sign in
+            </Button>
 
-                <button
-                  type="button"
-                  className="text-sm font-medium text-emerald-700 underline underline-offset-2"
-                  onClick={() => {
-                    setShowResetPanel((value) => !value)
-                    if (!resetEmail) {
-                      setResetEmail(signInEmail)
-                    }
-                  }}
-                >
-                  Forgot your password?
-                </button>
+            {hasTestAccountShortcut ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 w-full border-[hsl(var(--tone-neutral-200))] text-label"
+                onClick={onUseTestAccount}
+                disabled={loading}
+              >
+                Use test account
+              </Button>
+            ) : null}
 
-                <Button
-                  type="button"
-                  className="w-full bg-emerald-600 hover:bg-emerald-700"
-                  disabled={loading || !!loginValidationMessage}
-                  onClick={() => void onSignIn()}
-                >
-                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Log in
-                </Button>
+            {attemptedSignIn && loginValidationMessage ? (
+              <p className="text-sm text-[hsl(var(--tone-danger-700))]">{loginValidationMessage}</p>
+            ) : null}
 
-                {hasTestAccountShortcut ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={onUseTestAccount}
-                    disabled={loading}
-                  >
-                    Use test account
-                  </Button>
-                ) : null}
-
-                {attemptedSignIn && loginValidationMessage ? <p className="text-xs text-amber-700">{loginValidationMessage}</p> : null}
-
-                {challengeToken ? (
-                  <div className="space-y-2 rounded-md border border-emerald-300 bg-emerald-50/70 p-3">
-                    <p className="text-xs font-medium text-emerald-800">Two-factor challenge</p>
-                    <Input
-                      autoComplete="one-time-code"
-                      placeholder="6-digit code or backup code"
-                      value={twoFactorCode}
-                      onChange={(event) => setTwoFactorCode(event.target.value)}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => void onVerifyTwoFactor()}
-                      disabled={loading || !twoFactorCode.trim()}
-                    >
-                      Verify 2FA
-                    </Button>
-                  </div>
-                ) : null}
-
-                {showResetPanel ? (
-                  <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-xs font-medium text-slate-700">Reset your password</p>
-                    <Input
-                      autoComplete="email"
-                      placeholder="Account email"
-                      value={resetEmail}
-                      onChange={(event) => setResetEmail(event.target.value)}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => void onRequestReset()}
-                      disabled={loading || !isLikelyEmail(resetEmail)}
-                    >
-                      Request reset code
-                    </Button>
-                    {resetPreviewCode ? (
-                      <p className="text-xs text-emerald-700">
-                        Reset code (debug preview): <span className="font-mono">{resetPreviewCode}</span>
-                      </p>
-                    ) : null}
-                    <Input
-                      placeholder="Reset code"
-                      value={resetCode}
-                      onChange={(event) => setResetCode(event.target.value)}
-                    />
-                    <Input
-                      type="password"
-                      placeholder="New password"
-                      value={resetPassword}
-                      onChange={(event) => setResetPassword(event.target.value)}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => void onConfirmReset()}
-                      disabled={loading || !resetCode.trim() || !isStrongPassword(resetPassword)}
-                    >
-                      Confirm password reset
-                    </Button>
-                    {resetValidationMessage ? <p className="text-xs text-amber-700">{resetValidationMessage}</p> : null}
-                  </div>
-                ) : null}
-              </div>
-            ) : awaitingEmailVerification ? (
-              <div className="space-y-3 rounded-md border border-emerald-300 bg-emerald-50/70 p-3">
-                <p className="text-sm font-medium text-emerald-900">Verify your email</p>
-                <p className="text-xs text-emerald-800">
-                  We sent a verification code to <span className="font-semibold">{registerEmail.trim()}</span>.
+            {challengeToken ? (
+              <div className="space-y-2 rounded-md border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] p-3">
+                <p className="text-caption font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-accent-700))]">
+                  Two-factor challenge
                 </p>
-                {verificationDeliveryHint ? <p className="text-xs text-slate-700">{verificationDeliveryHint}</p> : null}
                 <Input
+                  id="two-factor-code"
                   autoComplete="one-time-code"
-                  placeholder="Enter verification code"
-                  value={verificationCode}
-                  onChange={(event) => setVerificationCode(event.target.value)}
+                  placeholder="6-digit code or backup code"
+                  value={twoFactorCode}
+                  onChange={(event) => setTwoFactorCode(event.target.value)}
+                  className={authInputClass}
                 />
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    className="bg-emerald-600 hover:bg-emerald-700"
-                    onClick={() => void onConfirmVerification()}
-                    disabled={loading || !verificationCode.trim()}
-                  >
-                    {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Verify and continue
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => void onResendVerification()} disabled={loading}>
-                    Resend code
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setAwaitingEmailVerification(false)
-                      setMode('signin')
-                    }}
-                    disabled={loading}
-                  >
-                    Verify later
-                  </Button>
-                </div>
-                {verificationPreviewCode ? (
-                  <p className="text-xs text-emerald-700">
-                    Verification code (debug preview): <span className="font-mono">{verificationPreviewCode}</span>
-                  </p>
-                ) : null}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold tracking-wide text-slate-700">FULL NAME</label>
-                  <Input
-                    autoComplete="name"
-                    placeholder="Jane Researcher"
-                    value={registerName}
-                    onChange={(event) => setRegisterName(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold tracking-wide text-slate-700">EMAIL ADDRESS</label>
-                  <Input
-                    autoComplete="email"
-                    placeholder="email@address.com"
-                    value={registerEmail}
-                    onChange={(event) => setRegisterEmail(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold tracking-wide text-slate-700">PASSWORD</label>
-                  <div className="flex rounded-md border border-input bg-background">
-                    <Input
-                      autoComplete="new-password"
-                      type={showRegisterPassword ? 'text' : 'password'}
-                      placeholder="Create your password"
-                      value={registerPassword}
-                      onChange={(event) => setRegisterPassword(event.target.value)}
-                      className="border-0 shadow-none focus-visible:ring-0"
-                    />
-                    <button
-                      type="button"
-                      className="border-l border-input px-3 text-slate-600"
-                      onClick={() => setShowRegisterPassword((value) => !value)}
-                      aria-label={showRegisterPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showRegisterPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold tracking-wide text-slate-700">CONFIRM PASSWORD</label>
-                  <Input
-                    autoComplete="new-password"
-                    type="password"
-                    placeholder="Confirm password"
-                    value={registerConfirmPassword}
-                    onChange={(event) => setRegisterConfirmPassword(event.target.value)}
-                  />
-                </div>
-
-                <div className="grid gap-1 text-xs text-slate-600 sm:grid-cols-2">
-                  <p className={registerPasswordChecks.length ? 'text-emerald-700' : ''}>10+ characters</p>
-                  <p className={registerPasswordChecks.upper ? 'text-emerald-700' : ''}>Uppercase letter</p>
-                  <p className={registerPasswordChecks.lower ? 'text-emerald-700' : ''}>Lowercase letter</p>
-                  <p className={registerPasswordChecks.number ? 'text-emerald-700' : ''}>Number</p>
-                  <p className={registerPasswordChecks.matches ? 'text-emerald-700 sm:col-span-2' : 'sm:col-span-2'}>
-                    Passwords match
-                  </p>
-                </div>
-
                 <Button
                   type="button"
-                  className="w-full bg-emerald-600 hover:bg-emerald-700"
-                  disabled={loading}
-                  onClick={() => void onRegister()}
+                  variant="outline"
+                  className="h-10 w-full border-[hsl(var(--tone-neutral-200))] text-label"
+                  onClick={() => void onVerifyTwoFactor()}
+                  disabled={loading || !twoFactorCode.trim()}
                 >
-                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Create account
+                  Verify 2FA
                 </Button>
-                {(attemptedRegister || hasRegisterInput) && registerValidationMessage ? (
-                  <p className="text-xs text-amber-700">{registerValidationMessage}</p>
-                ) : null}
               </div>
-            )}
+            ) : null}
 
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <span className="h-px flex-1 bg-slate-200" />
-              <span>or</span>
-              <span className="h-px flex-1 bg-slate-200" />
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              {SOCIAL_PROVIDERS.map((provider) => {
-                const config = providerByName.get(provider)
-                const providerExplicitlyDisabled = Boolean(config && !config.configured)
-                return (
-                  <Button
-                    key={provider}
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => void onOAuth(provider)}
-                    disabled={loading || oauthPending || providerExplicitlyDisabled}
-                    title={
-                      providerExplicitlyDisabled
-                        ? config?.reason || `${providerLabel(provider)} is not configured`
-                        : providerLabel(provider)
-                    }
-                    aria-label={providerLabel(provider)}
-                  >
-                    <ProviderIcon provider={provider} />
-                    <span className="sr-only">{providerLabel(provider)}</span>
-                  </Button>
-                )
-              })}
-            </div>
-
-            {status ? <p className="text-xs text-emerald-700">{status}</p> : null}
-            {error ? (
-              <div className="space-y-2">
-                <p className="text-xs text-red-700">{error}</p>
-                {error.toLowerCase().includes('could not reach api') ? (
-                  <Button type="button" variant="outline" size="sm" onClick={() => void onWakeApi()} disabled={loading}>
-                    Retry API connection
-                  </Button>
+            {showResetPanel ? (
+              <div className="space-y-2 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-3">
+                <p className="text-caption font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-600))]">
+                  Reset your password
+                </p>
+                <Input
+                  id="reset-email"
+                  autoComplete="email"
+                  placeholder="Account email"
+                  value={resetEmail}
+                  onChange={(event) => setResetEmail(event.target.value)}
+                  className={authInputClass}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 w-full border-[hsl(var(--tone-neutral-200))] text-label"
+                  onClick={() => void onRequestReset()}
+                  disabled={loading || !isLikelyEmail(resetEmail)}
+                >
+                  Request reset code
+                </Button>
+                {resetPreviewCode ? (
+                  <p className="text-sm text-[hsl(var(--tone-accent-700))]">
+                    Reset code (debug preview): <span className="font-mono">{resetPreviewCode}</span>
+                  </p>
+                ) : null}
+                <Input
+                  id="reset-code"
+                  placeholder="Reset code"
+                  value={resetCode}
+                  onChange={(event) => setResetCode(event.target.value)}
+                  className={authInputClass}
+                />
+                <Input
+                  id="reset-password"
+                  type="password"
+                  placeholder="New password"
+                  value={resetPassword}
+                  onChange={(event) => setResetPassword(event.target.value)}
+                  className={authInputClass}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 w-full border-[hsl(var(--tone-neutral-200))] text-label"
+                  onClick={() => void onConfirmReset()}
+                  disabled={loading || !resetCode.trim() || !isStrongPassword(resetPassword)}
+                >
+                  Confirm password reset
+                </Button>
+                {resetValidationMessage ? (
+                  <p className="text-sm text-[hsl(var(--tone-danger-700))]">{resetValidationMessage}</p>
                 ) : null}
               </div>
             ) : null}
-          </CardContent>
-        </Card>
+          </div>
+        ) : awaitingEmailVerification ? (
+          <div className="space-y-3 rounded-md border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] p-3">
+            <p className="text-sm font-semibold text-[hsl(var(--auth-brand-navy))]">Verify your email</p>
+            <p className="text-sm text-[hsl(var(--tone-neutral-700))]">
+              We sent a verification code to <span className="font-semibold">{registerEmail.trim()}</span>.
+            </p>
+            {verificationDeliveryHint ? (
+              <p className="text-sm text-[hsl(var(--tone-neutral-600))]">{verificationDeliveryHint}</p>
+            ) : null}
+            <Input
+              id="verification-code"
+              autoComplete="one-time-code"
+              placeholder="Enter verification code"
+              value={verificationCode}
+              onChange={(event) => setVerificationCode(event.target.value)}
+              className={authInputClass}
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                className="h-10 bg-[hsl(var(--auth-brand-accent))] text-white hover:bg-[hsl(var(--auth-brand-accent-strong))]"
+                onClick={() => void onConfirmVerification()}
+                disabled={loading || !verificationCode.trim()}
+              >
+                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Verify and continue
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 border-[hsl(var(--tone-neutral-200))] text-label"
+                onClick={() => void onResendVerification()}
+                disabled={loading}
+              >
+                Resend code
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 border-[hsl(var(--tone-neutral-200))] text-label"
+                onClick={() => {
+                  setAwaitingEmailVerification(false)
+                  setMode('signin')
+                }}
+                disabled={loading}
+              >
+                Verify later
+              </Button>
+            </div>
+            {verificationPreviewCode ? (
+              <p className="text-sm text-[hsl(var(--tone-accent-700))]">
+                Verification code (debug preview): <span className="font-mono">{verificationPreviewCode}</span>
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label htmlFor="register-name" className={authLabelClass}>Full name</label>
+              <Input
+                id="register-name"
+                autoComplete="name"
+                placeholder="Jane Researcher"
+                value={registerName}
+                onChange={(event) => setRegisterName(event.target.value)}
+                className={authInputClass}
+              />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="register-email" className={authLabelClass}>Email address</label>
+              <Input
+                id="register-email"
+                autoComplete="email"
+                placeholder="email@address.com"
+                value={registerEmail}
+                onChange={(event) => setRegisterEmail(event.target.value)}
+                className={authInputClass}
+              />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="register-password" className={authLabelClass}>Password</label>
+              <div className={authPasswordWrapClass}>
+                <Input
+                  id="register-password"
+                  autoComplete="new-password"
+                  type={showRegisterPassword ? 'text' : 'password'}
+                  placeholder="Create your password"
+                  value={registerPassword}
+                  onChange={(event) => setRegisterPassword(event.target.value)}
+                  className="h-10 border-0 bg-transparent shadow-none focus-visible:ring-0"
+                />
+                <button
+                  type="button"
+                  className={authPasswordToggleClass}
+                  onClick={() => setShowRegisterPassword((value) => !value)}
+                  aria-label={showRegisterPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showRegisterPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="register-confirm-password" className={authLabelClass}>Confirm password</label>
+              <Input
+                id="register-confirm-password"
+                autoComplete="new-password"
+                type="password"
+                placeholder="Confirm password"
+                value={registerConfirmPassword}
+                onChange={(event) => setRegisterConfirmPassword(event.target.value)}
+                className={authInputClass}
+              />
+            </div>
 
-        <p className="text-sm text-slate-600">
-          {mode === 'signin' ? (
-            <>
-              New to AAWE?{' '}
-              <button type="button" className="font-semibold text-emerald-700 underline underline-offset-2" onClick={() => setMode('register')}>
-                Create an account
-              </button>
-            </>
-          ) : (
-            <>
-              Already have an account?{' '}
-              <button type="button" className="font-semibold text-emerald-700 underline underline-offset-2" onClick={() => setMode('signin')}>
-                Sign in
-              </button>
-            </>
-          )}
-        </p>
-      </div>
+            <div className="grid gap-1 text-sm text-[hsl(var(--tone-neutral-600))] sm:grid-cols-2">
+              <p className={registerPasswordChecks.length ? 'text-[hsl(var(--auth-brand-accent))]' : ''}>10+ characters</p>
+              <p className={registerPasswordChecks.upper ? 'text-[hsl(var(--auth-brand-accent))]' : ''}>Uppercase letter</p>
+              <p className={registerPasswordChecks.lower ? 'text-[hsl(var(--auth-brand-accent))]' : ''}>Lowercase letter</p>
+              <p className={registerPasswordChecks.number ? 'text-[hsl(var(--auth-brand-accent))]' : ''}>Number</p>
+              <p className={registerPasswordChecks.matches ? 'text-[hsl(var(--auth-brand-accent))] sm:col-span-2' : 'sm:col-span-2'}>
+                Passwords match
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              className={authPrimaryButtonClass}
+              disabled={loading}
+              onClick={() => void onRegister()}
+            >
+              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Create account
+            </Button>
+            {(attemptedRegister || hasRegisterInput) && registerValidationMessage ? (
+              <p className="text-sm text-[hsl(var(--tone-danger-700))]">{registerValidationMessage}</p>
+            ) : null}
+          </div>
+        )}
+      </LoginCard>
     </div>
   )
 }
+
 
