@@ -504,8 +504,11 @@ app = FastAPI(title="Research OS API", version="0.1.0", lifespan=app_lifespan)
 default_allow_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:5176",
     "http://localhost:4173",
     "http://127.0.0.1:4173",
+    "http://localhost:6006",
+    "http://localhost:6007",
     "https://research-os-ui.onrender.com",
 ]
 configured_allow_origins = os.getenv("CORS_ALLOW_ORIGINS", "")
@@ -550,7 +553,7 @@ app.add_middleware(
     allow_origins=allow_origins,
     allow_origin_regex=allow_origin_regex,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
