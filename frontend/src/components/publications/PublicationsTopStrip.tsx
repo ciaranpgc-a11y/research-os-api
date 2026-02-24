@@ -691,14 +691,9 @@ function MomentumTilePanel({ tile }: { tile: PublicationMetricTilePayload }) {
     ? formatSignedPercentCompact(breakdown.liftPct)
     : breakdown.insufficientBaseline
       ? 'New'
-      : '—'
+      : '\u2014'
   const secondary = breakdown.insufficientBaseline ? 'Insufficient baseline' : '3m vs 9m baseline'
   const summaryLift = breakdown.liftPct !== null ? formatSignedPercentCompact(breakdown.liftPct) : 'New'
-  const barCount = breakdown.bars.length
-  const hoverLeft = hoveredIndex !== null && barCount > 0
-    ? ((hoveredIndex + 0.5) / barCount) * 100
-    : 50
-  const hoveredBar = hoveredIndex !== null ? breakdown.bars[hoveredIndex] || null : null
   const maxValue = breakdown.bars.length ? Math.max(1, ...breakdown.bars.map((item) => item.value)) : 1
   const highlightStart = Math.max(0, breakdown.bars.length - 3)
 
@@ -712,51 +707,55 @@ function MomentumTilePanel({ tile }: { tile: PublicationMetricTilePayload }) {
       </div>
       <div className="w-[52%] min-w-[170px]">
         {breakdown.bars.length ? (
-          <div className="relative">
-            {hoveredBar ? (
-              <div
-                className="pointer-events-none absolute -top-[78px] -translate-x-1/2 rounded border border-border bg-background px-2 py-1 text-[10px] text-foreground shadow-sm"
-                style={{ left: `${Math.max(4, Math.min(96, hoverLeft))}%` }}
-              >
-                <p className="font-medium">{hoveredBar.label}: {formatInt(hoveredBar.value)} citations</p>
-                <p className="text-muted-foreground">
-                  3m total: {breakdown.recent3Total === null ? 'n/a' : formatInt(breakdown.recent3Total)} | 9m total: {breakdown.baseline9Total === null ? 'n/a' : formatInt(breakdown.baseline9Total)}
-                </p>
-                <p className="text-muted-foreground">
-                  rate_3m: {formatRate(breakdown.rate3m)} | rate_9m: {formatRate(breakdown.rate9m)} | lift: {summaryLift}
-                </p>
-              </div>
-            ) : null}
+          <TooltipProvider delayDuration={90}>
             <div className="flex h-24 items-end gap-1 rounded border border-border/70 bg-muted/20 px-1.5 py-1">
               {breakdown.bars.map((bar, index) => {
                 const height = Math.max(14, Math.round((bar.value / maxValue) * 78))
                 const highlighted = index >= highlightStart
+                const isActive = hoveredIndex === index
+                const valueText = formatInt(bar.value)
                 const barSummary = `3m total ${breakdown.recent3Total === null ? 'n/a' : formatInt(breakdown.recent3Total)}; 9m total ${breakdown.baseline9Total === null ? 'n/a' : formatInt(breakdown.baseline9Total)}; rate_3m ${formatRate(breakdown.rate3m)}; rate_9m ${formatRate(breakdown.rate9m)}; lift ${summaryLift}`
                 return (
                   <div key={`${bar.label}-${index}`} className="flex w-full flex-col items-center gap-1">
-                    <button
-                      type="button"
-                      data-stop-tile-open="true"
-                      onMouseEnter={() => setHoveredIndex(index)}
-                      onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
-                      onFocus={() => setHoveredIndex(index)}
-                      onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
-                      onClick={(event) => event.stopPropagation()}
-                      onMouseDown={(event) => event.stopPropagation()}
-                      className="relative w-full"
-                      aria-label={`${bar.label}: ${formatInt(bar.value)} citations. ${barSummary}`}
-                    >
-                      <div
-                        className={cn('w-full rounded-sm', highlighted ? 'bg-slate-900/85' : 'bg-slate-500/70')}
-                        style={{ height: `${height}px` }}
-                      />
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          data-stop-tile-open="true"
+                          onMouseEnter={() => setHoveredIndex(index)}
+                          onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                          onFocus={() => setHoveredIndex(index)}
+                          onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
+                          onClick={(event) => event.stopPropagation()}
+                          onMouseDown={(event) => event.stopPropagation()}
+                          className="relative flex h-[88px] w-full cursor-pointer items-end px-0.5 pt-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
+                          aria-label={`${bar.label}: ${valueText} citations. ${barSummary}`}
+                        >
+                          {isActive ? (
+                            <div className="pointer-events-none absolute -top-4 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm">
+                              {valueText}
+                            </div>
+                          ) : null}
+                          <div
+                            className={cn(
+                              'w-full rounded-sm transition-colors',
+                              highlighted ? 'bg-slate-900/85' : 'bg-slate-500/70',
+                              isActive && 'bg-slate-900',
+                            )}
+                            style={{ height: `${height}px` }}
+                          />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="px-2 py-1 text-[10px]">
+                        <p>{bar.label}: {valueText} citations</p>
+                      </TooltipContent>
+                    </Tooltip>
                     <span className="text-[9px] text-muted-foreground">{bar.label}</span>
                   </div>
                 )
               })}
             </div>
-          </div>
+          </TooltipProvider>
         ) : (
           <div className="flex h-24 items-center justify-center rounded border border-dashed border-border/70 bg-muted/20 text-[10px] text-muted-foreground">
             No monthly citation data
