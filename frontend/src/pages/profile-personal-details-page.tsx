@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -266,12 +266,10 @@ function formatAccountAge(createdAt: string | null | undefined): string {
 
 function buildProfileBadges(input: {
   orcidLinked: boolean
-  accountCreatedAt: string | null | undefined
+  isFoundingMember: boolean
   draft: PersonalDetailsDraft
 }): ProfileBadge[] {
   const badges: ProfileBadge[] = []
-
-  const accountAgeMonths = accountAgeInMonths(input.accountCreatedAt)
 
   if (input.orcidLinked) {
     badges.push({
@@ -282,12 +280,12 @@ function buildProfileBadges(input: {
     })
   }
 
-  if (accountAgeMonths >= 6) {
+  if (input.isFoundingMember) {
     badges.push({
       id: 'founding-member',
       label: 'Founding member',
-      tone: 'accent',
-      detail: 'Long-running Axiomos account',
+      tone: 'gold',
+      detail: 'Founding member of Axiomos',
     })
   }
 
@@ -321,9 +319,6 @@ function badgeToneClass(tone: ProfileBadge['tone']): string {
   }
   if (tone === 'gold') {
     return 'border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] text-[hsl(var(--tone-warning-900))]'
-  }
-  if (tone === 'accent') {
-    return 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))]'
   }
   return 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
 }
@@ -457,15 +452,16 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
   const orcidId = trimValue(orcidStatus?.orcid_id || user?.orcid_id)
   const orcidLinked = Boolean(orcidStatus?.linked || user?.orcid_id)
+  const foundingMemberProfile = isFoundingMemberProfile({ user, orcidId })
 
   const badges = useMemo(
     () =>
       buildProfileBadges({
         orcidLinked,
-        accountCreatedAt: user?.created_at,
+        isFoundingMember: foundingMemberProfile,
         draft,
       }),
-    [draft, orcidLinked, user?.created_at],
+    [draft, foundingMemberProfile, orcidLinked],
   )
 
   const onFieldChange = (field: keyof PersonalDetailsDraft, value: string) => {
@@ -740,3 +736,4 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     </section>
   )
 }
+
