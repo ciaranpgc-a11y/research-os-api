@@ -707,7 +707,7 @@ export function AuthPage() {
             : 'Create your account to start in Axiomos.'
         }
         loading={loading}
-        status={status}
+        status={oauthPending ? '' : status}
         error={error}
         errorAction={
           error.toLowerCase().includes('could not reach api') ? (
@@ -1053,6 +1053,7 @@ export function AuthPage() {
     </div>
   )
 }
+
 
 
 
