@@ -27,7 +27,7 @@ type StoredPersonalDetails = PersonalDetailsDraft & {
 type ProfileBadge = {
   id: string
   label: string
-  tone: 'neutral' | 'accent' | 'positive'
+  tone: 'neutral' | 'accent' | 'positive' | 'gold'
   detail: string
 }
 
@@ -48,6 +48,10 @@ type ProfilePersonalDetailsPageProps = {
 const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const PERSONAL_DETAILS_STORAGE_PREFIX = 'aawe_profile_personal_details:'
+
+const FOUNDING_MEMBER_USER_IDS = new Set<string>([])
+const FOUNDING_MEMBER_EMAILS = new Set<string>(['researcher@axiomos.studio'])
+const FOUNDING_MEMBER_ORCID_IDS = new Set<string>(['0000-0002-8537-0806'])
 
 function formatTimestamp(value: string | null | undefined): string {
   if (!value) {
@@ -85,6 +89,20 @@ function trimValue(value: string | null | undefined): string {
   return (value || '').trim()
 }
 
+function isFoundingMemberProfile(input: {
+  user: AuthUser | null
+  orcidId: string | null | undefined
+}): boolean {
+  const userId = trimValue(input.user?.id)
+  const email = trimValue(input.user?.email).toLowerCase()
+  const orcidId = trimValue(input.orcidId)
+
+  return (
+    Boolean(userId && FOUNDING_MEMBER_USER_IDS.has(userId)) ||
+    Boolean(email && FOUNDING_MEMBER_EMAILS.has(email)) ||
+    Boolean(orcidId && FOUNDING_MEMBER_ORCID_IDS.has(orcidId))
+  )
+}
 function splitName(value: string | null | undefined): { firstName: string; lastName: string } {
   const clean = trimValue(value)
   if (!clean) {
@@ -297,6 +315,12 @@ function buildProfileBadges(input: {
 function badgeToneClass(tone: ProfileBadge['tone']): string {
   if (tone === 'positive') {
     return 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))]'
+  }
+  if (tone === 'accent') {
+    return 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))]'
+  }
+  if (tone === 'gold') {
+    return 'border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] text-[hsl(var(--tone-warning-900))]'
   }
   if (tone === 'accent') {
     return 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))]'
