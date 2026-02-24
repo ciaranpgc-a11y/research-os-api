@@ -57,6 +57,7 @@ const connectedFixture: ProfilePersonalDetailsPageFixture = {
     website: 'https://app.axiomos.studio',
     researchGateUrl: 'https://www.researchgate.net/profile/Ciaran-Clarke',
     xHandle: '@axiomos_lab',
+    publicationAffiliations: ['Axiomos Labs, London (GB)', "King's College London (GB)"],
   },
 }
 
@@ -79,6 +80,7 @@ const unlinkedFixture: ProfilePersonalDetailsPageFixture = {
     website: '',
     researchGateUrl: '',
     xHandle: '',
+    publicationAffiliations: [],
   },
 }
 
