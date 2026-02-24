@@ -779,7 +779,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
                 {connectionStatusLabel}
               </span>
             </div>
-            {orcidLinked ? (
+            {orcidLinked ? (`r`n              <>
               <Button
                 type="button"
                 variant="outline"
@@ -816,7 +816,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
               )}
             </div>
 
-            {orcidLinked ? (
+            {orcidLinked ? (`r`n              <>
               <div className="grid gap-3 sm:grid-cols-2 md:col-start-2">
                 <div className="flex min-h-sz-96 flex-col justify-between rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
                   <div>
@@ -1006,6 +1006,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     </section>
   )
 }
+
 
 
 
