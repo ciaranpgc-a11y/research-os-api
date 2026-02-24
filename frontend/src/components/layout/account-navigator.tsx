@@ -7,15 +7,22 @@ import { fetchOrcidStatus, fetchPersonaState } from '@/lib/impact-api'
 import { writeCachedPersonaState } from '@/lib/persona-cache'
 import { cn } from '@/lib/utils'
 
+type AccountLink = {
+  label: string
+  path: string
+  end?: boolean
+}
+
 type AccountNavigatorProps = {
   onNavigate?: () => void
+  links?: AccountLink[]
 }
 
 const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const PROFILE_PREFETCH_LAST_AT_KEY = 'aawe_profile_prefetch_last_at'
 const PROFILE_PREFETCH_MIN_INTERVAL_MS = 45_000
 
-const ACCOUNT_LINKS = [
+const ACCOUNT_LINKS: AccountLink[] = [
   { label: 'Profile home', path: '/profile', end: true },
   { label: 'Integrations', path: '/profile/integrations' },
   { label: 'Publications', path: '/profile/publications' },
@@ -24,8 +31,15 @@ const ACCOUNT_LINKS = [
   { label: 'Settings & preferences', path: '/settings' },
 ]
 
-export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
+const sidebarItemBase =
+  'block rounded-md border border-transparent px-3 py-2 text-label font-medium leading-5 transition-colors'
+const sidebarItemIdle = 'text-muted-foreground hover:bg-muted/45 hover:text-foreground'
+const sidebarItemActive = 'border-border bg-accent/45 text-foreground'
+
+export function AccountNavigator({ onNavigate, links }: AccountNavigatorProps) {
   const prefetchInFlight = useRef(false)
+  const navLinks = links && links.length > 0 ? links : ACCOUNT_LINKS
+
   const prefetchProfileData = useCallback(async () => {
     if (prefetchInFlight.current) {
       return
@@ -60,43 +74,39 @@ export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
   }, [])
 
   return (
-    <aside className="flex h-full flex-col bg-card">
-      <div className="border-b border-border p-4">
-        <h1 className="text-sm font-semibold leading-tight">Account</h1>
+    <aside className="flex h-full w-full flex-col bg-card">
+      <div className="border-b border-border px-4 py-3">
+        <h1 className="text-label font-semibold leading-5 text-foreground">Profile</h1>
       </div>
       <ScrollArea className="flex-1">
-        <nav className="space-y-1 p-3">
-          {ACCOUNT_LINKS.map((item) => {
+        <nav className="space-y-1 p-2">
+          {navLinks.map((item) => {
             const shouldPrefetch =
               item.path === '/profile' ||
               item.path === '/profile/integrations' ||
               item.path === '/profile/publications'
             return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.end}
-              onClick={onNavigate}
-              onMouseEnter={() => {
-                if (shouldPrefetch) {
-                  void prefetchProfileData()
+              <NavLink
+                key={item.path}
+                to={item.path}
+                end={item.end}
+                onClick={onNavigate}
+                onMouseEnter={() => {
+                  if (shouldPrefetch) {
+                    void prefetchProfileData()
+                  }
+                }}
+                onFocus={() => {
+                  if (shouldPrefetch) {
+                    void prefetchProfileData()
+                  }
+                }}
+                className={({ isActive }) =>
+                  cn(sidebarItemBase, sidebarItemIdle, isActive && sidebarItemActive)
                 }
-              }}
-              onFocus={() => {
-                if (shouldPrefetch) {
-                  void prefetchProfileData()
-                }
-              }}
-              className={({ isActive }) =>
-                cn(
-                  'block rounded-md border border-transparent px-3 py-2 text-sm font-medium transition-colors',
-                  'text-muted-foreground hover:border-border hover:text-foreground',
-                  isActive && 'border-border bg-accent/55 text-foreground',
-                )
-              }
-            >
-              {item.label}
-            </NavLink>
+              >
+                {item.label}
+              </NavLink>
             )
           })}
         </nav>
