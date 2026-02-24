@@ -24,6 +24,13 @@ const ACCOUNT_LINKS = [
   { label: 'Settings & preferences', path: '/settings' },
 ]
 
+const accountNavItemBase =
+  'relative flex items-center rounded-md border px-3 py-2 text-label font-medium leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))]'
+const accountNavItemIdle =
+  'border-transparent text-[hsl(var(--tone-neutral-700))] hover:border-[hsl(var(--tone-accent-200))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]'
+const accountNavItemActive =
+  'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-100))] text-[hsl(var(--tone-accent-900))]'
+
 export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
   const prefetchInFlight = useRef(false)
   const prefetchProfileData = useCallback(async () => {
@@ -61,42 +68,50 @@ export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
 
   return (
     <aside className="flex h-full flex-col bg-card">
-      <div className="border-b border-border p-4">
-        <h1 className="text-sm font-semibold leading-tight">Account</h1>
+      <div className="space-y-1 border-b border-[hsl(var(--tone-neutral-200))] px-4 py-4">
+        <p className="text-caption uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))]">Profile</p>
+        <h1 className="text-label font-semibold text-[hsl(var(--tone-neutral-900))]">Navigation</h1>
       </div>
       <ScrollArea className="flex-1">
-        <nav className="space-y-1 p-3">
+        <nav className="space-y-1.5 p-3">
           {ACCOUNT_LINKS.map((item) => {
             const shouldPrefetch =
               item.path === '/profile' ||
               item.path === '/profile/integrations' ||
               item.path === '/profile/publications'
             return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.end}
-              onClick={onNavigate}
-              onMouseEnter={() => {
-                if (shouldPrefetch) {
-                  void prefetchProfileData()
+              <NavLink
+                key={item.path}
+                to={item.path}
+                end={item.end}
+                onClick={onNavigate}
+                onMouseEnter={() => {
+                  if (shouldPrefetch) {
+                    void prefetchProfileData()
+                  }
+                }}
+                onFocus={() => {
+                  if (shouldPrefetch) {
+                    void prefetchProfileData()
+                  }
+                }}
+                className={({ isActive }) =>
+                  cn(accountNavItemBase, accountNavItemIdle, isActive && accountNavItemActive)
                 }
-              }}
-              onFocus={() => {
-                if (shouldPrefetch) {
-                  void prefetchProfileData()
-                }
-              }}
-              className={({ isActive }) =>
-                cn(
-                  'block rounded-md border border-transparent px-3 py-2 text-sm font-medium transition-colors',
-                  'text-muted-foreground hover:border-border hover:text-foreground',
-                  isActive && 'border-border bg-accent/55 text-foreground',
-                )
-              }
-            >
-              {item.label}
-            </NavLink>
+              >
+                {({ isActive }) => (
+                  <>
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'absolute left-1.5 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-transparent transition-colors',
+                        isActive && 'bg-[hsl(var(--tone-accent-500))]',
+                      )}
+                    />
+                    <span className="truncate pl-2">{item.label}</span>
+                  </>
+                )}
+              </NavLink>
             )
           })}
         </nav>
