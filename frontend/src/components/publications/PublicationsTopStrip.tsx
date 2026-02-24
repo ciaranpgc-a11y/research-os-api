@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ExternalLink, Info } from 'lucide-react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { ExternalLink } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui/card'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
@@ -13,6 +13,7 @@ import type {
 } from '@/types/impact'
 
 import { dashboardTileBarTabIndex, dashboardTileStyles } from './dashboard-tile-styles'
+import { MetricTile } from './MetricTile'
 
 type PublicationsTopStripProps = {
   metrics: PublicationsTopMetricsPayload | null
