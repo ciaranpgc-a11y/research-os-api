@@ -308,8 +308,8 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
           </Button>
         </div>
 
-        <div className="max-h-[520px] overflow-auto rounded-md border border-border">
-          <table className="w-full min-w-[720px] text-xs">
+        <div className="max-h-sz-520 overflow-auto rounded-md border border-border">
+          <table className="w-full min-w-sz-720 text-xs">
             <thead className="bg-muted/70">
               <tr>
                 <th className="sticky left-0 top-0 z-30 border-b border-r border-border bg-muted px-2 py-1 text-left">#</th>
@@ -329,7 +329,7 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
                           <div className="absolute right-0 z-40 mt-1 w-28 rounded border border-border bg-background p-1 shadow-sm">
                             <button
                               type="button"
-                              className="w-full rounded px-2 py-1 text-left text-[11px] text-destructive hover:bg-destructive/10"
+                              className="w-full rounded px-2 py-1 text-left text-micro text-destructive hover:bg-destructive/10"
                               onClick={() => onRemoveColumn(columnIndex)}
                             >
                               Remove
@@ -337,7 +337,7 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
                           </div>
                         </details>
                       </div>
-                      <p className="text-[11px] text-muted-foreground">
+                      <p className="text-micro text-muted-foreground">
                         {columnMeta[column]?.dataType || 'text'}
                         {columnMeta[column]?.unit ? ` • ${columnMeta[column]?.unit}` : ''}
                         {columnMeta[column]?.roleTag ? ` • ${columnMeta[column]?.roleTag}` : ''}
@@ -371,7 +371,7 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
                       <div className="absolute right-0 z-30 mt-1 w-28 rounded border border-border bg-background p-1 shadow-sm">
                         <button
                           type="button"
-                          className="w-full rounded px-2 py-1 text-left text-[11px] text-destructive hover:bg-destructive/10"
+                          className="w-full rounded px-2 py-1 text-left text-micro text-destructive hover:bg-destructive/10"
                           onClick={() => onRemoveRow(rowIndex)}
                         >
                           Delete row

@@ -68,7 +68,7 @@ export function TableHeader({
   return (
     <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-[280px] flex-1 space-y-1">
+        <div className="min-w-sz-280 flex-1 space-y-1">
           <Label htmlFor={`table-name-${table.id}`} className="text-xs uppercase tracking-wide text-muted-foreground">
             Table name
           </Label>

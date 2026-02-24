@@ -12,7 +12,7 @@ const citationMomentumTile: PublicationMetricTilePayload = {
   delta_display: '+2.1 pts vs prior window',
   delta_direction: 'up',
   delta_tone: 'positive',
-  delta_color_code: '#166534',
+  delta_color_code: 'hsl(var(--tone-positive-700))',
   unit: '%',
   subtext: '12m velocity versus prior 12m',
   badge: {

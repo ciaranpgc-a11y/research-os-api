@@ -993,7 +993,7 @@ export function StudyCorePage() {
   return (
     <section className="space-y-4">
       <header className="rounded-lg border border-border/80 bg-muted/20 p-3">
-        <div className="min-w-[260px] space-y-1">
+        <div className="min-w-sz-260 space-y-1">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Study Core - Run Wizard</p>
           <Input
             value={contextValues.projectTitle}

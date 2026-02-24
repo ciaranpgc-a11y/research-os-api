@@ -583,7 +583,7 @@ export function ProfileCollaborationPage() {
       </Card>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        <Card className="min-h-[580px]">
+        <Card className="min-h-sz-580">
           <CardHeader className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="text-base">Collaborators</CardTitle>

@@ -288,11 +288,11 @@ function MetricBarsChart({
                     />
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="top" className="px-2 py-1 text-[10px] leading-snug">
+                <TooltipContent side="top" className="px-2 py-1 text-caption leading-snug">
                   {item.tooltip}
                 </TooltipContent>
               </Tooltip>
-              <span className="text-[10px] text-muted-foreground">{item.label}</span>
+              <span className="text-caption text-muted-foreground">{item.label}</span>
             </div>
           )
         })}
@@ -350,7 +350,7 @@ function TotalCitationsMiniTrend({
           }}
           onMouseDown={(event) => event.stopPropagation()}
           className={cn(
-            'h-6 rounded-full px-2 text-[11px] font-semibold transition-colors',
+            'h-6 rounded-full px-2 text-micro font-semibold transition-colors',
             effectiveMode === 'year'
               ? 'bg-foreground text-background'
               : 'text-muted-foreground hover:bg-muted/70',
@@ -371,7 +371,7 @@ function TotalCitationsMiniTrend({
           }}
           onMouseDown={(event) => event.stopPropagation()}
           className={cn(
-            'h-6 rounded-full px-2 text-[11px] font-semibold transition-colors',
+            'h-6 rounded-full px-2 text-micro font-semibold transition-colors',
             !monthModeAvailable
               ? 'cursor-not-allowed text-muted-foreground/50'
               : effectiveMode === 'month'
@@ -426,7 +426,7 @@ function TotalCitationsMiniTrend({
                   />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="top" className="px-2 py-1 text-[10px]">
+              <TooltipContent side="top" className="px-2 py-1 text-caption">
                 <p>{point.label}: {formatInt(point.value)} citations</p>
               </TooltipContent>
             </Tooltip>
@@ -694,14 +694,14 @@ function ImpactStackedRow({
     return (
       <div className="space-y-1">
         <p className={dashboardTileStyles.tileMicroLabel}>{rowLabel}</p>
-        <div className="h-8 rounded-[6px] border border-dashed border-border/70 bg-muted/25" />
+        <div className="h-8 rounded-md border border-dashed border-border/70 bg-muted/25" />
       </div>
     )
   }
   return (
     <div className="space-y-1">
       <p className={dashboardTileStyles.tileMicroLabel}>{rowLabel}</p>
-      <div className="flex h-8 overflow-hidden rounded-[6px] border border-border/70 bg-muted/25">
+      <div className="flex h-8 overflow-hidden rounded-md border border-border/70 bg-muted/25">
         {segments
           .filter((segment) => segment.widthPct > 0)
           .map((segment) => {
@@ -721,7 +721,7 @@ function ImpactStackedRow({
                     onMouseDown={(event) => event.stopPropagation()}
                     style={{ width: `${segment.widthPct}%` }}
                     className={cn(
-                      'relative h-full min-w-[20px]',
+                      'relative h-full min-w-5',
                       dashboardTileStyles.barFocusRing,
                     )}
                     aria-label={`${segment.label} ${segment.valueText}`}
@@ -737,7 +737,7 @@ function ImpactStackedRow({
                     />
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="top" className="px-2 py-1 text-[10px] leading-snug">
+                <TooltipContent side="top" className="px-2 py-1 text-caption leading-snug">
                   {segment.tooltip}
                 </TooltipContent>
               </Tooltip>
@@ -913,7 +913,7 @@ function HIndexTrajectoryPanel({ tile }: { tile: PublicationMetricTilePayload })
         <p className={cn(dashboardTileStyles.tileMicroLabel, 'mt-1')}>
           Next threshold {hNextTarget !== null ? `h=${hNextTarget}` : 'not available'}
         </p>
-        <div className="mt-2 min-h-[22px]">
+        <div className="mt-2 min-h-sz-22">
           {hCandidateGaps.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1">
               <span className={dashboardTileStyles.tileMicroLabel}>Nearest papers need:</span>
@@ -1024,7 +1024,7 @@ function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload })
                   <span className="pointer-events-none absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background bg-foreground" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="top" className="px-2 py-1 text-[10px] leading-snug">
+              <TooltipContent side="top" className="px-2 py-1 text-caption leading-snug">
                 <p>{point.label}: {formatInt(point.value)} influential citations</p>
                 <p>Delta vs prior window: {delta === null ? 'n/a' : formatSignedInt(delta)}</p>
               </TooltipContent>
@@ -1101,13 +1101,13 @@ function MiniProgressRing({
   const offset = circumference - (pct / 100) * circumference
   return (
     <svg viewBox="0 0 36 36" className="h-8 w-8">
-      <circle cx="18" cy="18" r={radius} fill="none" stroke="#e2e8f0" strokeWidth="4" />
+      <circle cx="18" cy="18" r={radius} fill="none" stroke="hsl(var(--tone-neutral-200))" strokeWidth="4" />
       <circle
         cx="18"
         cy="18"
         r={radius}
         fill="none"
-        stroke="#0f172a"
+        stroke="hsl(var(--tone-neutral-900))"
         strokeWidth="4"
         strokeDasharray={circumference}
         strokeDashoffset={offset}
@@ -1130,10 +1130,10 @@ function MiniDonut({
   }
   const pct = safe[0] / total
   const angle = pct * 360
-  const gradient = `conic-gradient(#0f172a 0deg ${angle}deg, #94a3b8 ${angle}deg 360deg)`
+  const gradient = `conic-gradient(hsl(var(--tone-neutral-900)) 0deg ${angle}deg, hsl(var(--tone-neutral-400)) ${angle}deg 360deg)`
   return (
     <div className="h-8 w-8 rounded-full" style={{ background: gradient }}>
-      <div className="relative left-[7px] top-[7px] h-[18px] w-[18px] rounded-full bg-white" />
+      <div className="relative left-sz-7 top-sz-7 h-sz-18 w-sz-18 rounded-full bg-white" />
     </div>
   )
 }
@@ -1141,7 +1141,7 @@ function MiniDonut({
 function MiniLine({
   values,
   overlay = [],
-  colorCode = '#475569',
+  colorCode = 'hsl(var(--tone-neutral-600))',
 }: {
   values: number[]
   overlay?: number[]
@@ -1174,7 +1174,7 @@ function MiniLine({
       {overlayPoints ? (
         <polyline
           fill="none"
-          stroke="rgba(71,85,105,0.5)"
+          stroke="hsl(var(--tone-neutral-600) / 0.5)"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -1211,7 +1211,7 @@ function MiniChart({ tile }: { tile: PublicationMetricTilePayload }) {
     return (
       <MiniLine
         values={trendValues}
-        colorCode={tile.delta_color_code || '#475569'}
+        colorCode={tile.delta_color_code || 'hsl(var(--tone-neutral-600))'}
       />
     )
   }
@@ -1231,7 +1231,7 @@ function MiniChart({ tile }: { tile: PublicationMetricTilePayload }) {
     <MiniLine
       values={tile.sparkline || []}
       overlay={tile.sparkline_overlay || []}
-      colorCode={tile.delta_color_code || '#475569'}
+      colorCode={tile.delta_color_code || 'hsl(var(--tone-neutral-600))'}
     />
   )
 }
@@ -1430,7 +1430,7 @@ export function PublicationsTopStrip({
                             mode={totalTrendMode}
                             onModeChange={setTotalTrendMode}
                           />
-                          <p className={cn(dashboardTileStyles.tileMicroLabel, 'mt-2 min-h-[16px]')}>
+                          <p className={cn(dashboardTileStyles.tileMicroLabel, 'mt-2 min-h-4')}>
                             vs prior window: {effectiveDeltaDisplay || '\u2014'}
                           </p>
                         </div>
@@ -1512,7 +1512,7 @@ export function PublicationsTopStrip({
       </Card>
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" className="w-full overflow-y-auto p-4 sm:max-w-[560px]">
+        <SheetContent side="right" className="w-full overflow-y-auto p-4 sm:max-w-sz-560">
           {activeTile ? (
             <div className="space-y-4 pr-8">
               <div>
@@ -1529,8 +1529,8 @@ export function PublicationsTopStrip({
                 </p>
                 {activeTile.drilldown.metadata?.intermediate_values ? (
                   <div className="mt-2 rounded border border-border/60 bg-background/70 p-2">
-                    <p className="text-[11px] font-medium text-foreground">Intermediate values</p>
-                    <pre className="mt-1 overflow-x-auto text-[11px] text-muted-foreground">
+                    <p className="text-micro font-medium text-foreground">Intermediate values</p>
+                    <pre className="mt-1 overflow-x-auto text-micro text-muted-foreground">
                       {JSON.stringify(activeTile.drilldown.metadata.intermediate_values, null, 2)}
                     </pre>
                   </div>
@@ -1553,7 +1553,7 @@ export function PublicationsTopStrip({
                         <p className="text-xs text-muted-foreground">
                           {metricSummary(activeTile, publication)}
                         </p>
-                        <p className="mt-1 text-[11px] text-muted-foreground">
+                        <p className="mt-1 text-micro text-muted-foreground">
                           Confidence {Number(publication.confidence_score || 0).toFixed(2)} ({String(publication.confidence_label || 'n/a')}) | {String(publication.match_source || 'unknown')}:{String(publication.match_method || 'unknown')}
                         </p>
                         {String(publication.doi_url || '') ? (
@@ -1561,7 +1561,7 @@ export function PublicationsTopStrip({
                             href={String(publication.doi_url)}
                             target="_blank"
                             rel="noreferrer"
-                            className="mt-1 inline-flex items-center gap-1 text-[11px] text-blue-700 hover:underline"
+                            className="mt-1 inline-flex items-center gap-1 text-micro text-blue-700 hover:underline"
                           >
                             Open DOI
                             <ExternalLink className="h-3 w-3" />

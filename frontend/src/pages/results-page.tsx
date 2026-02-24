@@ -509,7 +509,7 @@ export function ResultsPage() {
                       </div>
                     ) : null}
 
-                    <ScrollArea className="h-[360px] rounded-md border border-border">
+                    <ScrollArea className="h-sz-360 rounded-md border border-border">
                       <table className="w-full text-xs">
                         <thead className="sticky top-0 bg-muted/60">
                           <tr>

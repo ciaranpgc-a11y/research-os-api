@@ -1446,7 +1446,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           </CardHeader>
           <CardContent className="space-y-2">
             <div className="rounded border border-border/70 bg-muted/20 px-2 py-1.5">
-              <p className="text-[11px] text-muted-foreground">Authorship role mix (1st / 2nd / last / other)</p>
+              <p className="text-micro text-muted-foreground">Authorship role mix (1st / 2nd / last / other)</p>
               {authorshipRoleMix.known > 0 ? (
                 <>
                   <div className="mt-1 flex h-1.5 overflow-hidden rounded bg-muted">
@@ -1459,7 +1459,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       />
                     ))}
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-micro text-muted-foreground">
                     <span>1st {authorshipRoleMix.first}</span>
                     <span>2nd {authorshipRoleMix.second}</span>
                     <span>Last {authorshipRoleMix.last}</span>
@@ -1468,7 +1468,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   </div>
                 </>
               ) : (
-                <p className="mt-1 text-[11px] text-muted-foreground">No authorship position data available yet.</p>
+                <p className="mt-1 text-micro text-muted-foreground">No authorship position data available yet.</p>
               )}
             </div>
             {publicationsPerYearPoints.length === 0 ? (
@@ -1546,7 +1546,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Filter by title, journal, DOI, PMID, author"
-                  className="w-[280px]"
+                  className="w-sz-280"
                 />
                 <select
                   value={filterKey}
@@ -1584,7 +1584,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 </div>
               ) : (
                 <div className="overflow-x-auto rounded border border-border">
-                  <table className="w-full min-w-[760px] text-sm">
+                  <table className="w-full min-w-sz-760 text-sm">
                     <thead className="bg-muted/35 text-left text-xs text-muted-foreground">
                       <tr>
                         <th className="px-2 py-2">
@@ -1681,11 +1681,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           {selectedDetail?.title || selectedWork.title}
                         </p>
                         <TabsList className="mt-2 grid h-auto w-full grid-cols-5 gap-1 bg-muted/40 p-1">
-                          <TabsTrigger value="overview" className="text-[11px]">Overview</TabsTrigger>
-                          <TabsTrigger value="content" className="text-[11px]">Content</TabsTrigger>
-                          <TabsTrigger value="impact" className="text-[11px]">Impact</TabsTrigger>
-                          <TabsTrigger value="files" className="text-[11px]">Files</TabsTrigger>
-                          <TabsTrigger value="ai" className="text-[11px]">AI Insights</TabsTrigger>
+                          <TabsTrigger value="overview" className="text-micro">Overview</TabsTrigger>
+                          <TabsTrigger value="content" className="text-micro">Content</TabsTrigger>
+                          <TabsTrigger value="impact" className="text-micro">Impact</TabsTrigger>
+                          <TabsTrigger value="files" className="text-micro">Files</TabsTrigger>
+                          <TabsTrigger value="ai" className="text-micro">AI Insights</TabsTrigger>
                         </TabsList>
                       </div>
 
@@ -1699,16 +1699,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
                         <TabsContent value="overview" className="space-y-3">
                           <div className="grid grid-cols-2 gap-2">
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">Year</p><p className="font-semibold">{detailYear ?? 'n/a'}</p></div>
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">Journal</p><p className="font-medium">{detailJournal || 'Not available'}</p></div>
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">Type</p><p className="font-medium">{detailPublicationType || 'Not available'}</p></div>
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">Citations</p><p className="font-semibold">{detailCitations}</p></div>
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">PMID</p>{detailPmid ? <a className="text-emerald-700 underline-offset-2 hover:underline" href={`https://pubmed.ncbi.nlm.nih.gov/${detailPmid}/`} target="_blank" rel="noreferrer">{detailPmid}</a> : <p className="text-muted-foreground">Not available</p>}</div>
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">DOI</p>{detailDoi ? <a className="break-all text-emerald-700 underline-offset-2 hover:underline" href={doiToUrl(detailDoi) || undefined} target="_blank" rel="noreferrer">{detailDoi}</a> : <p className="text-muted-foreground">Not available</p>}</div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">Year</p><p className="font-semibold">{detailYear ?? 'n/a'}</p></div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">Journal</p><p className="font-medium">{detailJournal || 'Not available'}</p></div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">Type</p><p className="font-medium">{detailPublicationType || 'Not available'}</p></div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">Citations</p><p className="font-semibold">{detailCitations}</p></div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">PMID</p>{detailPmid ? <a className="text-emerald-700 underline-offset-2 hover:underline" href={`https://pubmed.ncbi.nlm.nih.gov/${detailPmid}/`} target="_blank" rel="noreferrer">{detailPmid}</a> : <p className="text-muted-foreground">Not available</p>}</div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">DOI</p>{detailDoi ? <a className="break-all text-emerald-700 underline-offset-2 hover:underline" href={doiToUrl(detailDoi) || undefined} target="_blank" rel="noreferrer">{detailDoi}</a> : <p className="text-muted-foreground">Not available</p>}</div>
                           </div>
 
                           <div className="space-y-1">
-                            <p className="text-[11px] uppercase text-muted-foreground">Authors</p>
+                            <p className="text-micro uppercase text-muted-foreground">Authors</p>
                             {selectedAuthorsPayload?.status === 'RUNNING' ? <p className="text-xs text-muted-foreground">Fetching authors...</p> : null}
                             {selectedAuthorsPayload?.status === 'FAILED' ? <p className="text-xs text-amber-700">Last author hydration failed. Showing cached data.</p> : null}
                             {selectedAuthorNames.length > 0 ? (
@@ -1749,7 +1749,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             <Button type="button" size="sm" variant={contentMode === 'highlighted' ? 'default' : 'outline'} onClick={() => void onContentModeChange('highlighted')}>Highlighted</Button>
                           </div>
                           <div className="space-y-2 rounded border border-border bg-muted/10 p-2">
-                            <p className="text-[11px] uppercase text-muted-foreground">Abstract</p>
+                            <p className="text-micro uppercase text-muted-foreground">Abstract</p>
                             <p className="whitespace-pre-wrap text-xs leading-relaxed">{detailAbstract ? abstractPreview : 'No abstract available.'}</p>
                             {detailAbstract.length > 700 ? <Button type="button" size="sm" variant="outline" onClick={onToggleAbstractExpanded}>{abstractExpanded ? 'Collapse' : 'Expand'}</Button> : null}
                           </div>
@@ -1762,7 +1762,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             </div>
                           ) : null}
                           <div className="space-y-1">
-                            <p className="text-[11px] uppercase text-muted-foreground">Keywords</p>
+                            <p className="text-micro uppercase text-muted-foreground">Keywords</p>
                             {detailKeywords.length > 0 ? (
                               <div className="flex flex-wrap gap-1">
                                 {detailKeywords.map((keyword) => <span key={keyword} className="rounded border border-border bg-muted/40 px-1.5 py-0.5 text-xs">{keyword}</span>)}
@@ -1775,13 +1775,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           {selectedImpactResponse?.status === 'RUNNING' ? <p className="text-xs text-muted-foreground">Computing impact insights...</p> : null}
                           {selectedImpactResponse?.status === 'FAILED' ? <p className="text-xs text-amber-700">Last impact update failed. Showing cached data.</p> : null}
                           <div className="grid grid-cols-2 gap-2">
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">Total citations</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_total ?? detailCitations}</p></div>
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">Citations (12m)</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_last_12m ?? 0}</p></div>
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">YoY %</p><p className={`font-semibold ${growthToneClass(selectedImpactResponse?.payload?.yoy_pct ?? null)}`}>{formatSignedPercent(selectedImpactResponse?.payload?.yoy_pct ?? null)}</p></div>
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-[11px] uppercase text-muted-foreground">Acceleration</p><p className="font-semibold">{selectedImpactResponse?.payload?.acceleration_citations_per_month ?? 0}/month</p></div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">Total citations</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_total ?? detailCitations}</p></div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">Citations (12m)</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_last_12m ?? 0}</p></div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">YoY %</p><p className={`font-semibold ${growthToneClass(selectedImpactResponse?.payload?.yoy_pct ?? null)}`}>{formatSignedPercent(selectedImpactResponse?.payload?.yoy_pct ?? null)}</p></div>
+                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">Acceleration</p><p className="font-semibold">{selectedImpactResponse?.payload?.acceleration_citations_per_month ?? 0}/month</p></div>
                           </div>
                           <div className="space-y-1 rounded border border-border px-2 py-1.5">
-                            <p className="text-[11px] uppercase text-muted-foreground">Key citing papers</p>
+                            <p className="text-micro uppercase text-muted-foreground">Key citing papers</p>
                             {(selectedImpactResponse?.payload?.key_citing_papers || []).length === 0 ? <p className="text-xs text-muted-foreground">Not available from source.</p> : (selectedImpactResponse?.payload?.key_citing_papers || []).slice(0, 5).map((paper, index) => <p key={`${paper.title}-${index}`} className="text-xs">{paper.year ?? 'n/a'} | {paper.title}</p>)}
                           </div>
                         </TabsContent>
@@ -1814,7 +1814,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               {(selectedFilesPayload?.items || []).map((file) => (
                                 <div key={file.id} className="rounded border border-border px-2 py-1.5">
                                   <p className="truncate text-xs font-medium">{file.file_name}</p>
-                                  <p className="text-[11px] text-muted-foreground">{file.file_type} | {file.source === 'OA_LINK' ? 'OA link' : 'Uploaded'} | {formatShortDate(file.created_at)}</p>
+                                  <p className="text-micro text-muted-foreground">{file.file_type} | {file.source === 'OA_LINK' ? 'OA link' : 'Uploaded'} | {formatShortDate(file.created_at)}</p>
                                   <div className="mt-1 flex gap-1">
                                     {file.source === 'OA_LINK' && file.download_url ? (
                                       <Button type="button" size="sm" variant="outline" asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
@@ -1830,23 +1830,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         </TabsContent>
 
                         <TabsContent value="ai" className="space-y-3">
-                          <p className="rounded border border-border bg-muted/15 px-2 py-1 text-[11px] text-muted-foreground">AI-generated draft insights. Verify against full text.</p>
+                          <p className="rounded border border-border bg-muted/15 px-2 py-1 text-micro text-muted-foreground">AI-generated draft insights. Verify against full text.</p>
                           {selectedAiResponse?.status === 'RUNNING' ? <p className="text-xs text-muted-foreground">Generating insights...</p> : null}
                           {selectedAiResponse?.status === 'FAILED' ? <p className="text-xs text-amber-700">Last AI update failed. Showing cached data.</p> : null}
                           <div className="space-y-1 rounded border border-border px-2 py-1.5">
-                            <p className="text-[11px] uppercase text-muted-foreground">Performance summary</p>
+                            <p className="text-micro uppercase text-muted-foreground">Performance summary</p>
                             <p className="text-xs leading-relaxed">{selectedAiResponse?.payload?.performance_summary || 'Not available'}</p>
                           </div>
                           <div className="rounded border border-border px-2 py-1.5">
-                            <p className="text-[11px] uppercase text-muted-foreground">Trajectory</p>
+                            <p className="text-micro uppercase text-muted-foreground">Trajectory</p>
                             <p className="text-xs font-medium">{(selectedAiResponse?.payload?.trajectory_classification || 'UNKNOWN').replace(/_/g, ' ')}</p>
                           </div>
                           <div className="space-y-1 rounded border border-border px-2 py-1.5">
-                            <p className="text-[11px] uppercase text-muted-foreground">Reuse suggestions</p>
+                            <p className="text-micro uppercase text-muted-foreground">Reuse suggestions</p>
                             {(selectedAiResponse?.payload?.reuse_suggestions || []).length === 0 ? <p className="text-xs text-muted-foreground">No suggestions yet.</p> : (selectedAiResponse?.payload?.reuse_suggestions || []).map((item, index) => <p key={`${item}-${index}`} className="text-xs">- {item}</p>)}
                           </div>
                           <div className="space-y-1 rounded border border-border px-2 py-1.5">
-                            <p className="text-[11px] uppercase text-muted-foreground">Caution flags</p>
+                            <p className="text-micro uppercase text-muted-foreground">Caution flags</p>
                             {(selectedAiResponse?.payload?.caution_flags || []).length === 0 ? <p className="text-xs text-muted-foreground">No caution flags.</p> : (selectedAiResponse?.payload?.caution_flags || []).map((item, index) => <p key={`${item}-${index}`} className="text-xs">- {item}</p>)}
                           </div>
                         </TabsContent>

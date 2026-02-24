@@ -103,7 +103,7 @@ export function WorkspaceNavigator({ workspaceId, onNavigate }: WorkspaceNavigat
         </div>
         <p className="text-xs text-muted-foreground">Version {activeWorkspace?.version ?? '0.1'}</p>
         <div className="space-y-2">
-          <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Workspace</label>
+          <label className="text-micro uppercase tracking-wide text-muted-foreground">Workspace</label>
           <select
             value={workspaceId}
             onChange={(event) => onWorkspaceChange(event.target.value)}

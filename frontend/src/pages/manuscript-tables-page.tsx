@@ -228,7 +228,7 @@ export function ManuscriptTablesPage() {
                   </Button>
                 </div>
 
-                <ScrollArea className="h-[420px] rounded-md border border-border">
+                <ScrollArea className="h-sz-420 rounded-md border border-border">
                   <table className="w-full text-xs">
                     <thead className="sticky top-0 bg-muted/60">
                       <tr>

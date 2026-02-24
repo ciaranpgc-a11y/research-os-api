@@ -342,7 +342,7 @@ export function Step2Panel({
             </p>
           ) : null}
         </div>
-        {modelUsed ? <p className="text-[11px] text-muted-foreground">Model: {modelUsed}</p> : null}
+        {modelUsed ? <p className="text-micro text-muted-foreground">Model: {modelUsed}</p> : null}
         {questionError ? <p className="text-xs text-amber-700">{questionError}</p> : null}
       </div>
 
@@ -524,7 +524,7 @@ export function Step2Panel({
             </Button>
           </div>
           {activeSelection ? <p className="text-xs text-muted-foreground">Highlighted text ready for targeted edit.</p> : null}
-          {editModelUsed ? <p className="text-[11px] text-muted-foreground">Edit model: {editModelUsed}</p> : null}
+          {editModelUsed ? <p className="text-micro text-muted-foreground">Edit model: {editModelUsed}</p> : null}
           {editError ? <p className="text-xs text-rose-700">{editError}</p> : null}
         </div>
       ) : (

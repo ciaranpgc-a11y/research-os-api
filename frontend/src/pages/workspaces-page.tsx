@@ -125,7 +125,7 @@ function SortableHeader({
       className="inline-flex items-center gap-1 font-medium text-muted-foreground transition-colors hover:text-foreground"
     >
       <span>{label}</span>
-      <span className={cn('text-[10px]', isActive ? 'text-foreground' : 'text-muted-foreground')}>{icon}</span>
+      <span className={cn('text-caption', isActive ? 'text-foreground' : 'text-muted-foreground')}>{icon}</span>
     </button>
   )
 }
@@ -324,7 +324,7 @@ export function WorkspacesPage() {
 
       <main className="min-w-0 flex-1 overflow-hidden bg-background">
         <ScrollArea className="h-full">
-          <div className="mx-auto w-full max-w-[1380px] space-y-4 px-4 py-4 md:px-6">
+          <div className="mx-auto w-full max-w-sz-1380 space-y-4 px-4 py-4 md:px-6">
             <section className="rounded-lg border border-border bg-card p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -336,7 +336,7 @@ export function WorkspacesPage() {
                     value={newWorkspaceName}
                     onChange={(event) => setNewWorkspaceName(event.target.value)}
                     placeholder="New workspace name"
-                    className="w-[220px]"
+                    className="w-sz-220"
                   />
                   <Button type="button" onClick={onCreateWorkspace}>
                     Create workspace
@@ -352,7 +352,7 @@ export function WorkspacesPage() {
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder="Filter workspaces"
-                    className="w-[260px]"
+                    className="w-sz-260"
                   />
                   <select
                     value={filterKey}
@@ -426,7 +426,7 @@ export function WorkspacesPage() {
                 <div className="p-6 text-sm text-muted-foreground">No workspaces match the current filter.</div>
               ) : viewMode === 'table' ? (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[760px] text-sm">
+                  <table className="w-full min-w-sz-760 text-sm">
                     <thead className="bg-muted/35 text-left text-xs uppercase tracking-wide">
                       <tr>
                         <th className="px-3 py-2">
@@ -499,7 +499,7 @@ export function WorkspacesPage() {
                                     <p className="truncate">{workspace.name}</p>
                                     <div className="mt-1 flex flex-wrap gap-1">
                                       {workspace.pinned ? (
-                                        <span className="rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[11px] text-emerald-700">
+                                        <span className="rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-micro text-emerald-700">
                                           Pinned
                                         </span>
                                       ) : null}
@@ -527,7 +527,7 @@ export function WorkspacesPage() {
                               <span>{workspaceStatus(workspace)}</span>
                               <button
                                 type="button"
-                                className="ml-auto rounded border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+                                className="ml-auto rounded border border-border bg-background px-2 py-0.5 text-micro text-muted-foreground hover:text-foreground"
                                 onClick={(event) => {
                                   event.stopPropagation()
                                   onTogglePinned(workspace)

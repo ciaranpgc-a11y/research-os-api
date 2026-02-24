@@ -80,7 +80,7 @@ function Group({ group, qcCounts, onNavigate }: { group: NavGroup; qcCounts: QcC
                 onClick={onNavigate}
                 className={({ isActive }) =>
                   cn(
-                    'flex items-center justify-between border-l-[3px] border-transparent px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground/90',
+                    'flex items-center justify-between border-l-3 border-transparent px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground/90',
                     itemIndent,
                     isActive && 'border-l-primary bg-accent/45 text-foreground font-medium',
                   )
@@ -88,7 +88,7 @@ function Group({ group, qcCounts, onNavigate }: { group: NavGroup; qcCounts: QcC
               >
                 <span>{item.label}</span>
                 {item.badge ? (
-                  <Badge variant="outline" className={cn('h-5 min-w-5 px-1 text-[10px] font-medium', badgeClass(itemBadgeVariant))}>
+                  <Badge variant="outline" className={cn('h-5 min-w-5 px-1 text-caption font-medium', badgeClass(itemBadgeVariant))}>
                     {item.badge}
                   </Badge>
                 ) : null}

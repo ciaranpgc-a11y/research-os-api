@@ -27,7 +27,7 @@ export function RecommendationCard({
       {optionalPreview ? (
         <details className="rounded border border-border/70 bg-muted/20 p-2">
           <summary className="cursor-pointer text-xs font-medium">Preview</summary>
-          <pre className="mt-2 whitespace-pre-wrap text-[11px] text-muted-foreground">{optionalPreview}</pre>
+          <pre className="mt-2 whitespace-pre-wrap text-micro text-muted-foreground">{optionalPreview}</pre>
         </details>
       ) : null}
     </div>

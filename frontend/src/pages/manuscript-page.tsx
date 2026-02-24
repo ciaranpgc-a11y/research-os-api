@@ -367,7 +367,7 @@ export function ManuscriptPage() {
         )}
       </PageFrame>
       <Sheet open={citationSheetOpen} onOpenChange={setCitationSheetOpen}>
-        <SheetContent side="right" className="w-full p-0 sm:max-w-[520px]">
+        <SheetContent side="right" className="w-full p-0 sm:max-w-sz-520">
           <div className="flex h-full flex-col">
             <div className="space-y-1 border-b border-border px-5 py-4 pr-11">
               <h3 className="text-sm font-semibold">Citation Manager</h3>

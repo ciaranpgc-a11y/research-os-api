@@ -73,7 +73,7 @@ export function StudyCoreStepper({
       </div>
 
       {devOverride ? (
-        <p className="text-[11px] text-muted-foreground">Dev mode override is active: forward step navigation is unlocked.</p>
+        <p className="text-micro text-muted-foreground">Dev mode override is active: forward step navigation is unlocked.</p>
       ) : null}
     </section>
   )

@@ -24,7 +24,7 @@ export function AccountLayout() {
 
         <main className="min-w-0 overflow-hidden bg-background">
           <ScrollArea className="h-full">
-            <div className="mx-auto w-full max-w-[1320px] px-4 py-4 md:px-6">
+            <div className="mx-auto w-full max-w-sz-1320 px-4 py-4 md:px-6">
               <Outlet />
             </div>
           </ScrollArea>
@@ -32,7 +32,7 @@ export function AccountLayout() {
       </div>
 
       <Sheet open={leftPanelOpen} onOpenChange={setLeftPanelOpen}>
-        <SheetContent side="left" className="w-[260px] p-0 nav:hidden">
+        <SheetContent side="left" className="w-sz-260 p-0 nav:hidden">
           <AccountNavigator onNavigate={() => setLeftPanelOpen(false)} />
         </SheetContent>
       </Sheet>

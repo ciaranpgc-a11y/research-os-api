@@ -734,7 +734,7 @@ export function StepPlan(props: StepPlanProps) {
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {sectionCards.map((item) => (
             <div key={item.label} className={item.className}>
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{item.label}</p>
+              <p className="text-micro uppercase tracking-wide text-muted-foreground">{item.label}</p>
               <p className="text-sm">{item.value}</p>
               {item.meta ? <p className="text-xs text-muted-foreground">{item.meta}</p> : null}
             </div>
@@ -848,9 +848,9 @@ export function StepPlan(props: StepPlanProps) {
             </Button>
           </div>
           <div className="grid gap-2 sm:grid-cols-3">
-            <div className="rounded-md border border-border/70 bg-background p-2"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Answered</p><p className="text-sm font-semibold">{responses.filter((r) => r.answer === 'yes' || r.answer === 'no').length}</p></div>
-            <div className="rounded-md border border-border/70 bg-background p-2"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">AI confidence</p><p className="text-sm font-semibold">{confidence}%</p></div>
-            <div className="rounded-md border border-border/70 bg-background p-2"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Advice</p><p className="text-sm">{questionAdvice || 'Ask next question'}</p></div>
+            <div className="rounded-md border border-border/70 bg-background p-2"><p className="text-micro uppercase tracking-wide text-muted-foreground">Answered</p><p className="text-sm font-semibold">{responses.filter((r) => r.answer === 'yes' || r.answer === 'no').length}</p></div>
+            <div className="rounded-md border border-border/70 bg-background p-2"><p className="text-micro uppercase tracking-wide text-muted-foreground">AI confidence</p><p className="text-sm font-semibold">{confidence}%</p></div>
+            <div className="rounded-md border border-border/70 bg-background p-2"><p className="text-micro uppercase tracking-wide text-muted-foreground">Advice</p><p className="text-sm">{questionAdvice || 'Ask next question'}</p></div>
           </div>
           {question ? (
             <div className="space-y-2 rounded-md border border-border/70 bg-background p-3">
@@ -892,7 +892,7 @@ export function StepPlan(props: StepPlanProps) {
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-sm font-semibold">{ORDER.find((item) => item.key === section.key)?.label || section.key}</p>
-                        <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusClass(section.status)}`}>{section.status === 'draft' ? 'Draft' : section.status === 'reviewed' ? 'Reviewed' : 'Locked'}</span>
+                        <span className={`rounded-full border px-2 py-0.5 text-micro font-medium ${statusClass(section.status)}`}>{section.status === 'draft' ? 'Draft' : section.status === 'reviewed' ? 'Reviewed' : 'Locked'}</span>
                       </div>
                       <p className="text-xs text-muted-foreground">{section.summary}</p>
                     </div>
@@ -1132,7 +1132,7 @@ export function StepPlan(props: StepPlanProps) {
                     <Button type="button" size="sm" variant="outline" onClick={() => void loadAssets()} disabled={assetBusy}>Refresh library</Button>
                   </div>
                   <input ref={sectionInputRef} type="file" className="hidden" multiple onChange={(e) => void uploadToSection(e.target.files)} />
-                  <p className="text-[11px] text-muted-foreground">Uploads always go to Data Library, then attach by asset reference.</p>
+                  <p className="text-micro text-muted-foreground">Uploads always go to Data Library, then attach by asset reference.</p>
                 </div>
               </>
             ) : (

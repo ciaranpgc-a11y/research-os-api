@@ -66,7 +66,7 @@ export function AddColumnModal({ open, onOpenChange, existingColumns, onAddColum
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:w-[420px]">
+      <SheetContent side="right" className="w-full sm:w-sz-420">
         <div className="space-y-4 pr-6">
           <div className="space-y-1">
             <h3 className="text-base font-semibold">Add Column</h3>

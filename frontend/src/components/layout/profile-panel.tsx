@@ -131,8 +131,8 @@ export function ProfilePanel() {
           <span
             className={
               token && user
-                ? 'rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700'
-                : 'rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground'
+                ? 'rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-micro text-emerald-700'
+                : 'rounded-full border border-border bg-muted px-2 py-0.5 text-micro text-muted-foreground'
             }
           >
             {token && user ? 'live' : 'guest'}

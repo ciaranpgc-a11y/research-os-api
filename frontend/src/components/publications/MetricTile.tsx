@@ -92,11 +92,11 @@ export function MetricTile({
                 <Info className="h-4 w-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-[320px] leading-relaxed">
+            <TooltipContent side="top" className="max-w-sz-320 leading-relaxed">
               <p>{tile.tooltip}</p>
-              <p className="mt-1 text-[11px] text-muted-foreground">Formula: {tile.drilldown.formula || '\u2014'}</p>
-              <p className="mt-1 text-[11px] text-muted-foreground">Source: {sourceText}</p>
-              <p className="mt-1 text-[11px] text-muted-foreground">Update: {updateText}</p>
+              <p className="mt-1 text-micro text-muted-foreground">Formula: {tile.drilldown.formula || '\u2014'}</p>
+              <p className="mt-1 text-micro text-muted-foreground">Source: {sourceText}</p>
+              <p className="mt-1 text-micro text-muted-foreground">Update: {updateText}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

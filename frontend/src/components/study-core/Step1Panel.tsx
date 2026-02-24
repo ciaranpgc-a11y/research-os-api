@@ -1024,11 +1024,11 @@ export function Step1Panel({
           {showSummaryDiff ? (
             <div className="space-y-2 rounded border border-emerald-300 bg-white p-2">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-900">Current</p>
+                <p className="text-micro font-semibold uppercase tracking-wide text-emerald-900">Current</p>
                 <p className="text-xs text-emerald-950">{summary}</p>
               </div>
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-900">Suggested</p>
+                <p className="text-micro font-semibold uppercase tracking-wide text-emerald-900">Suggested</p>
                 <p className="text-xs text-emerald-950">
                   {diffHighlightTokens(summary, summarySuggestion).map((token, index) => (
                     <span
@@ -1148,7 +1148,7 @@ export function Step1Panel({
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-semibold text-amber-900">Journal recommendation</p>
             {journalProvenance ? (
-              <span className={`rounded border px-1.5 py-0.5 text-[11px] font-medium ${journalProvenance.className}`}>
+              <span className={`rounded border px-1.5 py-0.5 text-micro font-medium ${journalProvenance.className}`}>
                 {journalProvenance.label}
               </span>
             ) : null}
@@ -1257,7 +1257,7 @@ export function Step1Panel({
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-medium text-slate-900">Journal recommendation</p>
             {journalProvenance ? (
-              <span className={`rounded border px-1.5 py-0.5 text-[11px] font-medium ${journalProvenance.className}`}>
+              <span className={`rounded border px-1.5 py-0.5 text-micro font-medium ${journalProvenance.className}`}>
                 {journalProvenance.label}
               </span>
             ) : null}
@@ -1343,7 +1343,7 @@ export function Step1Panel({
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-semibold text-amber-900">Journal recommendation</p>
             {journalProvenance ? (
-              <span className={`rounded border px-1.5 py-0.5 text-[11px] font-medium ${journalProvenance.className}`}>
+              <span className={`rounded border px-1.5 py-0.5 text-micro font-medium ${journalProvenance.className}`}>
                 {journalProvenance.label}
               </span>
             ) : null}

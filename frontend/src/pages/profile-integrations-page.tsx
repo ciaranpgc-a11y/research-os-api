@@ -727,7 +727,7 @@ export function ProfileIntegrationsPage() {
           <CardTitle className="text-sm">
             <div className="flex w-full items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#A6CE39] text-xs font-semibold text-white">
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand-orcid text-xs font-semibold text-white">
                   iD
                 </span>
                 <span>ORCID</span>
@@ -784,28 +784,28 @@ export function ProfileIntegrationsPage() {
             </div>
             {orcidLinked ? (
               <div className="grid gap-2 sm:grid-cols-2">
-                <div className="rounded border border-border px-3 py-2 min-h-[86px]">
+                <div className="rounded border border-border px-3 py-2 min-h-sz-86">
                   <p className="text-xs text-muted-foreground">Total works</p>
                   <p className="text-2xl font-semibold leading-tight">{worksCount}</p>
                   {worksLastSyncDate ? (
                     <p className="text-xs text-muted-foreground">last sync {worksLastSyncDate}</p>
                   ) : null}
                 </div>
-                <div className="rounded border border-border px-3 py-2 min-h-[86px]">
+                <div className="rounded border border-border px-3 py-2 min-h-sz-86">
                   <p className="text-xs text-muted-foreground">New works</p>
                   <p className="text-2xl font-semibold leading-tight">{lastImportedCount ?? 0}</p>
                   <p className={`text-xs ${(lastImportedCount ?? 0) > 0 ? 'text-emerald-700' : 'text-muted-foreground'}`}>
                     {(lastImportedCount ?? 0) > 0 ? 'In latest sync' : 'No new works'}
                   </p>
                 </div>
-                <div className="rounded border border-border px-3 py-2 min-h-[86px]">
+                <div className="rounded border border-border px-3 py-2 min-h-sz-86">
                   <p className="text-xs text-muted-foreground">Total citations (provider-estimated)</p>
                   <p className="text-2xl font-semibold leading-tight">{totalCitations}</p>
                   {referencesLastSyncDate ? (
                     <p className="text-xs text-muted-foreground">last sync {referencesLastSyncDate}</p>
                   ) : null}
                 </div>
-                <div className="rounded border border-border px-3 py-2 min-h-[86px]">
+                <div className="rounded border border-border px-3 py-2 min-h-sz-86">
                   <p className="text-xs text-muted-foreground">New citations</p>
                   <p className="text-2xl font-semibold leading-tight">{lastReferencesSyncedCount ?? 0}</p>
                   <p className={`text-xs ${(lastReferencesSyncedCount ?? 0) > 0 ? 'text-emerald-700' : 'text-muted-foreground'}`}>

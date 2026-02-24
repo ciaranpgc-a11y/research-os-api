@@ -4,38 +4,215 @@
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222.2 47.4% 11.2%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --border: 214.3 31.8% 91.4%;
-    --primary: 220.9 39.3% 11%;
-    --primary-foreground: 210 40% 98%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --ring: 215 20.2% 65.1%;
-    --destructive: 0 72.2% 50.6%;
-    --destructive-foreground: 210 40% 98%;
-    --radius: 0.6rem;
+    --background: 210 20% 97%;
+    --foreground: 222 34% 14%;
+
+    --card: 210 20% 100%;
+    --card-foreground: 222 34% 14%;
+
+    --muted: 214 18% 93%;
+    --muted-foreground: 218 16% 38%;
+
+    --border: 214 17% 84%;
+    --ring: 210 22% 42%;
+
+    --primary: 201 35% 36%;
+    --primary-foreground: 210 20% 98%;
+
+    --accent: 216 30% 22%;
+    --accent-foreground: 210 20% 98%;
+
+    --destructive: 2 46% 42%;
+    --destructive-foreground: 210 20% 98%;
+
+    --status-ok: 164 28% 33%;
+    --status-ok-muted: 162 22% 92%;
+    --status-warn: 34 42% 38%;
+    --status-warn-muted: 36 30% 92%;
+    --status-danger: 3 42% 38%;
+    --status-danger-muted: 5 26% 92%;
+
+    --tone-neutral-50: 210 20% 98%;
+    --tone-neutral-100: 214 18% 94%;
+    --tone-neutral-200: 214 17% 88%;
+    --tone-neutral-300: 216 16% 76%;
+    --tone-neutral-400: 217 14% 60%;
+    --tone-neutral-500: 218 15% 46%;
+    --tone-neutral-600: 219 18% 34%;
+    --tone-neutral-700: 220 24% 25%;
+    --tone-neutral-800: 221 30% 19%;
+    --tone-neutral-900: 222 36% 14%;
+
+    --tone-positive-50: 162 22% 94%;
+    --tone-positive-100: 162 21% 89%;
+    --tone-positive-200: 163 22% 80%;
+    --tone-positive-300: 163 23% 68%;
+    --tone-positive-400: 164 25% 53%;
+    --tone-positive-500: 164 28% 41%;
+    --tone-positive-600: 164 28% 33%;
+    --tone-positive-700: 164 30% 28%;
+    --tone-positive-800: 165 34% 23%;
+    --tone-positive-900: 166 40% 18%;
+
+    --tone-warning-50: 38 34% 94%;
+    --tone-warning-100: 38 32% 89%;
+    --tone-warning-200: 37 34% 80%;
+    --tone-warning-300: 36 36% 70%;
+    --tone-warning-400: 35 40% 57%;
+    --tone-warning-500: 34 42% 47%;
+    --tone-warning-600: 34 42% 38%;
+    --tone-warning-700: 33 44% 32%;
+    --tone-warning-800: 31 46% 26%;
+    --tone-warning-900: 30 48% 20%;
+
+    --tone-danger-50: 4 24% 94%;
+    --tone-danger-100: 4 23% 89%;
+    --tone-danger-200: 3 26% 80%;
+    --tone-danger-300: 3 30% 70%;
+    --tone-danger-400: 3 34% 56%;
+    --tone-danger-500: 3 38% 47%;
+    --tone-danger-600: 3 42% 38%;
+    --tone-danger-700: 3 46% 31%;
+    --tone-danger-800: 2 52% 25%;
+    --tone-danger-900: 2 58% 20%;
+
+    --tone-accent-50: 205 38% 95%;
+    --tone-accent-100: 206 34% 90%;
+    --tone-accent-200: 207 32% 82%;
+    --tone-accent-300: 208 30% 72%;
+    --tone-accent-400: 209 30% 60%;
+    --tone-accent-500: 210 31% 49%;
+    --tone-accent-600: 211 32% 40%;
+    --tone-accent-700: 213 34% 32%;
+    --tone-accent-800: 215 37% 25%;
+    --tone-accent-900: 217 40% 18%;
+    --brand-orcid-green: 76 60% 52%;
+    --brand-google-red: 5 81% 56%;
+    --brand-google-green: 136 53% 43%;
+    --brand-google-blue: 212 72% 59%;
+    --brand-google-yellow: 45 97% 50%;
+    --brand-microsoft-red: 13 90% 55%;
+    --brand-microsoft-green: 79 94% 38%;
+    --brand-microsoft-blue: 199 96% 48%;
+    --brand-microsoft-yellow: 43 100% 52%;
+
+    --radius: 0.5rem;
+
+    --font-family-base:
+      Inter,
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      Segoe UI,
+      Roboto,
+      Helvetica,
+      Arial,
+      sans-serif;
+
+    --text-caption-size: 0.625rem;
+    --text-caption-line: 0.875rem;
+    --text-micro-size: 0.6875rem;
+    --text-micro-line: 1rem;
+    --text-label-size: 0.8125rem;
+    --text-label-line: 1.125rem;
+    --text-body-size: 0.9375rem;
+    --text-body-line: 1.375rem;
+    --text-display-size: 2rem;
+    --text-display-line: 2.25rem;
   }
 
   .dark {
-    --background: 222.2 47.4% 5.2%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 47.4% 8.2%;
-    --card-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --border: 217.2 32.6% 20%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --ring: 216 34% 65%;
-    --destructive: 0 72.2% 50.6%;
-    --destructive-foreground: 210 40% 98%;
+    --background: 221 30% 10%;
+    --foreground: 210 20% 96%;
+
+    --card: 221 28% 13%;
+    --card-foreground: 210 20% 96%;
+
+    --muted: 221 20% 18%;
+    --muted-foreground: 216 14% 72%;
+
+    --border: 221 18% 26%;
+    --ring: 206 30% 58%;
+
+    --primary: 200 32% 62%;
+    --primary-foreground: 220 30% 12%;
+
+    --accent: 215 32% 68%;
+    --accent-foreground: 220 30% 12%;
+
+    --destructive: 4 45% 60%;
+    --destructive-foreground: 220 30% 12%;
+
+    --status-ok: 164 30% 60%;
+    --status-ok-muted: 163 22% 20%;
+    --status-warn: 36 42% 62%;
+    --status-warn-muted: 36 24% 22%;
+    --status-danger: 3 44% 64%;
+    --status-danger-muted: 3 24% 22%;
+
+    --tone-neutral-50: 220 18% 94%;
+    --tone-neutral-100: 219 17% 86%;
+    --tone-neutral-200: 219 16% 74%;
+    --tone-neutral-300: 220 15% 62%;
+    --tone-neutral-400: 220 15% 52%;
+    --tone-neutral-500: 220 16% 44%;
+    --tone-neutral-600: 221 18% 34%;
+    --tone-neutral-700: 221 20% 26%;
+    --tone-neutral-800: 221 24% 20%;
+    --tone-neutral-900: 221 28% 14%;
+
+    --tone-positive-50: 164 18% 26%;
+    --tone-positive-100: 164 18% 30%;
+    --tone-positive-200: 164 18% 36%;
+    --tone-positive-300: 164 20% 44%;
+    --tone-positive-400: 164 24% 52%;
+    --tone-positive-500: 164 28% 60%;
+    --tone-positive-600: 164 30% 66%;
+    --tone-positive-700: 164 32% 72%;
+    --tone-positive-800: 164 35% 78%;
+    --tone-positive-900: 164 38% 84%;
+
+    --tone-warning-50: 36 20% 26%;
+    --tone-warning-100: 36 20% 30%;
+    --tone-warning-200: 36 22% 36%;
+    --tone-warning-300: 36 24% 44%;
+    --tone-warning-400: 36 28% 52%;
+    --tone-warning-500: 36 34% 60%;
+    --tone-warning-600: 36 40% 66%;
+    --tone-warning-700: 36 46% 72%;
+    --tone-warning-800: 36 50% 78%;
+    --tone-warning-900: 36 54% 84%;
+
+    --tone-danger-50: 3 18% 24%;
+    --tone-danger-100: 3 18% 29%;
+    --tone-danger-200: 3 20% 35%;
+    --tone-danger-300: 3 24% 43%;
+    --tone-danger-400: 3 30% 52%;
+    --tone-danger-500: 3 36% 60%;
+    --tone-danger-600: 3 42% 66%;
+    --tone-danger-700: 3 46% 72%;
+    --tone-danger-800: 3 50% 78%;
+    --tone-danger-900: 3 54% 84%;
+
+    --tone-accent-50: 210 24% 26%;
+    --tone-accent-100: 210 24% 30%;
+    --tone-accent-200: 210 24% 36%;
+    --tone-accent-300: 210 26% 44%;
+    --tone-accent-400: 210 30% 52%;
+    --tone-accent-500: 210 34% 60%;
+    --tone-accent-600: 210 38% 66%;
+    --tone-accent-700: 210 42% 72%;
+    --tone-accent-800: 210 46% 78%;
+    --tone-accent-900: 210 50% 84%;
+    --brand-orcid-green: 76 60% 52%;
+    --brand-google-red: 5 81% 56%;
+    --brand-google-green: 136 53% 43%;
+    --brand-google-blue: 212 72% 59%;
+    --brand-google-yellow: 45 97% 50%;
+    --brand-microsoft-red: 13 90% 55%;
+    --brand-microsoft-green: 79 94% 38%;
+    --brand-microsoft-blue: 199 96% 48%;
+    --brand-microsoft-yellow: 43 100% 52%;
   }
 
   * {
@@ -46,20 +223,38 @@
     @apply bg-background text-foreground antialiased;
     margin: 0;
     min-height: 100vh;
-    font-family:
-      Inter,
-      ui-sans-serif,
-      system-ui,
-      -apple-system,
-      Segoe UI,
-      Roboto,
-      Helvetica,
-      Arial,
-      sans-serif;
+    font-family: var(--font-family-base);
   }
 
   #root {
     min-height: 100vh;
+  }
+}
+
+@layer utilities {
+  .text-caption {
+    font-size: var(--text-caption-size);
+    line-height: var(--text-caption-line);
+  }
+
+  .text-micro {
+    font-size: var(--text-micro-size);
+    line-height: var(--text-micro-line);
+  }
+  .text-label {
+    font-size: var(--text-label-size);
+    line-height: var(--text-label-line);
+  }
+
+  .text-body {
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-line);
+  }
+
+  .text-display {
+    font-size: var(--text-display-size);
+    line-height: var(--text-display-line);
+    letter-spacing: -0.02em;
   }
 }
 

@@ -163,7 +163,7 @@ function FieldHintLabel({
               <CircleHelp className="h-3.5 w-3.5" />
             </button>
           </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-[320px] text-xs leading-relaxed">
+          <TooltipContent side="top" className="max-w-sz-320 text-xs leading-relaxed">
             {hint}
           </TooltipContent>
         </Tooltip>
@@ -475,7 +475,7 @@ export function StepContext({
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Research frame snapshot</p>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           <div className={targetJournalBoxClass}>
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Target journal</p>
+            <p className="text-micro uppercase tracking-wide text-muted-foreground">Target journal</p>
             <p className="text-sm">{selectedJournalLabel || 'Not set'}</p>
             {selectedJournalLabel ? (
               <p className="text-xs text-muted-foreground">
@@ -484,23 +484,23 @@ export function StepContext({
             ) : null}
           </div>
           <div className="rounded-md border border-border/70 bg-background p-2">
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Research category</p>
+            <p className="text-micro uppercase tracking-wide text-muted-foreground">Research category</p>
             <p className="text-sm">{values.researchCategory || 'Not set'}</p>
           </div>
           <div className="rounded-md border border-border/70 bg-background p-2">
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Study type</p>
+            <p className="text-micro uppercase tracking-wide text-muted-foreground">Study type</p>
             <p className="text-sm">{values.studyArchitecture || 'Not set'}</p>
           </div>
           <div className="rounded-md border border-border/70 bg-background p-2">
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Interpretation mode</p>
+            <p className="text-micro uppercase tracking-wide text-muted-foreground">Interpretation mode</p>
             <p className="text-sm">{values.interpretationMode || 'Not set'}</p>
           </div>
           <div className="rounded-md border border-border/70 bg-background p-2">
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Recommended article type</p>
+            <p className="text-micro uppercase tracking-wide text-muted-foreground">Recommended article type</p>
             <p className="text-sm">{values.recommendedArticleType || 'Not set'}</p>
           </div>
           <div className={wordLengthBoxClass}>
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Recommended word length</p>
+            <p className="text-micro uppercase tracking-wide text-muted-foreground">Recommended word length</p>
             <p className="text-sm">{values.recommendedWordLength || 'Not set'}</p>
           </div>
         </div>

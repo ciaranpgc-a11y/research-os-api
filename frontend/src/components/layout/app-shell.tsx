@@ -48,7 +48,7 @@ export function AppShell() {
                 isStudyCoreRoute
                   ? 'max-w-none px-3 md:px-4'
                   : isProfileRoute
-                    ? 'max-w-[1360px] px-3 md:px-5'
+                    ? 'max-w-sz-1360 px-3 md:px-5'
                     : 'max-w-6xl px-4 md:px-6',
               )}
             >
@@ -65,7 +65,7 @@ export function AppShell() {
       </div>
 
       <Sheet open={leftPanelOpen} onOpenChange={setLeftPanelOpen}>
-        <SheetContent side="left" className="w-[290px] p-0 nav:hidden">
+        <SheetContent side="left" className="w-sz-290 p-0 nav:hidden">
           <StudyNavigator onNavigate={() => setLeftPanelOpen(false)} />
         </SheetContent>
       </Sheet>
@@ -76,7 +76,7 @@ export function AppShell() {
             side="right"
             className={cn(
               'p-0 insight:hidden',
-              isProfileRoute ? 'w-[340px] sm:w-[340px]' : 'w-[360px] sm:w-[360px]',
+              isProfileRoute ? 'w-sz-340 sm:w-sz-340' : 'w-sz-360 sm:w-sz-360',
             )}
           >
             {rightPanel}

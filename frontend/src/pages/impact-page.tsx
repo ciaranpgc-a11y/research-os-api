@@ -703,25 +703,25 @@ export function ImpactPage() {
             <div className="space-y-3 text-sm">
               <div className="grid gap-2 md:grid-cols-4">
                 <div className="rounded-md border border-border bg-background p-2">
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Email verification</p>
+                  <p className="text-micro uppercase tracking-wide text-muted-foreground">Email verification</p>
                   <p className={user.email_verified_at ? 'text-emerald-700' : 'text-amber-700'}>
                     {user.email_verified_at ? 'Verified' : 'Verification required'}
                   </p>
                 </div>
                 <div className="rounded-md border border-border bg-background p-2">
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">ORCID</p>
+                  <p className="text-micro uppercase tracking-wide text-muted-foreground">ORCID</p>
                   <p className={user.orcid_id ? 'text-emerald-700' : 'text-amber-700'}>
                     {user.orcid_id ? 'Linked' : 'Not linked'}
                   </p>
                 </div>
                 <div className="rounded-md border border-border bg-background p-2">
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Last sync</p>
+                  <p className="text-micro uppercase tracking-wide text-muted-foreground">Last sync</p>
                   <p className={staleWarnings.length ? 'text-amber-700' : 'text-slate-800'}>
                     {formatTimestamp(lastSyncAt)}
                   </p>
                 </div>
                 <div className="rounded-md border border-border bg-background p-2">
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Security level</p>
+                  <p className="text-micro uppercase tracking-wide text-muted-foreground">Security level</p>
                   <p className={twoFactorState?.enabled ? 'text-emerald-700' : 'text-slate-800'}>
                     {twoFactorState?.enabled ? 'Enhanced (2FA)' : 'Standard'}
                   </p>
@@ -745,7 +745,7 @@ export function ImpactPage() {
                       placeholder="Verification code"
                       value={verificationCode}
                       onChange={(event) => setVerificationCode(event.target.value)}
-                      className="w-[180px]"
+                      className="w-sz-180"
                     />
                     <Button size="sm" onClick={onConfirmEmailVerification} disabled={loading || !verificationCode.trim()}>
                       Verify email
@@ -1301,7 +1301,7 @@ export function ImpactPage() {
               <div className="space-y-2">
                 <p className="font-medium">CV impact paragraph</p>
                 <textarea
-                  className="min-h-[84px] w-full rounded border border-border bg-background p-2 text-sm"
+                  className="min-h-sz-84 w-full rounded border border-border bg-background p-2 text-sm"
                   value={report?.executive_summary || ''}
                   readOnly
                 />
@@ -1309,7 +1309,7 @@ export function ImpactPage() {
               <div className="space-y-2">
                 <p className="font-medium">Fellowship narrative</p>
                 <textarea
-                  className="min-h-[110px] w-full rounded border border-border bg-background p-2 text-sm"
+                  className="min-h-sz-110 w-full rounded border border-border bg-background p-2 text-sm"
                   value={`${report?.collaboration_profile || ''}\n\n${report?.thematic_profile || ''}`.trim()}
                   readOnly
                 />
@@ -1317,7 +1317,7 @@ export function ImpactPage() {
               <div className="space-y-2">
                 <p className="font-medium">2-page impact report draft</p>
                 <textarea
-                  className="min-h-[220px] w-full rounded border border-border bg-background p-2 text-sm"
+                  className="min-h-sz-220 w-full rounded border border-border bg-background p-2 text-sm"
                   value={report ? JSON.stringify(report, null, 2) : ''}
                   readOnly
                 />

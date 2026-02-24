@@ -66,7 +66,7 @@ function ProviderIcon({ provider }: { provider: SocialProvider }) {
     return (
       <span
         aria-hidden
-        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#A6CE39] text-[10px] font-semibold text-white"
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-brand-orcid text-caption font-semibold text-white"
       >
         iD
       </span>
@@ -76,19 +76,19 @@ function ProviderIcon({ provider }: { provider: SocialProvider }) {
     return (
       <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5">
         <path
-          fill="#EA4335"
+          fill="hsl(var(--brand-google-red))"
           d="M12 10.2v3.9h5.4c-.2 1.2-.9 2.2-2 2.9l3.2 2.5c1.9-1.7 2.9-4.3 2.9-7.5 0-.7-.1-1.2-.2-1.8H12z"
         />
         <path
-          fill="#34A853"
+          fill="hsl(var(--brand-google-green))"
           d="M12 22c2.7 0 5-0.9 6.6-2.5l-3.2-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.2l-3.3 2.6C4.8 19.8 8.1 22 12 22z"
         />
         <path
-          fill="#4A90E2"
+          fill="hsl(var(--brand-google-blue))"
           d="M6.4 13.8c-.2-.6-.4-1.2-.4-1.8s.1-1.2.4-1.8L3.1 7.6C2.4 9 2 10.5 2 12s.4 3 1.1 4.4l3.3-2.6z"
         />
         <path
-          fill="#FBBC05"
+          fill="hsl(var(--brand-google-yellow))"
           d="M12 6.8c1.5 0 2.8.5 3.8 1.4l2.8-2.8C17 3.9 14.7 3 12 3 8.1 3 4.8 5.2 3.1 7.6l3.3 2.6C7.2 8.6 9.4 6.8 12 6.8z"
         />
       </svg>
@@ -96,10 +96,10 @@ function ProviderIcon({ provider }: { provider: SocialProvider }) {
   }
   return (
     <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5">
-      <rect x="2" y="2" width="9" height="9" fill="#F35325" />
-      <rect x="13" y="2" width="9" height="9" fill="#81BC06" />
-      <rect x="2" y="13" width="9" height="9" fill="#05A6F0" />
-      <rect x="13" y="13" width="9" height="9" fill="#FFBA08" />
+      <rect x="2" y="2" width="9" height="9" fill="hsl(var(--brand-microsoft-red))" />
+      <rect x="13" y="2" width="9" height="9" fill="hsl(var(--brand-microsoft-green))" />
+      <rect x="2" y="13" width="9" height="9" fill="hsl(var(--brand-microsoft-blue))" />
+      <rect x="13" y="13" width="9" height="9" fill="hsl(var(--brand-microsoft-yellow))" />
     </svg>
   )
 }
@@ -690,7 +690,7 @@ export function AuthPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-10">
-      <div className="mx-auto flex w-full max-w-[520px] flex-col items-center gap-5">
+      <div className="mx-auto flex w-full max-w-sz-520 flex-col items-center gap-5">
         <div className="text-3xl font-semibold tracking-tight text-slate-900">AAWE</div>
 
         <Card className="w-full border border-slate-200 bg-white shadow-sm">

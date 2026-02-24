@@ -71,14 +71,14 @@ export function WorkspaceLayout() {
       </div>
 
       <Sheet open={leftPanelOpen} onOpenChange={setLeftPanelOpen}>
-        <SheetContent side="left" className="w-[290px] p-0 nav:hidden">
+        <SheetContent side="left" className="w-sz-290 p-0 nav:hidden">
           <WorkspaceNavigator workspaceId={workspaceId} onNavigate={() => setLeftPanelOpen(false)} />
         </SheetContent>
       </Sheet>
 
       {showRightPanel ? (
         <Sheet open={rightPanelOpen} onOpenChange={setRightPanelOpen}>
-          <SheetContent side="right" className="w-[360px] p-0 insight:hidden sm:w-[360px]">
+          <SheetContent side="right" className="w-sz-360 p-0 insight:hidden sm:w-sz-360">
             <InsightPanel />
           </SheetContent>
         </Sheet>
