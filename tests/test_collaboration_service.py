@@ -9,6 +9,7 @@ from research_os.db import (
     Collaborator,
     CollaborationMetric,
     User,
+    Work,
     create_all_tables,
     reset_database_state,
     session_scope,
@@ -271,6 +272,79 @@ def test_enrich_openalex_fills_missing_collaborator_fields(monkeypatch, tmp_path
             "Cardiovascular Imaging",
             "Population Health",
         ]
+
+
+def test_enrich_openalex_fallbacks_to_publication_author_cache(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user(email="enrich-fallback-user@example.com")
+    with session_scope() as session:
+        collaborator = Collaborator(
+            owner_user_id=user_id,
+            full_name="Fallback Collaborator",
+            full_name_lower="fallback collaborator",
+            openalex_author_id=None,
+            research_domains=[],
+        )
+        session.add(collaborator)
+        session.add(
+            Work(
+                user_id=user_id,
+                title="Cross-source trial",
+                title_lower="cross-source trial",
+                year=2025,
+                keywords=["Cardiology", "Clinical trials"],
+                authors_json=[
+                    {
+                        "name": "Fallback Collaborator",
+                        "orcid_id": "0000-0002-1825-0097",
+                        "affiliations": ["Crossref University"],
+                    }
+                ],
+                affiliations_json=[
+                    {"name": "Crossref University", "country_code": "US"}
+                ],
+            )
+        )
+        session.flush()
+    monkeypatch.setattr(
+        "research_os.services.collaboration_service._openalex_request_with_retry",
+        lambda **kwargs: {
+            "results": [{"id": "https://openalex.org/A999"}]
+        }
+        if str(kwargs.get("url") or "").endswith("/authors")
+        else {},
+    )
+    monkeypatch.setattr(
+        "research_os.services.collaboration_service.enqueue_collaboration_metrics_recompute",
+        lambda **_: True,
+    )
+
+    payload = collaboration_service.enrich_collaborators_from_openalex(
+        user_id=user_id,
+        only_missing=True,
+        limit=50,
+    )
+
+    assert payload["targeted_count"] == 1
+    assert payload["resolved_author_count"] == 1
+    assert payload["updated_count"] == 1
+    assert payload["failed_count"] == 1
+    assert payload["field_updates"]["openalex_author_id"] == 1
+    assert payload["field_updates"]["orcid_id"] == 1
+    assert payload["field_updates"]["primary_institution"] == 1
+    assert payload["field_updates"]["country"] == 1
+    assert payload["field_updates"]["research_domains"] == 1
+    with session_scope() as session:
+        row = session.scalars(
+            select(Collaborator).where(Collaborator.owner_user_id == user_id)
+        ).first()
+        assert row is not None
+        assert row.openalex_author_id == "https://openalex.org/A999"
+        assert row.orcid_id == "0000-0002-1825-0097"
+        assert row.primary_institution == "Crossref University"
+        assert row.country == "US"
+        assert row.research_domains[:2] == ["Cardiology", "Clinical trials"]
 
 
 def test_stale_while_revalidate_returns_cache_and_enqueues(monkeypatch, tmp_path) -> None:

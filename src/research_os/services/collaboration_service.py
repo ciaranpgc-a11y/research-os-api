@@ -1569,6 +1569,182 @@ def _iter_openalex_coauthors(
     return list(coauthors.values())
 
 
+def _most_common_text(values: list[str]) -> str | None:
+    counts: dict[str, int] = defaultdict(int)
+    first_seen_order: dict[str, int] = {}
+    for item in values:
+        clean = re.sub(r"\s+", " ", str(item or "").strip())
+        if not clean:
+            continue
+        key = clean.lower()
+        if key not in first_seen_order:
+            first_seen_order[key] = len(first_seen_order)
+        counts[key] += 1
+    if not counts:
+        return None
+    ranked = sorted(
+        counts.items(),
+        key=lambda row: (-row[1], first_seen_order.get(row[0], 0), row[0]),
+    )
+    best_key = ranked[0][0]
+    for item in values:
+        clean = re.sub(r"\s+", " ", str(item or "").strip())
+        if clean and clean.lower() == best_key:
+            return clean
+    return best_key
+
+
+def _extract_author_affiliations(author_payload: dict[str, Any]) -> list[str]:
+    raw_affiliations = author_payload.get("affiliations")
+    values: list[str] = []
+    if isinstance(raw_affiliations, list):
+        for item in raw_affiliations:
+            if isinstance(item, dict):
+                clean = re.sub(r"\s+", " ", str(item.get("name") or "").strip())
+            else:
+                clean = re.sub(r"\s+", " ", str(item or "").strip())
+            if clean:
+                values.append(clean)
+    elif isinstance(raw_affiliations, dict):
+        clean = re.sub(r"\s+", " ", str(raw_affiliations.get("name") or "").strip())
+        if clean:
+            values.append(clean)
+    else:
+        clean = re.sub(r"\s+", " ", str(raw_affiliations or "").strip())
+        if clean:
+            values.append(clean)
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in values:
+        key = item.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
+
+def _work_affiliation_country_map(work: Work) -> dict[str, str]:
+    rows = work.affiliations_json if isinstance(work.affiliations_json, list) else []
+    mapping: dict[str, str] = {}
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        name = re.sub(r"\s+", " ", str(item.get("name") or "").strip())
+        if not name:
+            continue
+        country = re.sub(
+            r"\s+",
+            " ",
+            str(item.get("country_code") or item.get("country") or "").strip(),
+        ).upper()
+        if not country:
+            continue
+        key = _normalize_name_lower(name)
+        if key not in mapping:
+            mapping[key] = country
+    return mapping
+
+
+def _infer_collaborator_profile_from_publication_authors(
+    *,
+    collaborator: Collaborator,
+    works: list[Work],
+) -> dict[str, Any]:
+    collaborator_name = re.sub(r"\s+", " ", str(collaborator.full_name or "").strip())
+    if not collaborator_name:
+        return {}
+    collaborator_orcid = _safe_validate_orcid(collaborator.orcid_id)
+    normalized_collaborator_name = _normalize_name_lower(collaborator_name)
+
+    orcid_candidates: list[str] = []
+    institution_candidates: list[str] = []
+    country_candidates: list[str] = []
+    domain_candidates: list[str] = []
+
+    for work in works:
+        authors = work.authors_json if isinstance(work.authors_json, list) else []
+        if not authors:
+            continue
+        affiliation_country_map = _work_affiliation_country_map(work)
+        matched_author: dict[str, Any] | None = None
+        matched_author_orcid: str | None = None
+        best_score = 0.0
+
+        for item in authors:
+            if not isinstance(item, dict):
+                continue
+            candidate_name = re.sub(
+                r"\s+",
+                " ",
+                str(
+                    item.get("name")
+                    or item.get("display_name")
+                    or item.get("full_name")
+                    or ""
+                ).strip(),
+            )
+            candidate_orcid = _safe_validate_orcid(
+                item.get("orcid_id") or item.get("orcid")
+            )
+            score = 0.0
+            if collaborator_orcid and candidate_orcid:
+                if _normalize_orcid_id(collaborator_orcid) == _normalize_orcid_id(
+                    candidate_orcid
+                ):
+                    score = 1.2
+            if score <= 0 and candidate_name:
+                if _normalize_name_lower(candidate_name) == normalized_collaborator_name:
+                    score = 1.0
+                else:
+                    similarity = _name_similarity(collaborator_name, candidate_name)
+                    if similarity >= 0.95:
+                        score = similarity
+            if score <= 0:
+                continue
+            if matched_author is None or score > best_score:
+                matched_author = item
+                matched_author_orcid = candidate_orcid
+                best_score = score
+
+        if matched_author is None:
+            continue
+
+        if matched_author_orcid:
+            orcid_candidates.append(matched_author_orcid)
+
+        for institution in _extract_author_affiliations(matched_author):
+            institution_candidates.append(institution)
+            mapped_country = affiliation_country_map.get(
+                _normalize_name_lower(institution)
+            )
+            if mapped_country:
+                country_candidates.append(mapped_country)
+
+        for keyword in list(work.keywords or []):
+            clean_keyword = re.sub(r"\s+", " ", str(keyword or "").strip())
+            if clean_keyword:
+                domain_candidates.append(clean_keyword)
+
+    inferred_orcid = _safe_validate_orcid(_most_common_text(orcid_candidates))
+    inferred_institution = _most_common_text(institution_candidates)
+    inferred_country = _most_common_text(country_candidates)
+    inferred_domains = _normalize_domains(domain_candidates)[:8]
+    if not (
+        inferred_orcid
+        or inferred_institution
+        or inferred_country
+        or len(inferred_domains) > 0
+    ):
+        return {}
+    return {
+        "orcid_id": inferred_orcid,
+        "primary_institution": inferred_institution,
+        "country": inferred_country,
+        "research_domains": inferred_domains,
+    }
+
+
 def _match_existing_for_import(
     session,
     *,
@@ -1760,6 +1936,7 @@ def enrich_collaborators_from_openalex(
             ]
 
         target_rows = collaborators[:normalized_limit]
+        works = session.scalars(select(Work).where(Work.user_id == user_id)).all()
         field_updates: dict[str, int] = defaultdict(int)
         updated_count = 0
         unchanged_count = 0
@@ -1769,8 +1946,53 @@ def enrich_collaborators_from_openalex(
 
         for collaborator in target_rows:
             changed = False
+            fallback_profile = _infer_collaborator_profile_from_publication_authors(
+                collaborator=collaborator,
+                works=works,
+            )
             resolved_author_id = _normalize_openalex_author_id(collaborator.openalex_author_id)
             if not resolved_author_id:
+                resolved_author_id = _normalize_openalex_author_id(
+                    _resolve_openalex_author_id(
+                        orcid_id=collaborator.orcid_id,
+                        mailto=mailto,
+                    )
+                )
+                if resolved_author_id and not collaborator.openalex_author_id:
+                    collaborator.openalex_author_id = resolved_author_id
+                    field_updates["openalex_author_id"] += 1
+                    changed = True
+
+            if not collaborator.orcid_id and fallback_profile.get("orcid_id"):
+                collaborator.orcid_id = str(fallback_profile["orcid_id"]).strip()
+                field_updates["orcid_id"] += 1
+                changed = True
+            if (
+                not collaborator.primary_institution
+                and fallback_profile.get("primary_institution")
+            ):
+                collaborator.primary_institution = str(
+                    fallback_profile["primary_institution"]
+                ).strip()
+                field_updates["primary_institution"] += 1
+                changed = True
+            if not collaborator.country and fallback_profile.get("country"):
+                collaborator.country = str(fallback_profile["country"]).strip()
+                field_updates["country"] += 1
+                changed = True
+            if (
+                len(list(collaborator.research_domains or [])) == 0
+                and isinstance(fallback_profile.get("research_domains"), list)
+                and fallback_profile["research_domains"]
+            ):
+                collaborator.research_domains = _normalize_domains(
+                    fallback_profile["research_domains"]
+                )
+                if collaborator.research_domains:
+                    field_updates["research_domains"] += 1
+                    changed = True
+
+            if not resolved_author_id and collaborator.orcid_id:
                 resolved_author_id = _normalize_openalex_author_id(
                     _resolve_openalex_author_id(
                         orcid_id=collaborator.orcid_id,
