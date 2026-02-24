@@ -16,6 +16,8 @@ type PersonalDetailsDraft = {
   department: string
   country: string
   website: string
+  researchGateUrl: string
+  xHandle: string
 }
 
 type StoredPersonalDetails = PersonalDetailsDraft & {
@@ -106,6 +108,8 @@ function sanitizeDraft(value: Partial<PersonalDetailsDraft> | null | undefined):
     department: trimValue(value?.department),
     country: trimValue(value?.country),
     website: trimValue(value?.website),
+    researchGateUrl: trimValue(value?.researchGateUrl),
+    xHandle: trimValue(value?.xHandle),
   }
 }
 
@@ -183,15 +187,29 @@ function saveCachedOrcidStatus(value: OrcidStatusPayload): void {
   window.localStorage.setItem(INTEGRATIONS_ORCID_STATUS_CACHE_KEY, JSON.stringify(value))
 }
 
-function draftFromSources(user: AuthUser | null, stored: StoredPersonalDetails | null): PersonalDetailsDraft {
+function draftFromSources(
+  user: AuthUser | null,
+  stored: StoredPersonalDetails | null,
+  orcidLinked: boolean,
+): PersonalDetailsDraft {
   const split = splitName(user?.name)
+  const seededFirstName =
+    orcidLinked && !trimValue(stored?.firstName)
+      ? split.firstName
+      : stored?.firstName || split.firstName
+  const seededLastName =
+    orcidLinked && !trimValue(stored?.lastName)
+      ? split.lastName
+      : stored?.lastName || split.lastName
   return sanitizeDraft({
-    firstName: stored?.firstName || split.firstName,
-    lastName: stored?.lastName || split.lastName,
+    firstName: seededFirstName,
+    lastName: seededLastName,
     organisation: stored?.organisation || '',
     department: stored?.department || '',
     country: stored?.country || '',
     website: stored?.website || '',
+    researchGateUrl: stored?.researchGateUrl || '',
+    xHandle: stored?.xHandle || '',
   })
 }
 
@@ -299,8 +317,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const initialStoredDetails = initialCachedUser?.id
     ? loadStoredPersonalDetails(initialCachedUser.id)
     : null
+  const initialOrcidLinked = Boolean(initialCachedOrcidStatus?.linked || initialCachedUser?.orcid_id)
   const initialDraft = sanitizeDraft({
-    ...draftFromSources(initialCachedUser, initialStoredDetails),
+    ...draftFromSources(initialCachedUser, initialStoredDetails, initialOrcidLinked),
     ...(fixture?.personalDetails || {}),
   })
 
@@ -321,12 +340,13 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     }
     const fixtureUser = fixture?.user ?? null
     const stored = fixtureUser?.id ? loadStoredPersonalDetails(fixtureUser.id) : null
+    const fixtureOrcidLinked = Boolean(fixture?.orcidStatus?.linked || fixtureUser?.orcid_id)
     setToken(fixture?.token ?? 'storybook-session-token')
     setUser(fixtureUser)
     setOrcidStatus(fixture?.orcidStatus ?? null)
     setDraft(
       sanitizeDraft({
-        ...draftFromSources(fixtureUser, stored),
+        ...draftFromSources(fixtureUser, stored, fixtureOrcidLinked),
         ...(fixture?.personalDetails || {}),
       }),
     )
@@ -364,10 +384,31 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         setUser(nextUser)
         saveCachedUser(nextUser)
 
+        const linkedFromSource =
+          (orcidResult.status === 'fulfilled' && Boolean(orcidResult.value.linked)) ||
+          Boolean(nextUser.orcid_id)
         const stored = loadStoredPersonalDetails(nextUser.id)
-        setLastSavedAt(stored?.updatedAt ?? null)
+        const resolvedDraft = draftFromSources(nextUser, stored, linkedFromSource)
+        const shouldPersistOrcidSeed =
+          linkedFromSource &&
+          (
+            trimValue(resolvedDraft.firstName) !== trimValue(stored?.firstName) ||
+            trimValue(resolvedDraft.lastName) !== trimValue(stored?.lastName)
+          )
+
+        if (shouldPersistOrcidSeed) {
+          const seededAt = stored?.updatedAt || new Date().toISOString()
+          saveStoredPersonalDetails(nextUser.id, {
+            ...resolvedDraft,
+            updatedAt: seededAt,
+          })
+          setLastSavedAt(seededAt)
+        } else {
+          setLastSavedAt(stored?.updatedAt ?? null)
+        }
+
         if (!draftEditedRef.current) {
-          setDraft(draftFromSources(nextUser, stored))
+          setDraft(resolvedDraft)
         }
 
         if (orcidResult.status === 'fulfilled') {
@@ -416,7 +457,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       return
     }
     const stored = loadStoredPersonalDetails(user.id)
-    setDraft(draftFromSources(user, stored))
+    setDraft(draftFromSources(user, stored, orcidLinked))
     setLastSavedAt(stored?.updatedAt ?? null)
     setStatus('')
     setError('')
@@ -496,13 +537,23 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             </span>
           </div>
           <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
-            ORCID currently provides ORCID iD and display name. Organisation-level details remain editable on account.
+            When ORCID is linked, first and last name are seeded from your ORCID profile and stored in your account details.
           </p>
         </CardHeader>
         <CardContent className="space-y-3 pt-3 text-sm">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
             <div className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1 sm:col-span-2">
+                  <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Sign-up email</span>
+                  <Input
+                    value={user?.email || ''}
+                    readOnly
+                    disabled
+                    placeholder="Email used at registration"
+                  />
+                </label>
+
                 <label className="space-y-1">
                   <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">First name</span>
                   <Input
@@ -560,6 +611,26 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     onChange={(event) => onFieldChange('website', event.target.value)}
                     placeholder="https://"
                     autoComplete="url"
+                  />
+                </label>
+
+                <label className="space-y-1 sm:col-span-2">
+                  <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">ResearchGate page</span>
+                  <Input
+                    value={draft.researchGateUrl}
+                    onChange={(event) => onFieldChange('researchGateUrl', event.target.value)}
+                    placeholder="https://www.researchgate.net/profile/..."
+                    autoComplete="url"
+                  />
+                </label>
+
+                <label className="space-y-1 sm:col-span-2">
+                  <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Twitter/X handle</span>
+                  <Input
+                    value={draft.xHandle}
+                    onChange={(event) => onFieldChange('xHandle', event.target.value)}
+                    placeholder="@yourhandle"
+                    autoComplete="nickname"
                   />
                 </label>
               </div>

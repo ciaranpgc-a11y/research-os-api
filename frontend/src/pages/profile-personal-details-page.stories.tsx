@@ -54,6 +54,8 @@ const connectedFixture: ProfilePersonalDetailsPageFixture = {
     department: 'Research Operations',
     country: 'United Kingdom',
     website: 'https://app.axiomos.studio',
+    researchGateUrl: 'https://www.researchgate.net/profile/Ciaran-Clarke',
+    xHandle: '@axiomos_lab',
   },
 }
 
@@ -73,6 +75,8 @@ const unlinkedFixture: ProfilePersonalDetailsPageFixture = {
     department: '',
     country: '',
     website: '',
+    researchGateUrl: '',
+    xHandle: '',
   },
 }
 
