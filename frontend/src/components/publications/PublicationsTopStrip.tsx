@@ -12,6 +12,8 @@ import type {
   PublicationsTopMetricsPayload,
 } from '@/types/impact'
 
+import { dashboardTileBarTabIndex, dashboardTileStyles } from './dashboard-tile-styles'
+
 type PublicationsTopStripProps = {
   metrics: PublicationsTopMetricsPayload | null
   loading?: boolean
@@ -698,17 +700,17 @@ function MomentumTilePanel({ tile }: { tile: PublicationMetricTilePayload }) {
   const highlightStart = Math.max(0, breakdown.bars.length - 3)
 
   return (
-    <div className="mt-1.5 flex items-start gap-3">
-      <div className="min-w-0 flex-1">
-        <p className="text-2xl font-semibold leading-tight" data-testid={`metric-value-${tile.key}`}>
+    <div className={dashboardTileStyles.container}>
+      <div className={dashboardTileStyles.leftColumn}>
+        <p className={dashboardTileStyles.leftPrimary} data-testid={`metric-value-${tile.key}`}>
           {primaryValue}
         </p>
-        <p className="mt-0.5 min-h-[16px] text-xs text-muted-foreground">{secondary}</p>
+        <p className={dashboardTileStyles.leftSecondary}>{secondary}</p>
       </div>
-      <div className="w-[52%] min-w-[170px]">
+      <div className={dashboardTileStyles.rightChartColumn}>
         {breakdown.bars.length ? (
           <TooltipProvider delayDuration={90}>
-            <div className="flex h-24 items-end gap-1 rounded border border-border/70 bg-muted/20 px-1.5 py-1">
+            <div className={dashboardTileStyles.rightChartSurface}>
               {breakdown.bars.map((bar, index) => {
                 const height = Math.max(14, Math.round((bar.value / maxValue) * 78))
                 const highlighted = index >= highlightStart
@@ -716,23 +718,27 @@ function MomentumTilePanel({ tile }: { tile: PublicationMetricTilePayload }) {
                 const valueText = formatInt(bar.value)
                 const barSummary = `3m total ${breakdown.recent3Total === null ? 'n/a' : formatInt(breakdown.recent3Total)}; 9m total ${breakdown.baseline9Total === null ? 'n/a' : formatInt(breakdown.baseline9Total)}; rate_3m ${formatRate(breakdown.rate3m)}; rate_9m ${formatRate(breakdown.rate9m)}; lift ${summaryLift}`
                 return (
-                  <div key={`${bar.label}-${index}`} className="flex w-full flex-col items-center gap-1">
+                  <div key={`${bar.label}-${index}`} className={dashboardTileStyles.barWrapper}>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button
                           type="button"
                           data-stop-tile-open="true"
+                          tabIndex={dashboardTileBarTabIndex}
                           onMouseEnter={() => setHoveredIndex(index)}
                           onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
                           onFocus={() => setHoveredIndex(index)}
                           onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
                           onClick={(event) => event.stopPropagation()}
                           onMouseDown={(event) => event.stopPropagation()}
-                          className="relative flex h-[88px] w-full cursor-pointer items-end px-0.5 pt-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70"
+                          className={cn(
+                            dashboardTileStyles.barTrigger,
+                            dashboardTileStyles.barFocusRing,
+                          )}
                           aria-label={`${bar.label}: ${valueText} citations. ${barSummary}`}
                         >
                           {isActive ? (
-                            <div className="pointer-events-none absolute -top-4 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm">
+                            <div className={dashboardTileStyles.valuePill}>
                               {valueText}
                             </div>
                           ) : null}
@@ -757,7 +763,7 @@ function MomentumTilePanel({ tile }: { tile: PublicationMetricTilePayload }) {
             </div>
           </TooltipProvider>
         ) : (
-          <div className="flex h-24 items-center justify-center rounded border border-dashed border-border/70 bg-muted/20 text-[10px] text-muted-foreground">
+          <div className={dashboardTileStyles.emptyChart}>
             No monthly citation data
           </div>
         )}

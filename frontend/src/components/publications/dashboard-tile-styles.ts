@@ -1,4 +1,5 @@
 export const dashboardTileStyles = {
+  tileShell: 'rounded border border-border px-3 py-2',
   container: 'mt-1.5 flex items-start gap-3',
   leftColumn: 'min-w-0 flex-1',
   leftTitle: 'text-xs text-muted-foreground',
