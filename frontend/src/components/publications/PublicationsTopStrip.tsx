@@ -998,6 +998,7 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                     key={tile.key}
                     role="button"
                     tabIndex={0}
+                    data-metric-key={tile.key}
                     onClick={(event) => {
                       if (shouldIgnoreTileOpen(event.target)) {
                         return
@@ -1019,15 +1020,21 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                     )}
                   >
                     <div className="mb-1 flex items-center justify-between gap-2">
-                      <p className="text-xs text-muted-foreground">{tile.label}</p>
+                      <p className="text-xs text-muted-foreground" data-testid={`metric-label-${tile.key}`}>{tile.label}</p>
                       <div className="flex items-center gap-1">
                         {!isTotalCitationsTile && !isTotalPublicationsTile && !isHIndexTile && !isImpactConcentrationTile && badgeLabel ? (
-                          <span className={cn('rounded border px-1.5 py-0.5 text-[10px]', badgeClass(tile))}>
+                          <span
+                            className={cn('rounded border px-1.5 py-0.5 text-[10px]', badgeClass(tile))}
+                            data-testid={`metric-badge-${tile.key}`}
+                          >
                             {badgeLabel}
                           </span>
                         ) : null}
                         {isImpactConcentrationTile && badgeLabel ? (
-                          <span className={cn('rounded border px-1.5 py-0.5 text-[10px]', badgeClass(tile))}>
+                          <span
+                            className={cn('rounded border px-1.5 py-0.5 text-[10px]', badgeClass(tile))}
+                            data-testid={`metric-badge-${tile.key}`}
+                          >
                             {badgeLabel}
                           </span>
                         ) : null}
@@ -1052,7 +1059,7 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                       </div>
                     </div>
                     {!isTotalPublicationsTile ? (
-                      <p className="text-lg font-semibold leading-tight">{mainValueDisplay}</p>
+                      <p className="text-lg font-semibold leading-tight" data-testid={`metric-value-${tile.key}`}>{mainValueDisplay}</p>
                     ) : null}
                     {isTotalCitationsTile ? (
                       <div className="mt-1.5 flex items-start gap-3">

@@ -7,7 +7,15 @@
     "dev": "vite",
     "build": "tsc -b && vite build && node scripts/postbuild-spa-fallback.mjs",
     "preview": "vite preview",
-    "test": "vitest run"
+    "lint": "eslint src/components/publications src/mocks tests",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "check": "npm run lint && npm run typecheck && npm run test:unit && npm run test:e2e"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
@@ -26,19 +34,37 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@eslint/js": "^9.38.0",
+    "@playwright/test": "^1.47.2",
+    "@storybook/addon-a11y": "^8.6.14",
+    "@storybook/addon-essentials": "^8.6.14",
+    "@storybook/addon-interactions": "^8.6.14",
+    "@storybook/react-vite": "^8.6.14",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
     "@types/node": "^20.16.5",
     "@types/react": "^18.3.8",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.2",
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.0",
     "autoprefixer": "^10.4.20",
+    "eslint": "^9.38.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^15.15.0",
     "jsdom": "^26.1.0",
+    "msw": "^2.12.10",
     "postcss": "^8.4.49",
+    "storybook": "^8.6.14",
     "tailwindcss": "^3.4.17",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "~5.6.2",
+    "typescript-eslint": "^8.46.4",
     "vite": "^5.4.8",
     "vitest": "^2.1.8"
+  },
+  "msw": {
+    "workerDirectory": [
+      "public"
+    ]
   }
 }
