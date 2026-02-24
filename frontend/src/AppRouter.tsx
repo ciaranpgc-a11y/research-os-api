@@ -2,7 +2,7 @@ import { Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-r
 
 import { AccountLayout } from '@/components/layout/account-layout'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
-import { getAuthSessionToken } from '@/lib/auth-session'
+import { getAuthSessionToken, isAuthBypassEnabled } from '@/lib/auth-session'
 import { AgentLogsPage } from '@/pages/agent-logs-page'
 import { AuthCallbackPage } from '@/pages/auth-callback-page'
 import { AuthPage } from '@/pages/auth-page'
@@ -49,6 +49,10 @@ function LegacyManuscriptSectionRedirect() {
 }
 
 function LandingOrWorkspace() {
+  if (isAuthBypassEnabled()) {
+    return <Navigate to="/profile/publications" replace />
+  }
+
   const token = getAuthSessionToken()
   if (token) {
     return <Navigate to="/workspaces" replace />

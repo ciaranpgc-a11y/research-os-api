@@ -7,7 +7,7 @@ import os
 import re
 import secrets
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import httpx
 from sqlalchemy import func, select
@@ -49,6 +49,7 @@ ORCID_IMPORT_SKIP_EXISTING_WORKS = os.getenv(
     "ORCID_IMPORT_SKIP_EXISTING_WORKS", "1"
 ).strip().lower() in {"1", "true", "yes"}
 UPSERT_WORK_ACCEPTS_SESSION = "session" in inspect.signature(upsert_work).parameters
+LOCAL_REDIRECT_HOSTS = {"localhost", "127.0.0.1"}
 
 
 class OrcidValidationError(RuntimeError):
@@ -89,7 +90,39 @@ def _frontend_base_url() -> str:
     return os.getenv("FRONTEND_BASE_URL", "http://localhost:5173").strip().rstrip("/")
 
 
-def _orcid_redirect_uri() -> str:
+def _origin_base(value: str | None) -> str:
+    clean = str(value or "").strip()
+    if not clean:
+        return ""
+    try:
+        parsed = urlparse(clean)
+    except Exception:
+        return ""
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+
+
+def _is_local_origin(value: str | None) -> bool:
+    base = _origin_base(value)
+    if not base:
+        return False
+    try:
+        parsed = urlparse(base)
+    except Exception:
+        return False
+    host = (parsed.hostname or "").strip().lower()
+    return host in LOCAL_REDIRECT_HOSTS
+
+
+def _orcid_redirect_uri(frontend_origin: str | None = None) -> str:
+    if _is_local_origin(frontend_origin):
+        configured_dev = os.getenv("ORCID_REDIRECT_URI_DEV", "").strip()
+        if configured_dev:
+            return configured_dev
+        local_origin = _origin_base(frontend_origin)
+        if local_origin:
+            return f"{local_origin}/orcid/callback"
     return os.getenv(
         "ORCID_REDIRECT_URI",
         f"{_frontend_base_url()}/orcid/callback",
@@ -172,7 +205,11 @@ def _orcid_config_issues() -> list[str]:
     return issues
 
 
-def create_orcid_connect_url(*, user_id: str) -> dict[str, str]:
+def create_orcid_connect_url(
+    *,
+    user_id: str,
+    frontend_origin: str | None = None,
+) -> dict[str, str]:
     create_all_tables()
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
@@ -190,7 +227,7 @@ def create_orcid_connect_url(*, user_id: str) -> dict[str, str]:
             "client_id": _orcid_client_id(),
             "response_type": "code",
             "scope": "/authenticate",
-            "redirect_uri": _orcid_redirect_uri(),
+            "redirect_uri": _orcid_redirect_uri(frontend_origin),
             "state": state_token,
         }
     )
@@ -200,7 +237,11 @@ def create_orcid_connect_url(*, user_id: str) -> dict[str, str]:
     }
 
 
-def get_orcid_status(*, user_id: str) -> dict[str, Any]:
+def get_orcid_status(
+    *,
+    user_id: str,
+    frontend_origin: str | None = None,
+) -> dict[str, Any]:
     create_all_tables()
     config_issues = _orcid_config_issues()
     with session_scope() as session:
@@ -210,7 +251,7 @@ def get_orcid_status(*, user_id: str) -> dict[str, Any]:
             "configured": len(config_issues) == 0,
             "linked": linked,
             "orcid_id": user.orcid_id,
-            "redirect_uri": _orcid_redirect_uri(),
+            "redirect_uri": _orcid_redirect_uri(frontend_origin),
             "can_import": linked and len(config_issues) == 0,
             "issues": config_issues,
         }
@@ -267,13 +308,17 @@ def _extract_orcid_id(value: str) -> str:
     return clean
 
 
-def _exchange_authorization_code(code: str) -> dict[str, Any]:
+def _exchange_authorization_code(
+    code: str,
+    *,
+    frontend_origin: str | None = None,
+) -> dict[str, Any]:
     payload = {
         "client_id": _orcid_client_id(),
         "client_secret": _orcid_client_secret(),
         "grant_type": "authorization_code",
         "code": code,
-        "redirect_uri": _orcid_redirect_uri(),
+        "redirect_uri": _orcid_redirect_uri(frontend_origin),
     }
     with httpx.Client(timeout=15.0) as client:
         response = client.post(
@@ -300,14 +345,22 @@ def _refresh_access_token(refresh_token: str) -> dict[str, Any]:
     return response.json()
 
 
-def complete_orcid_callback(*, state: str, code: str) -> dict[str, Any]:
+def complete_orcid_callback(
+    *,
+    state: str,
+    code: str,
+    frontend_origin: str | None = None,
+) -> dict[str, Any]:
     create_all_tables()
     clean_state = (state or "").strip()
     clean_code = (code or "").strip()
     if not clean_state or not clean_code:
         raise OrcidValidationError("Both state and code are required.")
 
-    token_payload = _exchange_authorization_code(clean_code)
+    token_payload = _exchange_authorization_code(
+        clean_code,
+        frontend_origin=frontend_origin,
+    )
     access_token = str(token_payload.get("access_token", "")).strip()
     if not access_token:
         raise OrcidValidationError("ORCID token response did not include access_token.")

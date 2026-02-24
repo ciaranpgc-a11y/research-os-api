@@ -731,6 +731,22 @@ def _extract_session_token(request: Request) -> str:
     return cookie_token
 
 
+def _request_origin(request: Request) -> str:
+    origin = str(request.headers.get("origin", "")).strip()
+    if origin:
+        return origin
+    referer = str(request.headers.get("referer", "")).strip()
+    if not referer:
+        return ""
+    try:
+        parsed = urlparse(referer)
+    except Exception:
+        return ""
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
 def _session_response(payload: dict[str, object]) -> JSONResponse:
     response = JSONResponse(
         content=AuthSessionResponse(**payload).model_dump(mode="json")
@@ -1028,10 +1044,14 @@ def v1_auth_oauth_provider_statuses() -> AuthOAuthProviderStatusesResponse:
     tags=["v1"],
 )
 def v1_auth_oauth_connect(
+    request: Request,
     provider: str = Query(default="orcid"),
 ) -> AuthOAuthConnectResponse | JSONResponse:
     try:
-        payload = create_oauth_connect_url(provider=provider)
+        payload = create_oauth_connect_url(
+            provider=provider,
+            frontend_origin=_request_origin(request),
+        )
         return AuthOAuthConnectResponse(**payload)
     except AuthValidationError as exc:
         return _build_bad_request_response(str(exc))
@@ -1044,6 +1064,7 @@ def v1_auth_oauth_connect(
     tags=["v1"],
 )
 def v1_auth_oauth_callback(
+    http_request: Request,
     request: AuthOAuthCallbackRequest,
 ) -> AuthOAuthCallbackResponse | JSONResponse:
     try:
@@ -1051,6 +1072,7 @@ def v1_auth_oauth_callback(
             provider=request.provider,
             state=request.state,
             code=request.code,
+            frontend_origin=_request_origin(http_request),
         )
         return _oauth_session_response(payload)
     except AuthValidationError as exc:
@@ -1231,7 +1253,10 @@ def v1_orcid_connect(request: Request) -> OrcidConnectResponse | JSONResponse:
         return _build_unauthorized_response("Session token is required.")
     try:
         user = get_user_by_session_token(token)
-        payload = create_orcid_connect_url(user_id=str(user["id"]))
+        payload = create_orcid_connect_url(
+            user_id=str(user["id"]),
+            frontend_origin=_request_origin(request),
+        )
         return OrcidConnectResponse(**payload)
     except AuthNotFoundError as exc:
         return _build_unauthorized_response(str(exc))
@@ -1253,7 +1278,10 @@ def v1_orcid_status(request: Request) -> OrcidStatusResponse | JSONResponse:
         return _build_unauthorized_response("Session token is required.")
     try:
         user = get_user_by_session_token(token)
-        payload = get_orcid_status(user_id=str(user["id"]))
+        payload = get_orcid_status(
+            user_id=str(user["id"]),
+            frontend_origin=_request_origin(request),
+        )
         return OrcidStatusResponse(**payload)
     except AuthNotFoundError as exc:
         return _build_unauthorized_response(str(exc))
@@ -1298,7 +1326,11 @@ def v1_orcid_callback(
     mode: str = Query(default="auto"),
 ) -> OrcidCallbackResponse | JSONResponse | RedirectResponse:
     try:
-        payload = complete_orcid_callback(state=state, code=code)
+        payload = complete_orcid_callback(
+            state=state,
+            code=code,
+            frontend_origin=_request_origin(request),
+        )
         clean_mode = mode.strip().lower()
         accept_header = str(request.headers.get("accept", "")).lower()
         user_agent = str(request.headers.get("user-agent", "")).lower()

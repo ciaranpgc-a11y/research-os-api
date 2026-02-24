@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import os
 import secrets
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import httpx
 from sqlalchemy import func, select
@@ -32,6 +32,7 @@ SESSION_DAYS = max(1, int(os.getenv("AUTH_SESSION_DAYS", "30")))
 MAX_ACTIVE_SESSIONS = max(1, int(os.getenv("AUTH_MAX_ACTIVE_SESSIONS", "5")))
 
 SUPPORTED_OAUTH_PROVIDERS = {"orcid", "google", "microsoft"}
+LOCAL_REDIRECT_HOSTS = {"localhost", "127.0.0.1"}
 
 
 def _utcnow() -> datetime:
@@ -76,7 +77,50 @@ def _env_required(key: str, error_detail: str) -> str:
     return value
 
 
-def _provider_config(provider: str) -> dict[str, str]:
+def _origin_base(value: str | None) -> str:
+    clean = str(value or "").strip()
+    if not clean:
+        return ""
+    try:
+        parsed = urlparse(clean)
+    except Exception:
+        return ""
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+
+
+def _is_local_origin(value: str | None) -> bool:
+    base = _origin_base(value)
+    if not base:
+        return False
+    try:
+        parsed = urlparse(base)
+    except Exception:
+        return False
+    host = (parsed.hostname or "").strip().lower()
+    return host in LOCAL_REDIRECT_HOSTS
+
+
+def _orcid_signin_redirect_uri(frontend_origin: str | None = None) -> str:
+    if _is_local_origin(frontend_origin):
+        configured_dev = os.getenv("ORCID_SIGNIN_REDIRECT_URI_DEV", "").strip()
+        if configured_dev:
+            return configured_dev
+        local_origin = _origin_base(frontend_origin)
+        if local_origin:
+            return f"{local_origin}/auth/callback?provider=orcid"
+    return os.getenv(
+        "ORCID_SIGNIN_REDIRECT_URI",
+        "http://localhost:5173/auth/callback?provider=orcid",
+    ).strip()
+
+
+def _provider_config(
+    provider: str,
+    *,
+    frontend_origin: str | None = None,
+) -> dict[str, str]:
     if provider == "orcid":
         return {
             "client_id": _env_required(
@@ -93,10 +137,7 @@ def _provider_config(provider: str) -> dict[str, str]:
             "token_url": os.getenv(
                 "ORCID_TOKEN_URL", "https://orcid.org/oauth/token"
             ).strip(),
-            "redirect_uri": os.getenv(
-                "ORCID_SIGNIN_REDIRECT_URI",
-                "http://localhost:5173/auth/callback?provider=orcid",
-            ).strip(),
+            "redirect_uri": _orcid_signin_redirect_uri(frontend_origin),
             "scope": "/authenticate",
         }
 
@@ -160,9 +201,13 @@ def _build_authorize_url(provider: str, config: dict[str, str], state: str) -> s
     return f"{config['authorize_url']}?{urlencode(params)}"
 
 
-def create_oauth_connect_url(*, provider: str) -> dict[str, str]:
+def create_oauth_connect_url(
+    *,
+    provider: str,
+    frontend_origin: str | None = None,
+) -> dict[str, str]:
     clean_provider = _normalize_provider(provider)
-    config = _provider_config(clean_provider)
+    config = _provider_config(clean_provider, frontend_origin=frontend_origin)
     create_all_tables()
 
     state_token = secrets.token_urlsafe(24)
@@ -457,6 +502,7 @@ def complete_oauth_callback(
     provider: str,
     state: str,
     code: str,
+    frontend_origin: str | None = None,
 ) -> dict[str, object]:
     clean_provider = _normalize_provider(provider)
     clean_state = (state or "").strip()
@@ -464,7 +510,7 @@ def complete_oauth_callback(
     if not clean_state or not clean_code:
         raise AuthValidationError("Provider, state, and code are required.")
 
-    config = _provider_config(clean_provider)
+    config = _provider_config(clean_provider, frontend_origin=frontend_origin)
     token_payload = _exchange_oauth_code(
         provider=clean_provider, config=config, code=clean_code
     )
