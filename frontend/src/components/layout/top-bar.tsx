@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Loader2, Menu, Moon, Search, Sun } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
+import { AxiomosMark } from '@/components/auth/AxiomosMark'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -81,10 +82,15 @@ export function TopBar({
           ) : null}
 
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">AAWE</span>
-            <span className="hidden truncate text-label text-[hsl(var(--tone-neutral-500))] md:inline">
-              Autonomous Academic Writing Engine
-            </span>
+            <AxiomosMark className="h-7 text-[hsl(var(--tone-accent-600))]" />
+            <div className="min-w-0">
+              <span className="block truncate text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
+                Axiomos
+              </span>
+              <span className="hidden truncate text-caption uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))] lg:block">
+                The Research Operating System
+              </span>
+            </div>
           </div>
 
           <nav className="ml-3 hidden items-center gap-1 xl:flex">
