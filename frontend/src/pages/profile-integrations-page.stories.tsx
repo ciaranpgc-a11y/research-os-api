@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { RouterProvider, createMemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 import { AccountLayout } from '@/components/layout/account-layout'
 
@@ -211,30 +211,23 @@ const runningFixture: ProfileIntegrationsPageFixture = {
   activeSyncJob: runningSyncJob,
 }
 
-function renderProfileIntegrationsPage(fixture: ProfileIntegrationsPageFixture) {
-  const router = createMemoryRouter(
-    [
-      {
-        path: '/',
-        element: <AccountLayout />,
-        children: [
-          {
-            path: 'profile/integrations',
-            element: <ProfileIntegrationsPage fixture={fixture} />,
-          },
-          {
-            path: '*',
-            element: <ProfileIntegrationsPage fixture={fixture} />,
-          },
-        ],
-      },
-    ],
-    {
-      initialEntries: ['/profile/integrations'],
-    },
+function ProfileIntegrationsStoryShell({
+  fixture,
+}: {
+  fixture: ProfileIntegrationsPageFixture
+}) {
+  return (
+    <MemoryRouter initialEntries={['/profile/integrations']}>
+      <Routes>
+        <Route path="/" element={<AccountLayout />}>
+          <Route
+            path="profile/integrations"
+            element={<ProfileIntegrationsPage fixture={fixture} />}
+          />
+        </Route>
+      </Routes>
+    </MemoryRouter>
   )
-
-  return <RouterProvider router={router} />
 }
 
 const meta: Meta<typeof ProfileIntegrationsPage> = {
@@ -247,7 +240,7 @@ const meta: Meta<typeof ProfileIntegrationsPage> = {
   args: {
     fixture: connectedFixture,
   },
-  render: (args) => renderProfileIntegrationsPage(args?.fixture ?? connectedFixture),
+  render: (args) => <ProfileIntegrationsStoryShell fixture={args?.fixture ?? connectedFixture} />,
 }
 
 export default meta
@@ -267,6 +260,7 @@ export const SyncRunning: Story = {
     fixture: runningFixture,
   },
 }
+
 
 
 
