@@ -20,14 +20,15 @@ type TopBarProps = {
 }
 
 const topNavItemBase =
-  'inline-flex h-8 items-center rounded-md border border-transparent px-3 text-label font-medium leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-600))]'
-const topNavItemIdle = 'text-[hsl(var(--tone-neutral-600))] hover:bg-[hsl(var(--tone-neutral-100))] hover:text-[hsl(var(--tone-neutral-900))]'
+  'inline-flex h-9 items-center rounded-md border border-transparent px-3 text-label font-medium leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))]'
+const topNavItemIdle =
+  'text-[hsl(var(--tone-neutral-700))] hover:border-[hsl(var(--tone-accent-200))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]'
 const topNavItemActive =
   'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-100))] text-[hsl(var(--tone-accent-800))]'
 const utilityButtonClass =
-  'h-8 border-[hsl(var(--tone-neutral-200))] bg-card text-[hsl(var(--tone-neutral-700))] hover:bg-[hsl(var(--tone-neutral-100))] hover:text-[hsl(var(--tone-neutral-900))] focus-visible:ring-[hsl(var(--tone-accent-600))]'
+  'h-9 border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))] hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))] focus-visible:ring-[hsl(var(--tone-accent-500))]'
 const searchInputClass =
-  'h-8 border-[hsl(var(--tone-neutral-200))] bg-card text-label placeholder:text-[hsl(var(--tone-neutral-500))] focus-visible:ring-[hsl(var(--tone-accent-600))]'
+  'h-9 border-[hsl(var(--tone-neutral-300))] bg-card pl-9 text-label text-[hsl(var(--tone-neutral-800))] placeholder:text-[hsl(var(--tone-neutral-500))] focus-visible:border-[hsl(var(--tone-accent-300))] focus-visible:ring-[hsl(var(--tone-accent-500))]'
 
 export function TopBar({
   scope,
@@ -64,7 +65,7 @@ export function TopBar({
   }
 
   return (
-    <header className="border-b border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]/95 backdrop-blur">
+    <header className="border-b border-[hsl(var(--tone-neutral-200))] bg-card/95 backdrop-blur">
       <div className="flex h-14 items-center gap-3 px-3 nav:px-4">
         <div className="flex min-w-0 items-center gap-2">
           {showLeftNavButton ? (
@@ -111,18 +112,20 @@ export function TopBar({
           </nav>
         </div>
 
-        <div className="mx-auto hidden w-full max-w-xl items-center gap-2 md:flex">
-          <Search className="h-4 w-4 text-[hsl(var(--tone-neutral-500))]" />
-          <Input
-            placeholder={
-              scope === 'account'
-                ? 'Search people, works, themes...'
-                : 'Search sections, tables, figures, claims...'
-            }
-            className={searchInputClass}
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
+        <div className="mx-auto hidden w-full max-w-xl md:flex">
+          <div className="relative w-full">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--tone-neutral-500))]" />
+            <Input
+              placeholder={
+                scope === 'account'
+                  ? 'Search people, works, themes...'
+                  : 'Search sections, tables, figures, claims...'
+              }
+              className={searchInputClass}
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
+          </div>
         </div>
 
         <div className="ml-auto flex items-center gap-2">
@@ -130,7 +133,7 @@ export function TopBar({
             <Button
               size="sm"
               variant="outline"
-              className={cn(utilityButtonClass, 'px-3 text-label font-medium')}
+              className={cn(utilityButtonClass, 'px-3 text-label font-semibold')}
               onClick={() => navigate('/auth')}
             >
               Sign in
@@ -139,7 +142,7 @@ export function TopBar({
             <Button
               size="sm"
               variant="outline"
-              className={cn(utilityButtonClass, 'px-3 text-label font-medium')}
+              className={cn(utilityButtonClass, 'px-3 text-label font-semibold')}
               onClick={() => void onSignOut()}
               disabled={isSigningOut}
             >
