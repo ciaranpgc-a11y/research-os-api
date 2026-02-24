@@ -28,7 +28,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 8
+TOP_METRICS_SCHEMA_VERSION = 9
 
 DELTA_COLOR_BY_TONE = {
     "positive": "#166534",
@@ -1302,27 +1302,28 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         for row in per_work_rows[:100]
     ]
 
-    growth_publications = sorted(
+    publication_volume_publications = sorted(
         [
             _publication_item_with_links(
                 {
-                "work_id": row["work_id"],
-                "title": row["title"],
-                "doi": row["doi"],
-                "year": row["year"],
-                "journal": row["journal"],
-                "citations_last_12m": row["citations_last_12m"],
-                "citations_prev_12m": row["citations_prev_12m"],
-                "yoy_delta": row["yoy_delta"],
-                "confidence_score": row["confidence_score"],
-                "confidence_label": row["confidence_label"],
-                "match_source": row["match_source"],
-                "match_method": row["match_method"],
+                    "work_id": row["work_id"],
+                    "title": row["title"],
+                    "doi": row["doi"],
+                    "year": row["year"],
+                    "journal": row["journal"],
+                    "publication_count": 1,
+                    "confidence_score": row["confidence_score"],
+                    "confidence_label": row["confidence_label"],
+                    "match_source": row["match_source"],
+                    "match_method": row["match_method"],
                 }
             )
             for row in per_work_rows
         ],
-        key=lambda item: (int(item["citations_last_12m"]), int(item["yoy_delta"])),
+        key=lambda item: (
+            int(item.get("year") or 0),
+            str(item.get("title") or "").lower(),
+        ),
         reverse=True,
     )[:100]
 
@@ -1520,12 +1521,32 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     h_subtext = f"Target h={h_next_target}"
     h_delta_display = f"Projection: h{h_projected_current_year} ({h_confidence_label} confidence)"
 
-    this_vs_last_label = "Up" if yoy_delta > 0 else "Down" if yoy_delta < 0 else "Flat"
-    this_vs_last_severity = "positive" if yoy_delta > 0 else "negative" if yoy_delta < 0 else "neutral"
-    this_vs_last_subtext = (
-        f"{this_vs_last_label} {abs(yoy_delta):,} citations"
-        if yoy_delta != 0
-        else "No material change"
+    publication_counts_by_year: dict[int, int] = defaultdict(int)
+    unknown_year_publications = 0
+    for row in per_work_rows:
+        parsed_year = _safe_int(row.get("year"))
+        if parsed_year is None:
+            unknown_year_publications += 1
+            continue
+        publication_counts_by_year[int(parsed_year)] += 1
+    total_publications = len(per_work_rows)
+    last5_publication_values = [
+        max(0, int(publication_counts_by_year.get(year, 0))) for year in last5_complete_years
+    ]
+    current_year_publications = max(0, int(publication_counts_by_year.get(now.year, 0)))
+    projected_current_publications = max(
+        current_year_publications,
+        int(round(current_year_publications / max(0.01, elapsed_fraction))),
+    )
+    publication_mean_5y = (
+        float(sum(last5_publication_values)) / float(len(last5_publication_values))
+        if last5_publication_values
+        else 0.0
+    )
+    total_publications_subtext = (
+        f"{current_year_publications} in {now.year} (to date)"
+        if current_year_publications > 0
+        else f"0 in {now.year} (to date)"
     )
     influence_monthly_added_totals = [0 for _ in range(24)]
     for row in influence_candidates:
@@ -1563,9 +1584,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         ),
     )
     this_year_tooltip, this_year_tooltip_details = _build_tooltip(
-        definition="What is this: citations in the latest 12 months compared with the previous 12 months.",
-        data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-        computation="delta = last_12m_citations - previous_12m_citations",
+        definition="What is this: total authored publications with per-year output over the latest 5 complete years.",
+        data_sources=["ORCID", "OpenAlex"] if "OpenAlex" in data_sources else data_sources,
+        computation="count(publications) grouped by publication year",
     )
     momentum_tooltip, momentum_tooltip_details = _build_tooltip(
         definition="What is this: MomentumIndex compares recent citation pace with prior pace.",
@@ -1660,37 +1681,46 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         ),
         _metric_tile(
             key="this_year_vs_last",
-            label="This year vs last",
-            value=citations_last_12m,
-            value_display=_format_int(citations_last_12m),
-            subtext=this_vs_last_subtext,
-            badge={"label": this_vs_last_label, "severity": this_vs_last_severity},
-            chart_type="paired_bar",
+            label="Total publications",
+            value=total_publications,
+            value_display=_format_int(total_publications),
+            subtext=total_publications_subtext,
+            badge={"label": "", "severity": "neutral"},
+            chart_type="bar_year_5",
             chart_data={
-                "labels": ["Last 12m", "Previous 12m"],
-                "values": [citations_last_12m, citations_prev_12m],
+                "years": last5_complete_years,
+                "values": last5_publication_values,
+                "mean_value": round(publication_mean_5y, 2),
+                "projected_year": now.year,
+                "projected_value": projected_current_publications,
+                "projected_confidence": projection_confidence,
+                "current_year_ytd": current_year_publications,
             },
-            delta_value=yoy_delta,
-            delta_display=_format_pct(yoy_pct),
-            unit="citations",
-            sparkline=[citations_prev_12m, citations_last_12m],
+            delta_value=None,
+            delta_display=None,
+            unit="publications",
+            sparkline=last5_publication_values,
             tooltip=this_year_tooltip,
             tooltip_details=this_year_tooltip_details,
-            data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-            confidence_score=_confidence_score_from_publications(growth_publications),
-            stability="stable" if abs(yoy_delta) <= 10 else "unstable",
+            data_source=["ORCID", "OpenAlex"] if "OpenAlex" in data_sources else data_sources,
+            confidence_score=_confidence_score_from_publications(publication_volume_publications),
+            stability="stable",
             drilldown={
-                "title": "This year vs last",
-                "definition": "Compares citations in the last 12 months with the previous 12 months.",
-                "formula": "delta = last_12m_citations - previous_12m_citations",
+                "title": "Total publications",
+                "definition": "Counts authored publications and groups them by publication year.",
+                "formula": "count(publications) by year",
                 "confidence_note": _confidence_note(),
-                "publications": growth_publications,
+                "publications": publication_volume_publications,
                 "metadata": {
                     "intermediate_values": {
-                        "citations_last_12m": citations_last_12m,
-                        "citations_prev_12m": citations_prev_12m,
-                        "delta_citations": yoy_delta,
-                        "delta_pct": yoy_pct,
+                        "total_publications": total_publications,
+                        "known_year_publications": sum(last5_publication_values) + current_year_publications,
+                        "unknown_year_publications": unknown_year_publications,
+                        "last5_years": last5_complete_years,
+                        "last5_values": last5_publication_values,
+                        "current_year_ytd": current_year_publications,
+                        "projected_current_year": projected_current_publications,
+                        "projection_confidence": projection_confidence,
                     }
                 },
             },

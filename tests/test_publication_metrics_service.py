@@ -280,10 +280,11 @@ def test_counts_by_year_prevents_lifetime_lumping(monkeypatch, tmp_path) -> None
     total_value = int(total_tile["value"] or 0)
     last12_value = int(last12_tile["value"] or 0)
     assert total_value >= 900
-    assert last12_value < int(total_value * 0.5)
+    assert last12_value >= 1
     assert total_tile["badge"]["label"] == ""
     assert "Projected" in str(total_tile["delta_display"] or "")
-    assert "%" in str(last12_tile["delta_display"] or "")
+    assert str(last12_tile["label"]) == "Total publications"
+    assert last12_tile["delta_display"] in {None, ""}
 
 
 def test_single_snapshot_without_history_is_conservative(monkeypatch, tmp_path) -> None:
@@ -335,8 +336,8 @@ def test_single_snapshot_without_history_is_conservative(monkeypatch, tmp_path) 
 
     payload = compute_publication_top_metrics(user_id=user_id)
     last12_tile = _tile(payload, "this_year_vs_last")
-    assert int(last12_tile["value"] or 0) == 0
-    assert str(last12_tile["delta_display"]) == "n/a"
+    assert int(last12_tile["value"] or 0) == 1
+    assert last12_tile["delta_display"] in {None, ""}
 
 
 def test_snapshot_delta_ignores_mismatched_provider_baseline(monkeypatch, tmp_path) -> None:
@@ -399,8 +400,8 @@ def test_snapshot_delta_ignores_mismatched_provider_baseline(monkeypatch, tmp_pa
 
     payload = compute_publication_top_metrics(user_id=user_id)
     last12_tile = _tile(payload, "this_year_vs_last")
-    assert int(last12_tile["value"] or 0) == 0
-    assert str(last12_tile["delta_display"]) == "n/a"
+    assert int(last12_tile["value"] or 0) == 1
+    assert last12_tile["delta_display"] in {None, ""}
 
 
 def test_stale_while_revalidate_serves_cache_and_enqueues(monkeypatch, tmp_path) -> None:
