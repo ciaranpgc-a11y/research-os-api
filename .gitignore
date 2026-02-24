@@ -31,3 +31,5 @@ Thumbs.db
 # Local deployment scratch files
 tmp_deploys.json
 research_os.db
+*.db
+tmp_*
