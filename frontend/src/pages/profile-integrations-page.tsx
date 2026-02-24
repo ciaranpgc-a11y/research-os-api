@@ -3,13 +3,12 @@ import { Loader2, Unplug } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   disconnectOrcid,
   enqueueOrcidImportSyncJob,
   fetchPersonaSyncJob,
   fetchMe,
-  fetchOAuthProviderStatuses,
   fetchOrcidConnect,
   fetchOrcidStatus,
   fetchPersonaState,
@@ -18,7 +17,7 @@ import {
 } from '@/lib/impact-api'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
-import type { AuthOAuthProviderStatusItem, AuthUser, OrcidStatusPayload, PersonaStatePayload, PersonaSyncJobPayload } from '@/types/impact'
+import type { AuthUser, OrcidStatusPayload, PersonaStatePayload, PersonaSyncJobPayload } from '@/types/impact'
 
 function formatTimestamp(value: string | null | undefined): string {
   if (!value) {
@@ -218,13 +217,30 @@ function clearCachedOrcidStatus(): void {
   window.localStorage.removeItem(INTEGRATIONS_ORCID_STATUS_CACHE_KEY)
 }
 
-export function ProfileIntegrationsPage() {
-  const navigate = useNavigate()
+export type ProfileIntegrationsPageFixture = {
+  token?: string
+  user?: AuthUser | null
+  orcidStatus?: OrcidStatusPayload | null
+  personaState?: PersonaStatePayload | null
+  status?: string
+  error?: string
+  lastImportedCount?: number | null
+  lastReferencesSyncedCount?: number | null
+  lastSyncSinceLabel?: string | null
+  lastSyncOutcome?: string | null
+  activeSyncJob?: PersonaSyncJobPayload | null
+}
+
+type ProfileIntegrationsPageProps = {
+  fixture?: ProfileIntegrationsPageFixture
+}
+export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProps = {}) {
+  const navigate = useNavigate()`r`n  const isFixtureMode = Boolean(fixture)
   const [searchParams] = useSearchParams()
-  const initialCachedUser = loadCachedIntegrationsUser()
-  const initialCachedOrcidStatus = loadCachedOrcidStatus()
-  const initialCachedPersonaState = readCachedPersonaState()
-  const [token, setToken] = useState<string>(() => getAuthSessionToken())
+  const initialCachedUser = fixture?.user ?? loadCachedIntegrationsUser()
+  const initialCachedOrcidStatus = fixture?.orcidStatus ?? loadCachedOrcidStatus()
+  const initialCachedPersonaState = fixture?.personaState ?? readCachedPersonaState()
+  const [token, setToken] = useState<string>(() => fixture?.token ?? getAuthSessionToken())
   const [user, setUser] = useState<AuthUser | null>(initialCachedUser)
   const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(initialCachedOrcidStatus)
   const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(initialCachedPersonaState)
@@ -241,11 +257,11 @@ export function ProfileIntegrationsPage() {
   const [status, setStatus] = useState('')
   const [googleStatus, setGoogleStatus] = useState('')
   const [error, setError] = useState('')
-  const [lastImportedCount, setLastImportedCount] = useState<number | null>(null)
-  const [lastReferencesSyncedCount, setLastReferencesSyncedCount] = useState<number | null>(null)
-  const [lastSyncSinceLabel, setLastSyncSinceLabel] = useState<string | null>(null)
-  const [lastSyncOutcome, setLastSyncOutcome] = useState<string | null>(null)
-  const [activeSyncJob, setActiveSyncJob] = useState<PersonaSyncJobPayload | null>(null)
+  const [lastImportedCount, setLastImportedCount] = useState<number | null>(fixture?.lastImportedCount ?? null)
+  const [lastReferencesSyncedCount, setLastReferencesSyncedCount] = useState<number | null>(fixture?.lastReferencesSyncedCount ?? null)
+  const [lastSyncSinceLabel, setLastSyncSinceLabel] = useState<string | null>(fixture?.lastSyncSinceLabel ?? null)
+  const [lastSyncOutcome, setLastSyncOutcome] = useState<string | null>(fixture?.lastSyncOutcome ?? null)
+  const [activeSyncJob, setActiveSyncJob] = useState<PersonaSyncJobPayload | null>(fixture?.activeSyncJob ?? null)
   const syncStatus = personaState?.sync_status || {
     orcid_last_synced_at: null,
     metrics_last_synced_at: null,
@@ -289,7 +305,7 @@ export function ProfileIntegrationsPage() {
         fetchOAuthProviderStatuses(),
         listPersonaSyncJobs(sessionToken, 5),
       ])
-      const [meResult, orcidResult, stateResult, providerResult, jobsResult] = settled
+      const [meResult, orcidResult, stateResult, jobsResult] = settled
       if (meResult.status === 'fulfilled') {
         setUser(meResult.value)
         saveCachedIntegrationsUser(meResult.value)
@@ -374,7 +390,7 @@ export function ProfileIntegrationsPage() {
       return
     }
     void loadData(sessionToken)
-  }, [loadData, navigate])
+  }, [isFixtureMode, loadData, navigate])
 
   useEffect(() => {
     const linked = searchParams.get('orcid')
@@ -470,14 +486,6 @@ export function ProfileIntegrationsPage() {
     setLastSyncOutcome(stored.lastSyncOutcome)
   }, [user?.id])
 
-  const providerByName = useMemo(() => {
-    const map = new Map<string, AuthOAuthProviderStatusItem>()
-    for (const provider of providerStatuses) {
-      map.set(provider.provider, provider)
-    }
-    return map
-  }, [providerStatuses])
-
   const worksCount = personaState?.works.length ?? 0
   const emailVerified = Boolean(user?.email_verified_at)
   const orcidStatusPending = !orcidStatusResolved
@@ -486,10 +494,10 @@ export function ProfileIntegrationsPage() {
     ? Boolean(user?.orcid_id)
     : Boolean(orcidStatus?.linked || user?.orcid_id)
   const busy = loading || connecting || importing || disconnecting
-  const canConnectOrcid = !orcidStatusPending && orcidConfigured && !busy
+  const canConnectOrcid = !isFixtureMode && !orcidStatusPending && orcidConfigured && !busy
   const canImportOrcid =
     !orcidStatusPending && emailVerified && orcidConfigured && orcidLinked && !busy
-  const canDisconnectOrcid = !orcidStatusPending && orcidLinked && !busy
+  const canDisconnectOrcid = !isFixtureMode && !orcidStatusPending && orcidLinked && !busy
   const shortLastSync = formatShortTimestamp(syncStatus.orcid_last_synced_at)
   const connectionStatusLabel = orcidStatusPending
     ? 'Checking status...'
@@ -986,3 +994,4 @@ export function ProfileIntegrationsPage() {
     </section>
   )
 }
+
