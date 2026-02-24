@@ -120,8 +120,7 @@ function TotalCitationsMiniTrend({
 
   const width = 180
   const height = 44
-  const basePath = smoothPath(baseValues, width, height)
-  const fullPath = smoothPath(values, width, height)
+  const path = smoothPath(values, width, height)
   const max = Math.max(...values)
   const min = Math.min(...values)
   const range = Math.max(1e-6, max - min)
@@ -166,24 +165,13 @@ function TotalCitationsMiniTrend({
         {showYearProjection ? <span className="text-muted-foreground">includes projected {String(projectedYear).slice(-2)}</span> : null}
       </div>
       <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-12 w-full">
-        {showYearProjection ? (
-          <path
-            d={basePath}
-            fill="none"
-            stroke="#475569"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ) : null}
         <path
-          d={showYearProjection ? fullPath : basePath}
+          d={path}
           fill="none"
           stroke="#0f172a"
           strokeWidth="2.25"
           strokeLinecap="round"
           strokeLinejoin="round"
-          strokeDasharray={showYearProjection ? '0 0 6 0' : undefined}
         />
         {showYearProjection ? (
           <circle
