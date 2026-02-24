@@ -468,17 +468,10 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const top3Pct = total > 0 ? (top3 / total) * 100 : 0
   const top3PctRounded = Math.max(0, Math.min(100, Math.round(top3Pct)))
   const restPctRounded = Math.max(0, 100 - top3PctRounded)
-  const classification = String(tile.subtext || '').trim() || 'Not classified'
-  const classificationKey = classification.toLowerCase()
-  const deltaRaw = Number(tile.delta_value)
-  const deltaLabel = Number.isFinite(deltaRaw) ? `${deltaRaw >= 0 ? '+' : ''}${Math.round(deltaRaw)}pp vs prior 12m` : ''
   const meaning = `Top 3 papers account for ${top3PctRounded}% of lifetime citations`
-  const classificationClass = classificationKey === 'diversified'
-    ? 'text-emerald-700'
-    : classificationKey === 'moderate'
-      ? 'text-amber-700'
-      : 'text-red-700'
-  const deltaClass = classificationClass
+  const [hoveredSegment, setHoveredSegment] = useState<'top3' | 'rest' | null>(null)
+  const top3Width = Math.max(0, Math.min(100, top3PctRounded))
+  const restWidth = Math.max(0, Math.min(100, restPctRounded))
 
   return (
     <div className="mt-1.5 flex items-start gap-3">
@@ -490,26 +483,53 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
         <div className="space-y-1">
           <div className="h-6 overflow-hidden rounded border border-border/70 bg-muted/40">
             <div className="flex h-full">
-              <div
-                className="h-full bg-slate-800/85"
-                style={{ width: `${top3PctRounded}%` }}
-                title={`Top 3 papers: ${top3.toLocaleString('en-GB')} citations`}
-              />
-              <div
-                className="h-full bg-slate-300/80"
-                style={{ width: `${restPctRounded}%` }}
-                title={`Other papers: ${rest.toLocaleString('en-GB')} citations`}
-              />
+              {top3Width > 0 ? (
+                <button
+                  type="button"
+                  data-stop-tile-open="true"
+                  onMouseEnter={() => setHoveredSegment('top3')}
+                  onMouseLeave={() => setHoveredSegment((current) => (current === 'top3' ? null : current))}
+                  onFocus={() => setHoveredSegment('top3')}
+                  onBlur={() => setHoveredSegment((current) => (current === 'top3' ? null : current))}
+                  onClick={(event) => event.stopPropagation()}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  className="relative h-full bg-slate-800/85"
+                  style={{ width: `${top3Width}%` }}
+                  aria-label={`Top 3 papers ${top3PctRounded}%`}
+                  title={`Top 3 papers: ${top3.toLocaleString('en-GB')} citations`}
+                >
+                  {hoveredSegment === 'top3' ? (
+                    <div className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm">
+                      Top 3 {top3PctRounded}%
+                    </div>
+                  ) : null}
+                </button>
+              ) : null}
+              {restWidth > 0 ? (
+                <button
+                  type="button"
+                  data-stop-tile-open="true"
+                  onMouseEnter={() => setHoveredSegment('rest')}
+                  onMouseLeave={() => setHoveredSegment((current) => (current === 'rest' ? null : current))}
+                  onFocus={() => setHoveredSegment('rest')}
+                  onBlur={() => setHoveredSegment((current) => (current === 'rest' ? null : current))}
+                  onClick={(event) => event.stopPropagation()}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  className="relative h-full bg-slate-300/80"
+                  style={{ width: `${restWidth}%` }}
+                  aria-label={`Rest papers ${restPctRounded}%`}
+                  title={`Other papers: ${rest.toLocaleString('en-GB')} citations`}
+                >
+                  {hoveredSegment === 'rest' ? (
+                    <div className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm">
+                      Rest {restPctRounded}%
+                    </div>
+                  ) : null}
+                </button>
+              ) : null}
             </div>
           </div>
-          <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-            <span>Top 3 {top3PctRounded}%</span>
-            <span>Rest {restPctRounded}%</span>
-          </div>
-          <div className="flex items-center justify-between text-[10px]">
-            <p className={cn('font-medium', classificationClass)}>{classification}</p>
-            <p className={cn('font-medium', deltaClass)}>{deltaLabel || '\u00A0'}</p>
-          </div>
+          <p className="text-[10px] text-muted-foreground">Hover the bar to view Top 3 vs Rest share.</p>
         </div>
       </div>
     </div>
