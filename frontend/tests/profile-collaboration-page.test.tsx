@@ -11,6 +11,7 @@ const mockCreateCollaborator = vi.fn()
 const mockUpdateCollaborator = vi.fn()
 const mockDeleteCollaborator = vi.fn()
 const mockImportCollaborators = vi.fn()
+const mockEnrichCollaborators = vi.fn()
 const mockExportCollaborators = vi.fn()
 const mockAiInsights = vi.fn()
 const mockAiAuthorSuggestions = vi.fn()
@@ -97,6 +98,7 @@ vi.mock('@/lib/impact-api', () => ({
   updateCollaborator: (...args: unknown[]) => mockUpdateCollaborator(...args),
   deleteCollaborator: (...args: unknown[]) => mockDeleteCollaborator(...args),
   importCollaboratorsFromOpenAlex: (...args: unknown[]) => mockImportCollaborators(...args),
+  enrichCollaboratorsFromOpenAlex: (...args: unknown[]) => mockEnrichCollaborators(...args),
   exportCollaboratorsCsv: (...args: unknown[]) => mockExportCollaborators(...args),
   generateCollaborationAiInsights: (...args: unknown[]) => mockAiInsights(...args),
   generateCollaborationAiAuthorSuggestions: (...args: unknown[]) => mockAiAuthorSuggestions(...args),
@@ -114,6 +116,7 @@ describe('ProfileCollaborationPage', () => {
     mockUpdateCollaborator.mockReset()
     mockDeleteCollaborator.mockReset()
     mockImportCollaborators.mockReset()
+    mockEnrichCollaborators.mockReset()
     mockExportCollaborators.mockReset()
     mockAiInsights.mockReset()
     mockAiAuthorSuggestions.mockReset()
@@ -151,6 +154,16 @@ describe('ProfileCollaborationPage', () => {
       skipped_count: 0,
       openalex_author_id: 'https://openalex.org/A123',
       imported_candidates: 1,
+    })
+    mockEnrichCollaborators.mockResolvedValue({
+      targeted_count: 2,
+      resolved_author_count: 2,
+      updated_count: 1,
+      unchanged_count: 1,
+      skipped_without_identifier: 0,
+      failed_count: 0,
+      enqueued_metrics_recompute: true,
+      field_updates: { primary_institution: 1 },
     })
     mockExportCollaborators.mockResolvedValue({
       filename: 'collaborators.csv',

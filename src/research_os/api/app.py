@@ -28,6 +28,8 @@ from research_os.api.schemas import (
     AuthLoginChallengeRequest,
     AuthLoginChallengeResponse,
     AuthLoginVerifyTwoFactorRequest,
+    AuthDeleteAccountRequest,
+    AuthDeleteAccountResponse,
     AuthLogoutResponse,
     AuthMeUpdateRequest,
     AuthEmailVerificationConfirmRequest,
@@ -265,6 +267,7 @@ from research_os.services.auth_service import (
     confirm_password_reset,
     request_email_verification,
     request_password_reset,
+    delete_current_user,
     update_current_user,
 )
 from research_os.services.orcid_service import (
@@ -1144,6 +1147,35 @@ def v1_auth_update_me(
         return _build_bad_request_response(str(exc))
     except AuthConflictError as exc:
         return _build_conflict_response(str(exc))
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+
+
+@app.delete(
+    "/v1/auth/me",
+    response_model=AuthDeleteAccountResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_auth_delete_me(
+    request: Request,
+    payload: AuthDeleteAccountRequest,
+) -> AuthDeleteAccountResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        response_payload = delete_current_user(
+            session_token=token,
+            confirm_phrase=payload.confirm_phrase,
+        )
+        response = JSONResponse(
+            content=AuthDeleteAccountResponse(**response_payload).model_dump()
+        )
+        response.delete_cookie(key="aawe_session", path="/")
+        return response
+    except AuthValidationError as exc:
+        return _build_bad_request_response(str(exc))
     except AuthNotFoundError as exc:
         return _build_unauthorized_response(str(exc))
 

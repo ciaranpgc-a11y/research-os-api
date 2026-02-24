@@ -1366,6 +1366,128 @@ def _resolve_openalex_author_id(*, orcid_id: str | None, mailto: str | None) -> 
     return author_id or None
 
 
+def _normalize_openalex_author_id(value: str | None) -> str | None:
+    clean = str(value or "").strip()
+    if not clean:
+        return None
+    if clean.startswith("http://openalex.org/"):
+        clean = "https://openalex.org/" + clean.removeprefix("http://openalex.org/")
+    if clean.startswith("https://openalex.org/"):
+        suffix = clean.removeprefix("https://openalex.org/").strip().strip("/")
+        return f"https://openalex.org/{suffix}" if suffix else None
+    if re.fullmatch(r"(?i)A\d+", clean):
+        return f"https://openalex.org/{clean.upper()}"
+    return clean
+
+
+def _openalex_author_lookup_id(openalex_author_id: str) -> str | None:
+    normalized = _normalize_openalex_author_id(openalex_author_id)
+    if not normalized:
+        return None
+    if normalized.startswith("https://openalex.org/"):
+        return normalized.removeprefix("https://openalex.org/").strip().strip("/") or None
+    return normalized.strip().strip("/") or None
+
+
+def _extract_openalex_domains(author_payload: dict[str, Any]) -> list[str]:
+    topics = author_payload.get("topics")
+    if isinstance(topics, list) and topics:
+        ranked_topics: list[tuple[float, str]] = []
+        for item in topics:
+            if not isinstance(item, dict):
+                continue
+            label = re.sub(r"\s+", " ", str(item.get("display_name") or "").strip())
+            if not label and isinstance(item.get("subfield"), dict):
+                label = re.sub(
+                    r"\s+",
+                    " ",
+                    str(item.get("subfield", {}).get("display_name") or "").strip(),
+                )
+            if not label:
+                continue
+            score = _safe_float(item.get("score")) or 0.0
+            ranked_topics.append((score, label))
+        ranked_topics.sort(key=lambda row: (-row[0], row[1].lower()))
+        return _normalize_domains([label for _, label in ranked_topics])[:8]
+
+    concepts = author_payload.get("x_concepts")
+    ranked_concepts: list[tuple[float, str]] = []
+    if isinstance(concepts, list):
+        for item in concepts:
+            if not isinstance(item, dict):
+                continue
+            score = _safe_float(item.get("score")) or 0.0
+            if score < 0.35:
+                continue
+            label = re.sub(r"\s+", " ", str(item.get("display_name") or "").strip())
+            if not label:
+                continue
+            ranked_concepts.append((score, label))
+    ranked_concepts.sort(key=lambda row: (-row[0], row[1].lower()))
+    return _normalize_domains([label for _, label in ranked_concepts])[:8]
+
+
+def _fetch_openalex_author_profile(
+    *,
+    openalex_author_id: str,
+    mailto: str | None,
+) -> dict[str, Any]:
+    lookup_id = _openalex_author_lookup_id(openalex_author_id)
+    if not lookup_id:
+        return {}
+    params: dict[str, Any] = {
+        "select": (
+            "id,orcid,ids,last_known_institution,last_known_institutions,"
+            "topics,x_concepts"
+        ),
+    }
+    if mailto:
+        params["mailto"] = mailto
+    payload = _openalex_request_with_retry(
+        url=f"https://api.openalex.org/authors/{lookup_id}",
+        params=params,
+    )
+    if not payload:
+        return {}
+
+    orcid_id = _safe_validate_orcid(payload.get("orcid"))
+    if not orcid_id and isinstance(payload.get("ids"), dict):
+        orcid_id = _safe_validate_orcid(payload.get("ids", {}).get("orcid"))
+
+    institution_payload = payload.get("last_known_institutions")
+    institution_rows: list[dict[str, Any]] = []
+    if isinstance(institution_payload, list):
+        institution_rows.extend(
+            item for item in institution_payload if isinstance(item, dict)
+        )
+    if isinstance(payload.get("last_known_institution"), dict):
+        institution_rows.append(payload["last_known_institution"])
+
+    primary_institution = None
+    country = None
+    for item in institution_rows:
+        if primary_institution is None:
+            name = re.sub(r"\s+", " ", str(item.get("display_name") or "").strip())
+            primary_institution = name or None
+        if country is None:
+            code = re.sub(r"\s+", " ", str(item.get("country_code") or "").strip())
+            country = code or None
+        if primary_institution and country:
+            break
+
+    author_id = _normalize_openalex_author_id(
+        str(payload.get("id") or "").strip() or openalex_author_id
+    )
+    domains = _extract_openalex_domains(payload)
+    return {
+        "openalex_author_id": author_id,
+        "orcid_id": orcid_id,
+        "primary_institution": primary_institution,
+        "country": country,
+        "research_domains": domains,
+    }
+
+
 def _iter_openalex_coauthors(
     *,
     openalex_author_id: str,
@@ -1604,6 +1726,138 @@ def import_collaborators_from_openalex(*, user_id: str) -> dict[str, Any]:
         "skipped_count": skipped_count,
         "openalex_author_id": openalex_author_id,
         "imported_candidates": len(candidates),
+    }
+
+
+def enrich_collaborators_from_openalex(
+    *,
+    user_id: str,
+    only_missing: bool = True,
+    limit: int = 200,
+) -> dict[str, Any]:
+    create_all_tables()
+    normalized_limit = max(1, min(int(limit or 200), 500))
+    with session_scope() as session:
+        user = _resolve_user_or_raise(session, user_id)
+        mailto = _openalex_mailto(fallback_email=user.email)
+        collaborators = session.scalars(
+            select(Collaborator)
+            .where(Collaborator.owner_user_id == user_id)
+            .order_by(Collaborator.updated_at.desc())
+        ).all()
+
+        if only_missing:
+            collaborators = [
+                row
+                for row in collaborators
+                if not (
+                    _normalize_openalex_author_id(row.openalex_author_id)
+                    and _safe_validate_orcid(row.orcid_id)
+                    and str(row.primary_institution or "").strip()
+                    and str(row.country or "").strip()
+                    and len(list(row.research_domains or [])) > 0
+                )
+            ]
+
+        target_rows = collaborators[:normalized_limit]
+        field_updates: dict[str, int] = defaultdict(int)
+        updated_count = 0
+        unchanged_count = 0
+        skipped_without_identifier = 0
+        failed_count = 0
+        resolved_author_count = 0
+
+        for collaborator in target_rows:
+            changed = False
+            resolved_author_id = _normalize_openalex_author_id(collaborator.openalex_author_id)
+            if not resolved_author_id:
+                resolved_author_id = _normalize_openalex_author_id(
+                    _resolve_openalex_author_id(
+                        orcid_id=collaborator.orcid_id,
+                        mailto=mailto,
+                    )
+                )
+                if resolved_author_id and not collaborator.openalex_author_id:
+                    collaborator.openalex_author_id = resolved_author_id
+                    field_updates["openalex_author_id"] += 1
+                    changed = True
+
+            if not resolved_author_id:
+                skipped_without_identifier += 1
+                if changed:
+                    updated_count += 1
+                else:
+                    unchanged_count += 1
+                continue
+
+            resolved_author_count += 1
+            profile = _fetch_openalex_author_profile(
+                openalex_author_id=resolved_author_id,
+                mailto=mailto,
+            )
+            if not profile:
+                failed_count += 1
+                if changed:
+                    updated_count += 1
+                else:
+                    unchanged_count += 1
+                continue
+
+            canonical_author_id = _normalize_openalex_author_id(
+                str(profile.get("openalex_author_id") or "").strip()
+            )
+            if not collaborator.openalex_author_id and canonical_author_id:
+                collaborator.openalex_author_id = canonical_author_id
+                field_updates["openalex_author_id"] += 1
+                changed = True
+            if not collaborator.orcid_id and profile.get("orcid_id"):
+                collaborator.orcid_id = str(profile["orcid_id"]).strip()
+                field_updates["orcid_id"] += 1
+                changed = True
+            if not collaborator.primary_institution and profile.get("primary_institution"):
+                collaborator.primary_institution = str(profile["primary_institution"]).strip()
+                field_updates["primary_institution"] += 1
+                changed = True
+            if not collaborator.country and profile.get("country"):
+                collaborator.country = str(profile["country"]).strip()
+                field_updates["country"] += 1
+                changed = True
+            if (
+                len(list(collaborator.research_domains or [])) == 0
+                and isinstance(profile.get("research_domains"), list)
+                and profile["research_domains"]
+            ):
+                collaborator.research_domains = _normalize_domains(
+                    profile.get("research_domains") or []
+                )
+                if collaborator.research_domains:
+                    field_updates["research_domains"] += 1
+                    changed = True
+
+            if changed:
+                updated_count += 1
+            else:
+                unchanged_count += 1
+            time.sleep(0.08)
+
+        session.flush()
+
+    enqueued = False
+    if updated_count > 0:
+        enqueued = enqueue_collaboration_metrics_recompute(
+            user_id=user_id,
+            force=True,
+            reason="openalex_enrichment",
+        )
+    return {
+        "targeted_count": len(target_rows),
+        "resolved_author_count": resolved_author_count,
+        "updated_count": updated_count,
+        "unchanged_count": unchanged_count,
+        "skipped_without_identifier": skipped_without_identifier,
+        "failed_count": failed_count,
+        "enqueued_metrics_recompute": enqueued,
+        "field_updates": dict(field_updates),
     }
 
 

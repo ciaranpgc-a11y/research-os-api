@@ -235,6 +235,23 @@ export async function updateMe(
   )
 }
 
+export async function deleteMe(
+  token: string,
+  input: { confirmPhrase: string },
+): Promise<{ success: boolean }> {
+  return requestJson<{ success: boolean }>(
+    `${API_BASE_URL}/v1/auth/me`,
+    {
+      method: 'DELETE',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        confirm_phrase: input.confirmPhrase,
+      }),
+    },
+    'Account deletion failed',
+  )
+}
+
 export async function fetchTwoFactorState(token: string): Promise<AuthTwoFactorStatePayload> {
   return requestJson<AuthTwoFactorStatePayload>(
     `${API_BASE_URL}/v1/auth/2fa`,

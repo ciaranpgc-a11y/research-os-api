@@ -2064,6 +2064,39 @@ def test_v1_auth_register_login_me_patch_logout(monkeypatch, tmp_path) -> None:
     assert login_response.json()["user"]["email"] == "ciaran@example.com"
 
 
+def test_v1_auth_delete_me_removes_account(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "delete-me@example.com",
+                "password": "StrongPassword123",
+                "name": "Delete Me",
+            },
+        )
+        assert register_response.status_code == 200
+        token = register_response.json()["session_token"]
+
+        delete_response = client.request(
+            "DELETE",
+            "/v1/auth/me",
+            headers=_auth_headers(token),
+            json={"confirm_phrase": "DELETE"},
+        )
+        me_response = client.get("/v1/auth/me", headers=_auth_headers(token))
+        login_response = client.post(
+            "/v1/auth/login",
+            json={"email": "delete-me@example.com", "password": "StrongPassword123"},
+        )
+
+    assert delete_response.status_code == 200
+    assert delete_response.json()["success"] is True
+    assert me_response.status_code == 401
+    assert login_response.status_code == 400
+
+
 def test_v1_auth_register_rejects_weak_password(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
 

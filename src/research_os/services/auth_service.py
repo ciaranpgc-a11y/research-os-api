@@ -4,7 +4,9 @@ from datetime import datetime, timedelta, timezone
 import hmac
 import os
 import secrets
+import shutil
 import string
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -14,6 +16,7 @@ from research_os.db import (
     AuthLoginChallenge,
     AuthPasswordResetCode,
     AuthSession,
+    PublicationFile,
     User,
     create_all_tables,
     session_scope,
@@ -572,6 +575,55 @@ def update_current_user(
         except Exception:
             pass
     return response_payload
+
+
+def _remove_publication_file_path(path_value: str | None) -> None:
+    clean = str(path_value or "").strip()
+    if not clean:
+        return
+    try:
+        path = Path(clean)
+        if path.exists() and path.is_file():
+            path.unlink(missing_ok=True)
+    except Exception:
+        return
+
+
+def delete_current_user(*, session_token: str, confirm_phrase: str) -> dict[str, object]:
+    create_all_tables()
+    clean_phrase = str(confirm_phrase or "").strip().upper()
+    if clean_phrase != "DELETE":
+        raise AuthValidationError("Type DELETE to confirm account deletion.")
+
+    deleted_user_id = ""
+    stored_upload_paths: list[str] = []
+    with session_scope() as session:
+        user, _ = _resolve_user_from_session_token(session=session, token=session_token)
+        deleted_user_id = str(user.id)
+        file_rows = session.scalars(
+            select(PublicationFile).where(PublicationFile.owner_user_id == deleted_user_id)
+        ).all()
+        for row in file_rows:
+            source = str(row.source or "").strip().upper()
+            storage_key = str(row.storage_key or "").strip()
+            if source == "USER_UPLOAD" and storage_key:
+                stored_upload_paths.append(storage_key)
+        session.delete(user)
+        session.flush()
+
+    for path_value in stored_upload_paths:
+        _remove_publication_file_path(path_value)
+
+    if deleted_user_id:
+        try:
+            storage_root = Path(
+                os.getenv("PUBLICATION_FILES_ROOT", "./publication_files_store")
+            )
+            shutil.rmtree(storage_root / deleted_user_id, ignore_errors=True)
+        except Exception:
+            pass
+
+    return {"success": True}
 
 
 def start_login_challenge(*, email: str, password: str) -> dict[str, object]:

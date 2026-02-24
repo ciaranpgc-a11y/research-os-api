@@ -11,6 +11,7 @@ import { getAuthSessionToken } from '@/lib/auth-session'
 import {
   createCollaborator,
   deleteCollaborator,
+  enrichCollaboratorsFromOpenAlex,
   exportCollaboratorsCsv,
   fetchCollaborationMetricsSummary,
   generateCollaborationAiAffiliationsNormaliser,
@@ -27,6 +28,7 @@ import type {
   CollaborationAiAuthorSuggestionsPayload,
   CollaborationAiContributionDraftPayload,
   CollaborationAiInsightsPayload,
+  CollaborationEnrichOpenAlexPayload,
   CollaboratorPayload,
   CollaboratorsListPayload,
   CollaborationImportOpenAlexPayload,
@@ -166,6 +168,7 @@ export function ProfileCollaborationPage() {
   const [error, setError] = useState('')
   const [duplicateWarnings, setDuplicateWarnings] = useState<string[]>([])
   const [importResult, setImportResult] = useState<CollaborationImportOpenAlexPayload | null>(null)
+  const [enrichmentResult, setEnrichmentResult] = useState<CollaborationEnrichOpenAlexPayload | null>(null)
   const [aiTopicKeywords, setAiTopicKeywords] = useState('')
   const [aiMethods, setAiMethods] = useState('')
   const [aiInsights, setAiInsights] = useState<CollaborationAiInsightsPayload | null>(null)
@@ -427,6 +430,32 @@ export function ProfileCollaborationPage() {
     }
   }
 
+  const onEnrichCoverage = async () => {
+    const token = getAuthSessionToken()
+    if (!token) {
+      navigate('/auth', { replace: true })
+      return
+    }
+    setSaving(true)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await enrichCollaboratorsFromOpenAlex(token, {
+        onlyMissing: true,
+        limit: 200,
+      })
+      setEnrichmentResult(payload)
+      setStatus(
+        `Coverage enrichment complete: ${payload.updated_count} updated, ${payload.unchanged_count} unchanged, ${payload.failed_count} failed.`,
+      )
+      await load(token)
+    } catch (enrichError) {
+      setError(enrichError instanceof Error ? enrichError.message : 'Could not enrich collaborator coverage.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const onExport = async () => {
     const token = getAuthSessionToken()
     if (!token) {
@@ -595,6 +624,10 @@ export function ProfileCollaborationPage() {
                 <Button type="button" size="sm" variant="outline" onClick={onImport} disabled={saving}>
                   <Upload className="mr-1 h-3.5 w-3.5" />
                   Import from publications
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={onEnrichCoverage} disabled={saving}>
+                  <RefreshCcw className="mr-1 h-3.5 w-3.5" />
+                  Enrich missing fields
                 </Button>
                 <Button type="button" size="sm" variant="outline" onClick={onExport}>
                   <Download className="mr-1 h-3.5 w-3.5" />
@@ -844,6 +877,13 @@ export function ProfileCollaborationPage() {
               <p className="text-xs text-muted-foreground">
                 OpenAlex author: {importResult.openalex_author_id || 'n/a'} | Imported:{' '}
                 {importResult.imported_candidates}
+              </p>
+            ) : null}
+            {enrichmentResult ? (
+              <p className="text-xs text-muted-foreground">
+                Enriched: {enrichmentResult.updated_count} updated | Resolved authors:{' '}
+                {enrichmentResult.resolved_author_count} | Missing IDs:{' '}
+                {enrichmentResult.skipped_without_identifier}
               </p>
             ) : null}
           </CardContent>

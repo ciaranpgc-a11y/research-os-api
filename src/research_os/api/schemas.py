@@ -813,6 +813,14 @@ class AuthMeUpdateRequest(BaseModel):
     password: str | None = None
 
 
+class AuthDeleteAccountRequest(BaseModel):
+    confirm_phrase: str
+
+
+class AuthDeleteAccountResponse(BaseModel):
+    success: bool = True
+
+
 class AuthTwoFactorStateResponse(BaseModel):
     enabled: bool
     backup_codes_remaining: int
