@@ -1,4 +1,4 @@
-import { Info } from 'lucide-react'
+﻿import { Info } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -34,6 +34,10 @@ export type MetricTileProps = {
   footerText?: ReactNode
   tagLabel?: string
   tagTone?: MetricTagTone
+  tileClassName?: string
+  titleClassName?: string
+  showSecondary?: boolean
+  showFooter?: boolean
 }
 
 export function MetricTile({
@@ -48,6 +52,10 @@ export function MetricTile({
   footerText,
   tagLabel,
   tagTone = 'neutral',
+  tileClassName,
+  titleClassName,
+  showSecondary = true,
+  showFooter = true,
 }: MetricTileProps) {
   return (
     <div
@@ -72,10 +80,11 @@ export function MetricTile({
       className={cn(
         dashboardTileStyles.tileShell,
         tile.stability === 'unstable' && dashboardTileStyles.tileShellUnstable,
+        tileClassName,
       )}
     >
       <div className={dashboardTileStyles.tileHeader}>
-        <p className={dashboardTileStyles.tileTitle} data-testid={`metric-label-${tile.key}`}>
+        <p className={cn(dashboardTileStyles.tileTitle, titleClassName)} data-testid={`metric-label-${tile.key}`}>
           {tile.label}
         </p>
         <TooltipProvider delayDuration={120}>
@@ -105,22 +114,26 @@ export function MetricTile({
       <p className={dashboardTileStyles.tileMetric} data-testid={`metric-value-${tile.key}`}>
         {primaryValue}
       </p>
-      <p className={dashboardTileStyles.tileSecondary}>{secondaryText || '\u2014'}</p>
+      {showSecondary ? <p className={dashboardTileStyles.tileSecondary}>{secondaryText || '\u2014'}</p> : null}
 
       {visual}
 
-      <div className={dashboardTileStyles.tileFooter}>
-        {footerText ? (
-          footerText
-        ) : (
-          <p className={dashboardTileStyles.tileFooterText}>{'\u2014'}</p>
-        )}
-        {tagLabel ? (
-          <span className={cn(dashboardTileStyles.tagPill, metricTagClass(tagTone))}>
-            {tagLabel}
-          </span>
-        ) : null}
-      </div>
+      {showFooter ? (
+        <div className={dashboardTileStyles.tileFooter}>
+          {footerText ? (
+            footerText
+          ) : (
+            <p className={dashboardTileStyles.tileFooterText}>{'\u2014'}</p>
+          )}
+          {tagLabel ? (
+            <span className={cn(dashboardTileStyles.tagPill, metricTagClass(tagTone))}>
+              {tagLabel}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }
+
+

@@ -1,4 +1,5 @@
-import type { Meta, StoryObj } from '@storybook/react'
+﻿import type { Meta, StoryObj } from '@storybook/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 import type {
   AuthUser,
@@ -7,6 +8,8 @@ import type {
   PublicationsAnalyticsResponsePayload,
   PublicationsTopMetricsPayload,
 } from '@/types/impact'
+
+import { AccountLayout } from '@/components/layout/account-layout'
 
 import {
   ProfilePublicationsPage,
@@ -511,20 +514,165 @@ const fullPageFixture: ProfilePublicationsPageFixture = {
   topMetricsResponse: fixtureTopMetrics,
 }
 
+const loadingFixture: ProfilePublicationsPageFixture = {
+  ...fullPageFixture,
+  analyticsResponse: {
+    ...fixtureAnalyticsResponse,
+    status: 'RUNNING',
+    is_stale: true,
+    is_updating: true,
+  },
+  topMetricsResponse: {
+    ...fixtureTopMetrics,
+    status: 'RUNNING',
+    is_stale: true,
+    is_updating: true,
+  },
+}
+
+const emptyFixture: ProfilePublicationsPageFixture = {
+  ...fullPageFixture,
+  personaState: {
+    ...fixturePersonaState,
+    works: [],
+    collaborators: {
+      collaborators: [],
+      new_collaborators_by_year: {},
+    },
+    themes: {
+      clusters: [],
+    },
+    timeline: [],
+    metrics: {
+      works: [],
+      histogram: {},
+      trend: {
+        citations_last_12_months: 0,
+        citations_previous_12_months: 0,
+        yoy_growth_percent: 0,
+        yearly_growth: [],
+      },
+    },
+    context: {
+      dominant_themes: [],
+      common_study_types: [],
+      top_venues: [],
+      frequent_collaborators: [],
+      methodological_patterns: [],
+      works_used: [],
+    },
+    sync_status: {
+      works_last_synced_at: null,
+      works_last_updated_at: null,
+      metrics_last_synced_at: null,
+      themes_last_generated_at: null,
+      impact_last_computed_at: null,
+      orcid_last_synced_at: null,
+    },
+  },
+  analyticsResponse: {
+    ...fixtureAnalyticsResponse,
+    payload: {
+      ...fixtureAnalyticsResponse.payload,
+      summary: {
+        ...fixtureAnalyticsResponse.payload.summary,
+        total_citations: 0,
+        h_index: 0,
+        citation_velocity_12m: 0,
+        citations_last_12_months: 0,
+        citations_previous_12_months: 0,
+        citations_per_month_12m: 0,
+        citations_per_month_previous_12m: 0,
+        acceleration_citations_per_month: 0,
+        yoy_percent: 0,
+        yoy_pct: 0,
+        citations_ytd: 0,
+        cagr_3y: 0,
+        slope_3y: 0,
+        top5_share_12m_pct: 0,
+        top10_share_12m_pct: 0,
+      },
+      timeseries: {
+        ...fixtureAnalyticsResponse.payload.timeseries,
+        points: [],
+      },
+      top_drivers: {
+        ...fixtureAnalyticsResponse.payload.top_drivers,
+        drivers: [],
+      },
+      per_year: [],
+      domain_breakdown_12m: [],
+    },
+  },
+  topMetricsResponse: {
+    ...fixtureTopMetrics,
+    tiles: [],
+    data_last_refreshed: null,
+    computed_at: FIXTURE_TIME,
+    status: 'READY',
+    is_stale: false,
+    is_updating: false,
+    last_error: null,
+  },
+}
+
+function ProfilePublicationsStoryShell({
+  fixture,
+}: {
+  fixture: ProfilePublicationsPageFixture
+}) {
+  return (
+    <MemoryRouter initialEntries={['/profile/publications']}>
+      <Routes>
+        <Route path="/" element={<AccountLayout />}>
+          <Route
+            path="profile/publications"
+            element={<ProfilePublicationsPage fixture={fixture} />}
+          />
+        </Route>
+      </Routes>
+    </MemoryRouter>
+  )
+}
+
 const meta: Meta<typeof ProfilePublicationsPage> = {
   title: 'Pages/ProfilePublicationsPage',
   component: ProfilePublicationsPage,
   parameters: {
     layout: 'fullscreen',
+    withRouter: false,
   },
+  args: {
+    fixture: fullPageFixture,
+  },
+  render: (args) => (
+    <ProfilePublicationsStoryShell fixture={args?.fixture ?? fullPageFixture} />
+  ),
 }
 
 export default meta
 
 type Story = StoryObj<typeof ProfilePublicationsPage>
 
-export const FullLayout: Story = {
+export const FullLayout: Story = {}
+
+export const LoadingState: Story = {
+  args: {
+    fixture: loadingFixture,
+  },
+}
+
+export const EmptyLibrary: Story = {
+  args: {
+    fixture: emptyFixture,
+  },
+}
+
+export const FullLayoutDarkMode: Story = {
   args: {
     fixture: fullPageFixture,
+  },
+  globals: {
+    theme: 'dark',
   },
 }

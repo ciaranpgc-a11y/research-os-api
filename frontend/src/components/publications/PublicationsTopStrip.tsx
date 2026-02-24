@@ -60,14 +60,6 @@ function formatSignedInt(value: number): string {
   return `${safe >= 0 ? '+' : ''}${safe.toLocaleString('en-GB')}`
 }
 
-function formatSignedPct(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) {
-    return 'n/a'
-  }
-  const safe = Number(value)
-  return `${safe >= 0 ? '+' : ''}${safe.toFixed(1)}%`
-}
-
 function formatSignedPercentCompact(value: number): string {
   const rounded = Math.round(value * 10) / 10
   const normalized = Math.abs(rounded) < 0.05 ? 0 : rounded
@@ -138,8 +130,6 @@ function buildMomentumBreakdown(tile: PublicationMetricTilePayload): MomentumBre
     insufficientBaseline,
   }
 }
-
-type TotalTrendMode = 'year' | 'month'
 
 type LinePoint = {
   x: number
@@ -232,29 +222,53 @@ function MetricBarsChart({
   emptyLabel,
   minBarHeight = 14,
   maxBarHeight = 80,
+  surfaceClassName,
+  barTriggerClassName,
+  hideLabels = false,
+  showDashedCurrent = true,
+  showTooltip = true,
+  showAxisLabels = false,
+  axisLabelClassName,
+  meanLineValue,
+  useRelativeHeights = false,
 }: {
   items: MetricBarDatum[]
   emptyLabel: string
   minBarHeight?: number
   maxBarHeight?: number
+  surfaceClassName?: string
+  barTriggerClassName?: string
+  hideLabels?: boolean
+  showDashedCurrent?: boolean
+  showTooltip?: boolean
+  showAxisLabels?: boolean
+  axisLabelClassName?: string
+  meanLineValue?: number
+  useRelativeHeights?: boolean
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   if (!items.length) {
     return <div className={dashboardTileStyles.emptyChart}>{emptyLabel}</div>
   }
   const maxValue = Math.max(1, ...items.map((item) => Math.max(0, item.value)))
+  const meanLinePercent = Number.isFinite(meanLineValue)
+    ? Math.max(0, Math.min(100, (Math.max(0, Number(meanLineValue)) / maxValue) * 100))
+    : null
   return (
     <TooltipProvider delayDuration={90}>
-      <div className={dashboardTileStyles.rightChartSurface}>
+      <div className={cn(dashboardTileStyles.rightChartSurface, surfaceClassName)}>
         {items.map((item, index) => {
           const safeValue = Math.max(0, item.value)
-          const height = Math.max(minBarHeight, Math.round((safeValue / maxValue) * maxBarHeight))
+          const relativeHeight = safeValue <= 0 ? 10 : Math.max(34, Math.round((safeValue / maxValue) * 100))
+          const height = useRelativeHeights
+            ? `${relativeHeight}%`
+            : `${Math.max(minBarHeight, Math.round((safeValue / maxValue) * maxBarHeight))}px`
           const isActive = hoveredIndex === index
-          const toneClass = item.dashed
+          const toneClass = item.dashed && showDashedCurrent
             ? 'border border-dashed border-foreground/55 bg-foreground/10'
             : item.toneClass || 'bg-foreground/55'
           return (
-            <div key={item.key} className={dashboardTileStyles.barWrapper}>
+            <div key={item.key} className={hideLabels ? 'relative z-[1] flex h-full min-h-0 w-full items-end' : cn(dashboardTileStyles.barWrapper, 'relative z-[1]')}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
@@ -269,276 +283,342 @@ function MetricBarsChart({
                     onMouseDown={(event) => event.stopPropagation()}
                     className={cn(
                       dashboardTileStyles.barTrigger,
+                      barTriggerClassName,
                       dashboardTileStyles.barFocusRing,
                     )}
                     aria-label={item.ariaLabel}
                   >
-                    {isActive ? (
-                      <div className={dashboardTileStyles.valuePill}>
-                        {item.valueText || formatInt(safeValue)}
-                      </div>
-                    ) : null}
                     <div
                       className={cn(
                         dashboardTileStyles.barShape,
+                        'relative',
                         toneClass,
-                        isActive && !item.dashed && 'bg-foreground/80',
+                        isActive && !item.dashed && 'bg-[hsl(var(--tone-positive-700))]',
                       )}
-                      style={{ height: `${height}px` }}
-                    />
+                      style={{ height }}
+                    >
+                      {isActive ? (
+                        <div className={cn(dashboardTileStyles.valuePill, 'top-auto bottom-[calc(100%+0.35rem)]')}>
+                          {item.valueText || formatInt(safeValue)}
+                        </div>
+                      ) : null}
+                    </div>
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="top" className="px-2 py-1 text-caption leading-snug">
-                  {item.tooltip}
-                </TooltipContent>
+                {showTooltip ? (
+                  <TooltipContent side="top" className="px-2 py-1 text-caption leading-snug">
+                    {item.tooltip}
+                  </TooltipContent>
+                ) : null}
               </Tooltip>
-              <span className="text-caption text-muted-foreground">{item.label}</span>
+              {hideLabels ? null : <span className="text-caption text-muted-foreground">{item.label}</span>}
             </div>
           )
         })}
+        {meanLinePercent !== null ? (
+          <div
+            className="pointer-events-none absolute inset-x-0 z-0 border-t border-dashed border-[hsl(var(--tone-neutral-300))]/70"
+            style={{ top: `${100 - meanLinePercent}%` }}
+            aria-hidden="true"
+          />
+        ) : null}
+        {showAxisLabels ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-[-0.2rem] z-[2] grid grid-flow-col auto-cols-fr items-end px-[1px]">
+            {items.map((item) => (
+              <span
+                key={`${item.key}-axis`}
+                className={cn(
+                  'text-center text-[0.56rem] font-semibold leading-none text-[hsl(var(--tone-neutral-500))]',
+                  axisLabelClassName,
+                )}
+              >
+                {item.label}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     </TooltipProvider>
   )
 }
 
-function TotalCitationsMiniTrend({
-  tile,
-  mode,
-  onModeChange,
-}: {
-  tile: PublicationMetricTilePayload
-  mode: TotalTrendMode
-  onModeChange: (next: TotalTrendMode) => void
-}) {
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+type TotalCitationsMeanRelation = 'above' | 'below' | 'at'
+
+type TotalCitationsBar = {
+  key: string
+  axisLabel: string
+  axisSubLabel?: string
+  value: number
+  isYtd: boolean
+  relation: TotalCitationsMeanRelation
+}
+
+type TotalCitationsChartModel = {
+  bars: TotalCitationsBar[]
+  meanValue: number | null
+}
+
+const TOTAL_CITATIONS_MEAN_TOLERANCE = 0.025
+
+function relationVsMean(value: number, meanValue: number | null): TotalCitationsMeanRelation {
+  if (meanValue === null || meanValue <= 0) {
+    return 'at'
+  }
+  const tolerance = meanValue * TOTAL_CITATIONS_MEAN_TOLERANCE
+  if (value > meanValue + tolerance) {
+    return 'above'
+  }
+  if (value < meanValue - tolerance) {
+    return 'below'
+  }
+  return 'at'
+}
+
+function totalCitationsBarToneClass(bar: TotalCitationsBar): string {
+  if (bar.isYtd) {
+    return 'border border-dashed border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))]'
+  }
+  if (bar.relation === 'above') {
+    return 'bg-[hsl(var(--tone-positive-600))]'
+  }
+  if (bar.relation === 'below') {
+    return 'bg-[hsl(var(--tone-warning-500))]'
+  }
+  return 'bg-[hsl(var(--tone-neutral-400))]'
+}
+
+function buildTotalCitationsChartModel(tile: PublicationMetricTilePayload): TotalCitationsChartModel {
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
-  const yearLabels = toStringArray(chartData.years).map((value) => value.slice(-2))
-  const yearlyValues = toNumberArray(chartData.values).map((item) => Math.max(0, item))
-  const monthlyValues = toNumberArray(chartData.monthly_values_12m).map((item) => Math.max(0, item))
-  const monthLabels = toStringArray(chartData.month_labels_12m)
-  const monthModeAvailable = monthlyValues.length >= 12
-  const effectiveMode: TotalTrendMode = mode === 'month' && !monthModeAvailable ? 'year' : mode
-  const values = effectiveMode === 'year' ? yearlyValues : monthlyValues
-  const labels = effectiveMode === 'year'
-    ? normalizeSeriesLabels(yearLabels, values.length, 'Y')
-    : monthLabels.length >= values.length
-      ? monthLabels.slice(-values.length)
-      : fallbackMonthLabels(values.length)
+  const yearsRaw = toNumberArray(chartData.years).map((item) => Math.round(item))
+  const valuesRaw = toNumberArray(chartData.values).map((item) => Math.max(0, item))
+  const pairCount = Math.min(yearsRaw.length, valuesRaw.length)
+  const yearlyPairs = Array.from({ length: pairCount }, (_, index) => ({
+    year: yearsRaw[index],
+    value: valuesRaw[index],
+  }))
+  const projectedYearRaw = Number(chartData.projected_year)
+  const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
+  const currentYearYtdRaw = Number(chartData.current_year_ytd)
+  const historicalYearPairs = yearlyPairs.filter((item) => item.year !== projectedYear)
+  const historicalValues = historicalYearPairs.map((item) => item.value)
+  const meanValueRaw = Number(chartData.mean_value)
+  const meanYearValue = Number.isFinite(meanValueRaw) && meanValueRaw > 0
+    ? meanValueRaw
+    : historicalValues.length
+      ? historicalValues.reduce((sum, item) => sum + item, 0) / historicalValues.length
+      : null
+  const currentYearFallback = yearlyPairs.find((item) => item.year === projectedYear)?.value ?? 0
+  const currentYearYtd = Number.isFinite(currentYearYtdRaw)
+    ? Math.max(0, currentYearYtdRaw)
+    : currentYearFallback
+  if (!historicalYearPairs.length && currentYearYtd <= 0) {
+    return { bars: [], meanValue: meanYearValue }
+  }
+  const bars: TotalCitationsBar[] = [
+    ...historicalYearPairs.map((item) => {
+      const relation = relationVsMean(item.value, meanYearValue)
+      return {
+        key: `year-${item.year}`,
+        axisLabel: String(item.year),
+        value: item.value,
+        isYtd: false,
+        relation,
+      }
+    }),
+    {
+      key: `year-${projectedYear}-ytd`,
+      axisLabel: String(projectedYear),
+      axisSubLabel: 'YTD',
+      value: currentYearYtd,
+      isYtd: true,
+      relation: relationVsMean(currentYearYtd, meanYearValue),
+    },
+  ]
+  return {
+    bars,
+    meanValue: meanYearValue,
+  }
+}
+
+function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload }) {
+  const [chartVisible, setChartVisible] = useState(true)
+  const [barsExpanded, setBarsExpanded] = useState(false)
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const model = useMemo(() => buildTotalCitationsChartModel(tile), [tile])
+  const animationKey = useMemo(
+    () => `year:${model.bars.map((bar) => `${bar.key}-${bar.value}`).join('|')}:${model.meanValue ?? 'none'}`,
+    [model.bars, model.meanValue],
+  )
   useEffect(() => {
-    if (mode === 'month' && !monthModeAvailable) {
-      onModeChange('year')
+    setChartVisible(false)
+    setBarsExpanded(false)
+    let rafOne = 0
+    let rafTwo = 0
+    rafOne = window.requestAnimationFrame(() => {
+      setChartVisible(true)
+      rafTwo = window.requestAnimationFrame(() => {
+        setBarsExpanded(true)
+      })
+    })
+    return () => {
+      window.cancelAnimationFrame(rafOne)
+      window.cancelAnimationFrame(rafTwo)
     }
-  }, [mode, monthModeAvailable, onModeChange])
-  if (!values.length) {
-    return <div className={dashboardTileStyles.emptyChart}>No trend points</div>
+  }, [animationKey])
+
+  if (!model.bars.length) {
+    return <div className={dashboardTileStyles.emptyChart}>No citation data</div>
   }
 
-  const width = 220
-  const height = 64
-  const points = buildLinePoints(values, width, height, labels)
-  const path = smoothPathFromPoints(points)
+  const maxValue = Math.max(
+    1,
+    ...model.bars.map((bar) => Math.max(0, bar.value)),
+    model.meanValue !== null ? Math.max(0, model.meanValue) : 0,
+  )
+  const scaledMax = maxValue * 1.18
+  const meanLinePercent = model.meanValue !== null
+    ? Math.max(0, Math.min(100, (Math.max(0, model.meanValue) / scaledMax) * 100))
+    : null
 
   return (
-    <div className="space-y-2">
-      <div className="inline-flex items-center rounded-full border border-border bg-muted/30 p-0.5">
-        <button
-          type="button"
-          data-stop-tile-open="true"
-          onClick={(event) => {
-            event.stopPropagation()
-            onModeChange('year')
-          }}
-          onMouseDown={(event) => event.stopPropagation()}
-          className={cn(
-            'h-6 rounded-full px-2 text-micro font-semibold transition-colors',
-            effectiveMode === 'year'
-              ? 'bg-foreground text-background'
-              : 'text-muted-foreground hover:bg-muted/70',
-          )}
-        >
-          5y
-        </button>
-        <button
-          type="button"
-          data-stop-tile-open="true"
-          disabled={!monthModeAvailable}
-          onClick={(event) => {
-            event.stopPropagation()
-            if (!monthModeAvailable) {
-              return
-            }
-            onModeChange('month')
-          }}
-          onMouseDown={(event) => event.stopPropagation()}
-          className={cn(
-            'h-6 rounded-full px-2 text-micro font-semibold transition-colors',
-            !monthModeAvailable
-              ? 'cursor-not-allowed text-muted-foreground/50'
-              : effectiveMode === 'month'
-                ? 'bg-foreground text-background'
-                : 'text-muted-foreground hover:bg-muted/70',
-          )}
-          title={!monthModeAvailable ? '12-month curve will appear after metrics refresh completes.' : undefined}
-        >
-          12m
-        </button>
-      </div>
-      <div className="relative h-16">
-        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-16 w-full">
-          <path
-            d={path}
-            fill="none"
-            className="stroke-foreground/80"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <TooltipProvider delayDuration={90}>
-          {points.map((point, index) => (
-            <Tooltip key={`${point.label}-${index}`}>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  data-stop-tile-open="true"
-                  tabIndex={dashboardTileBarTabIndex}
+    <div className="flex h-full min-h-0 flex-col">
+      <div
+        className={cn(
+          'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-7 pt-4 transition-opacity duration-200',
+          chartVisible ? 'opacity-100' : 'opacity-0',
+        )}
+      >
+        <div className="absolute inset-x-2 bottom-7 top-4">
+          {[25, 50, 75].map((pct) => (
+            <div
+              key={`grid-${pct}`}
+              className="pointer-events-none absolute inset-x-0 border-t border-[hsl(var(--tone-neutral-200))]"
+              style={{ bottom: `${pct}%` }}
+              aria-hidden="true"
+            />
+          ))}
+          {meanLinePercent !== null ? (
+            <div
+              className="pointer-events-none absolute inset-x-0 border-t border-dashed border-[hsl(var(--tone-neutral-400))]"
+              style={{ bottom: `${meanLinePercent}%` }}
+              aria-hidden="true"
+            />
+          ) : null}
+          <div className="absolute inset-0 flex items-end gap-1">
+            {model.bars.map((bar, index) => {
+              const heightPct = bar.value <= 0 ? 3 : Math.max(6, (Math.max(0, bar.value) / scaledMax) * 100)
+              const isActive = hoveredIndex === index
+              return (
+                <div
+                  key={bar.key}
+                  className="relative flex h-full min-h-0 flex-1 items-end"
                   onMouseEnter={() => setHoveredIndex(index)}
                   onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
-                  onFocus={() => setHoveredIndex(index)}
-                  onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
-                  onClick={(event) => event.stopPropagation()}
-                  onMouseDown={(event) => event.stopPropagation()}
-                  className={cn(
-                    'absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full',
-                    dashboardTileStyles.barFocusRing,
-                  )}
-                  style={{
-                    left: `${(point.x / width) * 100}%`,
-                    top: `${(point.y / height) * 100}%`,
-                  }}
-                  aria-label={`${point.label}: ${formatInt(point.value)} citations`}
                 >
                   <span
                     className={cn(
-                      'pointer-events-none absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background bg-foreground transition-transform',
-                      hoveredIndex === index && 'scale-110',
+                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-[0.6rem] leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
+                      isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
                     )}
+                    style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
+                    aria-hidden="true"
+                  >
+                    {formatInt(bar.value)}
+                  </span>
+                  <span
+                    className={cn(
+                      'block w-full rounded-[4px] transition-[transform,filter,box-shadow] duration-220 ease-out',
+                      totalCitationsBarToneClass(bar),
+                      isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
+                    )}
+                    style={{
+                      height: `${heightPct}%`,
+                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                      transformOrigin: 'bottom',
+                      transitionDelay: `${Math.min(220, index * 18)}ms`,
+                    }}
                   />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="px-2 py-1 text-caption">
-                <p>{point.label}: {formatInt(point.value)} citations</p>
-              </TooltipContent>
-            </Tooltip>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+        <div className="pointer-events-none absolute inset-x-2 bottom-1 grid grid-flow-col auto-cols-fr items-start gap-1">
+          {model.bars.map((bar) => (
+            <div key={`${bar.key}-axis`} className="text-center leading-none">
+              <p className="text-[0.56rem] font-semibold text-[hsl(var(--tone-neutral-600))]">{bar.axisLabel}</p>
+              {bar.axisSubLabel ? (
+                <p className="mt-[1px] text-[0.5rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-600))]">
+                  {bar.axisSubLabel}
+                </p>
+              ) : null}
+            </div>
           ))}
-        </TooltipProvider>
+        </div>
       </div>
     </div>
   )
 }
 
-function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayload }) {
-  const chartData = (tile.chart_data || {}) as Record<string, unknown>
-  const years = toNumberArray(chartData.years).map((item) => Math.round(item))
-  const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
-  if (!years.length || !values.length || years.length !== values.length) {
-    return <div className={dashboardTileStyles.emptyChart}>No yearly citation data</div>
-  }
-  const meanValueRaw = Number(chartData.mean_value)
-  const meanValue = Number.isFinite(meanValueRaw) && meanValueRaw > 0
-    ? meanValueRaw
-    : values.reduce((sum, item) => sum + item, 0) / Math.max(1, values.length)
-  const projectedYearRaw = Number(chartData.projected_year)
-  const currentYearYtdRaw = Number(chartData.current_year_ytd)
-  const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
-  const bars: Array<{
-    year: number
-    value: number
-    current: boolean
-    delta: number | null
-    pct: number | null
-    relative: 'above' | 'near' | 'below'
-    detailLines: string[]
-  }> = years.map((year, index) => {
-    const value = values[index]
-    const prev = index > 0 ? values[index - 1] : null
-    const delta = prev === null ? null : value - prev
-    const pct = prev && prev > 0 ? ((value - prev) / prev) * 100 : null
-    const relative = value >= meanValue * 1.1 ? 'above' : value <= meanValue * 0.9 ? 'below' : 'near'
-    const detailLines = [
-      `Year: ${year}`,
-      `Citations: ${formatInt(value)}`,
-      `YoY: ${delta === null ? 'n/a' : `${formatSignedInt(delta)} (${formatSignedPct(pct)})`}`,
-      `Relative to 5y mean (${formatInt(meanValue)}): ${value >= meanValue ? 'above' : 'below'}`,
-    ]
-    return {
-      year,
-      value,
-      current: false,
-      delta,
-      pct,
-      relative,
-      detailLines,
-    }
-  })
-  const existingCurrentBar = bars.find((item) => item.year === projectedYear)
-  const baseWithoutCurrent = bars.filter((item) => item.year !== projectedYear)
-  const currentYearValue = Math.max(
-    0,
-    Number.isFinite(currentYearYtdRaw)
-      ? currentYearYtdRaw
-      : existingCurrentBar
-        ? existingCurrentBar.value
-        : 0,
-  )
-  const previousCompleteValue = baseWithoutCurrent.length
-    ? baseWithoutCurrent[baseWithoutCurrent.length - 1].value
-    : 0
-  const currentDelta = currentYearValue - previousCompleteValue
-  const currentPct = previousCompleteValue > 0
-    ? ((currentYearValue - previousCompleteValue) / previousCompleteValue) * 100
-    : null
-  baseWithoutCurrent.push({
-    year: projectedYear,
-    value: currentYearValue,
-    current: true,
-    delta: currentDelta,
-    pct: currentPct,
-    relative: 'near',
-    detailLines: [
-      `Year: ${projectedYear} (in progress)`,
-      `Current citations (YTD): ${formatInt(currentYearValue)}`,
-      `vs last complete year: ${formatSignedInt(currentDelta)} (${formatSignedPct(currentPct)})`,
-    ].filter(Boolean),
-  })
-  const chartItems: MetricBarDatum[] = baseWithoutCurrent.map((bar, index) => ({
-    key: `${bar.year}-${index}`,
-    label: String(bar.year).slice(-2),
-    value: bar.value,
-    dashed: bar.current,
-    toneClass: bar.current
-      ? undefined
-      : bar.relative === 'above'
-        ? 'bg-emerald-600/80'
-        : bar.relative === 'below'
-          ? 'bg-amber-500/80'
-          : 'bg-foreground/55',
-    valueText: formatInt(bar.value),
-    ariaLabel: bar.detailLines.join(' | '),
-    tooltip: (
-      <div className="space-y-0.5">
-        {bar.detailLines.map((line, lineIndex) => (
-          <p key={`${lineIndex}-${line}`}>{line}</p>
-        ))}
-      </div>
-    ),
-  }))
+function TotalCitationsTile({
+  tile,
+  onOpen,
+  shouldIgnoreTileOpen,
+}: {
+  tile: PublicationMetricTilePayload
+  onOpen: () => void
+  shouldIgnoreTileOpen: (target: EventTarget | null) => boolean
+}) {
+  const primaryValue = tile.value_display || '\u2014'
+
   return (
-    <div className="space-y-1">
-      <MetricBarsChart items={chartItems} emptyLabel="No yearly citation data" />
-      <p className={dashboardTileStyles.tileMicroLabel}>
-        Bar colour is relative to 5-year mean ({formatInt(meanValue)}); dashed bar is current year to date.
-      </p>
+    <div
+      role="button"
+      tabIndex={0}
+      data-metric-key={tile.key}
+      onClick={(event) => {
+        if (shouldIgnoreTileOpen(event.target)) {
+          return
+        }
+        onOpen()
+      }}
+      onKeyDown={(event) => {
+        if (shouldIgnoreTileOpen(event.target)) {
+          return
+        }
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onOpen()
+        }
+      }}
+      className={cn(
+        dashboardTileStyles.tileShell,
+        tile.stability === 'unstable' && dashboardTileStyles.tileShellUnstable,
+        'min-h-36 bg-card px-3 py-2.5 hover:bg-card hover:border-[hsl(var(--tone-neutral-300))]',
+      )}
+    >
+      <div className="grid h-full min-h-[9.5rem] grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)] gap-3">
+        <div className="flex min-h-0 flex-col">
+          <p
+            className="text-[0.64rem] font-semibold uppercase leading-[0.8rem] tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]"
+            data-testid={`metric-label-${tile.key}`}
+          >
+            TOTAL CITATIONS
+          </p>
+          <p
+            className="mt-2 text-[2.15rem] font-semibold leading-[0.96] tracking-tight text-foreground"
+            data-testid={`metric-value-${tile.key}`}
+          >
+            {primaryValue}
+          </p>
+          <p className="mt-1 text-[0.72rem] font-medium leading-4 text-[hsl(var(--tone-neutral-700))]">Lifetime citations</p>
+          <p className="text-[0.62rem] leading-4 text-[hsl(var(--tone-neutral-500))]">Last 5 years shown</p>
+        </div>
+
+        <div className="min-h-0">
+          <TotalCitationsModeChart tile={tile} />
+        </div>
+      </div>
     </div>
   )
 }
@@ -649,10 +729,10 @@ function PublicationsPerYearChart({ tile }: { tile: PublicationMetricTilePayload
     toneClass: bar.current
       ? undefined
       : bar.relative === 'above'
-        ? 'bg-emerald-600/80'
+        ? 'bg-[hsl(var(--tone-positive-600))]'
         : bar.relative === 'below'
-          ? 'bg-amber-500/80'
-          : 'bg-foreground/55',
+          ? 'bg-[hsl(var(--tone-warning-500))]'
+          : 'bg-[hsl(var(--tone-accent-500))]',
     valueText: formatInt(bar.value),
     ariaLabel: `${bar.current ? 'Current ' : ''}publications ${formatInt(bar.value)} in ${bar.year}`,
     tooltip: (
@@ -782,7 +862,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
               widthPct: top3PctRounded,
               label: 'Top 3 papers',
               valueText: `${top3PctRounded}%`,
-              toneClass: 'bg-foreground/80',
+              toneClass: 'bg-[hsl(var(--tone-accent-700))]',
               tooltip: (
                 <div className="space-y-0.5">
                   <p>Top 3 papers: {top3PctRounded}% ({formatInt(top3)} citations)</p>
@@ -799,7 +879,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
               widthPct: restPctRounded,
               label: 'Rest of portfolio',
               valueText: `${restPctRounded}%`,
-              toneClass: 'bg-foreground/35',
+              toneClass: 'bg-[hsl(var(--tone-accent-300))]',
               tooltip: (
                 <div className="space-y-0.5">
                   <p>Rest of portfolio: {restPctRounded}% ({formatInt(rest)} citations)</p>
@@ -817,7 +897,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
               widthPct: uncitedPct,
               label: 'Uncited publications',
               valueText: `${uncitedPct}%`,
-              toneClass: 'bg-foreground/65',
+              toneClass: 'bg-[hsl(var(--tone-warning-400))]',
               tooltip: (
                 <div className="space-y-0.5">
                   <p>Uncited: {uncitedPct}% ({formatInt(uncitedCount)} works)</p>
@@ -829,7 +909,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
               widthPct: citedPct,
               label: 'Cited publications',
               valueText: `${citedPct}%`,
-              toneClass: 'bg-foreground/25',
+              toneClass: 'bg-[hsl(var(--tone-positive-500))]',
               tooltip: (
                 <div className="space-y-0.5">
                   <p>Cited: {citedPct}% of portfolio</p>
@@ -855,7 +935,7 @@ function MomentumTilePanel({ tile }: { tile: PublicationMetricTilePayload }) {
       key: `${bar.label}-${index}`,
       label: bar.label,
       value: bar.value,
-      toneClass: index >= highlightStart ? 'bg-foreground/80' : 'bg-foreground/45',
+      toneClass: index >= highlightStart ? 'bg-[hsl(var(--tone-positive-600))]' : 'bg-[hsl(var(--tone-accent-400))]',
       valueText: formatInt(bar.value),
       ariaLabel: `${bar.label}: ${formatInt(bar.value)} citations, ${baselineText} vs baseline`,
       tooltip: (
@@ -905,10 +985,10 @@ function HIndexTrajectoryPanel({ tile }: { tile: PublicationMetricTilePayload })
           {hNextTarget !== null ? `${Math.round(hProgressPct)}% to h=${hNextTarget}` : `${Math.round(hProgressPct)}% to next h`}
         </p>
         <div className="relative mt-1">
-          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-            <div className="h-full rounded-full bg-foreground/80" style={{ width: `${hProgressPct}%` }} />
+          <div className="h-1.5 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
+            <div className="h-full rounded-full bg-[hsl(var(--tone-positive-600))]" style={{ width: `${hProgressPct}%` }} />
           </div>
-          <div className="pointer-events-none absolute right-0 top-1/2 h-4 -translate-y-1/2 border-l border-dashed border-muted-foreground/70" />
+          <div className="pointer-events-none absolute right-0 top-1/2 h-4 -translate-y-1/2 border-l border-dashed border-[hsl(var(--tone-neutral-400))]" />
         </div>
         <p className={cn(dashboardTileStyles.tileMicroLabel, 'mt-1')}>
           Next threshold {hNextTarget !== null ? `h=${hNextTarget}` : 'not available'}
@@ -968,14 +1048,14 @@ function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload })
   const overlayPath = overlayPoints.length ? smoothPathFromPoints(overlayPoints) : ''
 
   return (
-    <div className="relative h-24 rounded-md border border-border/70 bg-muted/20 p-2">
+    <div className="relative h-24 rounded-md border border-[hsl(var(--tone-accent-200))] bg-background p-2">
       <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-full w-full">
-        <path d={areaPath} className="fill-foreground/10" />
+        <path d={areaPath} className="fill-[hsl(var(--tone-accent-100))]" />
         {overlayPath ? (
           <path
             d={overlayPath}
             fill="none"
-            className="stroke-muted-foreground/55"
+            className="stroke-[hsl(var(--tone-accent-400))]"
             strokeWidth="2.25"
             strokeDasharray="4 3"
             strokeLinecap="round"
@@ -985,7 +1065,7 @@ function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload })
         <path
           d={path}
           fill="none"
-          className="stroke-foreground/85"
+          className="stroke-[hsl(var(--tone-accent-700))]"
           strokeWidth="3.5"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -1021,7 +1101,7 @@ function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload })
                   {hoveredIndex === index ? (
                     <span className={dashboardTileStyles.valuePill}>{formatInt(point.value)}</span>
                   ) : null}
-                  <span className="pointer-events-none absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background bg-foreground" />
+                  <span className="pointer-events-none absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background bg-[hsl(var(--tone-accent-700))]" />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="px-2 py-1 text-caption leading-snug">
@@ -1046,7 +1126,7 @@ function MiniBars({
   highlightFrom?: number
 }) {
   if (!values.length) {
-    return <div className="h-8 rounded bg-muted/70" />
+    return <div className="h-8 rounded border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))]" />
   }
   const max = Math.max(1, ...values)
   return (
@@ -1057,8 +1137,8 @@ function MiniBars({
         return (
           <div
             key={`${index}-${value}`}
-            className={cn('w-full rounded-sm bg-slate-500/70', highlighted && 'bg-slate-900/85')}
-            style={{ height: `${height}px` }}
+            className={cn('w-full rounded-sm bg-[hsl(var(--tone-accent-400))]', highlighted && 'bg-[hsl(var(--tone-positive-600))]')}
+            style={{ height }}
           />
         )
       })}
@@ -1073,7 +1153,7 @@ function MiniPairedBars({
 }) {
   const safe = values.slice(0, 2)
   if (safe.length < 2) {
-    return <div className="h-8 rounded bg-muted/70" />
+    return <div className="h-8 rounded border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))]" />
   }
   const max = Math.max(1, ...safe)
   return (
@@ -1081,7 +1161,7 @@ function MiniPairedBars({
       {safe.map((value, index) => (
         <div key={`${index}-${value}`} className="flex w-full flex-col items-center gap-1">
           <div
-            className={cn('w-full rounded-sm', index === 0 ? 'bg-slate-900/85' : 'bg-slate-500/70')}
+            className={cn('w-full rounded-sm', index === 0 ? 'bg-[hsl(var(--tone-accent-700))]' : 'bg-[hsl(var(--tone-accent-400))]')}
             style={{ height: `${Math.max(12, Math.round((Math.max(0, value) / max) * 30))}px` }}
           />
         </div>
@@ -1101,13 +1181,13 @@ function MiniProgressRing({
   const offset = circumference - (pct / 100) * circumference
   return (
     <svg viewBox="0 0 36 36" className="h-8 w-8">
-      <circle cx="18" cy="18" r={radius} fill="none" stroke="hsl(var(--tone-neutral-200))" strokeWidth="4" />
+      <circle cx="18" cy="18" r={radius} fill="none" stroke="hsl(var(--tone-accent-200))" strokeWidth="4" />
       <circle
         cx="18"
         cy="18"
         r={radius}
         fill="none"
-        stroke="hsl(var(--tone-neutral-900))"
+        stroke="hsl(var(--tone-accent-700))"
         strokeWidth="4"
         strokeDasharray={circumference}
         strokeDashoffset={offset}
@@ -1126,14 +1206,14 @@ function MiniDonut({
   const safe = values.slice(0, 2).map((item) => Math.max(0, item))
   const total = safe.reduce((sum, item) => sum + item, 0)
   if (total <= 0) {
-    return <div className="h-8 w-8 rounded-full bg-muted/70" />
+    return <div className="h-8 w-8 rounded-full border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))]" />
   }
   const pct = safe[0] / total
   const angle = pct * 360
-  const gradient = `conic-gradient(hsl(var(--tone-neutral-900)) 0deg ${angle}deg, hsl(var(--tone-neutral-400)) ${angle}deg 360deg)`
+  const gradient = `conic-gradient(hsl(var(--tone-accent-700)) 0deg ${angle}deg, hsl(var(--tone-positive-400)) ${angle}deg 360deg)`
   return (
     <div className="h-8 w-8 rounded-full" style={{ background: gradient }}>
-      <div className="relative left-sz-7 top-sz-7 h-sz-18 w-sz-18 rounded-full bg-white" />
+      <div className="relative left-sz-7 top-sz-7 h-sz-18 w-sz-18 rounded-full bg-card" />
     </div>
   )
 }
@@ -1141,14 +1221,14 @@ function MiniDonut({
 function MiniLine({
   values,
   overlay = [],
-  colorCode = 'hsl(var(--tone-neutral-600))',
+  colorCode = 'hsl(var(--tone-accent-700))',
 }: {
   values: number[]
   overlay?: number[]
   colorCode?: string
 }) {
   if (!values.length) {
-    return <div className="h-8 rounded bg-muted/70" />
+    return <div className="h-8 rounded border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))]" />
   }
   const max = Math.max(...values, ...(overlay.length ? overlay : [0]))
   const min = Math.min(...values, ...(overlay.length ? overlay : [0]))
@@ -1174,7 +1254,7 @@ function MiniLine({
       {overlayPoints ? (
         <polyline
           fill="none"
-          stroke="hsl(var(--tone-neutral-600) / 0.5)"
+          stroke="hsl(var(--tone-accent-400))"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -1211,7 +1291,7 @@ function MiniChart({ tile }: { tile: PublicationMetricTilePayload }) {
     return (
       <MiniLine
         values={trendValues}
-        colorCode={tile.delta_color_code || 'hsl(var(--tone-neutral-600))'}
+        colorCode={tile.delta_color_code || 'hsl(var(--tone-accent-700))'}
       />
     )
   }
@@ -1231,7 +1311,7 @@ function MiniChart({ tile }: { tile: PublicationMetricTilePayload }) {
     <MiniLine
       values={tile.sparkline || []}
       overlay={tile.sparkline_overlay || []}
-      colorCode={tile.delta_color_code || 'hsl(var(--tone-neutral-600))'}
+      colorCode={tile.delta_color_code || 'hsl(var(--tone-accent-700))'}
     />
   )
 }
@@ -1310,7 +1390,6 @@ export function PublicationsTopStrip({
   const [activeTileDetail, setActiveTileDetail] = useState<PublicationMetricTilePayload | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
-  const [totalTrendMode, setTotalTrendMode] = useState<TotalTrendMode>('year')
 
   const tiles = useMemo(() => metrics?.tiles ?? [], [metrics?.tiles])
   const selectedTile = useMemo(
@@ -1350,7 +1429,7 @@ export function PublicationsTopStrip({
   return (
     <>
       <Card>
-        <CardContent className="space-y-3 p-4">
+        <CardContent className="space-y-2 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
             <div className="flex flex-wrap items-center gap-2">
               <span>Data last refreshed: {formatRefreshedAt(metrics?.data_last_refreshed || metrics?.computed_at)}</span>
@@ -1361,13 +1440,13 @@ export function PublicationsTopStrip({
           </div>
 
           {loading && tiles.length === 0 ? (
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 lg:gap-3">
               {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="h-28 rounded border border-border bg-muted/40" />
+                <div key={index} className="h-32 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]" />
               ))}
             </div>
           ) : (
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 lg:gap-3">
               {tiles.map((tile) => {
                 const badgeLabel = String((tile.badge?.label as string) || '').trim()
                 const subtitle = String(tile.subtext || '').trim()
@@ -1377,6 +1456,18 @@ export function PublicationsTopStrip({
                 const effectiveDeltaDisplay = shouldHideLegacyTrendText ? '' : rawDeltaDisplay
                 const sourceText = metricDataSources(tile)
                 const updateText = String((tile.tooltip_details?.update_frequency as string) || 'Daily')
+                if (tile.key === 'total_citations') {
+                  return (
+                    <TotalCitationsTile
+                      key={tile.key}
+                      tile={tile}
+                      onOpen={() => {
+                        void onSelectTile(tile)
+                      }}
+                      shouldIgnoreTileOpen={shouldIgnoreTileOpen}
+                    />
+                  )
+                }
                 const resolvedTagTone = badgeTone(tile)
                 const tileValueSource = tile.main_value ?? tile.value
                 const tileValueNumberRaw = typeof tileValueSource === 'number' ? tileValueSource : Number.NaN
@@ -1409,6 +1500,7 @@ export function PublicationsTopStrip({
 
                 let primaryValue: ReactNode = mainValueDisplay
                 let secondaryText: ReactNode = subtitle || '\u2014'
+                const showSecondary = true
                 let visual: ReactNode = (
                   <div className={dashboardTileStyles.tileVisualWrap}>
                     <MiniChart tile={tile} />
@@ -1416,33 +1508,12 @@ export function PublicationsTopStrip({
                 )
                 let footerText: ReactNode | undefined = footerNode
                 let tagLabel: string | undefined = badgeLabel || undefined
+                let titleClassName: string | undefined
+                let tileClassName: string | undefined
+                const showFooter = true
                 const tileTagTone: 'positive' | 'neutral' | 'caution' | 'negative' | undefined = resolvedTagTone
 
-                if (tile.key === 'total_citations') {
-                  primaryValue = mainValueDisplay
-                  secondaryText = subtitle || '5-year citation trajectory'
-                  visual = (
-                    <div className={dashboardTileStyles.tileVisualWrap}>
-                      <div className={dashboardTileStyles.chartSplit}>
-                        <div className={dashboardTileStyles.chartColumn}>
-                          <TotalCitationsMiniTrend
-                            tile={tile}
-                            mode={totalTrendMode}
-                            onModeChange={setTotalTrendMode}
-                          />
-                          <p className={cn(dashboardTileStyles.tileMicroLabel, 'mt-2 min-h-4')}>
-                            vs prior window: {effectiveDeltaDisplay || '\u2014'}
-                          </p>
-                        </div>
-                        <div className={dashboardTileStyles.chartPanel}>
-                          <TotalCitationsGrowthChart tile={tile} />
-                        </div>
-                      </div>
-                    </div>
-                  )
-                  footerText = undefined
-                  tagLabel = undefined
-                } else if (tile.key === 'this_year_vs_last') {
+                if (tile.key === 'this_year_vs_last') {
                   primaryValue = tile.value_display || mainValueDisplay
                   secondaryText = subtitle || 'Publications per year'
                   visual = (
@@ -1491,6 +1562,10 @@ export function PublicationsTopStrip({
                   <MetricTile
                     key={tile.key}
                     tile={tile}
+                    titleClassName={titleClassName}
+                    tileClassName={tileClassName}
+                    showSecondary={showSecondary}
+                    showFooter={showFooter}
                     onOpen={() => {
                       void onSelectTile(tile)
                     }}
@@ -1581,3 +1656,12 @@ export function PublicationsTopStrip({
     </>
   )
 }
+
+
+
+
+
+
+
+
+
