@@ -509,7 +509,7 @@ default_allow_origins = [
     "http://127.0.0.1:4173",
     "http://localhost:6006",
     "http://localhost:6007",
-    "https://research-os-ui.onrender.com",
+    "https://app.axiomos.studio",
 ]
 configured_allow_origins = os.getenv("CORS_ALLOW_ORIGINS", "")
 allow_origins = list(default_allow_origins)

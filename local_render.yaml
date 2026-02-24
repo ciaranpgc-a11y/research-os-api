@@ -1,4 +1,4 @@
-﻿services:
+services:
   - type: web
     name: research-os-api-achk
     runtime: docker
@@ -9,7 +9,7 @@
       - key: OPENAI_API_KEY
         sync: false
       - key: CORS_ALLOW_ORIGINS
-        value: http://localhost:5173,https://research-os-ui-achk.onrender.com
+        value: http://localhost:5173,https://app.axiomos.studio
   - name: research-os-ui-achk
     type: web
     runtime: static
@@ -24,5 +24,5 @@
         value: no-cache
     envVars:
       - key: VITE_API_BASE_URL
-        value: https://research-os-api-achk.onrender.com
+        value: https://api.axiomos.studio
 

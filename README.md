@@ -111,6 +111,10 @@ curl.exe --% -X POST http://127.0.0.1:8000/v1/projects/PROJECT_ID/manuscripts/MA
 - `research-os-api-achk` (Docker web service)
 - `research-os-ui-achk` (static site from `frontend/`)
 
+Production domains:
+- Frontend: `https://app.axiomos.studio`
+- API: `https://api.axiomos.studio`
+
 The API Docker startup runs `alembic upgrade head` before launching Uvicorn.
 The API health check path is `/v1/health/ready` so database connectivity is verified.
 Auto-deploy is configured to `checksPass` so only commits that pass CI are deployed.
@@ -120,6 +124,7 @@ Required API environment variables:
 
 Recommended API environment variables:
 - `CORS_ALLOW_ORIGINS` (comma-separated origins for frontend access)
+- `FRONTEND_BASE_URL=https://app.axiomos.studio` (production)
 - `DATABASE_URL` (defaults to local SQLite when absent)
 - `AAWE_BOOTSTRAP_EMAIL` (optional stable seeded login for rebuilds)
 - `AAWE_BOOTSTRAP_PASSWORD` (password for seeded login)
@@ -128,8 +133,12 @@ Recommended API environment variables:
 - `AAWE_BOOTSTRAP_FORCE_PASSWORD` (`1` to reset seeded account password on every startup)
 
 Frontend environment variables:
-- `VITE_API_BASE_URL` should point to the API service URL.
+- `VITE_API_BASE_URL=https://api.axiomos.studio` (production)
 - `VITE_TEST_ACCOUNT_EMAIL` / `VITE_TEST_ACCOUNT_PASSWORD` (optional auth-page shortcut for test environments).
+
+OAuth redirect URI configuration (production):
+- `ORCID_REDIRECT_URI=https://api.axiomos.studio/v1/orcid/callback`
+- `ORCID_SIGNIN_REDIRECT_URI=https://app.axiomos.studio/auth/callback/?provider=orcid`
 
 SPA refresh routing:
 - Frontend build copies `dist/index.html` to `dist/404.html` and `dist/200.html` so direct refreshes on deep routes (e.g. `/w/...`) still load the app shell on static hosts.
