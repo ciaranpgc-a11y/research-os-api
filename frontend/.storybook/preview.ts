@@ -45,16 +45,24 @@ function StorybookThemeSync({ theme, children }: { theme: UiTheme; children: Rea
   return createElement(Fragment, null, children)
 }
 
-function AppProviders({ children }: { children: ReactNode }) {
+function AppProviders({
+  children,
+  withRouter = true,
+}: {
+  children: ReactNode
+  withRouter?: boolean
+}) {
+  const content = createElement(
+    Fragment,
+    null,
+    createElement(ThemeBridge),
+    createElement('div', { className: 'min-h-screen bg-background text-foreground' }, children),
+  )
+
   return createElement(
     AppErrorBoundary,
     null,
-    createElement(
-      MemoryRouter,
-      null,
-      createElement(ThemeBridge),
-      createElement('div', { className: 'min-h-screen bg-background text-foreground' }, children),
-    ),
+    withRouter ? createElement(MemoryRouter, null, content) : content,
   )
 }
 
@@ -79,13 +87,14 @@ const preview: Preview = {
   decorators: [
     (Story, context) => {
       const selectedTheme = normalizeTheme(context.globals.theme ?? defaultTheme)
+      const withRouter = context.parameters?.withRouter !== false
       const state = useAaweStore.getState()
       if (state.theme !== selectedTheme) {
         state.setTheme(selectedTheme)
       }
       return createElement(
         AppProviders,
-        null,
+        { withRouter },
         createElement(
           StorybookThemeSync,
           { theme: selectedTheme },

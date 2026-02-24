@@ -46,6 +46,7 @@ const meta: Meta<typeof AccountNavigatorPreview> = {
   },
   parameters: {
     layout: 'fullscreen',
+    withRouter: false,
   },
 }
 
