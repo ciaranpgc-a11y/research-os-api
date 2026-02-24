@@ -533,7 +533,6 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     ? Math.min(100, Math.max(0, Math.round(Number(activeSyncJob?.progress_percent || 0))))
     : 0
   const syncStageLabel = formatSyncStageLabel(activeSyncJob?.current_stage)
-  const latestSyncLabel = lastSyncSinceLabel ? `since ${lastSyncSinceLabel}` : globalLastSync
   const statusLower = status.toLowerCase()
   const statusToneClass = error
     ? 'border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-800))]'
@@ -786,22 +785,6 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
           ) : null}
         </CardHeader>
         <CardContent className="space-y-4 pt-4 text-sm">
-          {orcidLinked ? (
-            <div className="grid gap-2 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-2 sm:grid-cols-3">
-              <div className="rounded-sm bg-card px-2 py-1.5">
-                <p className="text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Last run</p>
-                <p className="mt-0.5 text-label font-medium text-[hsl(var(--tone-neutral-900))]">{latestSyncLabel}</p>
-              </div>
-              <div className="rounded-sm bg-card px-2 py-1.5">
-                <p className="text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">New works</p>
-                <p className="mt-0.5 text-label font-medium text-[hsl(var(--tone-neutral-900))]">{formatMetricNumber(normalizedNewWorks)}</p>
-              </div>
-              <div className="rounded-sm bg-card px-2 py-1.5">
-                <p className="text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">New citations</p>
-                <p className="mt-0.5 text-label font-medium text-[hsl(var(--tone-neutral-900))]">{formatMetricNumber(normalizedNewCitations)}</p>
-              </div>
-            </div>
-          ) : null}
 
           <div className="grid gap-3 md:grid-cols-[280px_1fr]">
             <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3">
