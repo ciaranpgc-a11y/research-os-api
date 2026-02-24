@@ -416,9 +416,9 @@ function PublicationsPerYearChart({ tile }: { tile: PublicationMetricTilePayload
   const maxValue = Math.max(1, ...historyBars.map((item) => item.value))
   return (
     <div className="space-y-1">
-      <div className="flex h-20 items-end gap-1">
+      <div className="flex h-24 items-end gap-1">
         {historyBars.map((bar, index) => {
-          const baseHeight = Math.max(12, Math.round((bar.value / maxValue) * 72))
+          const baseHeight = Math.max(14, Math.round((bar.value / maxValue) * 88))
           const toneClass = bar.current
             ? 'border border-dashed border-slate-500 bg-slate-200/80'
             : bar.relative === 'above'
@@ -453,7 +453,7 @@ function PublicationsPerYearChart({ tile }: { tile: PublicationMetricTilePayload
         })}
       </div>
       <p className="text-[10px] text-muted-foreground">
-        Bar colour is relative to 5-year mean ({formatInt(meanValue)}); dashed bar is current year to date.
+        Dashed bar is current year to date.
       </p>
     </div>
   )
@@ -472,51 +472,51 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const uncitedPctRaw = Number(chartData.uncited_publications_pct)
   const uncitedCount = Number.isFinite(uncitedCountRaw) ? Math.max(0, Math.round(uncitedCountRaw)) : 0
   const uncitedPct = Number.isFinite(uncitedPctRaw) ? Math.max(0, Math.round(uncitedPctRaw)) : 0
+  const citedPct = Math.max(0, 100 - uncitedPct)
   const meaning = `Top 3 papers account for ${top3PctRounded}% of lifetime citations`
-  const [hoveredSegment, setHoveredSegment] = useState<'top3' | 'rest' | null>(null)
+  const uncitedMeaning = `Uncited publications account for ${uncitedPct}% of library (${uncitedCount})`
+  const [hoveredCitationSegment, setHoveredCitationSegment] = useState<'top3' | 'rest' | null>(null)
+  const [hoveredUncitedSegment, setHoveredUncitedSegment] = useState<'uncited' | 'cited' | null>(null)
   const top3Width = Math.max(0, Math.min(100, top3PctRounded))
   const restWidth = Math.max(0, Math.min(100, restPctRounded))
-  const hoverLabel = hoveredSegment === 'top3'
+  const hoverCitationLabel = hoveredCitationSegment === 'top3'
     ? `Top 3 ${top3PctRounded}%`
-    : hoveredSegment === 'rest'
+    : hoveredCitationSegment === 'rest'
       ? `Rest ${restPctRounded}%`
       : ''
-  const hoverLeft = hoveredSegment === 'top3'
+  const hoverCitationLeft = hoveredCitationSegment === 'top3'
     ? top3Width / 2
-    : hoveredSegment === 'rest'
+    : hoveredCitationSegment === 'rest'
       ? top3Width + restWidth / 2
+      : 50
+  const uncitedWidth = Math.max(0, Math.min(100, uncitedPct))
+  const citedWidth = Math.max(0, Math.min(100, citedPct))
+  const hoverUncitedLabel = hoveredUncitedSegment === 'uncited'
+    ? `Uncited ${uncitedPct}%`
+    : hoveredUncitedSegment === 'cited'
+      ? `Cited ${citedPct}%`
+      : ''
+  const hoverUncitedLeft = hoveredUncitedSegment === 'uncited'
+    ? uncitedWidth / 2
+    : hoveredUncitedSegment === 'cited'
+      ? uncitedWidth + citedWidth / 2
       : 50
 
   return (
     <div className="mt-1.5 flex items-start gap-3">
       <div className="min-w-0 flex-1">
         <p className="min-h-[18px] text-xs text-muted-foreground">{meaning}</p>
-        <div className="mt-1 rounded border border-border/70 bg-muted/25 px-2 py-1.5">
-          <div className="flex items-end justify-between gap-2">
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Uncited publications</p>
-            <p className="text-[11px] text-muted-foreground">{uncitedCount} paper{uncitedCount === 1 ? '' : 's'}</p>
-          </div>
-          <div className="mt-0.5 flex items-baseline gap-1">
-            <p className="text-sm font-semibold text-foreground">{uncitedPct}%</p>
-            <p className="text-[11px] text-muted-foreground">of library</p>
-          </div>
-          <div className="mt-1 h-1.5 overflow-hidden rounded bg-slate-200/80">
-            <div
-              className="h-full bg-slate-500/75"
-              style={{ width: `${Math.max(0, Math.min(100, uncitedPct))}%` }}
-            />
-          </div>
-        </div>
+        <p className="mt-1 min-h-[18px] text-xs text-muted-foreground">{uncitedMeaning}</p>
       </div>
       <div className="w-[52%] min-w-[170px]">
-        <div className="space-y-1">
+        <div className="space-y-2">
           <div className="relative">
-            {hoveredSegment ? (
+            {hoveredCitationSegment ? (
               <div
                 className="pointer-events-none absolute -top-7 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm"
-                style={{ left: `${Math.max(0, Math.min(100, hoverLeft))}%` }}
+                style={{ left: `${Math.max(0, Math.min(100, hoverCitationLeft))}%` }}
               >
-                {hoverLabel}
+                {hoverCitationLabel}
               </div>
             ) : null}
             <div className="h-6 overflow-hidden rounded border border-border/70 bg-muted/40">
@@ -525,10 +525,10 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                   <button
                     type="button"
                     data-stop-tile-open="true"
-                    onMouseEnter={() => setHoveredSegment('top3')}
-                    onMouseLeave={() => setHoveredSegment((current) => (current === 'top3' ? null : current))}
-                    onFocus={() => setHoveredSegment('top3')}
-                    onBlur={() => setHoveredSegment((current) => (current === 'top3' ? null : current))}
+                    onMouseEnter={() => setHoveredCitationSegment('top3')}
+                    onMouseLeave={() => setHoveredCitationSegment((current) => (current === 'top3' ? null : current))}
+                    onFocus={() => setHoveredCitationSegment('top3')}
+                    onBlur={() => setHoveredCitationSegment((current) => (current === 'top3' ? null : current))}
                     onClick={(event) => event.stopPropagation()}
                     onMouseDown={(event) => event.stopPropagation()}
                     className="h-full bg-slate-800/85"
@@ -541,16 +541,62 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                   <button
                     type="button"
                     data-stop-tile-open="true"
-                    onMouseEnter={() => setHoveredSegment('rest')}
-                    onMouseLeave={() => setHoveredSegment((current) => (current === 'rest' ? null : current))}
-                    onFocus={() => setHoveredSegment('rest')}
-                    onBlur={() => setHoveredSegment((current) => (current === 'rest' ? null : current))}
+                    onMouseEnter={() => setHoveredCitationSegment('rest')}
+                    onMouseLeave={() => setHoveredCitationSegment((current) => (current === 'rest' ? null : current))}
+                    onFocus={() => setHoveredCitationSegment('rest')}
+                    onBlur={() => setHoveredCitationSegment((current) => (current === 'rest' ? null : current))}
                     onClick={(event) => event.stopPropagation()}
                     onMouseDown={(event) => event.stopPropagation()}
                     className="h-full bg-slate-300/80"
                     style={{ width: `${restWidth}%` }}
                     aria-label={`Rest papers ${restPctRounded}%`}
                     title={`Other papers: ${rest.toLocaleString('en-GB')} citations`}
+                  />
+                ) : null}
+              </div>
+            </div>
+          </div>
+          <div className="relative">
+            {hoveredUncitedSegment ? (
+              <div
+                className="pointer-events-none absolute -top-7 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm"
+                style={{ left: `${Math.max(0, Math.min(100, hoverUncitedLeft))}%` }}
+              >
+                {hoverUncitedLabel}
+              </div>
+            ) : null}
+            <div className="h-6 overflow-hidden rounded border border-border/70 bg-muted/40">
+              <div className="flex h-full">
+                {uncitedWidth > 0 ? (
+                  <button
+                    type="button"
+                    data-stop-tile-open="true"
+                    onMouseEnter={() => setHoveredUncitedSegment('uncited')}
+                    onMouseLeave={() => setHoveredUncitedSegment((current) => (current === 'uncited' ? null : current))}
+                    onFocus={() => setHoveredUncitedSegment('uncited')}
+                    onBlur={() => setHoveredUncitedSegment((current) => (current === 'uncited' ? null : current))}
+                    onClick={(event) => event.stopPropagation()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    className="h-full bg-slate-700/85"
+                    style={{ width: `${uncitedWidth}%` }}
+                    aria-label={`Uncited publications ${uncitedPct}%`}
+                    title={`Uncited publications: ${uncitedCount.toLocaleString('en-GB')} works`}
+                  />
+                ) : null}
+                {citedWidth > 0 ? (
+                  <button
+                    type="button"
+                    data-stop-tile-open="true"
+                    onMouseEnter={() => setHoveredUncitedSegment('cited')}
+                    onMouseLeave={() => setHoveredUncitedSegment((current) => (current === 'cited' ? null : current))}
+                    onFocus={() => setHoveredUncitedSegment('cited')}
+                    onBlur={() => setHoveredUncitedSegment((current) => (current === 'cited' ? null : current))}
+                    onClick={(event) => event.stopPropagation()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    className="h-full bg-slate-300/80"
+                    style={{ width: `${citedWidth}%` }}
+                    aria-label={`Cited publications ${citedPct}%`}
+                    title="Publications with at least one citation"
                   />
                 ) : null}
               </div>
