@@ -27,7 +27,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 5
+TOP_METRICS_SCHEMA_VERSION = 6
 
 DELTA_COLOR_BY_TONE = {
     "positive": "#166534",
@@ -908,6 +908,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         )
         latest_provider = str(latest.provider or "manual").strip().lower() if latest is not None else "manual"
         provider_counts_latest[latest_provider] = provider_counts_latest.get(latest_provider, 0) + 1
+        fallback_year_for_row: int | None = None
 
         yearly_counts = _extract_counts_by_year(rows, now_year=now.year)
         if yearly_counts:
@@ -949,6 +950,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 if isinstance(work.year, int) and 1900 <= int(work.year) <= now.year
                 else now.year
             )
+            fallback_year_for_row = fallback_year
             aggregate_yearly_totals[fallback_year] += latest_citations
             best_12 = _best_snapshot_at_or_before(
                 rows,
@@ -1072,6 +1074,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "monthly_cumulative_25": cumulative_series,
                 "semantic_monthly_added_24": monthly_semantic_added,
                 "semantic_cumulative_25": semantic_cumulative_series,
+                "yearly_counts": {int(year): int(count) for year, count in yearly_counts.items()} if yearly_counts else {},
+                "fallback_year": fallback_year_for_row,
             }
         )
 
@@ -1436,6 +1440,58 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         else "Projection unavailable"
     )
 
+    def _citations_at_year(row: dict[str, Any], year: int) -> int:
+        yearly = row.get("yearly_counts")
+        if isinstance(yearly, dict) and yearly:
+            total = 0
+            for key, value in yearly.items():
+                parsed_year = _safe_int(key)
+                if parsed_year is None:
+                    continue
+                if parsed_year <= year:
+                    total += max(0, int(_safe_int(value) or 0))
+            return max(0, int(total))
+        fallback_year = _safe_int(row.get("fallback_year"))
+        if fallback_year is not None and fallback_year <= year:
+            return max(0, int(row.get("citations_lifetime") or 0))
+        publication_year = _safe_int(row.get("year"))
+        if publication_year is not None and publication_year > year:
+            return 0
+        return max(0, int(row.get("citations_lifetime") or 0))
+
+    h_projection = project_h_index(current_h_index=h_index, publications=per_work_rows)
+
+    h_yearly_values = [
+        compute_h_index([_citations_at_year(row, year) for row in per_work_rows])
+        for year in last5_complete_years
+    ]
+    h_projected_current_year = max(
+        h_yearly_values[-1] if h_yearly_values else h_index,
+        int(h_projection.get("projected_h_index") or h_index),
+    )
+    h_progress_to_next = float(h_projection.get("progress_to_next_pct") or 0.0)
+    h_next_target = int(h_index) + 1
+    h_projection_probability_pct = round(
+        float(h_projection.get("projection_probability") or 0.0) * 100.0
+    )
+    h_candidate_gaps = sorted(
+        [
+            max(0, int(item.get("citations_to_next_h") or 0))
+            for item in (h_projection.get("candidate_papers") or [])
+            if isinstance(item, dict)
+        ]
+    )
+    h_candidate_gaps = [gap for gap in h_candidate_gaps if gap > 0][:3]
+    h_gap_text = (
+        f"Top gaps: {', '.join(str(gap) for gap in h_candidate_gaps)} citations"
+        if h_candidate_gaps
+        else "No near-threshold papers identified"
+    )
+    h_subtext = f"{int(round(h_progress_to_next))}% to h={h_next_target}"
+    h_delta_display = (
+        f"Projected h {h_projected_current_year} in 12m ({h_projection_probability_pct:.0f}%)"
+    )
+
     this_vs_last_label = "Up" if yoy_delta > 0 else "Down" if yoy_delta < 0 else "Flat"
     this_vs_last_severity = "positive" if yoy_delta > 0 else "negative" if yoy_delta < 0 else "neutral"
     this_vs_last_subtext = (
@@ -1464,7 +1520,6 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     if not influence_available:
         influential_subtext = "Semantic Scholar influential signal unavailable"
 
-    h_projection = project_h_index(current_h_index=h_index, publications=per_work_rows)
     h_projection_publications = [
         _publication_item_with_links(dict(item))
         for item in (h_projection.get("candidate_papers") or [])
@@ -1667,24 +1722,23 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             label="h-index",
             value=h_index,
             value_display=f"{h_index}",
-            subtext=str(h_projection.get("label") or f"{h_index} (likely)"),
-            badge={
-                "label": "Likely up"
-                if int(h_projection.get("projected_h_index") or h_index) > h_index
-                else "Likely stable",
-                "severity": "positive"
-                if int(h_projection.get("projected_h_index") or h_index) > h_index
-                else "neutral",
-            },
-            chart_type="progress_ring",
+            subtext=h_subtext,
+            badge={"label": "", "severity": "neutral"},
+            chart_type="bar_year_5_h",
             chart_data={
+                "years": last5_complete_years,
+                "values": h_yearly_values,
+                "projected_year": now.year,
+                "projected_value": h_projected_current_year,
                 "progress_to_next_pct": float(h_projection.get("progress_to_next_pct") or 0.0),
                 "current_h_index": h_index,
                 "next_h_index": h_index + 1,
                 "projection_probability": float(h_projection.get("projection_probability") or 0.0),
+                "candidate_gaps": h_candidate_gaps,
+                "gap_text": h_gap_text,
             },
-            delta_value=float(h_projection.get("projection_probability") or 0.0) * 100.0,
-            delta_display=f"{round(float(h_projection.get('projection_probability') or 0.0) * 100)}% to next h",
+            delta_value=None,
+            delta_display=h_delta_display,
             unit="index",
             sparkline=h_index_series,
             tooltip=h_tooltip,
@@ -1699,7 +1753,14 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "confidence_note": _confidence_note(),
                 "publications": h_projection_publications,
                 "metadata": {
-                    "intermediate_values": h_projection,
+                    "intermediate_values": {
+                        **h_projection,
+                        "h_yearly_values_last5_complete_years": h_yearly_values,
+                        "h_projected_current_year": h_projected_current_year,
+                        "progress_to_next_h_pct": h_progress_to_next,
+                        "next_h_target": h_next_target,
+                        "candidate_gap_text": h_gap_text,
+                    },
                 },
             },
         ),

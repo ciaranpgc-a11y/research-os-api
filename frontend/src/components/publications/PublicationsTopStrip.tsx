@@ -322,6 +322,79 @@ function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayloa
   )
 }
 
+function HIndexYearChart({ tile }: { tile: PublicationMetricTilePayload }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const years = toNumberArray(chartData.years).map((item) => Math.round(item))
+  const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
+  const projectedYearRaw = Number(chartData.projected_year)
+  const projectedValueRaw = Number(chartData.projected_value)
+  const hasProjection =
+    Number.isFinite(projectedYearRaw) && Number.isFinite(projectedValueRaw) && projectedValueRaw >= 0
+
+  if (!years.length || !values.length || years.length !== values.length) {
+    return <div className="h-20 rounded bg-muted/60" />
+  }
+
+  const bars: Array<{ year: number; value: number; projected: boolean }> = years.map((year, index) => ({
+    year,
+    value: values[index],
+    projected: false,
+  }))
+  if (hasProjection) {
+    bars.push({
+      year: Math.round(projectedYearRaw),
+      value: Math.max(0, projectedValueRaw),
+      projected: true,
+    })
+  }
+
+  const maxValue = Math.max(1, ...bars.map((item) => item.value))
+
+  return (
+    <div className="space-y-1">
+      <div className="flex h-20 items-end gap-1">
+        {bars.map((bar, index) => {
+          const height = Math.max(12, Math.round((bar.value / maxValue) * 72))
+          const previous = index > 0 ? bars[index - 1].value : bar.value
+          const toneClass = bar.projected
+            ? 'border border-dashed border-slate-500 bg-slate-200/80'
+            : bar.value > previous
+              ? 'bg-emerald-600/85'
+              : bar.value < previous
+                ? 'bg-amber-500/85'
+                : 'bg-slate-500/80'
+          return (
+            <div key={`${bar.year}-${index}`} className="flex w-full flex-col items-center gap-1">
+              <button
+                type="button"
+                data-stop-tile-open="true"
+                onMouseEnter={() => setHoveredIndex(index)}
+                onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                onFocus={() => setHoveredIndex(index)}
+                onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
+                onClick={(event) => event.stopPropagation()}
+                onMouseDown={(event) => event.stopPropagation()}
+                className="relative w-full"
+                aria-label={`${bar.projected ? 'Projected ' : ''}h-index ${formatInt(bar.value)} in ${bar.year}`}
+              >
+                {hoveredIndex === index ? (
+                  <div className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm">
+                    h {formatInt(bar.value)}
+                  </div>
+                ) : null}
+                <div className={cn('w-full rounded-sm', toneClass)} style={{ height: `${height}px` }} />
+              </button>
+              <span className="text-[9px] text-muted-foreground">{String(bar.year).slice(-2)}</span>
+            </div>
+          )
+        })}
+      </div>
+      <p className="text-[10px] text-muted-foreground">h-index by year (complete years + projected current year).</p>
+    </div>
+  )
+}
+
 function MiniBars({
   values,
   className = '',
@@ -682,10 +755,13 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                 const badgeLabel = String((tile.badge?.label as string) || '').trim()
                 const subtitle = String(tile.subtext || '').trim()
                 const isTotalCitationsTile = tile.key === 'total_citations'
+                const isHIndexTile = tile.key === 'h_index_projection'
                 const rawDeltaDisplay = String(tile.delta_display || '').trim()
                 const shouldHideLegacyTrendText =
                   isTotalCitationsTile && /(falling|rising|stable over)/i.test(rawDeltaDisplay)
                 const effectiveDeltaDisplay = shouldHideLegacyTrendText ? '' : rawDeltaDisplay
+                const hChartData = (tile.chart_data || {}) as Record<string, unknown>
+                const hGapText = String(hChartData.gap_text || '').trim()
                 return (
                   <div
                     key={tile.key}
@@ -714,7 +790,7 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <p className="text-xs text-muted-foreground">{tile.label}</p>
                       <div className="flex items-center gap-1">
-                        {!isTotalCitationsTile && badgeLabel ? (
+                        {!isTotalCitationsTile && !isHIndexTile && badgeLabel ? (
                           <span className={cn('rounded border px-1.5 py-0.5 text-[10px]', badgeClass(tile))}>
                             {badgeLabel}
                           </span>
@@ -756,6 +832,27 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                         </div>
                         <div className="w-[48%] min-w-[160px]">
                           <TotalCitationsGrowthChart tile={tile} />
+                        </div>
+                      </div>
+                    ) : isHIndexTile ? (
+                      <div className="mt-1.5 flex items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="min-h-[18px] text-xs text-muted-foreground">
+                            {subtitle || '\u00A0'}
+                          </p>
+                          <p className="mt-0.5 min-h-[16px] text-[11px] text-muted-foreground">
+                            {hGapText || '\u00A0'}
+                          </p>
+                          {effectiveDeltaDisplay ? (
+                            <p className="mt-0.5 min-h-[16px] text-[11px] text-slate-600">
+                              {effectiveDeltaDisplay}
+                            </p>
+                          ) : (
+                            <p className="mt-0.5 min-h-[16px] text-[11px] text-muted-foreground">&nbsp;</p>
+                          )}
+                        </div>
+                        <div className="w-[48%] min-w-[160px]">
+                          <HIndexYearChart tile={tile} />
                         </div>
                       </div>
                     ) : (
