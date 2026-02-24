@@ -459,118 +459,53 @@ function PublicationsPerYearChart({ tile }: { tile: PublicationMetricTilePayload
   )
 }
 
-function AuthorRoleRing({ tile }: { tile: PublicationMetricTilePayload }) {
+function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload }) {
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
-  const roleCountsRaw = (chartData.author_role_counts || {}) as Record<string, unknown>
-  const unknownRaw = Number(chartData.author_role_unknown)
-  const unknown = Number.isFinite(unknownRaw) ? Math.max(0, Math.round(unknownRaw)) : 0
-  const segments = [
-    {
-      key: 'first',
-      label: '1st author',
-      short: '1st',
-      color: '#10b981',
-      chip: 'bg-emerald-500',
-      count: Math.max(0, Math.round(Number(roleCountsRaw.first || 0))),
-    },
-    {
-      key: 'second',
-      label: '2nd author',
-      short: '2nd',
-      color: '#0ea5e9',
-      chip: 'bg-sky-500',
-      count: Math.max(0, Math.round(Number(roleCountsRaw.second || 0))),
-    },
-    {
-      key: 'last',
-      label: 'Last author',
-      short: 'Last',
-      color: '#8b5cf6',
-      chip: 'bg-violet-500',
-      count: Math.max(0, Math.round(Number(roleCountsRaw.last || 0))),
-    },
-    {
-      key: 'other',
-      label: 'Other author',
-      short: 'Other',
-      color: '#64748b',
-      chip: 'bg-slate-500',
-      count: Math.max(0, Math.round(Number(roleCountsRaw.other || 0))),
-    },
-  ].filter((item) => item.count > 0)
-  const total = segments.reduce((sum, item) => sum + item.count, 0)
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null)
-  const hovered = segments.find((item) => item.key === hoveredKey) || null
-
-  if (total <= 0) {
-    return (
-      <p className="mt-1 text-[10px] text-muted-foreground">
-        No authorship-position data yet.
-      </p>
-    )
-  }
-
-  const radius = 13
-  const circumference = 2 * Math.PI * radius
-  let strokeOffset = 0
+  const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
+  const top3 = values[0] || 0
+  const rest = values[1] || 0
+  const total = Math.max(0, top3 + rest)
+  const top3Pct = total > 0 ? (top3 / total) * 100 : 0
+  const restPct = Math.max(0, 100 - top3Pct)
+  const trendValues = toNumberArray(tile.sparkline).map((item) => Math.max(0, item))
+  const classification = String(tile.subtext || '').trim() || 'Not classified'
+  const deltaRaw = Number(tile.delta_value)
+  const deltaLabel = Number.isFinite(deltaRaw) ? `${deltaRaw >= 0 ? '+' : ''}${deltaRaw.toFixed(2)}pp vs prior 12m` : ''
+  const meaning = `Top 3 papers account for ${top3Pct.toFixed(1)}% of lifetime citations`
 
   return (
-    <div className="mt-1.5 flex items-center gap-2">
-      <div className="relative">
-        <svg viewBox="0 0 36 36" className="h-10 w-10">
-          <circle cx="18" cy="18" r={radius} fill="none" stroke="#e2e8f0" strokeWidth="5" />
-          {segments.map((segment) => {
-            const ratio = segment.count / total
-            const length = Math.max(1, ratio * circumference)
-            const circle = (
-              <circle
-                key={segment.key}
-                cx="18"
-                cy="18"
-                r={radius}
-                fill="none"
-                stroke={segment.color}
-                strokeWidth="5"
-                strokeDasharray={`${length} ${circumference - length}`}
-                strokeDashoffset={-strokeOffset}
-                strokeLinecap="butt"
-                transform="rotate(-90 18 18)"
-                data-stop-tile-open="true"
-                onMouseEnter={() => setHoveredKey(segment.key)}
-                onMouseLeave={() => setHoveredKey((current) => (current === segment.key ? null : current))}
-              />
-            )
-            strokeOffset += length
-            return circle
-          })}
-        </svg>
-        <div className="pointer-events-none absolute inset-0 grid place-items-center text-[9px] font-medium text-slate-700">
-          {total}
-        </div>
+    <div className="mt-1.5 flex items-start gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="min-h-[18px] text-xs text-muted-foreground">{meaning}</p>
+        <p className="mt-0.5 min-h-[16px] text-[11px] text-muted-foreground">{deltaLabel || '\u00A0'}</p>
+        {trendValues.length > 0 ? (
+          <div className="mt-1.5">
+            <MiniLine values={trendValues} colorCode="#475569" />
+            <p className="mt-0.5 text-[10px] text-muted-foreground">12m concentration trend</p>
+          </div>
+        ) : null}
       </div>
-      <div className="min-w-0">
-        <p className="text-[10px] text-muted-foreground">
-          {hovered ? `${hovered.label}: ${hovered.count}` : '1st / 2nd / last / other'}
-        </p>
-        <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] text-muted-foreground">
-          {segments.map((segment) => (
-            <button
-              key={segment.key}
-              type="button"
-              data-stop-tile-open="true"
-              onMouseEnter={() => setHoveredKey(segment.key)}
-              onMouseLeave={() => setHoveredKey((current) => (current === segment.key ? null : current))}
-              onFocus={() => setHoveredKey(segment.key)}
-              onBlur={() => setHoveredKey((current) => (current === segment.key ? null : current))}
-              onClick={(event) => event.stopPropagation()}
-              onMouseDown={(event) => event.stopPropagation()}
-              className="inline-flex items-center gap-1 rounded border border-border px-1 py-0.5"
-            >
-              <span className={cn('inline-block h-1.5 w-1.5 rounded-full', segment.chip)} />
-              <span>{segment.short} {segment.count}</span>
-            </button>
-          ))}
-          {unknown > 0 ? <span className="inline-flex items-center">Unknown {unknown}</span> : null}
+      <div className="w-[52%] min-w-[170px]">
+        <div className="space-y-1">
+          <div className="h-6 overflow-hidden rounded border border-border/70 bg-muted/40">
+            <div className="flex h-full">
+              <div
+                className="h-full bg-slate-800/85"
+                style={{ width: `${Math.max(0, Math.min(100, top3Pct))}%` }}
+                title={`Top 3 papers: ${top3.toLocaleString('en-GB')} citations`}
+              />
+              <div
+                className="h-full bg-slate-300/80"
+                style={{ width: `${Math.max(0, Math.min(100, restPct))}%` }}
+                title={`Other papers: ${rest.toLocaleString('en-GB')} citations`}
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+            <span>Top 3 {top3Pct.toFixed(1)}%</span>
+            <span>Rest {restPct.toFixed(1)}%</span>
+          </div>
+          <p className="text-[10px] text-muted-foreground">{classification}</p>
         </div>
       </div>
     </div>
@@ -938,6 +873,7 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                 const isTotalCitationsTile = tile.key === 'total_citations'
                 const isTotalPublicationsTile = tile.key === 'this_year_vs_last'
                 const isHIndexTile = tile.key === 'h_index_projection'
+                const isImpactConcentrationTile = tile.key === 'impact_concentration'
                 const rawDeltaDisplay = String(tile.delta_display || '').trim()
                 const shouldHideLegacyTrendText =
                   isTotalCitationsTile && /(falling|rising|stable over)/i.test(rawDeltaDisplay)
@@ -985,7 +921,12 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <p className="text-xs text-muted-foreground">{tile.label}</p>
                       <div className="flex items-center gap-1">
-                        {!isTotalCitationsTile && !isTotalPublicationsTile && !isHIndexTile && badgeLabel ? (
+                        {!isTotalCitationsTile && !isTotalPublicationsTile && !isHIndexTile && !isImpactConcentrationTile && badgeLabel ? (
+                          <span className={cn('rounded border px-1.5 py-0.5 text-[10px]', badgeClass(tile))}>
+                            {badgeLabel}
+                          </span>
+                        ) : null}
+                        {isImpactConcentrationTile && badgeLabel ? (
                           <span className={cn('rounded border px-1.5 py-0.5 text-[10px]', badgeClass(tile))}>
                             {badgeLabel}
                           </span>
@@ -1038,7 +979,6 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                           <p className="min-h-[18px] text-xs text-muted-foreground">
                             {subtitle || '\u00A0'}
                           </p>
-                          <AuthorRoleRing tile={tile} />
                         </div>
                         <div className="w-[54%] min-w-[180px]">
                           <PublicationsPerYearChart tile={tile} />
@@ -1075,6 +1015,8 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                           <HIndexYearChart tile={tile} />
                         </div>
                       </div>
+                    ) : isImpactConcentrationTile ? (
+                      <ImpactConcentrationPanel tile={tile} />
                     ) : (
                       <>
                         <p className="mt-0.5 min-h-[18px] text-xs text-muted-foreground">
