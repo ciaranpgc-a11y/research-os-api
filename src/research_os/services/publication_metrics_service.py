@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import threading
 from collections import defaultdict
@@ -27,7 +28,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 7
+TOP_METRICS_SCHEMA_VERSION = 8
 
 DELTA_COLOR_BY_TONE = {
     "positive": "#166534",
@@ -609,9 +610,16 @@ def project_h_index(
 
     candidate_papers: list[dict[str, Any]] = []
     expected_above = 0.0
+    current_above = 0
+    projected_above = 0
     for item in publications:
         citations_now = max(0, int(item.get("citations_lifetime") or 0))
         citations_last_12 = max(0, int(item.get("citations_last_12m") or 0))
+        projected_citations = citations_now + citations_last_12
+        if citations_now >= next_h:
+            current_above += 1
+        if projected_citations >= next_h:
+            projected_above += 1
         if citations_now >= next_h:
             probability = 1.0
         else:
@@ -625,13 +633,25 @@ def project_h_index(
                     **item,
                     "citations_to_next_h": max(0, next_h - citations_now),
                     "projection_probability": round(probability, 2),
-                    "projected_citations_12m": citations_now + citations_last_12,
+                    "projected_citations_12m": projected_citations,
                 }
             )
 
-    projection_probability = max(0.0, min(1.0, expected_above - float(h_now)))
-    projected_h = next_h if projection_probability > 0.5 else h_now
-    progress_to_next = round(min(100.0, (expected_above / float(next_h)) * 100.0), 1)
+    projected_h = next_h if projected_above >= next_h else h_now
+    # Keep progress grounded in current state only (not projected state).
+    progress_to_next = (
+        100.0
+        if current_above >= next_h
+        else round(min(99.0, (float(current_above) / float(next_h)) * 100.0), 1)
+    )
+    # Convert expected papers at threshold into a bounded confidence estimate.
+    delta = expected_above - float(next_h)
+    projection_probability = 1.0 / (1.0 + math.exp(-2.2 * delta))
+    if projected_h > h_now:
+        projection_probability = max(0.51, projection_probability)
+    else:
+        projection_probability = min(0.49, projection_probability)
+    projection_probability = max(0.05, min(0.97, projection_probability))
     label = (
         f"{h_now} -> {projected_h} ({round(projection_probability * 100)}%)"
         if projected_h > h_now
@@ -646,6 +666,10 @@ def project_h_index(
         "projected_h_index": projected_h,
         "projection_probability": round(projection_probability, 2),
         "progress_to_next_pct": progress_to_next,
+        "current_papers_meeting_next_h": int(current_above),
+        "projected_papers_meeting_next_h": int(projected_above),
+        "papers_needed_now": max(0, int(next_h - current_above)),
+        "papers_needed_projected": max(0, int(next_h - projected_above)),
         "candidate_papers": candidate_papers[:20],
         "label": label,
     }

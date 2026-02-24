@@ -356,14 +356,9 @@ function HIndexYearChart({ tile }: { tile: PublicationMetricTilePayload }) {
       <div className="flex h-20 items-end gap-1">
         {bars.map((bar, index) => {
           const height = Math.max(12, Math.round((bar.value / maxValue) * 72))
-          const previous = index > 0 ? bars[index - 1].value : bar.value
           const toneClass = bar.projected
-            ? 'border border-dashed border-slate-500 bg-slate-200/80'
-            : bar.value > previous
-              ? 'bg-emerald-600/85'
-              : bar.value < previous
-                ? 'bg-amber-500/85'
-                : 'bg-slate-500/80'
+            ? 'border border-dashed border-emerald-700/60 bg-emerald-500/75'
+            : 'bg-slate-500/80'
           return (
             <div key={`${bar.year}-${index}`} className="flex w-full flex-col items-center gap-1">
               <button
