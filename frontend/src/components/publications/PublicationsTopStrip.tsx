@@ -491,15 +491,18 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
     <div className="mt-1.5 flex items-start gap-3">
       <div className="min-w-0 flex-1">
         <p className="min-h-[18px] text-xs text-muted-foreground">{meaning}</p>
-        <div className="mt-1 rounded border border-amber-200/80 bg-amber-50/60 px-2 py-1.5">
-          <p className="text-[10px] font-medium uppercase tracking-wide text-amber-800">Uncited publications</p>
-          <div className="mt-0.5 flex items-end justify-between gap-2">
-            <p className="text-sm font-semibold text-amber-900">{uncitedPct}%</p>
-            <p className="text-[11px] text-amber-800">{uncitedCount} paper{uncitedCount === 1 ? '' : 's'}</p>
+        <div className="mt-1 rounded border border-border/70 bg-muted/25 px-2 py-1.5">
+          <div className="flex items-end justify-between gap-2">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Uncited publications</p>
+            <p className="text-[11px] text-muted-foreground">{uncitedCount} paper{uncitedCount === 1 ? '' : 's'}</p>
           </div>
-          <div className="mt-1 h-1.5 overflow-hidden rounded bg-amber-100">
+          <div className="mt-0.5 flex items-baseline gap-1">
+            <p className="text-sm font-semibold text-foreground">{uncitedPct}%</p>
+            <p className="text-[11px] text-muted-foreground">of library</p>
+          </div>
+          <div className="mt-1 h-1.5 overflow-hidden rounded bg-slate-200/80">
             <div
-              className="h-full bg-amber-500/85"
+              className="h-full bg-slate-500/75"
               style={{ width: `${Math.max(0, Math.min(100, uncitedPct))}%` }}
             />
           </div>
