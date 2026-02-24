@@ -48,6 +48,16 @@ const unlinkedOrcidStatus: OrcidStatusPayload = {
   can_import: false,
   issues: [],
 }
+
+const providerIssueStatus: OrcidStatusPayload = {
+  configured: false,
+  linked: false,
+  orcid_id: null,
+  redirect_uri: 'https://api.axiomos.studio/v1/orcid/callback',
+  can_import: false,
+  issues: ['ORCID client credentials are missing in backend environment.'],
+}
+
 const fixturePersonaState: PersonaStatePayload = {
   works: [
     {
@@ -178,6 +188,7 @@ const runningSyncJob: PersonaSyncJobPayload = {
   created_at: '2026-02-24T16:57:00Z',
   updated_at: '2026-02-24T17:02:00Z',
 }
+
 const connectedFixture: ProfileIntegrationsPageFixture = {
   token: 'storybook-session-token',
   user: fixtureUser,
@@ -187,6 +198,23 @@ const connectedFixture: ProfileIntegrationsPageFixture = {
   lastReferencesSyncedCount: 0,
   lastSyncSinceLabel: '24 Feb, 15:39',
   lastSyncOutcome: 'No new records',
+}
+
+const activityFixture: ProfileIntegrationsPageFixture = {
+  ...connectedFixture,
+  lastImportedCount: 7,
+  lastReferencesSyncedCount: 31,
+  lastSyncSinceLabel: '24 Feb, 17:18',
+  lastSyncOutcome: '+7 works',
+  status: 'ORCID sync completed in background.',
+}
+
+const highActivityFixture: ProfileIntegrationsPageFixture = {
+  ...connectedFixture,
+  lastImportedCount: 18,
+  lastReferencesSyncedCount: 112,
+  lastSyncSinceLabel: '24 Feb, 17:21',
+  lastSyncOutcome: '+18 works',
 }
 
 const unlinkedFixture: ProfileIntegrationsPageFixture = {
@@ -203,7 +231,16 @@ const unlinkedFixture: ProfileIntegrationsPageFixture = {
       works: [],
     },
   },
-  status: 'Connect ORCID to start importing works.',
+}
+
+const providerMisconfiguredFixture: ProfileIntegrationsPageFixture = {
+  ...unlinkedFixture,
+  orcidStatus: providerIssueStatus,
+}
+
+const apiErrorFixture: ProfileIntegrationsPageFixture = {
+  ...connectedFixture,
+  error: 'Could not reach API. Failed to fetch.',
 }
 
 const runningFixture: ProfileIntegrationsPageFixture = {
@@ -249,9 +286,33 @@ type Story = StoryObj<typeof ProfileIntegrationsPage>
 
 export const Connected: Story = {}
 
+export const NewWorksAndCitations: Story = {
+  args: {
+    fixture: activityFixture,
+  },
+}
+
+export const HighActivity: Story = {
+  args: {
+    fixture: highActivityFixture,
+  },
+}
+
 export const Unlinked: Story = {
   args: {
     fixture: unlinkedFixture,
+  },
+}
+
+export const ProviderMisconfigured: Story = {
+  args: {
+    fixture: providerMisconfiguredFixture,
+  },
+}
+
+export const ApiError: Story = {
+  args: {
+    fixture: apiErrorFixture,
   },
 }
 
@@ -260,8 +321,4 @@ export const SyncRunning: Story = {
     fixture: runningFixture,
   },
 }
-
-
-
-
 

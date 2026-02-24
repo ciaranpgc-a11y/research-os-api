@@ -359,10 +359,6 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
           setActiveSyncJob(null)
         }
       }
-      const failedCount = settled.filter((item) => item.status === 'rejected').length
-      if (failedCount > 0) {
-        setStatus(`Integrations loaded with ${failedCount} unavailable source${failedCount === 1 ? '' : 's'}.`)
-      }
       return { personaState: resolvedPersonaState }
     } catch (loadError) {
       if (handleSessionExpiry(loadError)) {
@@ -547,7 +543,6 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
       return
     }
     if (!(orcidStatus?.linked || user?.orcid_id)) {
-      setStatus('Connect ORCID before importing works.')
       return
     }
     setImporting(true)
@@ -735,7 +730,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
                     ? 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
                     : orcidLinked
                       ? 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))]'
-                      : 'border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--tone-warning-50))] text-[hsl(var(--tone-warning-800))]'
+                      : 'border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-700))]'
                 }`}
               >
                 {connectionStatusLabel}
@@ -934,8 +929,4 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     </section>
   )
 }
-
-
-
-
 
