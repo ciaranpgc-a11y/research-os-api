@@ -141,19 +141,67 @@ function buildMomentumBreakdown(tile: PublicationMetricTilePayload): MomentumBre
 
 type TotalTrendMode = 'year' | 'month'
 
-function smoothPath(values: number[], width: number, height: number, padding = 4): string {
-  if (values.length === 0) {
-    return ''
+type LinePoint = {
+  x: number
+  y: number
+  value: number
+  label: string
+}
+
+type MetricBarDatum = {
+  key: string
+  label: string
+  value: number
+  tooltip: ReactNode
+  ariaLabel: string
+  toneClass?: string
+  dashed?: boolean
+  valueText?: string
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+}
+
+function normalizeSeriesLabels(value: unknown, count: number, prefix: string): string[] {
+  const labels = toStringArray(value)
+  if (labels.length >= count) {
+    return labels.slice(-count)
+  }
+  return Array.from({ length: count }, (_, index) => `${prefix} ${index + 1}`)
+}
+
+function buildLinePoints(
+  values: number[],
+  width: number,
+  height: number,
+  labels: string[],
+  padding = 6,
+): LinePoint[] {
+  if (!values.length) {
+    return []
   }
   const max = Math.max(...values)
   const min = Math.min(...values)
   const range = Math.max(1e-6, max - min)
   const step = values.length > 1 ? (width - padding * 2) / (values.length - 1) : 0
-  const points = values.map((value, index) => {
-    const x = padding + index * step
-    const y = height - padding - ((value - min) / range) * (height - padding * 2)
-    return { x, y }
-  })
+  return values.map((value, index) => ({
+    x: padding + index * step,
+    y: height - padding - ((value - min) / range) * (height - padding * 2),
+    value,
+    label: labels[index] || `${index + 1}`,
+  }))
+}
+
+function smoothPathFromPoints(points: Array<{ x: number; y: number }>): string {
+  if (points.length === 0) {
+    return ''
+  }
   if (points.length === 1) {
     const p = points[0]
     return `M ${p.x} ${p.y}`
@@ -168,6 +216,97 @@ function smoothPath(values: number[], width: number, height: number, padding = 4
   return d
 }
 
+function areaPathFromPoints(points: Array<{ x: number; y: number }>, height: number, padding = 6): string {
+  if (!points.length) {
+    return ''
+  }
+  const topPath = smoothPathFromPoints(points)
+  const first = points[0]
+  const last = points[points.length - 1]
+  const baselineY = height - padding
+  return `${topPath} L ${last.x} ${baselineY} L ${first.x} ${baselineY} Z`
+}
+
+function smoothPath(values: number[], width: number, height: number, padding = 6): string {
+  const labels = Array.from({ length: values.length }, (_, index) => String(index))
+  const points = buildLinePoints(values, width, height, labels, padding)
+  return smoothPathFromPoints(points)
+}
+
+function MetricBarsChart({
+  items,
+  emptyLabel,
+  minBarHeight = 14,
+  maxBarHeight = 80,
+}: {
+  items: MetricBarDatum[]
+  emptyLabel: string
+  minBarHeight?: number
+  maxBarHeight?: number
+}) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  if (!items.length) {
+    return <div className={dashboardTileStyles.emptyChart}>{emptyLabel}</div>
+  }
+  const maxValue = Math.max(1, ...items.map((item) => Math.max(0, item.value)))
+  return (
+    <TooltipProvider delayDuration={90}>
+      <div className={dashboardTileStyles.rightChartSurface}>
+        {items.map((item, index) => {
+          const safeValue = Math.max(0, item.value)
+          const height = Math.max(minBarHeight, Math.round((safeValue / maxValue) * maxBarHeight))
+          const isActive = hoveredIndex === index
+          const toneClass = item.dashed
+            ? 'border border-dashed border-foreground/55 bg-foreground/10'
+            : item.toneClass || 'bg-foreground/55'
+          return (
+            <div key={item.key} className={dashboardTileStyles.barWrapper}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    data-stop-tile-open="true"
+                    tabIndex={dashboardTileBarTabIndex}
+                    onMouseEnter={() => setHoveredIndex(index)}
+                    onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                    onFocus={() => setHoveredIndex(index)}
+                    onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
+                    onClick={(event) => event.stopPropagation()}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    className={cn(
+                      dashboardTileStyles.barTrigger,
+                      dashboardTileStyles.barFocusRing,
+                    )}
+                    aria-label={item.ariaLabel}
+                  >
+                    {isActive ? (
+                      <div className={dashboardTileStyles.valuePill}>
+                        {item.valueText || formatInt(safeValue)}
+                      </div>
+                    ) : null}
+                    <div
+                      className={cn(
+                        dashboardTileStyles.barShape,
+                        toneClass,
+                        isActive && !item.dashed && 'bg-foreground/80',
+                      )}
+                      style={{ height: `${height}px` }}
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="px-2 py-1 text-[10px] leading-snug">
+                  {item.tooltip}
+                </TooltipContent>
+              </Tooltip>
+              <span className="text-[10px] text-muted-foreground">{item.label}</span>
+            </div>
+          )
+        })}
+      </div>
+    </TooltipProvider>
+  )
+}
+
 function TotalCitationsMiniTrend({
   tile,
   mode,
@@ -177,28 +316,37 @@ function TotalCitationsMiniTrend({
   mode: TotalTrendMode
   onModeChange: (next: TotalTrendMode) => void
 }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const yearLabels = toStringArray(chartData.years).map((value) => value.slice(-2))
   const yearlyValues = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const monthlyValues = toNumberArray(chartData.monthly_values_12m).map((item) => Math.max(0, item))
+  const monthLabels = toStringArray(chartData.month_labels_12m)
   const monthModeAvailable = monthlyValues.length >= 12
   const effectiveMode: TotalTrendMode = mode === 'month' && !monthModeAvailable ? 'year' : mode
   const values = effectiveMode === 'year' ? yearlyValues : monthlyValues
+  const labels = effectiveMode === 'year'
+    ? normalizeSeriesLabels(yearLabels, values.length, 'Y')
+    : monthLabels.length >= values.length
+      ? monthLabels.slice(-values.length)
+      : fallbackMonthLabels(values.length)
   useEffect(() => {
     if (mode === 'month' && !monthModeAvailable) {
       onModeChange('year')
     }
   }, [mode, monthModeAvailable, onModeChange])
   if (!values.length) {
-    return <div className="h-12 rounded bg-muted/60" />
+    return <div className={dashboardTileStyles.emptyChart}>No trend points</div>
   }
 
-  const width = 180
-  const height = 44
-  const path = smoothPath(values, width, height)
+  const width = 220
+  const height = 64
+  const points = buildLinePoints(values, width, height, labels)
+  const path = smoothPathFromPoints(points)
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-1 text-[10px]">
+    <div className="space-y-2">
+      <div className="inline-flex items-center rounded-full border border-border bg-muted/30 p-0.5">
         <button
           type="button"
           data-stop-tile-open="true"
@@ -208,8 +356,10 @@ function TotalCitationsMiniTrend({
           }}
           onMouseDown={(event) => event.stopPropagation()}
           className={cn(
-            'rounded border px-1.5 py-0.5',
-            mode === 'year' ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-300 text-slate-600',
+            'h-6 rounded-full px-2 text-[11px] font-semibold transition-colors',
+            effectiveMode === 'year'
+              ? 'bg-foreground text-background'
+              : 'text-muted-foreground hover:bg-muted/70',
           )}
         >
           5y
@@ -227,39 +377,78 @@ function TotalCitationsMiniTrend({
           }}
           onMouseDown={(event) => event.stopPropagation()}
           className={cn(
-            'rounded border px-1.5 py-0.5',
+            'h-6 rounded-full px-2 text-[11px] font-semibold transition-colors',
             !monthModeAvailable
-              ? 'cursor-not-allowed border-slate-200 text-slate-400'
-              : mode === 'month'
-                ? 'border-slate-700 bg-slate-700 text-white'
-                : 'border-slate-300 text-slate-600',
+              ? 'cursor-not-allowed text-muted-foreground/50'
+              : effectiveMode === 'month'
+                ? 'bg-foreground text-background'
+                : 'text-muted-foreground hover:bg-muted/70',
           )}
           title={!monthModeAvailable ? '12-month curve will appear after metrics refresh completes.' : undefined}
         >
           12m
         </button>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-12 w-full">
-        <path
-          d={path}
-          fill="none"
-          stroke="#0f172a"
-          strokeWidth="2.25"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
+      <div className="relative h-16">
+        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-16 w-full">
+          <path
+            d={path}
+            fill="none"
+            className="stroke-foreground/80"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <TooltipProvider delayDuration={90}>
+          {points.map((point, index) => (
+            <Tooltip key={`${point.label}-${index}`}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  data-stop-tile-open="true"
+                  tabIndex={dashboardTileBarTabIndex}
+                  onMouseEnter={() => setHoveredIndex(index)}
+                  onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                  onFocus={() => setHoveredIndex(index)}
+                  onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
+                  onClick={(event) => event.stopPropagation()}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  className={cn(
+                    'absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full',
+                    dashboardTileStyles.barFocusRing,
+                  )}
+                  style={{
+                    left: `${(point.x / width) * 100}%`,
+                    top: `${(point.y / height) * 100}%`,
+                  }}
+                  aria-label={`${point.label}: ${formatInt(point.value)} citations`}
+                >
+                  <span
+                    className={cn(
+                      'pointer-events-none absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background bg-foreground transition-transform',
+                      hoveredIndex === index && 'scale-110',
+                    )}
+                  />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="px-2 py-1 text-[10px]">
+                <p>{point.label}: {formatInt(point.value)} citations</p>
+              </TooltipContent>
+            </Tooltip>
+          ))}
+        </TooltipProvider>
+      </div>
     </div>
   )
 }
 
 function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayload }) {
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   if (!years.length || !values.length || years.length !== values.length) {
-    return <div className="h-20 rounded bg-muted/60" />
+    return <div className={dashboardTileStyles.emptyChart}>No yearly citation data</div>
   }
   const meanValueRaw = Number(chartData.mean_value)
   const meanValue = Number.isFinite(meanValueRaw) && meanValueRaw > 0
@@ -328,46 +517,32 @@ function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayloa
       `vs last complete year: ${formatSignedInt(currentDelta)} (${formatSignedPct(currentPct)})`,
     ].filter(Boolean),
   })
-  const maxValue = Math.max(1, ...baseWithoutCurrent.map((item) => item.value))
+  const chartItems: MetricBarDatum[] = baseWithoutCurrent.map((bar, index) => ({
+    key: `${bar.year}-${index}`,
+    label: String(bar.year).slice(-2),
+    value: bar.value,
+    dashed: bar.current,
+    toneClass: bar.current
+      ? undefined
+      : bar.relative === 'above'
+        ? 'bg-emerald-600/80'
+        : bar.relative === 'below'
+          ? 'bg-amber-500/80'
+          : 'bg-foreground/55',
+    valueText: formatInt(bar.value),
+    ariaLabel: bar.detailLines.join(' | '),
+    tooltip: (
+      <div className="space-y-0.5">
+        {bar.detailLines.map((line, lineIndex) => (
+          <p key={`${lineIndex}-${line}`}>{line}</p>
+        ))}
+      </div>
+    ),
+  }))
   return (
     <div className="space-y-1">
-      <div className="flex h-20 items-end gap-1">
-        {baseWithoutCurrent.map((bar, index) => {
-          const baseHeight = Math.max(12, Math.round((bar.value / maxValue) * 72))
-          const toneClass = bar.current
-            ? 'border border-dashed border-slate-500 bg-slate-200/80'
-            : bar.relative === 'above'
-              ? 'bg-emerald-600/85'
-              : bar.relative === 'below'
-                ? 'bg-amber-500/85'
-                : 'bg-slate-500/80'
-          return (
-            <div key={`${bar.year}-${index}`} className="flex w-full flex-col items-center gap-1">
-              <button
-                type="button"
-                data-stop-tile-open="true"
-                onMouseEnter={() => setHoveredIndex(index)}
-                onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
-                onFocus={() => setHoveredIndex(index)}
-                onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
-                onClick={(event) => event.stopPropagation()}
-                onMouseDown={(event) => event.stopPropagation()}
-                className="relative w-full"
-                aria-label={bar.detailLines.join(' | ')}
-              >
-                {hoveredIndex === index ? (
-                  <div className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm">
-                    {formatInt(bar.value)}
-                  </div>
-                ) : null}
-                <div className={cn('w-full rounded-sm', toneClass)} style={{ height: `${baseHeight}px` }} />
-              </button>
-              <span className="text-[9px] text-muted-foreground">{String(bar.year).slice(-2)}</span>
-            </div>
-          )
-        })}
-      </div>
-      <p className="text-[10px] text-muted-foreground">
+      <MetricBarsChart items={chartItems} emptyLabel="No yearly citation data" />
+      <p className={dashboardTileStyles.tileMicroLabel}>
         Bar colour is relative to 5-year mean ({formatInt(meanValue)}); dashed bar is current year to date.
       </p>
     </div>
@@ -375,7 +550,6 @@ function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayloa
 }
 
 function HIndexYearChart({ tile }: { tile: PublicationMetricTilePayload }) {
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
@@ -384,7 +558,7 @@ function HIndexYearChart({ tile }: { tile: PublicationMetricTilePayload }) {
   const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
 
   if (!years.length || !values.length || years.length !== values.length) {
-    return <div className="h-20 rounded bg-muted/60" />
+    return <div className={dashboardTileStyles.emptyChart}>No h-index timeline</div>
   }
 
   const baseBars: Array<{ year: number; value: number; current: boolean }> = years.map((year, index) => ({
@@ -409,55 +583,36 @@ function HIndexYearChart({ tile }: { tile: PublicationMetricTilePayload }) {
     value: currentValue,
     current: true,
   })
-
-  const maxValue = Math.max(1, ...bars.map((item) => item.value))
+  const chartItems: MetricBarDatum[] = bars.map((bar, index) => ({
+    key: `${bar.year}-${index}`,
+    label: String(bar.year).slice(-2),
+    value: bar.value,
+    dashed: bar.current,
+    toneClass: bar.current ? undefined : 'bg-foreground/55',
+    valueText: `h ${formatInt(bar.value)}`,
+    ariaLabel: `${bar.current ? 'Current ' : ''}h-index ${formatInt(bar.value)} in ${bar.year}`,
+    tooltip: (
+      <div className="space-y-0.5">
+        <p>{bar.current ? 'Current year' : 'Year'}: {bar.year}</p>
+        <p>h-index: {formatInt(bar.value)}</p>
+      </div>
+    ),
+  }))
 
   return (
     <div className="space-y-1">
-      <div className="flex h-20 items-end gap-1">
-        {bars.map((bar, index) => {
-          const baseHeight = Math.max(12, Math.round((bar.value / maxValue) * 72))
-          const toneClass = bar.current
-            ? 'border border-dashed border-slate-500 bg-slate-200/80'
-            : 'bg-slate-500/80'
-          return (
-            <div key={`${bar.year}-${index}`} className="flex w-full flex-col items-center gap-1">
-              <button
-                type="button"
-                data-stop-tile-open="true"
-                onMouseEnter={() => setHoveredIndex(index)}
-                onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
-                onFocus={() => setHoveredIndex(index)}
-                onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
-                onClick={(event) => event.stopPropagation()}
-                onMouseDown={(event) => event.stopPropagation()}
-                className="relative w-full"
-                aria-label={`${bar.current ? 'Current ' : ''}h-index ${formatInt(bar.value)} in ${bar.year}`}
-              >
-                {hoveredIndex === index ? (
-                  <div className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm">
-                    h {formatInt(bar.value)}
-                  </div>
-                ) : null}
-                <div className={cn('w-full rounded-sm', toneClass)} style={{ height: `${baseHeight}px` }} />
-              </button>
-              <span className="text-[9px] text-muted-foreground">{String(bar.year).slice(-2)}</span>
-            </div>
-          )
-        })}
-      </div>
-      <p className="text-[10px] text-muted-foreground">h-index by year; dashed bar is current year.</p>
+      <MetricBarsChart items={chartItems} emptyLabel="No h-index timeline" />
+      <p className={dashboardTileStyles.tileMicroLabel}>h-index by year; dashed bar is current year.</p>
     </div>
   )
 }
 
 function PublicationsPerYearChart({ tile }: { tile: PublicationMetricTilePayload }) {
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   if (!years.length || !values.length || years.length !== values.length) {
-    return <div className="h-20 rounded bg-muted/60" />
+    return <div className={dashboardTileStyles.emptyChart}>No publication timeline</div>
   }
   const meanValueRaw = Number(chartData.mean_value)
   const meanValue = Number.isFinite(meanValueRaw) && meanValueRaw >= 0
@@ -492,46 +647,31 @@ function PublicationsPerYearChart({ tile }: { tile: PublicationMetricTilePayload
     current: true,
     relative: 'near',
   })
-  const maxValue = Math.max(1, ...historyBars.map((item) => item.value))
+  const chartItems: MetricBarDatum[] = historyBars.map((bar, index) => ({
+    key: `${bar.year}-${index}`,
+    label: String(bar.year).slice(-2),
+    value: bar.value,
+    dashed: bar.current,
+    toneClass: bar.current
+      ? undefined
+      : bar.relative === 'above'
+        ? 'bg-emerald-600/80'
+        : bar.relative === 'below'
+          ? 'bg-amber-500/80'
+          : 'bg-foreground/55',
+    valueText: formatInt(bar.value),
+    ariaLabel: `${bar.current ? 'Current ' : ''}publications ${formatInt(bar.value)} in ${bar.year}`,
+    tooltip: (
+      <div className="space-y-0.5">
+        <p>{bar.current ? 'Current year (YTD)' : 'Year'}: {bar.year}</p>
+        <p>Publications: {formatInt(bar.value)}</p>
+      </div>
+    ),
+  }))
   return (
     <div className="space-y-1">
-      <div className="flex h-24 items-end gap-1">
-        {historyBars.map((bar, index) => {
-          const baseHeight = Math.max(14, Math.round((bar.value / maxValue) * 88))
-          const toneClass = bar.current
-            ? 'border border-dashed border-slate-500 bg-slate-200/80'
-            : bar.relative === 'above'
-              ? 'bg-emerald-600/85'
-              : bar.relative === 'below'
-                ? 'bg-amber-500/85'
-                : 'bg-slate-500/80'
-          return (
-            <div key={`${bar.year}-${index}`} className="flex w-full flex-col items-center gap-1">
-              <button
-                type="button"
-                data-stop-tile-open="true"
-                onMouseEnter={() => setHoveredIndex(index)}
-                onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
-                onFocus={() => setHoveredIndex(index)}
-                onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
-                onClick={(event) => event.stopPropagation()}
-                onMouseDown={(event) => event.stopPropagation()}
-                className="relative w-full"
-                aria-label={`${bar.current ? 'Current ' : ''}publications ${formatInt(bar.value)} in ${bar.year}`}
-              >
-                {hoveredIndex === index ? (
-                  <div className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm">
-                    {formatInt(bar.value)}
-                  </div>
-                ) : null}
-                <div className={cn('w-full rounded-sm', toneClass)} style={{ height: `${baseHeight}px` }} />
-              </button>
-              <span className="text-[9px] text-muted-foreground">{String(bar.year).slice(-2)}</span>
-            </div>
-          )
-        })}
-      </div>
-      <p className="text-[10px] text-muted-foreground">
+      <MetricBarsChart items={chartItems} emptyLabel="No publication timeline" />
+      <p className={dashboardTileStyles.tileMicroLabel}>
         Dashed bar is current year to date.
       </p>
     </div>
