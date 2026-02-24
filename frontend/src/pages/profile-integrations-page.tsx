@@ -786,7 +786,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   }
 
   return (
-    <section className="mx-auto w-full max-w-5xl space-y-4">
+    <section className="space-y-4">
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Integrations</h1>
       </header>
