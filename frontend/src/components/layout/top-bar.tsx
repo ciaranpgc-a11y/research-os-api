@@ -18,6 +18,16 @@ type TopBarProps = {
   showLeftNavButton?: boolean
 }
 
+const topNavItemBase =
+  'inline-flex h-8 items-center rounded-md border border-transparent px-3 text-label font-medium leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-600))]'
+const topNavItemIdle = 'text-[hsl(var(--tone-neutral-600))] hover:bg-[hsl(var(--tone-neutral-100))] hover:text-[hsl(var(--tone-neutral-900))]'
+const topNavItemActive =
+  'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-100))] text-[hsl(var(--tone-accent-800))]'
+const utilityButtonClass =
+  'h-8 border-[hsl(var(--tone-neutral-200))] bg-card text-[hsl(var(--tone-neutral-700))] hover:bg-[hsl(var(--tone-neutral-100))] hover:text-[hsl(var(--tone-neutral-900))] focus-visible:ring-[hsl(var(--tone-accent-600))]'
+const searchInputClass =
+  'h-8 border-[hsl(var(--tone-neutral-200))] bg-card text-label placeholder:text-[hsl(var(--tone-neutral-500))] focus-visible:ring-[hsl(var(--tone-accent-600))]'
+
 export function TopBar({
   scope,
   onOpenLeftNav,
@@ -53,86 +63,97 @@ export function TopBar({
   }
 
   return (
-    <header className="flex h-14 items-center gap-3 border-b border-border bg-card/80 px-3 backdrop-blur nav:px-4">
-      <div className="flex items-center gap-2">
-        {showLeftNavButton ? (
+    <header className="border-b border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]/95 backdrop-blur">
+      <div className="flex h-14 items-center gap-3 px-3 nav:px-4">
+        <div className="flex min-w-0 items-center gap-2">
+          {showLeftNavButton ? (
+            <TooltipProvider delayDuration={100}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="icon" className={cn('nav:hidden', utilityButtonClass)} onClick={onOpenLeftNav}>
+                    <Menu className="h-4 w-4" />
+                    <span className="sr-only">Open navigator</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Open navigation</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : null}
+
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">AAWE</span>
+            <span className="hidden truncate text-label text-[hsl(var(--tone-neutral-500))] md:inline">
+              Autonomous Academic Writing Engine
+            </span>
+          </div>
+
+          <nav className="ml-3 hidden items-center gap-1 xl:flex">
+            <button
+              type="button"
+              onClick={() => navigate('/workspaces')}
+              className={cn(topNavItemBase, topNavItemIdle, scope === 'workspace' && topNavItemActive)}
+            >
+              Workspaces
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/profile')}
+              className={cn(topNavItemBase, topNavItemIdle, scope === 'account' && topNavItemActive)}
+            >
+              Profile
+            </button>
+          </nav>
+        </div>
+
+        <div className="mx-auto hidden w-full max-w-xl items-center gap-2 md:flex">
+          <Search className="h-4 w-4 text-[hsl(var(--tone-neutral-500))]" />
+          <Input
+            placeholder={
+              scope === 'account'
+                ? 'Search people, works, themes...'
+                : 'Search sections, tables, figures, claims...'
+            }
+            className={searchInputClass}
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+        </div>
+
+        <div className="ml-auto flex items-center gap-2">
+          {isGuest ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className={cn(utilityButtonClass, 'px-3 text-label font-medium')}
+              onClick={() => navigate('/auth')}
+            >
+              Sign in
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className={cn(utilityButtonClass, 'px-3 text-label font-medium')}
+              onClick={() => void onSignOut()}
+              disabled={isSigningOut}
+            >
+              {isSigningOut ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+              {isSigningOut ? 'Signing out...' : 'Sign out'}
+            </Button>
+          )}
+
           <TooltipProvider delayDuration={100}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="outline" size="icon" className="nav:hidden" onClick={onOpenLeftNav}>
-                  <Menu className="h-4 w-4" />
-                  <span className="sr-only">Open navigator</span>
+                <Button variant="outline" size="icon" className={utilityButtonClass} onClick={toggleTheme}>
+                  {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                  <span className="sr-only">Toggle theme</span>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Open navigation</TooltipContent>
+              <TooltipContent>{theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
-        ) : null}
-        <div className="flex items-center gap-2">
-          <span className="text-base font-semibold tracking-tight">AAWE</span>
-          <span className="hidden text-xs text-muted-foreground md:inline">Autonomous Academic Writing Engine</span>
         </div>
-        <nav className="ml-3 hidden items-center gap-1 xl:flex">
-          <button
-            type="button"
-            onClick={() => navigate('/workspaces')}
-            className={cn(
-              'rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground',
-              scope === 'workspace' && 'bg-accent text-foreground',
-            )}
-          >
-            Workspaces
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/profile')}
-            className={cn(
-              'rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground',
-              scope === 'account' && 'bg-accent text-foreground',
-            )}
-          >
-            Profile
-          </button>
-        </nav>
-      </div>
-
-      <div className="mx-auto hidden w-full max-w-xl items-center gap-2 md:flex">
-        <Search className="h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder={
-            scope === 'account'
-              ? 'Search people, works, themes...'
-              : 'Search sections, tables, figures, claims...'
-          }
-          className="h-8"
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
-        />
-      </div>
-
-      <div className="ml-auto flex items-center gap-2">
-        {isGuest ? (
-          <Button size="sm" variant="outline" onClick={() => navigate('/auth')}>
-            Sign in
-          </Button>
-        ) : (
-          <Button size="sm" variant="outline" onClick={() => void onSignOut()} disabled={isSigningOut}>
-            {isSigningOut ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-            {isSigningOut ? 'Signing out...' : 'Sign out'}
-          </Button>
-        )}
-
-        <TooltipProvider delayDuration={100}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" size="icon" onClick={toggleTheme}>
-                {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                <span className="sr-only">Toggle theme</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
       </div>
     </header>
   )
