@@ -135,7 +135,12 @@ function TotalCitationsMiniTrend({
       <div className="flex items-center gap-1 text-[10px]">
         <button
           type="button"
-          onClick={() => onModeChange('year')}
+          data-stop-tile-open="true"
+          onClick={(event) => {
+            event.stopPropagation()
+            onModeChange('year')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
           className={cn(
             'rounded border px-1.5 py-0.5',
             mode === 'year' ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-300 text-slate-600',
@@ -145,7 +150,12 @@ function TotalCitationsMiniTrend({
         </button>
         <button
           type="button"
-          onClick={() => onModeChange('month')}
+          data-stop-tile-open="true"
+          onClick={(event) => {
+            event.stopPropagation()
+            onModeChange('month')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
           className={cn(
             'rounded border px-1.5 py-0.5',
             mode === 'month' ? 'border-slate-700 bg-slate-700 text-white' : 'border-slate-300 text-slate-600',
@@ -279,10 +289,13 @@ function TotalCitationsGrowthChart({ tile }: { tile: PublicationMetricTilePayloa
             <div key={`${bar.year}-${index}`} className="flex w-full flex-col items-center gap-1">
               <button
                 type="button"
+                data-stop-tile-open="true"
                 onMouseEnter={() => setHoveredIndex(index)}
                 onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
                 onFocus={() => setHoveredIndex(index)}
                 onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
+                onClick={(event) => event.stopPropagation()}
+                onMouseDown={(event) => event.stopPropagation()}
                 className="relative w-full"
                 aria-label={bar.detailLines.join(' | ')}
               >
@@ -633,6 +646,13 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
     }
   }
 
+  const shouldIgnoreTileOpen = (target: EventTarget | null): boolean => {
+    if (!(target instanceof HTMLElement)) {
+      return false
+    }
+    return Boolean(target.closest('[data-stop-tile-open="true"]'))
+  }
+
   return (
     <>
       <Card>
@@ -663,12 +683,27 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                   isTotalCitationsTile && /(falling|rising|stable over)/i.test(rawDeltaDisplay)
                 const effectiveDeltaDisplay = shouldHideLegacyTrendText ? '' : rawDeltaDisplay
                 return (
-                  <button
+                  <div
                     key={tile.key}
-                    type="button"
-                    onClick={() => onSelectTile(tile)}
+                    role="button"
+                    tabIndex={0}
+                    onClick={(event) => {
+                      if (shouldIgnoreTileOpen(event.target)) {
+                        return
+                      }
+                      void onSelectTile(tile)
+                    }}
+                    onKeyDown={(event) => {
+                      if (shouldIgnoreTileOpen(event.target)) {
+                        return
+                      }
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        void onSelectTile(tile)
+                      }
+                    }}
                     className={cn(
-                      'rounded border border-border px-3 py-2 text-left transition-colors hover:bg-muted/30',
+                      'cursor-pointer rounded border border-border px-3 py-2 text-left transition-colors hover:bg-muted/30',
                       tile.stability === 'unstable' && 'border-amber-300/70 bg-amber-50/40',
                     )}
                   >
@@ -742,7 +777,7 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                         </div>
                       </>
                     )}
-                  </button>
+                  </div>
                 )
               })}
             </div>
