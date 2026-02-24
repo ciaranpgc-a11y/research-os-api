@@ -72,6 +72,21 @@ function totalCitationsFromPersonaState(state: PersonaStatePayload | null | unde
   return rows.reduce((sum, row) => sum + Math.max(0, Number(row.citations || 0)), 0)
 }
 
+function formatMetricNumber(value: number | null | undefined): string {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return '0'
+  }
+  return Math.max(0, Math.round(numeric)).toLocaleString('en-GB')
+}
+
+function formatSyncStageLabel(value: string | null | undefined): string {
+  const clean = (value || '').trim().replace(/[_-]+/g, ' ')
+  if (!clean) {
+    return 'processing'
+  }
+  return clean.charAt(0).toUpperCase() + clean.slice(1)
+}
 const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const ORCID_SYNC_SUMMARY_STORAGE_PREFIX = 'aawe_orcid_sync_summary:'
@@ -510,6 +525,21 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   const globalLastSync = formatTimestamp(
     syncStatus.metrics_last_synced_at || syncStatus.orcid_last_synced_at,
   )
+  const normalizedNewWorks = Math.max(0, Math.round(Number(lastImportedCount || 0)))
+  const normalizedNewCitations = Math.max(0, Math.round(Number(lastReferencesSyncedCount || 0)))
+  const syncInProgress =
+    activeSyncJob?.status === 'queued' || activeSyncJob?.status === 'running'
+  const syncProgressPercent = syncInProgress
+    ? Math.min(100, Math.max(0, Math.round(Number(activeSyncJob?.progress_percent || 0))))
+    : 0
+  const syncStageLabel = formatSyncStageLabel(activeSyncJob?.current_stage)
+  const latestSyncLabel = lastSyncSinceLabel ? `since ${lastSyncSinceLabel}` : globalLastSync
+  const statusLower = status.toLowerCase()
+  const statusToneClass = error
+    ? 'border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-800))]'
+    : statusLower.includes('verify') || statusLower.includes('not configured')
+      ? 'border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--tone-warning-50))] text-[hsl(var(--tone-warning-800))]'
+      : 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))]'
   const onConnectOrcid = async () => {
     if (!token) {
       return
@@ -574,7 +604,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   }
 
   useEffect(() => {
-    if (!token || !activeSyncJob?.id) {
+    if (isFixtureMode || !token || !activeSyncJob?.id) {
       return
     }
     let cancelled = false
@@ -613,7 +643,6 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
               })
             }
           }
-          setStatus('ORCID sync completed in background.')
           await loadData(token, false)
           return
         }
@@ -642,7 +671,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [activeSyncJob?.id, handleSessionExpiry, loadData, token, user?.id])
+  }, [activeSyncJob?.id, handleSessionExpiry, isFixtureMode, loadData, token, user?.id])
 
   const onRetryApiConnection = async () => {
     if (!token) {
@@ -757,6 +786,23 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
           ) : null}
         </CardHeader>
         <CardContent className="space-y-4 pt-4 text-sm">
+          {orcidLinked ? (
+            <div className="grid gap-2 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-2 sm:grid-cols-3">
+              <div className="rounded-sm bg-card px-2 py-1.5">
+                <p className="text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Last run</p>
+                <p className="mt-0.5 text-label font-medium text-[hsl(var(--tone-neutral-900))]">{latestSyncLabel}</p>
+              </div>
+              <div className="rounded-sm bg-card px-2 py-1.5">
+                <p className="text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">New works</p>
+                <p className="mt-0.5 text-label font-medium text-[hsl(var(--tone-neutral-900))]">{formatMetricNumber(normalizedNewWorks)}</p>
+              </div>
+              <div className="rounded-sm bg-card px-2 py-1.5">
+                <p className="text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">New citations</p>
+                <p className="mt-0.5 text-label font-medium text-[hsl(var(--tone-neutral-900))]">{formatMetricNumber(normalizedNewCitations)}</p>
+              </div>
+            </div>
+          ) : null}
+
           <div className="grid gap-3 md:grid-cols-[280px_1fr]">
             <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-3">
               <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">ORCID iD</p>
@@ -779,36 +825,54 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
 
             {orcidLinked ? (
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="min-h-sz-86 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
-                  <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Total works</p>
-                  <p className="mt-1 text-2xl font-semibold leading-tight text-[hsl(var(--tone-neutral-900))]">{worksCount}</p>
+                <div className="flex min-h-sz-96 flex-col justify-between rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
+                  <div>
+                    <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Total works</p>
+                    <p className="mt-1 text-2xl font-semibold leading-tight text-[hsl(var(--tone-neutral-900))]">{formatMetricNumber(worksCount)}</p>
+                  </div>
                   {worksLastSyncDate ? (
                     <p className="text-xs text-[hsl(var(--tone-neutral-500))]">Last sync {worksLastSyncDate}</p>
-                  ) : null}
+                  ) : <span />}
                 </div>
-                <div className="min-h-sz-86 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
-                  <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">New works</p>
-                  <p className="mt-1 text-2xl font-semibold leading-tight text-[hsl(var(--tone-neutral-900))]">{lastImportedCount ?? 0}</p>
-                  <p className={`text-xs ${(lastImportedCount ?? 0) > 0 ? 'text-[hsl(var(--tone-positive-700))]' : 'text-[hsl(var(--tone-neutral-500))]'}`}>
-                    {(lastImportedCount ?? 0) > 0 ? 'In latest sync' : 'No new works'}
+                <div className="flex min-h-sz-96 flex-col justify-between rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
+                  <div>
+                    <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">New works</p>
+                    <p className="mt-1 text-2xl font-semibold leading-tight text-[hsl(var(--tone-neutral-900))]">{formatMetricNumber(normalizedNewWorks)}</p>
+                  </div>
+                  <p className={`text-xs ${normalizedNewWorks > 0 ? 'text-[hsl(var(--tone-positive-700))]' : 'text-[hsl(var(--tone-neutral-500))]'}`}>
+                    {normalizedNewWorks > 0 ? 'In latest sync' : 'No new works'}
                   </p>
                 </div>
-                <div className="min-h-sz-86 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
-                  <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Total citations</p>
-                  <p className="mt-1 text-2xl font-semibold leading-tight text-[hsl(var(--tone-neutral-900))]">{totalCitations}</p>
+                <div className="flex min-h-sz-96 flex-col justify-between rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
+                  <div>
+                    <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Total citations</p>
+                    <p className="mt-1 text-2xl font-semibold leading-tight text-[hsl(var(--tone-neutral-900))]">{formatMetricNumber(totalCitations)}</p>
+                  </div>
                   {referencesLastSyncDate ? (
                     <p className="text-xs text-[hsl(var(--tone-neutral-500))]">Last sync {referencesLastSyncDate}</p>
-                  ) : null}
+                  ) : <span />}
                 </div>
-                <div className="min-h-sz-86 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
-                  <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">New citations</p>
-                  <p className="mt-1 text-2xl font-semibold leading-tight text-[hsl(var(--tone-neutral-900))]">{lastReferencesSyncedCount ?? 0}</p>
-                  <p className={`text-xs ${(lastReferencesSyncedCount ?? 0) > 0 ? 'text-[hsl(var(--tone-positive-700))]' : 'text-[hsl(var(--tone-neutral-500))]'}`}>
-                    {(lastReferencesSyncedCount ?? 0) > 0 ? 'In latest sync' : 'No new citations'}
+                <div className="flex min-h-sz-96 flex-col justify-between rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
+                  <div>
+                    <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">New citations</p>
+                    <p className="mt-1 text-2xl font-semibold leading-tight text-[hsl(var(--tone-neutral-900))]">{formatMetricNumber(normalizedNewCitations)}</p>
+                  </div>
+                  <p className={`text-xs ${normalizedNewCitations > 0 ? 'text-[hsl(var(--tone-positive-700))]' : 'text-[hsl(var(--tone-neutral-500))]'}`}>
+                    {normalizedNewCitations > 0 ? 'In latest sync' : 'No new citations'}
                   </p>
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <div className="flex min-h-sz-96 flex-col justify-center rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-4 py-4">
+                <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">No ORCID connection</p>
+                <p className="mt-1 text-sm text-[hsl(var(--tone-neutral-600))]">
+                  Connect ORCID to import your publications, citations, and profile metrics.
+                </p>
+                <p className="mt-2 text-xs uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                  Expected sync: works, citation deltas, and source timestamps
+                </p>
+              </div>
+            )}
           </div>
 
           {orcidIssues.length ? (
@@ -859,14 +923,27 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
             ) : null}
           </div>
 
+          {syncInProgress ? (
+            <div className="rounded-md border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] px-3 py-2">
+              <div className="flex items-center justify-between gap-2 text-xs text-[hsl(var(--tone-accent-800))]">
+                <p className="font-medium">ORCID sync in progress</p>
+                <p>{syncProgressPercent}%</p>
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[hsl(var(--tone-accent-100))]">
+                <div className="h-full bg-[hsl(var(--tone-accent-600))] transition-[width] duration-300" style={{ width: `${syncProgressPercent}%` }} />
+              </div>
+              <p className="mt-1 text-xs text-[hsl(var(--tone-accent-700))]">Stage: {syncStageLabel}</p>
+            </div>
+          ) : null}
+
           {!orcidStatusPending && !orcidConfigured ? (
             <p className="text-xs text-[hsl(var(--tone-warning-700))]">ORCID provider is not configured in backend environment.</p>
           ) : null}
-          {status ? <p className="text-sm text-[hsl(var(--tone-positive-700))]">{status}</p> : null}
-          {error ? (
-            <div className="space-y-2">
-              <p className="text-sm text-destructive">{error}</p>
-              {error.toLowerCase().includes('could not reach api') || error.toLowerCase().includes('failed to fetch') ? (
+
+          {status || error ? (
+            <div className={`space-y-2 rounded-md border px-3 py-2 ${statusToneClass}`}>
+              <p className="text-sm">{error || status}</p>
+              {error && (error.toLowerCase().includes('could not reach api') || error.toLowerCase().includes('failed to fetch')) ? (
                 <Button type="button" variant="outline" size="sm" onClick={() => void onRetryApiConnection()} disabled={refreshing}>
                   {refreshing ? 'Retrying...' : 'Retry API connection'}
                 </Button>
@@ -929,4 +1006,10 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     </section>
   )
 }
+
+
+
+
+
+
 

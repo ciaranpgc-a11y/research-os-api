@@ -206,7 +206,6 @@ const activityFixture: ProfileIntegrationsPageFixture = {
   lastReferencesSyncedCount: 31,
   lastSyncSinceLabel: '24 Feb, 17:18',
   lastSyncOutcome: '+7 works',
-  status: 'ORCID sync completed in background.',
 }
 
 const highActivityFixture: ProfileIntegrationsPageFixture = {
@@ -321,4 +320,5 @@ export const SyncRunning: Story = {
     fixture: runningFixture,
   },
 }
+
 
