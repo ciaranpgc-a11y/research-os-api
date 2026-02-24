@@ -240,6 +240,68 @@ def test_stale_while_revalidate_returns_cache_and_enqueues(monkeypatch, tmp_path
     assert enqueued == [user_id]
 
 
+def test_summary_new_collaborators_uses_first_collaboration_year(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user(email="summary-window-user@example.com")
+    now = datetime.now(timezone.utc)
+    with session_scope() as session:
+        historic = Collaborator(
+            owner_user_id=user_id,
+            full_name="Historic Import",
+            full_name_lower="historic import",
+            research_domains=[],
+            created_at=now,
+            updated_at=now,
+        )
+        recent = Collaborator(
+            owner_user_id=user_id,
+            full_name="Recent Collaborator",
+            full_name_lower="recent collaborator",
+            research_domains=[],
+            created_at=now,
+            updated_at=now,
+        )
+        session.add_all([historic, recent])
+        session.flush()
+        session.add_all(
+            [
+                CollaborationMetric(
+                    owner_user_id=user_id,
+                    collaborator_id=historic.id,
+                    coauthored_works_count=7,
+                    shared_citations_total=120,
+                    first_collaboration_year=now.year - 6,
+                    last_collaboration_year=now.year,
+                    citations_last_12m=12,
+                    classification="ACTIVE",
+                    computed_at=now,
+                    status="READY",
+                    source_json={"formula_version": "test", "failures_in_row": 0},
+                ),
+                CollaborationMetric(
+                    owner_user_id=user_id,
+                    collaborator_id=recent.id,
+                    coauthored_works_count=3,
+                    shared_citations_total=45,
+                    first_collaboration_year=now.year,
+                    last_collaboration_year=now.year,
+                    citations_last_12m=8,
+                    classification="ACTIVE",
+                    computed_at=now,
+                    status="READY",
+                    source_json={"formula_version": "test", "failures_in_row": 0},
+                ),
+            ]
+        )
+        session.flush()
+
+    payload = get_collaboration_metrics_summary(user_id=user_id)
+
+    assert payload["total_collaborators"] == 2
+    assert payload["new_collaborators_12m"] == 1
+
+
 def test_lock_prevents_duplicate_enqueue(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()

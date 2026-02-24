@@ -1234,10 +1234,15 @@ def _build_summary_response(
             )
         )
     )
+    # Count genuinely new collaboration relationships, not recently imported records.
+    # We only have year-level granularity, so treat current/previous year as the 12m window.
     new_collaborators_12m = sum(
         1
-        for collaborator in collaborators
-        if (_coerce_utc(collaborator.created_at) >= now - timedelta(days=365))
+        for row in rows
+        if (
+            isinstance(row.first_collaboration_year, int)
+            and row.first_collaboration_year >= now.year - 1
+        )
     )
     stale = _is_stale(collaborators=collaborators, metric_rows=metrics_rows, now=now)
     if force_running:
@@ -2382,4 +2387,3 @@ def stop_collaboration_metrics_scheduler() -> None:
             _scheduler.shutdown(wait=False)
             _scheduler = None
     _shutdown_executor()
-
