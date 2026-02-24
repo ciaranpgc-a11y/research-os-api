@@ -518,10 +518,12 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   const orcidLinked = orcidStatusPending
     ? Boolean(user?.orcid_id)
     : Boolean(orcidStatus?.linked || user?.orcid_id)
+  const orcidConfiguredForSync = orcidStatus?.configured ?? true
   const busy = loading || connecting || importing || disconnecting
+  const syncBusy = connecting || importing || disconnecting
   const canConnectOrcid = !isFixtureMode && !orcidStatusPending && orcidConfigured && !busy
   const canImportOrcid =
-    !isFixtureMode && !orcidStatusPending && emailVerified && orcidConfigured && orcidLinked && !busy
+    !isFixtureMode && emailVerified && orcidConfiguredForSync && orcidLinked && !syncBusy
   const canDisconnectOrcid = !isFixtureMode && !orcidStatusPending && orcidLinked && !busy
   const connectionStatusLabel = orcidStatusPending
     ? 'Checking status...'
@@ -935,7 +937,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
                 {connecting ? 'Opening ORCID...' : 'Connect ORCID'}
               </Button>
             ) : null}
-            {!orcidStatusPending && orcidLinked ? (
+            {orcidLinked ? (
               <Button
                 type="button"
                 variant="outline"
@@ -956,7 +958,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
                 </span>
               </Button>
             ) : null}
-            {orcidStatusPending ? (
+            {orcidStatusPending && !orcidLinked ? (
               <p className="text-xs text-[hsl(var(--tone-neutral-500))]">Checking ORCID connection...</p>
             ) : null}
           </div>
