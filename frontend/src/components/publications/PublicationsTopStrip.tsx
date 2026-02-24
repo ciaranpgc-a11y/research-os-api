@@ -6,12 +6,17 @@ import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { fetchPublicationMetricDetail } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
-import type { PublicationMetricTilePayload, PublicationsTopMetricsPayload } from '@/types/impact'
+import type {
+  PublicationMetricDetailPayload,
+  PublicationMetricTilePayload,
+  PublicationsTopMetricsPayload,
+} from '@/types/impact'
 
 type PublicationsTopStripProps = {
   metrics: PublicationsTopMetricsPayload | null
   loading?: boolean
   token?: string | null
+  fetchMetricDetail?: (token: string, metricId: string) => Promise<PublicationMetricDetailPayload>
 }
 
 function formatRefreshedAt(value: string | null | undefined): string {
@@ -58,6 +63,38 @@ function formatSignedPct(value: number | null): string {
   }
   const safe = Number(value)
   return `${safe >= 0 ? '+' : ''}${safe.toFixed(1)}%`
+}
+
+function formatSignedPercentCompact(value: number): string {
+  const rounded = Math.round(value * 10) / 10
+  const normalized = Math.abs(rounded) < 0.05 ? 0 : rounded
+  const hasFraction = Math.abs(normalized % 1) > 0
+  const formatted = hasFraction ? normalized.toFixed(1) : normalized.toFixed(0)
+  return `${normalized >= 0 ? '+' : ''}${formatted}%`
+}
+
+function extractPercentFromDeltaDisplay(value: string | null | undefined): number | null {
+  const text = String(value || '').trim()
+  if (!text) {
+    return null
+  }
+  const match = text.match(/([+-]?\d+(?:\.\d+)?)\s*%/)
+  if (!match) {
+    return null
+  }
+  const parsed = Number(match[1])
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function momentumPrimaryDisplay(tile: PublicationMetricTilePayload): string {
+  const parsedFromDisplay = extractPercentFromDeltaDisplay(tile.delta_display)
+  if (parsedFromDisplay !== null) {
+    return formatSignedPercentCompact(parsedFromDisplay)
+  }
+  if (typeof tile.delta_value === 'number' && Number.isFinite(tile.delta_value)) {
+    return formatSignedPercentCompact(tile.delta_value)
+  }
+  return 'No data'
 }
 
 type TotalTrendMode = 'year' | 'month'
@@ -662,32 +699,6 @@ function MiniPairedBars({
   )
 }
 
-function MiniGauge({
-  value,
-  min,
-  max,
-}: {
-  value: number
-  min: number
-  max: number
-}) {
-  const lo = Number.isFinite(min) ? min : 0
-  const hi = Number.isFinite(max) && max > lo ? max : 150
-  const clamped = Math.max(lo, Math.min(hi, Number.isFinite(value) ? value : lo))
-  const pct = ((clamped - lo) / (hi - lo)) * 100
-  return (
-    <div className="space-y-1">
-      <div className="relative h-2 overflow-hidden rounded-full bg-slate-200">
-        <div className="absolute inset-y-0 left-0 w-[63%] bg-slate-400/70" />
-        <div className="absolute inset-y-0 left-[63%] w-[7%] bg-slate-600/70" />
-        <div className="absolute inset-y-0 right-0 w-[30%] bg-slate-900/70" />
-        <div className="absolute inset-y-0 left-0 bg-transparent" style={{ width: `${pct}%`, borderRight: '2px solid #0f172a' }} />
-      </div>
-      <div className="text-[10px] text-muted-foreground">0-150 index</div>
-    </div>
-  )
-}
-
 function MiniProgressRing({
   progress,
 }: {
@@ -803,16 +814,14 @@ function MiniChart({ tile }: { tile: PublicationMetricTilePayload }) {
     return <MiniPairedBars values={values} />
   }
   if (chartType === 'gauge') {
-    const min = Number(chartData.min ?? 0)
-    const max = Number(chartData.max ?? 150)
-    const value = Number(chartData.value ?? 0)
-    const monthly = toNumberArray(chartData.monthly_values_12m)
-    const highlightLast = Math.max(0, monthly.length - Number(chartData.highlight_last_n ?? 3))
+    const monthly = toNumberArray(chartData.monthly_values_12m).map((item) => Math.max(0, item))
+    const fallback = toNumberArray(tile.sparkline || []).map((item) => Math.max(0, item))
+    const trendValues = monthly.length ? monthly : fallback
     return (
-      <div className="space-y-1">
-        <MiniGauge value={value} min={min} max={max} />
-        {monthly.length ? <MiniBars values={monthly} highlightFrom={highlightLast} /> : null}
-      </div>
+      <MiniLine
+        values={trendValues}
+        colorCode={tile.delta_color_code || '#475569'}
+      />
     )
   }
   if (chartType === 'progress_ring') {
@@ -899,7 +908,12 @@ function metricDataSources(tile: PublicationMetricTilePayload): string {
   return (tile.data_source || []).join(', ') || 'Not available'
 }
 
-export function PublicationsTopStrip({ metrics, loading = false, token = null }: PublicationsTopStripProps) {
+export function PublicationsTopStrip({
+  metrics,
+  loading = false,
+  token = null,
+  fetchMetricDetail = fetchPublicationMetricDetail,
+}: PublicationsTopStripProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [activeTileKey, setActiveTileKey] = useState<string>('')
   const [activeTileDetail, setActiveTileDetail] = useState<PublicationMetricTilePayload | null>(null)
@@ -924,7 +938,7 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
     }
     setDetailLoading(true)
     try {
-      const detail = await fetchPublicationMetricDetail(token, tile.key)
+      const detail = await fetchMetricDetail(token, tile.key)
       if (detail?.tile) {
         setActiveTileDetail(detail.tile)
       }
@@ -970,14 +984,21 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                 const isTotalPublicationsTile = tile.key === 'this_year_vs_last'
                 const isHIndexTile = tile.key === 'h_index_projection'
                 const isImpactConcentrationTile = tile.key === 'impact_concentration'
+                const isMomentumTile = tile.key === 'momentum'
                 const rawDeltaDisplay = String(tile.delta_display || '').trim()
                 const shouldHideLegacyTrendText =
                   isTotalCitationsTile && /(falling|rising|stable over)/i.test(rawDeltaDisplay)
-                const effectiveDeltaDisplay = shouldHideLegacyTrendText ? '' : rawDeltaDisplay
-                const tileValueNumberRaw = Number(tile.main_value ?? tile.value)
+                const effectiveDeltaDisplay = shouldHideLegacyTrendText || isMomentumTile ? '' : rawDeltaDisplay
+                const tileValueSource = tile.main_value ?? tile.value
+                const tileValueNumberRaw = typeof tileValueSource === 'number' ? tileValueSource : Number.NaN
                 const mainValueDisplay = isImpactConcentrationTile && Number.isFinite(tileValueNumberRaw)
                   ? `${Math.round(tileValueNumberRaw)}%`
-                  : tile.value_display
+                  : isMomentumTile
+                    ? momentumPrimaryDisplay(tile)
+                    : tile.value_display
+                const momentumIndexCaption = isMomentumTile && Number.isFinite(tileValueNumberRaw)
+                  ? `Index ${Math.round(tileValueNumberRaw)}`
+                  : ''
                 const hChartData = (tile.chart_data || {}) as Record<string, unknown>
                 const hGapText = String(hChartData.gap_text || '').trim()
                 const hNextTargetRaw = Number(hChartData.next_h_index)
@@ -1140,7 +1161,9 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                             {effectiveDeltaDisplay}
                           </p>
                         ) : (
-                          <p className="min-h-[16px] text-[11px] text-muted-foreground">&nbsp;</p>
+                          <p className="min-h-[16px] text-[11px] text-muted-foreground">
+                            {momentumIndexCaption || '\u00A0'}
+                          </p>
                         )}
                         <div className="mt-1.5">
                           <MiniChart tile={tile} />

@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { clearAuthSessionToken, getAuthSessionToken, setAuthSessionToken } from '@/lib/auth-session'
+import { clearAuthSessionToken, getAuthSessionToken, isAuthBypassEnabled, setAuthSessionToken } from '@/lib/auth-session'
 import {
   confirmEmailVerification,
   confirmPasswordReset,
@@ -218,6 +218,11 @@ export function AuthPage() {
   }
 
   useEffect(() => {
+    if (isAuthBypassEnabled()) {
+      navigate('/profile/publications', { replace: true })
+      return
+    }
+
     const token = getAuthSessionToken()
     if (!token) {
       return
