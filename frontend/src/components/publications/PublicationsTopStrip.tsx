@@ -762,6 +762,30 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                 const effectiveDeltaDisplay = shouldHideLegacyTrendText ? '' : rawDeltaDisplay
                 const hChartData = (tile.chart_data || {}) as Record<string, unknown>
                 const hGapText = String(hChartData.gap_text || '').trim()
+                const hNextTargetRaw = Number(hChartData.next_h_index)
+                const hNextTarget = Number.isFinite(hNextTargetRaw) ? Math.round(hNextTargetRaw) : null
+                const hProgressRaw = Number(hChartData.progress_to_next_pct)
+                const hProgressPct = Number.isFinite(hProgressRaw) ? Math.max(0, Math.min(100, hProgressRaw)) : 0
+                const hCandidateGaps = toNumberArray(hChartData.candidate_gaps)
+                  .map((item) => Math.round(item))
+                  .filter((item) => item > 0)
+                  .slice(0, 3)
+                const hProjectedRaw = Number(hChartData.projected_value)
+                const hProjectedValue = Number.isFinite(hProjectedRaw) ? Math.round(hProjectedRaw) : null
+                const hProjectionProbabilityRaw = Number(hChartData.projection_probability)
+                const hProjectionConfidenceLabelRaw = String(hChartData.projection_confidence_label || '').trim()
+                const hProjectionConfidenceLabel = hProjectionConfidenceLabelRaw || (
+                  Number.isFinite(hProjectionProbabilityRaw)
+                    ? hProjectionProbabilityRaw >= 0.75
+                      ? 'High'
+                      : hProjectionProbabilityRaw >= 0.45
+                        ? 'Medium'
+                        : 'Low'
+                    : 'Unknown'
+                )
+                const hProjectionText = hProjectedValue !== null
+                  ? `Projection: h${hProjectedValue} (${hProjectionConfidenceLabel} confidence)`
+                  : effectiveDeltaDisplay
                 return (
                   <div
                     key={tile.key}
@@ -838,18 +862,33 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                       <div className="mt-1.5 flex items-start gap-3">
                         <div className="min-w-0 flex-1">
                           <p className="min-h-[18px] text-xs text-muted-foreground">
-                            {subtitle || '\u00A0'}
+                            {hNextTarget !== null ? `Target h=${hNextTarget}` : subtitle || '\u00A0'}
                           </p>
-                          <p className="mt-0.5 min-h-[16px] text-[11px] text-muted-foreground">
-                            {hGapText || '\u00A0'}
-                          </p>
-                          {effectiveDeltaDisplay ? (
-                            <p className="mt-0.5 min-h-[16px] text-[11px] text-slate-600">
-                              {effectiveDeltaDisplay}
+                          <div className="mt-1">
+                            <div className="h-1.5 overflow-hidden rounded bg-slate-200">
+                              <div className="h-full rounded bg-slate-800" style={{ width: `${hProgressPct}%` }} />
+                            </div>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                              {`${Math.round(hProgressPct)}% to target`}
                             </p>
-                          ) : (
-                            <p className="mt-0.5 min-h-[16px] text-[11px] text-muted-foreground">&nbsp;</p>
-                          )}
+                          </div>
+                          <div className="mt-1 min-h-[16px] text-[11px] text-muted-foreground">
+                            {hCandidateGaps.length > 0 ? (
+                              <div className="flex flex-wrap items-center gap-1">
+                                <span>Nearest papers need:</span>
+                                {hCandidateGaps.map((gap, index) => (
+                                  <span key={`${gap}-${index}`} className="rounded border border-slate-300 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-700">
+                                    +{gap}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              hGapText || '\u00A0'
+                            )}
+                          </div>
+                          <p className="mt-0.5 min-h-[16px] text-[11px] text-slate-600">
+                            {hProjectionText || '\u00A0'}
+                          </p>
                         </div>
                         <div className="w-[48%] min-w-[160px]">
                           <HIndexYearChart tile={tile} />

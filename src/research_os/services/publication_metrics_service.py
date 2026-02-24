@@ -27,7 +27,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 6
+TOP_METRICS_SCHEMA_VERSION = 7
 
 DELTA_COLOR_BY_TONE = {
     "positive": "#166534",
@@ -1471,8 +1471,14 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     )
     h_progress_to_next = float(h_projection.get("progress_to_next_pct") or 0.0)
     h_next_target = int(h_index) + 1
-    h_projection_probability_pct = round(
-        float(h_projection.get("projection_probability") or 0.0) * 100.0
+    h_projection_probability = float(h_projection.get("projection_probability") or 0.0)
+    h_projection_probability_pct = round(h_projection_probability * 100.0)
+    h_confidence_label = (
+        "High"
+        if h_projection_probability >= 0.75
+        else "Medium"
+        if h_projection_probability >= 0.45
+        else "Low"
     )
     h_candidate_gaps = sorted(
         [
@@ -1483,14 +1489,12 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     )
     h_candidate_gaps = [gap for gap in h_candidate_gaps if gap > 0][:3]
     h_gap_text = (
-        f"Top gaps: {', '.join(str(gap) for gap in h_candidate_gaps)} citations"
+        f"Nearest papers need: {', '.join(f'+{gap}' for gap in h_candidate_gaps)} citations"
         if h_candidate_gaps
         else "No near-threshold papers identified"
     )
-    h_subtext = f"{int(round(h_progress_to_next))}% to h={h_next_target}"
-    h_delta_display = (
-        f"Projected h {h_projected_current_year} in 12m ({h_projection_probability_pct:.0f}%)"
-    )
+    h_subtext = f"Target h={h_next_target}"
+    h_delta_display = f"Projection: h{h_projected_current_year} ({h_confidence_label} confidence)"
 
     this_vs_last_label = "Up" if yoy_delta > 0 else "Down" if yoy_delta < 0 else "Flat"
     this_vs_last_severity = "positive" if yoy_delta > 0 else "negative" if yoy_delta < 0 else "neutral"
@@ -1547,7 +1551,10 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     h_tooltip, h_tooltip_details = _build_tooltip(
         definition="What is this: current h-index with a one-year projection.",
         data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-        computation="projection from papers near threshold [h-2,h+2] using last-12m velocity",
+        computation=(
+            "estimate from papers near threshold [h-2,h+2] using last-12m citation velocity; "
+            "reported as low/medium/high confidence band"
+        ),
     )
     concentration_tooltip, concentration_tooltip_details = _build_tooltip(
         definition="What is this: percentage of lifetime citations coming from your top 3 papers.",
@@ -1734,6 +1741,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "current_h_index": h_index,
                 "next_h_index": h_index + 1,
                 "projection_probability": float(h_projection.get("projection_probability") or 0.0),
+                "projection_confidence_label": h_confidence_label,
                 "candidate_gaps": h_candidate_gaps,
                 "gap_text": h_gap_text,
             },
@@ -1759,6 +1767,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                         "h_projected_current_year": h_projected_current_year,
                         "progress_to_next_h_pct": h_progress_to_next,
                         "next_h_target": h_next_target,
+                        "projection_confidence_label": h_confidence_label,
                         "candidate_gap_text": h_gap_text,
                     },
                 },
