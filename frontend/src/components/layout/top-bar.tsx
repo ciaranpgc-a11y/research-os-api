@@ -82,7 +82,7 @@ export function TopBar({
           ) : null}
 
           <div className="flex min-w-0 items-center gap-2.5">
-            <AxiomosMark className="h-7 text-[hsl(var(--tone-accent-600))]" />
+            <AxiomosMark className="h-7 text-[hsl(var(--primary))]" />
             <div className="min-w-0">
               <span className="block truncate text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
                 Axiomos
