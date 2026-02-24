@@ -443,7 +443,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   }, [activeSyncJob])
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
+    if (isFixtureMode || typeof window === 'undefined') {
       return
     }
     const raw = window.sessionStorage.getItem('aawe_orcid_auto_sync_result')
@@ -466,10 +466,10 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     } finally {
       window.sessionStorage.removeItem('aawe_orcid_auto_sync_result')
     }
-  }, [])
+  }, [isFixtureMode])
 
   useEffect(() => {
-    if (!user?.id) {
+    if (isFixtureMode || !user?.id) {
       return
     }
     const stored = loadSyncSummary(user.id)
@@ -484,7 +484,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     setLastReferencesSyncedCount(stored.lastReferencesSyncedCount)
     setLastSyncSinceLabel(stored.lastSyncSinceLabel)
     setLastSyncOutcome(stored.lastSyncOutcome)
-  }, [user?.id])
+  }, [isFixtureMode, user?.id])
 
   const worksCount = personaState?.works.length ?? 0
   const emailVerified = Boolean(user?.email_verified_at)
@@ -495,7 +495,8 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     : Boolean(orcidStatus?.linked || user?.orcid_id)
   const busy = loading || connecting || importing || disconnecting
   const canConnectOrcid = !isFixtureMode && !orcidStatusPending && orcidConfigured && !busy
-  const canImportOrcid =`r`n    !isFixtureMode && !orcidStatusPending && emailVerified && orcidConfigured && orcidLinked && !busy
+  const canImportOrcid =
+    !isFixtureMode && !orcidStatusPending && emailVerified && orcidConfigured && orcidLinked && !busy
   const canDisconnectOrcid = !isFixtureMode && !orcidStatusPending && orcidLinked && !busy
   const shortLastSync = formatShortTimestamp(syncStatus.orcid_last_synced_at)
   const connectionStatusLabel = orcidStatusPending
@@ -583,14 +584,6 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     }
     let cancelled = false
 
-    const stageLabel = (value: string | null | undefined): string => {
-      const clean = (value || '').trim().replace(/[_-]+/g, ' ')
-      if (!clean) {
-        return 'processing'
-      }
-      return clean
-    }
-
     const poll = async () => {
       try {
         const job = await fetchPersonaSyncJob(token, activeSyncJob.id)
@@ -599,9 +592,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
         }
         setActiveSyncJob(job)
         if (job.status === 'queued' || job.status === 'running') {
-          setStatus(
-            `ORCID sync running in background (${job.progress_percent}% • ${stageLabel(job.current_stage)}).`,
-          )
+          setStatus('')
           return
         }
 
@@ -943,7 +934,6 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     </section>
   )
 }
-
 
 
 
