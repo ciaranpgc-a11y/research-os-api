@@ -95,7 +95,7 @@ const acceleratingFixture = buildMetricsFixture(
     deltaColorCode: '#166534',
     badgeLabel: 'Accelerating',
     badgeSeverity: 'positive',
-    monthlyValues: [68, 74, 82, 91, 103, 117, 128, 136, 147, 155, 167, 176],
+    monthlyValues: [90, 95, 98, 100, 102, 104, 106, 103, 102, 170, 176, 182],
     gaugeValue: 176,
   }),
 )
@@ -112,7 +112,7 @@ const deceleratingFixture = buildMetricsFixture(
     deltaColorCode: '#b45309',
     badgeLabel: 'Decelerating',
     badgeSeverity: 'caution',
-    monthlyValues: [142, 138, 132, 126, 121, 116, 111, 107, 102, 98, 95, 92],
+    monthlyValues: [130, 126, 124, 121, 120, 118, 117, 114, 111, 95, 93, 93],
     gaugeValue: 92,
   }),
 )
@@ -129,7 +129,7 @@ const flatFixture = buildMetricsFixture(
     deltaColorCode: '#475569',
     badgeLabel: 'Flat',
     badgeSeverity: 'neutral',
-    monthlyValues: [100, 101, 99, 102, 100, 101, 100, 102, 99, 101, 100, 101],
+    monthlyValues: [98, 99, 100, 100, 101, 100, 99, 101, 102, 101, 102, 103],
     gaugeValue: 101,
   }),
 )

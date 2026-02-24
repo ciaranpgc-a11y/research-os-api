@@ -73,28 +73,67 @@ function formatSignedPercentCompact(value: number): string {
   return `${normalized >= 0 ? '+' : ''}${formatted}%`
 }
 
-function extractPercentFromDeltaDisplay(value: string | null | undefined): number | null {
-  const text = String(value || '').trim()
-  if (!text) {
-    return null
+function formatRate(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) {
+    return 'n/a'
   }
-  const match = text.match(/([+-]?\d+(?:\.\d+)?)\s*%/)
-  if (!match) {
-    return null
-  }
-  const parsed = Number(match[1])
-  return Number.isFinite(parsed) ? parsed : null
+  return `${value.toFixed(1)}/mo`
 }
 
-function momentumPrimaryDisplay(tile: PublicationMetricTilePayload): string {
-  const parsedFromDisplay = extractPercentFromDeltaDisplay(tile.delta_display)
-  if (parsedFromDisplay !== null) {
-    return formatSignedPercentCompact(parsedFromDisplay)
+type MomentumBreakdown = {
+  bars: Array<{ label: string; value: number }>
+  recent3Total: number | null
+  baseline9Total: number | null
+  rate3m: number | null
+  rate9m: number | null
+  liftPct: number | null
+  insufficientBaseline: boolean
+}
+
+function fallbackMonthLabels(count: number): string[] {
+  const today = new Date()
+  return Array.from({ length: count }, (_, index) => {
+    const shift = count - 1 - index
+    const monthDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - shift, 1))
+    return monthDate.toLocaleString('en-GB', { month: 'short' })
+  })
+}
+
+function buildMomentumBreakdown(tile: PublicationMetricTilePayload): MomentumBreakdown {
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const monthlySeries = toNumberArray(chartData.monthly_values_12m).map((item) => Math.max(0, item))
+  const fallbackSeries = toNumberArray(tile.sparkline || []).map((item) => Math.max(0, item))
+  const fullSeries = monthlySeries.length ? monthlySeries : fallbackSeries
+  const lastNineValues = fullSeries.length >= 9 ? fullSeries.slice(-9) : fullSeries.slice()
+  const sourceLabels = Array.isArray(chartData.month_labels_12m)
+    ? chartData.month_labels_12m.filter((item) => typeof item === 'string') as string[]
+    : []
+  const labels = sourceLabels.length >= lastNineValues.length
+    ? sourceLabels.slice(-lastNineValues.length)
+    : fallbackMonthLabels(lastNineValues.length)
+  const bars = lastNineValues.map((value, index) => ({
+    label: labels[index] || `M${index + 1}`,
+    value,
+  }))
+
+  const recent3 = fullSeries.length >= 3 ? fullSeries.slice(-3) : []
+  const baseline9 = fullSeries.length >= 12 ? fullSeries.slice(-12, -3) : []
+  const recent3Total = recent3.length === 3 ? recent3.reduce((sum, item) => sum + item, 0) : null
+  const baseline9Total = baseline9.length === 9 ? baseline9.reduce((sum, item) => sum + item, 0) : null
+  const rate3m = recent3Total === null ? null : recent3Total / 3
+  const rate9m = baseline9Total === null ? null : baseline9Total / 9
+  const insufficientBaseline = rate3m === null || rate9m === null || rate9m <= 1e-6
+  const liftPct = insufficientBaseline || rate3m === null || rate9m === null ? null : ((rate3m / rate9m) - 1) * 100
+
+  return {
+    bars,
+    recent3Total,
+    baseline9Total,
+    rate3m,
+    rate9m,
+    liftPct,
+    insufficientBaseline,
   }
-  if (typeof tile.delta_value === 'number' && Number.isFinite(tile.delta_value)) {
-    return formatSignedPercentCompact(tile.delta_value)
-  }
-  return 'No data'
 }
 
 type TotalTrendMode = 'year' | 'month'
@@ -645,6 +684,89 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   )
 }
 
+function MomentumTilePanel({ tile }: { tile: PublicationMetricTilePayload }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const breakdown = buildMomentumBreakdown(tile)
+  const primaryValue = breakdown.liftPct !== null
+    ? formatSignedPercentCompact(breakdown.liftPct)
+    : breakdown.insufficientBaseline
+      ? 'New'
+      : '—'
+  const secondary = breakdown.insufficientBaseline ? 'Insufficient baseline' : '3m vs 9m baseline'
+  const summaryLift = breakdown.liftPct !== null ? formatSignedPercentCompact(breakdown.liftPct) : 'New'
+  const barCount = breakdown.bars.length
+  const hoverLeft = hoveredIndex !== null && barCount > 0
+    ? ((hoveredIndex + 0.5) / barCount) * 100
+    : 50
+  const hoveredBar = hoveredIndex !== null ? breakdown.bars[hoveredIndex] || null : null
+  const maxValue = breakdown.bars.length ? Math.max(1, ...breakdown.bars.map((item) => item.value)) : 1
+  const highlightStart = Math.max(0, breakdown.bars.length - 3)
+
+  return (
+    <div className="mt-1.5 flex items-start gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-2xl font-semibold leading-tight" data-testid={`metric-value-${tile.key}`}>
+          {primaryValue}
+        </p>
+        <p className="mt-0.5 min-h-[16px] text-xs text-muted-foreground">{secondary}</p>
+      </div>
+      <div className="w-[52%] min-w-[170px]">
+        {breakdown.bars.length ? (
+          <div className="relative">
+            {hoveredBar ? (
+              <div
+                className="pointer-events-none absolute -top-[78px] -translate-x-1/2 rounded border border-border bg-background px-2 py-1 text-[10px] text-foreground shadow-sm"
+                style={{ left: `${Math.max(4, Math.min(96, hoverLeft))}%` }}
+              >
+                <p className="font-medium">{hoveredBar.label}: {formatInt(hoveredBar.value)} citations</p>
+                <p className="text-muted-foreground">
+                  3m total: {breakdown.recent3Total === null ? 'n/a' : formatInt(breakdown.recent3Total)} | 9m total: {breakdown.baseline9Total === null ? 'n/a' : formatInt(breakdown.baseline9Total)}
+                </p>
+                <p className="text-muted-foreground">
+                  rate_3m: {formatRate(breakdown.rate3m)} | rate_9m: {formatRate(breakdown.rate9m)} | lift: {summaryLift}
+                </p>
+              </div>
+            ) : null}
+            <div className="flex h-24 items-end gap-1 rounded border border-border/70 bg-muted/20 px-1.5 py-1">
+              {breakdown.bars.map((bar, index) => {
+                const height = Math.max(14, Math.round((bar.value / maxValue) * 78))
+                const highlighted = index >= highlightStart
+                const barSummary = `3m total ${breakdown.recent3Total === null ? 'n/a' : formatInt(breakdown.recent3Total)}; 9m total ${breakdown.baseline9Total === null ? 'n/a' : formatInt(breakdown.baseline9Total)}; rate_3m ${formatRate(breakdown.rate3m)}; rate_9m ${formatRate(breakdown.rate9m)}; lift ${summaryLift}`
+                return (
+                  <div key={`${bar.label}-${index}`} className="flex w-full flex-col items-center gap-1">
+                    <button
+                      type="button"
+                      data-stop-tile-open="true"
+                      onMouseEnter={() => setHoveredIndex(index)}
+                      onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                      onFocus={() => setHoveredIndex(index)}
+                      onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
+                      onClick={(event) => event.stopPropagation()}
+                      onMouseDown={(event) => event.stopPropagation()}
+                      className="relative w-full"
+                      aria-label={`${bar.label}: ${formatInt(bar.value)} citations. ${barSummary}`}
+                    >
+                      <div
+                        className={cn('w-full rounded-sm', highlighted ? 'bg-slate-900/85' : 'bg-slate-500/70')}
+                        style={{ height: `${height}px` }}
+                      />
+                    </button>
+                    <span className="text-[9px] text-muted-foreground">{bar.label}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="flex h-24 items-center justify-center rounded border border-dashed border-border/70 bg-muted/20 text-[10px] text-muted-foreground">
+            No monthly citation data
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function MiniBars({
   values,
   className = '',
@@ -988,17 +1110,12 @@ export function PublicationsTopStrip({
                 const rawDeltaDisplay = String(tile.delta_display || '').trim()
                 const shouldHideLegacyTrendText =
                   isTotalCitationsTile && /(falling|rising|stable over)/i.test(rawDeltaDisplay)
-                const effectiveDeltaDisplay = shouldHideLegacyTrendText || isMomentumTile ? '' : rawDeltaDisplay
+                const effectiveDeltaDisplay = shouldHideLegacyTrendText ? '' : rawDeltaDisplay
                 const tileValueSource = tile.main_value ?? tile.value
                 const tileValueNumberRaw = typeof tileValueSource === 'number' ? tileValueSource : Number.NaN
                 const mainValueDisplay = isImpactConcentrationTile && Number.isFinite(tileValueNumberRaw)
                   ? `${Math.round(tileValueNumberRaw)}%`
-                  : isMomentumTile
-                    ? momentumPrimaryDisplay(tile)
-                    : tile.value_display
-                const momentumIndexCaption = isMomentumTile && Number.isFinite(tileValueNumberRaw)
-                  ? `Index ${Math.round(tileValueNumberRaw)}`
-                  : ''
+                  : tile.value_display
                 const hChartData = (tile.chart_data || {}) as Record<string, unknown>
                 const hGapText = String(hChartData.gap_text || '').trim()
                 const hNextTargetRaw = Number(hChartData.next_h_index)
@@ -1043,7 +1160,7 @@ export function PublicationsTopStrip({
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <p className="text-xs text-muted-foreground" data-testid={`metric-label-${tile.key}`}>{tile.label}</p>
                       <div className="flex items-center gap-1">
-                        {!isTotalCitationsTile && !isTotalPublicationsTile && !isHIndexTile && !isImpactConcentrationTile && badgeLabel ? (
+                        {!isTotalCitationsTile && !isTotalPublicationsTile && !isHIndexTile && !isImpactConcentrationTile && !isMomentumTile && badgeLabel ? (
                           <span
                             className={cn('rounded border px-1.5 py-0.5 text-[10px]', badgeClass(tile))}
                             data-testid={`metric-badge-${tile.key}`}
@@ -1079,7 +1196,7 @@ export function PublicationsTopStrip({
                         </TooltipProvider>
                       </div>
                     </div>
-                    {!isTotalPublicationsTile ? (
+                    {!isTotalPublicationsTile && !isMomentumTile ? (
                       <p className="text-lg font-semibold leading-tight" data-testid={`metric-value-${tile.key}`}>{mainValueDisplay}</p>
                     ) : null}
                     {isTotalCitationsTile ? (
@@ -1143,6 +1260,8 @@ export function PublicationsTopStrip({
                           <HIndexYearChart tile={tile} />
                         </div>
                       </div>
+                    ) : isMomentumTile ? (
+                      <MomentumTilePanel tile={tile} />
                     ) : isImpactConcentrationTile ? (
                       <ImpactConcentrationPanel tile={tile} />
                     ) : (
@@ -1161,9 +1280,7 @@ export function PublicationsTopStrip({
                             {effectiveDeltaDisplay}
                           </p>
                         ) : (
-                          <p className="min-h-[16px] text-[11px] text-muted-foreground">
-                            {momentumIndexCaption || '\u00A0'}
-                          </p>
+                          <p className="min-h-[16px] text-[11px] text-muted-foreground">&nbsp;</p>
                         )}
                         <div className="mt-1.5">
                           <MiniChart tile={tile} />
