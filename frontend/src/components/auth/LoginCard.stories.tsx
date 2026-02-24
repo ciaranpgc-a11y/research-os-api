@@ -60,7 +60,7 @@ function SignInPreview({ loading = false }: { loading?: boolean }) {
         disabled={loading}
       >
         {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-        Sign in
+        {loading ? 'Please wait...' : 'Sign in'}
       </Button>
     </div>
   )
@@ -131,7 +131,6 @@ export const ErrorState: Story = {
 export const LoadingState: Story = {
   args: {
     loading: true,
-    status: 'Signing in... please wait.',
   },
   render: (args) => (
     <LoginCard {...args}>
@@ -139,3 +138,5 @@ export const LoadingState: Story = {
     </LoginCard>
   ),
 }
+
+

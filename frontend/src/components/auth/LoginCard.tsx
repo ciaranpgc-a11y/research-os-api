@@ -52,7 +52,7 @@ export function LoginCard({
       className={cn('mx-auto w-full max-w-md', className)}
       style={{ fontFamily: '"IBM Plex Sans", var(--font-family-base)' }}
     >
-      <Card className="rounded-xl border-[hsl(var(--tone-neutral-200))] bg-card shadow-none">
+      <Card aria-busy={loading} className="rounded-xl border-[hsl(var(--tone-neutral-200))] bg-card shadow-none">
         <CardContent className="space-y-5 p-6 sm:p-7">
           <header className="space-y-4">
             <div className="flex items-center gap-3">
@@ -156,12 +156,10 @@ export function LoginCard({
           <footer className="border-t border-[hsl(var(--tone-neutral-200))] pt-3 text-sm text-[hsl(var(--tone-neutral-600))]">
             {footer}
           </footer>
-
-          {loading ? (
-            <p className="text-caption text-[hsl(var(--tone-neutral-500))]">Processing request...</p>
-          ) : null}
         </CardContent>
       </Card>
     </div>
   )
 }
+
+
