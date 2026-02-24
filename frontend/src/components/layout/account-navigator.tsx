@@ -45,6 +45,7 @@ const ACCOUNT_SECTIONS: AccountNavSection[] = [
       { label: 'Personal details', path: '/profile/personal-details' },
       { label: 'Settings & preferences', path: '/settings' },
       { label: 'Integrations', path: '/profile/integrations' },
+      { label: 'Manage account', path: '/profile/manage-account' },
     ],
   },
 ]
@@ -54,6 +55,7 @@ const PROFILE_PREFETCH_PATHS = new Set([
   '/profile/publications',
   '/profile/personal-details',
   '/profile/integrations',
+  '/profile/manage-account',
 ])
 
 const accountNavItemBase =

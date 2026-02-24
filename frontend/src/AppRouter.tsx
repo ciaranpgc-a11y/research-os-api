@@ -18,6 +18,7 @@ import { OrcidCallbackPage } from '@/pages/orcid-callback-page'
 import { OverviewPage } from '@/pages/overview-page'
 import { ImpactPage } from '@/pages/impact-page'
 import { ProfileIntegrationsPage } from '@/pages/profile-integrations-page'
+import { ProfileManageAccountPage } from '@/pages/profile-manage-account-page'
 import { ProfilePage } from '@/pages/profile-page'
 import { ProfilePersonalDetailsPage } from '@/pages/profile-personal-details-page'
 import { ProfileCollaborationPage } from '@/pages/profile-collaboration-page'
@@ -86,6 +87,7 @@ export function AppRouter() {
           <Route path="/profile/publications" element={<ProfilePublicationsPage />} />
           <Route path="/profile/personal-details" element={<ProfilePersonalDetailsPage />} />
           <Route path="/profile/integrations" element={<ProfileIntegrationsPage />} />
+          <Route path="/profile/manage-account" element={<ProfileManageAccountPage />} />
           <Route path="/account/collaboration" element={<ProfileCollaborationPage />} />
           <Route path="/impact" element={<ImpactPage />} />
           <Route path="/settings" element={<SettingsPage />} />

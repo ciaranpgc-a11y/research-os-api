@@ -995,6 +995,16 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     Open ORCID profile
                   </a>
                 ) : null}
+                <div className="mt-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => navigate('/profile/manage-account')}
+                  >
+                    Manage account
+                  </Button>
+                </div>
               </div>
 
               <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">

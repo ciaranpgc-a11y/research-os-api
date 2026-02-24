@@ -19,6 +19,7 @@ const PATH_PRESETS: Array<{ label: string; path: string }> = [
   { label: 'Personal details', path: '/profile/personal-details' },
   { label: 'Settings & preferences', path: '/settings' },
   { label: 'Integrations', path: '/profile/integrations' },
+  { label: 'Manage account', path: '/profile/manage-account' },
 ]
 
 function AccountNavigatorPreview({ initialPath, panelWidthClass, darkMode }: AccountNavigatorPreviewProps) {
