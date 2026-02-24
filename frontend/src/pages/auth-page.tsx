@@ -110,6 +110,7 @@ export function AuthPage() {
   const [resetPreviewCode, setResetPreviewCode] = useState('')
   const [showSignInPassword, setShowSignInPassword] = useState(false)
   const [showRegisterPassword, setShowRegisterPassword] = useState(false)
+  const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = useState(false)
   const [showResetPanel, setShowResetPanel] = useState(false)
   const [awaitingEmailVerification, setAwaitingEmailVerification] = useState(false)
   const [verificationCode, setVerificationCode] = useState('')
@@ -675,6 +676,8 @@ export function AuthPage() {
     'h-10 w-full bg-[hsl(var(--auth-brand-accent))] text-white hover:bg-[hsl(var(--auth-brand-accent-strong))]'
   const authSubtleActionClass =
     'text-label font-medium text-[hsl(var(--tone-neutral-600))] underline underline-offset-2 transition-colors hover:text-[hsl(var(--auth-brand-navy))]'
+  const passwordCriteriaClass = (met: boolean): string =>
+    met ? 'text-[hsl(var(--tone-accent-700))]' : 'text-[hsl(var(--tone-danger-700))]'
 
   const oauthActions = SOCIAL_PROVIDERS.map((provider) => {
     const config = providerByName.get(provider)
@@ -973,7 +976,7 @@ export function AuthPage() {
               <Input
                 id="register-name"
                 autoComplete="name"
-                placeholder="Jane Researcher"
+                placeholder="Enter your name"
                 value={registerName}
                 onChange={(event) => setRegisterName(event.target.value)}
                 className={authInputClass}
@@ -1014,23 +1017,33 @@ export function AuthPage() {
             </div>
             <div className="space-y-1">
               <label htmlFor="register-confirm-password" className={authLabelClass}>Confirm password</label>
-              <Input
-                id="register-confirm-password"
-                autoComplete="new-password"
-                type="password"
-                placeholder="Confirm password"
-                value={registerConfirmPassword}
-                onChange={(event) => setRegisterConfirmPassword(event.target.value)}
-                className={authInputClass}
-              />
+              <div className={authPasswordWrapClass}>
+                <Input
+                  id="register-confirm-password"
+                  autoComplete="new-password"
+                  type={showRegisterConfirmPassword ? 'text' : 'password'}
+                  placeholder="Confirm password"
+                  value={registerConfirmPassword}
+                  onChange={(event) => setRegisterConfirmPassword(event.target.value)}
+                  className="h-10 border-0 bg-transparent shadow-none focus-visible:ring-0"
+                />
+                <button
+                  type="button"
+                  className={authPasswordToggleClass}
+                  onClick={() => setShowRegisterConfirmPassword((value) => !value)}
+                  aria-label={showRegisterConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                >
+                  {showRegisterConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
 
-            <div className="grid gap-1 text-sm text-[hsl(var(--tone-neutral-600))] sm:grid-cols-2">
-              <p className={registerPasswordChecks.length ? 'text-[hsl(var(--auth-brand-accent))]' : ''}>10+ characters</p>
-              <p className={registerPasswordChecks.upper ? 'text-[hsl(var(--auth-brand-accent))]' : ''}>Uppercase letter</p>
-              <p className={registerPasswordChecks.lower ? 'text-[hsl(var(--auth-brand-accent))]' : ''}>Lowercase letter</p>
-              <p className={registerPasswordChecks.number ? 'text-[hsl(var(--auth-brand-accent))]' : ''}>Number</p>
-              <p className={registerPasswordChecks.matches ? 'text-[hsl(var(--auth-brand-accent))] sm:col-span-2' : 'sm:col-span-2'}>
+            <div className="grid gap-1 text-sm sm:grid-cols-2">
+              <p className={passwordCriteriaClass(registerPasswordChecks.length)}>10+ characters</p>
+              <p className={passwordCriteriaClass(registerPasswordChecks.upper)}>Uppercase letter</p>
+              <p className={passwordCriteriaClass(registerPasswordChecks.lower)}>Lowercase letter</p>
+              <p className={passwordCriteriaClass(registerPasswordChecks.number)}>Number</p>
+              <p className={`${passwordCriteriaClass(registerPasswordChecks.matches)} sm:col-span-2`}>
                 Passwords match
               </p>
             </div>
@@ -1053,6 +1066,8 @@ export function AuthPage() {
     </div>
   )
 }
+
+
 
 
 
