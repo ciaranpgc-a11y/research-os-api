@@ -10,8 +10,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   deletePublicationFile,
   downloadPublicationFile,
-  enqueueMetricsSyncJob,
-  enqueueOrcidImportSyncJob,
   fetchPublicationAiInsights,
   fetchPublicationAuthors,
   fetchPublicationDetail,
@@ -19,7 +17,6 @@ import {
   fetchPublicationImpact,
   fetchPersonaSyncJob,
   fetchMe,
-  fetchOrcidStatus,
   fetchPersonaState,
   fetchPublicationsAnalytics,
   fetchPublicationsTopMetrics,
@@ -31,7 +28,6 @@ import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-c
 import { getAuthSessionToken } from '@/lib/auth-session'
 import type {
   AuthUser,
-  OrcidStatusPayload,
   PublicationAiInsightsResponsePayload,
   PublicationAuthorsPayload,
   PublicationDetailPayload,
@@ -50,7 +46,6 @@ type PublicationFilterKey = 'all' | 'cited' | 'with_doi' | 'with_abstract' | 'wi
 type PublicationSortField = 'citations' | 'year' | 'title' | 'venue' | 'work_type'
 type SortDirection = 'asc' | 'desc'
 type PublicationDetailTab = 'overview' | 'content' | 'impact' | 'files' | 'ai'
-const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const PUBLICATIONS_ANALYTICS_CACHE_KEY = 'aawe_publications_analytics_cache'
 const PUBLICATIONS_TOP_METRICS_CACHE_KEY = 'aawe_publications_top_metrics_cache'
@@ -209,28 +204,6 @@ function formatJournalName(value: string | null | undefined): string {
       return `${leading}${core.charAt(0).toUpperCase()}${core.slice(1).toLowerCase()}${trailing}`
     })
     .join(' ')
-}
-
-function loadCachedOrcidStatus(): OrcidStatusPayload | null {
-  if (typeof window === 'undefined') {
-    return null
-  }
-  const raw = window.localStorage.getItem(INTEGRATIONS_ORCID_STATUS_CACHE_KEY)
-  if (!raw) {
-    return null
-  }
-  try {
-    return JSON.parse(raw) as OrcidStatusPayload
-  } catch {
-    return null
-  }
-}
-
-function saveCachedOrcidStatus(value: OrcidStatusPayload): void {
-  if (typeof window === 'undefined') {
-    return
-  }
-  window.localStorage.setItem(INTEGRATIONS_ORCID_STATUS_CACHE_KEY, JSON.stringify(value))
 }
 
 function loadCachedUser(): AuthUser | null {
@@ -580,7 +553,6 @@ function SortHeader({
 export function ProfilePublicationsPage() {
   const navigate = useNavigate()
   const initialCachedPersonaState = readCachedPersonaState()
-  const initialCachedOrcidStatus = loadCachedOrcidStatus()
   const initialCachedUser = loadCachedUser()
   const initialCachedAnalyticsResponse = loadCachedAnalyticsResponse()
   const initialCachedAnalyticsSummary = analyticsSummaryFromResponse(initialCachedAnalyticsResponse)
@@ -590,7 +562,6 @@ export function ProfilePublicationsPage() {
   const [token, setToken] = useState<string>(() => getAuthSessionToken())
   const [user, setUser] = useState<AuthUser | null>(initialCachedUser)
   const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(initialCachedPersonaState)
-  const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(initialCachedOrcidStatus)
   const [analyticsResponse, setAnalyticsResponse] = useState<PublicationsAnalyticsResponsePayload | null>(initialCachedAnalyticsResponse)
   const [analyticsSummary, setAnalyticsSummary] = useState<PublicationsAnalyticsSummaryPayload | null>(initialCachedAnalyticsSummary)
   const [analyticsTimeseries, setAnalyticsTimeseries] = useState<PublicationsAnalyticsTimeseriesPayload | null>(initialCachedAnalyticsTimeseries)
@@ -641,13 +612,12 @@ export function ProfilePublicationsPage() {
     try {
       const settled = await Promise.allSettled([
         fetchPersonaState(sessionToken),
-        fetchOrcidStatus(sessionToken),
         fetchMe(sessionToken),
         listPersonaSyncJobs(sessionToken, 5),
         fetchPublicationsAnalytics(sessionToken),
         fetchPublicationsTopMetrics(sessionToken),
       ])
-      const [stateResult, orcidResult, userResult, jobsResult, analyticsResult, topMetricsResult] = settled
+      const [stateResult, userResult, jobsResult, analyticsResult, topMetricsResult] = settled
       if (stateResult.status === 'fulfilled') {
         setPersonaState(stateResult.value)
         writeCachedPersonaState(stateResult.value)
@@ -657,10 +627,6 @@ export function ProfilePublicationsPage() {
         if (cached) {
           setStatus('Showing cached publications while live data reloads.')
         }
-      }
-      if (orcidResult.status === 'fulfilled') {
-        setOrcidStatus(orcidResult.value)
-        saveCachedOrcidStatus(orcidResult.value)
       }
       if (userResult.status === 'fulfilled') {
         setUser(userResult.value)
@@ -1221,9 +1187,6 @@ export function ProfilePublicationsPage() {
   const analyticsUpdating = analyticsResponse?.status === 'RUNNING'
   const analyticsFailed = analyticsResponse?.status === 'FAILED' || analyticsResponse?.last_update_failed
   const latestYearGrowth = analyticsTimeseries?.points?.at(-1) || null
-  const worksCount = personaState?.works.length ?? 0
-  const busy = loading || richImporting || syncing || fullSyncing
-  const canSyncCitations = worksCount > 0 && !busy
   const topDrivers = (analyticsTopDrivers?.drivers || []).slice(0, 5)
   const timeseriesPoints = analyticsTimeseries?.points || []
   const maxYearlyCitations = Math.max(1, ...timeseriesPoints.map((point) => Number(point.citations_added || 0)))
@@ -1235,92 +1198,6 @@ export function ProfilePublicationsPage() {
     }
     setSortField(column)
     setSortDirection('desc')
-  }
-
-  const onSyncCitations = async () => {
-    if (!token) {
-      return
-    }
-    if (worksCount === 0) {
-      setStatus('Import at least one work before syncing citations.')
-      return
-    }
-    setSyncing(true)
-    setError('')
-    setStatus('')
-    try {
-      const job = await enqueueMetricsSyncJob(token, {
-        providers: ['openalex'],
-        refreshAnalytics: true,
-      })
-      setActiveSyncJob(job)
-      if (user?.id) {
-        savePublicationsActiveSyncJobId(user.id, job.id)
-      }
-      setStatus('Citation sync started in background.')
-    } catch (syncError) {
-      setError(syncError instanceof Error ? syncError.message : 'Could not synchronise citations.')
-    } finally {
-      // state is controlled by active background job
-    }
-  }
-
-  const onRichImportOrcid = async () => {
-    if (!token) {
-      return
-    }
-    if (!orcidStatus?.linked) {
-      setStatus('Connect ORCID in Integrations before running rich import.')
-      return
-    }
-    setRichImporting(true)
-    setError('')
-    setStatus('')
-    try {
-      const job = await enqueueOrcidImportSyncJob(token, {
-        overwriteUserMetadata: true,
-        runMetricsSync: true,
-        providers: ['openalex', 'semantic_scholar'],
-        refreshAnalytics: true,
-      })
-      setActiveSyncJob(job)
-      if (user?.id) {
-        savePublicationsActiveSyncJobId(user.id, job.id)
-      }
-      setStatus('Rich ORCID sync started in background.')
-    } catch (importError) {
-      setError(importError instanceof Error ? importError.message : 'Could not run rich ORCID import.')
-    } finally {
-      // state is controlled by active background job
-    }
-  }
-
-  const onFullSyncCitations = async () => {
-    if (!token) {
-      return
-    }
-    if (worksCount === 0) {
-      setStatus('Import at least one work before syncing citations.')
-      return
-    }
-    setFullSyncing(true)
-    setError('')
-    setStatus('')
-    try {
-      const job = await enqueueMetricsSyncJob(token, {
-        providers: ['openalex', 'semantic_scholar', 'manual'],
-        refreshAnalytics: true,
-      })
-      setActiveSyncJob(job)
-      if (user?.id) {
-        savePublicationsActiveSyncJobId(user.id, job.id)
-      }
-      setStatus('Full citation sync started in background.')
-    } catch (syncError) {
-      setError(syncError instanceof Error ? syncError.message : 'Could not run full citation sync.')
-    } finally {
-      // state is controlled by active background job
-    }
   }
 
   const activePaneLoading = selectedWorkId

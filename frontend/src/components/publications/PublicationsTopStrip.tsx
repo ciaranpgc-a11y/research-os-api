@@ -765,6 +765,8 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                   .map((item) => Math.round(item))
                   .filter((item) => item > 0)
                   .slice(0, 3)
+                const hSubtitleRaw = String(tile.subtext || '').trim()
+                const hSubtitle = /(target|projection)/i.test(hSubtitleRaw) ? '' : hSubtitleRaw
                 const hProgressLabel = hNextTarget !== null
                   ? `${Math.round(hProgressPct)}% to h=${hNextTarget}`
                   : `${Math.round(hProgressPct)}% to next h`
@@ -850,7 +852,7 @@ export function PublicationsTopStrip({ metrics, loading = false, token = null }:
                             <div className="h-1.5 overflow-hidden rounded bg-slate-200">
                               <div className="h-full rounded bg-slate-800" style={{ width: `${hProgressPct}%` }} />
                             </div>
-                            <p className="mt-0.5 text-[11px] text-muted-foreground">{subtitle || '\u00A0'}</p>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">{hSubtitle || '\u00A0'}</p>
                           </div>
                           <div className="mt-1 min-h-[16px] text-[11px] text-muted-foreground">
                             {hCandidateGaps.length > 0 ? (
