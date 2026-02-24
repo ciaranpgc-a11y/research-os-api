@@ -293,9 +293,13 @@ function MetricBarsChart({
                         dashboardTileStyles.barShape,
                         'relative',
                         toneClass,
-                        isActive && !item.dashed && 'bg-[hsl(var(--tone-positive-700))]',
+                        'transition-[transform,filter,box-shadow,background-color] duration-220 ease-out',
+                        isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
                       )}
-                      style={{ height }}
+                      style={{
+                        height,
+                        transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1})`,
+                      }}
                     >
                       {isActive ? (
                         <div className={cn(dashboardTileStyles.valuePill, 'top-auto bottom-[calc(100%+0.35rem)]')}>
@@ -606,7 +610,7 @@ function TotalCitationsTile({
             TOTAL CITATIONS
           </p>
           <p
-            className="mt-2 text-[2.15rem] font-semibold leading-[0.96] tracking-tight text-foreground"
+            className="mt-2.5 text-[2.15rem] font-semibold leading-[1] tracking-tight text-foreground"
             data-testid={`metric-value-${tile.key}`}
           >
             {primaryValue}
@@ -811,9 +815,13 @@ function ImpactStackedRow({
                     ) : null}
                     <span
                       className={cn(
-                        'block h-full w-full origin-bottom transition-transform duration-150 group-hover/tile:scale-[1.03]',
+                        'block h-full w-full origin-bottom transition-[transform,filter,box-shadow] duration-220 ease-out group-hover/tile:scale-[1.03]',
                         segment.toneClass,
+                        isActive && 'brightness-[1.08] saturate-[1.12] shadow-[inset_0_0_0_1px_hsl(var(--tone-neutral-300))]',
                       )}
+                      style={{
+                        transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.03 : 1})`,
+                      }}
                     />
                   </button>
                 </TooltipTrigger>
@@ -1075,6 +1083,7 @@ function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload })
         {points.map((point, index) => {
           const previous = index > 0 ? values[index - 1] : null
           const delta = previous === null ? null : point.value - previous
+          const isActive = hoveredIndex === index
           return (
             <Tooltip key={`${point.label}-${index}`}>
               <TooltipTrigger asChild>
@@ -1089,19 +1098,32 @@ function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload })
                   onClick={(event) => event.stopPropagation()}
                   onMouseDown={(event) => event.stopPropagation()}
                   className={cn(
-                    'absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full',
+                    'absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full transition-transform duration-200 ease-out',
                     dashboardTileStyles.barFocusRing,
                   )}
                   style={{
                     left: `${(point.x / width) * 100}%`,
                     top: `${(point.y / height) * 100}%`,
+                    transform: `translate(-50%, -50%) scale(${isActive ? 1.06 : 1})`,
                   }}
                   aria-label={`${point.label}: ${formatInt(point.value)} influential citations`}
                 >
-                  {hoveredIndex === index ? (
-                    <span className={dashboardTileStyles.valuePill}>{formatInt(point.value)}</span>
-                  ) : null}
-                  <span className="pointer-events-none absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background bg-[hsl(var(--tone-accent-700))]" />
+                  <span
+                    className={cn(
+                      dashboardTileStyles.valuePill,
+                      'transition-all duration-150 ease-out',
+                      isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
+                    )}
+                    aria-hidden={!isActive}
+                  >
+                    {formatInt(point.value)}
+                  </span>
+                  <span
+                    className={cn(
+                      'pointer-events-none absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background bg-[hsl(var(--tone-accent-700))] transition-[transform,filter,box-shadow] duration-200 ease-out',
+                      isActive && 'scale-[1.16] brightness-[1.08] saturate-[1.15] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
+                    )}
+                  />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="px-2 py-1 text-caption leading-snug">
