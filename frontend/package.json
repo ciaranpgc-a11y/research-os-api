@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:5176": "vite --port 5176 --strictPort",
     "build": "tsc -b && vite build && node scripts/postbuild-spa-fallback.mjs",
     "preview": "vite preview",
     "lint": "eslint src/components/publications src/mocks tests",
