@@ -412,7 +412,17 @@ def list_works(*, user_id: str) -> list[dict[str, Any]]:
         ).all()
         author_name_by_id = {author.id: author.canonical_name for author in authors}
         authors_by_work: dict[str, list[str]] = defaultdict(list)
+        user_author_position_by_work: dict[str, int] = {}
+        author_count_by_work: dict[str, int] = defaultdict(int)
         for link in authorship_rows:
+            author_count_by_work[link.work_id] = author_count_by_work.get(link.work_id, 0) + 1
+            if bool(link.is_user) and link.work_id not in user_author_position_by_work:
+                try:
+                    position = int(link.author_order or 0)
+                except (TypeError, ValueError):
+                    position = 0
+                if position > 0:
+                    user_author_position_by_work[link.work_id] = position
             author_name = author_name_by_id.get(link.author_id, "").strip()
             if not author_name:
                 continue
@@ -434,6 +444,9 @@ def list_works(*, user_id: str) -> list[dict[str, Any]]:
                 pmid = derived_pmid
             if derived_metric is not None:
                 journal_metric = round(derived_metric, 3)
+            author_count = author_count_by_work.get(work.id, 0)
+            if author_count <= 0:
+                author_count = len(authors_by_work.get(work.id, []))
             payload.append(
                 {
                     "id": work.id,
@@ -449,6 +462,8 @@ def list_works(*, user_id: str) -> list[dict[str, Any]]:
                     "provenance": work.provenance,
                     "cluster_id": work.cluster_id,
                     "authors": authors_by_work.get(work.id, []),
+                    "user_author_position": user_author_position_by_work.get(work.id),
+                    "author_count": author_count if author_count > 0 else None,
                     "pmid": pmid,
                     "journal_impact_factor": journal_metric,
                     "created_at": work.created_at,

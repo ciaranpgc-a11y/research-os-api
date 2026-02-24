@@ -37,7 +37,6 @@ import type {
   PersonaSyncJobPayload,
   PublicationsAnalyticsResponsePayload,
   PublicationsAnalyticsSummaryPayload,
-  PublicationsAnalyticsTimeseriesPayload,
   PublicationsAnalyticsTopDriversPayload,
   PublicationsTopMetricsPayload,
 } from '@/types/impact'
@@ -277,13 +276,6 @@ function analyticsSummaryFromResponse(
 ): PublicationsAnalyticsSummaryPayload | null {
   const summary = response?.payload?.summary
   return summary ? summary : null
-}
-
-function analyticsTimeseriesFromResponse(
-  response: PublicationsAnalyticsResponsePayload | null,
-): PublicationsAnalyticsTimeseriesPayload | null {
-  const timeseries = response?.payload?.timeseries
-  return timeseries ? timeseries : null
 }
 
 function analyticsTopDriversFromResponse(
@@ -556,7 +548,6 @@ export function ProfilePublicationsPage() {
   const initialCachedUser = loadCachedUser()
   const initialCachedAnalyticsResponse = loadCachedAnalyticsResponse()
   const initialCachedAnalyticsSummary = analyticsSummaryFromResponse(initialCachedAnalyticsResponse)
-  const initialCachedAnalyticsTimeseries = analyticsTimeseriesFromResponse(initialCachedAnalyticsResponse)
   const initialCachedAnalyticsTopDrivers = analyticsTopDriversFromResponse(initialCachedAnalyticsResponse)
   const initialCachedTopMetricsResponse = loadCachedTopMetricsResponse()
   const [token, setToken] = useState<string>(() => getAuthSessionToken())
@@ -564,7 +555,6 @@ export function ProfilePublicationsPage() {
   const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(initialCachedPersonaState)
   const [analyticsResponse, setAnalyticsResponse] = useState<PublicationsAnalyticsResponsePayload | null>(initialCachedAnalyticsResponse)
   const [analyticsSummary, setAnalyticsSummary] = useState<PublicationsAnalyticsSummaryPayload | null>(initialCachedAnalyticsSummary)
-  const [analyticsTimeseries, setAnalyticsTimeseries] = useState<PublicationsAnalyticsTimeseriesPayload | null>(initialCachedAnalyticsTimeseries)
   const [analyticsTopDrivers, setAnalyticsTopDrivers] = useState<PublicationsAnalyticsTopDriversPayload | null>(initialCachedAnalyticsTopDrivers)
   const [topMetricsResponse, setTopMetricsResponse] = useState<PublicationsTopMetricsPayload | null>(initialCachedTopMetricsResponse)
   const [query, setQuery] = useState('')
@@ -670,7 +660,6 @@ export function ProfilePublicationsPage() {
         setAnalyticsResponse(analyticsResult.value)
         saveCachedAnalyticsResponse(analyticsResult.value)
         setAnalyticsSummary(analyticsSummaryFromResponse(analyticsResult.value))
-        setAnalyticsTimeseries(analyticsTimeseriesFromResponse(analyticsResult.value))
         setAnalyticsTopDrivers(analyticsTopDriversFromResponse(analyticsResult.value))
       }
       if (topMetricsResult.status === 'fulfilled') {
@@ -931,7 +920,6 @@ export function ProfilePublicationsPage() {
         setAnalyticsResponse(next)
         saveCachedAnalyticsResponse(next)
         setAnalyticsSummary(analyticsSummaryFromResponse(next))
-        setAnalyticsTimeseries(analyticsTimeseriesFromResponse(next))
         setAnalyticsTopDrivers(analyticsTopDriversFromResponse(next))
       } catch {
         if (cancelled) {
@@ -1182,14 +1170,90 @@ export function ProfilePublicationsPage() {
   const ownerName = user?.name || ''
   const ownerEmail = user?.email || ''
   const hIndex = analyticsSummary?.h_index ?? 0
-  const citationsPrevious12Months = analyticsSummary?.citations_previous_12_months ?? 0
   const analyticsComputedAt = analyticsResponse?.computed_at || analyticsSummary?.computed_at || null
   const analyticsUpdating = analyticsResponse?.status === 'RUNNING'
   const analyticsFailed = analyticsResponse?.status === 'FAILED' || analyticsResponse?.last_update_failed
-  const latestYearGrowth = analyticsTimeseries?.points?.at(-1) || null
   const topDrivers = (analyticsTopDrivers?.drivers || []).slice(0, 5)
-  const timeseriesPoints = analyticsTimeseries?.points || []
-  const maxYearlyCitations = Math.max(1, ...timeseriesPoints.map((point) => Number(point.citations_added || 0)))
+  const publicationsPerYearPoints = useMemo(() => {
+    const countsByYear = new Map<number, number>()
+    for (const work of personaState?.works || []) {
+      const rawYear = work.year
+      if (typeof rawYear !== 'number' || Number.isNaN(rawYear)) {
+        continue
+      }
+      const year = Math.trunc(rawYear)
+      if (year < 1900 || year > 2100) {
+        continue
+      }
+      countsByYear.set(year, (countsByYear.get(year) || 0) + 1)
+    }
+    return Array.from(countsByYear.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([year, papers]) => ({ year, papers }))
+  }, [personaState?.works])
+  const maxYearlyPublications = Math.max(1, ...publicationsPerYearPoints.map((point) => Number(point.papers || 0)))
+  const latestPublicationYearPoint = publicationsPerYearPoints.at(-1) || null
+  const worksWithKnownYear = publicationsPerYearPoints.reduce((sum, point) => sum + point.papers, 0)
+  const authorshipRoleMix = useMemo(() => {
+    let first = 0
+    let second = 0
+    let last = 0
+    let other = 0
+    let unknown = 0
+    const works = personaState?.works || []
+    for (const work of works) {
+      const rawPosition = work.user_author_position
+      const rawAuthorCount = work.author_count
+      const userPosition = typeof rawPosition === 'number' && Number.isFinite(rawPosition) ? Math.trunc(rawPosition) : null
+      const authorCount = typeof rawAuthorCount === 'number' && Number.isFinite(rawAuthorCount)
+        ? Math.trunc(rawAuthorCount)
+        : Array.isArray(work.authors)
+          ? work.authors.length
+          : 0
+      if (!userPosition || userPosition <= 0 || authorCount <= 0) {
+        unknown += 1
+        continue
+      }
+      if (userPosition === 1) {
+        first += 1
+        continue
+      }
+      if (userPosition === 2) {
+        second += 1
+        continue
+      }
+      if (authorCount > 1 && userPosition === authorCount) {
+        last += 1
+        continue
+      }
+      other += 1
+    }
+    return {
+      first,
+      second,
+      last,
+      other,
+      unknown,
+      known: first + second + last + other,
+      total: works.length,
+    }
+  }, [personaState?.works])
+  const authorshipRoleSegments = useMemo(() => {
+    const known = Math.max(0, authorshipRoleMix.known)
+    if (known === 0) {
+      return []
+    }
+    const segments = [
+      { key: 'first', label: '1st', count: authorshipRoleMix.first, tone: 'bg-emerald-500' },
+      { key: 'second', label: '2nd', count: authorshipRoleMix.second, tone: 'bg-sky-500' },
+      { key: 'last', label: 'Last', count: authorshipRoleMix.last, tone: 'bg-violet-500' },
+      { key: 'other', label: 'Other', count: authorshipRoleMix.other, tone: 'bg-slate-500' },
+    ].filter((item) => item.count > 0)
+    return segments.map((item) => ({
+      ...item,
+      pct: (item.count / known) * 100,
+    }))
+  }, [authorshipRoleMix])
 
   const onSortColumn = (column: PublicationSortField) => {
     if (sortField === column) {
@@ -1362,21 +1426,47 @@ export function ProfilePublicationsPage() {
       <div className="grid gap-3 xl:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Per-year citation graph</CardTitle>
+            <CardTitle className="text-sm">Papers per year</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {timeseriesPoints.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No year-by-year citation history yet.</p>
+            <div className="rounded border border-border/70 bg-muted/20 px-2 py-1.5">
+              <p className="text-[11px] text-muted-foreground">Authorship role mix (1st / 2nd / last / other)</p>
+              {authorshipRoleMix.known > 0 ? (
+                <>
+                  <div className="mt-1 flex h-1.5 overflow-hidden rounded bg-muted">
+                    {authorshipRoleSegments.map((segment) => (
+                      <div
+                        key={segment.key}
+                        className={segment.tone}
+                        style={{ width: `${segment.pct}%` }}
+                        title={`${segment.label}: ${segment.count} papers`}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                    <span>1st {authorshipRoleMix.first}</span>
+                    <span>2nd {authorshipRoleMix.second}</span>
+                    <span>Last {authorshipRoleMix.last}</span>
+                    <span>Other {authorshipRoleMix.other}</span>
+                    {authorshipRoleMix.unknown > 0 ? <span>Unknown {authorshipRoleMix.unknown}</span> : null}
+                  </div>
+                </>
+              ) : (
+                <p className="mt-1 text-[11px] text-muted-foreground">No authorship position data available yet.</p>
+              )}
+            </div>
+            {publicationsPerYearPoints.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No publication years available yet.</p>
             ) : (
-              timeseriesPoints.map((point) => {
-                const width = Math.max(2, Math.round((point.citations_added / maxYearlyCitations) * 100))
+              publicationsPerYearPoints.map((point) => {
+                const width = Math.max(2, Math.round((point.papers / maxYearlyPublications) * 100))
                 return (
                   <div key={point.year} className="grid grid-cols-[56px_1fr_110px] items-center gap-2 text-sm">
                     <span className="text-xs text-muted-foreground">{point.year}</span>
                     <div className="h-2 rounded bg-muted">
                       <div className="h-2 rounded bg-emerald-500" style={{ width: `${width}%` }} />
                     </div>
-                    <span className="text-xs text-muted-foreground">+{point.citations_added} citations</span>
+                    <span className="text-xs text-muted-foreground">{point.papers} paper{point.papers === 1 ? '' : 's'}</span>
                   </div>
                 )
               })
@@ -1410,12 +1500,12 @@ export function ProfilePublicationsPage() {
           <div className="rounded border border-border px-3 py-2 text-sm">
             <p className="text-xs text-muted-foreground">Total works</p>
             <p className="font-semibold">{personaState?.works.length ?? 0}</p>
-            <p className="text-xs text-muted-foreground">Previous 12 months: {citationsPrevious12Months}</p>
+            <p className="text-xs text-muted-foreground">With known year: {worksWithKnownYear}</p>
           </div>
           <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">Latest annual growth point</p>
+            <p className="text-xs text-muted-foreground">Latest publication year</p>
             <p className="font-semibold">
-              {latestYearGrowth ? `${latestYearGrowth.year}: +${latestYearGrowth.citations_added}` : 'n/a'}
+              {latestPublicationYearPoint ? `${latestPublicationYearPoint.year}: ${latestPublicationYearPoint.papers} paper${latestPublicationYearPoint.papers === 1 ? '' : 's'}` : 'n/a'}
             </p>
           </div>
           <div className="rounded border border-border px-3 py-2 text-sm">
