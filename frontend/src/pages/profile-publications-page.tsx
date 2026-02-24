@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
+import { PublicationsDashboard } from '@/components/publications/PublicationsDashboard'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -1431,13 +1431,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
   return (
     <section className="space-y-4">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Publications</h1>
-        </div>
-      </header>
-
-      <PublicationsTopStrip metrics={topMetricsResponse} loading={loading || !topMetricsResponse} token={token || null} />
+      <PublicationsDashboard
+        metrics={topMetricsResponse}
+        loading={loading || !topMetricsResponse}
+        token={token || null}
+      />
 
       <div className="grid gap-3 xl:grid-cols-2">
         <Card>

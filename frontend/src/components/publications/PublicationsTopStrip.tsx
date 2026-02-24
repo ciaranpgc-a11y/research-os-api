@@ -19,6 +19,7 @@ type PublicationsTopStripProps = {
   metrics: PublicationsTopMetricsPayload | null
   loading?: boolean
   token?: string | null
+  showMeta?: boolean
   fetchMetricDetail?: (token: string, metricId: string) => Promise<PublicationMetricDetailPayload>
 }
 
@@ -76,12 +77,6 @@ function formatSignedPercentCompact(value: number): string {
   return `${normalized >= 0 ? '+' : ''}${formatted}%`
 }
 
-function formatRate(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) {
-    return 'n/a'
-  }
-  return `${value.toFixed(1)}/mo`
-}
 
 type MomentumBreakdown = {
   bars: Array<{ label: string; value: number }>
@@ -847,8 +842,9 @@ function MomentumTilePanel({ tile }: { tile: PublicationMetricTilePayload }) {
   const breakdown = buildMomentumBreakdown(tile)
   const summaryLift = breakdown.liftPct !== null ? formatSignedPercentCompact(breakdown.liftPct) : 'New'
   const monthlyBaseline = breakdown.rate9m !== null && breakdown.rate9m > 1e-6 ? breakdown.rate9m : null
-  const highlightStart = Math.max(0, breakdown.bars.length - 3)
-  const chartItems: MetricBarDatum[] = breakdown.bars.map((bar, index) => {
+  const displayBars = breakdown.bars.slice(-6)
+  const highlightStart = Math.max(0, displayBars.length - 2)
+  const chartItems: MetricBarDatum[] = displayBars.map((bar, index) => {
     const baselineDelta = monthlyBaseline === null ? null : ((bar.value - monthlyBaseline) / monthlyBaseline) * 100
     const baselineText = baselineDelta === null ? 'n/a' : formatSignedPercentCompact(baselineDelta)
     return {
@@ -862,23 +858,21 @@ function MomentumTilePanel({ tile }: { tile: PublicationMetricTilePayload }) {
         <div className="space-y-0.5">
           <p>{bar.label}: {formatInt(bar.value)} citations</p>
           <p>% vs baseline: {baselineText}</p>
-          <p>
-            3m total {breakdown.recent3Total === null ? 'n/a' : formatInt(breakdown.recent3Total)} | 9m total {breakdown.baseline9Total === null ? 'n/a' : formatInt(breakdown.baseline9Total)}
-          </p>
-          <p>rate_3m {formatRate(breakdown.rate3m)} | rate_9m {formatRate(breakdown.rate9m)} | lift {summaryLift}</p>
+          <p>3m {breakdown.recent3Total === null ? 'n/a' : formatInt(breakdown.recent3Total)} | 9m {breakdown.baseline9Total === null ? 'n/a' : formatInt(breakdown.baseline9Total)} | lift {summaryLift}</p>
         </div>
       ),
     }
   })
+
+  const summaryText = breakdown.insufficientBaseline
+    ? 'Insufficient baseline for 9-month comparison'
+    : `3m ${breakdown.recent3Total === null ? 'n/a' : formatInt(breakdown.recent3Total)} | 9m ${breakdown.baseline9Total === null ? 'n/a' : formatInt(breakdown.baseline9Total)} | Lift ${summaryLift}`
+
   return (
     <div className={dashboardTileStyles.chartSplit}>
       <div className={dashboardTileStyles.chartColumn}>
-        <p className={dashboardTileStyles.tileMicroLabel}>Calculated vs trailing 9-month baseline</p>
-        <p className={cn(dashboardTileStyles.tileMicroLabel, 'mt-1')}>
-          {breakdown.insufficientBaseline
-            ? 'Insufficient baseline'
-            : `3m total ${breakdown.recent3Total === null ? 'n/a' : formatInt(breakdown.recent3Total)}, 9m total ${breakdown.baseline9Total === null ? 'n/a' : formatInt(breakdown.baseline9Total)}`}
-        </p>
+        <p className={dashboardTileStyles.tileMicroLabel}>Momentum vs trailing baseline</p>
+        <p className={dashboardTileStyles.tileMicroLabel}>{summaryText}</p>
       </div>
       <div className={dashboardTileStyles.chartPanel}>
         <MetricBarsChart items={chartItems} emptyLabel="No monthly citation data" />
@@ -886,7 +880,6 @@ function MomentumTilePanel({ tile }: { tile: PublicationMetricTilePayload }) {
     </div>
   )
 }
-
 function HIndexTrajectoryPanel({ tile }: { tile: PublicationMetricTilePayload }) {
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const hGapText = String(chartData.gap_text || '').trim()
@@ -1303,6 +1296,7 @@ export function PublicationsTopStrip({
   metrics,
   loading = false,
   token = null,
+  showMeta = true,
   fetchMetricDetail = fetchPublicationMetricDetail,
 }: PublicationsTopStripProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -1351,23 +1345,25 @@ export function PublicationsTopStrip({
     <>
       <Card>
         <CardContent className="space-y-3 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-            <div className="flex flex-wrap items-center gap-2">
-              <span>Data last refreshed: {formatRefreshedAt(metrics?.data_last_refreshed || metrics?.computed_at)}</span>
-              {metrics?.is_updating ? <span className="text-amber-700">Updating...</span> : null}
-              {metrics?.status === 'FAILED' ? <span className="text-amber-700">Last update failed</span> : null}
+          {showMeta ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-2">
+                <span>Data last refreshed: {formatRefreshedAt(metrics?.data_last_refreshed || metrics?.computed_at)}</span>
+                {metrics?.is_updating ? <span className="text-amber-700">Updating...</span> : null}
+                {metrics?.status === 'FAILED' ? <span className="text-amber-700">Last update failed</span> : null}
+              </div>
+              <span>Data sources: {(metrics?.data_sources || []).join(', ') || 'Not available'}</span>
             </div>
-            <span>Data sources: {(metrics?.data_sources || []).join(', ') || 'Not available'}</span>
-          </div>
+          ) : null}
 
           {loading && tiles.length === 0 ? (
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid auto-rows-fr gap-3 md:grid-cols-2 xl:grid-cols-3">
               {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="h-28 rounded border border-border bg-muted/40" />
+                <div key={index} className="h-full min-h-sz-220 rounded border border-border bg-muted/40" />
               ))}
             </div>
           ) : (
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid auto-rows-fr gap-3 md:grid-cols-2 xl:grid-cols-3">
               {tiles.map((tile) => {
                 const badgeLabel = String((tile.badge?.label as string) || '').trim()
                 const subtitle = String(tile.subtext || '').trim()
