@@ -468,21 +468,46 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const top3Pct = total > 0 ? (top3 / total) * 100 : 0
   const top3PctRounded = Math.max(0, Math.min(100, Math.round(top3Pct)))
   const restPctRounded = Math.max(0, 100 - top3PctRounded)
+  const uncitedCountRaw = Number(chartData.uncited_publications_count)
+  const uncitedPctRaw = Number(chartData.uncited_publications_pct)
+  const uncitedCount = Number.isFinite(uncitedCountRaw) ? Math.max(0, Math.round(uncitedCountRaw)) : 0
+  const uncitedPct = Number.isFinite(uncitedPctRaw) ? Math.max(0, Math.round(uncitedPctRaw)) : 0
   const meaning = `Top 3 papers account for ${top3PctRounded}% of lifetime citations`
   const [hoveredSegment, setHoveredSegment] = useState<'top3' | 'rest' | null>(null)
   const top3Width = Math.max(0, Math.min(100, top3PctRounded))
   const restWidth = Math.max(0, Math.min(100, restPctRounded))
+  const hoverLabel = hoveredSegment === 'top3'
+    ? `Top 3 ${top3PctRounded}%`
+    : hoveredSegment === 'rest'
+      ? `Rest ${restPctRounded}%`
+      : ''
+  const hoverLeft = hoveredSegment === 'top3'
+    ? top3Width / 2
+    : hoveredSegment === 'rest'
+      ? top3Width + restWidth / 2
+      : 50
 
   return (
     <div className="mt-1.5 flex items-start gap-3">
       <div className="min-w-0 flex-1">
         <p className="min-h-[18px] text-xs text-muted-foreground">{meaning}</p>
-        <p className="mt-0.5 min-h-[16px] text-[11px] text-muted-foreground">&nbsp;</p>
+        <p className="mt-0.5 min-h-[16px] text-[11px] text-muted-foreground">
+          Uncited publications: {uncitedPct}% ({uncitedCount})
+        </p>
       </div>
       <div className="w-[52%] min-w-[170px]">
         <div className="space-y-1">
-          <div className="h-6 overflow-hidden rounded border border-border/70 bg-muted/40">
-            <div className="flex h-full">
+          <div className="relative">
+            {hoveredSegment ? (
+              <div
+                className="pointer-events-none absolute -top-7 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm"
+                style={{ left: `${Math.max(0, Math.min(100, hoverLeft))}%` }}
+              >
+                {hoverLabel}
+              </div>
+            ) : null}
+            <div className="h-6 overflow-hidden rounded border border-border/70 bg-muted/40">
+              <div className="flex h-full">
               {top3Width > 0 ? (
                 <button
                   type="button"
@@ -493,17 +518,11 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                   onBlur={() => setHoveredSegment((current) => (current === 'top3' ? null : current))}
                   onClick={(event) => event.stopPropagation()}
                   onMouseDown={(event) => event.stopPropagation()}
-                  className="relative h-full bg-slate-800/85"
+                  className="h-full bg-slate-800/85"
                   style={{ width: `${top3Width}%` }}
                   aria-label={`Top 3 papers ${top3PctRounded}%`}
                   title={`Top 3 papers: ${top3.toLocaleString('en-GB')} citations`}
-                >
-                  {hoveredSegment === 'top3' ? (
-                    <div className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm">
-                      Top 3 {top3PctRounded}%
-                    </div>
-                  ) : null}
-                </button>
+                />
               ) : null}
               {restWidth > 0 ? (
                 <button
@@ -515,21 +534,15 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                   onBlur={() => setHoveredSegment((current) => (current === 'rest' ? null : current))}
                   onClick={(event) => event.stopPropagation()}
                   onMouseDown={(event) => event.stopPropagation()}
-                  className="relative h-full bg-slate-300/80"
+                  className="h-full bg-slate-300/80"
                   style={{ width: `${restWidth}%` }}
                   aria-label={`Rest papers ${restPctRounded}%`}
                   title={`Other papers: ${rest.toLocaleString('en-GB')} citations`}
-                >
-                  {hoveredSegment === 'rest' ? (
-                    <div className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-medium text-slate-900 shadow-sm">
-                      Rest {restPctRounded}%
-                    </div>
-                  ) : null}
-                </button>
+                />
               ) : null}
+              </div>
             </div>
           </div>
-          <p className="text-[10px] text-muted-foreground">Hover the bar to view Top 3 vs Rest share.</p>
         </div>
       </div>
     </div>

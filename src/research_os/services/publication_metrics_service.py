@@ -29,7 +29,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 10
+TOP_METRICS_SCHEMA_VERSION = 11
 
 DELTA_COLOR_BY_TONE = {
     "positive": "#166534",
@@ -1563,6 +1563,14 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             continue
         publication_counts_by_year[int(parsed_year)] += 1
     total_publications = len(per_work_rows)
+    uncited_publications_count = int(
+        sum(1 for row in per_work_rows if int(row.get("citations_lifetime") or 0) <= 0)
+    )
+    uncited_publications_pct = (
+        (float(uncited_publications_count) / float(total_publications)) * 100.0
+        if total_publications > 0
+        else 0.0
+    )
     author_role_counts = {
         "first": 0,
         "second": 0,
@@ -1895,6 +1903,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             chart_data={
                 "labels": ["Top 3 papers", "All other papers"],
                 "values": [top3_citations, max(0, total_citations - top3_citations)],
+                "uncited_publications_count": uncited_publications_count,
+                "uncited_publications_pct": round(uncited_publications_pct, 2),
             },
             delta_value=concentration_delta,
             delta_display=f"{concentration_delta:+.2f}pp",
@@ -1917,6 +1927,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                         "total_citations": total_citations,
                         "concentration_pct": concentration_risk,
                         "classification": concentration_classification,
+                        "uncited_publications_count": uncited_publications_count,
+                        "uncited_publications_pct": round(uncited_publications_pct, 2),
                     }
                 },
             },
