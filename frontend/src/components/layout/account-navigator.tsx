@@ -25,7 +25,7 @@ const ACCOUNT_LINKS = [
 ]
 
 const accountNavItemBase =
-  'relative flex items-center rounded-md border px-3 py-2 text-label font-medium leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))]'
+  'relative flex items-center rounded-md border px-3 py-1.5 text-label font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))]'
 const accountNavItemIdle =
   'border-transparent text-[hsl(var(--tone-neutral-700))] hover:border-[hsl(var(--tone-accent-200))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]'
 const accountNavItemActive =
@@ -68,9 +68,8 @@ export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
 
   return (
     <aside className="flex h-full flex-col bg-card">
-      <div className="space-y-1 border-b border-[hsl(var(--tone-neutral-200))] px-4 py-4">
-        <p className="text-caption uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))]">Profile</p>
-        <h1 className="text-label font-semibold text-[hsl(var(--tone-neutral-900))]">Navigation</h1>
+      <div className="border-b border-[hsl(var(--tone-neutral-200))] px-4 py-3.5">
+        <h1 className="text-label font-semibold text-[hsl(var(--tone-neutral-900))]">Profile sections</h1>
       </div>
       <ScrollArea className="flex-1">
         <nav className="space-y-1.5 p-3">
