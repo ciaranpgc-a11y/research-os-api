@@ -390,6 +390,17 @@ export type CollaborationImportOpenAlexPayload = {
   imported_candidates: number
 }
 
+export type CollaborationEnrichOpenAlexPayload = {
+  targeted_count: number
+  resolved_author_count: number
+  updated_count: number
+  unchanged_count: number
+  skipped_without_identifier: number
+  failed_count: number
+  enqueued_metrics_recompute: boolean
+  field_updates: Record<string, number>
+}
+
 export type CollaborationAiInsightsPayload = {
   status: 'draft'
   insights: string[]

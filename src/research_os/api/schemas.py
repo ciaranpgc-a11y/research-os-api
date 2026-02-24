@@ -1421,6 +1421,22 @@ class CollaborationImportOpenAlexResponse(BaseModel):
     imported_candidates: int = 0
 
 
+class CollaborationEnrichOpenAlexRequest(BaseModel):
+    only_missing: bool = True
+    limit: int = 200
+
+
+class CollaborationEnrichOpenAlexResponse(BaseModel):
+    targeted_count: int = 0
+    resolved_author_count: int = 0
+    updated_count: int = 0
+    unchanged_count: int = 0
+    skipped_without_identifier: int = 0
+    failed_count: int = 0
+    enqueued_metrics_recompute: bool = False
+    field_updates: dict[str, int] = Field(default_factory=dict)
+
+
 class CollaborationAiInsightsResponse(BaseModel):
     status: Literal["draft"] = "draft"
     insights: list[str] = Field(default_factory=list)

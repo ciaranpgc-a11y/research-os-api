@@ -18,6 +18,7 @@ import type {
   CollaborationAiAuthorSuggestionsPayload,
   CollaborationAiContributionDraftPayload,
   CollaborationAiInsightsPayload,
+  CollaborationEnrichOpenAlexPayload,
   CollaborationImportOpenAlexPayload,
   CollaborationMetricsSummaryPayload,
   ImpactAnalysePayload,
@@ -991,6 +992,28 @@ export async function importCollaboratorsFromOpenAlex(
       headers: authHeaders(token),
     },
     'OpenAlex collaborator import failed',
+    { timeoutMs: 120_000, retryCount: 2 },
+  )
+}
+
+export async function enrichCollaboratorsFromOpenAlex(
+  token: string,
+  input: {
+    onlyMissing?: boolean
+    limit?: number
+  } = {},
+): Promise<CollaborationEnrichOpenAlexPayload> {
+  return requestJson<CollaborationEnrichOpenAlexPayload>(
+    `${API_BASE_URL}/v1/account/collaboration/enrich/openalex`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        only_missing: input.onlyMissing ?? true,
+        limit: Math.max(1, Math.min(500, Number(input.limit || 200))),
+      }),
+    },
+    'OpenAlex collaborator enrichment failed',
     { timeoutMs: 120_000, retryCount: 2 },
   )
 }

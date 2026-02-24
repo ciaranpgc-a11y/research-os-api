@@ -2783,6 +2783,44 @@ def test_v1_collaboration_import_openalex_endpoint(monkeypatch, tmp_path) -> Non
     assert response.json()["imported_candidates"] == 6
 
 
+def test_v1_collaboration_enrich_openalex_endpoint(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "research_os.api.app.enrich_collaborators_from_openalex",
+        lambda **_: {
+            "targeted_count": 4,
+            "resolved_author_count": 3,
+            "updated_count": 2,
+            "unchanged_count": 1,
+            "skipped_without_identifier": 1,
+            "failed_count": 0,
+            "enqueued_metrics_recompute": True,
+            "field_updates": {"country": 1, "research_domains": 2},
+        },
+    )
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "collab-enrich@example.com",
+                "password": "StrongPassword123",
+                "name": "Collab Enrich User",
+            },
+        )
+        headers = _auth_headers(register_response.json()["session_token"])
+        response = client.post(
+            "/v1/account/collaboration/enrich/openalex",
+            headers=headers,
+            json={"only_missing": True, "limit": 200},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["targeted_count"] == 4
+    assert response.json()["updated_count"] == 2
+    assert response.json()["field_updates"]["research_domains"] == 2
+
+
 def test_v1_collaboration_ai_tools_endpoints(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     monkeypatch.setattr(

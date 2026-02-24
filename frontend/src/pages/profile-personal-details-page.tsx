@@ -1058,4 +1058,3 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     </section>
   )
 }
-

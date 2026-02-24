@@ -67,6 +67,8 @@ from research_os.api.schemas import (
     CollaborationAiContributionDraftRequest,
     CollaborationAiContributionDraftResponse,
     CollaborationAiInsightsResponse,
+    CollaborationEnrichOpenAlexRequest,
+    CollaborationEnrichOpenAlexResponse,
     CollaborationImportOpenAlexResponse,
     CollaborationMetricsRecomputeResponse,
     CollaborationMetricsSummaryResponse,
@@ -345,6 +347,7 @@ from research_os.services.collaboration_service import (
     create_collaborator_for_user,
     delete_collaborator_for_user,
     draft_contribution_statement,
+    enrich_collaborators_from_openalex,
     export_collaborators_csv,
     generate_collaboration_ai_insights_draft,
     get_collaboration_metrics_summary,
@@ -2331,6 +2334,33 @@ def v1_collaboration_import_openalex(
         user = get_user_by_session_token(token)
         payload = import_collaborators_from_openalex(user_id=str(user["id"]))
         return CollaborationImportOpenAlexResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except (CollaborationValidationError, ValueError) as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/account/collaboration/enrich/openalex",
+    response_model=CollaborationEnrichOpenAlexResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_collaboration_enrich_openalex(
+    request: Request,
+    payload: CollaborationEnrichOpenAlexRequest,
+) -> CollaborationEnrichOpenAlexResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = enrich_collaborators_from_openalex(
+            user_id=str(user["id"]),
+            only_missing=bool(payload.only_missing),
+            limit=int(payload.limit),
+        )
+        return CollaborationEnrichOpenAlexResponse(**result)
     except AuthNotFoundError as exc:
         return _build_unauthorized_response(str(exc))
     except (CollaborationValidationError, ValueError) as exc:
