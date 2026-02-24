@@ -13,7 +13,6 @@ import type {
 } from '@/types/impact'
 
 import { dashboardTileBarTabIndex, dashboardTileStyles } from './dashboard-tile-styles'
-import { MetricTile } from './MetricTile'
 
 type PublicationsTopStripProps = {
   metrics: PublicationsTopMetricsPayload | null
@@ -627,7 +626,75 @@ function TotalCitationsTile({
   )
 }
 
-function HIndexYearChart({ tile }: { tile: PublicationMetricTilePayload }) {
+function StructuredMetricTile({
+  tile,
+  primaryValue,
+  subtitle,
+  detail,
+  visual,
+  onOpen,
+  shouldIgnoreTileOpen,
+}: {
+  tile: PublicationMetricTilePayload
+  primaryValue: ReactNode
+  subtitle: ReactNode
+  detail?: ReactNode
+  visual: ReactNode
+  onOpen: () => void
+  shouldIgnoreTileOpen: (target: EventTarget | null) => boolean
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      data-metric-key={tile.key}
+      onClick={(event) => {
+        if (shouldIgnoreTileOpen(event.target)) {
+          return
+        }
+        onOpen()
+      }}
+      onKeyDown={(event) => {
+        if (shouldIgnoreTileOpen(event.target)) {
+          return
+        }
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onOpen()
+        }
+      }}
+      className={cn(
+        dashboardTileStyles.tileShell,
+        tile.stability === 'unstable' && dashboardTileStyles.tileShellUnstable,
+        'min-h-36 bg-card px-3 py-2.5 hover:bg-card hover:border-[hsl(var(--tone-neutral-300))]',
+      )}
+    >
+      <div className="grid h-full min-h-[9.5rem] grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)] gap-3">
+        <div className="flex min-h-0 flex-col">
+          <p
+            className="text-[0.64rem] font-semibold uppercase leading-[0.8rem] tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]"
+            data-testid={`metric-label-${tile.key}`}
+          >
+            {String(tile.label || '').toUpperCase()}
+          </p>
+          <p
+            className="mt-2.5 text-[2.15rem] font-semibold leading-[1] tracking-tight text-foreground"
+            data-testid={`metric-value-${tile.key}`}
+          >
+            {primaryValue}
+          </p>
+          <p className="mt-1 text-[0.72rem] font-medium leading-4 text-[hsl(var(--tone-neutral-700))]">{subtitle}</p>
+          {detail ? <p className="text-[0.62rem] leading-4 text-[hsl(var(--tone-neutral-500))]">{detail}</p> : null}
+        </div>
+        <div className="flex h-full min-h-0 items-center">
+          {visual}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetricTilePayload; showCaption?: boolean }) {
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
@@ -679,23 +746,26 @@ function HIndexYearChart({ tile }: { tile: PublicationMetricTilePayload }) {
 
   return (
     <div className="space-y-1">
-      <MetricBarsChart items={chartItems} emptyLabel="No h-index timeline" />
-      <p className={dashboardTileStyles.tileMicroLabel}>h-index by year; dashed bar is current year.</p>
+      <MetricBarsChart items={chartItems} emptyLabel="No h-index timeline" maxBarHeight={44} />
+      {showCaption ? <p className={dashboardTileStyles.tileMicroLabel}>h-index by year; dashed bar is current year.</p> : null}
     </div>
   )
 }
 
-function PublicationsPerYearChart({ tile }: { tile: PublicationMetricTilePayload }) {
+function PublicationsPerYearChart({ tile, showCaption = false }: { tile: PublicationMetricTilePayload; showCaption?: boolean }) {
+  const [chartVisible, setChartVisible] = useState(true)
+  const [barsExpanded, setBarsExpanded] = useState(false)
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
-  if (!years.length || !values.length || years.length !== values.length) {
-    return <div className={dashboardTileStyles.emptyChart}>No publication timeline</div>
-  }
+  const hasValidSeries = years.length > 0 && values.length > 0 && years.length === values.length
+  const validYears = hasValidSeries ? years : []
+  const validValues = hasValidSeries ? values : []
   const meanValueRaw = Number(chartData.mean_value)
   const meanValue = Number.isFinite(meanValueRaw) && meanValueRaw >= 0
     ? meanValueRaw
-    : values.reduce((sum, item) => sum + item, 0) / Math.max(1, values.length)
+    : validValues.reduce((sum, item) => sum + item, 0) / Math.max(1, validValues.length)
   const projectedYearRaw = Number(chartData.projected_year)
   const currentYearYtdRaw = Number(chartData.current_year_ytd)
   const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
@@ -704,8 +774,8 @@ function PublicationsPerYearChart({ tile }: { tile: PublicationMetricTilePayload
     value: number
     current: boolean
     relative: 'above' | 'near' | 'below'
-  }> = years.map((year, index) => {
-    const value = values[index]
+  }> = validYears.map((year, index) => {
+    const value = validValues[index]
     const relative = value >= meanValue * 1.1 ? 'above' : value <= meanValue * 0.9 ? 'below' : 'near'
     return { year, value, current: false, relative }
   })
@@ -719,39 +789,124 @@ function PublicationsPerYearChart({ tile }: { tile: PublicationMetricTilePayload
         ? existingCurrentBar.value
         : 0,
   )
-  historyBars.push({
-    year: projectedYear,
-    value: currentYearValue,
-    current: true,
-    relative: 'near',
-  })
-  const chartItems: MetricBarDatum[] = historyBars.map((bar, index) => ({
-    key: `${bar.year}-${index}`,
-    label: String(bar.year).slice(-2),
-    value: bar.value,
-    dashed: bar.current,
-    toneClass: bar.current
-      ? undefined
-      : bar.relative === 'above'
-        ? 'bg-[hsl(var(--tone-positive-600))]'
-        : bar.relative === 'below'
-          ? 'bg-[hsl(var(--tone-warning-500))]'
-          : 'bg-[hsl(var(--tone-accent-500))]',
-    valueText: formatInt(bar.value),
-    ariaLabel: `${bar.current ? 'Current ' : ''}publications ${formatInt(bar.value)} in ${bar.year}`,
-    tooltip: (
-      <div className="space-y-0.5">
-        <p>{bar.current ? 'Current year (YTD)' : 'Year'}: {bar.year}</p>
-        <p>Publications: {formatInt(bar.value)}</p>
-      </div>
-    ),
-  }))
+  if (hasValidSeries) {
+    historyBars.push({
+      year: projectedYear,
+      value: currentYearValue,
+      current: true,
+      relative: 'near',
+    })
+  }
+
+  const animationKey = useMemo(
+    () => historyBars.map((bar) => `${bar.year}-${bar.value}-${bar.current ? 1 : 0}`).join('|'),
+    [historyBars],
+  )
+  useEffect(() => {
+    setChartVisible(false)
+    setBarsExpanded(false)
+    let rafOne = 0
+    let rafTwo = 0
+    rafOne = window.requestAnimationFrame(() => {
+      setChartVisible(true)
+      rafTwo = window.requestAnimationFrame(() => {
+        setBarsExpanded(true)
+      })
+    })
+    return () => {
+      window.cancelAnimationFrame(rafOne)
+      window.cancelAnimationFrame(rafTwo)
+    }
+  }, [animationKey])
+
+  if (!hasValidSeries || !historyBars.length) {
+    return <div className={dashboardTileStyles.emptyChart}>No publication timeline</div>
+  }
+
+  const maxValue = Math.max(1, ...historyBars.map((bar) => Math.max(0, bar.value)))
+  const scaledMax = maxValue * 1.18
+
   return (
-    <div className="space-y-1">
-      <MetricBarsChart items={chartItems} emptyLabel="No publication timeline" />
-      <p className={dashboardTileStyles.tileMicroLabel}>
-        Dashed bar is current year to date.
-      </p>
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div
+        className={cn(
+          'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-7 pt-4 transition-opacity duration-200',
+          chartVisible ? 'opacity-100' : 'opacity-0',
+        )}
+      >
+        <div className="absolute inset-x-2 bottom-7 top-4">
+          {[25, 50, 75].map((pct) => (
+            <div
+              key={`pub-grid-${pct}`}
+              className="pointer-events-none absolute inset-x-0 border-t border-[hsl(var(--tone-neutral-200))]"
+              style={{ bottom: `${pct}%` }}
+              aria-hidden="true"
+            />
+          ))}
+          <div className="absolute inset-0 flex items-end gap-1">
+            {historyBars.map((bar, index) => {
+              const heightPct = bar.value <= 0 ? 3 : Math.max(6, (Math.max(0, bar.value) / scaledMax) * 100)
+              const isActive = hoveredIndex === index
+              const toneClass = bar.current
+                ? 'border border-dashed border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))]'
+                : bar.relative === 'above'
+                  ? 'bg-[hsl(var(--tone-positive-600))]'
+                  : bar.relative === 'below'
+                    ? 'bg-[hsl(var(--tone-warning-500))]'
+                    : 'bg-[hsl(var(--tone-accent-500))]'
+              return (
+                <div
+                  key={`${bar.year}-${index}`}
+                  className="relative flex h-full min-h-0 flex-1 items-end"
+                  onMouseEnter={() => setHoveredIndex(index)}
+                  onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                >
+                  <span
+                    className={cn(
+                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-[0.6rem] leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
+                      isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
+                    )}
+                    style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
+                    aria-hidden="true"
+                  >
+                    {formatInt(bar.value)}
+                  </span>
+                  <span
+                    className={cn(
+                      'block w-full rounded-[4px] transition-[transform,filter,box-shadow] duration-220 ease-out',
+                      toneClass,
+                      isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
+                    )}
+                    style={{
+                      height: `${heightPct}%`,
+                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                      transformOrigin: 'bottom',
+                      transitionDelay: `${Math.min(220, index * 18)}ms`,
+                    }}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        </div>
+        <div className="pointer-events-none absolute inset-x-2 bottom-1 grid grid-flow-col auto-cols-fr items-start gap-1">
+          {historyBars.map((bar, index) => (
+            <div key={`${bar.year}-${index}-axis`} className="text-center leading-none">
+              <p className="text-[0.56rem] font-semibold text-[hsl(var(--tone-neutral-600))]">{bar.year}</p>
+              {bar.current ? (
+                <p className="mt-[1px] text-[0.5rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-600))]">
+                  YTD
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </div>
+      {showCaption ? (
+        <p className={cn(dashboardTileStyles.tileMicroLabel, 'mt-1')}>
+          Dashed bar is current year to date.
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -958,76 +1113,11 @@ function MomentumTilePanel({ tile }: { tile: PublicationMetricTilePayload }) {
       ),
     }
   })
-  return (
-    <div className={dashboardTileStyles.chartSplit}>
-      <div className={dashboardTileStyles.chartColumn}>
-        <p className={dashboardTileStyles.tileMicroLabel}>Calculated vs trailing 9-month baseline</p>
-        <p className={cn(dashboardTileStyles.tileMicroLabel, 'mt-1')}>
-          {breakdown.insufficientBaseline
-            ? 'Insufficient baseline'
-            : `3m total ${breakdown.recent3Total === null ? 'n/a' : formatInt(breakdown.recent3Total)}, 9m total ${breakdown.baseline9Total === null ? 'n/a' : formatInt(breakdown.baseline9Total)}`}
-        </p>
-      </div>
-      <div className={dashboardTileStyles.chartPanel}>
-        <MetricBarsChart items={chartItems} emptyLabel="No monthly citation data" />
-      </div>
-    </div>
-  )
+  return <MetricBarsChart items={chartItems} emptyLabel="No monthly citation data" maxBarHeight={44} />
 }
 
 function HIndexTrajectoryPanel({ tile }: { tile: PublicationMetricTilePayload }) {
-  const chartData = (tile.chart_data || {}) as Record<string, unknown>
-  const hGapText = String(chartData.gap_text || '').trim()
-  const hNextTargetRaw = Number(chartData.next_h_index)
-  const hNextTarget = Number.isFinite(hNextTargetRaw) ? Math.round(hNextTargetRaw) : null
-  const hProgressRaw = Number(chartData.progress_to_next_pct)
-  const hProgressPct = Number.isFinite(hProgressRaw) ? Math.max(0, Math.min(100, hProgressRaw)) : 0
-  const hCandidateGaps = toNumberArray(chartData.candidate_gaps)
-    .map((item) => Math.round(item))
-    .filter((item) => item > 0)
-    .slice(0, 3)
-  return (
-    <div className={dashboardTileStyles.chartSplit}>
-      <div className={dashboardTileStyles.chartColumn}>
-        <p className={dashboardTileStyles.tileMicroLabel}>
-          {hNextTarget !== null ? `${Math.round(hProgressPct)}% to h=${hNextTarget}` : `${Math.round(hProgressPct)}% to next h`}
-        </p>
-        <div className="relative mt-1">
-          <div className="h-1.5 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
-            <div className="h-full rounded-full bg-[hsl(var(--tone-positive-600))]" style={{ width: `${hProgressPct}%` }} />
-          </div>
-          <div className="pointer-events-none absolute right-0 top-1/2 h-4 -translate-y-1/2 border-l border-dashed border-[hsl(var(--tone-neutral-400))]" />
-        </div>
-        <p className={cn(dashboardTileStyles.tileMicroLabel, 'mt-1')}>
-          Next threshold {hNextTarget !== null ? `h=${hNextTarget}` : 'not available'}
-        </p>
-        <div className="mt-2 min-h-sz-22">
-          {hCandidateGaps.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-1">
-              <span className={dashboardTileStyles.tileMicroLabel}>Nearest papers need:</span>
-              {hCandidateGaps.map((gap, index) => (
-                <span
-                  key={`${gap}-${index}`}
-                  className={cn(
-                    dashboardTileStyles.tagPill,
-                    dashboardTileStyles.tagNeutral,
-                    'h-5 px-2',
-                  )}
-                >
-                  +{gap}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <p className={dashboardTileStyles.tileMicroLabel}>{hGapText || '\u2014'}</p>
-          )}
-        </div>
-      </div>
-      <div className={dashboardTileStyles.chartPanel}>
-        <HIndexYearChart tile={tile} />
-      </div>
-    </div>
-  )
+  return <HIndexYearChart tile={tile} showCaption={false} />
 }
 
 function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload }) {
@@ -1363,44 +1453,6 @@ function metricSummary(tile: PublicationMetricTilePayload, publication: Record<s
   return ''
 }
 
-function deltaTextClass(tile: PublicationMetricTilePayload): string {
-  const code = String(tile.delta_color_code || '').toLowerCase()
-  if (code.includes('166534')) {
-    return 'text-emerald-700'
-  }
-  if (code.includes('b45309')) {
-    return 'text-amber-700'
-  }
-  if (code.includes('b91c1c')) {
-    return 'text-red-700'
-  }
-  return 'text-slate-600'
-}
-
-function badgeTone(tile: PublicationMetricTilePayload): 'positive' | 'neutral' | 'caution' | 'negative' {
-  const severity = String((tile.badge?.severity as string) || tile.delta_tone || 'neutral').toLowerCase()
-  if (severity === 'positive') {
-    return 'positive'
-  }
-  if (severity === 'caution') {
-    return 'caution'
-  }
-  if (severity === 'negative') {
-    return 'negative'
-  }
-  return 'neutral'
-}
-
-function metricDataSources(tile: PublicationMetricTilePayload): string {
-  const details = tile.tooltip_details || {}
-  const detailSources = Array.isArray(details.data_sources) ? details.data_sources : []
-  const rawSources = detailSources.filter((item) => typeof item === 'string') as string[]
-  if (rawSources.length > 0) {
-    return rawSources.join(', ')
-  }
-  return (tile.data_source || []).join(', ') || 'Not available'
-}
-
 export function PublicationsTopStrip({
   metrics,
   loading = false,
@@ -1470,14 +1522,11 @@ export function PublicationsTopStrip({
           ) : (
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 lg:gap-3">
               {tiles.map((tile) => {
-                const badgeLabel = String((tile.badge?.label as string) || '').trim()
                 const subtitle = String(tile.subtext || '').trim()
                 const rawDeltaDisplay = String(tile.delta_display || '').trim()
                 const shouldHideLegacyTrendText =
                   tile.key === 'total_citations' && /(falling|rising|stable over)/i.test(rawDeltaDisplay)
                 const effectiveDeltaDisplay = shouldHideLegacyTrendText ? '' : rawDeltaDisplay
-                const sourceText = metricDataSources(tile)
-                const updateText = String((tile.tooltip_details?.update_frequency as string) || 'Daily')
                 if (tile.key === 'total_citations') {
                   return (
                     <TotalCitationsTile
@@ -1490,7 +1539,6 @@ export function PublicationsTopStrip({
                     />
                   )
                 }
-                const resolvedTagTone = badgeTone(tile)
                 const tileValueSource = tile.main_value ?? tile.value
                 const tileValueNumberRaw = typeof tileValueSource === 'number' ? tileValueSource : Number.NaN
                 const mainValueDisplay = tile.key === 'impact_concentration' && Number.isFinite(tileValueNumberRaw)
@@ -1507,99 +1555,55 @@ export function PublicationsTopStrip({
                 const momentumSecondary = momentumBreakdown?.insufficientBaseline
                   ? 'Insufficient baseline'
                   : 'Calculated vs trailing 9-month baseline'
-                const footerDelta = effectiveDeltaDisplay || '\u2014'
-                const footerNode = (
-                  <p
-                    className={cn(
-                      dashboardTileStyles.tileFooterText,
-                      effectiveDeltaDisplay && deltaTextClass(tile),
-                      tile.stability === 'unstable' && effectiveDeltaDisplay && 'font-medium',
-                    )}
-                  >
-                    {footerDelta}
-                  </p>
-                )
 
                 let primaryValue: ReactNode = mainValueDisplay
                 let secondaryText: ReactNode = subtitle || '\u2014'
-                const showSecondary = true
+                let detailText: ReactNode | undefined = effectiveDeltaDisplay || undefined
                 let visual: ReactNode = (
-                  <div className={dashboardTileStyles.tileVisualWrap}>
+                  <div className="flex h-full min-h-0 items-center rounded-md border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] p-1.5">
                     <MiniChart tile={tile} />
                   </div>
                 )
-                let footerText: ReactNode | undefined = footerNode
-                let tagLabel: string | undefined = badgeLabel || undefined
-                let titleClassName: string | undefined
-                let tileClassName: string | undefined
-                const showFooter = true
-                const tileTagTone: 'positive' | 'neutral' | 'caution' | 'negative' | undefined = resolvedTagTone
 
                 if (tile.key === 'this_year_vs_last') {
                   primaryValue = tile.value_display || mainValueDisplay
                   secondaryText = subtitle || 'Publications per year'
-                  visual = (
-                    <div className={dashboardTileStyles.tileVisualWrap}>
-                      <PublicationsPerYearChart tile={tile} />
-                    </div>
-                  )
-                  tagLabel = undefined
+                  detailText = 'Current year shown as YTD'
+                  visual = <PublicationsPerYearChart tile={tile} showCaption={false} />
                 } else if (tile.key === 'momentum') {
                   primaryValue = momentumPrimary
                   secondaryText = momentumSecondary
-                  visual = (
-                    <div className={dashboardTileStyles.tileVisualWrap}>
-                      <MomentumTilePanel tile={tile} />
-                    </div>
-                  )
-                  footerText = undefined
+                  detailText = effectiveDeltaDisplay || undefined
+                  visual = <MomentumTilePanel tile={tile} />
                 } else if (tile.key === 'h_index_projection') {
                   primaryValue = mainValueDisplay
                   secondaryText = subtitle || 'h-index trajectory'
-                  visual = (
-                    <div className={dashboardTileStyles.tileVisualWrap}>
-                      <HIndexTrajectoryPanel tile={tile} />
-                    </div>
-                  )
-                  tagLabel = undefined
+                  detailText = effectiveDeltaDisplay || undefined
+                  visual = <HIndexTrajectoryPanel tile={tile} />
                 } else if (tile.key === 'impact_concentration') {
                   primaryValue = mainValueDisplay
                   secondaryText = subtitle || 'Lifetime citation distribution'
-                  visual = (
-                    <div className={dashboardTileStyles.tileVisualWrap}>
-                      <ImpactConcentrationPanel tile={tile} />
-                    </div>
-                  )
+                  detailText = effectiveDeltaDisplay || undefined
+                  visual = <ImpactConcentrationPanel tile={tile} />
                 } else if (tile.key === 'influential_citations') {
                   primaryValue = mainValueDisplay
                   secondaryText = subtitle || 'Influential citation trend'
-                  visual = (
-                    <div className={dashboardTileStyles.tileVisualWrap}>
-                      <InfluentialTrendPanel tile={tile} />
-                    </div>
-                  )
+                  detailText = effectiveDeltaDisplay || undefined
+                  visual = <InfluentialTrendPanel tile={tile} />
                 }
 
                 return (
-                  <MetricTile
+                  <StructuredMetricTile
                     key={tile.key}
                     tile={tile}
-                    titleClassName={titleClassName}
-                    tileClassName={tileClassName}
-                    showSecondary={showSecondary}
-                    showFooter={showFooter}
                     onOpen={() => {
                       void onSelectTile(tile)
                     }}
                     shouldIgnoreTileOpen={shouldIgnoreTileOpen}
-                    sourceText={sourceText}
-                    updateText={updateText}
                     primaryValue={primaryValue}
-                    secondaryText={secondaryText}
+                    subtitle={secondaryText}
+                    detail={detailText}
                     visual={visual}
-                    footerText={footerText}
-                    tagLabel={tagLabel}
-                    tagTone={tileTagTone}
                   />
                 )
               })}
