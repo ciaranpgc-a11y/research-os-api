@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { houseDividers, houseForms, houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { getHouseLeftBorderToneClass } from '@/lib/section-tone'
@@ -191,6 +192,10 @@ export function ResultsPage() {
   const [libraryActionStatus, setLibraryActionStatus] = useState('')
   const [libraryActionBusyAssetId, setLibraryActionBusyAssetId] = useState<string | null>(null)
   const [accessDraftByAssetId, setAccessDraftByAssetId] = useState<Record<string, string>>({})
+  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false)
+  const [libraryPickerQuery, setLibraryPickerQuery] = useState('')
+  const [libraryPickerSelection, setLibraryPickerSelection] = useState<string[]>([])
+  const [libraryPickerPulling, setLibraryPickerPulling] = useState(false)
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -242,6 +247,7 @@ export function ResultsPage() {
   }, [refreshPersistedAssets])
 
   const normalizedLibraryFilterQuery = libraryFilterQuery.trim().toLowerCase()
+  const normalizedLibraryPickerQuery = libraryPickerQuery.trim().toLowerCase()
 
   const filteredPersistedAssets = useMemo(() => {
     if (!normalizedLibraryFilterQuery) {
@@ -253,6 +259,25 @@ export function ResultsPage() {
       return haystack.includes(normalizedLibraryFilterQuery)
     })
   }, [normalizedLibraryFilterQuery, persistedAssets])
+
+  const pickerFilteredPersistedAssets = useMemo(() => {
+    if (!normalizedLibraryPickerQuery) {
+      return persistedAssets
+    }
+    return persistedAssets.filter((asset) => {
+      const sharedNames = libraryAssetAccessMembers(asset).map((item) => item.name).join(' ')
+      const haystack = `${asset.filename} ${asset.kind} ${asset.mime_type || ''} ${asset.owner_name || ''} ${sharedNames}`.toLowerCase()
+      return haystack.includes(normalizedLibraryPickerQuery)
+    })
+  }, [normalizedLibraryPickerQuery, persistedAssets])
+
+  const selectedLibraryAssetSet = useMemo(() => new Set(libraryPickerSelection), [libraryPickerSelection])
+  const allPickerFilteredSelected = useMemo(() => {
+    if (pickerFilteredPersistedAssets.length === 0) {
+      return false
+    }
+    return pickerFilteredPersistedAssets.every((asset) => selectedLibraryAssetSet.has(asset.id))
+  }, [pickerFilteredPersistedAssets, selectedLibraryAssetSet])
 
   const handleFiles = async (files: File[]) => {
     if (files.length === 0) {
@@ -437,151 +462,252 @@ export function ResultsPage() {
     [updatePersistedAssetInState],
   )
 
+  const onLibraryPickerOpenChange = useCallback((nextOpen: boolean) => {
+    setLibraryPickerOpen(nextOpen)
+    if (!nextOpen) {
+      setLibraryPickerQuery('')
+      setLibraryPickerSelection([])
+    }
+  }, [])
+
+  const onToggleLibraryPickerAsset = useCallback((assetId: string, checked: boolean) => {
+    setLibraryPickerSelection((current) => {
+      if (checked) {
+        if (current.includes(assetId)) {
+          return current
+        }
+        return [...current, assetId]
+      }
+      return current.filter((value) => value !== assetId)
+    })
+  }, [])
+
+  const onToggleLibraryPickerSelectAll = useCallback(
+    (checked: boolean) => {
+      if (checked) {
+        setLibraryPickerSelection((current) => {
+          const nextSet = new Set(current)
+          pickerFilteredPersistedAssets.forEach((asset) => {
+            nextSet.add(asset.id)
+          })
+          return Array.from(nextSet)
+        })
+        return
+      }
+      const visibleIds = new Set(pickerFilteredPersistedAssets.map((asset) => asset.id))
+      setLibraryPickerSelection((current) => current.filter((assetId) => !visibleIds.has(assetId)))
+    },
+    [pickerFilteredPersistedAssets],
+  )
+
+  const onPullSelectedLibraryAssets = useCallback(async () => {
+    const token = getAuthSessionToken()
+    if (!token) {
+      setLibraryActionError('Sign in to pull files into this workspace.')
+      return
+    }
+    const selectedAssets = persistedAssets.filter((asset) => selectedLibraryAssetSet.has(asset.id))
+    if (selectedAssets.length === 0) {
+      setLibraryActionError('Select at least one dataset to pull.')
+      return
+    }
+
+    setLibraryPickerPulling(true)
+    setLibraryActionError('')
+    setLibraryActionStatus('')
+    const errors: string[] = []
+    let pulledCount = 0
+
+    for (const asset of selectedAssets) {
+      try {
+        const payload = await downloadPersistedLibraryAsset({
+          token,
+          assetId: asset.id,
+        })
+        const file = new File([payload.blob], payload.fileName || asset.filename, {
+          type: payload.contentType || payload.blob.type || 'application/octet-stream',
+        })
+        const parsed = await parseDataAsset(file)
+        addDataAsset(parsed)
+        pulledCount += 1
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Could not pull file into workspace.'
+        errors.push(`${asset.filename}: ${message}`)
+      }
+    }
+
+    if (pulledCount > 0) {
+      setLibraryActionStatus(`Pulled ${pulledCount} dataset${pulledCount === 1 ? '' : 's'} into workspace files.`)
+      setLibraryPickerSelection([])
+      setLibraryPickerQuery('')
+      setLibraryPickerOpen(false)
+    }
+    if (errors.length > 0) {
+      setLibraryActionError(errors.join(' '))
+    }
+    setLibraryPickerPulling(false)
+  }, [addDataAsset, persistedAssets, selectedLibraryAssetSet])
+
   return (
-    <PageFrame title="Data" description="" hideScaffoldHeader>
-      <div
-        className={cn(
-          'grid gap-3 nav:gap-0',
-          rightPanelCollapsed
-            ? 'nav:grid-cols-[minmax(0,1fr)_56px]'
-            : 'nav:grid-cols-[minmax(0,1fr)_320px]',
-        )}
-        data-house-role="data-page-layout"
-      >
-        <div data-house-role="data-main-column" className="nav:pr-3" />
-
-        <aside
-          className={cn('border-border nav:border-l', rightPanelCollapsed && 'bg-card')}
-          data-house-role="data-right-panel"
+    <>
+      <PageFrame title="Data" description="" hideScaffoldHeader>
+        <div
+          className={cn(
+            'grid gap-3 nav:gap-0',
+            rightPanelCollapsed
+              ? 'nav:grid-cols-[minmax(0,1fr)_56px]'
+              : 'nav:grid-cols-[minmax(0,1fr)_320px]',
+          )}
+          data-house-role="data-page-layout"
         >
-          {rightPanelCollapsed ? (
-            <div
-              className={cn('flex h-full flex-col items-center gap-2 p-2', houseLayout.sidebar)}
-              data-house-role="data-right-panel-collapsed"
-            >
-              <Button
-                type="button"
-                size="sm"
-                variant="house"
-                className="h-8 px-2"
-                onClick={() => setRightPanelCollapsed(false)}
-                data-ui="data-right-panel-expand"
-                aria-label="Expand data sources panel"
+          <div data-house-role="data-main-column" className="nav:pr-3" />
+
+          <aside
+            className={cn('border-border nav:border-l', rightPanelCollapsed && 'bg-card')}
+            data-house-role="data-right-panel"
+          >
+            {rightPanelCollapsed ? (
+              <div
+                className={cn('flex h-full flex-col items-center gap-2 p-2', houseLayout.sidebar)}
+                data-house-role="data-right-panel-collapsed"
               >
-                Expand
-              </Button>
-              <p className={cn('text-xs uppercase tracking-[0.08em]', houseTypography.fieldHelper)}>
-                Data sources
-              </p>
-            </div>
-          ) : (
-            <div className={cn('flex h-full flex-col', houseLayout.sidebar)} data-house-role="data-right-panel-expanded">
-              <div className={houseLayout.sidebarHeader}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, HOUSE_LEFT_BORDER_DATA_CLASS)}>
-                    <h2 className={houseTypography.sectionTitle}>Data sources</h2>
-                    <p className={houseTypography.fieldHelper}>Personal library and upload</p>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="house"
-                    className="h-8 px-2"
-                    onClick={() => setRightPanelCollapsed(true)}
-                    data-ui="data-right-panel-collapse"
-                    aria-label="Collapse data sources panel"
-                  >
-                    Collapse
-                  </Button>
-                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="house"
+                  className="h-8 px-2"
+                  onClick={() => setRightPanelCollapsed(false)}
+                  data-ui="data-right-panel-expand"
+                  aria-label="Expand data sources panel"
+                >
+                  Expand
+                </Button>
+                <p className={cn('text-xs uppercase tracking-[0.08em]', houseTypography.fieldHelper)}>
+                  Data sources
+                </p>
               </div>
-
-              <div className="grid gap-3 p-3">
-                <Card data-house-role="workspace-card" className="order-3">
-                  <CardHeader>
-                    <CardTitle data-house-role="section-title">Upload new dataset</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <button
+            ) : (
+              <div className={cn('flex h-full flex-col', houseLayout.sidebar)} data-house-role="data-right-panel-expanded">
+                <div className={houseLayout.sidebarHeader}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, HOUSE_LEFT_BORDER_DATA_CLASS)}>
+                      <h2 className={houseTypography.sectionTitle}>Data sources</h2>
+                      <p className={houseTypography.fieldHelper}>Personal library and upload</p>
+                    </div>
+                    <Button
                       type="button"
-                      data-house-role="upload-dropzone"
-                      className={`w-full rounded-md border border-dashed p-4 text-left transition-colors ${
-                        isDragActive ? 'border-primary bg-primary/5' : 'border-border bg-muted/20 hover:bg-muted/30'
-                      }`}
-                      onDragOver={(event) => {
-                        event.preventDefault()
-                        setIsDragActive(true)
-                      }}
-                      onDragLeave={(event) => {
-                        event.preventDefault()
-                        setIsDragActive(false)
-                      }}
-                      onDrop={(event) => {
-                        event.preventDefault()
-                        setIsDragActive(false)
-                        const files = Array.from(event.dataTransfer.files)
-                        void handleFiles(files)
-                      }}
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isUploading}
+                      size="sm"
+                      variant="house"
+                      className="h-8 px-2"
+                      onClick={() => setRightPanelCollapsed(true)}
+                      data-ui="data-right-panel-collapse"
+                      aria-label="Collapse data sources panel"
                     >
-                      <div data-house-role="upload-dropzone-row" className="flex items-center gap-3">
-                        <UploadCloud className="h-6 w-6 text-muted-foreground" />
-                        <p data-house-role="upload-dropzone-label" className={houseTypography.fieldLabel}>Drop files or click</p>
-                      </div>
-                    </button>
-
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      accept=".csv,.xlsx"
-                      className="hidden"
-                      onChange={(event) => {
-                        const files = Array.from(event.target.files ?? [])
-                        void handleFiles(files)
-                        event.target.value = ''
-                      }}
-                    />
-
-                    <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
-                      Select files
+                      Collapse
                     </Button>
+                  </div>
+                </div>
 
-                    {isUploading ? (
-                      <p data-house-role="upload-status-note" className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        Uploading...
-                      </p>
-                    ) : null}
-                    {persistSyncBusy ? (
-                      <p data-house-role="sync-status-note" className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        Syncing...
-                      </p>
-                    ) : null}
-                    {uploadError ? <p data-house-role="upload-error" className="text-xs text-destructive">{uploadError}</p> : null}
-                    {persistSyncError ? <p data-house-role="sync-error" className="text-xs text-destructive">{persistSyncError}</p> : null}
-                    {status ? <p data-house-role="upload-success" className="text-xs text-emerald-600">{status}</p> : null}
-                  </CardContent>
-                </Card>
+                <div className="grid gap-3 p-3">
+                  <Card data-house-role="workspace-card" className="order-3">
+                    <CardHeader>
+                      <CardTitle data-house-role="section-title">Upload new dataset</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <button
+                        type="button"
+                        data-house-role="upload-dropzone"
+                        className={`w-full rounded-md border border-dashed p-4 text-left transition-colors ${
+                          isDragActive ? 'border-primary bg-primary/5' : 'border-border bg-muted/20 hover:bg-muted/30'
+                        }`}
+                        onDragOver={(event) => {
+                          event.preventDefault()
+                          setIsDragActive(true)
+                        }}
+                        onDragLeave={(event) => {
+                          event.preventDefault()
+                          setIsDragActive(false)
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault()
+                          setIsDragActive(false)
+                          const files = Array.from(event.dataTransfer.files)
+                          void handleFiles(files)
+                        }}
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploading}
+                      >
+                        <div data-house-role="upload-dropzone-row" className="flex items-center gap-3">
+                          <UploadCloud className="h-6 w-6 text-muted-foreground" />
+                          <p data-house-role="upload-dropzone-label" className={houseTypography.fieldLabel}>Drop files or click</p>
+                        </div>
+                      </button>
+
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        accept=".csv,.xlsx"
+                        className="hidden"
+                        onChange={(event) => {
+                          const files = Array.from(event.target.files ?? [])
+                          void handleFiles(files)
+                          event.target.value = ''
+                        }}
+                      />
+
+                      <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
+                        Select files
+                      </Button>
+
+                      {isUploading ? (
+                        <p data-house-role="upload-status-note" className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Uploading...
+                        </p>
+                      ) : null}
+                      {persistSyncBusy ? (
+                        <p data-house-role="sync-status-note" className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Syncing...
+                        </p>
+                      ) : null}
+                      {uploadError ? <p data-house-role="upload-error" className="text-xs text-destructive">{uploadError}</p> : null}
+                      {persistSyncError ? <p data-house-role="sync-error" className="text-xs text-destructive">{persistSyncError}</p> : null}
+                      {status ? <p data-house-role="upload-success" className="text-xs text-emerald-600">{status}</p> : null}
+                    </CardContent>
+                  </Card>
 
                 <Card data-house-role="workspace-card" className="order-1">
                   <CardHeader className="space-y-0">
                     <div data-house-role="library-header-row" className="flex items-center justify-between gap-2">
                       <CardTitle data-house-role="section-title">Access from personal library</CardTitle>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void refreshPersistedAssets()}
-                        disabled={!hasSessionToken || persistSyncBusy}
-                      >
-                        <RefreshCw className="mr-1 h-4 w-4" />
-                        Refresh
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onLibraryPickerOpenChange(true)}
+                          disabled={!hasSessionToken || persistSyncBusy}
+                          data-ui="data-open-personal-library"
+                        >
+                          Open personal library
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void refreshPersistedAssets()}
+                          disabled={!hasSessionToken || persistSyncBusy}
+                        >
+                          <RefreshCw className="mr-1 h-4 w-4" />
+                          Refresh
+                        </Button>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-2">
+                    <p className={houseTypography.fieldHelper}>
+                      Select datasets from your personal library and pull them into this workspace.
+                    </p>
                     <div data-house-role="library-filter-group" className="space-y-1">
                       <label data-house-role="field-label" htmlFor="library-filter" className={houseTypography.fieldLabel}>Search library</label>
                       <Input
@@ -724,13 +850,157 @@ export function ResultsPage() {
                     </p>
                   </CardContent>
                 </Card>
-                <div data-house-role="data-right-panel-divider" className={cn(houseDividers.strong, 'order-2')} />
+                  <div data-house-role="data-right-panel-divider" className={cn(houseDividers.strong, 'order-2')} />
+                </div>
+              </div>
+            )}
+          </aside>
+        </div>
+
+      </PageFrame>
+      <Sheet open={libraryPickerOpen} onOpenChange={onLibraryPickerOpenChange}>
+        <SheetContent side="right" className="w-full max-w-sz-580 p-0 sm:w-sz-580">
+          <div className="flex h-full flex-col">
+            <div className="space-y-3 border-b border-border px-4 py-4">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h3 className={houseTypography.sectionTitle}>Personal library</h3>
+                  <p className={houseTypography.fieldHelper}>
+                    Select datasets to pull into this workspace.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void refreshPersistedAssets()}
+                  disabled={!hasSessionToken || persistSyncBusy || libraryPickerPulling}
+                >
+                  <RefreshCw className="mr-1 h-4 w-4" />
+                  Refresh
+                </Button>
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="library-picker-search" className={houseTypography.fieldLabel}>Search library</label>
+                <Input
+                  id="library-picker-search"
+                  value={libraryPickerQuery}
+                  onChange={(event) => setLibraryPickerQuery(event.target.value)}
+                  placeholder="File name, owner, or type"
+                  className={houseForms.input}
+                  disabled={!hasSessionToken || persistSyncBusy || libraryPickerPulling}
+                />
+              </div>
+              <label className={cn('flex items-center gap-2', houseTypography.fieldHelper)}>
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border border-border"
+                  checked={allPickerFilteredSelected}
+                  onChange={(event) => onToggleLibraryPickerSelectAll(event.target.checked)}
+                  disabled={!hasSessionToken || pickerFilteredPersistedAssets.length === 0 || libraryPickerPulling}
+                />
+                Select all shown ({pickerFilteredPersistedAssets.length})
+              </label>
+            </div>
+            <ScrollArea className="flex-1 px-4 py-3">
+              {!hasSessionToken ? (
+                <p className={houseTypography.fieldHelper}>Sign in to access your personal library.</p>
+              ) : persistSyncBusy ? (
+                <p className={cn('flex items-center gap-2', houseTypography.fieldHelper)}>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Loading...
+                </p>
+              ) : pickerFilteredPersistedAssets.length === 0 ? (
+                <p className={houseTypography.fieldHelper}>No datasets match this search.</p>
+              ) : (
+                <div className="space-y-2">
+                  {pickerFilteredPersistedAssets.map((asset) => {
+                    const checked = selectedLibraryAssetSet.has(asset.id)
+                    const isBusy = libraryPickerPulling || libraryActionBusyAssetId === asset.id
+                    return (
+                      <div key={asset.id} className="rounded-md border border-border/70 p-2">
+                        <div className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            className="mt-1 h-4 w-4 rounded border border-border"
+                            checked={checked}
+                            onChange={(event) => onToggleLibraryPickerAsset(asset.id, event.target.checked)}
+                            disabled={isBusy}
+                            aria-label={`Select ${asset.filename}`}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="truncate text-sm font-medium">{asset.filename}</p>
+                              <Badge variant="outline">{asset.kind}</Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {formatBytes(asset.byte_size)} | {new Date(asset.uploaded_at).toLocaleString()}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Owner: {normalizeName(String(asset.owner_name || '')) || 'Unknown'}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2 pt-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void onDownloadLibraryAsset(asset)}
+                                disabled={isBusy}
+                              >
+                                <Download className="mr-1 h-3.5 w-3.5" />
+                                Download
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void onPullLibraryAssetIntoWorkspace(asset)}
+                                disabled={isBusy}
+                              >
+                                Pull now
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </ScrollArea>
+            <div className="space-y-2 border-t border-border px-4 py-3">
+              {libraryActionError ? (
+                <p className="text-xs text-destructive">{libraryActionError}</p>
+              ) : null}
+              {libraryActionStatus ? (
+                <p className="text-xs text-emerald-600">{libraryActionStatus}</p>
+              ) : null}
+              <div className="flex items-center justify-between gap-2">
+                <p className={houseTypography.fieldHelper}>{libraryPickerSelection.length} selected</p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onLibraryPickerOpenChange(false)}
+                    disabled={libraryPickerPulling}
+                  >
+                    Close
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => void onPullSelectedLibraryAssets()}
+                    disabled={!hasSessionToken || libraryPickerSelection.length === 0 || libraryPickerPulling}
+                  >
+                    {libraryPickerPulling ? 'Pulling...' : `Pull selected (${libraryPickerSelection.length})`}
+                  </Button>
+                </div>
               </div>
             </div>
-          )}
-        </aside>
-      </div>
-
-    </PageFrame>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   )
 }

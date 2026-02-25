@@ -14,6 +14,7 @@
 - Renamed right-rail framing to `Data sources` for clearer collapse/expand semantics.
 - Added a house-token divider between `Access from personal library` and `Upload new dataset` sections in the right panel.
 - Removed all center-console content (workspace summary badges, files list, preview table, and bottom status badges) so the Data page now uses a right-rail-first composition.
+- Added `Open personal library` picker flow: users can open a dedicated library sheet, multi-select datasets, and pull selected files into the workspace in one action.
 - Preserved house-token styling patterns and existing upload/personal-library behavior.
 - Removed `Insight & Integrity` right-rail injection from workspace and non-profile app shells.
 - Added collapse/expand controls for the workspace inbox right navigation panel so users can widen the conversation area on demand.

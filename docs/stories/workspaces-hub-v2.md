@@ -132,6 +132,7 @@ Out of scope (this story):
 - Realigned the individual workspace `Data` page to house-style right rail composition, with `Access from personal library` above `Upload`.
 - Added collapse/expand controls to the Data right rail and moved its desktop activation to the `nav` breakpoint so it is visible on standard laptop widths.
 - Renamed Data right-rail framing to `Data sources`, inserted a house-token divider between personal-library access and upload actions, and removed center-console content to keep the surface right-panel led.
+- Added an `Open personal library` sheet in Data sources so users can search, multi-select, and pull datasets into the workspace in one action.
 - Removed `Insight & Integrity` side-panel wiring from workspace and non-profile app shells to keep focus on core workspace actions.
 - Added collapse/expand behavior to the inbox right panel so conversation content can use more horizontal space when reviewing long threads.
 - Removed `Create new workspace` action from the individual workspace left panel.

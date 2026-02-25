@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react'
+import { ChevronDown, ChevronUp, ChevronsUpDown, SlidersHorizontal } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
@@ -48,10 +48,37 @@ type PublicationFilterKey = 'all' | 'cited' | 'with_doi' | 'with_abstract' | 'wi
 type PublicationSortField = 'citations' | 'year' | 'title' | 'venue' | 'work_type'
 type SortDirection = 'asc' | 'desc'
 type PublicationDetailTab = 'overview' | 'content' | 'impact' | 'files' | 'ai'
+type PublicationTableColumnKey = 'title' | 'year' | 'venue' | 'work_type' | 'citations'
+type PublicationTableColumnAlign = 'left' | 'center' | 'right'
+type PublicationTableColumnPreference = {
+  visible: boolean
+  align: PublicationTableColumnAlign
+  width: number
+}
+
+const PUBLICATION_TABLE_COLUMN_ORDER: PublicationTableColumnKey[] = ['title', 'year', 'venue', 'work_type', 'citations']
+const PUBLICATION_TABLE_COLUMN_DEFINITIONS: Record<PublicationTableColumnKey, { label: string; sortField: PublicationSortField }> = {
+  title: { label: 'Title', sortField: 'title' },
+  year: { label: 'Year', sortField: 'year' },
+  venue: { label: 'Journal', sortField: 'venue' },
+  work_type: { label: 'Publication type', sortField: 'work_type' },
+  citations: { label: 'Citations', sortField: 'citations' },
+}
+const PUBLICATION_TABLE_COLUMN_DEFAULTS: Record<PublicationTableColumnKey, PublicationTableColumnPreference> = {
+  title: { visible: true, align: 'left', width: 360 },
+  year: { visible: true, align: 'center', width: 92 },
+  venue: { visible: true, align: 'left', width: 280 },
+  work_type: { visible: true, align: 'left', width: 200 },
+  citations: { visible: true, align: 'right', width: 120 },
+}
+const PUBLICATION_TABLE_COLUMN_WIDTH_MIN = 80
+const PUBLICATION_TABLE_COLUMN_WIDTH_MAX = 640
+
 const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const PUBLICATIONS_ANALYTICS_CACHE_KEY = 'aawe_publications_analytics_cache'
 const PUBLICATIONS_TOP_METRICS_CACHE_KEY = 'aawe_publications_top_metrics_cache'
 const PUBLICATIONS_ACTIVE_SYNC_JOB_STORAGE_PREFIX = 'aawe_publications_active_sync_job:'
+const PUBLICATIONS_LIBRARY_COLUMNS_STORAGE_PREFIX = 'aawe_publications_library_columns:'
 const PUBLICATIONS_OA_AUTO_ATTEMPTED_STORAGE_PREFIX = 'aawe_publications_oa_auto_attempted:'
 const PUBLICATIONS_OA_AUTO_MAX_PER_PASS = 60
 const PUBLICATIONS_OA_AUTO_INTER_REQUEST_DELAY_MS = 220
@@ -344,6 +371,97 @@ function clearPublicationsActiveSyncJobId(userId: string): void {
   window.localStorage.removeItem(publicationsActiveSyncJobStorageKey(userId))
 }
 
+function publicationsLibraryColumnsStorageKey(userId: string): string {
+  return `${PUBLICATIONS_LIBRARY_COLUMNS_STORAGE_PREFIX}${userId}`
+}
+
+function clampPublicationTableColumnWidth(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback
+  }
+  return Math.max(
+    PUBLICATION_TABLE_COLUMN_WIDTH_MIN,
+    Math.min(PUBLICATION_TABLE_COLUMN_WIDTH_MAX, Math.round(value)),
+  )
+}
+
+function parsePublicationTableColumnAlign(value: unknown): PublicationTableColumnAlign {
+  const clean = String(value || '').trim().toLowerCase()
+  if (clean === 'center' || clean === 'right') {
+    return clean
+  }
+  return 'left'
+}
+
+function createDefaultPublicationTableColumnPreferences(): Record<PublicationTableColumnKey, PublicationTableColumnPreference> {
+  return {
+    title: { ...PUBLICATION_TABLE_COLUMN_DEFAULTS.title },
+    year: { ...PUBLICATION_TABLE_COLUMN_DEFAULTS.year },
+    venue: { ...PUBLICATION_TABLE_COLUMN_DEFAULTS.venue },
+    work_type: { ...PUBLICATION_TABLE_COLUMN_DEFAULTS.work_type },
+    citations: { ...PUBLICATION_TABLE_COLUMN_DEFAULTS.citations },
+  }
+}
+
+function loadPublicationTableColumnPreferences(userId: string): Record<PublicationTableColumnKey, PublicationTableColumnPreference> {
+  const defaults = createDefaultPublicationTableColumnPreferences()
+  if (typeof window === 'undefined') {
+    return defaults
+  }
+  const raw = window.localStorage.getItem(publicationsLibraryColumnsStorageKey(userId))
+  if (!raw) {
+    return defaults
+  }
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    for (const key of PUBLICATION_TABLE_COLUMN_ORDER) {
+      const candidate = parsed?.[key]
+      if (!candidate || typeof candidate !== 'object') {
+        continue
+      }
+      const payload = candidate as Record<string, unknown>
+      defaults[key] = {
+        visible: payload.visible !== false,
+        align: parsePublicationTableColumnAlign(payload.align),
+        width: clampPublicationTableColumnWidth(
+          Number(payload.width || PUBLICATION_TABLE_COLUMN_DEFAULTS[key].width),
+          PUBLICATION_TABLE_COLUMN_DEFAULTS[key].width,
+        ),
+      }
+    }
+  } catch {
+    return defaults
+  }
+  return defaults
+}
+
+function savePublicationTableColumnPreferences(
+  userId: string,
+  preferences: Record<PublicationTableColumnKey, PublicationTableColumnPreference>,
+): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  const payload = PUBLICATION_TABLE_COLUMN_ORDER.reduce<Record<string, PublicationTableColumnPreference>>(
+    (accumulator, key) => {
+      accumulator[key] = preferences[key]
+      return accumulator
+    },
+    {},
+  )
+  window.localStorage.setItem(publicationsLibraryColumnsStorageKey(userId), JSON.stringify(payload))
+}
+
+function publicationTableColumnAlignClass(align: PublicationTableColumnAlign): string {
+  if (align === 'center') {
+    return 'text-center'
+  }
+  if (align === 'right') {
+    return 'text-right'
+  }
+  return 'text-left'
+}
+
 function publicationsOaAutoAttemptedStorageKey(userId: string): string {
   return `${PUBLICATIONS_OA_AUTO_ATTEMPTED_STORAGE_PREFIX}${userId}`
 }
@@ -572,20 +690,28 @@ function SortHeader({
   column,
   sortField,
   sortDirection,
+  align = 'left',
   onSort,
 }: {
   label: string
   column: PublicationSortField
   sortField: PublicationSortField
   sortDirection: SortDirection
+  align?: PublicationTableColumnAlign
   onSort: (column: PublicationSortField) => void
 }) {
   const active = sortField === column
+  const alignClass =
+    align === 'right'
+      ? 'justify-end text-right'
+      : align === 'center'
+        ? 'justify-center text-center'
+        : 'justify-start text-left'
   return (
     <button
       type="button"
       onClick={() => onSort(column)}
-      className="inline-flex items-center gap-1 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
+      className={`inline-flex w-full items-center gap-1 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground ${alignClass}`}
     >
       <span>{label}</span>
       {active ? (
@@ -632,6 +758,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [query, setQuery] = useState('')
   const [filterKey, setFilterKey] = useState<PublicationFilterKey>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
+  const [publicationTableColumns, setPublicationTableColumns] = useState<Record<PublicationTableColumnKey, PublicationTableColumnPreference>>(
+    () => createDefaultPublicationTableColumnPreferences(),
+  )
+  const [columnSettingsOpen, setColumnSettingsOpen] = useState(false)
   const [sortField, setSortField] = useState<PublicationSortField>('year')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null)
@@ -661,6 +791,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [filesDragOver, setFilesDragOver] = useState(false)
   const autoOaInFlightRef = useRef(false)
   const autoOaStatusClearTimerRef = useRef<number | null>(null)
+  const columnSettingsRef = useRef<HTMLDivElement | null>(null)
   const filePickerRef = useRef<HTMLInputElement | null>(null)
 
   const loadData = useCallback(async (
@@ -767,6 +898,39 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       autoOaStatusClearTimerRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    if (!user?.id) {
+      return
+    }
+    setPublicationTableColumns(loadPublicationTableColumnPreferences(user.id))
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) {
+      return
+    }
+    savePublicationTableColumnPreferences(user.id, publicationTableColumns)
+  }, [publicationTableColumns, user?.id])
+
+  useEffect(() => {
+    if (!columnSettingsOpen) {
+      return
+    }
+    const onWindowMouseDown = (event: MouseEvent) => {
+      const root = columnSettingsRef.current
+      if (!root) {
+        return
+      }
+      if (event.target instanceof Node && !root.contains(event.target)) {
+        setColumnSettingsOpen(false)
+      }
+    }
+    window.addEventListener('mousedown', onWindowMouseDown)
+    return () => {
+      window.removeEventListener('mousedown', onWindowMouseDown)
+    }
+  }, [columnSettingsOpen])
 
   const setPaneLoading = useCallback((workId: string, tab: PublicationDetailTab, loadingValue: boolean) => {
     const key = publicationPaneKey(workId, tab)
@@ -1123,6 +1287,73 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     })
     return filtered
   }, [filterKey, metricsByWorkId, personaState?.works, query, sortDirection, sortField, typeFilter])
+
+  const visiblePublicationTableColumns = useMemo(() => (
+    PUBLICATION_TABLE_COLUMN_ORDER.filter((key) => publicationTableColumns[key].visible)
+  ), [publicationTableColumns])
+
+  const visiblePublicationTableColumnCount = visiblePublicationTableColumns.length
+
+  useEffect(() => {
+    const sortColumn = sortField as PublicationTableColumnKey
+    if (publicationTableColumns[sortColumn]?.visible) {
+      return
+    }
+    const fallbackColumn = PUBLICATION_TABLE_COLUMN_ORDER.find(
+      (column) => publicationTableColumns[column].visible,
+    )
+    if (!fallbackColumn) {
+      return
+    }
+    setSortField(PUBLICATION_TABLE_COLUMN_DEFINITIONS[fallbackColumn].sortField)
+  }, [publicationTableColumns, sortField])
+
+  const onTogglePublicationTableColumnVisibility = (column: PublicationTableColumnKey) => {
+    setPublicationTableColumns((current) => {
+      const visibleCount = PUBLICATION_TABLE_COLUMN_ORDER.filter((key) => current[key].visible).length
+      if (current[column].visible && visibleCount <= 1) {
+        return current
+      }
+      return {
+        ...current,
+        [column]: {
+          ...current[column],
+          visible: !current[column].visible,
+        },
+      }
+    })
+  }
+
+  const onPublicationTableColumnAlignChange = (
+    column: PublicationTableColumnKey,
+    align: PublicationTableColumnAlign,
+  ) => {
+    setPublicationTableColumns((current) => ({
+      ...current,
+      [column]: {
+        ...current[column],
+        align,
+      },
+    }))
+  }
+
+  const onPublicationTableColumnWidthChange = (column: PublicationTableColumnKey, value: string) => {
+    const numeric = Number(value)
+    setPublicationTableColumns((current) => ({
+      ...current,
+      [column]: {
+        ...current[column],
+        width: clampPublicationTableColumnWidth(
+          numeric,
+          current[column].width,
+        ),
+      },
+    }))
+  }
+
+  const onResetPublicationTableColumns = () => {
+    setPublicationTableColumns(createDefaultPublicationTableColumnPreferences())
+  }
 
   useEffect(() => {
     if (filteredWorks.length === 0) {
@@ -1552,83 +1783,167 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   </ol>
                 </div>
               ) : (
-                <Table className="min-w-sz-760">
-                  <TableHeader className="text-left">
-                    <TableRow>
-                      <TableHead className={HOUSE_TABLE_HEAD_TEXT_CLASS}>
-                        <SortHeader
-                          label="Title"
-                          column="title"
-                          sortField={sortField}
-                          sortDirection={sortDirection}
-                          onSort={onSortColumn}
-                        />
-                      </TableHead>
-                      <TableHead className={HOUSE_TABLE_HEAD_TEXT_CLASS}>
-                        <SortHeader
-                          label="Year"
-                          column="year"
-                          sortField={sortField}
-                          sortDirection={sortDirection}
-                          onSort={onSortColumn}
-                        />
-                      </TableHead>
-                      <TableHead className={HOUSE_TABLE_HEAD_TEXT_CLASS}>
-                        <SortHeader
-                          label="Journal"
-                          column="venue"
-                          sortField={sortField}
-                          sortDirection={sortDirection}
-                          onSort={onSortColumn}
-                        />
-                      </TableHead>
-                      <TableHead className={HOUSE_TABLE_HEAD_TEXT_CLASS}>
-                        <SortHeader
-                          label="Publication type"
-                          column="work_type"
-                          sortField={sortField}
-                          sortDirection={sortDirection}
-                          onSort={onSortColumn}
-                        />
-                      </TableHead>
-                      <TableHead className={HOUSE_TABLE_HEAD_TEXT_CLASS}>
-                        <SortHeader
-                          label="Citations"
-                          column="citations"
-                          sortField={sortField}
-                          sortDirection={sortDirection}
-                          onSort={onSortColumn}
-                        />
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredWorks.map((work) => {
-                      const metrics = metricsByWorkId.get(work.id)
-                      const isSelected = selectedWorkId === work.id
-                      return (
-                        <TableRow
-                          key={work.id}
-                          onClick={() => setSelectedWorkId(work.id)}
-                          className={`cursor-pointer ${isSelected ? 'bg-emerald-50/70' : 'hover:bg-accent/30'}`}
-                        >
-                          <TableCell className={`font-medium ${HOUSE_TABLE_CELL_TEXT_CLASS}`}>{work.title}</TableCell>
-                          <TableCell className={`font-semibold ${HOUSE_TABLE_CELL_TEXT_CLASS}`}>{work.year ?? 'n/a'}</TableCell>
-                          <TableCell className={`font-medium ${HOUSE_TABLE_CELL_TEXT_CLASS}`}>{formatJournalName(work.venue_name) || 'n/a'}</TableCell>
-                          <TableCell className={HOUSE_TABLE_CELL_TEXT_CLASS}>{derivePublicationTypeLabel(work)}</TableCell>
-                          <TableCell
-                            className={`${HOUSE_TABLE_CELL_TEXT_CLASS} transition-colors ${citationCellTone(
-                              metrics?.citations ?? 0,
-                              hIndex,
-                            )}`}
+                <div className="space-y-2">
+                  <div className="sticky top-2 z-20 flex justify-end">
+                    <div ref={columnSettingsRef} className="relative">
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        aria-label="Column settings"
+                        title="Column settings"
+                        onClick={() => setColumnSettingsOpen((current) => !current)}
+                      >
+                        <SlidersHorizontal className="h-4 w-4" />
+                      </Button>
+                      {columnSettingsOpen ? (
+                        <div className="absolute right-0 mt-2 w-sz-360 max-w-[calc(100vw-3rem)] rounded-md border border-[hsl(var(--stroke-strong)/0.96)] bg-background p-3 shadow-sm">
+                          <div className="mb-2 flex items-center justify-between">
+                            <p className="text-xs font-semibold uppercase tracking-[0.05em] text-muted-foreground">Table columns</p>
+                            <Button type="button" size="sm" variant="outline" onClick={onResetPublicationTableColumns}>Reset</Button>
+                          </div>
+                          <div className="space-y-1">
+                            {PUBLICATION_TABLE_COLUMN_ORDER.map((columnKey) => {
+                              const definition = PUBLICATION_TABLE_COLUMN_DEFINITIONS[columnKey]
+                              const preference = publicationTableColumns[columnKey]
+                              const disableHide = preference.visible && visiblePublicationTableColumnCount <= 1
+                              return (
+                                <div key={`table-column-setting-${columnKey}`} className="grid grid-cols-[minmax(0,1fr)_96px_88px] items-center gap-2">
+                                  <label className="inline-flex items-center gap-2 text-xs font-medium text-foreground">
+                                    <input
+                                      type="checkbox"
+                                      checked={preference.visible}
+                                      onChange={() => onTogglePublicationTableColumnVisibility(columnKey)}
+                                      disabled={disableHide}
+                                      className="h-4 w-4 rounded border-border accent-[hsl(var(--tone-accent-700))]"
+                                    />
+                                    <span>{definition.label}</span>
+                                  </label>
+                                  <select
+                                    value={preference.align}
+                                    onChange={(event) => onPublicationTableColumnAlignChange(columnKey, parsePublicationTableColumnAlign(event.target.value))}
+                                    className={`h-8 rounded-md px-2 text-xs ${HOUSE_SELECT_CLASS}`}
+                                  >
+                                    <option value="left">Left</option>
+                                    <option value="center">Center</option>
+                                    <option value="right">Right</option>
+                                  </select>
+                                  <Input
+                                    type="number"
+                                    min={PUBLICATION_TABLE_COLUMN_WIDTH_MIN}
+                                    max={PUBLICATION_TABLE_COLUMN_WIDTH_MAX}
+                                    step={8}
+                                    value={preference.width}
+                                    onChange={(event) => onPublicationTableColumnWidthChange(columnKey, event.target.value)}
+                                    className="h-8 text-xs"
+                                  />
+                                </div>
+                              )
+                            })}
+                          </div>
+                          <p className="mt-2 text-[11px] text-muted-foreground">At least one column stays visible.</p>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                  <Table className="min-w-sz-760 table-fixed">
+                    <colgroup>
+                      {visiblePublicationTableColumns.map((columnKey) => {
+                        const width = publicationTableColumns[columnKey].width
+                        return (
+                          <col
+                            key={`table-col-${columnKey}`}
+                            style={{
+                              width: `${width}px`,
+                              minWidth: `${width}px`,
+                            }}
+                          />
+                        )
+                      })}
+                    </colgroup>
+                    <TableHeader className="text-left">
+                      <TableRow>
+                        {visiblePublicationTableColumns.map((columnKey) => {
+                          const definition = PUBLICATION_TABLE_COLUMN_DEFINITIONS[columnKey]
+                          const preference = publicationTableColumns[columnKey]
+                          const alignClass = publicationTableColumnAlignClass(preference.align)
+                          return (
+                            <TableHead
+                              key={`table-head-${columnKey}`}
+                              className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} ${alignClass}`}
+                            >
+                              <SortHeader
+                                label={definition.label}
+                                column={definition.sortField}
+                                sortField={sortField}
+                                sortDirection={sortDirection}
+                                align={preference.align}
+                                onSort={onSortColumn}
+                              />
+                            </TableHead>
+                          )
+                        })}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredWorks.map((work) => {
+                        const metrics = metricsByWorkId.get(work.id)
+                        const isSelected = selectedWorkId === work.id
+                        return (
+                          <TableRow
+                            key={work.id}
+                            onClick={() => setSelectedWorkId(work.id)}
+                            className={`cursor-pointer ${isSelected ? 'bg-emerald-50/70' : 'hover:bg-accent/30'}`}
                           >
-                            {metrics?.citations ?? 0}
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
+                            {visiblePublicationTableColumns.map((columnKey) => {
+                              const preference = publicationTableColumns[columnKey]
+                              const alignClass = publicationTableColumnAlignClass(preference.align)
+                              if (columnKey === 'title') {
+                                return (
+                                  <TableCell key={`${work.id}-${columnKey}`} className={`font-medium ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
+                                    {work.title}
+                                  </TableCell>
+                                )
+                              }
+                              if (columnKey === 'year') {
+                                return (
+                                  <TableCell key={`${work.id}-${columnKey}`} className={`font-semibold ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
+                                    {work.year ?? 'n/a'}
+                                  </TableCell>
+                                )
+                              }
+                              if (columnKey === 'venue') {
+                                return (
+                                  <TableCell key={`${work.id}-${columnKey}`} className={`font-medium ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
+                                    {formatJournalName(work.venue_name) || 'n/a'}
+                                  </TableCell>
+                                )
+                              }
+                              if (columnKey === 'work_type') {
+                                return (
+                                  <TableCell key={`${work.id}-${columnKey}`} className={`${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
+                                    {derivePublicationTypeLabel(work)}
+                                  </TableCell>
+                                )
+                              }
+                              return (
+                                <TableCell
+                                  key={`${work.id}-${columnKey}`}
+                                  className={`${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass} transition-colors ${citationCellTone(
+                                    metrics?.citations ?? 0,
+                                    hIndex,
+                                  )}`}
+                                >
+                                  {metrics?.citations ?? 0}
+                                </TableCell>
+                              )
+                            })}
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </div>
 
