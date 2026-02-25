@@ -1920,7 +1920,19 @@ function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload })
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const primarySeries = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const fallbackSeries = toNumberArray(tile.sparkline || []).map((item) => Math.max(0, item))
-  const values = primarySeries.length ? primarySeries : fallbackSeries
+  const sourceValues = primarySeries.length ? primarySeries : fallbackSeries
+  const values = useMemo(() => {
+    if (!sourceValues.length) {
+      return []
+    }
+    const cumulative: number[] = []
+    let running = 0
+    sourceValues.forEach((item) => {
+      running = Math.max(running, Math.max(0, item))
+      cumulative.push(running)
+    })
+    return cumulative
+  }, [sourceValues])
   const labels = normalizeSeriesLabels(
     chartData.window_labels || chartData.labels || chartData.years,
     values.length,

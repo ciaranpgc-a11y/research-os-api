@@ -32,7 +32,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 12
+TOP_METRICS_SCHEMA_VERSION = 13
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 FIELD_PERCENTILE_THRESHOLDS = [50, 75, 90, 95, 99]
 
@@ -1926,11 +1926,24 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     influential_subtext = f"{influential_ratio:.1f}% of total citations"
     if not influence_available:
         influential_subtext = "Semantic Scholar influential signal unavailable"
+    fallback_monthly_influential = [max(0, int(value or 0)) for value in influence_monthly_added_totals[-12:]]
+    fallback_monthly_cumulative: list[int] = []
+    fallback_running_total = 0
+    for value in fallback_monthly_influential:
+        fallback_running_total += max(0, int(value))
+        fallback_monthly_cumulative.append(fallback_running_total)
     influential_chart_values = (
         influential_history_values
         if influential_history_values
-        else influence_monthly_added_totals[-12:]
+        else fallback_monthly_cumulative
     )
+    if influential_chart_values:
+        normalized_chart_values: list[int] = []
+        normalized_running = 0
+        for value in influential_chart_values:
+            normalized_running = max(normalized_running, max(0, int(value or 0)))
+            normalized_chart_values.append(normalized_running)
+        influential_chart_values = normalized_chart_values
     influential_chart_labels = (
         [int(year) for year in influential_history_years]
         if influential_history_values
