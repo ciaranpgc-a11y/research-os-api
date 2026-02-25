@@ -90,6 +90,12 @@ const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label:
 ]
 const HOUSE_SUBHEADING_CLASS = 'text-[0.76rem] font-semibold uppercase tracking-[0.09em] text-[hsl(var(--tone-neutral-800))]'
 const HOUSE_SUBHEADING_SOFT_CLASS = 'text-[0.76rem] font-semibold uppercase tracking-[0.09em] text-[hsl(var(--tone-neutral-700))]'
+const HOUSE_CHART_TRANSITION_CLASS = 'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pt-4 transition-[opacity,transform,filter] duration-320 ease-out'
+const HOUSE_CHART_ENTERED_CLASS = 'opacity-100 translate-y-0 scale-100 blur-0'
+const HOUSE_CHART_EXITED_CLASS = 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]'
+const HOUSE_TOGGLE_TRACK_CLASS = 'relative isolate inline-grid items-center overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5'
+const HOUSE_TOGGLE_THUMB_CLASS = 'pointer-events-none absolute inset-y-0.5 z-0 rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-[left,width] duration-320 ease-out'
+const HOUSE_TOGGLE_BUTTON_CLASS = 'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]'
 
 const MAX_PUBLICATION_CHART_BARS = 12
 
@@ -633,8 +639,9 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
     <div className="flex h-full min-h-0 flex-col">
       <div
         className={cn(
-          'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-7 pt-4 transition-opacity duration-200',
-          chartVisible ? 'opacity-100' : 'opacity-0',
+          HOUSE_CHART_TRANSITION_CLASS,
+          'pb-7',
+          chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
         )}
       >
         <div className="absolute inset-x-2 bottom-7 top-4">
@@ -780,6 +787,7 @@ function StructuredMetricTile({
   subtitle,
   detail,
   visual,
+  contentGridClassName,
   onOpen,
   shouldIgnoreTileOpen,
 }: {
@@ -790,6 +798,7 @@ function StructuredMetricTile({
   subtitle: ReactNode
   detail?: ReactNode
   visual: ReactNode
+  contentGridClassName?: string
   onOpen: () => void
   shouldIgnoreTileOpen: (target: EventTarget | null) => boolean
 }) {
@@ -819,7 +828,7 @@ function StructuredMetricTile({
         'min-h-36 bg-card px-3 py-2.5 hover:bg-card hover:border-[hsl(var(--tone-neutral-300))]',
       )}
     >
-      <div className="grid h-full min-h-[9.5rem] grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)] gap-3">
+      <div className={cn('grid h-full min-h-[9.5rem] gap-3', contentGridClassName || 'grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)]')}>
         <div className="flex min-h-0 flex-col">
           <p
             className="text-[0.64rem] font-semibold uppercase leading-[0.8rem] tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]"
@@ -1261,12 +1270,15 @@ function PublicationsPerYearChart({
       {enableWindowToggle ? (
         <div className="mb-2 flex items-center justify-between gap-2">
           <div
-            className="relative isolate inline-grid grid-cols-4 items-center overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5"
+            className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
             data-stop-tile-open="true"
           >
             <span
-              className="pointer-events-none absolute inset-y-0.5 z-0 w-[calc(25%-0.2rem)] rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-[left] duration-320 ease-out"
-              style={{ left: `calc(${Math.max(0, activeWindowIndex) * 25}% + 2px)` }}
+              className={HOUSE_TOGGLE_THUMB_CLASS}
+              style={{
+                width: 'calc(25% - 0.2rem)',
+                left: `calc(${Math.max(0, activeWindowIndex) * 25}% + 2px)`,
+              }}
               aria-hidden="true"
             />
             {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
@@ -1275,7 +1287,7 @@ function PublicationsPerYearChart({
                 type="button"
                 data-stop-tile-open="true"
                 className={cn(
-                  'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
+                  HOUSE_TOGGLE_BUTTON_CLASS,
                   windowMode === option.value
                     ? 'text-white'
                     : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
@@ -2934,9 +2946,9 @@ function TotalPublicationsDrilldownWorkspace({
         <div className={workspaceSectionClass}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className={workspaceHeadingClass}>Publication trajectory</p>
-            <div className="relative isolate inline-grid grid-cols-3 items-center overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5">
+            <div className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-3')}>
               <span
-                className="pointer-events-none absolute inset-y-0.5 z-0 rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-[left,width] duration-320 ease-out"
+                className={HOUSE_TOGGLE_THUMB_CLASS}
                 style={{
                   width: 'calc(33.333333% - 0.16rem)',
                   left: `calc(${(100 / 3) * activeTrajectoryIndex}% + 2px)`,
@@ -2948,7 +2960,7 @@ function TotalPublicationsDrilldownWorkspace({
                   key={`trajectory-mode-${option.key}`}
                   type="button"
                   className={cn(
-                    'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
+                    HOUSE_TOGGLE_BUTTON_CLASS,
                     trajectoryMode === option.key
                       ? 'text-white'
                       : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
@@ -3280,21 +3292,23 @@ function HIndexViewToggle({
   return (
     <div className="flex items-center">
       <div
-        className="relative isolate inline-grid grid-cols-2 items-center overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5"
+        className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
         data-stop-tile-open="true"
       >
         <span
-          className={cn(
-            'pointer-events-none absolute inset-y-0.5 z-0 w-[calc(50%-0.125rem)] rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-[left] duration-320 ease-out',
-          )}
-          style={{ left: mode === 'needed' ? 'calc(50% + 1px)' : '2px', willChange: 'left' }}
+          className={HOUSE_TOGGLE_THUMB_CLASS}
+          style={{
+            width: 'calc(50% - 0.125rem)',
+            left: mode === 'needed' ? 'calc(50% + 1px)' : '2px',
+            willChange: 'left,width',
+          }}
           aria-hidden="true"
         />
         <button
           type="button"
           data-stop-tile-open="true"
           className={cn(
-            'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
+            HOUSE_TOGGLE_BUTTON_CLASS,
             mode === 'trajectory' ? 'text-white' : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
           )}
           onClick={(event) => {
@@ -3310,7 +3324,7 @@ function HIndexViewToggle({
           type="button"
           data-stop-tile-open="true"
           className={cn(
-            'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
+            HOUSE_TOGGLE_BUTTON_CLASS,
             mode === 'needed' ? 'text-white' : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
           )}
           onClick={(event) => {
@@ -3744,6 +3758,7 @@ export function PublicationsTopStrip({
                 const pinBadgeBottom = true
                 let secondaryText: ReactNode = subtitle || '\u2014'
                 let detailText: ReactNode | undefined = effectiveDeltaDisplay || undefined
+                let contentGridClassName: string | undefined
                 let visual: ReactNode = (
                   <div className="flex h-full min-h-0 items-center rounded-md border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] p-1.5">
                     <MiniChart tile={tile} />
@@ -3777,21 +3792,23 @@ export function PublicationsTopStrip({
                   badgeNode = (
                     <div className="flex items-center">
                       <div
-                        className="relative isolate inline-grid grid-cols-2 items-center overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5"
+                        className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
                         data-stop-tile-open="true"
                       >
                         <span
-                          className={cn(
-                            'pointer-events-none absolute inset-y-0.5 z-0 w-[calc(50%-0.125rem)] rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-[left] duration-320 ease-out',
-                          )}
-                          style={{ left: momentumWindowMode === '5y' ? 'calc(50% + 1px)' : '2px', willChange: 'left' }}
+                          className={HOUSE_TOGGLE_THUMB_CLASS}
+                          style={{
+                            width: 'calc(50% - 0.125rem)',
+                            left: momentumWindowMode === '5y' ? 'calc(50% + 1px)' : '2px',
+                            willChange: 'left,width',
+                          }}
                           aria-hidden="true"
                         />
                         <button
                           type="button"
                           data-stop-tile-open="true"
                           className={cn(
-                            'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
+                            HOUSE_TOGGLE_BUTTON_CLASS,
                             momentumWindowMode === '12m'
                               ? 'text-white'
                               : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
@@ -3809,7 +3826,7 @@ export function PublicationsTopStrip({
                           type="button"
                           data-stop-tile-open="true"
                           className={cn(
-                            'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
+                            HOUSE_TOGGLE_BUTTON_CLASS,
                             momentumWindowMode === '5y'
                               ? 'text-white'
                               : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
@@ -3903,18 +3920,19 @@ export function PublicationsTopStrip({
                     : mainValueDisplay
                   secondaryText = `Papers at or above ${activeThreshold}th percentile`
                   detailText = undefined
+                  contentGridClassName = 'grid-cols-[minmax(0,0.85fr)_minmax(0,0.99fr)]'
                   badgeNode = (
                     <div className="flex w-full flex-col items-center gap-0.5">
                       <p className="text-center text-[0.56rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">
                         Percentile
                       </p>
                       <div
-                        className="relative isolate mx-auto inline-grid items-center overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5"
+                        className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'mx-auto grid w-full')}
                         style={{ gridTemplateColumns: `repeat(${availableThresholds.length}, minmax(0, 1fr))` }}
                         data-stop-tile-open="true"
                       >
                         <span
-                          className="pointer-events-none absolute inset-y-0.5 z-0 rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-[left,width] duration-320 ease-out"
+                          className={HOUSE_TOGGLE_THUMB_CLASS}
                           style={{
                             width: `calc(${100 / availableThresholds.length}% - 0.125rem)`,
                             left: `calc(${(100 / availableThresholds.length) * activeThresholdIndex}% + 2px)`,
@@ -3928,7 +3946,7 @@ export function PublicationsTopStrip({
                             type="button"
                             data-stop-tile-open="true"
                             className={cn(
-                              'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
+                              HOUSE_TOGGLE_BUTTON_CLASS,
                               activeThreshold === threshold
                                 ? 'text-white'
                                 : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
@@ -4008,6 +4026,7 @@ export function PublicationsTopStrip({
                     pinBadgeBottom={pinBadgeBottom}
                     subtitle={secondaryText}
                     detail={detailText}
+                    contentGridClassName={contentGridClassName}
                     visual={visual}
                   />
                 )
