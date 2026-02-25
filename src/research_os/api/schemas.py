@@ -777,7 +777,7 @@ class AffiliationSuggestionItemResponse(BaseModel):
     region: str | None = None
     address: str | None = None
     postal_code: str | None = None
-    source: Literal["openalex", "ror"]
+    source: Literal["openalex", "ror", "openstreetmap", "clearbit"]
 
 
 class AffiliationSuggestionsResponse(BaseModel):

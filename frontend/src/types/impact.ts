@@ -27,7 +27,7 @@ export type AffiliationSuggestionItemPayload = {
   region: string | null
   address: string | null
   postal_code: string | null
-  source: 'openalex' | 'ror'
+  source: 'openalex' | 'ror' | 'openstreetmap' | 'clearbit'
 }
 
 export type AffiliationSuggestionsPayload = {

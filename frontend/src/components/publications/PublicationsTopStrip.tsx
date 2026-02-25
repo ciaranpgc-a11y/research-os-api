@@ -3,7 +3,7 @@ import { Download, Eye, EyeOff, FileText, Share2 } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui/card'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { readAccountSettings } from '@/lib/account-preferences'
 import { fetchPublicationMetricDetail } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
@@ -69,6 +69,7 @@ type MomentumYearBreakdown = {
 }
 
 type MomentumWindowMode = '12m' | '5y'
+type PublicationsWindowMode = '1y' | '3y' | '5y' | 'all'
 type HIndexViewMode = 'trajectory' | 'needed'
 type FieldPercentileThreshold = 50 | 75 | 90 | 95 | 99
 type DrilldownTab = 'summary' | 'breakdown' | 'trajectory' | 'context' | 'methods'
@@ -80,6 +81,15 @@ const DRILLDOWN_TABS: Array<{ value: DrilldownTab; label: string }> = [
   { value: 'context', label: 'Context' },
   { value: 'methods', label: 'Methods' },
 ]
+
+const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label: string }> = [
+  { value: '1y', label: '1y' },
+  { value: '3y', label: '3y' },
+  { value: '5y', label: '5y' },
+  { value: 'all', label: 'All' },
+]
+
+const MAX_PUBLICATION_CHART_BARS = 12
 
 type HIndexProgressMeta = {
   currentH: number
@@ -157,6 +167,77 @@ function buildRollingWindowLabel(monthLabels: string[], endYear: number): string
   const wrapsYearBoundary = startMonthIndex > endMonthIndex
   const startYear = wrapsYearBoundary ? endYear - 1 : endYear
   return `${MONTH_SHORT[startMonthIndex]} ${String(startYear).slice(-2)}-${MONTH_SHORT[endMonthIndex]} ${String(endYear).slice(-2)}`
+}
+
+function selectPublicationBucketSize(count: number): number {
+  if (count <= MAX_PUBLICATION_CHART_BARS) {
+    return 1
+  }
+  if (count <= 36) {
+    return 3
+  }
+  if (count <= 60) {
+    return 5
+  }
+  if (count <= 120) {
+    return 10
+  }
+  return Math.max(10, Math.ceil(count / MAX_PUBLICATION_CHART_BARS))
+}
+
+function formatPublicationYearLabel(startYear: number, endYear: number, fullYear: boolean): string {
+  if (startYear === endYear) {
+    return fullYear ? String(startYear) : String(startYear).slice(-2)
+  }
+  const startLabel = fullYear ? String(startYear) : String(startYear).slice(-2)
+  const endLabel = fullYear ? String(endYear) : String(endYear).slice(-2)
+  return `${startLabel}-${endLabel}`
+}
+
+type RollingMonthPoint = {
+  year: number
+  month: number
+  value: number
+}
+
+function buildRollingMonthWindow(months: number, now: Date): Array<{ year: number; month: number }> {
+  const output: Array<{ year: number; month: number }> = []
+  const endYear = now.getUTCFullYear()
+  const endMonth = now.getUTCMonth() + 1
+  for (let index = months - 1; index >= 0; index -= 1) {
+    const serial = (endYear * 12 + (endMonth - 1)) - index
+    const year = Math.floor(serial / 12)
+    const month = (serial % 12) + 1
+    output.push({ year, month })
+  }
+  return output
+}
+
+function formatMonthYearLabel(year: number, month: number): string {
+  return `${MONTH_SHORT[Math.max(0, Math.min(11, month - 1))]} ${year}`
+}
+
+function shortYearLabel(year: number): string {
+  return String(year).slice(-2).padStart(2, '0')
+}
+
+function buildNiceAxis(maxObservedValue: number): { axisMax: number; ticks: number[] } {
+  const safeMax = Math.max(1, maxObservedValue)
+  const intervals = safeMax >= 250 ? 5 : 4
+  const targetMax = safeMax * 1.08
+  const roughStep = Math.max(1, targetMax / intervals)
+  const step = roughStep <= 10
+    ? Math.ceil(roughStep)
+    : roughStep <= 50
+      ? Math.ceil(roughStep / 5) * 5
+      : roughStep <= 200
+        ? Math.ceil(roughStep / 10) * 10
+        : roughStep <= 500
+          ? Math.ceil(roughStep / 25) * 25
+          : Math.ceil(roughStep / 50) * 50
+  const axisMax = step * intervals
+  const ticks = Array.from({ length: intervals + 1 }, (_, index) => step * index)
+  return { axisMax, ticks }
 }
 
 function buildMomentumBreakdown(tile: PublicationMetricTilePayload): MomentumBreakdown {
@@ -904,10 +985,29 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
   )
 }
 
-function PublicationsPerYearChart({ tile, showCaption = false }: { tile: PublicationMetricTilePayload; showCaption?: boolean }) {
+function PublicationsPerYearChart({
+  tile,
+  showCaption = false,
+  showAxes = false,
+  fullYearLabels = false,
+  xAxisLabel = 'Publication year',
+  yAxisLabel = 'Publications',
+  enableWindowToggle = false,
+}: {
+  tile: PublicationMetricTilePayload
+  showCaption?: boolean
+  showAxes?: boolean
+  fullYearLabels?: boolean
+  xAxisLabel?: string
+  yAxisLabel?: string
+  enableWindowToggle?: boolean
+}) {
   const [chartVisible, setChartVisible] = useState(true)
   const [barsExpanded, setBarsExpanded] = useState(false)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const [windowMode, setWindowMode] = useState<PublicationsWindowMode>('5y')
+  const [transitionDirection, setTransitionDirection] = useState<1 | -1>(1)
+  const nowUtc = useMemo(() => new Date(), [])
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
@@ -915,9 +1015,6 @@ function PublicationsPerYearChart({ tile, showCaption = false }: { tile: Publica
   const validYears = hasValidSeries ? years : []
   const validValues = hasValidSeries ? values : []
   const meanValueRaw = Number(chartData.mean_value)
-  const meanValue = Number.isFinite(meanValueRaw) && meanValueRaw >= 0
-    ? meanValueRaw
-    : validValues.reduce((sum, item) => sum + item, 0) / Math.max(1, validValues.length)
   const projectedYearRaw = Number(chartData.projected_year)
   const currentYearYtdRaw = Number(chartData.current_year_ytd)
   const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
@@ -925,11 +1022,9 @@ function PublicationsPerYearChart({ tile, showCaption = false }: { tile: Publica
     year: number
     value: number
     current: boolean
-    relative: 'above' | 'near' | 'below'
   }> = validYears.map((year, index) => {
     const value = validValues[index]
-    const relative = value >= meanValue * 1.1 ? 'above' : value <= meanValue * 0.9 ? 'below' : 'near'
-    return { year, value, current: false, relative }
+    return { year, value, current: false }
   })
   const existingCurrentBar = bars.find((item) => item.year === projectedYear)
   const historyBars = bars.filter((item) => item.year !== projectedYear)
@@ -946,17 +1041,154 @@ function PublicationsPerYearChart({ tile, showCaption = false }: { tile: Publica
       year: projectedYear,
       value: currentYearValue,
       current: true,
-      relative: 'near',
     })
   }
 
+  const isCompactTileMode = !showAxes && !enableWindowToggle
+  const effectiveWindowMode: PublicationsWindowMode = enableWindowToggle ? windowMode : 'all'
+  const useCompactAllRangeLabels = enableWindowToggle && effectiveWindowMode === 'all' && historyBars.length > MAX_PUBLICATION_CHART_BARS
+  const monthlyWindowMonths = effectiveWindowMode === '1y'
+    ? 12
+    : effectiveWindowMode === '3y'
+      ? 36
+      : effectiveWindowMode === '5y'
+        ? 60
+        : null
+
+  type PublicationChartBar = {
+    key: string
+    value: number
+    current: boolean
+    axisLabel: string
+    axisSubLabel?: string
+  }
+
+  const compactTileBars = useMemo(() => (
+    historyBars
+      .slice(-6)
+      .map((bar) => ({
+        key: `compact-${bar.year}`,
+        value: Math.max(0, bar.value),
+        current: bar.current,
+        axisLabel: String(bar.year).slice(-2),
+        axisSubLabel: bar.current ? 'YTD' : undefined,
+      }))
+  ), [historyBars])
+
+  const groupedYearBars = useMemo(() => {
+    if (!historyBars.length) {
+      return { bars: [] as PublicationChartBar[], bucketSize: 1 }
+    }
+    const bucketSize = selectPublicationBucketSize(historyBars.length)
+    const grouped: PublicationChartBar[] = []
+    for (let index = 0; index < historyBars.length; index += bucketSize) {
+      const chunk = historyBars.slice(index, index + bucketSize)
+      if (!chunk.length) {
+        continue
+      }
+      const startYear = chunk[0].year
+      const endYear = chunk[chunk.length - 1].year
+      const isSingleCurrentYear = chunk.some((item) => item.current) && startYear === endYear
+      grouped.push({
+        key: `${startYear}-${endYear}`,
+        value: chunk.reduce((sum, item) => sum + Math.max(0, item.value), 0),
+        current: isSingleCurrentYear,
+        axisLabel: useCompactAllRangeLabels
+          ? startYear === endYear
+            ? shortYearLabel(startYear)
+            : `${shortYearLabel(startYear)}-${shortYearLabel(endYear)}`
+          : formatPublicationYearLabel(startYear, endYear, fullYearLabels),
+        axisSubLabel: isSingleCurrentYear ? 'YTD' : undefined,
+      })
+    }
+    return { bars: grouped.slice(-MAX_PUBLICATION_CHART_BARS), bucketSize }
+  }, [fullYearLabels, historyBars, useCompactAllRangeLabels])
+
+  const monthlyWindowSeries = useMemo(() => {
+    if (monthlyWindowMonths === null || !historyBars.length) {
+      return [] as RollingMonthPoint[]
+    }
+    const totalsByYear = new Map<number, number>()
+    historyBars.forEach((bar) => {
+      totalsByYear.set(bar.year, Math.max(0, bar.value))
+    })
+    const currentYear = nowUtc.getUTCFullYear()
+    const currentMonth = nowUtc.getUTCMonth() + 1
+    return buildRollingMonthWindow(monthlyWindowMonths, nowUtc).map(({ year, month }) => {
+      const annualTotal = Math.max(0, totalsByYear.get(year) ?? 0)
+      const denominator = year === currentYear ? Math.max(1, currentMonth) : 12
+      return {
+        year,
+        month,
+        value: denominator > 0 ? annualTotal / denominator : 0,
+      }
+    })
+  }, [historyBars, monthlyWindowMonths, nowUtc])
+
+  const groupedMonthBars = useMemo(() => {
+    if (!monthlyWindowSeries.length) {
+      return { bars: [] as PublicationChartBar[], bucketSize: 1, rangeLabel: null as string | null }
+    }
+    let bucketSize = 1
+    if (monthlyWindowMonths === 12) {
+      bucketSize = 1
+    } else if (monthlyWindowMonths === 36 || monthlyWindowMonths === 60) {
+      bucketSize = 12
+    } else {
+      bucketSize = Math.max(1, Math.ceil(monthlyWindowSeries.length / MAX_PUBLICATION_CHART_BARS))
+    }
+    const grouped: PublicationChartBar[] = []
+    for (let index = 0; index < monthlyWindowSeries.length; index += bucketSize) {
+      const chunk = monthlyWindowSeries.slice(index, index + bucketSize)
+      if (!chunk.length) {
+        continue
+      }
+      const start = chunk[0]
+      const end = chunk[chunk.length - 1]
+      const isLatestChunk = index + bucketSize >= monthlyWindowSeries.length
+      grouped.push({
+        key: `${start.year}-${start.month}-${end.year}-${end.month}`,
+        value: chunk.reduce((sum, item) => sum + Math.max(0, item.value), 0),
+        current: isLatestChunk && bucketSize === 1,
+        axisLabel: bucketSize === 1
+          ? MONTH_SHORT[Math.max(0, Math.min(11, start.month - 1))]
+          : `${MONTH_SHORT[Math.max(0, Math.min(11, start.month - 1))]}-${MONTH_SHORT[Math.max(0, Math.min(11, end.month - 1))]}`,
+        axisSubLabel: bucketSize === 1
+          ? String(start.year)
+          : start.year === end.year
+            ? String(start.year)
+            : `${start.year}-${end.year}`,
+      })
+    }
+    const start = monthlyWindowSeries[0]
+    const end = monthlyWindowSeries[monthlyWindowSeries.length - 1]
+    const rangeLabel = `${formatMonthYearLabel(start.year, start.month)}-${formatMonthYearLabel(end.year, end.month)}`
+    return { bars: grouped, bucketSize, rangeLabel }
+  }, [monthlyWindowMonths, monthlyWindowSeries])
+
+  const usingMonthlyBars = monthlyWindowMonths !== null
+  const activeBars = isCompactTileMode
+    ? compactTileBars
+    : usingMonthlyBars
+      ? groupedMonthBars.bars
+      : groupedYearBars.bars
+  const activeBucketSize = isCompactTileMode
+    ? 1
+    : usingMonthlyBars
+      ? groupedMonthBars.bucketSize
+      : groupedYearBars.bucketSize
+  const meanValue = isCompactTileMode && Number.isFinite(meanValueRaw) && meanValueRaw >= 0
+    ? meanValueRaw
+    : activeBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0) / Math.max(1, activeBars.length)
+
   const animationKey = useMemo(
-    () => historyBars.map((bar) => `${bar.year}-${bar.value}-${bar.current ? 1 : 0}`).join('|'),
-    [historyBars],
+    () => `${effectiveWindowMode}|${activeBucketSize}|${activeBars.map((bar) => `${bar.key}-${bar.value}-${bar.current ? 1 : 0}`).join('|')}`,
+    [activeBars, activeBucketSize, effectiveWindowMode],
   )
   useEffect(() => {
     setChartVisible(false)
     setBarsExpanded(false)
+    setHoveredIndex(null)
     let rafOne = 0
     let rafTwo = 0
     rafOne = window.requestAnimationFrame(() => {
@@ -971,49 +1203,160 @@ function PublicationsPerYearChart({ tile, showCaption = false }: { tile: Publica
     }
   }, [animationKey])
 
-  if (!hasValidSeries || !historyBars.length) {
+  if (!hasValidSeries || !historyBars.length || !activeBars.length) {
     return <div className={dashboardTileStyles.emptyChart}>No publication timeline</div>
   }
 
-  const maxValue = Math.max(1, ...historyBars.map((bar) => Math.max(0, bar.value)))
-  const scaledMax = maxValue * 1.18
+  const maxValue = Math.max(1, ...activeBars.map((bar) => Math.max(0, bar.value)))
+  const axisScale = showAxes
+    ? buildNiceAxis(maxValue)
+    : null
+  const axisMax = axisScale
+    ? axisScale.axisMax
+    : Math.max(1, maxValue * (isCompactTileMode ? 1.06 : 1.1), Math.max(0, meanValue) * 1.1)
+  const yAxisTickValues = axisScale
+    ? axisScale.ticks
+    : [0, axisMax * 0.25, axisMax * 0.5, axisMax * 0.75, axisMax]
+  const gridTickValues = yAxisTickValues.slice(1, -1)
+  const chartLeftInset = showAxes ? '3.4rem' : '0.5rem'
+
+  const plotAreaStyle = {
+    left: chartLeftInset,
+    right: '0.5rem',
+    top: '1rem',
+    bottom: isCompactTileMode ? '1.75rem' : showAxes ? '3.1rem' : '2.2rem',
+  }
+  const xAxisTicksStyle = {
+    left: chartLeftInset,
+    right: '0.5rem',
+    bottom: isCompactTileMode ? '0.25rem' : showAxes ? '1.15rem' : '0.35rem',
+  }
+  const yAxisTickOffsetRem = 0.4
+  const activeWindowIndex = PUBLICATIONS_WINDOW_OPTIONS.findIndex((option) => option.value === windowMode)
+  const windowRangeLabel = usingMonthlyBars ? groupedMonthBars.rangeLabel : null
+  const allRangeLabel = !usingMonthlyBars && historyBars.length
+    ? (() => {
+      const startYear = historyBars[0].year
+      const endBar = historyBars[historyBars.length - 1]
+      const endYear = endBar.year
+      const endMonth = endBar.current ? (nowUtc.getUTCMonth() + 1) : 12
+      return `${formatMonthYearLabel(startYear, 1)}-${formatMonthYearLabel(endYear, endMonth)}`
+    })()
+    : null
+  const periodHintText = windowRangeLabel || allRangeLabel || '\u00A0'
+  const periodHintVisible = Boolean(windowRangeLabel || allRangeLabel)
+  const resolvedXAxisLabel = usingMonthlyBars ? 'Publication month' : xAxisLabel
+  const averageLegendText = effectiveWindowMode === '1y'
+    ? `Average monthly publications over 12 months = ${formatInt(meanValue)}`
+    : effectiveWindowMode === '3y'
+      ? `Average yearly publications over 3 years = ${formatInt(meanValue)}`
+      : effectiveWindowMode === '5y'
+        ? `Average yearly publications over 5 years = ${formatInt(meanValue)}`
+        : `Average yearly publications over ${Math.max(1, historyBars.length)} years = ${formatInt(meanValue)}`
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
+      {enableWindowToggle ? (
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div
+            className="relative isolate inline-grid grid-cols-4 items-center overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5"
+            data-stop-tile-open="true"
+          >
+            <span
+              className="pointer-events-none absolute inset-y-0.5 z-0 w-[calc(25%-0.2rem)] rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-[left] duration-320 ease-out"
+              style={{ left: `calc(${Math.max(0, activeWindowIndex) * 25}% + 2px)` }}
+              aria-hidden="true"
+            />
+            {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
+              <button
+                key={`pub-window-${option.value}`}
+                type="button"
+                data-stop-tile-open="true"
+                className={cn(
+                  'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
+                  windowMode === option.value
+                    ? 'text-white'
+                    : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
+                )}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  const targetIndex = PUBLICATIONS_WINDOW_OPTIONS.findIndex((item) => item.value === option.value)
+                  setTransitionDirection(targetIndex >= activeWindowIndex ? 1 : -1)
+                  setWindowMode(option.value)
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+                aria-pressed={windowMode === option.value}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <p
+            className={cn(
+              'min-h-[0.9rem] text-[0.56rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-600))] transition-opacity duration-200',
+              periodHintVisible ? 'opacity-100' : 'opacity-0',
+            )}
+            aria-live="polite"
+          >
+            {periodHintText}
+          </p>
+        </div>
+      ) : null}
       <div
         className={cn(
-          'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-7 pt-4 transition-[opacity,transform,filter] duration-320 ease-out',
-          chartVisible ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]',
+          'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pt-4 transition-[opacity,transform,filter] duration-320 ease-out',
+          showAxes ? 'pb-12' : isCompactTileMode ? 'pb-7' : 'pb-8',
+          chartVisible
+            ? 'opacity-100 translate-x-0 scale-100 blur-0'
+            : transitionDirection > 0
+              ? 'opacity-0 translate-x-2 scale-[0.985] blur-[0.4px]'
+              : 'opacity-0 -translate-x-2 scale-[0.985] blur-[0.4px]',
         )}
       >
-        <div className="absolute inset-x-2 bottom-7 top-4">
-          {[25, 50, 75].map((pct) => (
+        {showAxes && enableWindowToggle ? (
+          <div
+            className={cn(
+              'pointer-events-none absolute right-2 top-1.5 z-[2] flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-1.5 py-0.5 text-[0.58rem] font-semibold text-[hsl(var(--tone-neutral-700))] transition-[opacity,transform] duration-320 ease-out',
+              chartVisible
+                ? 'opacity-100 translate-x-0'
+                : transitionDirection > 0
+                  ? 'opacity-0 translate-x-2'
+                  : 'opacity-0 -translate-x-2',
+            )}
+          >
+            <span className="w-4 border-t border-dashed border-[hsl(var(--tone-neutral-500))]" aria-hidden="true" />
+            <span>{averageLegendText}</span>
+          </div>
+        ) : null}
+        <div className="absolute" style={plotAreaStyle}>
+          {gridTickValues.map((tickValue) => (
             <div
-              key={`pub-grid-${pct}`}
+              key={`pub-grid-${tickValue}`}
               className="pointer-events-none absolute inset-x-0 border-t border-[hsl(var(--tone-neutral-200))]"
-              style={{ bottom: `${pct}%` }}
+              style={{ bottom: `${(tickValue / axisMax) * 100}%` }}
               aria-hidden="true"
             />
           ))}
           <div
             className="pointer-events-none absolute inset-x-0 border-t border-dashed border-[hsl(var(--tone-neutral-400))]"
-            style={{ bottom: `${Math.max(0, Math.min(100, (Math.max(0, meanValue) / scaledMax) * 100))}%` }}
+            style={{ bottom: `${Math.max(0, Math.min(100, (Math.max(0, meanValue) / axisMax) * 100))}%` }}
             aria-hidden="true"
           />
           <div className="absolute inset-0 flex items-end gap-1">
-            {historyBars.map((bar, index) => {
-              const heightPct = bar.value <= 0 ? 3 : Math.max(6, (Math.max(0, bar.value) / scaledMax) * 100)
+            {activeBars.map((bar, index) => {
+              const heightPct = bar.value <= 0 ? 3 : Math.max(6, (Math.max(0, bar.value) / axisMax) * 100)
               const isActive = hoveredIndex === index
+              const relative = bar.value >= meanValue * 1.1 ? 'above' : bar.value <= meanValue * 0.9 ? 'below' : 'near'
               const toneClass = bar.current
                 ? 'border border-dashed border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))]'
-                : bar.relative === 'above'
+                : relative === 'above'
                   ? 'bg-[hsl(var(--tone-positive-600))]'
-                  : bar.relative === 'below'
+                  : relative === 'below'
                     ? 'bg-[hsl(var(--tone-warning-500))]'
                     : 'bg-[hsl(var(--tone-accent-500))]'
               return (
                 <div
-                  key={`${bar.year}-${index}`}
+                  key={`${bar.key}-${index}`}
                   className="relative flex h-full min-h-0 flex-1 items-end"
                   onMouseEnter={() => setHoveredIndex(index)}
                   onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
@@ -1036,7 +1379,7 @@ function PublicationsPerYearChart({ tile, showCaption = false }: { tile: Publica
                     )}
                     style={{
                       height: `${heightPct}%`,
-                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                      transform: `translateX(${chartVisible ? 0 : transitionDirection * 8}px) translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
                       transitionDelay: `${Math.min(220, index * 18)}ms`,
                     }}
@@ -1046,18 +1389,57 @@ function PublicationsPerYearChart({ tile, showCaption = false }: { tile: Publica
             })}
           </div>
         </div>
-        <div className="pointer-events-none absolute inset-x-2 bottom-1 grid grid-flow-col auto-cols-fr items-start gap-1">
-          {historyBars.map((bar, index) => (
-            <div key={`${bar.year}-${index}-axis`} className="text-center leading-none">
-              <p className="text-[0.6rem] font-semibold text-[hsl(var(--tone-neutral-600))]">{String(bar.year).slice(-2)}</p>
-              {bar.current ? (
-                <p className="mt-[1px] text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-600))]">
-                  YTD
+
+        {showAxes ? (
+          <div className="pointer-events-none absolute bottom-[3.1rem] left-1 top-4 w-[2.8rem]" aria-hidden="true">
+            {yAxisTickValues.map((tickValue) => {
+              const pct = axisMax <= 0 ? 0 : (tickValue / axisMax) * 100
+              return (
+                <p
+                  key={`pub-y-axis-${tickValue}`}
+                  className="absolute right-0 whitespace-nowrap text-[0.6rem] font-semibold tabular-nums leading-none text-[hsl(var(--tone-neutral-600))]"
+                  style={{ bottom: `calc(${pct}% - ${yAxisTickOffsetRem}rem)` }}
+                >
+                  {formatInt(tickValue)}
+                </p>
+              )
+            })}
+            <p className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap text-[0.58rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-600))]">
+              {yAxisLabel}
+            </p>
+          </div>
+        ) : null}
+
+        <div
+          className={cn(
+            'pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1 transition-[opacity,transform] duration-320 ease-out',
+            chartVisible
+              ? 'opacity-100 translate-x-0'
+              : transitionDirection > 0
+                ? 'opacity-0 translate-x-2'
+                : 'opacity-0 -translate-x-2',
+          )}
+          style={xAxisTicksStyle}
+        >
+          {activeBars.map((bar, index) => (
+            <div key={`${bar.key}-${index}-axis`} className="text-center leading-none">
+              <p className="text-[0.62rem] font-semibold leading-[1.05] text-[hsl(var(--tone-neutral-600))]">
+                {bar.axisLabel}
+              </p>
+              {bar.axisSubLabel ? (
+                <p className="mt-[1px] text-[0.56rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-600))]">
+                  {bar.axisSubLabel}
                 </p>
               ) : null}
             </div>
           ))}
         </div>
+
+        {showAxes ? (
+          <p className="pointer-events-none absolute bottom-[0.2rem] text-center text-[0.58rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-600))]" style={{ left: chartLeftInset, right: '0.5rem' }}>
+            {resolvedXAxisLabel}
+          </p>
+        ) : null}
       </div>
       {showCaption ? (
         <p className={cn(dashboardTileStyles.tileMicroLabel, 'mt-1')}>
@@ -1868,6 +2250,831 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
   )
 }
 
+type PublicationDrilldownSortKey = 'year' | 'title' | 'role' | 'type' | 'venue' | 'citations'
+type PublicationTrajectoryMode = 'raw' | 'moving_avg' | 'cumulative'
+
+type PublicationDrilldownRecord = {
+  workId: string
+  year: number | null
+  title: string
+  role: string
+  type: string
+  venue: string
+  citations: number
+}
+
+function normalizeRoleLabel(value: string): string {
+  const clean = String(value || '').trim().toLowerCase()
+  if (clean === 'first') {
+    return 'First'
+  }
+  if (clean === 'second') {
+    return 'Second'
+  }
+  if (clean === 'last') {
+    return 'Senior'
+  }
+  if (!clean || clean === 'unknown') {
+    return 'Unknown'
+  }
+  return clean.charAt(0).toUpperCase() + clean.slice(1)
+}
+
+function median(values: number[]): number {
+  if (!values.length) {
+    return 0
+  }
+  const sorted = [...values].sort((left, right) => left - right)
+  const middle = Math.floor(sorted.length / 2)
+  if (sorted.length % 2 === 1) {
+    return sorted[middle]
+  }
+  return (sorted[middle - 1] + sorted[middle]) / 2
+}
+
+function TotalPublicationsDrilldownWorkspace({
+  tile,
+  activeTab,
+}: {
+  tile: PublicationMetricTilePayload
+  activeTab: DrilldownTab
+}) {
+  const publications = useMemo(() => {
+    const source = Array.isArray(tile.drilldown?.publications)
+      ? tile.drilldown.publications
+      : []
+    return source.map((item, index): PublicationDrilldownRecord => {
+      const row = (item || {}) as Record<string, unknown>
+      const yearRaw = Number(row.year)
+      const year = Number.isFinite(yearRaw) && yearRaw > 0 ? Math.round(yearRaw) : null
+      const citationsRaw = Number(row.citations_lifetime)
+      const typeFromData = String(row.publication_type || row.work_type || '').trim()
+      return {
+        workId: String(row.work_id || `row-${index}`),
+        year,
+        title: String(row.title || 'Untitled').trim() || 'Untitled',
+        role: normalizeRoleLabel(String(row.user_author_role || 'Unknown')),
+        type: typeFromData || 'Unspecified',
+        venue: String(row.journal || 'Unknown venue').trim() || 'Unknown venue',
+        citations: Number.isFinite(citationsRaw) ? Math.max(0, Math.round(citationsRaw)) : 0,
+      }
+    })
+  }, [tile.drilldown?.publications])
+
+  const [selectedYear, setSelectedYear] = useState<number | null>(null)
+  const [selectedTypes, setSelectedTypes] = useState<string[]>([])
+  const [selectedVenue, setSelectedVenue] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showAllVenues, setShowAllVenues] = useState(false)
+  const [hoveredBreakdownYear, setHoveredBreakdownYear] = useState<number | null>(null)
+  const [sortKey, setSortKey] = useState<PublicationDrilldownSortKey>('year')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+  const [trajectoryMode, setTrajectoryMode] = useState<PublicationTrajectoryMode>('raw')
+  const [trajectoryWindow, setTrajectoryWindow] = useState(12)
+
+  useEffect(() => {
+    setSelectedYear(null)
+    setSelectedTypes([])
+    setSelectedVenue(null)
+    setSearchQuery('')
+    setShowAllVenues(false)
+    setHoveredBreakdownYear(null)
+    setSortKey('year')
+    setSortDirection('desc')
+    setTrajectoryMode('raw')
+  }, [tile.key])
+
+  const yearsWithData = useMemo(() => {
+    const values = publications
+      .map((row) => row.year)
+      .filter((value): value is number => Number.isFinite(value) && value !== null)
+    return Array.from(new Set(values)).sort((left, right) => left - right)
+  }, [publications])
+
+  const fallbackChartData = (tile.chart_data || {}) as Record<string, unknown>
+  const fallbackYears = toNumberArray(fallbackChartData.years).map((item) => Math.round(item))
+  const fallbackValues = toNumberArray(fallbackChartData.values).map((item) => Math.max(0, Math.round(item)))
+  const fallbackYearToCount = useMemo(() => {
+    const output = new Map<number, number>()
+    for (let index = 0; index < Math.min(fallbackYears.length, fallbackValues.length); index += 1) {
+      output.set(fallbackYears[index], fallbackValues[index])
+    }
+    return output
+  }, [fallbackValues, fallbackYears])
+
+  const minYear = yearsWithData.length ? yearsWithData[0] : (fallbackYears.length ? Math.min(...fallbackYears) : new Date().getUTCFullYear() - 4)
+  const maxYear = yearsWithData.length ? yearsWithData[yearsWithData.length - 1] : (fallbackYears.length ? Math.max(...fallbackYears) : new Date().getUTCFullYear())
+  const fullYears = useMemo(() => {
+    const output: number[] = []
+    for (let year = minYear; year <= maxYear; year += 1) {
+      output.push(year)
+    }
+    return output
+  }, [maxYear, minYear])
+
+  const countsByYear = useMemo(() => {
+    const output = new Map<number, number>()
+    for (const record of publications) {
+      if (record.year === null) {
+        continue
+      }
+      output.set(record.year, (output.get(record.year) || 0) + 1)
+    }
+    for (const year of fullYears) {
+      if (!output.has(year) && fallbackYearToCount.has(year)) {
+        output.set(year, Number(fallbackYearToCount.get(year) || 0))
+      }
+      if (!output.has(year)) {
+        output.set(year, 0)
+      }
+    }
+    return output
+  }, [fallbackYearToCount, fullYears, publications])
+
+  const yearSeriesRaw = useMemo(
+    () => fullYears.map((year) => Number(countsByYear.get(year) || 0)),
+    [countsByYear, fullYears],
+  )
+  const yearSeriesMovingAvg = useMemo(
+    () => yearSeriesRaw.map((_, index) => {
+      const start = Math.max(0, index - 2)
+      const window = yearSeriesRaw.slice(start, index + 1)
+      return window.length ? (window.reduce((sum, value) => sum + value, 0) / window.length) : 0
+    }),
+    [yearSeriesRaw],
+  )
+  const yearSeriesCumulative = useMemo(() => {
+    let running = 0
+    return yearSeriesRaw.map((value) => {
+      running += value
+      return running
+    })
+  }, [yearSeriesRaw])
+
+  useEffect(() => {
+    setTrajectoryWindow(Math.max(6, Math.min(12, fullYears.length || 12)))
+  }, [fullYears.length])
+
+  const roleCountsByYear = useMemo(() => {
+    const output: Record<number, Record<string, number>> = {}
+    for (const record of publications) {
+      if (record.year === null) {
+        continue
+      }
+      output[record.year] = output[record.year] || { First: 0, Second: 0, Senior: 0, Other: 0, Unknown: 0 }
+      const roleKey = ['First', 'Second', 'Senior', 'Other'].includes(record.role) ? record.role : 'Unknown'
+      output[record.year][roleKey] = (output[record.year][roleKey] || 0) + 1
+    }
+    return output
+  }, [publications])
+
+  const activeYears = yearSeriesRaw.filter((count) => count > 0).length
+  const medianPerActiveYear = median(yearSeriesRaw.filter((count) => count > 0))
+  const peakYearData = useMemo(() => {
+    let bestYear = maxYear
+    let bestCount = -1
+    yearSeriesRaw.forEach((count, index) => {
+      if (count > bestCount) {
+        bestCount = count
+        bestYear = fullYears[index]
+      }
+    })
+    return { year: bestYear, count: Math.max(0, bestCount) }
+  }, [fullYears, maxYear, yearSeriesRaw])
+
+  const volatilityIndex = useMemo(() => {
+    if (!yearSeriesRaw.length) {
+      return 0
+    }
+    const mean = yearSeriesRaw.reduce((sum, value) => sum + value, 0) / yearSeriesRaw.length
+    if (mean <= 1e-9) {
+      return 0
+    }
+    const variance = yearSeriesRaw.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / yearSeriesRaw.length
+    return Math.sqrt(variance) / mean
+  }, [yearSeriesRaw])
+
+  const growthSlope = useMemo(() => {
+    if (yearSeriesRaw.length <= 1) {
+      return 0
+    }
+    const n = yearSeriesRaw.length
+    const xs = Array.from({ length: n }, (_, index) => index + 1)
+    const sumX = xs.reduce((sum, value) => sum + value, 0)
+    const sumY = yearSeriesRaw.reduce((sum, value) => sum + value, 0)
+    const sumXY = yearSeriesRaw.reduce((sum, value, index) => sum + (value * xs[index]), 0)
+    const sumXX = xs.reduce((sum, value) => sum + (value * value), 0)
+    const numerator = (n * sumXY) - (sumX * sumY)
+    const denominator = (n * sumXX) - (sumX * sumX)
+    if (Math.abs(denominator) <= 1e-9) {
+      return 0
+    }
+    return numerator / denominator
+  }, [yearSeriesRaw])
+
+  const trajectoryPhase = growthSlope > 0.2
+    ? 'Expanding'
+    : growthSlope < -0.2
+      ? 'Contracting'
+      : 'Stable'
+
+  const unknownYearCount = publications.filter((record) => record.year === null).length
+  const ytdCountRaw = Number((tile.chart_data || {}).current_year_ytd)
+  const ytdCount = Number.isFinite(ytdCountRaw) ? Math.max(0, Math.round(ytdCountRaw)) : 0
+
+  const availableTypes = useMemo(
+    () => Array.from(new Set(publications.map((record) => record.type))).sort((left, right) => left.localeCompare(right)),
+    [publications],
+  )
+
+  const filteredPublications = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase()
+    return publications.filter((record) => {
+      if (selectedYear !== null && record.year !== selectedYear) {
+        return false
+      }
+      if (selectedTypes.length && !selectedTypes.includes(record.type)) {
+        return false
+      }
+      if (selectedVenue && record.venue !== selectedVenue) {
+        return false
+      }
+      if (!normalizedQuery) {
+        return true
+      }
+      return (
+        record.title.toLowerCase().includes(normalizedQuery)
+        || record.venue.toLowerCase().includes(normalizedQuery)
+        || record.type.toLowerCase().includes(normalizedQuery)
+        || record.role.toLowerCase().includes(normalizedQuery)
+      )
+    })
+  }, [publications, searchQuery, selectedTypes, selectedVenue, selectedYear])
+
+  const sortedPublications = useMemo(() => {
+    const direction = sortDirection === 'asc' ? 1 : -1
+    const output = [...filteredPublications]
+    output.sort((left, right) => {
+      if (sortKey === 'year') {
+        return ((left.year || 0) - (right.year || 0)) * direction
+      }
+      if (sortKey === 'citations') {
+        return (left.citations - right.citations) * direction
+      }
+      if (sortKey === 'title') {
+        return left.title.localeCompare(right.title) * direction
+      }
+      if (sortKey === 'role') {
+        return left.role.localeCompare(right.role) * direction
+      }
+      if (sortKey === 'type') {
+        return left.type.localeCompare(right.type) * direction
+      }
+      return left.venue.localeCompare(right.venue) * direction
+    })
+    return output
+  }, [filteredPublications, sortDirection, sortKey])
+
+  const venueConcentration = useMemo(() => {
+    const counts = new Map<string, number>()
+    const citations = new Map<string, number[]>()
+    const roles = new Map<string, Record<string, number>>()
+    for (const record of publications) {
+      counts.set(record.venue, (counts.get(record.venue) || 0) + 1)
+      const venueCitations = citations.get(record.venue) || []
+      venueCitations.push(record.citations)
+      citations.set(record.venue, venueCitations)
+      const roleCounter = roles.get(record.venue) || { First: 0, Senior: 0, Other: 0, Unknown: 0 }
+      if (record.role === 'First') {
+        roleCounter.First += 1
+      } else if (record.role === 'Senior') {
+        roleCounter.Senior += 1
+      } else if (record.role === 'Unknown') {
+        roleCounter.Unknown += 1
+      } else {
+        roleCounter.Other += 1
+      }
+      roles.set(record.venue, roleCounter)
+    }
+    const total = Math.max(1, publications.length)
+    return Array.from(counts.entries())
+      .map(([venue, count]) => {
+        const citationValues = citations.get(venue) || []
+        return {
+          venue,
+          count,
+          sharePct: (count / total) * 100,
+          medianCitations: median(citationValues),
+          roleMix: roles.get(venue) || { First: 0, Senior: 0, Other: 0, Unknown: 0 },
+        }
+      })
+      .sort((left, right) => right.count - left.count)
+  }, [publications])
+
+  const visibleVenueRows = showAllVenues ? venueConcentration : venueConcentration.slice(0, 6)
+
+  const toggleType = (type: string) => {
+    setSelectedTypes((current) => {
+      if (current.includes(type)) {
+        return current.filter((item) => item !== type)
+      }
+      return [...current, type]
+    })
+  }
+
+  const handleSort = (key: PublicationDrilldownSortKey) => {
+    if (sortKey === key) {
+      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSortKey(key)
+    setSortDirection(key === 'title' || key === 'role' || key === 'type' || key === 'venue' ? 'asc' : 'desc')
+  }
+
+  const sortIndicator = (key: PublicationDrilldownSortKey) => {
+    if (sortKey !== key) {
+      return ''
+    }
+    return sortDirection === 'asc' ? ' ↑' : ' ↓'
+  }
+
+  const breakdownYears = fullYears
+  const breakdownMaxCount = Math.max(1, ...breakdownYears.map((year) => Number(countsByYear.get(year) || 0)))
+  const hoveredYear = hoveredBreakdownYear
+  const hoveredYearCount = hoveredYear === null ? 0 : Number(countsByYear.get(hoveredYear) || 0)
+  const hoveredPrevCount = hoveredYear === null ? 0 : Number(countsByYear.get(hoveredYear - 1) || 0)
+  const hoveredYearYoY = hoveredPrevCount > 0
+    ? ((hoveredYearCount - hoveredPrevCount) / hoveredPrevCount) * 100
+    : null
+
+  const trajectoryVisibleCount = Math.max(6, Math.min(trajectoryWindow, fullYears.length))
+  const visibleYears = fullYears.slice(-trajectoryVisibleCount)
+  const visibleRaw = yearSeriesRaw.slice(-trajectoryVisibleCount)
+  const visibleMoving = yearSeriesMovingAvg.slice(-trajectoryVisibleCount)
+  const visibleCumulative = yearSeriesCumulative.slice(-trajectoryVisibleCount)
+  const trajectoryValues = trajectoryMode === 'cumulative'
+    ? visibleCumulative
+    : trajectoryMode === 'moving_avg'
+      ? visibleMoving
+      : visibleRaw
+
+  const trajectoryLabels = visibleYears.map((year) => String(year))
+  const trajectoryPoints = buildLinePoints(trajectoryValues, 320, 138, trajectoryLabels, 8)
+  const movingPoints = buildLinePoints(visibleMoving, 320, 138, trajectoryLabels, 8)
+  const rawPoints = buildLinePoints(visibleRaw, 320, 138, trajectoryLabels, 8)
+  const trajectoryPath = monotonePathFromPoints(trajectoryPoints)
+  const movingPath = monotonePathFromPoints(movingPoints)
+  const volatilityAreaPath = rawPoints.length && movingPoints.length
+    ? `M ${rawPoints.map((point) => `${point.x} ${point.y}`).join(' L ')} L ${[...movingPoints].reverse().map((point) => `${point.x} ${point.y}`).join(' L ')} Z`
+    : ''
+
+  const badgeTone = trajectoryPhase === 'Expanding'
+    ? 'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-100))] text-[hsl(var(--tone-positive-700))]'
+    : trajectoryPhase === 'Contracting'
+      ? 'border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] text-[hsl(var(--tone-warning-700))]'
+      : 'border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
+
+  const contextClassLabel = volatilityIndex > 0.55
+    ? 'High-variability portfolio'
+    : volatilityIndex > 0.3
+      ? 'Moderately variable portfolio'
+      : 'Steady portfolio'
+
+  const clearFilters = () => {
+    setSelectedYear(null)
+    setSelectedTypes([])
+    setSelectedVenue(null)
+    setSearchQuery('')
+  }
+
+  if (activeTab === 'summary') {
+    const headlineValue = String(tile.value_display || formatInt(publications.length))
+    const rollingWindow5y = yearSeriesRaw.slice(-5)
+    const rollingMean5y = rollingWindow5y.length
+      ? (rollingWindow5y.reduce((sum, value) => sum + value, 0) / rollingWindow5y.length)
+      : 0
+    const rollingMean5yRounded = Math.round(rollingMean5y * 10) / 10
+    const rollingMean5yDisplay = Number.isInteger(rollingMean5yRounded)
+      ? String(Math.round(rollingMean5yRounded))
+      : rollingMean5yRounded.toFixed(1)
+    const microValueClass = 'mt-0.5 text-[0.88rem] font-semibold leading-none tabular-nums text-[hsl(var(--tone-neutral-800))]'
+    return (
+      <div className="space-y-3">
+        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background p-3">
+          <div className="grid gap-2 lg:grid-cols-[9rem_minmax(0,1fr)]">
+            <div className="flex min-h-[4.5rem] flex-col justify-center rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2.5 text-center">
+              <p className="text-[0.58rem] font-semibold uppercase tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">
+                Total publications
+              </p>
+              <p className="mt-1 text-[1.7rem] font-semibold leading-none tracking-tight text-foreground">{headlineValue}</p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="grid min-h-[4.5rem] grid-rows-[2rem_auto] rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2 text-center">
+                <p className="text-[0.58rem] font-semibold uppercase leading-[1.1] tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">Active years</p>
+                <p className={microValueClass}>{formatInt(activeYears)}</p>
+              </div>
+              <div className="grid min-h-[4.5rem] grid-rows-[2rem_auto] rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2 text-center">
+                <p className="text-[0.58rem] font-semibold uppercase leading-[1.1] tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">Median per year</p>
+                <p className={microValueClass}>{formatInt(Math.round(medianPerActiveYear))}</p>
+              </div>
+              <div className="grid min-h-[4.5rem] grid-rows-[2rem_auto] rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2 text-center">
+                <p className="text-[0.58rem] font-semibold uppercase leading-[1.1] tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">Current year to date</p>
+                <p className={microValueClass}>{formatInt(ytdCount)}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+              <p className="text-[0.58rem] font-semibold uppercase tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">5-year rolling mean</p>
+              <p className="mt-0.5 text-[0.88rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{rollingMean5yDisplay}</p>
+            </div>
+            <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+              <p className="text-[0.58rem] font-semibold uppercase tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">Career peak</p>
+              <p className="mt-0.5 text-[0.88rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{`${formatInt(peakYearData.count)} (${peakYearData.year})`}</p>
+            </div>
+          </div>
+
+          <div className="mt-3 h-[14.6rem]">
+            <PublicationsPerYearChart
+              tile={tile}
+              showCaption={false}
+              showAxes
+              fullYearLabels
+              xAxisLabel="Publication year"
+              yAxisLabel="Publications"
+              enableWindowToggle
+            />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (activeTab === 'breakdown') {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background p-3">
+          <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]">Publications by year</p>
+          <div className="mt-2 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-2">
+            <div className="overflow-x-auto">
+              <div className="relative min-w-[680px]">
+                <div className="absolute inset-x-0 top-0 h-28">
+                  {[25, 50, 75].map((pct) => (
+                    <div key={`breakdown-grid-${pct}`} className="absolute inset-x-0 border-t border-[hsl(var(--tone-neutral-200))]" style={{ top: `${pct}%` }} />
+                  ))}
+                </div>
+                <div className="relative flex h-28 items-end gap-1">
+                  {breakdownYears.map((year) => {
+                    const count = Number(countsByYear.get(year) || 0)
+                    const heightPct = count <= 0 ? 4 : Math.max(7, (count / breakdownMaxCount) * 100)
+                    const isSelected = selectedYear === year
+                    return (
+                      <button
+                        key={`breakdown-year-${year}`}
+                        type="button"
+                        className={cn(
+                          'relative flex min-w-[1.95rem] flex-1 items-end rounded-[4px] border border-transparent transition-all duration-200',
+                          isSelected && 'border-[hsl(var(--tone-accent-500))]',
+                        )}
+                        onMouseEnter={() => setHoveredBreakdownYear(year)}
+                        onMouseLeave={() => setHoveredBreakdownYear((current) => (current === year ? null : current))}
+                        onClick={() => setSelectedYear((current) => (current === year ? null : year))}
+                        title={`${year}: ${count} publications`}
+                      >
+                        <span
+                          className={cn(
+                            'block w-full rounded-[4px] transition-[height,filter] duration-220 ease-out',
+                            isSelected ? 'bg-[hsl(var(--tone-accent-700))]' : 'bg-[hsl(var(--tone-accent-500))]',
+                          )}
+                          style={{ height: `${heightPct}%` }}
+                        />
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="mt-1 flex items-center gap-1 text-[0.56rem] text-[hsl(var(--tone-neutral-600))]">
+                  {breakdownYears.map((year) => (
+                    <span key={`breakdown-label-${year}`} className="min-w-[1.95rem] flex-1 text-center font-semibold">{String(year).slice(-2)}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {hoveredYear !== null ? (
+              <div className="mt-2 rounded border border-[hsl(var(--tone-neutral-200))] bg-background px-2 py-1.5 text-[0.64rem] text-[hsl(var(--tone-neutral-700))]">
+                <span className="font-semibold">{hoveredYear}</span>
+                <span>{` | Count ${formatInt(hoveredYearCount)}`}</span>
+                <span>{` | YoY ${hoveredYearYoY === null ? 'n/a' : `${hoveredYearYoY >= 0 ? '+' : ''}${hoveredYearYoY.toFixed(0)}%`}`}</span>
+                <span>{` | Roles First ${(roleCountsByYear[hoveredYear]?.First || 0)}, Senior ${(roleCountsByYear[hoveredYear]?.Senior || 0)}`}</span>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background p-3">
+          <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]">Publication type</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {availableTypes.map((type) => {
+              const isActive = selectedTypes.includes(type)
+              return (
+                <button
+                  key={`type-filter-${type}`}
+                  type="button"
+                  className={cn(
+                    'rounded-full border px-2.5 py-[0.25rem] text-[0.63rem] font-medium leading-none transition-colors',
+                    isActive
+                      ? 'border-[hsl(var(--tone-neutral-900))] bg-[hsl(var(--tone-neutral-900))] text-white'
+                      : 'border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-700))]',
+                  )}
+                  onClick={() => toggleType(type)}
+                >
+                  {type}
+                </button>
+              )
+            })}
+            {!availableTypes.length ? (
+              <span className="text-xs text-[hsl(var(--tone-neutral-500))]">No type data available</span>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background p-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]">Venue concentration</p>
+            <button
+              type="button"
+              className="rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))]"
+              onClick={() => setShowAllVenues((current) => !current)}
+            >
+              {showAllVenues ? 'View top' : 'View all'}
+            </button>
+          </div>
+          <div className="mt-2 space-y-1.5">
+            {visibleVenueRows.map((row) => {
+              const isSelected = selectedVenue === row.venue
+              return (
+                <button
+                  key={`venue-row-${row.venue}`}
+                  type="button"
+                  className={cn(
+                    'w-full rounded-md border px-2 py-1.5 text-left transition-colors',
+                    isSelected
+                      ? 'border-[hsl(var(--tone-accent-500))] bg-[hsl(var(--tone-accent-50))]'
+                      : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]',
+                  )}
+                  onClick={() => setSelectedVenue((current) => (current === row.venue ? null : row.venue))}
+                  title={`Median citations ${row.medianCitations.toFixed(1)} | First ${row.roleMix.First} | Senior ${row.roleMix.Senior}`}
+                >
+                  <div className="flex items-center justify-between gap-2 text-[0.62rem] text-[hsl(var(--tone-neutral-700))]">
+                    <span className="truncate font-medium">{row.venue}</span>
+                    <span>{`${formatInt(row.count)} (${row.sharePct.toFixed(0)}%)`}</span>
+                  </div>
+                  <div className="mt-1 h-[0.33rem] overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
+                    <span className="block h-full rounded-full bg-[hsl(var(--tone-accent-600))]" style={{ width: `${Math.max(4, Math.min(100, row.sharePct))}%` }} />
+                  </div>
+                </button>
+              )
+            })}
+            {!visibleVenueRows.length ? <p className="text-xs text-[hsl(var(--tone-neutral-500))]">No venue data</p> : null}
+          </div>
+        </div>
+
+        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]">Paper list</p>
+            <input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search title, venue, role"
+              className="h-7 min-w-[12rem] rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 text-[0.66rem] text-[hsl(var(--tone-neutral-700))] outline-none focus:border-[hsl(var(--tone-accent-500))]"
+            />
+            <button
+              type="button"
+              className="rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))]"
+              onClick={clearFilters}
+            >
+              Clear filters
+            </button>
+          </div>
+          <div className="mt-2 overflow-x-auto rounded-md border border-[hsl(var(--tone-neutral-200))]">
+            <table className="w-full min-w-[760px] border-collapse text-[0.64rem]">
+              <thead className="bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-700))]">
+                <tr>
+                  <th className="px-2 py-1.5 text-left font-semibold">
+                    <button type="button" onClick={() => handleSort('year')}>{`Year${sortIndicator('year')}`}</button>
+                  </th>
+                  <th className="px-2 py-1.5 text-left font-semibold">
+                    <button type="button" onClick={() => handleSort('title')}>{`Title${sortIndicator('title')}`}</button>
+                  </th>
+                  <th className="px-2 py-1.5 text-left font-semibold">
+                    <button type="button" onClick={() => handleSort('role')}>{`Role${sortIndicator('role')}`}</button>
+                  </th>
+                  <th className="px-2 py-1.5 text-left font-semibold">
+                    <button type="button" onClick={() => handleSort('type')}>{`Type${sortIndicator('type')}`}</button>
+                  </th>
+                  <th className="px-2 py-1.5 text-left font-semibold">
+                    <button type="button" onClick={() => handleSort('venue')}>{`Venue${sortIndicator('venue')}`}</button>
+                  </th>
+                  <th className="px-2 py-1.5 text-right font-semibold">
+                    <button type="button" onClick={() => handleSort('citations')}>{`Citations${sortIndicator('citations')}`}</button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedPublications.slice(0, 120).map((record) => (
+                  <tr key={`paper-row-${record.workId}`} className="border-t border-[hsl(var(--tone-neutral-200))] text-[hsl(var(--tone-neutral-700))]">
+                    <td className="px-2 py-1.5">{record.year || 'n/a'}</td>
+                    <td className="px-2 py-1.5">
+                      <span className="line-clamp-1">{record.title}</span>
+                    </td>
+                    <td className="px-2 py-1.5">{record.role}</td>
+                    <td className="px-2 py-1.5">{record.type}</td>
+                    <td className="px-2 py-1.5">
+                      <span className="line-clamp-1">{record.venue}</span>
+                    </td>
+                    <td className="px-2 py-1.5 text-right">{formatInt(record.citations)}</td>
+                  </tr>
+                ))}
+                {!sortedPublications.length ? (
+                  <tr>
+                    <td className="px-2 py-4 text-center text-[hsl(var(--tone-neutral-500))]" colSpan={6}>
+                      No papers match the current filters.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (activeTab === 'trajectory') {
+    const trajectoryMaxWindow = Math.max(6, fullYears.length)
+    const trajectoryOptions = [
+      { key: 'raw' as const, label: 'Raw' },
+      { key: 'moving_avg' as const, label: 'Moving avg' },
+      { key: 'cumulative' as const, label: 'Cumulative' },
+    ]
+    const activeTrajectoryIndex = Math.max(0, trajectoryOptions.findIndex((option) => option.key === trajectoryMode))
+    return (
+      <div className="space-y-3">
+        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]">Publication trajectory</p>
+            <div className="relative isolate inline-grid grid-cols-3 items-center overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5">
+              <span
+                className="pointer-events-none absolute inset-y-0.5 z-0 rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-[left,width] duration-320 ease-out"
+                style={{
+                  width: 'calc(33.333333% - 0.16rem)',
+                  left: `calc(${(100 / 3) * activeTrajectoryIndex}% + 2px)`,
+                }}
+                aria-hidden="true"
+              />
+              {trajectoryOptions.map((option) => (
+                <button
+                  key={`trajectory-mode-${option.key}`}
+                  type="button"
+                  className={cn(
+                    'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
+                    trajectoryMode === option.key
+                      ? 'text-white'
+                      : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
+                  )}
+                  onClick={() => setTrajectoryMode(option.key)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_10.5rem]">
+            <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-2">
+              <svg viewBox="0 0 320 138" className="h-40 w-full">
+                {[25, 50, 75].map((pct) => (
+                  <line
+                    key={`trajectory-grid-${pct}`}
+                    x1={8}
+                    x2={312}
+                    y1={8 + ((122 * pct) / 100)}
+                    y2={8 + ((122 * pct) / 100)}
+                    stroke="hsl(var(--tone-neutral-200))"
+                    strokeWidth={1}
+                  />
+                ))}
+                {trajectoryMode === 'raw' && volatilityAreaPath ? (
+                  <path d={volatilityAreaPath} fill="hsl(var(--tone-accent-200)/0.45)" />
+                ) : null}
+                {trajectoryMode === 'raw' && movingPath ? (
+                  <path d={movingPath} fill="none" stroke="hsl(var(--tone-neutral-500))" strokeWidth={1.8} strokeDasharray="3 3" />
+                ) : null}
+                {trajectoryPath ? (
+                  <path d={trajectoryPath} fill="none" stroke="hsl(var(--tone-accent-700))" strokeWidth={2.8} strokeLinecap="round" />
+                ) : null}
+              </svg>
+              <div className="mt-1 flex items-center justify-between text-[0.58rem] uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">
+                <span>{visibleYears[0] || 'n/a'}</span>
+                <span>{visibleYears[visibleYears.length - 1] || 'n/a'}</span>
+              </div>
+              <div className="mt-2">
+                <input
+                  type="range"
+                  min={Math.min(6, trajectoryMaxWindow)}
+                  max={trajectoryMaxWindow}
+                  value={Math.min(trajectoryWindow, trajectoryMaxWindow)}
+                  onChange={(event) => setTrajectoryWindow(Math.max(6, Number(event.target.value) || 6))}
+                  className="w-full accent-[hsl(var(--tone-accent-700))]"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1.5">
+                <p className="text-[0.56rem] uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Volatility index</p>
+                <p className="mt-0.5 text-[0.78rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{volatilityIndex.toFixed(2)}</p>
+              </div>
+              <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1.5">
+                <p className="text-[0.56rem] uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Growth slope</p>
+                <p className="mt-0.5 text-[0.78rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{growthSlope >= 0 ? '+' : ''}{growthSlope.toFixed(2)}/year</p>
+              </div>
+              <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1.5">
+                <p className="text-[0.56rem] uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Phase marker</p>
+                <p className="mt-0.5 text-[0.78rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{trajectoryPhase}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (activeTab === 'context') {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={cn('inline-flex items-center rounded-full border px-2.5 py-1 text-[0.63rem] font-semibold', badgeTone)}>
+              {contextClassLabel}
+            </span>
+            <span className="text-[0.64rem] text-[hsl(var(--tone-neutral-600))]">{trajectoryPhase} phase detected</span>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-2.5">
+              <p className="text-[0.58rem] uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Portfolio structure</p>
+              <p className="mt-1 text-[0.67rem] text-[hsl(var(--tone-neutral-700))]">{`Active years ${formatInt(activeYears)}`}</p>
+              <p className="text-[0.67rem] text-[hsl(var(--tone-neutral-700))]">{`Median/year ${medianPerActiveYear.toFixed(1)}`}</p>
+              <p className="text-[0.67rem] text-[hsl(var(--tone-neutral-700))]">{`Unknown year records ${formatInt(unknownYearCount)}`}</p>
+            </div>
+            <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-2.5">
+              <p className="text-[0.58rem] uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Distribution profile</p>
+              <p className="mt-1 text-[0.67rem] text-[hsl(var(--tone-neutral-700))]">{`Peak year ${peakYearData.year} (${formatInt(peakYearData.count)})`}</p>
+              <p className="text-[0.67rem] text-[hsl(var(--tone-neutral-700))]">{`Volatility ${volatilityIndex.toFixed(2)}`}</p>
+              <p className="text-[0.67rem] text-[hsl(var(--tone-neutral-700))]">{`Slope ${growthSlope >= 0 ? '+' : ''}${growthSlope.toFixed(2)} / year`}</p>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-1.5 sm:grid-cols-3">
+            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))] text-left">
+              View authorship distribution
+            </button>
+            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))] text-left">
+              View collaboration structure
+            </button>
+            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))] text-left">
+              View impact concentration
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (activeTab === 'methods') {
+    return (
+      <div className="space-y-3">
+        <details className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]">
+          <summary className="cursor-pointer list-none px-3 py-2 text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]">
+            Method details
+          </summary>
+          <div className="space-y-1.5 border-t border-[hsl(var(--tone-neutral-200))] px-3 py-2.5 text-[0.64rem] text-[hsl(var(--tone-neutral-700))]">
+            <p><span className="font-semibold">Formula:</span> {String(tile.drilldown?.formula || 'Not available')}</p>
+            <p><span className="font-semibold">Filters:</span> Publication year when available; author-linked publication records.</p>
+            <p><span className="font-semibold">Sources:</span> {(tile.data_source || []).join(', ') || 'Not available'}</p>
+            <p><span className="font-semibold">Updated:</span> {String(tile.tooltip_details?.update_frequency || 'Not available')}</p>
+            <p><span className="font-semibold">Confidence:</span> {(Number(tile.confidence_score || 0)).toFixed(2)}</p>
+            <p className="text-[hsl(var(--tone-neutral-500))]">{String(tile.drilldown?.confidence_note || '')}</p>
+          </div>
+        </details>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-3 py-4 text-xs text-[hsl(var(--tone-neutral-500))]">
+      Select a tab to inspect this metric.
+    </div>
+  )
+}
+
 function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
   const [chartVisible, setChartVisible] = useState(true)
   const [barsExpanded, setBarsExpanded] = useState(false)
@@ -2076,7 +3283,7 @@ function HIndexViewToggle({
           type="button"
           data-stop-tile-open="true"
           className={cn(
-            'relative z-[1] rounded-full px-2 py-[0.38rem] text-[0.62rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
+            'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
             mode === 'trajectory' ? 'text-white' : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
           )}
           onClick={(event) => {
@@ -2092,7 +3299,7 @@ function HIndexViewToggle({
           type="button"
           data-stop-tile-open="true"
           className={cn(
-            'relative z-[1] rounded-full px-2 py-[0.38rem] text-[0.62rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
+            'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
             mode === 'needed' ? 'text-white' : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
           )}
           onClick={(event) => {
@@ -2710,7 +3917,7 @@ export function PublicationsTopStrip({
                             type="button"
                             data-stop-tile-open="true"
                             className={cn(
-                              'relative z-[1] rounded-full px-2 py-[0.38rem] text-[0.62rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
+                              'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
                               activeThreshold === threshold
                                 ? 'text-white'
                                 : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
@@ -2850,18 +4057,26 @@ export function PublicationsTopStrip({
                 onValueChange={(value) => setActiveDrilldownTab(value as DrilldownTab)}
                 className="w-full"
               >
-                <TabsList className="grid h-auto w-full grid-cols-5 gap-1 bg-[hsl(var(--tone-neutral-100))] p-1">
+                <TabsList className="grid h-auto w-full grid-cols-5 gap-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-1">
                   {DRILLDOWN_TABS.map((tab) => (
-                    <TabsTrigger key={tab.value} value={tab.value} className="text-[0.63rem]">
+                    <TabsTrigger
+                      key={tab.value}
+                      value={tab.value}
+                      className="!text-[0.69rem] font-medium leading-none text-[hsl(var(--tone-neutral-700))] data-[state=active]:bg-background data-[state=active]:text-[hsl(var(--tone-neutral-900))] data-[state=active]:shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.12)]"
+                    >
                       {tab.label}
                     </TabsTrigger>
                   ))}
                 </TabsList>
-                <TabsContent value="summary" className="mt-3" />
-                <TabsContent value="breakdown" className="mt-3" />
-                <TabsContent value="trajectory" className="mt-3" />
-                <TabsContent value="context" className="mt-3" />
-                <TabsContent value="methods" className="mt-3" />
+                <div className="mt-3">
+                  {activeTile.key === 'this_year_vs_last' ? (
+                    <TotalPublicationsDrilldownWorkspace tile={activeTile} activeTab={activeDrilldownTab} />
+                  ) : (
+                    <div className="rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-3 py-4 text-xs text-[hsl(var(--tone-neutral-500))]">
+                      Tab scaffold ready.
+                    </div>
+                  )}
+                </div>
               </Tabs>
             </div>
           ) : (

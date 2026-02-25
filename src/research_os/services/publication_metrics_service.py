@@ -32,7 +32,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 19
+TOP_METRICS_SCHEMA_VERSION = 20
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 FIELD_PERCENTILE_THRESHOLDS = [50, 75, 90, 95, 99]
 
@@ -1522,6 +1522,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "title": str(work.title or "").strip() or "Untitled",
                 "year": int(work.year) if isinstance(work.year, int) else None,
                 "journal": str(work.venue_name or "").strip() or str(work.journal or "").strip() or "Not available",
+                "publication_type": str(work.publication_type or "").strip() or str(work.work_type or "").strip() or None,
                 "doi": str(work.doi or "").strip() or None,
                 "pmid": str(work.pmid or "").strip() or None,
                 "openalex_work_id": openalex_work_id,
@@ -1559,11 +1560,6 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     total_citations = int(sum(int(row["citations_lifetime"]) for row in per_work_rows))
     citations_last_12m = int(sum(int(row["citations_last_12m"]) for row in per_work_rows))
     citations_prev_12m = int(sum(int(row["citations_prev_12m"]) for row in per_work_rows))
-    yoy_pct = compute_yoy_percent(
-        citations_last_12m=citations_last_12m,
-        citations_prev_12m=citations_prev_12m,
-    )
-    yoy_delta = citations_last_12m - citations_prev_12m
     momentum_score = compute_citation_momentum_score(monthly_added_totals[-12:])
     top3_citations = int(sum(int(row["citations_lifetime"]) for row in per_work_rows[:3]))
     concentration_risk = compute_concentration_risk_percent(
@@ -1581,29 +1577,12 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         if isinstance(year, int):
             if first_publication_year is None or year < first_publication_year:
                 first_publication_year = year
-    m_index = compute_m_index(
-        h_index=h_index,
-        first_publication_year=first_publication_year,
-        current_year=now.year,
-    )
-
     h_index_series: list[int] = []
     for month_index in range(13, 25):
         month_citations = [
             int(row["monthly_cumulative_25"][month_index]) for row in per_work_rows
         ]
         h_index_series.append(compute_h_index(month_citations))
-
-    rolling_last_12_series = [
-        _rolling_sum(monthly_added_totals, 12, index) for index in range(12, 24)
-    ]
-    yoy_series = [
-        _rolling_yoy_percent(monthly_added_totals, index) for index in range(12, 24)
-    ]
-    momentum_series = [
-        compute_citation_momentum_score(monthly_added_totals[max(0, index - 11) : index + 1])
-        for index in range(12, 24)
-    ]
 
     concentration_series: list[float] = []
     for month_index in range(13, 25):
@@ -1632,13 +1611,6 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     influence_last_12m = int(
         sum(int(row.get("influential_last_12m") or 0) for row in influence_candidates)
     )
-    influence_series = [
-        int(
-            sum(int(row["semantic_cumulative_25"][month_index]) for row in influence_candidates)
-        )
-        for month_index in range(13, 25)
-    ]
-
     data_sources: list[str] = []
     if str(user.orcid_id or "").strip():
         data_sources.append("ORCID")
@@ -1706,13 +1678,6 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             )
             data_sources.append("Dimensions Metrics")
 
-    confidence_average = (
-        sum(float(row["confidence_score"]) for row in per_work_rows) / len(per_work_rows)
-        if per_work_rows
-        else 0.0
-    )
-    stability = "stable" if confidence_average >= 0.70 else "unstable"
-
     total_citation_publications = [
         _publication_item_with_links(
             {
@@ -1731,25 +1696,6 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         for row in per_work_rows[:100]
     ]
 
-    h_threshold_publications = [
-        _publication_item_with_links(
-            {
-            "work_id": row["work_id"],
-            "title": row["title"],
-            "doi": row["doi"],
-            "year": row["year"],
-            "journal": row["journal"],
-            "citations_lifetime": row["citations_lifetime"],
-            "meets_h_threshold": int(row["citations_lifetime"]) >= int(h_index),
-            "confidence_score": row["confidence_score"],
-            "confidence_label": row["confidence_label"],
-            "match_source": row["match_source"],
-            "match_method": row["match_method"],
-            }
-        )
-        for row in per_work_rows[:100]
-    ]
-
     publication_volume_publications = sorted(
         [
             _publication_item_with_links(
@@ -1759,6 +1705,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                     "doi": row["doi"],
                     "year": row["year"],
                     "journal": row["journal"],
+                    "publication_type": row.get("publication_type"),
+                    "citations_lifetime": row.get("citations_lifetime"),
                     "publication_count": 1,
                     "user_author_position": row.get("user_author_position"),
                     "author_count": row.get("author_count"),
@@ -1851,8 +1799,6 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     momentum_delta = round(momentum_score - momentum_previous_score, 2)
     concentration_previous = concentration_series[0] if concentration_series else 0.0
     concentration_delta = round(concentration_risk - concentration_previous, 2)
-    has_insufficient_history = window_basis_counts["insufficient_history"] > 0
-    last12_stability = "unstable" if has_insufficient_history else "stable"
 
     rolling_last_12_series_24 = [
         _rolling_sum(monthly_added_totals, 12, index) for index in range(24)
@@ -1948,7 +1894,6 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     h_progress_to_next = float(h_projection.get("progress_to_next_pct") or 0.0)
     h_next_target = int(h_index) + 1
     h_projection_probability = float(h_projection.get("projection_probability") or 0.0)
-    h_projection_probability_pct = round(h_projection_probability * 100.0)
     h_confidence_label = (
         "High"
         if h_projection_probability >= 0.75

@@ -604,12 +604,293 @@ const fixtureTopMetrics: PublicationsTopMetricsPayload = {
   last_error: null,
 }
 
+type YearCount = {
+  year: number
+  count: number
+}
+
+function sumYearCounts(series: YearCount[]): number {
+  return series.reduce((sum, item) => sum + Math.max(0, item.count), 0)
+}
+
+function buildPublicationRowsFromYearCounts(
+  series: YearCount[],
+  prefix: string,
+): Array<Record<string, unknown>> {
+  const venues = [
+    'Medical Education',
+    'Academic Medicine',
+    'BMC Medical Education',
+    'Medical Teacher',
+    'Advances in Health Sciences Education',
+  ]
+  const publicationTypes = ['Article', 'Review', 'Editorial', 'Conference paper']
+  const roles = ['first', 'second', 'last', 'other']
+  const maxYear = series.reduce((max, item) => Math.max(max, item.year), 0)
+  const rows: Array<Record<string, unknown>> = []
+  let serial = 1
+  series.forEach(({ year, count }) => {
+    for (let index = 0; index < count; index += 1) {
+      const age = Math.max(0, maxYear - year)
+      const citations = Math.max(1, 3 + age * 2 + ((index % 6) * 3))
+      rows.push({
+        work_id: `${prefix}-${year}-${index + 1}`,
+        year,
+        title: `Publication ${serial}: cohort and implementation study`,
+        journal: venues[(serial - 1) % venues.length],
+        publication_type: publicationTypes[(serial - 1) % publicationTypes.length],
+        citations_lifetime: citations,
+        user_author_role: roles[(serial - 1) % roles.length],
+      })
+      serial += 1
+    }
+  })
+  return rows
+}
+
+function buildCitationTimeseriesFromYearCounts(
+  series: YearCount[],
+  citationMultiplier: number,
+): Array<{ year: number; citations_added: number; total_citations_end_year: number }> {
+  let running = 0
+  return series.map(({ year, count }) => {
+    const citationsAdded = Math.max(0, Math.round(count * citationMultiplier))
+    running += citationsAdded
+    return {
+      year,
+      citations_added: citationsAdded,
+      total_citations_end_year: running,
+    }
+  })
+}
+
+const longCareerYearCounts: YearCount[] = Array.from({ length: 25 }, (_, index) => {
+  const year = 2001 + index
+  const baseline = 4 + Math.round(index * 1.35)
+  const cycle = index % 6 === 0 ? 6 : index % 4 === 0 ? 3 : 0
+  return { year, count: baseline + cycle }
+})
+const longCareerPublicationRows = buildPublicationRowsFromYearCounts(longCareerYearCounts, 'long')
+const longCareerCitationsPerYear = buildCitationTimeseriesFromYearCounts(longCareerYearCounts, 22)
+const longCareerTotalPublications = sumYearCounts(longCareerYearCounts)
+const longCareerTotalCitations = longCareerCitationsPerYear.length
+  ? longCareerCitationsPerYear[longCareerCitationsPerYear.length - 1].total_citations_end_year
+  : 0
+
+const sparsePatchyYearCounts: YearCount[] = [
+  { year: 2004, count: 1 },
+  { year: 2008, count: 1 },
+  { year: 2013, count: 2 },
+  { year: 2017, count: 1 },
+  { year: 2020, count: 3 },
+  { year: 2022, count: 1 },
+  { year: 2025, count: 2 },
+]
+const sparsePatchyPublicationRows = buildPublicationRowsFromYearCounts(sparsePatchyYearCounts, 'patchy')
+const sparsePatchyCitationsPerYear = buildCitationTimeseriesFromYearCounts(sparsePatchyYearCounts, 6)
+const sparsePatchyTotalPublications = sumYearCounts(sparsePatchyYearCounts)
+const sparsePatchyTotalCitations = sparsePatchyCitationsPerYear.length
+  ? sparsePatchyCitationsPerYear[sparsePatchyCitationsPerYear.length - 1].total_citations_end_year
+  : 0
+
+const longCareerTopMetrics: PublicationsTopMetricsPayload = {
+  ...fixtureTopMetrics,
+  tiles: fixtureTopMetrics.tiles.map((tile) => {
+    if (tile.key === 'this_year_vs_last') {
+      const yearlyValues = longCareerYearCounts.map((item) => item.count)
+      const mean = yearlyValues.length
+        ? yearlyValues.reduce((sum, value) => sum + value, 0) / yearlyValues.length
+        : 0
+      return {
+        ...tile,
+        value: longCareerTotalPublications,
+        main_value: longCareerTotalPublications,
+        value_display: String(longCareerTotalPublications),
+        main_value_display: String(longCareerTotalPublications),
+        chart_data: {
+          ...(tile.chart_data || {}),
+          years: longCareerYearCounts.map((item) => item.year),
+          values: yearlyValues,
+          mean_value: Number(mean.toFixed(2)),
+          projected_year: 2026,
+          current_year_ytd: 11,
+        },
+        sparkline: yearlyValues.slice(-5),
+        drilldown: {
+          ...tile.drilldown,
+          publications: longCareerPublicationRows,
+          metadata: {
+            ...tile.drilldown.metadata,
+            scenario: 'long_career_high_volume',
+          },
+        },
+      }
+    }
+    if (tile.key === 'total_citations') {
+      return {
+        ...tile,
+        value: longCareerTotalCitations,
+        main_value: longCareerTotalCitations,
+        value_display: String(longCareerTotalCitations),
+        main_value_display: String(longCareerTotalCitations),
+        chart_data: {
+          ...(tile.chart_data || {}),
+          years: [2021, 2022, 2023, 2024, 2025],
+          values: [812, 905, 981, 1087, 1194],
+          mean_value: 995.8,
+          projected_year: 2026,
+          current_year_ytd: 634,
+          monthly_values_12m: [42, 47, 49, 51, 53, 52, 55, 58, 60, 63, 54, 50],
+        },
+        sparkline: [812, 905, 981, 1087, 1194],
+      }
+    }
+    return tile
+  }),
+}
+
+const sparsePatchyTopMetrics: PublicationsTopMetricsPayload = {
+  ...fixtureTopMetrics,
+  tiles: fixtureTopMetrics.tiles.map((tile) => {
+    if (tile.key === 'this_year_vs_last') {
+      const yearlyValues = sparsePatchyYearCounts.map((item) => item.count)
+      const mean = yearlyValues.length
+        ? yearlyValues.reduce((sum, value) => sum + value, 0) / yearlyValues.length
+        : 0
+      return {
+        ...tile,
+        value: sparsePatchyTotalPublications,
+        main_value: sparsePatchyTotalPublications,
+        value_display: String(sparsePatchyTotalPublications),
+        main_value_display: String(sparsePatchyTotalPublications),
+        chart_data: {
+          ...(tile.chart_data || {}),
+          years: sparsePatchyYearCounts.map((item) => item.year),
+          values: yearlyValues,
+          mean_value: Number(mean.toFixed(2)),
+          projected_year: 2026,
+          current_year_ytd: 1,
+        },
+        sparkline: yearlyValues.slice(-5),
+        drilldown: {
+          ...tile.drilldown,
+          publications: sparsePatchyPublicationRows,
+          metadata: {
+            ...tile.drilldown.metadata,
+            scenario: 'sparse_patchy_career',
+          },
+        },
+      }
+    }
+    if (tile.key === 'total_citations') {
+      return {
+        ...tile,
+        value: sparsePatchyTotalCitations,
+        main_value: sparsePatchyTotalCitations,
+        value_display: String(sparsePatchyTotalCitations),
+        main_value_display: String(sparsePatchyTotalCitations),
+        chart_data: {
+          ...(tile.chart_data || {}),
+          years: [2021, 2022, 2023, 2024, 2025],
+          values: [4, 9, 6, 11, 8],
+          mean_value: 7.6,
+          projected_year: 2026,
+          current_year_ytd: 3,
+          monthly_values_12m: [0, 1, 1, 0, 1, 0, 1, 2, 1, 1, 0, 1],
+        },
+        sparkline: [4, 9, 6, 11, 8],
+      }
+    }
+    return tile
+  }),
+}
+
 const fullPageFixture: ProfilePublicationsPageFixture = {
   token: '',
   user: fixtureUser,
   personaState: fixturePersonaState,
   analyticsResponse: fixtureAnalyticsResponse,
   topMetricsResponse: fixtureTopMetrics,
+}
+
+const longCareerHighVolumeFixture: ProfilePublicationsPageFixture = {
+  ...fullPageFixture,
+  personaState: {
+    ...fixturePersonaState,
+    timeline: longCareerYearCounts.map((item, index) => ({
+      year: item.year,
+      n_works: item.count,
+      citations: Math.round(item.count * (10 + Math.min(12, index))),
+    })),
+  },
+  analyticsResponse: {
+    ...fixtureAnalyticsResponse,
+    payload: {
+      ...fixtureAnalyticsResponse.payload,
+      summary: {
+        ...fixtureAnalyticsResponse.payload.summary,
+        total_citations: longCareerTotalCitations,
+        h_index: 54,
+        citations_last_12_months: 634,
+        citations_previous_12_months: 598,
+        citations_per_month_12m: 52.8,
+        citations_per_month_previous_12m: 49.8,
+        acceleration_citations_per_month: 3.0,
+        yoy_percent: 6.0,
+        yoy_pct: 6.0,
+        citations_ytd: 312,
+      },
+      timeseries: {
+        ...fixtureAnalyticsResponse.payload.timeseries,
+        points: longCareerCitationsPerYear.slice(-15),
+      },
+      per_year: longCareerCitationsPerYear.slice(-15).map((point) => ({
+        year: point.year,
+        citations: point.citations_added,
+      })),
+    },
+  },
+  topMetricsResponse: longCareerTopMetrics,
+}
+
+const sparsePatchyCareerFixture: ProfilePublicationsPageFixture = {
+  ...fullPageFixture,
+  personaState: {
+    ...fixturePersonaState,
+    timeline: sparsePatchyYearCounts.map((item) => ({
+      year: item.year,
+      n_works: item.count,
+      citations: Math.round(item.count * 7),
+    })),
+  },
+  analyticsResponse: {
+    ...fixtureAnalyticsResponse,
+    payload: {
+      ...fixtureAnalyticsResponse.payload,
+      summary: {
+        ...fixtureAnalyticsResponse.payload.summary,
+        total_citations: sparsePatchyTotalCitations,
+        h_index: 7,
+        citations_last_12_months: 3,
+        citations_previous_12_months: 5,
+        citations_per_month_12m: 0.25,
+        citations_per_month_previous_12m: 0.42,
+        acceleration_citations_per_month: -0.17,
+        yoy_percent: -40,
+        yoy_pct: -40,
+        citations_ytd: 1,
+      },
+      timeseries: {
+        ...fixtureAnalyticsResponse.payload.timeseries,
+        points: sparsePatchyCitationsPerYear,
+      },
+      per_year: sparsePatchyCitationsPerYear.map((point) => ({
+        year: point.year,
+        citations: point.citations_added,
+      })),
+    },
+  },
+  topMetricsResponse: sparsePatchyTopMetrics,
 }
 
 const loadingFixture: ProfilePublicationsPageFixture = {
@@ -763,6 +1044,18 @@ export const LoadingState: Story = {
 export const EmptyLibrary: Story = {
   args: {
     fixture: emptyFixture,
+  },
+}
+
+export const LongCareerHighVolume: Story = {
+  args: {
+    fixture: longCareerHighVolumeFixture,
+  },
+}
+
+export const SparsePatchyCareer: Story = {
+  args: {
+    fixture: sparsePatchyCareerFixture,
   },
 }
 

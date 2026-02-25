@@ -129,6 +129,32 @@ const totalPublicationsTile = buildTile({
   sparkline: [2, 6, 3, 8, 5],
 })
 
+const totalPublicationsDrilldownTile: PublicationMetricTilePayload = {
+  ...totalPublicationsTile,
+  chart_data: {
+    ...(totalPublicationsTile.chart_data || {}),
+    years: [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025],
+    values: [1, 2, 2, 3, 4, 3, 5, 4],
+    current_year_ytd: 2,
+  },
+  drilldown: {
+    ...totalPublicationsTile.drilldown,
+    publications: [
+      { work_id: 'p1', year: 2025, title: 'Adaptive simulation design in clinical education', journal: 'Medical Education', publication_type: 'Article', citations_lifetime: 12, user_author_role: 'first' },
+      { work_id: 'p2', year: 2025, title: 'Remote learning implementation patterns in postgraduate training', journal: 'BMC Medical Education', publication_type: 'Review', citations_lifetime: 9, user_author_role: 'last' },
+      { work_id: 'p3', year: 2024, title: 'Assessment redesign in hybrid teaching programs', journal: 'Academic Medicine', publication_type: 'Article', citations_lifetime: 18, user_author_role: 'first' },
+      { work_id: 'p4', year: 2024, title: 'Evaluation model for workplace-based feedback', journal: 'Medical Teacher', publication_type: 'Article', citations_lifetime: 16, user_author_role: 'second' },
+      { work_id: 'p5', year: 2023, title: 'A scoping review of digital clerkship models', journal: 'Medical Education', publication_type: 'Review', citations_lifetime: 21, user_author_role: 'last' },
+      { work_id: 'p6', year: 2023, title: 'Clinical communication outcomes in virtual OSCEs', journal: 'Medical Teacher', publication_type: 'Article', citations_lifetime: 7, user_author_role: 'other' },
+      { work_id: 'p7', year: 2022, title: 'Interprofessional simulation uptake across UK institutions', journal: 'BMC Medical Education', publication_type: 'Article', citations_lifetime: 14, user_author_role: 'first' },
+      { work_id: 'p8', year: 2021, title: 'Rapid curriculum pivot during pandemic periods', journal: 'Medical Education', publication_type: 'Commentary', citations_lifetime: 27, user_author_role: 'last' },
+      { work_id: 'p9', year: 2020, title: 'Virtual case-based learning and exam performance', journal: 'Academic Medicine', publication_type: 'Article', citations_lifetime: 24, user_author_role: 'first' },
+      { work_id: 'p10', year: 2019, title: 'Faculty development impacts on feedback quality', journal: 'Medical Teacher', publication_type: 'Article', citations_lifetime: 11, user_author_role: 'other' },
+      { work_id: 'p11', year: 2018, title: 'Structured debriefing protocol pilot in clerkships', journal: 'Medical Education', publication_type: 'Article', citations_lifetime: 8, user_author_role: 'second' },
+    ],
+  },
+}
+
 const totalPublicationsLowVolumeTile = buildTile({
   id: 'tile-total-publications-low-volume',
   key: 'this_year_vs_last',
@@ -638,6 +664,7 @@ export const TotalCitationsNoData: Story = { args: singleTileArgs(totalCitations
 export const TotalCitationsLoading: Story = { args: loadingArgs }
 
 export const TotalPublicationsDefault: Story = { args: singleTileArgs(totalPublicationsTile) }
+export const TotalPublicationsDrilldownPreview: Story = { args: singleTileArgs(totalPublicationsDrilldownTile) }
 export const TotalPublicationsLowVolume: Story = { args: singleTileArgs(totalPublicationsLowVolumeTile) }
 export const TotalPublicationsHighVariance: Story = { args: singleTileArgs(totalPublicationsHighVarianceTile) }
 export const TotalPublicationsNoData: Story = { args: singleTileArgs(totalPublicationsEmptyTile) }

@@ -21,7 +21,7 @@ const fixtureUser: AuthUser = {
   impact_last_computed_at: FIXTURE_TIME,
   email_verified_at: FIXTURE_TIME,
   last_sign_in_at: FIXTURE_TIME,
-  created_at: '2025-03-01T09:00:00Z',
+  created_at: '2025-02-25T09:00:00Z',
   updated_at: FIXTURE_TIME,
 }
 
@@ -65,6 +65,8 @@ const connectedFixture: ProfilePersonalDetailsPageFixture = {
     researchGateUrl: 'https://www.researchgate.net/profile/Ciaran-Clarke',
     xHandle: '@axiomos_lab',
     profilePhotoDataUrl: '',
+    profilePhotoPositionX: 50,
+    profilePhotoPositionY: 50,
     publicationAffiliations: ['Axiomos Labs, London (GB)', "King's College London (GB)"],
   },
 }
@@ -96,6 +98,8 @@ const unlinkedFixture: ProfilePersonalDetailsPageFixture = {
     researchGateUrl: '',
     xHandle: '',
     profilePhotoDataUrl: '',
+    profilePhotoPositionX: 50,
+    profilePhotoPositionY: 50,
     publicationAffiliations: [],
   },
 }
@@ -131,6 +135,8 @@ const reviewOneFixture: ProfilePersonalDetailsPageFixture = {
     researchGateUrl: '',
     xHandle: '',
     profilePhotoDataUrl: '',
+    profilePhotoPositionX: 50,
+    profilePhotoPositionY: 50,
     publicationAffiliations: ['University of East Anglia (GB)'],
   },
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type PointerEvent } from 'react'
 import { GripVertical, Loader2, Plus, Trash2, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -38,6 +38,8 @@ type PersonalDetailsDraft = {
   researchGateUrl: string
   xHandle: string
   profilePhotoDataUrl: string
+  profilePhotoPositionX: number
+  profilePhotoPositionY: number
   publicationAffiliations: string[]
 }
 
@@ -61,7 +63,7 @@ type AffiliationSuggestionItem = {
   region: string | null
   address: string | null
   postalCode: string | null
-  source: 'openalex' | 'ror'
+  source: 'openalex' | 'ror' | 'openstreetmap' | 'clearbit'
 }
 
 export type ProfilePersonalDetailsPageFixture = {
@@ -79,7 +81,7 @@ type ProfilePersonalDetailsPageProps = {
 }
 type PersonalDetailsStringField = Exclude<
   keyof PersonalDetailsDraft,
-  'jobRoles' | 'affiliations' | 'publicationAffiliations'
+  'jobRoles' | 'affiliations' | 'publicationAffiliations' | 'profilePhotoPositionX' | 'profilePhotoPositionY'
 >
 
 type AffiliationMetadataItem = {
@@ -94,9 +96,6 @@ const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
 const PERSONAL_DETAILS_STORAGE_PREFIX = 'aawe_profile_personal_details:'
 
-const FOUNDING_MEMBER_USER_IDS = new Set<string>([])
-const FOUNDING_MEMBER_EMAILS = new Set<string>(['researcher@axiomos.studio'])
-const FOUNDING_MEMBER_ORCID_IDS = new Set<string>(['0000-0002-8537-0806'])
 const SALUTATION_OPTIONS = [
   'Dr',
   'Professor',
@@ -115,6 +114,9 @@ const SALUTATION_OPTIONS = [
 const MAX_JOB_ROLES = 8
 const MAX_PUBLICATION_AFFILIATIONS = 12
 const MAX_PROFILE_PHOTO_BYTES = 2 * 1024 * 1024
+const DEFAULT_PROFILE_PHOTO_POSITION_X = 50
+const DEFAULT_PROFILE_PHOTO_POSITION_Y = 50
+const LEGACY_TOP_PROFILE_PHOTO_POSITION_Y = 20
 
 function formatTimestamp(value: string | null | undefined): string {
   if (!value) {
@@ -141,11 +143,21 @@ function formatDate(value: string | null | undefined): string {
   if (Number.isNaN(parsed)) {
     return 'Not available'
   }
-  return new Date(parsed).toLocaleDateString('en-GB', {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-  })
+  const date = new Date(parsed)
+  const day = date.getDate()
+  const tens = day % 100
+  const suffix = tens >= 11 && tens <= 13
+    ? 'th'
+    : day % 10 === 1
+      ? 'st'
+      : day % 10 === 2
+        ? 'nd'
+        : day % 10 === 3
+          ? 'rd'
+          : 'th'
+  const month = date.toLocaleDateString('en-GB', { month: 'short' })
+  const year = date.getFullYear()
+  return `${day}${suffix} ${month} ${year}`
 }
 
 function trimValue(value: string | null | undefined): string {
@@ -158,6 +170,14 @@ function sanitizeAffiliation(value: string | null | undefined): string {
 
 function normalizeRole(value: string | null | undefined): string {
   return trimValue(value).replace(/\s+/g, ' ')
+}
+
+function clampProfilePhotoPosition(value: unknown, fallback: number): number {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return fallback
+  }
+  return Math.max(0, Math.min(100, numeric))
 }
 
 function toNullableAffiliationPart(value: unknown): string | null {
@@ -212,7 +232,12 @@ function mapAffiliationSuggestionItem(
     region,
     address,
     postalCode,
-    source: raw.source === 'ror' ? 'ror' : 'openalex',
+    source:
+      raw.source === 'ror' ||
+      raw.source === 'openstreetmap' ||
+      raw.source === 'clearbit'
+        ? raw.source
+        : 'openalex',
   }
 }
 
@@ -267,20 +292,6 @@ function isGeneratedOAuthEmail(value: string | null | undefined): boolean {
   return clean.endsWith('@orcid.local') || clean.endsWith('@oauth.local')
 }
 
-function isFoundingMemberProfile(input: {
-  user: AuthUser | null
-  orcidId: string | null | undefined
-}): boolean {
-  const userId = trimValue(input.user?.id)
-  const email = trimValue(input.user?.email).toLowerCase()
-  const orcidId = trimValue(input.orcidId)
-
-  return (
-    Boolean(userId && FOUNDING_MEMBER_USER_IDS.has(userId)) ||
-    Boolean(email && FOUNDING_MEMBER_EMAILS.has(email)) ||
-    Boolean(orcidId && FOUNDING_MEMBER_ORCID_IDS.has(orcidId))
-  )
-}
 function splitName(value: string | null | undefined): { firstName: string; lastName: string } {
   const clean = trimValue(value)
   if (!clean) {
@@ -301,6 +312,10 @@ function sanitizeDraft(value: Partial<PersonalDetailsDraft> | null | undefined):
   const rawOrganisation = sanitizeAffiliation(value?.organisation)
   const jobRoles = normalizeJobRoles((value as { jobRoles?: unknown } | null | undefined)?.jobRoles)
   const affiliations = normalizeAffiliations((value as { affiliations?: unknown } | null | undefined)?.affiliations)
+  const legacyPhotoCentered = (value as { profilePhotoCentered?: boolean } | null | undefined)?.profilePhotoCentered !== false
+  const fallbackPhotoPositionY = legacyPhotoCentered
+    ? DEFAULT_PROFILE_PHOTO_POSITION_Y
+    : LEGACY_TOP_PROFILE_PHOTO_POSITION_Y
   const effectiveJobRoles = jobRoles.length > 0
     ? jobRoles
     : rawJobRole
@@ -311,14 +326,17 @@ function sanitizeDraft(value: Partial<PersonalDetailsDraft> | null | undefined):
     : rawOrganisation
       ? [rawOrganisation]
       : []
+  const primaryAffiliationOnly = effectiveAffiliations.length > 0
+    ? [effectiveAffiliations[0]]
+    : []
   return {
     salutation: trimValue(value?.salutation),
     firstName: trimValue(value?.firstName),
     lastName: trimValue(value?.lastName),
     jobRole: rawJobRole || effectiveJobRoles[0] || '',
     jobRoles: effectiveJobRoles,
-    organisation: rawOrganisation || effectiveAffiliations[0] || '',
-    affiliations: effectiveAffiliations,
+    organisation: rawOrganisation || primaryAffiliationOnly[0] || '',
+    affiliations: primaryAffiliationOnly,
     affiliationAddress: trimValue(value?.affiliationAddress),
     affiliationCity: trimValue(value?.affiliationCity),
     affiliationRegion: trimValue(value?.affiliationRegion),
@@ -329,6 +347,14 @@ function sanitizeDraft(value: Partial<PersonalDetailsDraft> | null | undefined):
     researchGateUrl: trimValue(value?.researchGateUrl),
     xHandle: trimValue(value?.xHandle),
     profilePhotoDataUrl: trimValue((value as { profilePhotoDataUrl?: string } | null | undefined)?.profilePhotoDataUrl),
+    profilePhotoPositionX: clampProfilePhotoPosition(
+      (value as { profilePhotoPositionX?: unknown } | null | undefined)?.profilePhotoPositionX,
+      DEFAULT_PROFILE_PHOTO_POSITION_X,
+    ),
+    profilePhotoPositionY: clampProfilePhotoPosition(
+      (value as { profilePhotoPositionY?: unknown } | null | undefined)?.profilePhotoPositionY,
+      fallbackPhotoPositionY,
+    ),
     publicationAffiliations: normalizeAffiliations(value?.publicationAffiliations),
   }
 }
@@ -441,6 +467,8 @@ function draftFromSources(
     researchGateUrl: stored?.researchGateUrl || '',
     xHandle: stored?.xHandle || '',
     profilePhotoDataUrl: stored?.profilePhotoDataUrl || '',
+    profilePhotoPositionX: stored?.profilePhotoPositionX ?? DEFAULT_PROFILE_PHOTO_POSITION_X,
+    profilePhotoPositionY: stored?.profilePhotoPositionY ?? DEFAULT_PROFILE_PHOTO_POSITION_Y,
     publicationAffiliations: stored?.publicationAffiliations || [],
   })
 }
@@ -467,6 +495,15 @@ function formatAccountAge(createdAt: string | null | undefined): string {
     return 'Not available'
   }
   const clampedMonths = accountAgeInMonths(createdAt)
+  if (clampedMonths <= 0) {
+    const createdMs = Date.parse(createdAt)
+    if (!Number.isNaN(createdMs)) {
+      const diffMs = Date.now() - createdMs
+      const diffDays = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
+      return `${diffDays}d`
+    }
+    return '0d'
+  }
   const years = Math.floor(clampedMonths / 12)
   const remainingMonths = clampedMonths % 12
   if (years > 0 && remainingMonths > 0) {
@@ -480,48 +517,15 @@ function formatAccountAge(createdAt: string | null | undefined): string {
 
 function buildProfileBadges(input: {
   orcidLinked: boolean
-  isFoundingMember: boolean
-  draft: PersonalDetailsDraft
 }): ProfileBadge[] {
-  const badges: ProfileBadge[] = []
-
-  if (input.orcidLinked) {
-    badges.push({
-      id: 'orcid-linked',
-      label: 'ORCID linked',
-      tone: 'positive',
-      detail: 'Research identity verified via ORCID',
-    })
-  }
-
-  if (input.isFoundingMember) {
-    badges.push({
-      id: 'founding-member',
-      label: 'Founding member',
-      tone: 'gold',
-      detail: 'Founding member of Axiomos',
-    })
-  }
-
-  if ((input.draft.organisation || input.draft.affiliations[0]) && input.draft.firstName && input.draft.lastName) {
-    badges.push({
-      id: 'profile-complete',
-      label: 'Profile complete',
-      tone: 'accent',
-      detail: 'Core identity fields are filled in',
-    })
-  }
-
-  if (badges.length === 0) {
-    badges.push({
-      id: 'new-member',
-      label: 'New member',
-      tone: 'neutral',
-      detail: 'Complete your profile to unlock badges',
-    })
-  }
-
-  return badges
+  return [
+    {
+      id: input.orcidLinked ? 'member' : 'guest',
+      label: input.orcidLinked ? 'Member' : 'Guest',
+      tone: input.orcidLinked ? 'accent' : 'neutral',
+      detail: input.orcidLinked ? 'Member account' : 'Guest account',
+    },
+  ]
 }
 
 function badgeToneClass(tone: ProfileBadge['tone']): string {
@@ -535,11 +539,6 @@ function badgeToneClass(tone: ProfileBadge['tone']): string {
     return 'border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] text-[hsl(var(--tone-warning-900))]'
   }
   return 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
-}
-
-function renderValue(value: string | null | undefined): string {
-  const clean = trimValue(value)
-  return clean || 'Not available'
 }
 
 async function fetchAffiliationSuggestions(input: {
@@ -578,6 +577,11 @@ async function fetchAffiliationSuggestions(input: {
     }
   }
   return output
+}
+
+function isAffiliationLookupMiss(error: unknown): boolean {
+  const message = (error instanceof Error ? error.message : String(error || '')).toLowerCase()
+  return message.includes('(404)') || message.includes(' 404') || message.includes('not found')
 }
 
 function normalizeJobRoles(values: unknown): string[] {
@@ -681,7 +685,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [affiliationEditorOpen, setAffiliationEditorOpen] = useState(
     () => !Boolean(initialDraft.jobRoles[0] || initialDraft.affiliations[0] || initialDraft.country),
   )
+  const [showJobRoleComposer, setShowJobRoleComposer] = useState(false)
+  const [showAffiliationComposer, setShowAffiliationComposer] = useState(false)
   const [showPublicationAffiliationComposer, setShowPublicationAffiliationComposer] = useState(false)
+  const [draggingJobRoleIndex, setDraggingJobRoleIndex] = useState<number | null>(null)
   const [draggingPublicationAffiliationIndex, setDraggingPublicationAffiliationIndex] = useState<number | null>(null)
   const [primaryAffiliationAddressResolving, setPrimaryAffiliationAddressResolving] = useState(false)
   const [primaryAffiliationAddressError, setPrimaryAffiliationAddressError] = useState('')
@@ -694,7 +701,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const emailEditedRef = useRef(false)
   const primaryAddressLookupSequenceRef = useRef(0)
   const lastResolvedPrimaryAffiliationKeyRef = useRef('')
+  const lastAutoPopulateAffiliationKeyRef = useRef('')
   const profilePhotoInputRef = useRef<HTMLInputElement | null>(null)
+  const profilePhotoFrameRef = useRef<HTMLButtonElement | null>(null)
+  const profilePhotoDraggingRef = useRef(false)
 
   useEffect(() => {
     if (!isFixtureMode) {
@@ -726,7 +736,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setPublicationAffiliationSuggestionsLoading(false)
     setPublicationAffiliationSuggestionsError('')
     setAffiliationMetadataByName({})
+    setShowJobRoleComposer(false)
+    setShowAffiliationComposer(false)
     setShowPublicationAffiliationComposer(false)
+    setDraggingJobRoleIndex(null)
     setDraggingPublicationAffiliationIndex(null)
     setPrimaryAffiliationAddressResolving(false)
     setPrimaryAffiliationAddressError('')
@@ -738,6 +751,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     emailEditedRef.current = false
     primaryAddressLookupSequenceRef.current = 0
     lastResolvedPrimaryAffiliationKeyRef.current = ''
+    lastAutoPopulateAffiliationKeyRef.current = ''
   }, [fixture, isFixtureMode])
 
   useEffect(() => {
@@ -917,14 +931,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     }
   }, [draft.publicationAffiliations, isFixtureMode, publicationAffiliationInput, token])
 
-  const orcidId = trimValue(orcidStatus?.orcid_id || user?.orcid_id)
   const orcidLinked = Boolean(orcidStatus?.linked || user?.orcid_id)
-  const foundingMemberProfile = isFoundingMemberProfile({ user, orcidId })
+  const primaryAffiliationLabel = sanitizeAffiliation(draft.affiliations[0] || draft.organisation)
   const primaryAffiliationKey = sanitizeAffiliation(draft.organisation || draft.affiliations[0] || '').toLowerCase()
-  const accountSummaryEmail = resolveEditableAccountEmail({
-    email: user?.email,
-    orcidLinked,
-  })
   const profileInitials = buildProfileInitials({
     firstName: draft.firstName,
     lastName: draft.lastName,
@@ -941,10 +950,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     () =>
       buildProfileBadges({
         orcidLinked,
-        isFoundingMember: foundingMemberProfile,
-        draft,
       }),
-    [draft, foundingMemberProfile, orcidLinked],
+    [orcidLinked],
   )
 
   const onFieldChange = (field: PersonalDetailsStringField, value: string) => {
@@ -958,6 +965,55 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const onAccountEmailChange = (value: string) => {
     emailEditedRef.current = true
     setAccountEmail(value)
+  }
+
+  const updateProfilePhotoPositionFromClient = (clientX: number, clientY: number) => {
+    const frame = profilePhotoFrameRef.current
+    if (!frame) {
+      return
+    }
+    const rect = frame.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) {
+      return
+    }
+    const nextX = clampProfilePhotoPosition(((clientX - rect.left) / rect.width) * 100, DEFAULT_PROFILE_PHOTO_POSITION_X)
+    const nextY = clampProfilePhotoPosition(((clientY - rect.top) / rect.height) * 100, DEFAULT_PROFILE_PHOTO_POSITION_Y)
+    draftEditedRef.current = true
+    setDraft((current) => {
+      if (!current.profilePhotoDataUrl) {
+        return current
+      }
+      return {
+        ...current,
+        profilePhotoPositionX: Math.round(nextX * 10) / 10,
+        profilePhotoPositionY: Math.round(nextY * 10) / 10,
+      }
+    })
+    setStatus('')
+  }
+
+  const onProfilePhotoPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+    if (!draft.profilePhotoDataUrl) {
+      return
+    }
+    event.preventDefault()
+    profilePhotoDraggingRef.current = true
+    event.currentTarget.setPointerCapture(event.pointerId)
+    updateProfilePhotoPositionFromClient(event.clientX, event.clientY)
+  }
+
+  const onProfilePhotoPointerMove = (event: PointerEvent<HTMLButtonElement>) => {
+    if (!profilePhotoDraggingRef.current) {
+      return
+    }
+    updateProfilePhotoPositionFromClient(event.clientX, event.clientY)
+  }
+
+  const onProfilePhotoPointerUp = (event: PointerEvent<HTMLButtonElement>) => {
+    profilePhotoDraggingRef.current = false
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
   }
 
   const onProfilePhotoSelected = (event: ChangeEvent<HTMLInputElement>) => {
@@ -982,9 +1038,11 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       setDraft((current) => ({
         ...current,
         profilePhotoDataUrl: reader.result as string,
+        profilePhotoPositionX: DEFAULT_PROFILE_PHOTO_POSITION_X,
+        profilePhotoPositionY: DEFAULT_PROFILE_PHOTO_POSITION_Y,
       }))
       setError('')
-      setStatus('Profile photo updated. Save details to keep it.')
+      setStatus('')
     }
     reader.readAsDataURL(file)
   }
@@ -994,7 +1052,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setDraft((current) => ({
       ...current,
       profilePhotoDataUrl: '',
+      profilePhotoPositionX: DEFAULT_PROFILE_PHOTO_POSITION_X,
+      profilePhotoPositionY: DEFAULT_PROFILE_PHOTO_POSITION_Y,
     }))
+    setStatus('')
   }
 
   const onAddJobRole = (value: string) => {
@@ -1012,6 +1073,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       }
     })
     setJobRoleInput('')
+    setShowJobRoleComposer(false)
+    setDraggingJobRoleIndex(null)
   }
 
   const onRemoveJobRole = (value: string) => {
@@ -1024,6 +1087,59 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         jobRole: nextRoles[0] || '',
       }
     })
+    setDraggingJobRoleIndex(null)
+  }
+
+  const onSetPrimaryJobRole = (value: string) => {
+    const clean = normalizeRole(value)
+    if (!clean) {
+      return
+    }
+    draftEditedRef.current = true
+    setDraft((current) => {
+      const nextRoles = normalizeJobRoles([
+        clean,
+        ...current.jobRoles.filter((item) => item.toLowerCase() !== clean.toLowerCase()),
+      ])
+      return {
+        ...current,
+        jobRoles: nextRoles,
+        jobRole: nextRoles[0] || clean,
+      }
+    })
+    setDraggingJobRoleIndex(null)
+  }
+
+  const onJobRoleEntryChange = (index: number, value: string) => {
+    draftEditedRef.current = true
+    setDraft((current) => {
+      if (index < 0 || index >= current.jobRoles.length) {
+        return current
+      }
+      const nextRoles = [...current.jobRoles]
+      nextRoles[index] = value
+      return {
+        ...current,
+        jobRoles: nextRoles,
+        jobRole: nextRoles[0] || '',
+      }
+    })
+  }
+
+  const onJobRoleEntryBlur = (index: number) => {
+    draftEditedRef.current = true
+    setDraft((current) => {
+      if (index < 0 || index >= current.jobRoles.length) {
+        return current
+      }
+      const normalized = normalizeJobRoles(current.jobRoles)
+      return {
+        ...current,
+        jobRoles: normalized,
+        jobRole: normalized[0] || '',
+      }
+    })
+    setDraggingJobRoleIndex(null)
   }
 
   const onAddAffiliation = (value: string, metadata?: AffiliationMetadataItem) => {
@@ -1048,7 +1164,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     const cacheKey = clean.toLowerCase()
     draftEditedRef.current = true
     setDraft((current) => {
-      const nextAffiliations = normalizeAffiliations([clean, ...current.affiliations])
+      const nextAffiliations = [clean]
       return {
         ...current,
         affiliations: nextAffiliations,
@@ -1075,6 +1191,36 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setPrimaryAffiliationInput('')
     setPrimaryAffiliationSuggestions([])
     setPrimaryAffiliationSuggestionsError('')
+    lastAutoPopulateAffiliationKeyRef.current = clean.toLowerCase()
+    setShowAffiliationComposer(false)
+  }
+
+  const onPrimaryAffiliationEntryChange = (value: string) => {
+    const clean = sanitizeAffiliation(value)
+    draftEditedRef.current = true
+    setPrimaryAffiliationInput(value)
+    setDraft((current) => ({
+      ...current,
+      organisation: value,
+      affiliations: clean ? [clean] : [],
+    }))
+  }
+
+  const onPrimaryAffiliationEntryBlur = () => {
+    const clean = sanitizeAffiliation(primaryAffiliationInput)
+    const normalized = clean.toLowerCase()
+    draftEditedRef.current = true
+    setDraft((current) => ({
+      ...current,
+      organisation: clean,
+      affiliations: clean ? [clean] : [],
+    }))
+    if (clean.length >= 2) {
+      lastAutoPopulateAffiliationKeyRef.current = normalized
+      void onResolvePrimaryAffiliationFromCurrent(clean)
+    } else {
+      lastAutoPopulateAffiliationKeyRef.current = ''
+    }
   }
 
   const onRemoveAffiliationEntry = (value: string) => {
@@ -1100,6 +1246,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     if (sanitizeAffiliation(primaryAffiliationInput).toLowerCase() === clean.toLowerCase()) {
       setPrimaryAffiliationInput('')
     }
+    lastAutoPopulateAffiliationKeyRef.current = ''
   }
 
   const onAddPublicationAffiliation = (value: string, metadata?: AffiliationMetadataItem) => {
@@ -1222,6 +1369,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       if (primaryAddressLookupSequenceRef.current !== requestId) {
         return
       }
+      if (isAffiliationLookupMiss(lookupError)) {
+        setPrimaryAffiliationAddressError('')
+        return
+      }
       const message =
         lookupError instanceof Error
           ? lookupError.message
@@ -1251,10 +1402,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setDraft((current) => ({
       ...current,
       organisation: clean,
-      affiliations: normalizeAffiliations([
-        clean,
-        ...current.affiliations,
-      ]),
+      affiliations: [clean],
       affiliationAddress: metadata.address,
       affiliationCity: metadata.city,
       affiliationRegion: metadata.region,
@@ -1269,6 +1417,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setPrimaryAffiliationSuggestions([])
     setPrimaryAffiliationSuggestionsError('')
     setPrimaryAffiliationAddressError('')
+    lastAutoPopulateAffiliationKeyRef.current = normalizedKey
+    setShowAffiliationComposer(false)
     await resolvePrimaryAffiliationAddress({
       organisation: clean,
       seedMetadata: metadata,
@@ -1286,10 +1436,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setDraft((current) => ({
       ...current,
       organisation: clean,
-      affiliations: normalizeAffiliations([
-        clean,
-        ...current.affiliations.filter((item) => item.toLowerCase() !== clean.toLowerCase()),
-      ]),
+      affiliations: [clean],
       affiliationAddress: metadata ? sanitizeAffiliation(metadata.address) : current.affiliationAddress,
       affiliationCity: metadata ? sanitizeAffiliation(metadata.city) : current.affiliationCity,
       affiliationRegion: metadata ? sanitizeAffiliation(metadata.region) : current.affiliationRegion,
@@ -1297,10 +1444,11 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       country: metadata ? sanitizeAffiliation(metadata.country) : current.country,
     }))
     setPrimaryAffiliationInput(clean)
+    lastAutoPopulateAffiliationKeyRef.current = clean.toLowerCase()
   }
 
-  const onResolvePrimaryAffiliationFromCurrent = async () => {
-    const organisation = sanitizeAffiliation(draft.organisation)
+  const onResolvePrimaryAffiliationFromCurrent = async (organisationOverride?: string) => {
+    const organisation = sanitizeAffiliation(organisationOverride ?? draft.organisation)
     if (organisation.length < 2) {
       return
     }
@@ -1335,6 +1483,41 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       seedMetadata,
       replaceExisting,
     })
+  }
+
+  const onDragStartJobRole = (index: number) => {
+    setDraggingJobRoleIndex(index)
+  }
+
+  const onDropJobRole = (targetIndex: number) => {
+    if (draggingJobRoleIndex === null || draggingJobRoleIndex === targetIndex) {
+      setDraggingJobRoleIndex(null)
+      return
+    }
+    draftEditedRef.current = true
+    setDraft((current) => {
+      const items = [...current.jobRoles]
+      if (
+        draggingJobRoleIndex < 0
+        || draggingJobRoleIndex >= items.length
+        || targetIndex < 0
+        || targetIndex >= items.length
+      ) {
+        return current
+      }
+      const [moved] = items.splice(draggingJobRoleIndex, 1)
+      if (!moved) {
+        return current
+      }
+      items.splice(targetIndex, 0, moved)
+      const nextRoles = normalizeJobRoles(items)
+      return {
+        ...current,
+        jobRoles: nextRoles,
+        jobRole: nextRoles[0] || '',
+      }
+    })
+    setDraggingJobRoleIndex(null)
   }
 
   const onDragStartPublicationAffiliation = (index: number) => {
@@ -1396,41 +1579,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     if (wasPrimary) {
       setPrimaryAffiliationInput('')
     }
-  }
-
-  const onResetFromProfile = () => {
-    if (!user) {
-      return
-    }
-    const stored = loadStoredPersonalDetails(user.id)
-    const resetDraft = draftFromSources(user, stored, orcidLinked)
-    setDraft(resetDraft)
-    setJobRoleInput('')
-    setAffiliationEditorOpen(!Boolean(resetDraft.jobRoles[0] || resetDraft.affiliations[0] || resetDraft.country))
-    setPrimaryAffiliationInput(sanitizeAffiliation(resetDraft.organisation))
-    setAccountEmail(resolveEditableAccountEmail({
-      email: user.email,
-      orcidLinked,
-    }))
-    setPrimaryAffiliationSuggestions([])
-    setPrimaryAffiliationSuggestionsLoading(false)
-    setPrimaryAffiliationSuggestionsError('')
-    setPublicationAffiliationInput('')
-    setPublicationAffiliationSuggestions([])
-    setPublicationAffiliationSuggestionsLoading(false)
-    setPublicationAffiliationSuggestionsError('')
-    setAffiliationMetadataByName({})
-    setShowPublicationAffiliationComposer(false)
-    setDraggingPublicationAffiliationIndex(null)
-    setPrimaryAffiliationAddressResolving(false)
-    setPrimaryAffiliationAddressError('')
-    setLastSavedAt(stored?.updatedAt ?? null)
-    setStatus('')
-    setError('')
-    draftEditedRef.current = false
-    emailEditedRef.current = false
-    primaryAddressLookupSequenceRef.current += 1
-    lastResolvedPrimaryAffiliationKeyRef.current = ''
   }
 
   const onSave = async () => {
@@ -1513,34 +1661,55 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
       <Card className="border-[hsl(var(--tone-neutral-200))]">
         <CardHeader className="space-y-2 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle className="text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
-              Profile
-            </CardTitle>
-            <span
-              className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${
-                orcidLinked
-                  ? 'border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))]'
-                  : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
-              }`}
-            >
-              {orcidLinked ? 'ORCID linked' : 'ORCID not linked'}
-            </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle className="text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
+                Profile
+              </CardTitle>
+              {badges.map((badge) => (
+                <span
+                  key={badge.id}
+                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${badgeToneClass(badge.tone)}`}
+                  title={badge.detail}
+                >
+                  {badge.label}
+                </span>
+              ))}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-3 pt-3 text-sm">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
             <div className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-2 flex items-start gap-3 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2.5">
+                <div className="sm:col-span-2 flex items-start gap-3 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2.5">
                   {draft.profilePhotoDataUrl ? (
-                    <img
-                      src={draft.profilePhotoDataUrl}
-                      alt="Profile photo"
-                      className="h-16 w-16 rounded-full border border-[hsl(var(--tone-neutral-300))] object-cover"
-                    />
+                    <button
+                      ref={profilePhotoFrameRef}
+                      type="button"
+                      aria-label="Adjust profile photo position"
+                      title="Click and drag to position your photo"
+                      onPointerDown={onProfilePhotoPointerDown}
+                      onPointerMove={onProfilePhotoPointerMove}
+                      onPointerUp={onProfilePhotoPointerUp}
+                      onPointerCancel={onProfilePhotoPointerUp}
+                      onPointerLeave={() => {
+                        profilePhotoDraggingRef.current = false
+                      }}
+                      className="relative h-20 w-20 shrink-0 cursor-move touch-none overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))] shadow-[0_0_0_1px_hsl(var(--tone-neutral-400))]"
+                    >
+                      <img
+                        src={draft.profilePhotoDataUrl}
+                        alt="Profile photo"
+                        decoding="async"
+                        className="h-full w-full scale-[1.2] object-cover"
+                        style={{
+                          objectPosition: `${draft.profilePhotoPositionX}% ${draft.profilePhotoPositionY}%`,
+                        }}
+                      />
+                    </button>
                   ) : (
-                    <div className="inline-flex h-16 w-16 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-lg font-semibold text-[hsl(var(--tone-neutral-700))]">
+                    <div className="inline-flex h-20 w-20 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] text-xl font-semibold text-[hsl(var(--tone-neutral-700))] shadow-[0_0_0_1px_hsl(var(--tone-neutral-400))]">
                       {profileInitials}
                     </div>
                   )}
@@ -1564,12 +1733,17 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                         Upload photo
                       </Button>
                       {draft.profilePhotoDataUrl ? (
-                        <Button type="button" size="sm" variant="outline" onClick={onRemoveProfilePhoto}>
-                          <Trash2 className="mr-1.5 h-4 w-4" />
-                          Remove
-                        </Button>
+                        <>
+                          <Button type="button" size="sm" variant="outline" onClick={onRemoveProfilePhoto}>
+                            <Trash2 className="mr-1.5 h-4 w-4" />
+                            Remove
+                          </Button>
+                        </>
                       ) : null}
                     </div>
+                    {draft.profilePhotoDataUrl ? (
+                      <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Click and drag photo to position.</p>
+                    ) : null}
                   </div>
                 </div>
 
@@ -1584,7 +1758,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   />
                 </label>
 
-                <div className="grid gap-3 sm:col-span-2 sm:grid-cols-[140px_minmax(0,1fr)_minmax(0,1fr)]">
+                <div className="grid gap-3 sm:col-span-2 sm:grid-cols-[180px_minmax(0,1fr)_minmax(0,1fr)]">
                   <label className="space-y-1">
                     <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Salutation</span>
                     <select
@@ -1623,8 +1797,11 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   </label>
                 </div>
 
-                <label className="space-y-1 sm:col-span-2">
-                  <span className="inline-flex items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                <div className="sm:col-span-2 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                  <label
+                    htmlFor="personal-website"
+                    className="inline-flex w-full shrink-0 items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))] sm:w-[180px]"
+                  >
                     <span
                       aria-hidden
                       className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-caption font-semibold text-[hsl(var(--tone-neutral-700))]"
@@ -1632,17 +1809,22 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       W
                     </span>
                     Website
-                  </span>
+                  </label>
                   <Input
+                    id="personal-website"
                     value={draft.website}
                     onChange={(event) => onFieldChange('website', event.target.value)}
                     placeholder="https://"
                     autoComplete="url"
+                    className="w-full"
                   />
-                </label>
+                </div>
 
-                <label className="space-y-1 sm:col-span-2">
-                  <span className="inline-flex items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                <div className="sm:col-span-2 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                  <label
+                    htmlFor="personal-researchgate"
+                    className="inline-flex w-full shrink-0 items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))] sm:w-[180px]"
+                  >
                     <span
                       aria-hidden
                       className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-[0.58rem] font-semibold text-[hsl(var(--tone-neutral-700))]"
@@ -1650,17 +1832,22 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       RG
                     </span>
                     ResearchGate page
-                  </span>
+                  </label>
                   <Input
+                    id="personal-researchgate"
                     value={draft.researchGateUrl}
                     onChange={(event) => onFieldChange('researchGateUrl', event.target.value)}
                     placeholder="https://www.researchgate.net/profile/..."
                     autoComplete="url"
+                    className="w-full"
                   />
-                </label>
+                </div>
 
-                <label className="space-y-1 sm:col-span-2">
-                  <span className="inline-flex items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                <div className="sm:col-span-2 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                  <label
+                    htmlFor="personal-x-handle"
+                    className="inline-flex w-full shrink-0 items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))] sm:w-[180px]"
+                  >
                     <span
                       aria-hidden
                       className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-caption font-semibold text-[hsl(var(--tone-neutral-700))]"
@@ -1668,14 +1855,16 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       X
                     </span>
                     Twitter/X handle
-                  </span>
+                  </label>
                   <Input
+                    id="personal-x-handle"
                     value={draft.xHandle}
                     onChange={(event) => onFieldChange('xHandle', event.target.value)}
                     placeholder="@yourhandle"
                     autoComplete="nickname"
+                    className="w-full"
                   />
-                </label>
+                </div>
               </div>
             </div>
 
@@ -1684,28 +1873,12 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Account</p>
                 <div className="mt-2 space-y-1.5 text-sm">
                   <p className="text-[hsl(var(--tone-neutral-700))]">
-                    Email: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{renderValue(accountSummaryEmail)}</span>
-                  </p>
-                  <p className="text-[hsl(var(--tone-neutral-700))]">
                     Member since: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{formatDate(user?.created_at)}</span>
                   </p>
                   <p className="text-[hsl(var(--tone-neutral-700))]">
                     Account age: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{formatAccountAge(user?.created_at)}</span>
                   </p>
-                  <p className="text-[hsl(var(--tone-neutral-700))]">
-                    ORCID iD: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{renderValue(orcidId)}</span>
-                  </p>
                 </div>
-                {orcidId ? (
-                  <a
-                    href={`https://orcid.org/${orcidId}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 inline-flex text-label font-medium text-[hsl(var(--tone-accent-700))] underline underline-offset-2"
-                  >
-                    Open ORCID profile
-                  </a>
-                ) : null}
                 <div className="mt-2">
                   <Button
                     type="button"
@@ -1715,21 +1888,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   >
                     Manage account
                   </Button>
-                </div>
-              </div>
-
-              <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
-                <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Badges</p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {badges.map((badge) => (
-                    <span
-                      key={badge.id}
-                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${badgeToneClass(badge.tone)}`}
-                      title={badge.detail}
-                    >
-                      {badge.label}
-                    </span>
-                  ))}
                 </div>
               </div>
             </aside>
@@ -1745,101 +1903,186 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 pt-3 text-sm">
-          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2.5">
-            <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Journal style line</p>
-            <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
-                {journalByline || 'Add job roles and affiliations to build your author line.'}
-              </p>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setAffiliationEditorOpen((current) => !current)}
-              >
-                {affiliationEditorOpen ? 'Hide editor' : 'Edit'}
-              </Button>
-            </div>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setAffiliationEditorOpen(true)
+                setShowAffiliationComposer((current) => !current)
+              }}
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              {showAffiliationComposer ? 'Hide add form' : 'Add new'}
+            </Button>
           </div>
 
+          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]">
+            <button
+              type="button"
+              className="w-full px-3 py-2.5 text-left transition-colors hover:bg-[hsl(var(--tone-neutral-100))]"
+              onClick={() => setAffiliationEditorOpen((current) => !current)}
+              aria-expanded={affiliationEditorOpen}
+              aria-controls="affiliation-editor-panel"
+            >
+              <p className="text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
+                {journalByline || 'No affiliations recorded.'}
+              </p>
+            </button>
+          </div>
+
+          {showAffiliationComposer ? (
+            <div className="space-y-2 rounded-md bg-background p-2">
+              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Add affiliation</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  value={primaryAffiliationInput}
+                  onChange={(event) => {
+                    const next = event.target.value
+                    setPrimaryAffiliationInput(next)
+                    onFieldChange('organisation', next)
+                  }}
+                  onBlur={() => {
+                    void onResolvePrimaryAffiliationFromCurrent()
+                  }}
+                  placeholder="Start typing an institution"
+                  autoComplete="organization"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onAddAffiliation(primaryAffiliationInput)}
+                  disabled={!sanitizeAffiliation(primaryAffiliationInput)}
+                >
+                  Add new
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
           {affiliationEditorOpen ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1 sm:col-span-2">
-                <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Add job role</span>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Input
-                    value={jobRoleInput}
-                    onChange={(event) => setJobRoleInput(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault()
-                        onAddJobRole(jobRoleInput)
-                      }
-                    }}
-                    placeholder="e.g., British Heart Foundation Fellow"
-                    autoComplete="organization-title"
-                  />
+            <div id="affiliation-editor-panel" className="space-y-3">
+              <div className="space-y-2 p-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Roles</p>
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => onAddJobRole(jobRoleInput)}
-                    disabled={!normalizeRole(jobRoleInput)}
+                    onClick={() => setShowJobRoleComposer((current) => !current)}
                   >
-                    Add role
+                    <Plus className="mr-1.5 h-4 w-4" />
+                    {showJobRoleComposer ? 'Hide add form' : 'Add new role'}
                   </Button>
                 </div>
+
+                {showJobRoleComposer ? (
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Input
+                        value={jobRoleInput}
+                        onChange={(event) => setJobRoleInput(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault()
+                            onAddJobRole(jobRoleInput)
+                          }
+                        }}
+                        autoComplete="organization-title"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => onAddJobRole(jobRoleInput)}
+                        disabled={!normalizeRole(jobRoleInput)}
+                      >
+                        Add new
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {draft.jobRoles.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {draft.jobRoles.map((role, index) => (
+                      <div
+                        key={`role-${index}`}
+                        draggable
+                        onDragStart={() => onDragStartJobRole(index)}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={() => onDropJobRole(index)}
+                        onDragEnd={() => setDraggingJobRoleIndex(null)}
+                        className={`flex flex-wrap items-center gap-2 rounded-md px-2 py-1.5 ${
+                          draggingJobRoleIndex === index
+                            ? 'bg-[hsl(var(--tone-accent-50))]'
+                            : 'bg-background'
+                        }`}
+                      >
+                        <span className="inline-flex items-center text-[hsl(var(--tone-neutral-500))]" title="Drag to reorder">
+                          <GripVertical className="h-4 w-4" />
+                        </span>
+                        <span className="text-xs font-medium text-[hsl(var(--tone-neutral-700))]">{index + 1}.</span>
+                        <Input
+                          value={role}
+                          onChange={(event) => onJobRoleEntryChange(index, event.target.value)}
+                          onBlur={() => onJobRoleEntryBlur(index)}
+                          placeholder="Role"
+                          autoComplete="organization-title"
+                          className="h-8 min-w-[12rem] flex-1 border-0 bg-transparent px-2 shadow-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--tone-accent-400))]"
+                        />
+                        {index === 0 ? (
+                          <span className="rounded-full border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-1.5 py-0.5 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-positive-700))]">
+                            Primary
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => onSetPrimaryJobRole(role)}
+                            className="rounded-full border border-[hsl(var(--tone-neutral-300))] px-1.5 py-0.5 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-700))]"
+                          >
+                            Set primary
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => onRemoveJobRole(role)}
+                          className="ml-auto text-[hsl(var(--tone-neutral-500))] transition-colors hover:text-[hsl(var(--tone-danger-700))]"
+                          aria-label={`Remove role ${role}`}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
-              {draft.jobRoles.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2 sm:col-span-2">
-                  {draft.jobRoles.map((role, index) => (
-                    <div key={role} className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))]">
-                      <span>{role}</span>
-                      {index === 0 ? (
-                        <span className="rounded-full border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-1.5 py-0.5 text-[0.58rem] uppercase tracking-[0.06em] text-[hsl(var(--tone-positive-700))]">
-                          Lead
-                        </span>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="text-[hsl(var(--tone-neutral-500))] transition-colors hover:text-[hsl(var(--tone-danger-700))]"
-                        onClick={() => onRemoveJobRole(role)}
-                        aria-label={`Remove role ${role}`}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
+              <div className="space-y-2 p-1">
+                <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Affiliation</p>
 
-              <label className="space-y-1 sm:col-span-2">
-                <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Affiliation lookup</span>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 rounded-md bg-background px-2 py-1.5">
                   <Input
                     value={primaryAffiliationInput}
-                    onChange={(event) => {
-                      const next = event.target.value
-                      setPrimaryAffiliationInput(next)
-                      onFieldChange('organisation', next)
-                    }}
-                    onBlur={() => {
-                      void onResolvePrimaryAffiliationFromCurrent()
-                    }}
-                    placeholder="Type institution name for suggestions"
+                    onChange={(event) => onPrimaryAffiliationEntryChange(event.target.value)}
+                    onBlur={onPrimaryAffiliationEntryBlur}
+                    placeholder="Affiliation"
                     autoComplete="organization"
+                    className="h-8 min-w-[14rem] flex-1 border-0 bg-transparent px-2 shadow-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--tone-accent-400))]"
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => onAddAffiliation(primaryAffiliationInput)}
-                    disabled={!sanitizeAffiliation(primaryAffiliationInput)}
-                  >
-                    Add affiliation
-                  </Button>
+                  {primaryAffiliationLabel ? (
+                    <button
+                      type="button"
+                      onClick={() => onRemoveAffiliationEntry(primaryAffiliationLabel)}
+                      className="text-[hsl(var(--tone-neutral-500))] transition-colors hover:text-[hsl(var(--tone-danger-700))]"
+                      aria-label={`Remove affiliation ${primaryAffiliationLabel}`}
+                    >
+                      Remove
+                    </button>
+                    ) : null}
                 </div>
+
                 {primaryAffiliationSuggestionsLoading ? (
-                  <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Looking up affiliation suggestions...</p>
+                  <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Looking up affiliations...</p>
                 ) : null}
                 {primaryAffiliationSuggestions.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2">
@@ -1867,98 +2110,60 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 {primaryAffiliationAddressError ? (
                   <p className="text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationAddressError}</p>
                 ) : null}
-              </label>
 
-              {draft.affiliations.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2 sm:col-span-2">
-                  {draft.affiliations.map((item, index) => (
-                    <div key={`aff-${item}`} className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))]">
-                      <span>{item}</span>
-                      {index === 0 ? (
-                        <span className="rounded-full border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-1.5 py-0.5 text-[0.58rem] uppercase tracking-[0.06em] text-[hsl(var(--tone-positive-700))]">
-                          Primary
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="text-[hsl(var(--tone-neutral-600))] transition-colors hover:text-[hsl(var(--tone-accent-700))]"
-                          onClick={() => onSetPrimaryAffiliation(item)}
-                        >
-                          Set primary
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className="text-[hsl(var(--tone-neutral-500))] transition-colors hover:text-[hsl(var(--tone-danger-700))]"
-                        onClick={() => onRemoveAffiliationEntry(item)}
-                        aria-label={`Remove affiliation ${item}`}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="space-y-1 sm:col-span-2">
+                    <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Address line 1</span>
+                    <Input
+                      value={draft.affiliationAddress}
+                      onChange={(event) => onFieldChange('affiliationAddress', event.target.value)}
+                      placeholder="Building, street, or campus"
+                      autoComplete="street-address"
+                    />
+                  </label>
+
+                  <label className="space-y-1">
+                    <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">City</span>
+                    <Input
+                      value={draft.affiliationCity}
+                      onChange={(event) => onFieldChange('affiliationCity', event.target.value)}
+                      placeholder="City"
+                      autoComplete="address-level2"
+                    />
+                  </label>
+
+                  <label className="space-y-1">
+                    <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Region / state</span>
+                    <Input
+                      value={draft.affiliationRegion}
+                      onChange={(event) => onFieldChange('affiliationRegion', event.target.value)}
+                      placeholder="Region or state"
+                      autoComplete="address-level1"
+                    />
+                  </label>
+
+                  <label className="space-y-1">
+                    <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Postal code</span>
+                    <Input
+                      value={draft.affiliationPostalCode}
+                      onChange={(event) => onFieldChange('affiliationPostalCode', event.target.value)}
+                      placeholder="Postal code"
+                      autoComplete="postal-code"
+                    />
+                  </label>
+
+                  <label className="space-y-1">
+                    <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Country</span>
+                    <Input
+                      value={draft.country}
+                      onChange={(event) => onFieldChange('country', event.target.value)}
+                      placeholder="Country"
+                      autoComplete="country-name"
+                    />
+                  </label>
+
                 </div>
-              ) : null}
-
-              <label className="space-y-1 sm:col-span-2">
-                <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Address line 1</span>
-                <Input
-                  value={draft.affiliationAddress}
-                  onChange={(event) => onFieldChange('affiliationAddress', event.target.value)}
-                  placeholder="Building, street, or campus"
-                  autoComplete="street-address"
-                />
-              </label>
-
-              <label className="space-y-1">
-                <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">City</span>
-                <Input
-                  value={draft.affiliationCity}
-                  onChange={(event) => onFieldChange('affiliationCity', event.target.value)}
-                  placeholder="City"
-                  autoComplete="address-level2"
-                />
-              </label>
-
-              <label className="space-y-1">
-                <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Region / state</span>
-                <Input
-                  value={draft.affiliationRegion}
-                  onChange={(event) => onFieldChange('affiliationRegion', event.target.value)}
-                  placeholder="Region or state"
-                  autoComplete="address-level1"
-                />
-              </label>
-
-              <label className="space-y-1">
-                <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Postal code</span>
-                <Input
-                  value={draft.affiliationPostalCode}
-                  onChange={(event) => onFieldChange('affiliationPostalCode', event.target.value)}
-                  placeholder="Postal code"
-                  autoComplete="postal-code"
-                />
-              </label>
-
-              <label className="space-y-1">
-                <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Country</span>
-                <Input
-                  value={draft.country}
-                  onChange={(event) => onFieldChange('country', event.target.value)}
-                  placeholder="Country"
-                  autoComplete="country-name"
-                />
-              </label>
-
-              <label className="space-y-1 sm:col-span-2">
-                <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Department</span>
-                <Input
-                  value={draft.department}
-                  onChange={(event) => onFieldChange('department', event.target.value)}
-                  placeholder="Department"
-                  autoComplete="organization-title"
-                />
-              </label>
+              </div>
             </div>
           ) : null}
         </CardContent>
@@ -2088,11 +2293,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 )
               })}
             </div>
-          ) : (
-            <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
-              No publication affiliations saved yet.
-            </p>
-          )}
+          ) : null}
 
           {publicationAffiliationSuggestionsError ? (
             <p className="text-micro text-[hsl(var(--tone-warning-700))]">{publicationAffiliationSuggestionsError}</p>
@@ -2105,9 +2306,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           <Button type="button" onClick={() => void onSave()} disabled={!user || saving || loading}>
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             {saving ? 'Saving...' : 'Save details'}
-          </Button>
-          <Button type="button" variant="outline" onClick={onResetFromProfile} disabled={!user || saving}>
-            Reset fields
           </Button>
           {lastSavedAt ? (
             <p className="text-xs text-[hsl(var(--tone-neutral-500))]">Last saved {formatTimestamp(lastSavedAt)}</p>
