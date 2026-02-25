@@ -106,6 +106,12 @@ Out of scope (this story):
 - Completed owner/collaborator project creation wiring from wizard bootstrap (`owner_user_id`, `collaborator_user_ids`, `workspace_id`) so a workspace run is attributed to the owner and visible to accepted collaborators.
 - Updated Step 2 data-planner calls and manuscript routes to send authenticated context, aligning frontend behavior with owner/collaborator access checks.
 - Extended Results page to sync uploaded assets into persisted backend Data Library while preserving local parsing and preview UX.
+- Upgraded Results page content hierarchy with workspace-aware summary cards, readiness scoring, and adaptive priority actions.
+- Added quality indicators for missing cells/duplicate rows and search filters for files and working tables.
+- Added dedicated Storybook coverage for Results page with populated and empty data-workspace fixtures.
+- Simplified the Data page to remove readiness/table-generation emphasis and focus on upload + personal library access.
+- Reworked Data page layout into a right utility panel (`Data upload`, `Personal library`) and left operational pane (`Files`, `Preview`).
+- Removed verbose narrative copy under the Data title and trimmed explanatory helper text to match a cleaner house-style section pattern.
 - Enforced owner-only invitation creation and collaborator-management updates at API level (not only in frontend controls).
 - Synced accepted author requests back into owner workspace collaborator state so collaborator banners stay accurate.
 - Synced owner collaborator state updates into collaborator workspace records to keep membership/removal state coherent across accounts.

@@ -305,7 +305,7 @@ export function Step2Panel({
 
   return (
     <aside className="space-y-3 rounded-lg border border-border bg-card p-3">
-      <h3 className="text-sm font-semibold">Plan setup questions</h3>
+      <h3 className="house-section-title">Plan setup questions</h3>
       <div className="space-y-2 rounded-md border border-border/80 bg-muted/20 p-3">
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -455,7 +455,7 @@ export function Step2Panel({
 
       {planVisible ? (
         <div className="space-y-2 rounded-md border border-emerald-300 bg-emerald-50/50 p-3">
-          <h4 className="text-sm font-semibold text-emerald-900">AI plan edits</h4>
+          <h4 className="house-section-title text-[hsl(var(--tone-positive-700))]">AI plan edits</h4>
           <div className="flex flex-wrap gap-2">
             {PLAN_SECTIONS.map((section) => (
               <Button

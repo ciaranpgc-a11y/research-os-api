@@ -123,7 +123,6 @@ const LEGACY_TOP_PROFILE_PHOTO_POSITION_Y = 20
 const HOUSE_ACTION_BUTTON_CLASS = `h-9 rounded-md px-3.5 ${houseTypography.buttonText} shadow-none`
 const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
 const HOUSE_PAGE_SUBTITLE_CLASS = houseTypography.subtitle
-const HOUSE_CARD_TITLE_CLASS = houseTypography.sectionTitle
 const HOUSE_LEFT_BORDER_CLASS = `${houseSurfaces.leftBorder} ${houseSurfaces.leftBorderAccount}`
 const HOUSE_SELECT_CLASS = `h-9 w-full rounded-md px-3 py-1 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${houseForms.select}`
 
@@ -2014,7 +2013,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         <CardHeader className="space-y-2 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex flex-wrap items-center gap-2">
-              <CardTitle className={HOUSE_CARD_TITLE_CLASS}>
+              <CardTitle>
                 Profile
               </CardTitle>
               {badges.map((badge) => (
@@ -2250,7 +2249,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       <Card className="border-[hsl(var(--tone-neutral-200))]">
         <CardHeader className="border-b border-[hsl(var(--tone-neutral-200))] pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle className={HOUSE_CARD_TITLE_CLASS}>
+            <CardTitle>
               Affiliation
             </CardTitle>
             <Button
@@ -2583,7 +2582,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       <Card className="border-[hsl(var(--tone-neutral-200))]">
         <CardHeader className="border-b border-[hsl(var(--tone-neutral-200))] pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle className={HOUSE_CARD_TITLE_CLASS}>
+            <CardTitle>
               Publication affiliation
             </CardTitle>
             <Button

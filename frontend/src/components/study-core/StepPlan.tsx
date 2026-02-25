@@ -756,7 +756,7 @@ export function StepPlan(props: StepPlanProps) {
   return (
     <div className="space-y-4 rounded-lg border border-border bg-card p-4">
       <div className="space-y-1">
-        <h2 className="text-base font-semibold">Step 2: Data-aware manuscript planner</h2>
+        <h2 className="house-section-title">Step 2: Data-aware manuscript planner</h2>
         <p className="text-sm text-muted-foreground">Profile data first (optional), ask focused questions, then edit the sectioned plan.</p>
       </div>
 
@@ -901,7 +901,7 @@ export function StepPlan(props: StepPlanProps) {
             <div className="rounded-md border border-border/70 bg-background p-3 text-sm text-muted-foreground">No active question. Click Next question to continue.</div>
           )}
           {questionError ? <p className="text-xs text-destructive">{questionError}</p> : null}
-          <div className="rounded-md border border-border/70 bg-muted/20 p-2"><p className="text-xs uppercase tracking-wide text-muted-foreground">Adaptive summary</p><p className="text-sm">{adaptiveSummary || planningContext.summary}</p></div>
+          <div className="rounded-md border border-border/70 bg-muted/20 p-2"><p className="house-h2 text-muted-foreground">Adaptive summary</p><p className="text-sm">{adaptiveSummary || planningContext.summary}</p></div>
           <div className="flex gap-2"><Button type="button" className="house-button-action-primary text-sm font-semibold" onClick={() => void generatePlan()} disabled={toolBusy}>{toolBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <FileText className="mr-1 h-3.5 w-3.5" />}Generate manuscript plan</Button><Button type="button" variant="outline" onClick={() => setPhase('data')}>Back to data</Button></div>
         </section>
       ) : null}
@@ -1147,17 +1147,17 @@ export function StepPlan(props: StepPlanProps) {
             })}
           </div>
           <aside className="space-y-3 rounded-md border border-border/80 bg-muted/20 p-3">
-            <h3 className="text-sm font-semibold">Section AI tools</h3>
+            <h3 className="house-section-title">Section AI tools</h3>
             {active ? (
               <>
-                <div className="rounded-md border border-border/70 bg-background p-2"><p className="text-xs uppercase tracking-wide text-muted-foreground">Current section</p><p className="text-sm font-medium">{ORDER.find((item) => item.key === active.key)?.label || active.key}</p><p className="text-xs text-muted-foreground">{active.summary}</p></div>
-                <div className="rounded-md border border-border/70 bg-background p-2"><p className="text-xs uppercase tracking-wide text-muted-foreground">Context</p><p className="text-xs text-[hsl(var(--tone-neutral-700))]">Attached assets: {active.section_assets.attached_asset_ids.length}</p><p className="text-xs text-[hsl(var(--tone-neutral-700))]">Profile linked: {planJson?.profile_id ? 'Yes' : 'No'}</p></div>
+                <div className="rounded-md border border-border/70 bg-background p-2"><p className="house-h2 text-muted-foreground">Current section</p><p className="text-sm font-medium">{ORDER.find((item) => item.key === active.key)?.label || active.key}</p><p className="text-xs text-muted-foreground">{active.summary}</p></div>
+                <div className="rounded-md border border-border/70 bg-background p-2"><p className="house-h2 text-muted-foreground">Context</p><p className="text-xs text-[hsl(var(--tone-neutral-700))]">Attached assets: {active.section_assets.attached_asset_ids.length}</p><p className="text-xs text-[hsl(var(--tone-neutral-700))]">Profile linked: {planJson?.profile_id ? 'Yes' : 'No'}</p></div>
                 <div className="rounded-md border border-border/70 bg-background p-2">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Suggestions</p>
+                  <p className="house-h2 text-muted-foreground">Suggestions</p>
                   {feedback[active.key as Key].suggestions.length ? <ul className="list-disc pl-5 text-xs text-[hsl(var(--tone-neutral-700))]">{feedback[active.key as Key].suggestions.map((item) => <li key={item}>{item}</li>)}</ul> : <p className="text-xs text-muted-foreground">Run section tools to generate suggestions.</p>}
                 </div>
                 <div className="rounded-md border border-border/70 bg-background p-2">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Upload and attach data</p>
+                  <p className="house-h2 text-muted-foreground">Upload and attach data</p>
                   <div className="flex flex-wrap gap-2">
                     <Button type="button" size="sm" variant="outline" onClick={() => sectionInputRef.current?.click()} disabled={sectionUploadBusy}>{sectionUploadBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Paperclip className="mr-1 h-3.5 w-3.5" />}Upload and attach</Button>
                     <Button type="button" size="sm" variant="outline" onClick={() => void loadAssets()} disabled={assetBusy}>Refresh library</Button>

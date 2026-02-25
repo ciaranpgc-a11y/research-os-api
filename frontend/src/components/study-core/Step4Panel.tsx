@@ -14,7 +14,7 @@ type Step4PanelProps = {
 export function Step4Panel({ corrections }: Step4PanelProps) {
   return (
     <aside className="space-y-3 rounded-lg border border-border bg-card p-3">
-      <h3 className="text-sm font-semibold">Draft Corrections</h3>
+      <h3 className="house-section-title">Draft Corrections</h3>
       {corrections.length === 0 ? (
         <p className="rounded-md border border-border bg-background p-3 text-sm text-muted-foreground">No immediate draft corrections detected.</p>
       ) : (

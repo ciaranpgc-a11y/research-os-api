@@ -205,7 +205,7 @@ export function StepLinkQcExport({
   return (
     <div className="space-y-4 rounded-lg border border-border bg-card p-4">
       <div className="space-y-1">
-        <h2 className="text-base font-semibold">Step 5: QC + Export</h2>
+        <h2 className="house-section-title">Step 5: QC + Export</h2>
         <p className="text-sm text-muted-foreground">Run QC and export the manuscript.</p>
       </div>
 

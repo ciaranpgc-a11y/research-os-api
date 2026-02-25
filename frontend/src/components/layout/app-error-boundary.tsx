@@ -38,8 +38,8 @@ export class AppErrorBoundary extends Component<Props, State> {
       return (
         <div className="min-h-screen bg-background p-6">
           <div className="mx-auto max-w-xl rounded-lg border border-[hsl(var(--tone-danger-200))] bg-card p-6 shadow-sm">
-            <p className="text-xs uppercase tracking-wide text-[hsl(var(--tone-danger-700))]">Application error</p>
-            <h1 className="mt-2 text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">The page failed to render</h1>
+            <p className="house-h2 text-[hsl(var(--tone-danger-700))]">Application error</p>
+            <h1 className="house-section-title mt-2">The page failed to render</h1>
             <p className="mt-2 text-sm text-[hsl(var(--tone-neutral-700))]">{this.state.message}</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <Button onClick={this.onReload}>Reload page</Button>

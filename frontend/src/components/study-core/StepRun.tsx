@@ -531,7 +531,7 @@ export function StepRun({
   return (
     <div className="space-y-4 rounded-lg border border-border bg-card p-4">
       <div className="space-y-1">
-        <h2 className="text-base font-semibold">Step 3: Run Generation</h2>
+        <h2 className="house-section-title">Step 3: Run Generation</h2>
         <p className="text-sm text-muted-foreground">Select sections and run generation.</p>
       </div>
 

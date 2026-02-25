@@ -466,7 +466,7 @@ export function StepContext({
   return (
     <div className="space-y-6 rounded-lg border border-border bg-card p-6">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold">Step 1: Research overview</h2>
+        <h2 className="house-section-title">Step 1: Research overview</h2>
         <Button
           type="button"
           size="sm"
@@ -517,7 +517,7 @@ export function StepContext({
 
       <section className="space-y-4 rounded-md border border-border/80 p-4">
         <div className="space-y-1">
-          <h3 className="text-sm font-semibold">Study setup</h3>
+          <h3 className="house-section-title">Study setup</h3>
         </div>
 
         <div className="grid gap-4 xl:grid-cols-2">

@@ -28,7 +28,7 @@ export function Step3Panel({
 }: Step3PanelProps) {
   return (
     <aside className="space-y-3 rounded-lg border border-border bg-card p-3">
-      <h3 className="text-sm font-semibold">Pre-Run Checks</h3>
+      <h3 className="house-section-title">Pre-Run Checks</h3>
 
       <RecommendationCard
         title="Apply conservative phrasing + limitations emphasis"

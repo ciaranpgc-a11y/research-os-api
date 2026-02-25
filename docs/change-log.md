@@ -172,3 +172,54 @@
 - `npm --prefix frontend run build`
 - **Follow-up:**
 - Replace local-only sheet preview state with persisted server-backed preview metadata to support cross-device continuity.
+
+### Workspace Data Section Content Upgrade
+
+- **Area:** Workspace data page content design, quality guidance, and Storybook coverage.
+- **What changed:**
+- Expanded `ResultsPage` with workspace-aware data summary cards (local assets, persisted assets, working tables, readiness score).
+- Added a `Data Readiness` section with explicit operational checks and progress indicator.
+- Added `Priority Actions` guidance that adapts to current data quality and metadata completeness.
+- Added search/filter controls for uploaded files and working tables.
+- Added per-sheet/per-table quality signals for missing cells and duplicate rows.
+- Added a dedicated `ResultsPage` Storybook with seeded populated and empty fixtures tied to workspace routing/state.
+- **Why it changed:**
+- Make the Data section more actionable for researchers by turning raw file/table screens into an analysis-readiness workflow with clear next steps.
+- **Key files touched:**
+- `frontend/src/pages/results-page.tsx`
+- `frontend/src/pages/results-page.stories.tsx`
+- `docs/change-log.md`
+- `docs/stories/workspaces-hub-v2.md`
+- **Verification performed:**
+- `npm --prefix frontend run --silent typecheck`
+- `npm --prefix frontend run build`
+- `npm --prefix frontend run --silent build-storybook`
+- **Follow-up:**
+- Move readiness checks to server-backed validations so results persist across devices and sessions.
+- Add column-level completeness and type-consistency diagnostics in the working-table editor.
+
+### Workspace Data Section Simplification (Upload + Personal Library)
+
+- **Area:** Workspace Data page information architecture and house-style alignment.
+- **What changed:**
+- Removed Data Readiness and Priority Actions blocks from the Data page.
+- Removed table-generation workflow UI from the Data page surface to keep this step focused on ingestion and library access.
+- Reworked layout to a practical two-column structure:
+  - Left: local files and sheet preview.
+  - Right: `Data upload` utilities and `Personal library` access (search + refresh + scoped asset listing).
+- Reduced narrative copy: removed subtitle/narrative text under the Data title and trimmed descriptive/placeholder wording across cards.
+- Added optional `PageFrame` controls (`description` optional and `hideScaffoldHeader`) so pages can suppress generic scaffold copy where needed.
+- **Why it changed:**
+- Prioritize core user actions in this phase: upload, inspect, and access persisted personal assets with less visual noise.
+- **Key files touched:**
+- `frontend/src/pages/results-page.tsx`
+- `frontend/src/pages/page-frame.tsx`
+- `docs/change-log.md`
+- `docs/stories/workspaces-hub-v2.md`
+- **Verification performed:**
+- `npm --prefix frontend run --silent typecheck`
+- `npm --prefix frontend run build`
+- `npm --prefix frontend run --silent build-storybook`
+- **Follow-up:**
+- Add explicit personal-library attach/import action from persisted assets into local preview without re-upload.
+- Add server-side pagination for personal-library lists at high asset counts.

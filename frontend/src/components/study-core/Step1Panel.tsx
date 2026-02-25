@@ -1368,7 +1368,7 @@ export function Step1Panel({
 
   return (
     <aside className="space-y-3 rounded-lg border border-border bg-card p-3">
-      <h3 className="text-sm font-semibold">Research overview suggestions</h3>
+      <h3 className="house-section-title">Research overview suggestions</h3>
 
       <div className="space-y-2 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] p-3">
         <p className="text-sm font-medium">Suggestion controls</p>

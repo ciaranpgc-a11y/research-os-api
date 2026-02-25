@@ -997,7 +997,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
             aria-modal="true"
             aria-label="Disconnect ORCID confirmation"
           >
-            <h3 className="text-base font-semibold">Disconnect ORCID?</h3>
+            <h3 className="house-section-title">Disconnect ORCID?</h3>
             <p className="mt-2 text-sm text-muted-foreground">
               Existing imported works stay in your library. You can reconnect ORCID later.
             </p>
