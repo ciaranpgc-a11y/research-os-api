@@ -42,7 +42,7 @@ function WorkspaceRedirect({ suffix }: { suffix: string }) {
 function WorkspaceManuscriptIndexRedirect() {
   const params = useParams<{ workspaceId: string }>()
   const workspaceId = params.workspaceId || 'hf-registry'
-  return <Navigate to={`/w/${workspaceId}/manuscript/introduction`} replace />
+  return <Navigate to={`/w/${workspaceId}/manuscript/title`} replace />
 }
 
 function LegacyManuscriptSectionRedirect() {
@@ -120,7 +120,7 @@ export function AppRouter() {
         <Route path="/inbox" element={<WorkspaceRedirect suffix="inbox" />} />
         <Route path="/study-core" element={<WorkspaceRedirect suffix="run-wizard" />} />
         <Route path="/results" element={<WorkspaceRedirect suffix="results" />} />
-        <Route path="/manuscript" element={<WorkspaceRedirect suffix="manuscript/introduction" />} />
+        <Route path="/manuscript" element={<WorkspaceRedirect suffix="manuscript/title" />} />
         <Route path="/manuscript/tables" element={<WorkspaceRedirect suffix="manuscript/tables" />} />
         <Route path="/manuscript/:section" element={<LegacyManuscriptSectionRedirect />} />
         <Route path="/literature" element={<WorkspaceRedirect suffix="literature" />} />

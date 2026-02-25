@@ -11,6 +11,9 @@ export type ManuscriptSectionSlug =
   | 'conclusion'
   | 'figures'
   | 'tables'
+  | 'references'
+  | 'supplementary-materials'
+  | 'declarations'
 
 export type EvidenceAnchor = {
   id: string

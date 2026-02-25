@@ -32,6 +32,9 @@ const sectionDisplayNames: Record<ManuscriptSectionSlug, string> = {
   conclusion: 'Conclusion',
   figures: 'Figures',
   tables: 'Tables',
+  references: 'References',
+  'supplementary-materials': 'Supplementary Materials',
+  declarations: 'Declarations',
 }
 
 const validSections = new Set(Object.keys(sectionDisplayNames))
