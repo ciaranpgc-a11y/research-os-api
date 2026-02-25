@@ -28,6 +28,33 @@
 - **Follow-up:**
 - Optionally replace removed right-rail space with contextual tools only when a page has high-value actions.
 
+### Workspace Left Nav Cleanup + Manuscript Section Expansion
+
+- **Area:** Individual workspace left navigation and manuscript section routing order.
+- **What changed:**
+- Removed `Create new workspace` from the individual workspace left panel selector area.
+- Expanded and reordered Manuscript navigation in workspace left panel:
+  - Added `Title` and `Abstract` before `Introduction`.
+  - Added `References`, `Supplementary Materials`, and `Declarations` at the end.
+- Extended manuscript section slug/type support and section-title mapping to include:
+  - `references`
+  - `supplementary-materials`
+  - `declarations`
+- Updated manuscript index redirects to open `Title` by default instead of `Introduction`.
+- **Why it changed:**
+- Keep workspace-level left navigation focused on in-project work (not project creation) and align manuscript flow with full submission structure.
+- **Key files touched:**
+- `frontend/src/components/layout/workspace-navigator.tsx`
+- `frontend/src/types/selection.ts`
+- `frontend/src/pages/manuscript-page.tsx`
+- `frontend/src/AppRouter.tsx`
+- **Verification performed:**
+- `npx eslint src/components/layout/workspace-navigator.tsx src/types/selection.ts src/pages/manuscript-page.tsx src/AppRouter.tsx` (run from `frontend/`)
+- `npm --prefix frontend run --silent typecheck`
+- `npm --prefix frontend run --silent build-storybook`
+- **Follow-up:**
+- Consider adding dedicated scaffold content for the three new terminal manuscript sections so first-time views are less empty.
+
 ### Workspace Ownership + Shared Inbox Hardening
 
 - **Area:** Workspace ownership rules, collaborator propagation, inbox persistence, generation-job access control.

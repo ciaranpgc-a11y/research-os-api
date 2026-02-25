@@ -69,6 +69,7 @@ const HOUSE_PUBLICATION_DETAIL_TAB_CLASS = publicationsHouseDetail.tab
 const HOUSE_PUBLICATION_DETAIL_BODY_CLASS = publicationsHouseDetail.body
 const HOUSE_PUBLICATION_DETAIL_SECTION_CLASS = publicationsHouseDetail.section
 const HOUSE_PUBLICATION_DETAIL_LABEL_CLASS = publicationsHouseDetail.sectionLabel
+const HOUSE_PUBLICATION_DETAIL_META_CHIP_CLASS = publicationsHouseDetail.metaChip
 const HOUSE_PUBLICATION_DETAIL_INFO_CLASS = publicationsHouseDetail.info
 
 const WORK_TYPE_LABELS: Record<string, string> = {
@@ -1507,6 +1508,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         <p className={HOUSE_PUBLICATION_DETAIL_TITLE_CLASS}>
                           {selectedDetail?.title || selectedWork.title}
                         </p>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          <span className={HOUSE_PUBLICATION_DETAIL_META_CHIP_CLASS}>
+                            {detailYear ?? 'Year n/a'}
+                          </span>
+                          <span className={HOUSE_PUBLICATION_DETAIL_META_CHIP_CLASS}>
+                            {detailPublicationType || 'Type n/a'}
+                          </span>
+                          <span className={HOUSE_PUBLICATION_DETAIL_META_CHIP_CLASS}>
+                            {detailCitations} citations
+                          </span>
+                        </div>
                         <TabsList className={`mt-2 grid h-auto w-full grid-cols-5 gap-1 ${HOUSE_PUBLICATION_DETAIL_TABS_CLASS}`}>
                           <TabsTrigger value="overview" className={`text-micro ${HOUSE_PUBLICATION_DETAIL_TAB_CLASS}`}>Overview</TabsTrigger>
                           <TabsTrigger value="content" className={`text-micro ${HOUSE_PUBLICATION_DETAIL_TAB_CLASS}`}>Content</TabsTrigger>

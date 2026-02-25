@@ -132,6 +132,8 @@ Out of scope (this story):
 - Realigned the individual workspace `Data` page to house-style right rail composition, with `Access from personal library` above `Upload`.
 - Removed `Insight & Integrity` side-panel wiring from workspace and non-profile app shells to keep focus on core workspace actions.
 - Added collapse/expand behavior to the inbox right panel so conversation content can use more horizontal space when reviewing long threads.
+- Removed `Create new workspace` action from the individual workspace left panel.
+- Expanded manuscript nav sequence in workspace left panel to include `Title`, `Abstract` before `Introduction`, and append `References`, `Supplementary Materials`, `Declarations` at the end.
 
 ## QA Checklist
 

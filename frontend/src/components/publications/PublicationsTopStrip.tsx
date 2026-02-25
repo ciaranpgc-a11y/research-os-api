@@ -1266,6 +1266,7 @@ function StructuredMetricTile({
   primaryValue,
   badge,
   pinBadgeBottom = true,
+  centerBadge = false,
   subtitle,
   detail,
   visual,
@@ -1277,6 +1278,7 @@ function StructuredMetricTile({
   primaryValue: ReactNode
   badge?: ReactNode
   pinBadgeBottom?: boolean
+  centerBadge?: boolean
   subtitle: ReactNode
   detail?: ReactNode
   visual: ReactNode
@@ -1330,7 +1332,11 @@ function StructuredMetricTile({
             : detail
               ? <div className="pt-0.5">{detail}</div>
               : null}
-          {badge ? <div className={cn(pinBadgeBottom ? 'mt-auto pt-1' : 'pt-1')}>{badge}</div> : null}
+          {badge ? (
+            <div className={cn(pinBadgeBottom ? 'mt-auto pt-1' : 'pt-1', centerBadge && 'flex w-full justify-center')}>
+              {badge}
+            </div>
+          ) : null}
         </div>
         <div className="flex h-full min-h-0 items-center border-l border-[hsl(var(--stroke-strong)/0.92)] pl-3">
           {visual}
@@ -4759,6 +4765,7 @@ export function PublicationsTopStrip({
                     primaryValue={primaryValue}
                     badge={badgeNode}
                     pinBadgeBottom={pinBadgeBottom}
+                    centerBadge={tile.key === 'impact_concentration'}
                     subtitle={secondaryText}
                     detail={detailText}
                     contentGridClassName={contentGridClassName}

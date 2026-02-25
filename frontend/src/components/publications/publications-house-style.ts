@@ -82,6 +82,7 @@ export const publicationsHouseDetail = {
   body: 'house-publication-detail-body',
   section: 'house-publication-detail-section',
   sectionLabel: 'house-publication-detail-label',
+  metaChip: 'house-publication-detail-meta-chip',
   info: 'house-publication-detail-info',
 } as const
 
