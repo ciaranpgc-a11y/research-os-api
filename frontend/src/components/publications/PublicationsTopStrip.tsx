@@ -1507,9 +1507,6 @@ function MomentumTilePanel({
           ))}
         </div>
       </div>
-      <p className="mt-0.5 text-center text-[0.54rem] font-medium leading-none text-[hsl(var(--tone-neutral-500))]">
-        Citations needed
-      </p>
     </div>
   )
 }
@@ -1585,11 +1582,11 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
     <div className="flex h-full min-h-0 w-full flex-col">
       <div
         className={cn(
-          'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-7 pt-4 transition-[opacity,transform,filter] duration-320 ease-out',
+          'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-8 pt-4 transition-[opacity,transform,filter] duration-320 ease-out',
           chartVisible ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]',
         )}
       >
-        <div className="absolute inset-x-2 bottom-7 top-4">
+        <div className="absolute inset-x-2 bottom-8 top-4">
           {[25, 50, 75].map((pct) => (
             <div
               key={`h-needed-grid-${pct}`}
@@ -1642,7 +1639,7 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
             })}
           </div>
         </div>
-        <div className="pointer-events-none absolute inset-x-2 bottom-1 grid grid-flow-col auto-cols-fr items-start gap-1">
+        <div className="pointer-events-none absolute inset-x-2 bottom-2 grid grid-flow-col auto-cols-fr items-start gap-1">
           {bars.map((bar, index) => (
             <div key={`${bar.key}-${index}-axis`} className="text-center leading-none">
               <p className="text-[0.6rem] font-semibold text-[hsl(var(--tone-neutral-600))]">{bar.label}</p>
@@ -1654,6 +1651,11 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
               </p>
             </div>
           ))}
+        </div>
+        <div className="pointer-events-none absolute inset-x-2 bottom-0.5 text-center">
+          <p className="text-[0.54rem] font-medium leading-none text-[hsl(var(--tone-neutral-500))]">
+            Citations needed
+          </p>
         </div>
       </div>
     </div>
@@ -1703,13 +1705,13 @@ function HIndexViewToggle({
   return (
     <div className="flex items-center">
       <div
-        className="relative inline-grid grid-cols-2 items-center rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5"
+        className="relative isolate inline-grid grid-cols-2 items-center overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5"
         data-stop-tile-open="true"
       >
         <span
           className={cn(
-            'pointer-events-none absolute inset-y-0.5 left-0.5 z-0 w-[calc(50%-0.125rem)] rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-transform duration-300 ease-out',
-            mode === 'needed' ? 'translate-x-full' : 'translate-x-0',
+            'pointer-events-none absolute inset-y-0.5 left-0.5 z-0 w-[calc(50%-0.125rem)] rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-transform duration-350 ease-out will-change-transform',
+            mode === 'needed' ? 'translate-x-[calc(100%+0.125rem)]' : 'translate-x-0',
           )}
           aria-hidden="true"
         />
@@ -1717,7 +1719,7 @@ function HIndexViewToggle({
           type="button"
           data-stop-tile-open="true"
           className={cn(
-            'relative z-[1] rounded-full px-2 py-[0.38rem] text-[0.62rem] font-medium leading-none transition-[color] duration-220 ease-out',
+            'relative z-[1] rounded-full px-2 py-[0.38rem] text-[0.62rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
             mode === 'trajectory' ? 'text-white' : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
           )}
           onClick={(event) => {
@@ -1733,7 +1735,7 @@ function HIndexViewToggle({
           type="button"
           data-stop-tile-open="true"
           className={cn(
-            'relative z-[1] rounded-full px-2 py-[0.38rem] text-[0.62rem] font-medium leading-none transition-[color] duration-220 ease-out',
+            'relative z-[1] rounded-full px-2 py-[0.38rem] text-[0.62rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
             mode === 'needed' ? 'text-white' : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
           )}
           onClick={(event) => {
@@ -2239,13 +2241,13 @@ export function PublicationsTopStrip({
                   badgeNode = (
                     <div className="flex items-center">
                       <div
-                        className="relative inline-grid grid-cols-2 items-center rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5"
+                        className="relative isolate inline-grid grid-cols-2 items-center overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5"
                         data-stop-tile-open="true"
                       >
                         <span
                           className={cn(
-                            'pointer-events-none absolute inset-y-0.5 left-0.5 z-0 w-[calc(50%-0.125rem)] rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-transform duration-300 ease-out',
-                            momentumWindowMode === '5y' ? 'translate-x-full' : 'translate-x-0',
+                            'pointer-events-none absolute inset-y-0.5 left-0.5 z-0 w-[calc(50%-0.125rem)] rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-transform duration-350 ease-out will-change-transform',
+                            momentumWindowMode === '5y' ? 'translate-x-[calc(100%+0.125rem)]' : 'translate-x-0',
                           )}
                           aria-hidden="true"
                         />
@@ -2253,7 +2255,7 @@ export function PublicationsTopStrip({
                           type="button"
                           data-stop-tile-open="true"
                           className={cn(
-                            'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-220 ease-out',
+                            'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
                             momentumWindowMode === '12m'
                               ? 'text-white'
                               : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
@@ -2271,7 +2273,7 @@ export function PublicationsTopStrip({
                           type="button"
                           data-stop-tile-open="true"
                           className={cn(
-                            'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-220 ease-out',
+                            'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
                             momentumWindowMode === '5y'
                               ? 'text-white'
                               : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
