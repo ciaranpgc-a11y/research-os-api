@@ -719,7 +719,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(initialCachedOrcidStatus)
   const [draft, setDraft] = useState<PersonalDetailsDraft>(initialDraft)
   const [accountEmail, setAccountEmail] = useState(initialAccountEmail)
-  const [jobRoleInput, setJobRoleInput] = useState('')
   const [primaryAffiliationInput, setPrimaryAffiliationInput] = useState(() => sanitizeAffiliation(initialDraft.organisation))
   const [primaryAffiliationInputFocused, setPrimaryAffiliationInputFocused] = useState(false)
   const [primaryAffiliationSuggestions, setPrimaryAffiliationSuggestions] = useState<AffiliationSuggestionItem[]>([])
@@ -733,7 +732,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [affiliationEditorOpen, setAffiliationEditorOpen] = useState(
     () => !Boolean(initialDraft.jobRoles[0] || initialDraft.affiliations[0] || initialDraft.country),
   )
-  const [showJobRoleComposer, setShowJobRoleComposer] = useState(false)
   const [showAffiliationComposer, setShowAffiliationComposer] = useState(false)
   const [showPublicationAffiliationComposer, setShowPublicationAffiliationComposer] = useState(false)
   const [affiliationEditorBaseline, setAffiliationEditorBaseline] = useState<AffiliationEditorSnapshot>(
@@ -759,6 +757,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const lastResolvedPrimaryAffiliationKeyRef = useRef('')
   const lastAutoPopulateAffiliationKeyRef = useRef('')
   const wasAffiliationEditorOpenRef = useRef(affiliationEditorOpen)
+  const jobRoleInputRefs = useRef<Array<HTMLInputElement | null>>([])
   const profilePhotoInputRef = useRef<HTMLInputElement | null>(null)
   const profilePhotoFrameRef = useRef<HTMLButtonElement | null>(null)
   const profilePhotoDraggingRef = useRef(false)
@@ -780,7 +779,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setDraft(fixtureDraft)
     setPrimaryAffiliationInput(sanitizeAffiliation(fixtureDraft.organisation))
     setPrimaryAffiliationInputFocused(false)
-    setJobRoleInput('')
     setAffiliationEditorOpen(!Boolean(fixtureDraft.jobRoles[0] || fixtureDraft.affiliations[0] || fixtureDraft.country))
     setAccountEmail(resolveEditableAccountEmail({
       email: fixtureUser?.email,
@@ -794,7 +792,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setPublicationAffiliationSuggestionsLoading(false)
     setPublicationAffiliationSuggestionsError('')
     setAffiliationMetadataByName({})
-    setShowJobRoleComposer(false)
     setShowAffiliationComposer(false)
     setShowPublicationAffiliationComposer(false)
     setAffiliationEditorBaseline(buildAffiliationEditorSnapshot({
@@ -1168,29 +1165,46 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setStatus('')
   }
 
-  const onAddJobRole = (value: string) => {
-    const clean = normalizeRole(value)
-    if (!clean) {
-      return
-    }
-    draftEditedRef.current = true
+  const onAddJobRole = () => {
+    let focusIndex = 0
+    let addedNewRow = false
     setDraft((current) => {
-      const nextRoles = normalizeJobRoles([clean, ...current.jobRoles])
+      const existingBlankIndex = current.jobRoles.findIndex((item) => !normalizeRole(item))
+      if (existingBlankIndex >= 0) {
+        focusIndex = existingBlankIndex
+        return current
+      }
+      const nextRoles = [...current.jobRoles, '']
+      focusIndex = nextRoles.length - 1
+      addedNewRow = true
       return {
         ...current,
         jobRoles: nextRoles,
-        jobRole: nextRoles[0] || clean,
+        jobRole: nextRoles[0] || '',
       }
     })
-    setJobRoleInput('')
-    setShowJobRoleComposer(false)
+    if (addedNewRow) {
+      draftEditedRef.current = true
+    }
     setDraggingJobRoleIndex(null)
+    setJobRoleDropTargetIndex(null)
+    window.requestAnimationFrame(() => {
+      const input = jobRoleInputRefs.current[focusIndex]
+      if (!input) {
+        return
+      }
+      input.focus()
+      input.select()
+    })
   }
 
-  const onRemoveJobRole = (value: string) => {
+  const onRemoveJobRole = (index: number) => {
     draftEditedRef.current = true
     setDraft((current) => {
-      const nextRoles = normalizeJobRoles(current.jobRoles.filter((item) => item.toLowerCase() !== value.toLowerCase()))
+      if (index < 0 || index >= current.jobRoles.length) {
+        return current
+      }
+      const nextRoles = normalizeJobRoles(current.jobRoles.filter((_, roleIndex) => roleIndex !== index))
       return {
         ...current,
         jobRoles: nextRoles,
@@ -1198,6 +1212,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       }
     })
     setDraggingJobRoleIndex(null)
+    setJobRoleDropTargetIndex(null)
   }
 
   const onSetPrimaryJobRole = (value: string) => {
@@ -2179,40 +2194,12 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     variant="house"
                     size="sm"
                     className={HOUSE_ACTION_BUTTON_CLASS}
-                    onClick={() => setShowJobRoleComposer((current) => !current)}
+                    onClick={onAddJobRole}
                   >
                     <Plus className="mr-1.5 h-4 w-4" />
-                    {showJobRoleComposer ? 'Hide add form' : 'Add new role'}
+                    Add new role
                   </Button>
                 </div>
-
-                {showJobRoleComposer ? (
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Input
-                        value={jobRoleInput}
-                        onChange={(event) => setJobRoleInput(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
-                            event.preventDefault()
-                            onAddJobRole(jobRoleInput)
-                          }
-                        }}
-                        autoComplete="organization-title"
-                      />
-                      <Button
-                        type="button"
-                        variant="house"
-                        size="sm"
-                        className={HOUSE_ACTION_BUTTON_CLASS}
-                        onClick={() => onAddJobRole(jobRoleInput)}
-                        disabled={!normalizeRole(jobRoleInput)}
-                      >
-                        Add new
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
 
                 {draft.jobRoles.length > 0 ? (
                   <div className="space-y-1.5">
@@ -2248,6 +2235,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                         </span>
                         <span className="text-xs font-medium text-[hsl(var(--tone-neutral-700))]">{index + 1}.</span>
                         <Input
+                          ref={(element) => {
+                            jobRoleInputRefs.current[index] = element
+                          }}
                           value={role}
                           onChange={(event) => onJobRoleEntryChange(index, event.target.value)}
                           onBlur={() => onJobRoleEntryBlur(index)}
@@ -2270,9 +2260,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                         )}
                         <button
                           type="button"
-                          onClick={() => onRemoveJobRole(role)}
+                          onClick={() => onRemoveJobRole(index)}
                           className="ml-auto text-[hsl(var(--tone-neutral-500))] transition-colors hover:text-[hsl(var(--tone-danger-700))]"
-                          aria-label={`Remove role ${role}`}
+                          aria-label={`Remove role ${index + 1}`}
                         >
                           Remove
                         </button>
