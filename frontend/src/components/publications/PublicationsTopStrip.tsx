@@ -1061,28 +1061,31 @@ type ImpactStackedSegment = {
 function ImpactStackedRow({
   rowLabel,
   segments,
+  expanded,
 }: {
   rowLabel: string
   segments: ImpactStackedSegment[]
+  expanded: boolean
 }) {
   const [hoveredSegment, setHoveredSegment] = useState<string | null>(null)
   const hasSegments = segments.some((segment) => segment.widthPct > 0)
   if (!hasSegments) {
     return (
       <div className="space-y-1">
-        <p className={dashboardTileStyles.tileMicroLabel}>{rowLabel}</p>
-        <div className="h-8 rounded-md border border-dashed border-border/70 bg-muted/25" />
+        <p className="text-[0.58rem] font-semibold leading-none text-[hsl(var(--tone-neutral-600))]">{rowLabel}</p>
+        <div className="h-6 rounded-md border border-dashed border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]" />
       </div>
     )
   }
   return (
     <div className="space-y-1">
-      <p className={dashboardTileStyles.tileMicroLabel}>{rowLabel}</p>
-      <div className="flex h-8 overflow-hidden rounded-md border border-border/70 bg-muted/25">
+      <p className="text-[0.58rem] font-semibold leading-none text-[hsl(var(--tone-neutral-600))]">{rowLabel}</p>
+      <div className="flex h-6 overflow-hidden rounded-[4px] border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]">
         {segments
           .filter((segment) => segment.widthPct > 0)
-          .map((segment) => {
+          .map((segment, index) => {
             const isActive = hoveredSegment === segment.key
+            const targetWidth = `${Math.max(0, Math.min(100, segment.widthPct))}%`
             return (
               <Tooltip key={segment.key}>
                 <TooltipTrigger asChild>
@@ -1096,9 +1099,12 @@ function ImpactStackedRow({
                     onBlur={() => setHoveredSegment((current) => (current === segment.key ? null : current))}
                     onClick={(event) => event.stopPropagation()}
                     onMouseDown={(event) => event.stopPropagation()}
-                    style={{ width: `${segment.widthPct}%` }}
+                    style={{
+                      width: expanded ? targetWidth : '0%',
+                      transitionDelay: `${Math.min(180, index * 26)}ms`,
+                    }}
                     className={cn(
-                      'relative h-full min-w-5',
+                      'relative h-full min-w-0 transition-[width] duration-420 ease-out',
                       dashboardTileStyles.barFocusRing,
                     )}
                     aria-label={`${segment.label} ${segment.valueText}`}
@@ -1108,7 +1114,7 @@ function ImpactStackedRow({
                     ) : null}
                     <span
                       className={cn(
-                        'block h-full w-full origin-bottom transition-[transform,filter,box-shadow] duration-220 ease-out group-hover/tile:scale-[1.03]',
+                        'block h-full w-full origin-bottom transition-[transform,filter,box-shadow] duration-220 ease-out',
                         segment.toneClass,
                         isActive && 'brightness-[1.08] saturate-[1.12] shadow-[inset_0_0_0_1px_hsl(var(--tone-neutral-300))]',
                       )}
@@ -1130,6 +1136,8 @@ function ImpactStackedRow({
 }
 
 function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload }) {
+  const [chartVisible, setChartVisible] = useState(true)
+  const [rowsExpanded, setRowsExpanded] = useState(false)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const top3 = values[0] || 0
@@ -1150,75 +1158,105 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
     .slice(0, 3)
     .map((item) => (item <= 1 ? item * 100 : item))
     .map((item) => `${Math.max(0, item).toFixed(1)}%`)
+  const animationKey = useMemo(
+    () => `${top3PctRounded}-${restPctRounded}-${uncitedPct}-${citedPct}`,
+    [citedPct, restPctRounded, top3PctRounded, uncitedPct],
+  )
+  useEffect(() => {
+    setChartVisible(false)
+    setRowsExpanded(false)
+    let rafOne = 0
+    let rafTwo = 0
+    rafOne = window.requestAnimationFrame(() => {
+      setChartVisible(true)
+      rafTwo = window.requestAnimationFrame(() => {
+        setRowsExpanded(true)
+      })
+    })
+    return () => {
+      window.cancelAnimationFrame(rafOne)
+      window.cancelAnimationFrame(rafTwo)
+    }
+  }, [animationKey])
 
   return (
     <TooltipProvider delayDuration={90}>
-      <div className="space-y-2">
-        <p className={dashboardTileStyles.tileMicroLabel}>Lifetime citation distribution</p>
-        <ImpactStackedRow
-          rowLabel="Top 3 papers vs rest"
-          segments={[
-            {
-              key: 'top3',
-              widthPct: top3PctRounded,
-              label: 'Top 3 papers',
-              valueText: `${top3PctRounded}%`,
-              toneClass: 'bg-[hsl(var(--tone-accent-700))]',
-              tooltip: (
-                <div className="space-y-0.5">
-                  <p>Top 3 papers: {top3PctRounded}% ({formatInt(top3)} citations)</p>
-                  <p>
-                    {topShares.length
-                      ? `Top paper shares: ${topShares.join(', ')}`
-                      : 'Top-paper share details not available'}
-                  </p>
-                </div>
-              ),
-            },
-            {
-              key: 'rest',
-              widthPct: restPctRounded,
-              label: 'Rest of portfolio',
-              valueText: `${restPctRounded}%`,
-              toneClass: 'bg-[hsl(var(--tone-accent-300))]',
-              tooltip: (
-                <div className="space-y-0.5">
-                  <p>Rest of portfolio: {restPctRounded}% ({formatInt(rest)} citations)</p>
-                  <p>Total lifetime citations: {formatInt(total)}</p>
-                </div>
-              ),
-            },
-          ]}
-        />
-        <ImpactStackedRow
-          rowLabel="Cited vs uncited papers"
-          segments={[
-            {
-              key: 'uncited',
-              widthPct: uncitedPct,
-              label: 'Uncited publications',
-              valueText: `${uncitedPct}%`,
-              toneClass: 'bg-[hsl(var(--tone-warning-400))]',
-              tooltip: (
-                <div className="space-y-0.5">
-                  <p>Uncited: {uncitedPct}% ({formatInt(uncitedCount)} works)</p>
-                </div>
-              ),
-            },
-            {
-              key: 'cited',
-              widthPct: citedPct,
-              label: 'Cited publications',
-              valueText: `${citedPct}%`,
-              toneClass: 'bg-[hsl(var(--tone-positive-500))]',
-              tooltip: (
-                <div className="space-y-0.5">
-                  <p>Cited: {citedPct}% of portfolio</p>
-                </div>
-              ),
-            },
-          ]}
-        />
+      <div className="flex h-full min-h-0 w-full flex-col">
+        <div
+          className={cn(
+            'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-2 pt-2.5 transition-[opacity,transform,filter] duration-320 ease-out',
+            chartVisible ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]',
+          )}
+        >
+          <div className="flex h-full flex-col justify-center gap-2">
+            <ImpactStackedRow
+              rowLabel="Top 3 vs rest"
+              expanded={rowsExpanded}
+              segments={[
+                {
+                  key: 'top3',
+                  widthPct: top3PctRounded,
+                  label: 'Top 3 papers',
+                  valueText: `${top3PctRounded}%`,
+                  toneClass: 'bg-[hsl(var(--tone-accent-700))]',
+                  tooltip: (
+                    <div className="space-y-0.5">
+                      <p>Top 3 papers: {top3PctRounded}% ({formatInt(top3)} citations)</p>
+                      <p>
+                        {topShares.length
+                          ? `Top paper shares: ${topShares.join(', ')}`
+                          : 'Top-paper share details not available'}
+                      </p>
+                    </div>
+                  ),
+                },
+                {
+                  key: 'rest',
+                  widthPct: restPctRounded,
+                  label: 'Rest of portfolio',
+                  valueText: `${restPctRounded}%`,
+                  toneClass: 'bg-[hsl(var(--tone-accent-300))]',
+                  tooltip: (
+                    <div className="space-y-0.5">
+                      <p>Rest of portfolio: {restPctRounded}% ({formatInt(rest)} citations)</p>
+                      <p>Total lifetime citations: {formatInt(total)}</p>
+                    </div>
+                  ),
+                },
+              ]}
+            />
+            <ImpactStackedRow
+              rowLabel="Cited vs uncited"
+              expanded={rowsExpanded}
+              segments={[
+                {
+                  key: 'uncited',
+                  widthPct: uncitedPct,
+                  label: 'Uncited publications',
+                  valueText: `${uncitedPct}%`,
+                  toneClass: 'bg-[hsl(var(--tone-warning-400))]',
+                  tooltip: (
+                    <div className="space-y-0.5">
+                      <p>Uncited: {uncitedPct}% ({formatInt(uncitedCount)} works)</p>
+                    </div>
+                  ),
+                },
+                {
+                  key: 'cited',
+                  widthPct: citedPct,
+                  label: 'Cited publications',
+                  valueText: `${citedPct}%`,
+                  toneClass: 'bg-[hsl(var(--tone-positive-500))]',
+                  tooltip: (
+                    <div className="space-y-0.5">
+                      <p>Cited: {citedPct}% of portfolio</p>
+                    </div>
+                  ),
+                },
+              ]}
+            />
+          </div>
+        </div>
       </div>
     </TooltipProvider>
   )
