@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Download, ExternalLink, Eye, EyeOff, FileText, Share2 } from 'lucide-react'
+import { Download, Eye, EyeOff, FileText, Share2 } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui/card'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { readAccountSettings } from '@/lib/account-preferences'
 import { fetchPublicationMetricDetail } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
@@ -70,6 +71,15 @@ type MomentumYearBreakdown = {
 type MomentumWindowMode = '12m' | '5y'
 type HIndexViewMode = 'trajectory' | 'needed'
 type FieldPercentileThreshold = 50 | 75 | 90 | 95 | 99
+type DrilldownTab = 'summary' | 'breakdown' | 'trajectory' | 'context' | 'methods'
+
+const DRILLDOWN_TABS: Array<{ value: DrilldownTab; label: string }> = [
+  { value: 'summary', label: 'Summary' },
+  { value: 'breakdown', label: 'Breakdown' },
+  { value: 'trajectory', label: 'Trajectory' },
+  { value: 'context', label: 'Context' },
+  { value: 'methods', label: 'Methods' },
+]
 
 type HIndexProgressMeta = {
   currentH: number
@@ -2361,67 +2371,6 @@ function MiniChart({ tile }: { tile: PublicationMetricTilePayload }) {
   )
 }
 
-function metricSummary(tile: PublicationMetricTilePayload, publication: Record<string, unknown>): string {
-  const key = tile.key
-  if (key === 'total_citations' || key === 'h_index_projection') {
-    return `Citations: ${Number(publication.citations_lifetime || 0)}`
-  }
-  if (key === 'this_year_vs_last') {
-    const year = Number(publication.year || 0)
-    const yearLabel = Number.isFinite(year) && year > 0 ? String(year) : 'n/a'
-    return `Publication year: ${yearLabel}`
-  }
-  if (key === 'momentum') {
-    return `Momentum contribution: ${Number(publication.momentum_contribution || 0).toFixed(2)}`
-  }
-  if (key === 'impact_concentration') {
-    return `Share of total: ${Number(publication.share_of_total_pct || 0).toFixed(2)}%`
-  }
-  if (key === 'influential_citations') {
-    return `Influential citations: ${Number(publication.influential_citations || 0)}`
-  }
-  if (key === 'field_percentile_share') {
-    const rank = Number(publication.field_percentile_rank || 0)
-    const fieldName = String(publication.field_name || 'Unknown field')
-    return `Percentile rank: ${rank.toFixed(1)}th (${fieldName})`
-  }
-  if (key === 'authorship_composition') {
-    const role = String(publication.user_author_role || 'unknown')
-    const positionRaw = Number(publication.user_author_position)
-    const authorCountRaw = Number(publication.author_count)
-    const positionText = Number.isFinite(positionRaw) && positionRaw > 0
-      ? `${Math.round(positionRaw)}`
-      : 'n/a'
-    const authorCountText = Number.isFinite(authorCountRaw) && authorCountRaw > 0
-      ? `${Math.round(authorCountRaw)}`
-      : 'n/a'
-    return `Role: ${role} | Position: ${positionText}/${authorCountText}`
-  }
-  if (key === 'collaboration_structure') {
-    const collaboratorsInWorkRaw = Number(publication.collaborators_in_work)
-    const repeatCollaboratorsInWorkRaw = Number(publication.repeat_collaborators_in_work)
-    const institutionsInWorkRaw = Number(publication.institutions_in_work)
-    const countriesInWorkRaw = Number(publication.countries_in_work)
-    const collaboratorsInWork = Number.isFinite(collaboratorsInWorkRaw)
-      ? Math.max(0, Math.round(collaboratorsInWorkRaw))
-      : 0
-    const repeatCollaboratorsInWork = Number.isFinite(repeatCollaboratorsInWorkRaw)
-      ? Math.max(0, Math.round(repeatCollaboratorsInWorkRaw))
-      : 0
-    const institutionsInWork = Number.isFinite(institutionsInWorkRaw)
-      ? Math.max(0, Math.round(institutionsInWorkRaw))
-      : 0
-    const countriesInWork = Number.isFinite(countriesInWorkRaw)
-      ? Math.max(0, Math.round(countriesInWorkRaw))
-      : 0
-    return `Collaborators: ${collaboratorsInWork} | Repeat: ${repeatCollaboratorsInWork} | Institutions: ${institutionsInWork} | Countries: ${countriesInWork}`
-  }
-  if (key === 'field_normalized_impact') {
-    return `Field-normalized impact: ${Number(publication.field_normalized_impact || 0).toFixed(3)}`
-  }
-  return ''
-}
-
 export function PublicationsTopStrip({
   metrics,
   loading = false,
@@ -2433,6 +2382,7 @@ export function PublicationsTopStrip({
   const [activeTileDetail, setActiveTileDetail] = useState<PublicationMetricTilePayload | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
+  const [activeDrilldownTab, setActiveDrilldownTab] = useState<DrilldownTab>('summary')
   const [momentumWindowMode, setMomentumWindowMode] = useState<MomentumWindowMode>('12m')
   const [hIndexViewMode, setHIndexViewMode] = useState<HIndexViewMode>('trajectory')
   const [fieldPercentileThreshold, setFieldPercentileThreshold] = useState<FieldPercentileThreshold>(75)
@@ -2470,6 +2420,10 @@ export function PublicationsTopStrip({
     [totalCitationsTile],
   )
   const activeTile = activeTileDetail || selectedTile
+
+  useEffect(() => {
+    setActiveDrilldownTab('summary')
+  }, [activeTileKey])
 
   const onSelectTile = async (tile: PublicationMetricTilePayload) => {
     setActiveTileKey(tile.key)
@@ -2888,60 +2842,27 @@ export function PublicationsTopStrip({
               <div>
                 <h3 className="text-lg font-semibold">{activeTile.drilldown.title}</h3>
                 <p className="text-sm text-muted-foreground">{activeTile.drilldown.definition}</p>
+                {detailLoading ? <p className="mt-2 text-xs text-muted-foreground">Loading metric detail...</p> : null}
+                {detailError ? <p className="mt-2 text-xs text-amber-700">{detailError}</p> : null}
               </div>
-
-              <div className="rounded border border-border bg-muted/20 p-3 text-sm">
-                <p className="text-xs text-muted-foreground">Formula</p>
-                <p className="mt-1 font-mono text-xs">{activeTile.drilldown.formula}</p>
-                <p className="mt-2 text-xs text-muted-foreground">{activeTile.drilldown.confidence_note}</p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Confidence score: {(Number(activeTile.confidence_score || 0)).toFixed(2)}
-                </p>
-                {activeTile.drilldown.metadata?.intermediate_values ? (
-                  <div className="mt-2 rounded border border-border/60 bg-background/70 p-2">
-                    <p className="text-micro font-medium text-foreground">Intermediate values</p>
-                    <pre className="mt-1 overflow-x-auto text-micro text-muted-foreground">
-                      {JSON.stringify(activeTile.drilldown.metadata.intermediate_values, null, 2)}
-                    </pre>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Underlying publications</p>
-                {detailLoading ? <p className="text-xs text-muted-foreground">Loading metric detail...</p> : null}
-                {detailError ? <p className="text-xs text-amber-700">{detailError}</p> : null}
-                {(activeTile.drilldown.publications || []).length === 0 ? (
-                  <div className="rounded border border-dashed border-border p-3 text-sm text-muted-foreground">
-                    No publications contributed for this metric yet.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {(activeTile.drilldown.publications || []).slice(0, 100).map((publication, index) => (
-                      <div key={`${String(publication.work_id || index)}`} className="rounded border border-border px-3 py-2">
-                        <p className="text-sm font-medium">{String(publication.title || 'Untitled')}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {metricSummary(activeTile, publication)}
-                        </p>
-                        <p className="mt-1 text-micro text-muted-foreground">
-                          Confidence {Number(publication.confidence_score || 0).toFixed(2)} ({String(publication.confidence_label || 'n/a')}) | {String(publication.match_source || 'unknown')}:{String(publication.match_method || 'unknown')}
-                        </p>
-                        {String(publication.doi_url || '') ? (
-                          <a
-                            href={String(publication.doi_url)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-1 inline-flex items-center gap-1 text-micro text-blue-700 hover:underline"
-                          >
-                            Open DOI
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <Tabs
+                value={activeDrilldownTab}
+                onValueChange={(value) => setActiveDrilldownTab(value as DrilldownTab)}
+                className="w-full"
+              >
+                <TabsList className="grid h-auto w-full grid-cols-5 gap-1 bg-[hsl(var(--tone-neutral-100))] p-1">
+                  {DRILLDOWN_TABS.map((tab) => (
+                    <TabsTrigger key={tab.value} value={tab.value} className="text-[0.63rem]">
+                      {tab.label}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+                <TabsContent value="summary" className="mt-3" />
+                <TabsContent value="breakdown" className="mt-3" />
+                <TabsContent value="trajectory" className="mt-3" />
+                <TabsContent value="context" className="mt-3" />
+                <TabsContent value="methods" className="mt-3" />
+              </Tabs>
             </div>
           ) : (
             <div className="text-sm text-muted-foreground">Select a metric tile to inspect its drilldown.</div>

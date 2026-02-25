@@ -607,6 +607,21 @@ export const TilesOverview: Story = {
   },
 }
 
+export const DrilldownTabsScaffold: Story = {
+  args: {
+    metrics: buildMetricsFixture(overviewTiles),
+    loading: false,
+    token: null,
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'Open any tile to preview the right-panel drilldown tabs scaffold.',
+      },
+    },
+  },
+}
+
 export const TilesOverviewDark: Story = {
   args: {
     metrics: buildMetricsFixture(overviewTiles),
