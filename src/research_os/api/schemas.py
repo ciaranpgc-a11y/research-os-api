@@ -976,30 +976,6 @@ class PersonaSyncJobResponse(BaseModel):
     updated_at: datetime
 
 
-class PublicationsInsightsBootstrapRequest(BaseModel):
-    orcid_id: str
-    full_name: str
-    providers: list[Literal["openalex", "semantic_scholar", "manual"]] = Field(
-        default_factory=lambda: ["openalex", "semantic_scholar"]
-    )
-    refresh_analytics: bool = True
-    refresh_metrics: bool = True
-    max_works: int = Field(default=500, ge=1, le=2000)
-
-
-class PublicationsInsightsBootstrapResponse(BaseModel):
-    orcid_id: str
-    full_name: str
-    openalex_author_id: str | None = None
-    openalex_author_name: str | None = None
-    imported_count: int
-    work_ids: list[str] = Field(default_factory=list)
-    metrics_sync_enqueued: bool = False
-    sync_job: PersonaSyncJobResponse | None = None
-    core_collaborators: list[dict[str, Any]] = Field(default_factory=list)
-    message: str = ""
-
-
 class PersonaWorkResponse(BaseModel):
     id: str
     title: str

@@ -612,19 +612,6 @@ export type OrcidImportPayload = {
   core_collaborators: Array<Record<string, unknown>>
 }
 
-export type PublicationsInsightsBootstrapPayload = {
-  orcid_id: string
-  full_name: string
-  openalex_author_id: string | null
-  openalex_author_name: string | null
-  imported_count: number
-  work_ids: string[]
-  metrics_sync_enqueued: boolean
-  sync_job: PersonaSyncJobPayload | null
-  core_collaborators: Array<Record<string, unknown>>
-  message: string
-}
-
 export type PersonaSyncJobPayload = {
   id: string
   user_id: string

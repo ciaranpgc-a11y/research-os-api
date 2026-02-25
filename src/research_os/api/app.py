@@ -135,8 +135,6 @@ from research_os.api.schemas import (
     PersonaSyncJobMetricsRequest,
     PersonaSyncJobOrcidImportRequest,
     PersonaSyncJobResponse,
-    PublicationsInsightsBootstrapRequest,
-    PublicationsInsightsBootstrapResponse,
     PersonaOpenAccessDiscoverRequest,
     PersonaOpenAccessDiscoverResponse,
     PublicationAiInsightsResponse,
@@ -329,11 +327,6 @@ from research_os.services.publication_metrics_service import (
     get_publication_metric_detail,
     get_publication_top_metrics,
     trigger_publication_top_metrics_refresh,
-)
-from research_os.services.publication_insights_bootstrap_service import (
-    PublicationInsightsBootstrapNotFoundError,
-    PublicationInsightsBootstrapValidationError,
-    bootstrap_publication_insights_from_orcid,
 )
 from research_os.services.publication_console_service import (
     PublicationConsoleNotFoundError,
@@ -1599,46 +1592,6 @@ def v1_persona_open_access_discover(
     except (PersonaNotFoundError, OpenAccessNotFoundError) as exc:
         return _build_not_found_response(str(exc))
     except (OpenAccessValidationError, PersonaValidationError, ValueError) as exc:
-        return _build_bad_request_response(str(exc))
-
-
-@app.post(
-    "/v1/publications/insights/bootstrap",
-    response_model=PublicationsInsightsBootstrapResponse,
-    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
-    tags=["v1"],
-)
-def v1_publications_insights_bootstrap(
-    request: Request,
-    payload: PublicationsInsightsBootstrapRequest,
-) -> PublicationsInsightsBootstrapResponse | JSONResponse:
-    token = _extract_session_token(request)
-    if not token:
-        return _build_unauthorized_response("Session token is required.")
-    try:
-        user = get_user_by_session_token(token)
-        data = bootstrap_publication_insights_from_orcid(
-            user_id=str(user["id"]),
-            orcid_id=payload.orcid_id,
-            full_name=payload.full_name,
-            providers=payload.providers,
-            refresh_analytics=payload.refresh_analytics,
-            refresh_metrics=payload.refresh_metrics,
-            max_works=payload.max_works,
-        )
-        return PublicationsInsightsBootstrapResponse(**data)
-    except AuthNotFoundError as exc:
-        return _build_unauthorized_response(str(exc))
-    except (
-        PersonaNotFoundError,
-        PublicationInsightsBootstrapNotFoundError,
-    ) as exc:
-        return _build_not_found_response(str(exc))
-    except (
-        PublicationInsightsBootstrapValidationError,
-        PersonaValidationError,
-        ValueError,
-    ) as exc:
         return _build_bad_request_response(str(exc))
 
 

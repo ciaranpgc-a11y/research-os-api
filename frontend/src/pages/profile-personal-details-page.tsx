@@ -14,6 +14,7 @@ type PersonalDetailsDraft = {
   firstName: string
   lastName: string
   organisation: string
+  affiliationAddress: string
   department: string
   country: string
   website: string
@@ -37,6 +38,10 @@ type AffiliationSuggestionItem = {
   name: string
   label: string
   countryCode: string | null
+  countryName: string | null
+  city: string | null
+  region: string | null
+  address: string | null
   source: 'openalex'
 }
 
@@ -54,6 +59,11 @@ type ProfilePersonalDetailsPageProps = {
   fixture?: ProfilePersonalDetailsPageFixture
 }
 type PersonalDetailsStringField = Exclude<keyof PersonalDetailsDraft, 'publicationAffiliations'>
+
+type AffiliationMetadataItem = {
+  address: string
+  country: string
+}
 
 const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const INTEGRATIONS_ORCID_STATUS_CACHE_KEY = 'aawe_integrations_orcid_status_cache'
@@ -103,6 +113,25 @@ function trimValue(value: string | null | undefined): string {
 
 function sanitizeAffiliation(value: string | null | undefined): string {
   return trimValue(value).replace(/\s+/g, ' ')
+}
+
+function toNullableAffiliationPart(value: unknown): string | null {
+  const clean = sanitizeAffiliation(String(value || ''))
+  return clean || null
+}
+
+function buildAffiliationAddress(input: {
+  city?: string | null
+  region?: string | null
+  countryName?: string | null
+}): string {
+  return [
+    sanitizeAffiliation(input.city),
+    sanitizeAffiliation(input.region),
+    sanitizeAffiliation(input.countryName),
+  ]
+    .filter(Boolean)
+    .join(', ')
 }
 
 function normalizeAffiliations(values: unknown): string[] {
@@ -167,6 +196,7 @@ function sanitizeDraft(value: Partial<PersonalDetailsDraft> | null | undefined):
     firstName: trimValue(value?.firstName),
     lastName: trimValue(value?.lastName),
     organisation: trimValue(value?.organisation),
+    affiliationAddress: trimValue(value?.affiliationAddress),
     department: trimValue(value?.department),
     country: trimValue(value?.country),
     website: trimValue(value?.website),
@@ -269,6 +299,7 @@ function draftFromSources(
     firstName: seededFirstName,
     lastName: seededLastName,
     organisation: stored?.organisation || '',
+    affiliationAddress: stored?.affiliationAddress || '',
     department: stored?.department || '',
     country: stored?.country || '',
     website: stored?.website || '',
@@ -400,16 +431,28 @@ async function fetchAffiliationSuggestionsOpenAlex(input: {
     if (!name) {
       continue
     }
+    const geo = (raw.geo && typeof raw.geo === 'object')
+      ? (raw.geo as Record<string, unknown>)
+      : null
     const countryCode = sanitizeAffiliation(String(raw.country_code || '')).toUpperCase() || null
+    const countryName = toNullableAffiliationPart(geo?.country || raw.country)
+    const city = toNullableAffiliationPart(geo?.city)
+    const region = toNullableAffiliationPart(geo?.region)
+    const address = buildAffiliationAddress({ city, region, countryName }) || null
     const dedupeKey = `${name.toLowerCase()}|${countryCode || ''}`
     if (seen.has(dedupeKey)) {
       continue
     }
     seen.add(dedupeKey)
+    const labelLocation = [city, countryName].filter(Boolean).join(', ')
     output.push({
       name,
-      label: countryCode ? `${name} (${countryCode})` : name,
+      label: labelLocation ? `${name} (${labelLocation})` : (countryCode ? `${name} (${countryCode})` : name),
       countryCode,
+      countryName,
+      city,
+      region,
+      address,
       source: 'openalex',
     })
     if (output.length >= cleanLimit) {
@@ -441,6 +484,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [accountEmail, setAccountEmail] = useState(initialAccountEmail)
   const [affiliationInput, setAffiliationInput] = useState('')
   const [affiliationSuggestions, setAffiliationSuggestions] = useState<AffiliationSuggestionItem[]>([])
+  const [affiliationMetadataByName, setAffiliationMetadataByName] = useState<Record<string, AffiliationMetadataItem>>({})
   const [affiliationSuggestionsLoading, setAffiliationSuggestionsLoading] = useState(false)
   const [affiliationSuggestionsError, setAffiliationSuggestionsError] = useState('')
   const [loading, setLoading] = useState(Boolean(fixture?.loading ?? !fixture))
@@ -470,6 +514,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setAccountEmail(trimValue(fixtureUser?.email))
     setAffiliationInput('')
     setAffiliationSuggestions([])
+    setAffiliationMetadataByName({})
     setAffiliationSuggestionsLoading(false)
     setAffiliationSuggestionsError('')
     setLoading(Boolean(fixture?.loading))
@@ -635,19 +680,63 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setAccountEmail(value)
   }
 
-  const onAddAffiliation = (value: string) => {
+  const onAddAffiliation = (value: string, metadata?: AffiliationMetadataItem) => {
     const clean = sanitizeAffiliation(value)
     if (!clean) {
       return
     }
+    const metadataPayload = {
+      address: sanitizeAffiliation(metadata?.address),
+      country: sanitizeAffiliation(metadata?.country),
+    }
+    const metadataAvailable = Boolean(metadataPayload.address || metadataPayload.country)
+    const cacheKey = clean.toLowerCase()
     draftEditedRef.current = true
     setDraft((current) => ({
       ...current,
       publicationAffiliations: normalizeAffiliations([...current.publicationAffiliations, clean]),
+      organisation: sanitizeAffiliation(current.organisation) || clean,
+      affiliationAddress:
+        sanitizeAffiliation(current.affiliationAddress) ||
+        (metadataAvailable ? metadataPayload.address : ''),
+      country:
+        sanitizeAffiliation(current.country) ||
+        (metadataAvailable ? metadataPayload.country : ''),
     }))
+    if (metadataAvailable) {
+      setAffiliationMetadataByName((current) => ({
+        ...current,
+        [cacheKey]: {
+          address: metadataPayload.address,
+          country: metadataPayload.country,
+        },
+      }))
+    }
     setAffiliationInput('')
     setAffiliationSuggestions([])
     setAffiliationSuggestionsError('')
+  }
+
+  const onSelectAffiliationSuggestion = (suggestion: AffiliationSuggestionItem) => {
+    onAddAffiliation(suggestion.name, {
+      address: suggestion.address || '',
+      country: suggestion.countryName || '',
+    })
+  }
+
+  const onSetPrimaryAffiliation = (value: string) => {
+    const clean = sanitizeAffiliation(value)
+    if (!clean) {
+      return
+    }
+    const metadata = affiliationMetadataByName[clean.toLowerCase()]
+    draftEditedRef.current = true
+    setDraft((current) => ({
+      ...current,
+      organisation: clean,
+      affiliationAddress: sanitizeAffiliation(metadata?.address) || current.affiliationAddress,
+      country: sanitizeAffiliation(metadata?.country) || current.country,
+    }))
   }
 
   const onRemoveAffiliation = (value: string) => {
@@ -657,6 +746,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       publicationAffiliations: current.publicationAffiliations.filter(
         (item) => item.toLowerCase() !== value.toLowerCase(),
       ),
+      organisation:
+        sanitizeAffiliation(current.organisation).toLowerCase() === value.toLowerCase()
+          ? ''
+          : current.organisation,
     }))
   }
 
@@ -669,6 +762,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setAccountEmail(trimValue(user.email))
     setAffiliationInput('')
     setAffiliationSuggestions([])
+    setAffiliationMetadataByName({})
     setAffiliationSuggestionsLoading(false)
     setAffiliationSuggestionsError('')
     setLastSavedAt(stored?.updatedAt ?? null)

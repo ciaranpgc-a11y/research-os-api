@@ -8,7 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
-  bootstrapPublicationsInsightsFromOrcid,
   deletePublicationFile,
   downloadPublicationFile,
   fetchPublicationAiInsights,
@@ -599,9 +598,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null)
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null)
   const [filesDragOver, setFilesDragOver] = useState(false)
-  const [bootstrapOrcidId, setBootstrapOrcidId] = useState(initialCachedUser?.orcid_id || '')
-  const [bootstrapFullName, setBootstrapFullName] = useState(initialCachedUser?.name || '')
-  const [bootstrappingInsights, setBootstrappingInsights] = useState(false)
   const filePickerRef = useRef<HTMLInputElement | null>(null)
 
   const loadData = useCallback(async (
@@ -989,14 +985,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
   }, [topMetricsResponse?.status, token])
 
-  useEffect(() => {
-    if (!user) {
-      return
-    }
-    setBootstrapOrcidId((current) => current || (user.orcid_id || ''))
-    setBootstrapFullName((current) => current || (user.name || ''))
-  }, [user?.id, user?.name, user?.orcid_id])
-
   const metricsByWorkId = useMemo(() => {
     const map = new Map<string, { citations: number; provider: string }>()
     for (const row of personaState?.metrics.works ?? []) {
@@ -1283,11 +1271,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }))
   }, [authorshipRoleMix])
 
-  const hasActiveSyncJob = Boolean(
-    activeSyncJob && (activeSyncJob.status === 'queued' || activeSyncJob.status === 'running'),
-  )
-  const canBootstrapInsights = Boolean(token) && !isFixtureMode && !hasActiveSyncJob && !bootstrappingInsights
-
   const onSortColumn = (column: PublicationSortField) => {
     if (sortField === column) {
       setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'))
@@ -1295,41 +1278,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     setSortField(column)
     setSortDirection('desc')
-  }
-
-  const onBootstrapPublicationInsights = async () => {
-    if (!token || isFixtureMode) {
-      return
-    }
-    setError('')
-    setStatus('')
-    setBootstrappingInsights(true)
-    try {
-      const payload = await bootstrapPublicationsInsightsFromOrcid(token, {
-        orcidId: bootstrapOrcidId,
-        fullName: bootstrapFullName,
-        providers: ['openalex', 'semantic_scholar'],
-        refreshAnalytics: true,
-        refreshMetrics: true,
-        maxWorks: 500,
-      })
-      if (payload.sync_job) {
-        setActiveSyncJob(payload.sync_job)
-        if (payload.sync_job.user_id) {
-          savePublicationsActiveSyncJobId(payload.sync_job.user_id, payload.sync_job.id)
-        }
-      }
-      setStatus(payload.message || `Imported ${payload.imported_count} works from ORCID/OpenAlex.`)
-      await loadData(token, false, true)
-    } catch (bootstrapError) {
-      setError(
-        bootstrapError instanceof Error
-          ? bootstrapError.message
-          : 'Could not populate publication insights from ORCID.',
-      )
-    } finally {
-      setBootstrappingInsights(false)
-    }
   }
 
   const activePaneLoading = selectedWorkId
@@ -1487,42 +1435,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Publications</h1>
         </div>
-        {!isFixtureMode ? (
-          <div className="flex flex-wrap items-end gap-2 rounded-md border border-border/70 bg-muted/20 p-2">
-            <div className="space-y-1">
-              <p className="text-micro uppercase text-muted-foreground">ORCID iD</p>
-              <Input
-                value={bootstrapOrcidId}
-                onChange={(event) => setBootstrapOrcidId(event.target.value)}
-                placeholder="0000-0000-0000-0000"
-                className="h-8 w-44"
-              />
-            </div>
-            <div className="space-y-1">
-              <p className="text-micro uppercase text-muted-foreground">Name</p>
-              <Input
-                value={bootstrapFullName}
-                onChange={(event) => setBootstrapFullName(event.target.value)}
-                placeholder="Full name"
-                className="h-8 w-48"
-              />
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => {
-                void onBootstrapPublicationInsights()
-              }}
-              disabled={
-                !canBootstrapInsights
-                || !bootstrapOrcidId.trim()
-                || !bootstrapFullName.trim()
-              }
-            >
-              {bootstrappingInsights ? 'Populating...' : 'Populate insights'}
-            </Button>
-          </div>
-        ) : null}
       </header>
 
       <PublicationsTopStrip metrics={topMetricsResponse} loading={loading || !topMetricsResponse} token={token || null} />
@@ -1951,7 +1863,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
       {status ? <p className="text-sm text-emerald-700">{status}</p> : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      {(loading || richImporting || syncing || fullSyncing || bootstrappingInsights) ? (
+      {(loading || richImporting || syncing || fullSyncing) ? (
         <p className="text-xs text-muted-foreground">Working...</p>
       ) : null}
     </section>
