@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Download, Eye, EyeOff, FileText, Share2 } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui/card'
@@ -123,6 +123,24 @@ const HOUSE_CHART_GRID_DASHED_CLASS = publicationsHouseCharts.gridDashed
 const HOUSE_CHART_AXIS_TEXT_CLASS = publicationsHouseCharts.axisText
 
 const MAX_PUBLICATION_CHART_BARS = 12
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  )
+}
+
+function directionalExitClass(direction: 1 | -1): string {
+  return direction > 0
+    ? 'opacity-0 translate-x-2 scale-[0.985] blur-[0.4px]'
+    : 'opacity-0 -translate-x-2 scale-[0.985] blur-[0.4px]'
+}
+
+function directionalLabelExitClass(direction: 1 | -1): string {
+  return direction > 0 ? 'opacity-0 translate-x-2' : 'opacity-0 -translate-x-2'
+}
 
 type HIndexProgressMeta = {
   currentH: number
@@ -1348,22 +1366,14 @@ function PublicationsPerYearChart({
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
           showAxes ? 'pb-12' : isCompactTileMode ? 'pb-7' : 'pb-8',
-          chartVisible
-            ? 'opacity-100 translate-x-0 scale-100 blur-0'
-            : transitionDirection > 0
-              ? 'opacity-0 translate-x-2 scale-[0.985] blur-[0.4px]'
-              : 'opacity-0 -translate-x-2 scale-[0.985] blur-[0.4px]',
+          chartVisible ? 'opacity-100 translate-x-0 scale-100 blur-0' : directionalExitClass(transitionDirection),
         )}
       >
         {showAxes && enableWindowToggle ? (
           <div
             className={cn(
               'pointer-events-none absolute right-2 top-1.5 z-[2] flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-1.5 py-0.5 text-[0.58rem] font-semibold text-[hsl(var(--tone-neutral-700))] transition-[opacity,transform] duration-320 ease-out',
-              chartVisible
-                ? 'opacity-100 translate-x-0'
-                : transitionDirection > 0
-                  ? 'opacity-0 translate-x-2'
-                  : 'opacity-0 -translate-x-2',
+              chartVisible ? 'opacity-100 translate-x-0' : directionalLabelExitClass(transitionDirection),
             )}
           >
             <span className="w-4 border-t border-dashed border-[hsl(var(--tone-neutral-500))]" aria-hidden="true" />
@@ -1455,11 +1465,7 @@ function PublicationsPerYearChart({
         <div
           className={cn(
             'pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1 transition-[opacity,transform] duration-320 ease-out',
-            chartVisible
-              ? 'opacity-100 translate-x-0'
-              : transitionDirection > 0
-                ? 'opacity-0 translate-x-2'
-                : 'opacity-0 -translate-x-2',
+            chartVisible ? 'opacity-100 translate-x-0' : directionalLabelExitClass(transitionDirection),
           )}
           style={xAxisTicksStyle}
         >
@@ -1677,13 +1683,15 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
 function MomentumTilePanel({
   tile,
   mode,
+  direction,
   yearBreakdown,
 }: {
   tile: PublicationMetricTilePayload
   mode: MomentumWindowMode
+  direction: 1 | -1
   yearBreakdown: MomentumYearBreakdown | null
 }) {
-  const [chartVisible, setChartVisible] = useState(false)
+  const [chartVisible, setChartVisible] = useState(true)
   const [barsExpanded, setBarsExpanded] = useState(false)
   const [labelsVisible, setLabelsVisible] = useState(true)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
@@ -1764,63 +1772,53 @@ function MomentumTilePanel({
     recent: recentTarget,
     max: Math.max(1, scaledMaxTarget),
   }))
-  const introPlayedRef = useRef(false)
-  const labelsTransitionReadyRef = useRef(false)
+  const animationKey = useMemo(
+    () => `${mode}|${comparisonBars.map((bar) => `${bar.key}-${bar.value.toFixed(3)}`).join('|')}`,
+    [comparisonBars, mode],
+  )
   const animatedStateRef = useRef(animatedState)
   useEffect(() => {
     animatedStateRef.current = animatedState
   }, [animatedState])
   useEffect(() => {
-    if (!comparisonBars.length || introPlayedRef.current) {
+    if (!comparisonBars.length) {
+      setChartVisible(true)
+      setBarsExpanded(false)
+      setLabelsVisible(true)
+      setHoveredIndex(null)
       return
     }
-    const prefersReducedMotion =
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (prefersReducedMotion) {
+    if (prefersReducedMotion()) {
       setChartVisible(true)
       setBarsExpanded(true)
-      introPlayedRef.current = true
+      setLabelsVisible(true)
+      setHoveredIndex(null)
       return
     }
     setChartVisible(false)
     setBarsExpanded(false)
+    setLabelsVisible(false)
+    setHoveredIndex(null)
     let rafOne = 0
     let rafTwo = 0
+    let timeoutId: number | undefined
     rafOne = window.requestAnimationFrame(() => {
       setChartVisible(true)
       rafTwo = window.requestAnimationFrame(() => {
         setBarsExpanded(true)
-        introPlayedRef.current = true
+        timeoutId = window.setTimeout(() => {
+          setLabelsVisible(true)
+        }, 120)
       })
     })
     return () => {
       window.cancelAnimationFrame(rafOne)
       window.cancelAnimationFrame(rafTwo)
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId)
+      }
     }
-  }, [comparisonBars.length])
-  useLayoutEffect(() => {
-    if (!labelsTransitionReadyRef.current) {
-      labelsTransitionReadyRef.current = true
-      return
-    }
-    const prefersReducedMotion =
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (prefersReducedMotion) {
-      setLabelsVisible(true)
-      return
-    }
-    setLabelsVisible(false)
-    const timer = window.setTimeout(() => {
-      setLabelsVisible(true)
-    }, 110)
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [mode])
+  }, [animationKey, comparisonBars.length, direction])
   useEffect(() => {
     const target = {
       baseline: baselineTarget,
@@ -1835,11 +1833,7 @@ function MomentumTilePanel({
     ) {
       return
     }
-    const prefersReducedMotion =
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (prefersReducedMotion) {
+    if (prefersReducedMotion()) {
       animatedStateRef.current = target
       setAnimatedState(target)
       return
@@ -1881,7 +1875,7 @@ function MomentumTilePanel({
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
           'pb-7',
-          chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
+          chartVisible ? HOUSE_CHART_ENTERED_CLASS : directionalExitClass(direction),
         )}
       >
         <div className="absolute inset-x-2 bottom-7 top-4">
@@ -1925,7 +1919,7 @@ function MomentumTilePanel({
                     )}
                     style={{
                       height: `${heightPct}%`,
-                      transform: `translateY(${yOffset}px) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                      transform: `translateX(${chartVisible ? 0 : direction * 8}px) translateY(${yOffset}px) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       opacity: 1,
                       transformOrigin: 'bottom',
                       transitionDelay: barsExpanded ? '0ms' : `${Math.min(220, index * 18)}ms`,
@@ -1943,7 +1937,8 @@ function MomentumTilePanel({
               className={cn(
                 'leading-none text-center',
                 HOUSE_LABEL_TRANSITION_CLASS,
-                labelsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-0.5',
+                labelsVisible ? 'opacity-100 translate-x-0 translate-y-0' : directionalLabelExitClass(direction),
+                !labelsVisible && 'translate-y-0.5',
               )}
             >
               <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'whitespace-nowrap text-center')}>
@@ -1982,9 +1977,11 @@ function parseNumericKeyedMap(value: unknown): Record<number, number> {
 function FieldPercentilePanel({
   tile,
   threshold,
+  direction,
 }: {
   tile: PublicationMetricTilePayload
   threshold: FieldPercentileThreshold
+  direction: 1 | -1
 }) {
   const [chartVisible, setChartVisible] = useState(true)
   const [barsExpanded, setBarsExpanded] = useState(false)
@@ -2014,9 +2011,16 @@ function FieldPercentilePanel({
     [evaluatedPapers, shareAbove, threshold],
   )
   useEffect(() => {
+    if (prefersReducedMotion()) {
+      setChartVisible(true)
+      setBarsExpanded(true)
+      setLabelsVisible(true)
+      return
+    }
     setChartVisible(false)
     setBarsExpanded(false)
     setLabelsVisible(false)
+    setHovered(false)
     let rafOne = 0
     let rafTwo = 0
     let timeoutId: number | undefined
@@ -2036,7 +2040,7 @@ function FieldPercentilePanel({
         window.clearTimeout(timeoutId)
       }
     }
-  }, [animationKey])
+  }, [animationKey, direction])
 
   if (evaluatedPapers <= 0) {
     return <div className={dashboardTileStyles.emptyChart}>No field percentile data</div>
@@ -2048,7 +2052,7 @@ function FieldPercentilePanel({
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
           'pb-7',
-          chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
+          chartVisible ? HOUSE_CHART_ENTERED_CLASS : directionalExitClass(direction),
         )}
       >
         <div className="absolute inset-x-2 bottom-7 top-4">
@@ -2084,7 +2088,7 @@ function FieldPercentilePanel({
                 )}
                 style={{
                   height: `${heightPct}%`,
-                  transform: `translateY(${hovered ? '-1px' : '0px'}) scaleX(${hovered ? 1.03 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                  transform: `translateX(${chartVisible ? 0 : direction * 8}px) translateY(${hovered ? '-1px' : '0px'}) scaleX(${hovered ? 1.03 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                   transformOrigin: 'bottom',
                 }}
               />
@@ -2096,7 +2100,8 @@ function FieldPercentilePanel({
             className={cn(
               'leading-none text-center',
               HOUSE_LABEL_TRANSITION_CLASS,
-              labelsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-0.5',
+              labelsVisible ? 'opacity-100 translate-x-0 translate-y-0' : directionalLabelExitClass(direction),
+              !labelsVisible && 'translate-y-0.5',
             )}
           >
             <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'whitespace-nowrap text-center')}>
@@ -3287,14 +3292,50 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
 function HIndexTrajectoryPanel({
   tile,
   mode,
+  direction,
 }: {
   tile: PublicationMetricTilePayload
   mode: HIndexViewMode
+  direction: 1 | -1
 }) {
-  if (mode === 'needed') {
-    return <HIndexNeedsChart tile={tile} />
-  }
-  return <HIndexYearChart tile={tile} showCaption={false} />
+  const [renderMode, setRenderMode] = useState<HIndexViewMode>(mode)
+  const [panelVisible, setPanelVisible] = useState(true)
+
+  useEffect(() => {
+    if (mode === renderMode) {
+      return
+    }
+    if (prefersReducedMotion()) {
+      setRenderMode(mode)
+      setPanelVisible(true)
+      return
+    }
+    setPanelVisible(false)
+    let raf = 0
+    const timeoutId = window.setTimeout(() => {
+      setRenderMode(mode)
+      raf = window.requestAnimationFrame(() => {
+        setPanelVisible(true)
+      })
+    }, 140)
+    return () => {
+      window.clearTimeout(timeoutId)
+      window.cancelAnimationFrame(raf)
+    }
+  }, [mode, renderMode])
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div
+        className={cn(
+          'h-full w-full transition-[opacity,transform,filter] duration-320 ease-out',
+          panelVisible ? 'opacity-100 translate-x-0 scale-100 blur-0' : directionalExitClass(direction),
+        )}
+      >
+        {renderMode === 'needed' ? <HIndexNeedsChart tile={tile} /> : <HIndexYearChart tile={tile} showCaption={false} />}
+      </div>
+    </div>
+  )
 }
 
 function HIndexProgressInline({ tile }: { tile: PublicationMetricTilePayload }) {
@@ -3651,8 +3692,11 @@ export function PublicationsTopStrip({
   const [detailError, setDetailError] = useState('')
   const [activeDrilldownTab, setActiveDrilldownTab] = useState<DrilldownTab>('summary')
   const [momentumWindowMode, setMomentumWindowMode] = useState<MomentumWindowMode>('12m')
+  const [momentumTransitionDirection, setMomentumTransitionDirection] = useState<1 | -1>(1)
   const [hIndexViewMode, setHIndexViewMode] = useState<HIndexViewMode>('trajectory')
+  const [hIndexTransitionDirection, setHIndexTransitionDirection] = useState<1 | -1>(1)
   const [fieldPercentileThreshold, setFieldPercentileThreshold] = useState<FieldPercentileThreshold>(75)
+  const [fieldPercentileTransitionDirection, setFieldPercentileTransitionDirection] = useState<1 | -1>(1)
   const [insightsVisible, setInsightsVisible] = useState(
     () => readAccountSettings().publicationInsightsDefaultVisibility !== 'hidden',
   )
@@ -3850,6 +3894,9 @@ export function PublicationsTopStrip({
                           )}
                           onClick={(event) => {
                             event.stopPropagation()
+                            const currentIndex = momentumWindowMode === '12m' ? 0 : 1
+                            const targetIndex = 0
+                            setMomentumTransitionDirection(targetIndex >= currentIndex ? 1 : -1)
                             setMomentumWindowMode('12m')
                           }}
                           onMouseDown={(event) => event.stopPropagation()}
@@ -3868,6 +3915,9 @@ export function PublicationsTopStrip({
                           )}
                           onClick={(event) => {
                             event.stopPropagation()
+                            const currentIndex = momentumWindowMode === '12m' ? 0 : 1
+                            const targetIndex = 1
+                            setMomentumTransitionDirection(targetIndex >= currentIndex ? 1 : -1)
                             setMomentumWindowMode('5y')
                           }}
                           onMouseDown={(event) => event.stopPropagation()}
@@ -3886,6 +3936,7 @@ export function PublicationsTopStrip({
                     <MomentumTilePanel
                       tile={tile}
                       mode={momentumWindowMode}
+                      direction={momentumTransitionDirection}
                       yearBreakdown={momentumYearBreakdown}
                     />
                   )
@@ -3897,10 +3948,21 @@ export function PublicationsTopStrip({
                   badgeNode = (
                     <HIndexViewToggle
                       mode={hIndexViewMode}
-                      onModeChange={setHIndexViewMode}
+                      onModeChange={(nextMode) => {
+                        const currentIndex = hIndexViewMode === 'trajectory' ? 0 : 1
+                        const targetIndex = nextMode === 'trajectory' ? 0 : 1
+                        setHIndexTransitionDirection(targetIndex >= currentIndex ? 1 : -1)
+                        setHIndexViewMode(nextMode)
+                      }}
                     />
                   )
-                  visual = <HIndexTrajectoryPanel tile={tile} mode={hIndexViewMode} />
+                  visual = (
+                    <HIndexTrajectoryPanel
+                      tile={tile}
+                      mode={hIndexViewMode}
+                      direction={hIndexTransitionDirection}
+                    />
+                  )
                 } else if (tile.key === 'impact_concentration') {
                   const impactChartData = (tile.chart_data || {}) as Record<string, unknown>
                   const impactValues = toNumberArray(impactChartData.values).map((item) => Math.max(0, item))
@@ -3988,6 +4050,9 @@ export function PublicationsTopStrip({
                             )}
                             onClick={(event) => {
                               event.stopPropagation()
+                              const targetIndex = Math.max(0, availableThresholds.indexOf(threshold))
+                              const currentIndex = Math.max(0, availableThresholds.indexOf(activeThreshold))
+                              setFieldPercentileTransitionDirection(targetIndex >= currentIndex ? 1 : -1)
                               setFieldPercentileThreshold(threshold)
                             }}
                             onMouseDown={(event) => event.stopPropagation()}
@@ -3999,7 +4064,13 @@ export function PublicationsTopStrip({
                       </div>
                     </div>
                   )
-                  visual = <FieldPercentilePanel tile={tile} threshold={activeThreshold} />
+                  visual = (
+                    <FieldPercentilePanel
+                      tile={tile}
+                      threshold={activeThreshold}
+                      direction={fieldPercentileTransitionDirection}
+                    />
+                  )
                 } else if (tile.key === 'authorship_composition') {
                   const authorshipChartData = (tile.chart_data || {}) as Record<string, unknown>
                   const leadershipRaw = Number(authorshipChartData.leadership_index_pct)
