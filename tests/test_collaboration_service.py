@@ -51,7 +51,10 @@ def _seed_user(*, email: str, orcid_id: str | None = None) -> str:
 
 def test_orcid_validation_accepts_valid_and_rejects_invalid() -> None:
     assert validate_orcid_id("0000-0002-1825-0097") == "0000-0002-1825-0097"
-    assert validate_orcid_id("https://orcid.org/0000-0002-1825-0097") == "0000-0002-1825-0097"
+    assert (
+        validate_orcid_id("https://orcid.org/0000-0002-1825-0097")
+        == "0000-0002-1825-0097"
+    )
     assert validate_orcid_id(None) is None
     try:
         validate_orcid_id("0000-0002-1825-0098")
@@ -97,7 +100,9 @@ def test_collaborator_crud_is_scoped_to_user(monkeypatch, tmp_path) -> None:
         raise AssertionError("Expected cross-user lookup to be blocked.")
 
 
-def test_import_mapping_logic_matches_orcid_openalex_and_name(monkeypatch, tmp_path) -> None:
+def test_import_mapping_logic_matches_orcid_openalex_and_name(
+    monkeypatch, tmp_path
+) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     user_id = _seed_user(
@@ -193,14 +198,16 @@ def test_import_mapping_logic_matches_orcid_openalex_and_name(monkeypatch, tmp_p
     assert payload["skipped_count"] == 0
     with session_scope() as session:
         total = session.scalar(
-            select(func.count()).select_from(Collaborator).where(
-                Collaborator.owner_user_id == user_id
-            )
+            select(func.count())
+            .select_from(Collaborator)
+            .where(Collaborator.owner_user_id == user_id)
         )
         assert int(total or 0) == 4
 
 
-def test_enrich_openalex_fills_missing_collaborator_fields(monkeypatch, tmp_path) -> None:
+def test_enrich_openalex_fills_missing_collaborator_fields(
+    monkeypatch, tmp_path
+) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     user_id = _seed_user(email="enrich-user@example.com")
@@ -225,22 +232,24 @@ def test_enrich_openalex_fills_missing_collaborator_fields(monkeypatch, tmp_path
         session.flush()
     monkeypatch.setattr(
         "research_os.services.collaboration_service._openalex_request_with_retry",
-        lambda **kwargs: {
-            "id": "https://openalex.org/A123",
-            "orcid": "https://orcid.org/0000-0002-1825-0097",
-            "last_known_institutions": [
-                {
-                    "display_name": "OpenAlex University",
-                    "country_code": "GB",
-                }
-            ],
-            "topics": [
-                {"display_name": "Cardiovascular Imaging", "score": 0.88},
-                {"display_name": "Population Health", "score": 0.71},
-            ],
-        }
-        if str(kwargs.get("url") or "").endswith("/authors/A123")
-        else {},
+        lambda **kwargs: (
+            {
+                "id": "https://openalex.org/A123",
+                "orcid": "https://orcid.org/0000-0002-1825-0097",
+                "last_known_institutions": [
+                    {
+                        "display_name": "OpenAlex University",
+                        "country_code": "GB",
+                    }
+                ],
+                "topics": [
+                    {"display_name": "Cardiovascular Imaging", "score": 0.88},
+                    {"display_name": "Population Health", "score": 0.71},
+                ],
+            }
+            if str(kwargs.get("url") or "").endswith("/authors/A123")
+            else {}
+        ),
     )
     monkeypatch.setattr(
         "research_os.services.collaboration_service.enqueue_collaboration_metrics_recompute",
@@ -274,7 +283,9 @@ def test_enrich_openalex_fills_missing_collaborator_fields(monkeypatch, tmp_path
         ]
 
 
-def test_enrich_openalex_fallbacks_to_publication_author_cache(monkeypatch, tmp_path) -> None:
+def test_enrich_openalex_fallbacks_to_publication_author_cache(
+    monkeypatch, tmp_path
+) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     user_id = _seed_user(email="enrich-fallback-user@example.com")
@@ -309,11 +320,11 @@ def test_enrich_openalex_fallbacks_to_publication_author_cache(monkeypatch, tmp_
         session.flush()
     monkeypatch.setattr(
         "research_os.services.collaboration_service._openalex_request_with_retry",
-        lambda **kwargs: {
-            "results": [{"id": "https://openalex.org/A999"}]
-        }
-        if str(kwargs.get("url") or "").endswith("/authors")
-        else {},
+        lambda **kwargs: (
+            {"results": [{"id": "https://openalex.org/A999"}]}
+            if str(kwargs.get("url") or "").endswith("/authors")
+            else {}
+        ),
     )
     monkeypatch.setattr(
         "research_os.services.collaboration_service.enqueue_collaboration_metrics_recompute",
@@ -347,7 +358,9 @@ def test_enrich_openalex_fallbacks_to_publication_author_cache(monkeypatch, tmp_
         assert row.research_domains[:2] == ["Cardiology", "Clinical trials"]
 
 
-def test_stale_while_revalidate_returns_cache_and_enqueues(monkeypatch, tmp_path) -> None:
+def test_stale_while_revalidate_returns_cache_and_enqueues(
+    monkeypatch, tmp_path
+) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     user_id = _seed_user(email="stale-user@example.com")
@@ -388,7 +401,9 @@ def test_stale_while_revalidate_returns_cache_and_enqueues(monkeypatch, tmp_path
     assert enqueued == [user_id]
 
 
-def test_summary_new_collaborators_uses_first_collaboration_year(monkeypatch, tmp_path) -> None:
+def test_summary_new_collaborators_uses_first_collaboration_year(
+    monkeypatch, tmp_path
+) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     user_id = _seed_user(email="summary-window-user@example.com")

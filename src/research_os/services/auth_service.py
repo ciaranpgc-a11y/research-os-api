@@ -589,7 +589,9 @@ def _remove_publication_file_path(path_value: str | None) -> None:
         return
 
 
-def delete_current_user(*, session_token: str, confirm_phrase: str) -> dict[str, object]:
+def delete_current_user(
+    *, session_token: str, confirm_phrase: str
+) -> dict[str, object]:
     create_all_tables()
     clean_phrase = str(confirm_phrase or "").strip().upper()
     if clean_phrase != "DELETE":
@@ -601,7 +603,9 @@ def delete_current_user(*, session_token: str, confirm_phrase: str) -> dict[str,
         user, _ = _resolve_user_from_session_token(session=session, token=session_token)
         deleted_user_id = str(user.id)
         file_rows = session.scalars(
-            select(PublicationFile).where(PublicationFile.owner_user_id == deleted_user_id)
+            select(PublicationFile).where(
+                PublicationFile.owner_user_id == deleted_user_id
+            )
         ).all()
         for row in file_rows:
             source = str(row.source or "").strip().upper()

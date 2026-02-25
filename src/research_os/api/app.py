@@ -1609,7 +1609,9 @@ def v1_persona_list_sync_jobs(
     try:
         user = get_user_by_session_token(token)
         jobs = list_persona_sync_jobs(user_id=str(user["id"]), limit=limit)
-        return [PersonaSyncJobResponse(**serialize_persona_sync_job(job)) for job in jobs]
+        return [
+            PersonaSyncJobResponse(**serialize_persona_sync_job(job)) for job in jobs
+        ]
     except AuthNotFoundError as exc:
         return _build_unauthorized_response(str(exc))
     except PersonaSyncJobNotFoundError as exc:
@@ -2039,7 +2041,9 @@ async def v1_publication_files_upload(
             payload = await request.json()
             if not isinstance(payload, dict):
                 return _build_bad_request_response("JSON payload must be an object.")
-            file_name = str(payload.get("filename") or "").strip() or "publication-file.bin"
+            file_name = (
+                str(payload.get("filename") or "").strip() or "publication-file.bin"
+            )
             file_content_type = str(payload.get("mime_type") or "").strip() or None
             raw = str(payload.get("content_base64") or "").strip()
             if not raw:
@@ -2064,7 +2068,10 @@ async def v1_publication_files_upload(
                 file = files[0] if files else None
             if file is None or not hasattr(file, "read"):
                 return _build_bad_request_response("No upload file was provided.")
-            file_name = str(getattr(file, "filename", "") or "").strip() or "publication-file.bin"
+            file_name = (
+                str(getattr(file, "filename", "") or "").strip()
+                or "publication-file.bin"
+            )
             file_content_type = getattr(file, "content_type", None)
             content = await file.read()
 

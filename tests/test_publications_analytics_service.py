@@ -120,9 +120,7 @@ def _seed_user_with_metrics() -> str:
 
 def _bundle_row(user_id: str) -> PublicationMetric:
     with session_scope() as session:
-        row = session.scalars(
-            analytics_service._bundle_row_query(user_id)
-        ).first()
+        row = session.scalars(analytics_service._bundle_row_query(user_id)).first()
         assert row is not None
         session.expunge(row)
         return row
@@ -222,7 +220,9 @@ def test_yearly_counts_preferred_over_mismatched_baseline_snapshot(
     assert int(summary["citations_last_12_months"]) < 120
 
 
-def test_stale_while_revalidate_returns_cache_and_enqueues(monkeypatch, tmp_path) -> None:
+def test_stale_while_revalidate_returns_cache_and_enqueues(
+    monkeypatch, tmp_path
+) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     user_id = _seed_user_with_metrics()
@@ -404,6 +404,9 @@ def test_scheduler_registers_interval_job(monkeypatch, tmp_path) -> None:
 
     assert captured["timezone"] == "UTC"
     assert captured["started"] is True
-    assert captured["job_fn"] == analytics_service.run_publications_analytics_scheduler_tick
+    assert (
+        captured["job_fn"]
+        == analytics_service.run_publications_analytics_scheduler_tick
+    )
     assert captured["job_kwargs"]["trigger"] == "interval"
     assert captured["job_kwargs"]["hours"] == 6

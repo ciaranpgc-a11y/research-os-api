@@ -85,10 +85,13 @@ def _ensure_work_columns() -> None:
             ),
         )
     if not _column_exists("works", "authors_last_error"):
-        op.add_column("works", sa.Column("authors_last_error", sa.Text(), nullable=True))
+        op.add_column(
+            "works", sa.Column("authors_last_error", sa.Text(), nullable=True)
+        )
     if not _column_exists("works", "authors_computed_at"):
         op.add_column(
-            "works", sa.Column("authors_computed_at", sa.DateTime(timezone=True), nullable=True)
+            "works",
+            sa.Column("authors_computed_at", sa.DateTime(timezone=True), nullable=True),
         )
 
     if not _index_exists("works", "ix_works_pmid"):
@@ -131,7 +134,9 @@ def _ensure_publication_impact_cache_table() -> None:
                 name="uq_publication_impact_cache_owner_publication",
             ),
         )
-    if not _index_exists("publication_impact_cache", "ix_publication_impact_cache_owner"):
+    if not _index_exists(
+        "publication_impact_cache", "ix_publication_impact_cache_owner"
+    ):
         op.create_index(
             "ix_publication_impact_cache_owner",
             "publication_impact_cache",
@@ -148,7 +153,9 @@ def _ensure_publication_impact_cache_table() -> None:
             ["publication_id"],
             unique=False,
         )
-    if not _index_exists("publication_impact_cache", "ix_publication_impact_cache_computed"):
+    if not _index_exists(
+        "publication_impact_cache", "ix_publication_impact_cache_computed"
+    ):
         op.create_index(
             "ix_publication_impact_cache_computed",
             "publication_impact_cache",
@@ -261,4 +268,3 @@ def upgrade() -> None:
 def downgrade() -> None:
     # Non-destructive downgrade: preserve publication caches and uploaded references.
     return
-

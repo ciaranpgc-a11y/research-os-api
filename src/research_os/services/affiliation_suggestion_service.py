@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
+from concurrent.futures import (
+    ThreadPoolExecutor,
+    TimeoutError as FuturesTimeoutError,
+    as_completed,
+)
 import os
 import re
 from threading import Lock
@@ -147,7 +151,9 @@ def _build_label(
     country_name: str | None,
     country_code: str | None,
 ) -> str:
-    location = ", ".join(part for part in [_sanitize_text(city), _sanitize_text(country_name)] if part)
+    location = ", ".join(
+        part for part in [_sanitize_text(city), _sanitize_text(country_name)] if part
+    )
     if location:
         return f"{name} ({location})"
     code = _sanitize_text(country_code).upper()
@@ -192,7 +198,9 @@ def _metadata_score(item: dict[str, Any]) -> int:
 
 def _dedupe_key(item: dict[str, Any]) -> str:
     name = _sanitize_text(item.get("name")).lower()
-    country = _sanitize_text(item.get("country_code") or item.get("country_name")).lower()
+    country = _sanitize_text(
+        item.get("country_code") or item.get("country_name")
+    ).lower()
     return f"{name}|{country}"
 
 
@@ -201,8 +209,12 @@ def _can_merge_name_collision(left: dict[str, Any], right: dict[str, Any]) -> bo
     right_name = _sanitize_text(right.get("name")).lower()
     if not left_name or left_name != right_name:
         return False
-    left_country = _sanitize_text(left.get("country_code") or left.get("country_name")).lower()
-    right_country = _sanitize_text(right.get("country_code") or right.get("country_name")).lower()
+    left_country = _sanitize_text(
+        left.get("country_code") or left.get("country_name")
+    ).lower()
+    right_country = _sanitize_text(
+        right.get("country_code") or right.get("country_name")
+    ).lower()
     if not left_country or not right_country:
         return True
     return left_country == right_country
@@ -355,7 +367,9 @@ def _extract_ror_name(raw: dict[str, Any]) -> str:
         if not isinstance(item, dict):
             continue
         types = item.get("types")
-        type_values = [str(value).lower() for value in types] if isinstance(types, list) else []
+        type_values = (
+            [str(value).lower() for value in types] if isinstance(types, list) else []
+        )
         if "ror_display" in type_values:
             selected = item
             break
@@ -364,7 +378,11 @@ def _extract_ror_name(raw: dict[str, Any]) -> str:
             if not isinstance(item, dict):
                 continue
             types = item.get("types")
-            type_values = [str(value).lower() for value in types] if isinstance(types, list) else []
+            type_values = (
+                [str(value).lower() for value in types]
+                if isinstance(types, list)
+                else []
+            )
             if "label" in type_values:
                 selected = item
                 break
@@ -398,7 +416,9 @@ def _fetch_ror(
         name = _extract_ror_name(raw)
         if not name:
             continue
-        locations = raw.get("locations") if isinstance(raw.get("locations"), list) else []
+        locations = (
+            raw.get("locations") if isinstance(raw.get("locations"), list) else []
+        )
         location = locations[0] if locations and isinstance(locations[0], dict) else {}
         geonames = (
             location.get("geonames_details")
@@ -495,7 +515,9 @@ def _should_keep_nominatim_suggestion(
         "laboratory",
     }:
         return True
-    return category in {"amenity", "building", "office", "commercial"} and relevance >= 0.2
+    return (
+        category in {"amenity", "building", "office", "commercial"} and relevance >= 0.2
+    )
 
 
 def _fetch_nominatim_suggestions(
@@ -659,7 +681,9 @@ def _fetch_clearbit_provider(*, query: str, limit: int) -> list[dict[str, Any]]:
         )
 
 
-def _fetch_provider_suggestions_parallel(*, query: str, limit: int) -> list[dict[str, Any]]:
+def _fetch_provider_suggestions_parallel(
+    *, query: str, limit: int
+) -> list[dict[str, Any]]:
     providers = [
         _fetch_ror_provider,
         _fetch_openalex_provider,
@@ -669,7 +693,10 @@ def _fetch_provider_suggestions_parallel(*, query: str, limit: int) -> list[dict
         providers.append(_fetch_openstreetmap_provider)
     output: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=len(providers)) as executor:
-        futures = [executor.submit(provider, query=query, limit=limit) for provider in providers]
+        futures = [
+            executor.submit(provider, query=query, limit=limit)
+            for provider in providers
+        ]
         timeout_budget = _fast_timeout_seconds() + 0.2
         try:
             for future in as_completed(futures, timeout=timeout_budget):
@@ -691,7 +718,9 @@ def _source_priority(value: Any) -> int:
     return SUGGESTION_SOURCE_PRIORITY.get(_sanitize_text(value).lower(), 0)
 
 
-def fetch_affiliation_suggestions(*, query: str, limit: int = 8) -> list[dict[str, Any]]:
+def fetch_affiliation_suggestions(
+    *, query: str, limit: int = 8
+) -> list[dict[str, Any]]:
     clean_query = _sanitize_text(query)
     if len(clean_query) < 2:
         raise AffiliationSuggestionValidationError(
@@ -703,7 +732,9 @@ def fetch_affiliation_suggestions(*, query: str, limit: int = 8) -> list[dict[st
     if cached is not None:
         return cached[:clean_limit]
 
-    combined = _fetch_provider_suggestions_parallel(query=clean_query, limit=clean_limit)
+    combined = _fetch_provider_suggestions_parallel(
+        query=clean_query, limit=clean_limit
+    )
     if not combined:
         _write_suggestion_cache(cache_key, [])
         return []
@@ -791,7 +822,9 @@ def _resolve_location_from_nominatim_item(
     display_name = _sanitize_text(item.get("display_name"))
     category = _sanitize_text(item.get("category")).lower()
     location_type = _sanitize_text(item.get("type")).lower()
-    display_head = _sanitize_text(display_name.split(",", maxsplit=1)[0] if display_name else "")
+    display_head = _sanitize_text(
+        display_name.split(",", maxsplit=1)[0] if display_name else ""
+    )
     candidate_name = " ".join(
         part
         for part in [
@@ -830,14 +863,20 @@ def _resolve_location_from_nominatim_item(
     if country_name:
         metadata_score += 2
     expected_city_clean = _sanitize_text(expected_city).lower() if expected_city else ""
-    expected_region_clean = _sanitize_text(expected_region).lower() if expected_region else ""
-    expected_country_clean = _sanitize_text(expected_country).lower() if expected_country else ""
+    expected_region_clean = (
+        _sanitize_text(expected_region).lower() if expected_region else ""
+    )
+    expected_country_clean = (
+        _sanitize_text(expected_country).lower() if expected_country else ""
+    )
     city_clean = _sanitize_text(city).lower() if city else ""
     region_clean = _sanitize_text(region).lower() if region else ""
     country_name_clean = _sanitize_text(country_name).lower() if country_name else ""
     location_match_bonus = 0.0
     if expected_city_clean:
-        if city_clean and (expected_city_clean in city_clean or city_clean in expected_city_clean):
+        if city_clean and (
+            expected_city_clean in city_clean or city_clean in expected_city_clean
+        ):
             location_match_bonus += 6.0
         elif city_clean:
             location_match_bonus -= 3.0
@@ -845,7 +884,8 @@ def _resolve_location_from_nominatim_item(
             location_match_bonus -= 1.0
     if expected_region_clean:
         if region_clean and (
-            expected_region_clean in region_clean or region_clean in expected_region_clean
+            expected_region_clean in region_clean
+            or region_clean in expected_region_clean
         ):
             location_match_bonus += 4.0
         elif region_clean:
@@ -866,9 +906,25 @@ def _resolve_location_from_nominatim_item(
     category_boost = 0.0
     if category in {"amenity", "building", "office"}:
         category_boost += 2.0
-    if location_type in {"university", "college", "school", "hospital", "research_institute"}:
+    if location_type in {
+        "university",
+        "college",
+        "school",
+        "hospital",
+        "research_institute",
+    }:
         category_boost += 4.0
-    if location_type in {"administrative", "water", "river", "lake", "bay", "sea", "ocean", "city", "town"}:
+    if location_type in {
+        "administrative",
+        "water",
+        "river",
+        "lake",
+        "bay",
+        "sea",
+        "ocean",
+        "city",
+        "town",
+    }:
         category_boost -= 8.0
     if category in {"natural", "waterway", "boundary", "highway", "landuse"}:
         category_boost -= 4.0
@@ -884,7 +940,13 @@ def _resolve_location_from_nominatim_item(
             importance = float(raw_importance)
         except Exception:
             importance = 0.0
-    composite = (relevance * 12.0) + metadata_score + location_match_bonus + category_boost + (importance * 0.5)
+    composite = (
+        (relevance * 12.0)
+        + metadata_score
+        + location_match_bonus
+        + category_boost
+        + (importance * 0.5)
+    )
     payload = {
         "line_1": line_1,
         "city": city,

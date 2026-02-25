@@ -415,7 +415,9 @@ def list_works(*, user_id: str) -> list[dict[str, Any]]:
         user_author_position_by_work: dict[str, int] = {}
         author_count_by_work: dict[str, int] = defaultdict(int)
         for link in authorship_rows:
-            author_count_by_work[link.work_id] = author_count_by_work.get(link.work_id, 0) + 1
+            author_count_by_work[link.work_id] = (
+                author_count_by_work.get(link.work_id, 0) + 1
+            )
             if bool(link.is_user) and link.work_id not in user_author_position_by_work:
                 try:
                     position = int(link.author_order or 0)

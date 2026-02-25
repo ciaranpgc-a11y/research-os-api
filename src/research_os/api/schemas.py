@@ -1132,8 +1132,8 @@ class PublicationsAnalyticsPayloadResponse(BaseModel):
     timeseries: PublicationsAnalyticsTimeseriesResponse
     top_drivers: PublicationsAnalyticsTopDriversResponse
     per_year: list[dict[str, Any]] = Field(default_factory=list)
-    domain_breakdown_12m: list[PublicationsAnalyticsDomainBreakdownResponse] = (
-        Field(default_factory=list)
+    domain_breakdown_12m: list[PublicationsAnalyticsDomainBreakdownResponse] = Field(
+        default_factory=list
     )
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -1280,9 +1280,15 @@ class PublicationImpactPayloadResponse(BaseModel):
     portfolio_context: PublicationImpactPortfolioContextResponse = Field(
         default_factory=PublicationImpactPortfolioContextResponse
     )
-    top_citing_journals: list[PublicationImpactNamedCountResponse] = Field(default_factory=list)
-    top_citing_countries: list[PublicationImpactNamedCountResponse] = Field(default_factory=list)
-    key_citing_papers: list[PublicationImpactCitingPaperResponse] = Field(default_factory=list)
+    top_citing_journals: list[PublicationImpactNamedCountResponse] = Field(
+        default_factory=list
+    )
+    top_citing_countries: list[PublicationImpactNamedCountResponse] = Field(
+        default_factory=list
+    )
+    key_citing_papers: list[PublicationImpactCitingPaperResponse] = Field(
+        default_factory=list
+    )
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -1361,9 +1367,9 @@ class CollaboratorMetricsResponse(BaseModel):
     last_collaboration_year: int | None = None
     citations_last_12m: int = 0
     collaboration_strength_score: float = 0.0
-    classification: Literal["CORE", "ACTIVE", "OCCASIONAL", "HISTORIC", "UNCLASSIFIED"] = (
-        "UNCLASSIFIED"
-    )
+    classification: Literal[
+        "CORE", "ACTIVE", "OCCASIONAL", "HISTORIC", "UNCLASSIFIED"
+    ] = "UNCLASSIFIED"
     computed_at: datetime | None = None
     status: Literal["READY", "RUNNING", "FAILED"] = "READY"
 
@@ -1486,9 +1492,9 @@ class CollaborationAiAuthorSuggestionItemResponse(BaseModel):
     full_name: str
     institution: str | None = None
     orcid_id: str | None = None
-    classification: Literal["CORE", "ACTIVE", "OCCASIONAL", "HISTORIC", "UNCLASSIFIED"] = (
-        "UNCLASSIFIED"
-    )
+    classification: Literal[
+        "CORE", "ACTIVE", "OCCASIONAL", "HISTORIC", "UNCLASSIFIED"
+    ] = "UNCLASSIFIED"
     score: float = 0.0
     explanation: str = ""
     matched_keywords: list[str] = Field(default_factory=list)
@@ -1499,7 +1505,9 @@ class CollaborationAiAuthorSuggestionsResponse(BaseModel):
     status: Literal["draft"] = "draft"
     topic_keywords: list[str] = Field(default_factory=list)
     methods: list[str] = Field(default_factory=list)
-    suggestions: list[CollaborationAiAuthorSuggestionItemResponse] = Field(default_factory=list)
+    suggestions: list[CollaborationAiAuthorSuggestionItemResponse] = Field(
+        default_factory=list
+    )
     provenance: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -1525,7 +1533,9 @@ class CollaborationAiContributionRoleResponse(BaseModel):
 
 class CollaborationAiContributionDraftResponse(BaseModel):
     status: Literal["draft"] = "draft"
-    credit_statements: list[CollaborationAiContributionRoleResponse] = Field(default_factory=list)
+    credit_statements: list[CollaborationAiContributionRoleResponse] = Field(
+        default_factory=list
+    )
     draft_text: str = ""
     provenance: dict[str, Any] = Field(default_factory=dict)
 
@@ -1554,7 +1564,9 @@ class CollaborationAiAffiliationResponse(BaseModel):
 
 class CollaborationAiAffiliationsNormaliseResponse(BaseModel):
     status: Literal["draft"] = "draft"
-    normalized_authors: list[CollaborationAiAffiliationAuthorResponse] = Field(default_factory=list)
+    normalized_authors: list[CollaborationAiAffiliationAuthorResponse] = Field(
+        default_factory=list
+    )
     affiliations: list[CollaborationAiAffiliationResponse] = Field(default_factory=list)
     affiliations_block: str = ""
     coi_boilerplate: str = ""
@@ -1567,9 +1579,9 @@ class ManuscriptAuthorSuggestionResponse(BaseModel):
     preferred_name: str | None = None
     orcid_id: str | None = None
     institution: str | None = None
-    classification: Literal["CORE", "ACTIVE", "OCCASIONAL", "HISTORIC", "UNCLASSIFIED"] = (
-        "UNCLASSIFIED"
-    )
+    classification: Literal[
+        "CORE", "ACTIVE", "OCCASIONAL", "HISTORIC", "UNCLASSIFIED"
+    ] = "UNCLASSIFIED"
     collaboration_strength_score: float = 0.0
 
 
@@ -1622,7 +1634,9 @@ class ManuscriptAffiliationRecordResponse(BaseModel):
 class ManuscriptAuthorsResponse(BaseModel):
     workspace_id: str
     authors: list[ManuscriptAuthorRecordResponse] = Field(default_factory=list)
-    affiliations: list[ManuscriptAffiliationRecordResponse] = Field(default_factory=list)
+    affiliations: list[ManuscriptAffiliationRecordResponse] = Field(
+        default_factory=list
+    )
     rendered_authors_block: str = ""
 
 

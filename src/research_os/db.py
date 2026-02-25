@@ -149,9 +149,9 @@ class User(Base):
     publications_metrics: Mapped[list["PublicationMetric"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
-    publication_metrics_source_caches: Mapped[
-        list["PublicationMetricsSourceCache"]
-    ] = relationship(back_populates="user", cascade="all, delete-orphan")
+    publication_metrics_source_caches: Mapped[list["PublicationMetricsSourceCache"]] = (
+        relationship(back_populates="user", cascade="all, delete-orphan")
+    )
     publication_impact_caches: Mapped[list["PublicationImpactCache"]] = relationship(
         back_populates="owner_user", cascade="all, delete-orphan"
     )
@@ -659,7 +659,9 @@ class PublicationMetricsSourceCache(Base):
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
 
-    user: Mapped[User] = relationship(back_populates="publication_metrics_source_caches")
+    user: Mapped[User] = relationship(
+        back_populates="publication_metrics_source_caches"
+    )
 
 
 class PublicationImpactCache(Base):
@@ -948,7 +950,9 @@ class ManuscriptAffiliation(Base):
 
 class PersonaSyncJob(Base):
     __tablename__ = "persona_sync_jobs"
-    __table_args__ = (Index("ix_persona_sync_jobs_user_created", "user_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_persona_sync_jobs_user_created", "user_id", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid4())

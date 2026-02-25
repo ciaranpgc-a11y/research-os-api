@@ -1800,7 +1800,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 <div className="sm:col-span-2 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
                   <label
                     htmlFor="personal-website"
-                    className="inline-flex w-full shrink-0 items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))] sm:w-[180px]"
+                    className="inline-flex w-full shrink-0 items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))] sm:w-[11.25rem]"
                   >
                     <span
                       aria-hidden
@@ -1823,7 +1823,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 <div className="sm:col-span-2 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
                   <label
                     htmlFor="personal-researchgate"
-                    className="inline-flex w-full shrink-0 items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))] sm:w-[180px]"
+                    className="inline-flex w-full shrink-0 items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))] sm:w-[11.25rem]"
                   >
                     <span
                       aria-hidden
@@ -1846,7 +1846,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 <div className="sm:col-span-2 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
                   <label
                     htmlFor="personal-x-handle"
-                    className="inline-flex w-full shrink-0 items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))] sm:w-[180px]"
+                    className="inline-flex w-full shrink-0 items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))] sm:w-[11.25rem]"
                   >
                     <span
                       aria-hidden

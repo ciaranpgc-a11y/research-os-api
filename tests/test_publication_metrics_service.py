@@ -160,15 +160,23 @@ def _tile(payload: dict[str, object], key: str) -> dict[str, object]:
 
 
 def test_metric_compute_helpers() -> None:
-    assert compute_m_index(h_index=20, first_publication_year=2016, current_year=2026) == 1.818
+    assert (
+        compute_m_index(h_index=20, first_publication_year=2016, current_year=2026)
+        == 1.818
+    )
     assert compute_yoy_percent(citations_last_12m=120, citations_prev_12m=80) == 50.0
     assert compute_yoy_percent(citations_last_12m=100, citations_prev_12m=0) is None
-    assert compute_citation_momentum_score([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) == 94.5
+    assert (
+        compute_citation_momentum_score([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) == 94.5
+    )
     assert compute_momentum_index([10] * 9 + [20, 20, 20]) == 200.0
     assert momentum_index_label(92.0) == "Slowing"
     assert momentum_index_label(100.0) == "Stable"
     assert momentum_index_label(120.0) == "Accelerating"
-    assert compute_concentration_risk_percent(total_citations=200, top3_citations=80) == 40.0
+    assert (
+        compute_concentration_risk_percent(total_citations=200, top3_citations=80)
+        == 40.0
+    )
     assert (
         publication_metrics_service._delta_tone_for_metric(
             key="this_year_vs_last", delta_value=5.0
@@ -340,7 +348,9 @@ def test_single_snapshot_without_history_is_conservative(monkeypatch, tmp_path) 
     assert last12_tile["delta_display"] in {None, ""}
 
 
-def test_snapshot_delta_ignores_mismatched_provider_baseline(monkeypatch, tmp_path) -> None:
+def test_snapshot_delta_ignores_mismatched_provider_baseline(
+    monkeypatch, tmp_path
+) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     now = datetime.now(timezone.utc)
@@ -404,14 +414,18 @@ def test_snapshot_delta_ignores_mismatched_provider_baseline(monkeypatch, tmp_pa
     assert last12_tile["delta_display"] in {None, ""}
 
 
-def test_stale_while_revalidate_serves_cache_and_enqueues(monkeypatch, tmp_path) -> None:
+def test_stale_while_revalidate_serves_cache_and_enqueues(
+    monkeypatch, tmp_path
+) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     user_id = _seed_user_with_metrics(email="stale-top-metrics@example.com")
     compute_publication_top_metrics(user_id=user_id)
 
     with session_scope() as session:
-        row = session.scalars(publication_metrics_service._bundle_row_query(user_id)).first()
+        row = session.scalars(
+            publication_metrics_service._bundle_row_query(user_id)
+        ).first()
         assert row is not None
         row.computed_at = datetime.now(timezone.utc) - timedelta(days=2)
         row.status = "READY"
@@ -439,7 +453,9 @@ def test_lock_prevents_duplicate_enqueue(monkeypatch, tmp_path) -> None:
     compute_publication_top_metrics(user_id=user_id)
 
     with session_scope() as session:
-        row = session.scalars(publication_metrics_service._bundle_row_query(user_id)).first()
+        row = session.scalars(
+            publication_metrics_service._bundle_row_query(user_id)
+        ).first()
         assert row is not None
         row.status = "RUNNING"
         session.flush()
@@ -447,7 +463,9 @@ def test_lock_prevents_duplicate_enqueue(monkeypatch, tmp_path) -> None:
     assert enqueue_publication_top_metrics_refresh(user_id=user_id) is False
 
     with session_scope() as session:
-        row = session.scalars(publication_metrics_service._bundle_row_query(user_id)).first()
+        row = session.scalars(
+            publication_metrics_service._bundle_row_query(user_id)
+        ).first()
         assert row is not None
         row.status = "READY"
         session.flush()
@@ -573,7 +591,9 @@ def test_publications_metrics_api_response_contract(monkeypatch, tmp_path) -> No
         "publications",
         "metadata",
     }.issubset(first_tile["drilldown"].keys())
-    tile_keys = {str(item.get("key")) for item in payload["tiles"] if isinstance(item, dict)}
+    tile_keys = {
+        str(item.get("key")) for item in payload["tiles"] if isinstance(item, dict)
+    }
     assert {
         "total_citations",
         "this_year_vs_last",
@@ -606,8 +626,12 @@ def test_refresh_endpoint_returns_status(monkeypatch, tmp_path) -> None:
             fn(*args, **kwargs)
             return None
 
-    monkeypatch.setattr(publication_metrics_service, "_get_executor", lambda: _ImmediateExecutor())
-    payload = publication_metrics_service.trigger_publication_top_metrics_refresh(user_id=user_id)
+    monkeypatch.setattr(
+        publication_metrics_service, "_get_executor", lambda: _ImmediateExecutor()
+    )
+    payload = publication_metrics_service.trigger_publication_top_metrics_refresh(
+        user_id=user_id
+    )
     assert payload["enqueued"] is True
     assert payload["status"] in {"RUNNING", "READY"}
     assert payload["metric_key"] == TOP_METRICS_KEY

@@ -71,7 +71,9 @@ def _normalize_providers(
 
 
 def _orcid_import_always_sync_metrics() -> bool:
-    return str(os.getenv("ORCID_IMPORT_JOB_ALWAYS_SYNC_METRICS", "1")).strip().lower() in {
+    return str(
+        os.getenv("ORCID_IMPORT_JOB_ALWAYS_SYNC_METRICS", "1")
+    ).strip().lower() in {
         "1",
         "true",
         "yes",
@@ -173,12 +175,16 @@ def _run_persona_sync_job(job_id: str) -> None:
             )
             result_payload["orcid_import"] = _json_safe(import_payload)
 
-            should_sync_metrics = bool(job.run_metrics_sync) or _orcid_import_always_sync_metrics()
+            should_sync_metrics = (
+                bool(job.run_metrics_sync) or _orcid_import_always_sync_metrics()
+            )
             effective_providers = providers or _orcid_import_default_providers()
             if should_sync_metrics and effective_providers:
                 _set_stage(job, stage="syncing_metrics", progress=70)
                 session.commit()
-                metrics_payload = sync_metrics(user_id=user_id, providers=effective_providers)
+                metrics_payload = sync_metrics(
+                    user_id=user_id, providers=effective_providers
+                )
                 result_payload["metrics_sync"] = _json_safe(metrics_payload)
 
         elif job.job_type == "metrics_sync":
@@ -204,7 +210,9 @@ def _run_persona_sync_job(job_id: str) -> None:
                 trigger_publication_top_metrics_refresh,
             )
 
-            top_metrics_payload = trigger_publication_top_metrics_refresh(user_id=user_id)
+            top_metrics_payload = trigger_publication_top_metrics_refresh(
+                user_id=user_id
+            )
             result_payload["top_metrics_refresh"] = _json_safe(top_metrics_payload)
         except Exception:
             # Keep sync jobs resilient even if top metrics refresh enqueue fails.

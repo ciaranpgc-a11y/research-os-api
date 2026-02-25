@@ -24,7 +24,9 @@ def _table_exists(table_name: str) -> bool:
 
 def _column_exists(table_name: str, column_name: str) -> bool:
     inspector = sa.inspect(op.get_bind())
-    return column_name in {column["name"] for column in inspector.get_columns(table_name)}
+    return column_name in {
+        column["name"] for column in inspector.get_columns(table_name)
+    }
 
 
 def _index_exists(table_name: str, index_name: str) -> bool:
@@ -58,10 +60,14 @@ def _ensure_publications_metrics_columns() -> None:
             batch.add_column(sa.Column("last_error", sa.Text(), nullable=True))
         if not _column_exists("publications_metrics", "next_scheduled_at"):
             batch.add_column(
-                sa.Column("next_scheduled_at", sa.DateTime(timezone=True), nullable=True)
+                sa.Column(
+                    "next_scheduled_at", sa.DateTime(timezone=True), nullable=True
+                )
             )
 
-    if not _index_exists("publications_metrics", "ix_publications_metrics_next_scheduled_at"):
+    if not _index_exists(
+        "publications_metrics", "ix_publications_metrics_next_scheduled_at"
+    ):
         op.create_index(
             "ix_publications_metrics_next_scheduled_at",
             "publications_metrics",

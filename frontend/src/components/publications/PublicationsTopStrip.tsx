@@ -674,7 +674,7 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
                   </span>
                   <span
                     className={cn(
-                      'block w-full rounded-[4px] transition-[transform,filter,box-shadow] duration-220 ease-out',
+                      'block w-full rounded transition-[transform,filter,box-shadow] duration-220 ease-out',
                       totalCitationsBarToneClass(bar),
                       isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
                     )}
@@ -695,7 +695,7 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
             <div key={`${bar.key}-axis`} className="text-center leading-none">
               <p className="text-[0.6rem] font-semibold text-[hsl(var(--tone-neutral-600))]">{bar.axisLabel}</p>
               {bar.axisSubLabel ? (
-                <p className="mt-[1px] text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-600))]">
+                <p className="mt-px text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-600))]">
                   {bar.axisSubLabel}
                 </p>
               ) : null}
@@ -951,7 +951,7 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
                   </span>
                   <span
                     className={cn(
-                      'block w-full rounded-[4px] transition-[transform,filter,box-shadow] duration-220 ease-out',
+                      'block w-full rounded transition-[transform,filter,box-shadow] duration-220 ease-out',
                       toneClass,
                       isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
                     )}
@@ -972,7 +972,7 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
             <div key={`${bar.year}-${index}-axis`} className="text-center leading-none">
               <p className="text-[0.6rem] font-semibold text-[hsl(var(--tone-neutral-600))]">{String(bar.year).slice(-2)}</p>
               {bar.current ? (
-                <p className="mt-[1px] text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-600))]">
+                <p className="mt-px text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-600))]">
                   YTD
                 </p>
               ) : null}
@@ -1373,7 +1373,7 @@ function PublicationsPerYearChart({
                   </span>
                   <span
                     className={cn(
-                      'block w-full rounded-[4px] transition-[transform,filter,box-shadow] duration-220 ease-out',
+                      'block w-full rounded transition-[transform,filter,box-shadow] duration-220 ease-out',
                       toneClass,
                       isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
                     )}
@@ -1427,7 +1427,7 @@ function PublicationsPerYearChart({
                 {bar.axisLabel}
               </p>
               {bar.axisSubLabel ? (
-                <p className="mt-[1px] text-[0.56rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-600))]">
+                <p className="mt-px text-[0.56rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-600))]">
                   {bar.axisSubLabel}
                 </p>
               ) : null}
@@ -1875,7 +1875,7 @@ function MomentumTilePanel({
                   </span>
                   <span
                     className={cn(
-                      'block w-full rounded-[4px] transition-[transform,filter,box-shadow] duration-220 ease-out',
+                      'block w-full rounded transition-[transform,filter,box-shadow] duration-220 ease-out',
                       toneClass,
                       isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
                     )}
@@ -1905,7 +1905,7 @@ function MomentumTilePanel({
                 {bar.label}
               </p>
               <p
-                className="mt-[1px] text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-transparent"
+                className="mt-px text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-transparent"
                 aria-hidden="true"
               >
                 ytd
@@ -2032,7 +2032,7 @@ function FieldPercentilePanel({
               </span>
               <span
                 className={cn(
-                  'block w-full rounded-[4px] bg-[hsl(var(--tone-positive-600))] transition-[transform,filter,box-shadow] duration-220 ease-out',
+                  'block w-full rounded bg-[hsl(var(--tone-positive-600))] transition-[transform,filter,box-shadow] duration-220 ease-out',
                   hovered && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
                 )}
                 style={{
@@ -2055,7 +2055,7 @@ function FieldPercentilePanel({
               {barLabel}
             </p>
             <p
-              className="mt-[1px] text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-transparent"
+              className="mt-px text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-transparent"
               aria-hidden="true"
             >
               ytd
@@ -2481,6 +2481,11 @@ function TotalPublicationsDrilldownWorkspace({
   const unknownYearCount = publications.filter((record) => record.year === null).length
   const ytdCountRaw = Number((tile.chart_data || {}).current_year_ytd)
   const ytdCount = Number.isFinite(ytdCountRaw) ? Math.max(0, Math.round(ytdCountRaw)) : 0
+  const workspaceSectionClass = 'rounded-md bg-[hsl(var(--tone-neutral-50)/0.34)] p-3'
+  const workspacePanelClass = 'rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background px-3 py-2.5'
+  const workspacePanelCompactClass = 'rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background p-2'
+  const workspaceHeadingClass = 'text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]'
+  const workspaceSubheadingClass = 'text-[0.58rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]'
 
   const availableTypes = useMemo(
     () => Array.from(new Set(publications.map((record) => record.type))).sort((left, right) => left.localeCompare(right)),
@@ -2660,24 +2665,25 @@ function TotalPublicationsDrilldownWorkspace({
     const microValueClass = 'mt-0.5 text-[0.88rem] font-semibold leading-none tabular-nums text-[hsl(var(--tone-neutral-800))]'
     return (
       <div className="space-y-3">
-        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background p-3">
-          <div className="grid gap-2 lg:grid-cols-[9rem_minmax(0,1fr)]">
-            <div className="flex min-h-[4.5rem] flex-col justify-center rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2.5 text-center">
+        <div className={workspaceSectionClass}>
+          <p className={workspaceSubheadingClass}>Headline results</p>
+          <div className="mt-2 grid gap-2 lg:grid-cols-[9rem_minmax(0,1fr)]">
+            <div className={cn(workspacePanelClass, 'flex min-h-[4.5rem] flex-col justify-center text-center')}>
               <p className="text-[0.58rem] font-semibold uppercase tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">
                 Total publications
               </p>
               <p className="mt-1 text-[1.7rem] font-semibold leading-none tracking-tight text-foreground">{headlineValue}</p>
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
-              <div className="grid min-h-[4.5rem] grid-rows-[2rem_auto] rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2 text-center">
+              <div className={cn(workspacePanelClass, 'grid min-h-[4.5rem] grid-rows-[2rem_auto] py-2 text-center')}>
                 <p className="text-[0.58rem] font-semibold uppercase leading-[1.1] tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">Active years</p>
                 <p className={microValueClass}>{formatInt(activeYears)}</p>
               </div>
-              <div className="grid min-h-[4.5rem] grid-rows-[2rem_auto] rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2 text-center">
+              <div className={cn(workspacePanelClass, 'grid min-h-[4.5rem] grid-rows-[2rem_auto] py-2 text-center')}>
                 <p className="text-[0.58rem] font-semibold uppercase leading-[1.1] tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">Median per year</p>
                 <p className={microValueClass}>{formatInt(Math.round(medianPerActiveYear))}</p>
               </div>
-              <div className="grid min-h-[4.5rem] grid-rows-[2rem_auto] rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2 text-center">
+              <div className={cn(workspacePanelClass, 'grid min-h-[4.5rem] grid-rows-[2rem_auto] py-2 text-center')}>
                 <p className="text-[0.58rem] font-semibold uppercase leading-[1.1] tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">Current year to date</p>
                 <p className={microValueClass}>{formatInt(ytdCount)}</p>
               </div>
@@ -2685,26 +2691,29 @@ function TotalPublicationsDrilldownWorkspace({
           </div>
 
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+            <div className={cn(workspacePanelClass, 'py-2')}>
               <p className="text-[0.58rem] font-semibold uppercase tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">5-year rolling mean</p>
               <p className="mt-0.5 text-[0.88rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{rollingMean5yDisplay}</p>
             </div>
-            <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+            <div className={cn(workspacePanelClass, 'py-2')}>
               <p className="text-[0.58rem] font-semibold uppercase tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">Career peak</p>
               <p className="mt-0.5 text-[0.88rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{`${formatInt(peakYearData.count)} (${peakYearData.year})`}</p>
             </div>
           </div>
 
-          <div className="mt-3 h-[14.6rem]">
-            <PublicationsPerYearChart
-              tile={tile}
-              showCaption={false}
-              showAxes
-              fullYearLabels
-              xAxisLabel="Publication year"
-              yAxisLabel="Publications"
-              enableWindowToggle
-            />
+          <div className="mt-3">
+            <p className={workspaceSubheadingClass}>Publication trend</p>
+            <div className="mt-2 h-[14.6rem]">
+              <PublicationsPerYearChart
+                tile={tile}
+                showCaption={false}
+                showAxes
+                fullYearLabels
+                xAxisLabel="Publication year"
+                yAxisLabel="Publications"
+                enableWindowToggle
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -2714,11 +2723,11 @@ function TotalPublicationsDrilldownWorkspace({
   if (activeTab === 'breakdown') {
     return (
       <div className="space-y-3">
-        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background p-3">
-          <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]">Publications by year</p>
-          <div className="mt-2 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-2">
+        <div className={workspaceSectionClass}>
+          <p className={workspaceHeadingClass}>Publications by year</p>
+          <div className={cn('mt-2', workspacePanelCompactClass)}>
             <div className="overflow-x-auto">
-              <div className="relative min-w-[680px]">
+              <div className="relative min-w-[42.5rem]">
                 <div className="absolute inset-x-0 top-0 h-28">
                   {[25, 50, 75].map((pct) => (
                     <div key={`breakdown-grid-${pct}`} className="absolute inset-x-0 border-t border-[hsl(var(--tone-neutral-200))]" style={{ top: `${pct}%` }} />
@@ -2734,7 +2743,7 @@ function TotalPublicationsDrilldownWorkspace({
                         key={`breakdown-year-${year}`}
                         type="button"
                         className={cn(
-                          'relative flex min-w-[1.95rem] flex-1 items-end rounded-[4px] border border-transparent transition-all duration-200',
+                          'relative flex min-w-[1.95rem] flex-1 items-end rounded border border-transparent transition-all duration-200',
                           isSelected && 'border-[hsl(var(--tone-accent-500))]',
                         )}
                         onMouseEnter={() => setHoveredBreakdownYear(year)}
@@ -2744,7 +2753,7 @@ function TotalPublicationsDrilldownWorkspace({
                       >
                         <span
                           className={cn(
-                            'block w-full rounded-[4px] transition-[height,filter] duration-220 ease-out',
+                            'block w-full rounded transition-[height,filter] duration-220 ease-out',
                             isSelected ? 'bg-[hsl(var(--tone-accent-700))]' : 'bg-[hsl(var(--tone-accent-500))]',
                           )}
                           style={{ height: `${heightPct}%` }}
@@ -2761,7 +2770,7 @@ function TotalPublicationsDrilldownWorkspace({
               </div>
             </div>
             {hoveredYear !== null ? (
-              <div className="mt-2 rounded border border-[hsl(var(--tone-neutral-200))] bg-background px-2 py-1.5 text-[0.64rem] text-[hsl(var(--tone-neutral-700))]">
+              <div className="mt-2 rounded border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background px-2 py-1.5 text-[0.64rem] text-[hsl(var(--tone-neutral-700))]">
                 <span className="font-semibold">{hoveredYear}</span>
                 <span>{` | Count ${formatInt(hoveredYearCount)}`}</span>
                 <span>{` | YoY ${hoveredYearYoY === null ? 'n/a' : `${hoveredYearYoY >= 0 ? '+' : ''}${hoveredYearYoY.toFixed(0)}%`}`}</span>
@@ -2771,8 +2780,8 @@ function TotalPublicationsDrilldownWorkspace({
           </div>
         </div>
 
-        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background p-3">
-          <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]">Publication type</p>
+        <div className={workspaceSectionClass}>
+          <p className={workspaceHeadingClass}>Publication type</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {availableTypes.map((type) => {
               const isActive = selectedTypes.includes(type)
@@ -2798,12 +2807,12 @@ function TotalPublicationsDrilldownWorkspace({
           </div>
         </div>
 
-        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background p-3">
+        <div className={workspaceSectionClass}>
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]">Venue concentration</p>
+            <p className={workspaceHeadingClass}>Venue concentration</p>
             <button
               type="button"
-              className="rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))]"
+              className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))]"
               onClick={() => setShowAllVenues((current) => !current)}
             >
               {showAllVenues ? 'View top' : 'View all'}
@@ -2820,7 +2829,7 @@ function TotalPublicationsDrilldownWorkspace({
                     'w-full rounded-md border px-2 py-1.5 text-left transition-colors',
                     isSelected
                       ? 'border-[hsl(var(--tone-accent-500))] bg-[hsl(var(--tone-accent-50))]'
-                      : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]',
+                      : 'border-[hsl(var(--tone-neutral-200)/0.72)] bg-background',
                   )}
                   onClick={() => setSelectedVenue((current) => (current === row.venue ? null : row.venue))}
                   title={`Median citations ${row.medianCitations.toFixed(1)} | First ${row.roleMix.First} | Senior ${row.roleMix.Senior}`}
@@ -2839,26 +2848,26 @@ function TotalPublicationsDrilldownWorkspace({
           </div>
         </div>
 
-        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background p-3">
+        <div className={workspaceSectionClass}>
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]">Paper list</p>
+            <p className={workspaceHeadingClass}>Paper list</p>
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search title, venue, role"
-              className="h-7 min-w-[12rem] rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 text-[0.66rem] text-[hsl(var(--tone-neutral-700))] outline-none focus:border-[hsl(var(--tone-accent-500))]"
+              className="h-7 min-w-[12rem] rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 text-[0.66rem] text-[hsl(var(--tone-neutral-700))] outline-none focus:border-[hsl(var(--tone-accent-500))]"
             />
             <button
               type="button"
-              className="rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))]"
+              className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))]"
               onClick={clearFilters}
             >
               Clear filters
             </button>
           </div>
-          <div className="mt-2 overflow-x-auto rounded-md border border-[hsl(var(--tone-neutral-200))]">
-            <table className="w-full min-w-[760px] border-collapse text-[0.64rem]">
-              <thead className="bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-700))]">
+          <div className="mt-2 overflow-x-auto rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background">
+            <table className="w-full min-w-[47.5rem] border-collapse text-[0.64rem]">
+              <thead className="bg-[hsl(var(--tone-neutral-50)/0.4)] text-[hsl(var(--tone-neutral-700))]">
                 <tr>
                   <th className="px-2 py-1.5 text-left font-semibold">
                     <button type="button" onClick={() => handleSort('year')}>{`Year${sortIndicator('year')}`}</button>
@@ -2920,9 +2929,9 @@ function TotalPublicationsDrilldownWorkspace({
     const activeTrajectoryIndex = Math.max(0, trajectoryOptions.findIndex((option) => option.key === trajectoryMode))
     return (
       <div className="space-y-3">
-        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background p-3">
+        <div className={workspaceSectionClass}>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]">Publication trajectory</p>
+            <p className={workspaceHeadingClass}>Publication trajectory</p>
             <div className="relative isolate inline-grid grid-cols-3 items-center overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5">
               <span
                 className="pointer-events-none absolute inset-y-0.5 z-0 rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-[left,width] duration-320 ease-out"
@@ -2950,7 +2959,7 @@ function TotalPublicationsDrilldownWorkspace({
             </div>
           </div>
           <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_10.5rem]">
-            <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-2">
+            <div className={workspacePanelCompactClass}>
               <svg viewBox="0 0 320 138" className="h-40 w-full">
                 {[25, 50, 75].map((pct) => (
                   <line
@@ -2989,15 +2998,15 @@ function TotalPublicationsDrilldownWorkspace({
               </div>
             </div>
             <div className="space-y-1.5">
-              <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1.5">
+              <div className="rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background px-2 py-1.5">
                 <p className="text-[0.56rem] uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Volatility index</p>
                 <p className="mt-0.5 text-[0.78rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{volatilityIndex.toFixed(2)}</p>
               </div>
-              <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1.5">
+              <div className="rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background px-2 py-1.5">
                 <p className="text-[0.56rem] uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Growth slope</p>
                 <p className="mt-0.5 text-[0.78rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{growthSlope >= 0 ? '+' : ''}{growthSlope.toFixed(2)}/year</p>
               </div>
-              <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1.5">
+              <div className="rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background px-2 py-1.5">
                 <p className="text-[0.56rem] uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Phase marker</p>
                 <p className="mt-0.5 text-[0.78rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{trajectoryPhase}</p>
               </div>
@@ -3011,7 +3020,7 @@ function TotalPublicationsDrilldownWorkspace({
   if (activeTab === 'context') {
     return (
       <div className="space-y-3">
-        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background p-3">
+        <div className={workspaceSectionClass}>
           <div className="flex flex-wrap items-center gap-2">
             <span className={cn('inline-flex items-center rounded-full border px-2.5 py-1 text-[0.63rem] font-semibold', badgeTone)}>
               {contextClassLabel}
@@ -3019,13 +3028,13 @@ function TotalPublicationsDrilldownWorkspace({
             <span className="text-[0.64rem] text-[hsl(var(--tone-neutral-600))]">{trajectoryPhase} phase detected</span>
           </div>
           <div className="mt-3 grid gap-2 md:grid-cols-2">
-            <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-2.5">
+            <div className="rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background p-2.5">
               <p className="text-[0.58rem] uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Portfolio structure</p>
               <p className="mt-1 text-[0.67rem] text-[hsl(var(--tone-neutral-700))]">{`Active years ${formatInt(activeYears)}`}</p>
               <p className="text-[0.67rem] text-[hsl(var(--tone-neutral-700))]">{`Median/year ${medianPerActiveYear.toFixed(1)}`}</p>
               <p className="text-[0.67rem] text-[hsl(var(--tone-neutral-700))]">{`Unknown year records ${formatInt(unknownYearCount)}`}</p>
             </div>
-            <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-2.5">
+            <div className="rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background p-2.5">
               <p className="text-[0.58rem] uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Distribution profile</p>
               <p className="mt-1 text-[0.67rem] text-[hsl(var(--tone-neutral-700))]">{`Peak year ${peakYearData.year} (${formatInt(peakYearData.count)})`}</p>
               <p className="text-[0.67rem] text-[hsl(var(--tone-neutral-700))]">{`Volatility ${volatilityIndex.toFixed(2)}`}</p>
@@ -3033,13 +3042,13 @@ function TotalPublicationsDrilldownWorkspace({
             </div>
           </div>
           <div className="mt-3 grid gap-1.5 sm:grid-cols-3">
-            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))] text-left">
+            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))] text-left">
               View authorship distribution
             </button>
-            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))] text-left">
+            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))] text-left">
               View collaboration structure
             </button>
-            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))] text-left">
+            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))] text-left">
               View impact concentration
             </button>
           </div>
@@ -3051,11 +3060,11 @@ function TotalPublicationsDrilldownWorkspace({
   if (activeTab === 'methods') {
     return (
       <div className="space-y-3">
-        <details className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]">
-          <summary className="cursor-pointer list-none px-3 py-2 text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]">
+        <details className={cn(workspaceSectionClass, 'p-0')}>
+          <summary className={cn(workspaceHeadingClass, 'cursor-pointer list-none px-3 py-2')}>
             Method details
           </summary>
-          <div className="space-y-1.5 border-t border-[hsl(var(--tone-neutral-200))] px-3 py-2.5 text-[0.64rem] text-[hsl(var(--tone-neutral-700))]">
+          <div className="space-y-1.5 border-t border-[hsl(var(--tone-neutral-200)/0.72)] px-3 py-2.5 text-[0.64rem] text-[hsl(var(--tone-neutral-700))]">
             <p><span className="font-semibold">Formula:</span> {String(tile.drilldown?.formula || 'Not available')}</p>
             <p><span className="font-semibold">Filters:</span> Publication year when available; author-linked publication records.</p>
             <p><span className="font-semibold">Sources:</span> {(tile.data_source || []).join(', ') || 'Not available'}</p>
@@ -3069,7 +3078,7 @@ function TotalPublicationsDrilldownWorkspace({
   }
 
   return (
-    <div className="rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-3 py-4 text-xs text-[hsl(var(--tone-neutral-500))]">
+    <div className="rounded-md border border-dashed border-[hsl(var(--tone-neutral-300)/0.8)] bg-[hsl(var(--tone-neutral-50)/0.34)] px-3 py-4 text-xs text-[hsl(var(--tone-neutral-500))]">
       Select a tab to inspect this metric.
     </div>
   )
@@ -3187,7 +3196,7 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
                   </span>
                   <span
                     className={cn(
-                      'block w-full rounded-[4px] transition-[transform,filter,box-shadow] duration-220 ease-out',
+                      'block w-full rounded transition-[transform,filter,box-shadow] duration-220 ease-out',
                       toneClass,
                       isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
                     )}
@@ -3208,7 +3217,7 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
             <div key={`${bar.key}-${index}-axis`} className="text-center leading-none">
               <p className="text-[0.6rem] font-semibold text-[hsl(var(--tone-neutral-600))]">{bar.label}</p>
               <p
-                className="mt-[1px] text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-transparent"
+                className="mt-px text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-transparent"
                 aria-hidden="true"
               >
                 ytd
@@ -3686,7 +3695,7 @@ export function PublicationsTopStrip({
               <span>{insightsVisible ? 'Visible' : 'Not visible'}</span>
             </button>
           </div>
-          <div className="rounded-sm border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2.5 py-1.5">
+          <div className="rounded-sm bg-[hsl(var(--tone-neutral-50)/0.34)] px-2.5 py-1.5">
             <p className="text-[0.76rem] font-semibold uppercase tracking-[0.09em] text-[hsl(var(--tone-neutral-800))]">
               Publication insights
             </p>
@@ -4003,7 +4012,7 @@ export function PublicationsTopStrip({
               })}
             </div>
           )}
-          <div className="rounded-sm border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-2">
+          <div className="rounded-sm bg-[hsl(var(--tone-neutral-50)/0.34)] px-2 py-2">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <p className="pt-1 text-[0.7rem] font-semibold uppercase tracking-[0.09em] text-[hsl(var(--tone-neutral-700))]">
                 Tools
@@ -4012,7 +4021,7 @@ export function PublicationsTopStrip({
                 <button
                   type="button"
                   data-stop-tile-open="true"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
                   aria-label="Generate publication insights report"
                 >
                   <FileText className="h-3.5 w-3.5" />
@@ -4021,7 +4030,7 @@ export function PublicationsTopStrip({
                 <button
                   type="button"
                   data-stop-tile-open="true"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
                   aria-label="Download"
                 >
                   <Download className="h-3.5 w-3.5" />
@@ -4030,7 +4039,7 @@ export function PublicationsTopStrip({
                 <button
                   type="button"
                   data-stop-tile-open="true"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
                   aria-label="Share"
                 >
                   <Share2 className="h-3.5 w-3.5" />
@@ -4057,12 +4066,12 @@ export function PublicationsTopStrip({
                 onValueChange={(value) => setActiveDrilldownTab(value as DrilldownTab)}
                 className="w-full"
               >
-                <TabsList className="grid h-auto w-full grid-cols-5 gap-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-1">
+                <TabsList className="grid h-auto w-full grid-cols-5 gap-1 rounded-md bg-[hsl(var(--tone-neutral-50)/0.34)] p-1">
                   {DRILLDOWN_TABS.map((tab) => (
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className="!text-[0.69rem] font-medium leading-none text-[hsl(var(--tone-neutral-700))] data-[state=active]:bg-background data-[state=active]:text-[hsl(var(--tone-neutral-900))] data-[state=active]:shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.12)]"
+                      className="!text-[0.69rem] font-medium leading-none text-[hsl(var(--tone-neutral-700))] data-[state=active]:bg-background data-[state=active]:text-[hsl(var(--tone-neutral-900))] data-[state=active]:shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.1)]"
                     >
                       {tab.label}
                     </TabsTrigger>

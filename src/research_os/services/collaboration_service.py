@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import csv
 import logging
@@ -271,7 +271,9 @@ def _resolve_user_or_raise(session, user_id: str) -> User:
     return user
 
 
-def _resolve_collaborator_or_raise(session, *, user_id: str, collaborator_id: str) -> Collaborator:
+def _resolve_collaborator_or_raise(
+    session, *, user_id: str, collaborator_id: str
+) -> Collaborator:
     collaborator = session.scalars(
         select(Collaborator).where(
             Collaborator.id == collaborator_id,
@@ -285,7 +287,9 @@ def _resolve_collaborator_or_raise(session, *, user_id: str, collaborator_id: st
     return collaborator
 
 
-def _metric_by_collaborator(session, *, user_id: str, collaborator_ids: list[str]) -> dict[str, CollaborationMetric]:
+def _metric_by_collaborator(
+    session, *, user_id: str, collaborator_ids: list[str]
+) -> dict[str, CollaborationMetric]:
     if not collaborator_ids:
         return {}
     rows = session.scalars(
@@ -360,7 +364,9 @@ def _affiliation_similarity(a: str | None, b: str | None) -> float:
 
 
 def _name_similarity(a: str, b: str) -> float:
-    return SequenceMatcher(None, _normalize_name_lower(a), _normalize_name_lower(b)).ratio()
+    return SequenceMatcher(
+        None, _normalize_name_lower(a), _normalize_name_lower(b)
+    ).ratio()
 
 
 def _find_duplicate_warnings(
@@ -389,7 +395,9 @@ def _find_duplicate_warnings(
         name_ratio = _name_similarity(full_name, row.full_name)
         if name_ratio < 0.9:
             continue
-        inst_ratio = _affiliation_similarity(primary_institution, row.primary_institution)
+        inst_ratio = _affiliation_similarity(
+            primary_institution, row.primary_institution
+        )
         if inst_ratio >= 0.82:
             warnings.append(
                 (
@@ -404,15 +412,23 @@ def _collab_sort_key(item: dict[str, Any], sort: str) -> tuple:
     metrics = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
     normalized = (sort or "name").strip().lower()
     if normalized in {"coauthored", "coauthored_works", "works"}:
-        return (-int(metrics.get("coauthored_works_count") or 0), item["full_name"].lower())
+        return (
+            -int(metrics.get("coauthored_works_count") or 0),
+            item["full_name"].lower(),
+        )
     if normalized in {"strength", "score"}:
-        return (-float(metrics.get("collaboration_strength_score") or 0.0), item["full_name"].lower())
+        return (
+            -float(metrics.get("collaboration_strength_score") or 0.0),
+            item["full_name"].lower(),
+        )
     if normalized in {"last_year", "last_collaboration_year"}:
         year = _safe_int(metrics.get("last_collaboration_year"))
         return (-(year if year is not None else -1), item["full_name"].lower())
     if normalized in {"updated", "updated_at"}:
         updated = item.get("updated_at")
-        timestamp = _coerce_utc(updated).timestamp() if isinstance(updated, datetime) else 0.0
+        timestamp = (
+            _coerce_utc(updated).timestamp() if isinstance(updated, datetime) else 0.0
+        )
         return (-timestamp, item["full_name"].lower())
     return (item["full_name"].lower(),)
 
@@ -468,13 +484,18 @@ def list_collaborators_for_user(
         }
 
 
-def create_collaborator_for_user(*, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+def create_collaborator_for_user(
+    *, user_id: str, payload: dict[str, Any]
+) -> dict[str, Any]:
     create_all_tables()
     full_name = _normalize_name(str(payload.get("full_name") or ""))
     orcid_id = validate_orcid_id(payload.get("orcid_id"))
-    preferred_name = re.sub(r"\s+", " ", str(payload.get("preferred_name") or "").strip()) or None
+    preferred_name = (
+        re.sub(r"\s+", " ", str(payload.get("preferred_name") or "").strip()) or None
+    )
     primary_institution = (
-        re.sub(r"\s+", " ", str(payload.get("primary_institution") or "").strip()) or None
+        re.sub(r"\s+", " ", str(payload.get("primary_institution") or "").strip())
+        or None
     )
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
@@ -493,10 +514,17 @@ def create_collaborator_for_user(*, user_id: str, payload: dict[str, Any]) -> di
             preferred_name=preferred_name,
             email=_normalize_email(payload.get("email")),
             orcid_id=orcid_id,
-            openalex_author_id=(str(payload.get("openalex_author_id") or "").strip() or None),
+            openalex_author_id=(
+                str(payload.get("openalex_author_id") or "").strip() or None
+            ),
             primary_institution=primary_institution,
-            department=(re.sub(r"\s+", " ", str(payload.get("department") or "").strip()) or None),
-            country=(re.sub(r"\s+", " ", str(payload.get("country") or "").strip()) or None),
+            department=(
+                re.sub(r"\s+", " ", str(payload.get("department") or "").strip())
+                or None
+            ),
+            country=(
+                re.sub(r"\s+", " ", str(payload.get("country") or "").strip()) or None
+            ),
             current_position=(
                 re.sub(r"\s+", " ", str(payload.get("current_position") or "").strip())
                 or None
@@ -559,11 +587,14 @@ def update_collaborator_for_user(
             collaborator_id=collaborator_id,
         )
         if "full_name" in payload:
-            collaborator.full_name = _normalize_name(str(payload.get("full_name") or ""))
+            collaborator.full_name = _normalize_name(
+                str(payload.get("full_name") or "")
+            )
             collaborator.full_name_lower = _normalize_name_lower(collaborator.full_name)
         if "preferred_name" in payload:
             collaborator.preferred_name = (
-                re.sub(r"\s+", " ", str(payload.get("preferred_name") or "").strip()) or None
+                re.sub(r"\s+", " ", str(payload.get("preferred_name") or "").strip())
+                or None
             )
         if "email" in payload:
             collaborator.email = _normalize_email(payload.get("email"))
@@ -575,11 +606,15 @@ def update_collaborator_for_user(
             )
         if "primary_institution" in payload:
             collaborator.primary_institution = (
-                re.sub(r"\s+", " ", str(payload.get("primary_institution") or "").strip()) or None
+                re.sub(
+                    r"\s+", " ", str(payload.get("primary_institution") or "").strip()
+                )
+                or None
             )
         if "department" in payload:
             collaborator.department = (
-                re.sub(r"\s+", " ", str(payload.get("department") or "").strip()) or None
+                re.sub(r"\s+", " ", str(payload.get("department") or "").strip())
+                or None
             )
         if "country" in payload:
             collaborator.country = (
@@ -587,10 +622,13 @@ def update_collaborator_for_user(
             )
         if "current_position" in payload:
             collaborator.current_position = (
-                re.sub(r"\s+", " ", str(payload.get("current_position") or "").strip()) or None
+                re.sub(r"\s+", " ", str(payload.get("current_position") or "").strip())
+                or None
             )
         if "research_domains" in payload:
-            collaborator.research_domains = _normalize_domains(payload.get("research_domains"))
+            collaborator.research_domains = _normalize_domains(
+                payload.get("research_domains")
+            )
         if "notes" in payload:
             collaborator.notes = str(payload.get("notes") or "").strip() or None
         warnings = _find_duplicate_warnings(
@@ -629,7 +667,9 @@ def update_collaborator_for_user(
     return response
 
 
-def delete_collaborator_for_user(*, user_id: str, collaborator_id: str) -> dict[str, Any]:
+def delete_collaborator_for_user(
+    *, user_id: str, collaborator_id: str
+) -> dict[str, Any]:
     create_all_tables()
     deleted = False
     with session_scope() as session:
@@ -697,7 +737,9 @@ def export_collaborators_csv(*, user_id: str) -> tuple[str, str]:
     return "collaborators.csv", content
 
 
-def _latest_metrics_by_work(session, *, work_ids: list[str]) -> dict[str, MetricsSnapshot]:
+def _latest_metrics_by_work(
+    session, *, work_ids: list[str]
+) -> dict[str, MetricsSnapshot]:
     if not work_ids:
         return {}
     rows = session.scalars(
@@ -743,7 +785,9 @@ def _latest_metrics_by_work_at_or_before(
     return best
 
 
-def _author_match_indexes(authors: list[Author]) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+def _author_match_indexes(
+    authors: list[Author],
+) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     by_orcid: dict[str, set[str]] = defaultdict(set)
     by_name: dict[str, set[str]] = defaultdict(set)
     for author in authors:
@@ -797,8 +841,12 @@ def _read_failures_in_row(source_json: dict[str, Any]) -> int:
     return max(0, value if value is not None else 0)
 
 
-def _collaborator_rows_with_metrics(session, *, user_id: str, for_update: bool = False) -> tuple[list[Collaborator], dict[str, CollaborationMetric]]:
-    collaborators_query = select(Collaborator).where(Collaborator.owner_user_id == user_id)
+def _collaborator_rows_with_metrics(
+    session, *, user_id: str, for_update: bool = False
+) -> tuple[list[Collaborator], dict[str, CollaborationMetric]]:
+    collaborators_query = select(Collaborator).where(
+        Collaborator.owner_user_id == user_id
+    )
     if for_update:
         collaborators_query = collaborators_query.with_for_update()
     collaborators = session.scalars(collaborators_query).all()
@@ -813,7 +861,12 @@ def _collaborator_rows_with_metrics(session, *, user_id: str, for_update: bool =
     return collaborators, {str(item.collaborator_id): item for item in metric_rows}
 
 
-def _is_stale(*, collaborators: list[Collaborator], metric_rows: dict[str, CollaborationMetric], now: datetime) -> bool:
+def _is_stale(
+    *,
+    collaborators: list[Collaborator],
+    metric_rows: dict[str, CollaborationMetric],
+    now: datetime,
+) -> bool:
     if not collaborators:
         return False
     if not metric_rows:
@@ -841,7 +894,9 @@ def _acquire_user_enqueue_lock(session, *, user_id: str, now: datetime) -> bool:
     lock_name = f"collaboration_metrics_user:{user_id}"
     lease_expires = now + timedelta(seconds=max(300, _ttl_seconds() // 4))
     row = session.scalars(
-        select(AppRuntimeLock).where(AppRuntimeLock.lock_name == lock_name).with_for_update()
+        select(AppRuntimeLock)
+        .where(AppRuntimeLock.lock_name == lock_name)
+        .with_for_update()
     ).first()
     if row is None:
         session.add(
@@ -947,7 +1002,10 @@ def _persist_failed(*, user_id: str, detail: str) -> None:
                     owner_user_id=user_id,
                     collaborator_id=collaborator.id,
                     classification=CLASSIFICATION_UNCLASSIFIED,
-                    source_json={"formula_version": FORMULA_VERSION, "failures_in_row": 0},
+                    source_json={
+                        "formula_version": FORMULA_VERSION,
+                        "failures_in_row": 0,
+                    },
                 )
                 session.add(row)
                 rows_by_collab[str(collaborator.id)] = row
@@ -961,11 +1019,17 @@ def _persist_failed(*, user_id: str, detail: str) -> None:
                 "formula_version": FORMULA_VERSION,
                 "failures_in_row": failures,
             }
-            row.next_scheduled_at = now + timedelta(seconds=_failure_backoff_seconds(failures))
+            row.next_scheduled_at = now + timedelta(
+                seconds=_failure_backoff_seconds(failures)
+            )
             row.updated_at = now
         logger.warning(
             "collaboration_metrics_compute_failed",
-            extra={"user_id": user_id, "detail": str(detail), "failures_in_row": failures_max},
+            extra={
+                "user_id": user_id,
+                "detail": str(detail),
+                "failures_in_row": failures_max,
+            },
         )
         session.flush()
 
@@ -1029,7 +1093,10 @@ def _build_collaboration_work_index(
             for author in authors_by_id.values():
                 if not author.canonical_name:
                     continue
-                if _name_similarity(collaborator.full_name, author.canonical_name) < 0.94:
+                if (
+                    _name_similarity(collaborator.full_name, author.canonical_name)
+                    < 0.94
+                ):
                     continue
                 author_ids.add(str(author.id))
         for author_id in author_ids:
@@ -1116,7 +1183,12 @@ def compute_collaboration_metrics(*, user_id: str) -> dict[str, Any]:
                 "first_collaboration_year": first_year,
                 "last_collaboration_year": last_year,
                 "citations_last_12m": citations_last_12m,
-                "top_work_ids": [work_id for work_id, _ in sorted(top_works, key=lambda item: item[1], reverse=True)[:3]],
+                "top_work_ids": [
+                    work_id
+                    for work_id, _ in sorted(
+                        top_works, key=lambda item: item[1], reverse=True
+                    )[:3]
+                ],
             }
 
         scores: list[float] = []
@@ -1131,8 +1203,12 @@ def compute_collaboration_metrics(*, user_id: str) -> dict[str, Any]:
                 if max_shared_citations > 0
                 else 0.0
             )
-            recency = _recency_weight(values["last_collaboration_year"], now_year=now_year)
-            score = round((0.55 * works_norm) + (0.25 * citations_norm) + (0.20 * recency), 4)
+            recency = _recency_weight(
+                values["last_collaboration_year"], now_year=now_year
+            )
+            score = round(
+                (0.55 * works_norm) + (0.25 * citations_norm) + (0.20 * recency), 4
+            )
             values["score"] = score
             scores.append(score)
 
@@ -1150,7 +1226,10 @@ def compute_collaboration_metrics(*, user_id: str) -> dict[str, Any]:
                 row = CollaborationMetric(
                     owner_user_id=user_id,
                     collaborator_id=collaborator.id,
-                    source_json={"formula_version": FORMULA_VERSION, "failures_in_row": 0},
+                    source_json={
+                        "formula_version": FORMULA_VERSION,
+                        "failures_in_row": 0,
+                    },
                 )
                 session.add(row)
                 existing_rows[collab_id] = row
@@ -1277,7 +1356,9 @@ def get_collaboration_metrics_summary(*, user_id: str) -> dict[str, Any]:
             user_id=user_id,
             for_update=False,
         )
-        stale = _is_stale(collaborators=collaborators, metric_rows=metrics_rows, now=now)
+        stale = _is_stale(
+            collaborators=collaborators, metric_rows=metrics_rows, now=now
+        )
         running = _is_running(metrics_rows)
         should_enqueue = stale and not running and len(collaborators) > 0
         payload = _build_summary_response(
@@ -1295,7 +1376,9 @@ def get_collaboration_metrics_summary(*, user_id: str) -> dict[str, Any]:
     return payload
 
 
-def trigger_collaboration_metrics_recompute(*, user_id: str, force: bool = False) -> dict[str, Any]:
+def trigger_collaboration_metrics_recompute(
+    *, user_id: str, force: bool = False
+) -> dict[str, Any]:
     enqueued = enqueue_collaboration_metrics_recompute(
         user_id=user_id,
         force=force,
@@ -1338,11 +1421,16 @@ def _openalex_request_with_retry(*, url: str, params: dict[str, Any]) -> dict[st
                 return {}
             time.sleep(0.35 * (attempt + 1))
     if last_exception:
-        logger.warning("collaboration_openalex_request_failed", extra={"detail": str(last_exception)})
+        logger.warning(
+            "collaboration_openalex_request_failed",
+            extra={"detail": str(last_exception)},
+        )
     return {}
 
 
-def _resolve_openalex_author_id(*, orcid_id: str | None, mailto: str | None) -> str | None:
+def _resolve_openalex_author_id(
+    *, orcid_id: str | None, mailto: str | None
+) -> str | None:
     normalized_orcid = _normalize_orcid_id(orcid_id)
     if not normalized_orcid:
         return None
@@ -1385,7 +1473,9 @@ def _openalex_author_lookup_id(openalex_author_id: str) -> str | None:
     if not normalized:
         return None
     if normalized.startswith("https://openalex.org/"):
-        return normalized.removeprefix("https://openalex.org/").strip().strip("/") or None
+        return (
+            normalized.removeprefix("https://openalex.org/").strip().strip("/") or None
+        )
     return normalized.strip().strip("/") or None
 
 
@@ -1525,13 +1615,20 @@ def _iter_openalex_coauthors(
                 if not isinstance(author, dict):
                     continue
                 candidate_openalex_id = str(author.get("id") or "").strip()
-                if not candidate_openalex_id or candidate_openalex_id == openalex_author_id:
+                if (
+                    not candidate_openalex_id
+                    or candidate_openalex_id == openalex_author_id
+                ):
                     continue
-                name = re.sub(r"\s+", " ", str(author.get("display_name") or "").strip())
+                name = re.sub(
+                    r"\s+", " ", str(author.get("display_name") or "").strip()
+                )
                 if not name:
                     continue
                 candidate_orcid = (
-                    _safe_validate_orcid(author.get("orcid")) if author.get("orcid") else None
+                    _safe_validate_orcid(author.get("orcid"))
+                    if author.get("orcid")
+                    else None
                 )
                 institutions = authorship.get("institutions")
                 institution_name = None
@@ -1540,10 +1637,20 @@ def _iter_openalex_coauthors(
                     first = institutions[0]
                     if isinstance(first, dict):
                         institution_name = (
-                            re.sub(r"\s+", " ", str(first.get("display_name") or "").strip()) or None
+                            re.sub(
+                                r"\s+",
+                                " ",
+                                str(first.get("display_name") or "").strip(),
+                            )
+                            or None
                         )
                         country = (
-                            re.sub(r"\s+", " ", str(first.get("country_code") or "").strip()) or None
+                            re.sub(
+                                r"\s+",
+                                " ",
+                                str(first.get("country_code") or "").strip(),
+                            )
+                            or None
                         )
                 key = candidate_orcid or candidate_openalex_id
                 existing = coauthors.get(key)
@@ -1694,7 +1801,10 @@ def _infer_collaborator_profile_from_publication_authors(
                 ):
                     score = 1.2
             if score <= 0 and candidate_name:
-                if _normalize_name_lower(candidate_name) == normalized_collaborator_name:
+                if (
+                    _normalize_name_lower(candidate_name)
+                    == normalized_collaborator_name
+                ):
                     score = 1.0
                 else:
                     similarity = _name_similarity(collaborator_name, candidate_name)
@@ -1826,7 +1936,10 @@ def import_collaborators_from_openalex(*, user_id: str) -> dict[str, Any]:
                     full_name=full_name,
                     full_name_lower=_normalize_name_lower(full_name),
                     orcid_id=candidate_orcid,
-                    openalex_author_id=str(candidate.get("openalex_author_id") or "").strip() or None,
+                    openalex_author_id=str(
+                        candidate.get("openalex_author_id") or ""
+                    ).strip()
+                    or None,
                     primary_institution=(
                         re.sub(
                             r"\s+",
@@ -1869,9 +1982,13 @@ def import_collaborators_from_openalex(*, user_id: str) -> dict[str, Any]:
                 not existing.openalex_author_id
                 and str(candidate.get("openalex_author_id") or "").strip()
             ):
-                existing.openalex_author_id = str(candidate["openalex_author_id"]).strip()
+                existing.openalex_author_id = str(
+                    candidate["openalex_author_id"]
+                ).strip()
                 changed = True
-            if not existing.primary_institution and candidate.get("primary_institution"):
+            if not existing.primary_institution and candidate.get(
+                "primary_institution"
+            ):
                 existing.primary_institution = (
                     re.sub(
                         r"\s+",
@@ -1883,7 +2000,8 @@ def import_collaborators_from_openalex(*, user_id: str) -> dict[str, Any]:
                 changed = True
             if not existing.country and candidate.get("country"):
                 existing.country = (
-                    re.sub(r"\s+", " ", str(candidate.get("country") or "").strip()) or None
+                    re.sub(r"\s+", " ", str(candidate.get("country") or "").strip())
+                    or None
                 )
                 changed = True
             if changed:
@@ -1950,7 +2068,9 @@ def enrich_collaborators_from_openalex(
                 collaborator=collaborator,
                 works=works,
             )
-            resolved_author_id = _normalize_openalex_author_id(collaborator.openalex_author_id)
+            resolved_author_id = _normalize_openalex_author_id(
+                collaborator.openalex_author_id
+            )
             if not resolved_author_id:
                 resolved_author_id = _normalize_openalex_author_id(
                     _resolve_openalex_author_id(
@@ -1967,9 +2087,8 @@ def enrich_collaborators_from_openalex(
                 collaborator.orcid_id = str(fallback_profile["orcid_id"]).strip()
                 field_updates["orcid_id"] += 1
                 changed = True
-            if (
-                not collaborator.primary_institution
-                and fallback_profile.get("primary_institution")
+            if not collaborator.primary_institution and fallback_profile.get(
+                "primary_institution"
             ):
                 collaborator.primary_institution = str(
                     fallback_profile["primary_institution"]
@@ -2036,8 +2155,12 @@ def enrich_collaborators_from_openalex(
                 collaborator.orcid_id = str(profile["orcid_id"]).strip()
                 field_updates["orcid_id"] += 1
                 changed = True
-            if not collaborator.primary_institution and profile.get("primary_institution"):
-                collaborator.primary_institution = str(profile["primary_institution"]).strip()
+            if not collaborator.primary_institution and profile.get(
+                "primary_institution"
+            ):
+                collaborator.primary_institution = str(
+                    profile["primary_institution"]
+                ).strip()
                 field_updates["primary_institution"] += 1
                 changed = True
             if not collaborator.country and profile.get("country"):
@@ -2110,7 +2233,9 @@ def get_manuscript_author_suggestions(
                 else CLASSIFICATION_UNCLASSIFIED
             ),
             "collaboration_strength_score": (
-                float(item.get("metrics", {}).get("collaboration_strength_score") or 0.0)
+                float(
+                    item.get("metrics", {}).get("collaboration_strength_score") or 0.0
+                )
                 if isinstance(item.get("metrics"), dict)
                 else 0.0
             ),
@@ -2207,7 +2332,11 @@ def generate_collaboration_ai_insights_draft(*, user_id: str) -> dict[str, Any]:
                 f"Most represented domain is {dominant_domain[0]} ({dominant_domain[1]} collaborators)."
             )
         if top_three:
-            names = ", ".join(str(item.get("full_name") or "").strip() for item in top_three if item.get("full_name"))
+            names = ", ".join(
+                str(item.get("full_name") or "").strip()
+                for item in top_three
+                if item.get("full_name")
+            )
             if names:
                 insights.append(f"Current strongest collaboration cluster: {names}.")
 
@@ -2268,7 +2397,10 @@ def suggest_collaborators_for_manuscript_draft(
     ranked: list[dict[str, Any]] = []
     for item in items:
         metrics = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
-        domains = [str(value or "").strip().lower() for value in item.get("research_domains") or []]
+        domains = [
+            str(value or "").strip().lower()
+            for value in item.get("research_domains") or []
+        ]
         strength = min(
             1.0,
             max(
@@ -2299,15 +2431,9 @@ def suggest_collaborators_for_manuscript_draft(
                 method_hits += 1
                 matched_methods.append(method)
 
-        topic_match = (
-            keyword_hits / len(keywords)
-            if keywords
-            else 0.0
-        )
+        topic_match = keyword_hits / len(keywords) if keywords else 0.0
         method_match = (
-            method_hits / len(methods_normalized)
-            if methods_normalized
-            else 0.0
+            method_hits / len(methods_normalized) if methods_normalized else 0.0
         )
         domain_fit = min(1.0, 0.75 * topic_match + 0.25 * method_match)
         score = round((0.5 * strength) + (0.35 * domain_fit) + (0.15 * recency), 4)
@@ -2321,13 +2447,16 @@ def suggest_collaborators_for_manuscript_draft(
             rationale_parts.append("recent collaboration signal")
         if strength >= 0.7:
             rationale_parts.append("high collaboration strength")
-        explanation = "; ".join(rationale_parts) or "ranked by prior collaboration strength"
+        explanation = (
+            "; ".join(rationale_parts) or "ranked by prior collaboration strength"
+        )
 
         ranked.append(
             {
                 "collaborator_id": str(item.get("id")),
                 "full_name": str(item.get("full_name") or "").strip(),
-                "institution": str(item.get("primary_institution") or "").strip() or None,
+                "institution": str(item.get("primary_institution") or "").strip()
+                or None,
                 "orcid_id": item.get("orcid_id"),
                 "classification": (
                     metrics.get("classification")
@@ -2341,7 +2470,12 @@ def suggest_collaborators_for_manuscript_draft(
             }
         )
 
-    ranked.sort(key=lambda row: (-float(row.get("score") or 0.0), str(row.get("full_name") or "").lower()))
+    ranked.sort(
+        key=lambda row: (
+            -float(row.get("score") or 0.0),
+            str(row.get("full_name") or "").lower(),
+        )
+    )
     if not keywords and not methods_normalized:
         ranked = ranked[:limit]
     else:
@@ -2370,7 +2504,9 @@ def draft_contribution_statement(
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
     if not isinstance(authors, list) or not authors:
-        raise CollaborationValidationError("At least one author is required for contribution draft.")
+        raise CollaborationValidationError(
+            "At least one author is required for contribution draft."
+        )
 
     lines: list[str] = []
     roles_payload: list[dict[str, Any]] = []
@@ -2413,16 +2549,14 @@ def draft_contribution_statement(
         )
 
     if not lines:
-        raise CollaborationValidationError("At least one valid author is required for contribution draft.")
+        raise CollaborationValidationError(
+            "At least one valid author is required for contribution draft."
+        )
 
     if equal_names:
-        lines.append(
-            f"Equal contribution: {', '.join(equal_names)}."
-        )
+        lines.append(f"Equal contribution: {', '.join(equal_names)}.")
     if corresponding_names:
-        lines.append(
-            f"Corresponding author(s): {', '.join(corresponding_names)}."
-        )
+        lines.append(f"Corresponding author(s): {', '.join(corresponding_names)}.")
 
     return {
         "status": "draft",
@@ -2444,7 +2578,9 @@ def normalize_affiliations_and_coi_draft(
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
     if not isinstance(authors, list) or not authors:
-        raise CollaborationValidationError("At least one author is required for affiliation normalisation.")
+        raise CollaborationValidationError(
+            "At least one author is required for affiliation normalisation."
+        )
 
     normalized_authors: list[dict[str, Any]] = []
     institution_map: dict[str, int] = {}
@@ -2468,7 +2604,9 @@ def normalize_affiliations_and_coi_draft(
         )
 
     if not normalized_authors:
-        raise CollaborationValidationError("At least one valid author is required for affiliation normalisation.")
+        raise CollaborationValidationError(
+            "At least one valid author is required for affiliation normalisation."
+        )
 
     affiliations = [
         {
@@ -2508,9 +2646,13 @@ def normalize_affiliations_and_coi_draft(
     }
 
 
-def _render_authors_block(*, authors: list[dict[str, Any]], affiliations: list[dict[str, Any]]) -> str:
+def _render_authors_block(
+    *, authors: list[dict[str, Any]], affiliations: list[dict[str, Any]]
+) -> str:
     superscript_by_institution = {
-        str(item.get("institution_name") or "").strip(): int(item.get("superscript_number") or 0)
+        str(item.get("institution_name") or "").strip(): int(
+            item.get("superscript_number") or 0
+        )
         for item in affiliations
         if str(item.get("institution_name") or "").strip()
     }
@@ -2564,11 +2706,13 @@ def save_manuscript_authors(
         normalized_authors.append(
             {
                 "author_order": index,
-                "collaborator_id": str(author.get("collaborator_id") or "").strip() or None,
+                "collaborator_id": str(author.get("collaborator_id") or "").strip()
+                or None,
                 "full_name": full_name,
                 "orcid_id": validate_orcid_id(author.get("orcid_id")),
                 "institution": (
-                    re.sub(r"\s+", " ", str(author.get("institution") or "").strip()) or None
+                    re.sub(r"\s+", " ", str(author.get("institution") or "").strip())
+                    or None
                 ),
                 "is_corresponding": bool(author.get("is_corresponding")),
                 "equal_contribution": bool(author.get("equal_contribution")),
@@ -2582,7 +2726,9 @@ def save_manuscript_authors(
         _resolve_user_or_raise(session, user_id)
         manuscript = session.get(Manuscript, workspace_id)
         if manuscript is None:
-            raise CollaborationNotFoundError(f"Workspace '{workspace_id}' was not found.")
+            raise CollaborationNotFoundError(
+                f"Workspace '{workspace_id}' was not found."
+            )
 
         session.execute(
             delete(ManuscriptAuthor).where(
@@ -2604,7 +2750,8 @@ def save_manuscript_authors(
                 if not isinstance(raw, dict):
                     continue
                 institution_name = (
-                    re.sub(r"\s+", " ", str(raw.get("institution_name") or "").strip()) or None
+                    re.sub(r"\s+", " ", str(raw.get("institution_name") or "").strip())
+                    or None
                 )
                 if not institution_name:
                     continue
@@ -2618,11 +2765,16 @@ def save_manuscript_authors(
                     {
                         "institution_name": institution_name,
                         "department": (
-                            re.sub(r"\s+", " ", str(raw.get("department") or "").strip()) or None
+                            re.sub(
+                                r"\s+", " ", str(raw.get("department") or "").strip()
+                            )
+                            or None
                         ),
-                        "city": re.sub(r"\s+", " ", str(raw.get("city") or "").strip()) or None,
+                        "city": re.sub(r"\s+", " ", str(raw.get("city") or "").strip())
+                        or None,
                         "country": (
-                            re.sub(r"\s+", " ", str(raw.get("country") or "").strip()) or None
+                            re.sub(r"\s+", " ", str(raw.get("country") or "").strip())
+                            or None
                         ),
                         "superscript_number": superscript_number,
                     }
@@ -2648,7 +2800,9 @@ def save_manuscript_authors(
             ]
 
         collaborator_ids = [
-            item["collaborator_id"] for item in normalized_authors if item.get("collaborator_id")
+            item["collaborator_id"]
+            for item in normalized_authors
+            if item.get("collaborator_id")
         ]
         collaborator_rows = session.scalars(
             select(Collaborator).where(
@@ -2662,7 +2816,9 @@ def save_manuscript_authors(
         for item in normalized_authors:
             collaborator_id = item.get("collaborator_id")
             collaborator = (
-                collaborator_by_id.get(collaborator_id) if isinstance(collaborator_id, str) else None
+                collaborator_by_id.get(collaborator_id)
+                if isinstance(collaborator_id, str)
+                else None
             )
             author_row = ManuscriptAuthor(
                 manuscript_id=workspace_id,
@@ -2734,23 +2890,31 @@ def get_manuscript_authors(*, user_id: str, workspace_id: str) -> dict[str, Any]
         _resolve_user_or_raise(session, user_id)
         manuscript = session.get(Manuscript, workspace_id)
         if manuscript is None:
-            raise CollaborationNotFoundError(f"Workspace '{workspace_id}' was not found.")
+            raise CollaborationNotFoundError(
+                f"Workspace '{workspace_id}' was not found."
+            )
         author_rows = session.scalars(
-            select(ManuscriptAuthor).where(
+            select(ManuscriptAuthor)
+            .where(
                 ManuscriptAuthor.owner_user_id == user_id,
                 ManuscriptAuthor.manuscript_id == workspace_id,
-            ).order_by(ManuscriptAuthor.author_order.asc())
+            )
+            .order_by(ManuscriptAuthor.author_order.asc())
         ).all()
         affiliation_rows = session.scalars(
-            select(ManuscriptAffiliation).where(
+            select(ManuscriptAffiliation)
+            .where(
                 ManuscriptAffiliation.owner_user_id == user_id,
                 ManuscriptAffiliation.manuscript_id == workspace_id,
-            ).order_by(ManuscriptAffiliation.superscript_number.asc())
+            )
+            .order_by(ManuscriptAffiliation.superscript_number.asc())
         ).all()
         authors = [
             {
                 "author_order": int(row.author_order or 0),
-                "collaborator_id": str(row.collaborator_id) if row.collaborator_id else None,
+                "collaborator_id": str(row.collaborator_id)
+                if row.collaborator_id
+                else None,
                 "full_name": row.full_name,
                 "orcid_id": row.orcid_id,
                 "institution": row.institution,
@@ -2785,7 +2949,9 @@ def _try_acquire_scheduler_leader(now: datetime) -> bool:
     create_all_tables()
     with session_scope() as session:
         row = session.scalars(
-            select(AppRuntimeLock).where(AppRuntimeLock.lock_name == SCHEDULER_LOCK_NAME).with_for_update()
+            select(AppRuntimeLock)
+            .where(AppRuntimeLock.lock_name == SCHEDULER_LOCK_NAME)
+            .with_for_update()
         ).first()
         if row is None:
             session.add(
@@ -2797,7 +2963,10 @@ def _try_acquire_scheduler_leader(now: datetime) -> bool:
             )
             session.flush()
             return True
-        if _coerce_utc(row.lease_expires_at) <= now or str(row.owner_id or "") == _INSTANCE_ID:
+        if (
+            _coerce_utc(row.lease_expires_at) <= now
+            or str(row.owner_id or "") == _INSTANCE_ID
+        ):
             row.owner_id = _INSTANCE_ID
             row.lease_expires_at = lease_expires
             session.flush()
@@ -2810,9 +2979,12 @@ def run_collaboration_metrics_scheduler_tick() -> int:
     if not _try_acquire_scheduler_leader(now):
         return 0
     with session_scope() as session:
-        user_ids = [str(item) for item in session.scalars(
-            select(Collaborator.owner_user_id).distinct()
-        ).all()]
+        user_ids = [
+            str(item)
+            for item in session.scalars(
+                select(Collaborator.owner_user_id).distinct()
+            ).all()
+        ]
     enqueued = 0
     for user_id in user_ids:
         with session_scope() as session:
@@ -2821,7 +2993,9 @@ def run_collaboration_metrics_scheduler_tick() -> int:
                 user_id=user_id,
                 for_update=False,
             )
-            stale = _is_stale(collaborators=collaborators, metric_rows=metric_rows, now=now)
+            stale = _is_stale(
+                collaborators=collaborators, metric_rows=metric_rows, now=now
+            )
             running = _is_running(metric_rows)
         if stale and not running:
             if enqueue_collaboration_metrics_recompute(

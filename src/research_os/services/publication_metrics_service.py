@@ -153,7 +153,9 @@ def _openalex_field_percentile_max_exact_ranks() -> int:
 
 
 def _openalex_field_percentile_exact_runtime_seconds() -> float:
-    value = _safe_float(os.getenv("PUB_METRICS_FIELD_PERCENTILE_EXACT_RUNTIME_SECONDS", "25"))
+    value = _safe_float(
+        os.getenv("PUB_METRICS_FIELD_PERCENTILE_EXACT_RUNTIME_SECONDS", "25")
+    )
     return max(2.0, min(300.0, value if value is not None else 25.0))
 
 
@@ -279,7 +281,10 @@ def _build_tooltip(
     data_sources: list[str],
     computation: str,
 ) -> tuple[str, dict[str, Any]]:
-    sources_text = ", ".join([item for item in data_sources if str(item).strip()]) or "Not available"
+    sources_text = (
+        ", ".join([item for item in data_sources if str(item).strip()])
+        or "Not available"
+    )
     update_frequency = _update_frequency_label()
     tooltip = (
         f"{definition} "
@@ -349,7 +354,10 @@ def _openalex_request_with_retry(*, url: str, params: dict[str, Any]) -> dict[st
                 return {}
             time.sleep(0.35 * (attempt + 1))
     if last_exception:
-        logger.warning("publication_metrics_openalex_lookup_failed", extra={"detail": str(last_exception)})
+        logger.warning(
+            "publication_metrics_openalex_lookup_failed",
+            extra={"detail": str(last_exception)},
+        )
     return {}
 
 
@@ -437,8 +445,16 @@ def _openalex_primary_field_and_year_for_work(
     )
     if not payload:
         return {}
-    primary_topic = payload.get("primary_topic") if isinstance(payload.get("primary_topic"), dict) else {}
-    field = primary_topic.get("field") if isinstance(primary_topic.get("field"), dict) else {}
+    primary_topic = (
+        payload.get("primary_topic")
+        if isinstance(payload.get("primary_topic"), dict)
+        else {}
+    )
+    field = (
+        primary_topic.get("field")
+        if isinstance(primary_topic.get("field"), dict)
+        else {}
+    )
     field_id = _normalize_openalex_field_id(field.get("id"))
     field_name = str(field.get("display_name") or "").strip() or None
     publication_year = _safe_int(payload.get("publication_year"))
@@ -468,7 +484,9 @@ def _openalex_field_year_citation_cohort(
     citations: list[int] = []
     seen_ids: set[str] = set()
     for page_index in range(max_pages):
-        seed_value = abs(hash(f"{field_filter_id}:{int(year)}:{page_index}")) % 10_000_000
+        seed_value = (
+            abs(hash(f"{field_filter_id}:{int(year)}:{page_index}")) % 10_000_000
+        )
         params: dict[str, Any] = {
             "filter": f"primary_topic.field.id:{field_filter_id},publication_year:{int(year)}",
             "select": "id,cited_by_count",
@@ -597,7 +615,10 @@ def _openalex_field_year_percentile_rank_exact(
         )
     )
     if resolved_total is None or resolved_total <= 0:
-        return {"percentile_rank": None, "total_results": max(0, int(resolved_total or 0))}
+        return {
+            "percentile_rank": None,
+            "total_results": max(0, int(resolved_total or 0)),
+        }
 
     below_count = _openalex_field_year_count_below_or_equal(
         field_id=field_id,
@@ -616,7 +637,9 @@ def _openalex_field_year_percentile_rank_exact(
     if below_count is None or equal_count is None:
         return {"percentile_rank": None, "total_results": int(resolved_total)}
 
-    percentile_rank = ((below_count + (equal_count / 2.0)) / float(max(1, resolved_total))) * 100.0
+    percentile_rank = (
+        (below_count + (equal_count / 2.0)) / float(max(1, resolved_total))
+    ) * 100.0
     percentile_rank = max(0.0, min(100.0, percentile_rank))
     return {
         "percentile_rank": round(percentile_rank, 2),
@@ -624,7 +647,9 @@ def _openalex_field_year_percentile_rank_exact(
     }
 
 
-def _empirical_percentile_rank(sorted_values: list[int], value: int | float) -> float | None:
+def _empirical_percentile_rank(
+    sorted_values: list[int], value: int | float
+) -> float | None:
     if not sorted_values:
         return None
     n = len(sorted_values)
@@ -684,7 +709,9 @@ def _month_end_points(*, now: datetime, months: int) -> list[datetime]:
     return points
 
 
-def _extract_counts_by_year(rows: list[MetricsSnapshot], *, now_year: int) -> dict[int, int]:
+def _extract_counts_by_year(
+    rows: list[MetricsSnapshot], *, now_year: int
+) -> dict[int, int]:
     if not rows:
         return {}
 
@@ -695,7 +722,9 @@ def _extract_counts_by_year(rows: list[MetricsSnapshot], *, now_year: int) -> di
 
     ordered = sorted(rows, key=_rank, reverse=True)
     for snapshot in ordered:
-        payload = snapshot.metric_payload if isinstance(snapshot.metric_payload, dict) else {}
+        payload = (
+            snapshot.metric_payload if isinstance(snapshot.metric_payload, dict) else {}
+        )
         raw = payload.get("counts_by_year")
         if not isinstance(raw, list):
             continue
@@ -766,7 +795,9 @@ def _monthly_from_yearly_counts(
     return values
 
 
-def _normalize_monthly_to_total(*, monthly_added: list[int], target_total: int) -> list[int]:
+def _normalize_monthly_to_total(
+    *, monthly_added: list[int], target_total: int
+) -> list[int]:
     clean = [max(0, int(value or 0)) for value in monthly_added]
     total = int(sum(clean))
     target = max(0, int(target_total or 0))
@@ -793,8 +824,12 @@ def _normalize_monthly_to_total(*, monthly_added: list[int], target_total: int) 
     return [max(0, int(value)) for value in scaled]
 
 
-def _cumulative_from_monthly(*, monthly_added: list[int], target_total: int) -> list[int]:
-    clean = _normalize_monthly_to_total(monthly_added=monthly_added, target_total=target_total)
+def _cumulative_from_monthly(
+    *, monthly_added: list[int], target_total: int
+) -> list[int]:
+    clean = _normalize_monthly_to_total(
+        monthly_added=monthly_added, target_total=target_total
+    )
     base = max(0, int(target_total or 0) - int(sum(clean)))
     cumulative: list[int] = [base]
     for value in clean:
@@ -804,7 +839,9 @@ def _cumulative_from_monthly(*, monthly_added: list[int], target_total: int) -> 
 
 def _snapshot_rank(row: MetricsSnapshot) -> tuple[int, int, int, datetime]:
     citations = max(0, int(row.citations_count or 0))
-    has_quality = int(row.influential_citations is not None or row.altmetric_score is not None)
+    has_quality = int(
+        row.influential_citations is not None or row.altmetric_score is not None
+    )
     priority = _provider_priority(row.provider)
     captured = _coerce_utc(row.captured_at)
     return (citations, has_quality, priority, captured)
@@ -848,7 +885,9 @@ def _best_snapshot_at_or_before(
     preferred = str(preferred_provider or "").strip().lower()
     if preferred:
         preferred_rows = [
-            row for row in eligible if str(row.provider or "").strip().lower() == preferred
+            row
+            for row in eligible
+            if str(row.provider or "").strip().lower() == preferred
         ]
         if preferred_rows:
             return max(preferred_rows, key=_snapshot_rank)
@@ -868,7 +907,9 @@ def compute_h_index(citations: list[int]) -> int:
     return h_value
 
 
-def compute_m_index(*, h_index: int, first_publication_year: int | None, current_year: int) -> float:
+def compute_m_index(
+    *, h_index: int, first_publication_year: int | None, current_year: int
+) -> float:
     first_year = int(first_publication_year or 0)
     if first_year < 1900 or first_year > current_year:
         return 0.0
@@ -876,7 +917,9 @@ def compute_m_index(*, h_index: int, first_publication_year: int | None, current
     return round(max(0.0, float(h_index)) / float(career_years), 3)
 
 
-def compute_yoy_percent(*, citations_last_12m: int, citations_prev_12m: int) -> float | None:
+def compute_yoy_percent(
+    *, citations_last_12m: int, citations_prev_12m: int
+) -> float | None:
     current = max(0, int(citations_last_12m or 0))
     previous = max(0, int(citations_prev_12m or 0))
     if previous <= 0:
@@ -925,7 +968,9 @@ def _linear_slope(values: list[int | float]) -> float:
     n = len(clean)
     x_mean = (n - 1) / 2.0
     y_mean = sum(clean) / float(n)
-    numerator = sum((idx - x_mean) * (value - y_mean) for idx, value in enumerate(clean))
+    numerator = sum(
+        (idx - x_mean) * (value - y_mean) for idx, value in enumerate(clean)
+    )
     denominator = sum((idx - x_mean) ** 2 for idx in range(n))
     if denominator <= 0.0:
         return 0.0
@@ -950,7 +995,9 @@ def _growth_state_from_series(values: list[int]) -> tuple[str, str, float]:
     return ("Growth steady", "neutral", normalized_slope)
 
 
-def compute_concentration_risk_percent(*, total_citations: int, top3_citations: int) -> float:
+def compute_concentration_risk_percent(
+    *, total_citations: int, top3_citations: int
+) -> float:
     total = max(0, int(total_citations or 0))
     head = max(0, int(top3_citations or 0))
     if total <= 0:
@@ -1057,7 +1104,10 @@ def project_h_index(
         else f"{h_now} (likely)"
     )
     candidate_papers.sort(
-        key=lambda row: (int(row.get("citations_lifetime") or 0), float(row.get("projection_probability") or 0.0)),
+        key=lambda row: (
+            int(row.get("citations_lifetime") or 0),
+            float(row.get("projection_probability") or 0.0),
+        ),
         reverse=True,
     )
     return {
@@ -1080,7 +1130,9 @@ def _extract_match_method(snapshot: MetricsSnapshot | None) -> str:
     return str(snapshot.metric_payload.get("match_method") or "").strip().lower()
 
 
-def _estimate_match_confidence(*, work: Work, snapshot: MetricsSnapshot | None) -> float:
+def _estimate_match_confidence(
+    *, work: Work, snapshot: MetricsSnapshot | None
+) -> float:
     has_doi = bool(str(work.doi or "").strip())
     method = _extract_match_method(snapshot)
     if method == "doi":
@@ -1136,7 +1188,9 @@ def _rolling_yoy_percent(values: list[int], index: int) -> float | None:
     current = _rolling_sum(values, 12, index)
     previous_start = max(0, index - 23)
     previous_end = max(0, index - 11)
-    previous = int(sum(max(0, int(v or 0)) for v in values[previous_start:previous_end]))
+    previous = int(
+        sum(max(0, int(v or 0)) for v in values[previous_start:previous_end])
+    )
     return compute_yoy_percent(citations_last_12m=current, citations_prev_12m=previous)
 
 
@@ -1188,7 +1242,9 @@ def _metric_tile(
         "tooltip": tooltip,
         "tooltip_details": tooltip_details,
         "data_source": data_source,
-        "confidence_score": round(max(0.0, min(1.0, float(confidence_score or 0.0))), 2),
+        "confidence_score": round(
+            max(0.0, min(1.0, float(confidence_score or 0.0))), 2
+        ),
         "stability": stability,
         "drilldown": drilldown,
     }
@@ -1220,7 +1276,9 @@ def _bundle_row_query(user_id: str):
     )
 
 
-def _load_bundle_row(session, *, user_id: str, for_update: bool = False) -> PublicationMetric | None:
+def _load_bundle_row(
+    session, *, user_id: str, for_update: bool = False
+) -> PublicationMetric | None:
     query = _bundle_row_query(user_id)
     if for_update:
         query = query.with_for_update()
@@ -1323,8 +1381,12 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     snapshot_rows = session.scalars(
         select(MetricsSnapshot).where(MetricsSnapshot.work_id.in_(work_ids))
     ).all()
-    snapshots_by_work: dict[str, list[MetricsSnapshot]] = {work_id: [] for work_id in work_ids}
-    semantic_by_work: dict[str, list[MetricsSnapshot]] = {work_id: [] for work_id in work_ids}
+    snapshots_by_work: dict[str, list[MetricsSnapshot]] = {
+        work_id: [] for work_id in work_ids
+    }
+    semantic_by_work: dict[str, list[MetricsSnapshot]] = {
+        work_id: [] for work_id in work_ids
+    }
     for row in snapshot_rows:
         work_id = str(row.work_id)
         snapshots_by_work.setdefault(work_id, []).append(row)
@@ -1352,7 +1414,11 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         semantic_rows = semantic_by_work.get(work_id, [])
         latest = _best_snapshot(rows)
         latest_openalex = _best_snapshot(
-            [item for item in rows if str(item.provider or "").strip().lower() == "openalex"]
+            [
+                item
+                for item in rows
+                if str(item.provider or "").strip().lower() == "openalex"
+            ]
         )
         latest_semantic = _best_snapshot(semantic_rows)
         latest_citations = (
@@ -1362,14 +1428,25 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         )
         latest_influential = (
             max(0, int(latest_semantic.influential_citations or 0))
-            if latest_semantic is not None and latest_semantic.influential_citations is not None
+            if latest_semantic is not None
+            and latest_semantic.influential_citations is not None
             else None
         )
-        latest_provider = str(latest.provider or "manual").strip().lower() if latest is not None else "manual"
-        provider_counts_latest[latest_provider] = provider_counts_latest.get(latest_provider, 0) + 1
+        latest_provider = (
+            str(latest.provider or "manual").strip().lower()
+            if latest is not None
+            else "manual"
+        )
+        provider_counts_latest[latest_provider] = (
+            provider_counts_latest.get(latest_provider, 0) + 1
+        )
         fallback_year_for_row: int | None = None
-        openalex_work_id = _extract_openalex_work_id(str(work.openalex_work_id or "").strip() or None)
-        if latest_openalex is not None and isinstance(latest_openalex.metric_payload, dict):
+        openalex_work_id = _extract_openalex_work_id(
+            str(work.openalex_work_id or "").strip() or None
+        )
+        if latest_openalex is not None and isinstance(
+            latest_openalex.metric_payload, dict
+        ):
             snapshot_openalex_id = _extract_openalex_work_id(
                 str(latest_openalex.metric_payload.get("id") or "").strip() or None
             )
@@ -1381,7 +1458,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             for year, value in yearly_counts.items():
                 if year <= now.year:
                     aggregate_yearly_totals[int(year)] += max(0, int(value or 0))
-            monthly_added = _monthly_from_yearly_counts(yearly_counts, now=now, months=24)
+            monthly_added = _monthly_from_yearly_counts(
+                yearly_counts, now=now, months=24
+            )
             monthly_added = _normalize_monthly_to_total(
                 monthly_added=monthly_added,
                 target_total=latest_citations,
@@ -1409,7 +1488,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             window_basis = "yearly_counts"
         else:
             latest_provider = (
-                str(latest.provider or "").strip().lower() if latest is not None else None
+                str(latest.provider or "").strip().lower()
+                if latest is not None
+                else None
             )
             fallback_year = (
                 int(work.year)
@@ -1452,7 +1533,11 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                             max(0, int(best_at_endpoint.citations_count or 0))
                         )
                 monthly_added = [
-                    max(0, cumulative_from_snapshots[index + 1] - cumulative_from_snapshots[index])
+                    max(
+                        0,
+                        cumulative_from_snapshots[index + 1]
+                        - cumulative_from_snapshots[index],
+                    )
                     for index in range(24)
                 ]
                 monthly_added = _normalize_monthly_to_total(
@@ -1464,7 +1549,11 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                     target_total=latest_citations,
                 )
                 baseline_12 = max(0, int(best_12.citations_count or 0))
-                baseline_24 = max(0, int(best_24.citations_count or 0)) if best_24 is not None else 0
+                baseline_24 = (
+                    max(0, int(best_24.citations_count or 0))
+                    if best_24 is not None
+                    else 0
+                )
                 last_12 = max(0, latest_citations - baseline_12)
                 prev_12 = max(0, baseline_12 - baseline_24)
                 window_basis = "snapshot_delta"
@@ -1488,7 +1577,10 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                     preferred_provider="semantic_scholar",
                     fallback_to_other_providers=False,
                 )
-                if semantic_at_endpoint is None or semantic_at_endpoint.influential_citations is None:
+                if (
+                    semantic_at_endpoint is None
+                    or semantic_at_endpoint.influential_citations is None
+                ):
                     semantic_cumulative_raw.append(0)
                 else:
                     semantic_cumulative_raw.append(
@@ -1521,8 +1613,12 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "work_id": work_id,
                 "title": str(work.title or "").strip() or "Untitled",
                 "year": int(work.year) if isinstance(work.year, int) else None,
-                "journal": str(work.venue_name or "").strip() or str(work.journal or "").strip() or "Not available",
-                "publication_type": str(work.publication_type or "").strip() or str(work.work_type or "").strip() or None,
+                "journal": str(work.venue_name or "").strip()
+                or str(work.journal or "").strip()
+                or "Not available",
+                "publication_type": str(work.publication_type or "").strip()
+                or str(work.work_type or "").strip()
+                or None,
                 "doi": str(work.doi or "").strip() or None,
                 "pmid": str(work.pmid or "").strip() or None,
                 "openalex_work_id": openalex_work_id,
@@ -1542,7 +1638,11 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "monthly_cumulative_25": cumulative_series,
                 "semantic_monthly_added_24": monthly_semantic_added,
                 "semantic_cumulative_25": semantic_cumulative_series,
-                "yearly_counts": {int(year): int(count) for year, count in yearly_counts.items()} if yearly_counts else {},
+                "yearly_counts": {
+                    int(year): int(count) for year, count in yearly_counts.items()
+                }
+                if yearly_counts
+                else {},
                 "fallback_year": fallback_year_for_row,
                 "user_author_position": user_author_position_by_work.get(work_id),
                 "author_count": int(author_count_by_work.get(work_id, 0) or 0),
@@ -1558,10 +1658,16 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     per_work_rows.sort(key=lambda row: int(row["citations_lifetime"]), reverse=True)
 
     total_citations = int(sum(int(row["citations_lifetime"]) for row in per_work_rows))
-    citations_last_12m = int(sum(int(row["citations_last_12m"]) for row in per_work_rows))
-    citations_prev_12m = int(sum(int(row["citations_prev_12m"]) for row in per_work_rows))
+    citations_last_12m = int(
+        sum(int(row["citations_last_12m"]) for row in per_work_rows)
+    )
+    citations_prev_12m = int(
+        sum(int(row["citations_prev_12m"]) for row in per_work_rows)
+    )
     momentum_score = compute_citation_momentum_score(monthly_added_totals[-12:])
-    top3_citations = int(sum(int(row["citations_lifetime"]) for row in per_work_rows[:3]))
+    top3_citations = int(
+        sum(int(row["citations_lifetime"]) for row in per_work_rows[:3])
+    )
     concentration_risk = compute_concentration_risk_percent(
         total_citations=total_citations,
         top3_citations=top3_citations,
@@ -1628,11 +1734,19 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         dimensions_values: list[float] = []
         for row in snapshots_by_work.values():
             latest_dimensions = _best_snapshot(
-                [item for item in row if str(item.provider or "").strip().lower() == "dimensions"]
+                [
+                    item
+                    for item in row
+                    if str(item.provider or "").strip().lower() == "dimensions"
+                ]
             )
-            if latest_dimensions is None or not isinstance(latest_dimensions.metric_payload, dict):
+            if latest_dimensions is None or not isinstance(
+                latest_dimensions.metric_payload, dict
+            ):
                 continue
-            parsed = _safe_float(latest_dimensions.metric_payload.get("field_normalized_impact"))
+            parsed = _safe_float(
+                latest_dimensions.metric_payload.get("field_normalized_impact")
+            )
             if parsed is not None:
                 dimensions_values.append(parsed)
         if dimensions_values:
@@ -1681,16 +1795,16 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     total_citation_publications = [
         _publication_item_with_links(
             {
-            "work_id": row["work_id"],
-            "title": row["title"],
-            "doi": row["doi"],
-            "year": row["year"],
-            "journal": row["journal"],
-            "citations_lifetime": row["citations_lifetime"],
-            "confidence_score": row["confidence_score"],
-            "confidence_label": row["confidence_label"],
-            "match_source": row["match_source"],
-            "match_method": row["match_method"],
+                "work_id": row["work_id"],
+                "title": row["title"],
+                "doi": row["doi"],
+                "year": row["year"],
+                "journal": row["journal"],
+                "citations_lifetime": row["citations_lifetime"],
+                "confidence_score": row["confidence_score"],
+                "confidence_label": row["confidence_label"],
+                "match_source": row["match_source"],
+                "match_method": row["match_method"],
             }
         )
         for row in per_work_rows[:100]
@@ -1730,17 +1844,17 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         [
             _publication_item_with_links(
                 {
-                "work_id": row["work_id"],
-                "title": row["title"],
-                "doi": row["doi"],
-                "year": row["year"],
-                "journal": row["journal"],
-                "momentum_contribution": row["momentum_contribution"],
-                "citations_last_12m": row["citations_last_12m"],
-                "confidence_score": row["confidence_score"],
-                "confidence_label": row["confidence_label"],
-                "match_source": row["match_source"],
-                "match_method": row["match_method"],
+                    "work_id": row["work_id"],
+                    "title": row["title"],
+                    "doi": row["doi"],
+                    "year": row["year"],
+                    "journal": row["journal"],
+                    "momentum_contribution": row["momentum_contribution"],
+                    "citations_last_12m": row["citations_last_12m"],
+                    "confidence_score": row["confidence_score"],
+                    "confidence_label": row["confidence_label"],
+                    "match_source": row["match_source"],
+                    "match_method": row["match_method"],
                 }
             )
             for row in per_work_rows
@@ -1752,21 +1866,21 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     concentration_publications = [
         _publication_item_with_links(
             {
-            "work_id": row["work_id"],
-            "title": row["title"],
-            "doi": row["doi"],
-            "year": row["year"],
-            "journal": row["journal"],
-            "citations_lifetime": row["citations_lifetime"],
-            "share_of_total_pct": round(
-                (int(row["citations_lifetime"]) / total_citations) * 100.0, 2
-            )
-            if total_citations > 0
-            else 0.0,
-            "confidence_score": row["confidence_score"],
-            "confidence_label": row["confidence_label"],
-            "match_source": row["match_source"],
-            "match_method": row["match_method"],
+                "work_id": row["work_id"],
+                "title": row["title"],
+                "doi": row["doi"],
+                "year": row["year"],
+                "journal": row["journal"],
+                "citations_lifetime": row["citations_lifetime"],
+                "share_of_total_pct": round(
+                    (int(row["citations_lifetime"]) / total_citations) * 100.0, 2
+                )
+                if total_citations > 0
+                else 0.0,
+                "confidence_score": row["confidence_score"],
+                "confidence_label": row["confidence_label"],
+                "match_source": row["match_source"],
+                "match_method": row["match_method"],
             }
         )
         for row in per_work_rows[:3]
@@ -1776,17 +1890,17 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         [
             _publication_item_with_links(
                 {
-                "work_id": row["work_id"],
-                "title": row["title"],
-                "doi": row["doi"],
-                "year": row["year"],
-                "journal": row["journal"],
-                "influential_citations": int(row.get("influential_citations") or 0),
-                "influential_last_12m": int(row.get("influential_last_12m") or 0),
-                "confidence_score": row["confidence_score"],
-                "confidence_label": row["confidence_label"],
-                "match_source": row["match_source"],
-                "match_method": row["match_method"],
+                    "work_id": row["work_id"],
+                    "title": row["title"],
+                    "doi": row["doi"],
+                    "year": row["year"],
+                    "journal": row["journal"],
+                    "influential_citations": int(row.get("influential_citations") or 0),
+                    "influential_last_12m": int(row.get("influential_last_12m") or 0),
+                    "confidence_score": row["confidence_score"],
+                    "confidence_label": row["confidence_label"],
+                    "match_source": row["match_source"],
+                    "match_method": row["match_method"],
                 }
             )
             for row in influence_candidates
@@ -1812,11 +1926,20 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     momentum_index_state = momentum_index_label(momentum_index)
 
     # Growth badge is based on complete years only (exclude the in-progress year).
-    last5_complete_years = [now.year - 5, now.year - 4, now.year - 3, now.year - 2, now.year - 1]
-    last5_complete_values = [
-        max(0, int(aggregate_yearly_totals.get(year, 0))) for year in last5_complete_years
+    last5_complete_years = [
+        now.year - 5,
+        now.year - 4,
+        now.year - 3,
+        now.year - 2,
+        now.year - 1,
     ]
-    growth_label, growth_severity, growth_slope_norm = _growth_state_from_series(last5_complete_values)
+    last5_complete_values = [
+        max(0, int(aggregate_yearly_totals.get(year, 0)))
+        for year in last5_complete_years
+    ]
+    growth_label, growth_severity, growth_slope_norm = _growth_state_from_series(
+        last5_complete_values
+    )
     five_year_delta = (
         int(last5_complete_values[-1] - last5_complete_values[0])
         if last5_complete_values
@@ -1850,11 +1973,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     )
     projected_current_year = max(current_year_ytd, projected_current_year)
     projection_confidence = (
-        "high"
-        if elapsed_days >= 240
-        else "medium"
-        if elapsed_days >= 120
-        else "low"
+        "high" if elapsed_days >= 240 else "medium" if elapsed_days >= 120 else "low"
     )
     projection_subtext = (
         f"Projected {now.year}: {_format_int(projected_current_year)} ({projection_confidence} confidence)"
@@ -1915,7 +2034,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         else "No near-threshold papers identified"
     )
     h_subtext = f"Target h={h_next_target}"
-    h_delta_display = f"Projection: h{h_projected_current_year} ({h_confidence_label} confidence)"
+    h_delta_display = (
+        f"Projection: h{h_projected_current_year} ({h_confidence_label} confidence)"
+    )
 
     publication_counts_by_year: dict[int, int] = defaultdict(int)
     unknown_year_publications = 0
@@ -1942,7 +2063,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         end_year = int(max(publication_counts_by_year.keys()))
         influential_history_years = list(range(start_year, end_year + 1))
     elif influence_by_publication_year:
-        influential_history_years = sorted(int(year) for year in influence_by_publication_year.keys())
+        influential_history_years = sorted(
+            int(year) for year in influence_by_publication_year.keys()
+        )
     if influential_history_years:
         running_total = 0
         influential_history_values = []
@@ -1983,7 +2106,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     def _pct_of_total_publications(count: int) -> float:
         if authorship_total_papers <= 0:
             return 0.0
-        return round((float(max(0, int(count))) / float(authorship_total_papers)) * 100.0, 1)
+        return round(
+            (float(max(0, int(count))) / float(authorship_total_papers)) * 100.0, 1
+        )
 
     first_authorship_pct = _pct_of_total_publications(first_authorship_count)
     second_authorship_pct = _pct_of_total_publications(second_authorship_count)
@@ -2005,7 +2130,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             median_author_position = float(author_positions_known[middle])
         else:
             median_author_position = round(
-                (author_positions_known[middle - 1] + author_positions_known[middle]) / 2.0,
+                (author_positions_known[middle - 1] + author_positions_known[middle])
+                / 2.0,
                 1,
             )
     median_author_position_display = (
@@ -2025,7 +2151,10 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "year": row.get("year"),
                 "journal": row.get("journal"),
                 "citations_lifetime": int(row.get("citations_lifetime") or 0),
-                "user_author_role": str(row.get("user_author_role") or "").strip().lower() or "unknown",
+                "user_author_role": str(row.get("user_author_role") or "")
+                .strip()
+                .lower()
+                or "unknown",
                 "user_author_position": _safe_int(row.get("user_author_position")),
                 "author_count": _safe_int(row.get("author_count")),
                 "confidence_score": row.get("confidence_score"),
@@ -2065,7 +2194,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     if not collaborator_work_count_by_key:
         normalized_user_name = _clean_text(str(user.name or "")).casefold()
         for work in works:
-            authors_json = work.authors_json if isinstance(work.authors_json, list) else []
+            authors_json = (
+                work.authors_json if isinstance(work.authors_json, list) else []
+            )
             if len(authors_json) <= 1:
                 continue
             work_id = str(work.id)
@@ -2075,7 +2206,10 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 author_name = _clean_text(author.get("name"))
                 if not author_name:
                     continue
-                if normalized_user_name and author_name.casefold() == normalized_user_name:
+                if (
+                    normalized_user_name
+                    and author_name.casefold() == normalized_user_name
+                ):
                     continue
                 collaborator_key = f"name:{author_name.casefold()}"
                 if collaborator_key in collaborator_keys_by_work[work_id]:
@@ -2088,7 +2222,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     }
     if not collaborative_work_ids:
         for work in works:
-            authors_json = work.authors_json if isinstance(work.authors_json, list) else []
+            authors_json = (
+                work.authors_json if isinstance(work.authors_json, list) else []
+            )
             if len(authors_json) > 1:
                 collaborative_work_ids.add(str(work.id))
 
@@ -2103,7 +2239,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         work_institutions: set[str] = set()
         work_countries: set[str] = set()
 
-        affiliations_json = work.affiliations_json if isinstance(work.affiliations_json, list) else []
+        affiliations_json = (
+            work.affiliations_json if isinstance(work.affiliations_json, list) else []
+        )
         for affiliation in affiliations_json:
             if not isinstance(affiliation, dict):
                 continue
@@ -2124,7 +2262,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 work_countries.add(country_token.casefold())
 
         if not work_institutions:
-            authors_json = work.authors_json if isinstance(work.authors_json, list) else []
+            authors_json = (
+                work.authors_json if isinstance(work.authors_json, list) else []
+            )
             for author in authors_json:
                 if not isinstance(author, dict):
                     continue
@@ -2149,7 +2289,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     }
     repeat_collaborators_count = len(repeat_collaborator_keys)
     repeat_collaborator_rate_pct = (
-        round((repeat_collaborators_count / float(unique_collaborators_count)) * 100.0, 1)
+        round(
+            (repeat_collaborators_count / float(unique_collaborators_count)) * 100.0, 1
+        )
         if unique_collaborators_count > 0
         else 0.0
     )
@@ -2164,7 +2306,11 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         collaborator_count = len(collaborator_keys)
         if collaborator_count <= 0:
             continue
-        repeat_in_work = sum(1 for collaborator_key in collaborator_keys if collaborator_key in repeat_collaborator_keys)
+        repeat_in_work = sum(
+            1
+            for collaborator_key in collaborator_keys
+            if collaborator_key in repeat_collaborator_keys
+        )
         collaboration_structure_publications.append(
             _publication_item_with_links(
                 {
@@ -2176,7 +2322,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                     "citations_lifetime": int(row.get("citations_lifetime") or 0),
                     "collaborators_in_work": collaborator_count,
                     "repeat_collaborators_in_work": repeat_in_work,
-                    "institutions_in_work": int(institution_count_by_work.get(work_id, 0)),
+                    "institutions_in_work": int(
+                        institution_count_by_work.get(work_id, 0)
+                    ),
                     "countries_in_work": int(country_count_by_work.get(work_id, 0)),
                     "confidence_score": row.get("confidence_score"),
                     "confidence_label": row.get("confidence_label"),
@@ -2195,7 +2343,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     )
     collaboration_structure_publications = collaboration_structure_publications[:100]
     last5_publication_values = [
-        max(0, int(publication_counts_by_year.get(year, 0))) for year in last5_complete_years
+        max(0, int(publication_counts_by_year.get(year, 0)))
+        for year in last5_complete_years
     ]
     current_year_publications = max(0, int(publication_counts_by_year.get(now.year, 0)))
     projected_current_publications = max(
@@ -2221,11 +2370,17 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             influence_monthly_added_totals[idx] += max(0, int(additions[idx] or 0))
     influence_prev_12m = max(0, int(sum(influence_monthly_added_totals[:12])))
     influence_delta = influence_last_12m - influence_prev_12m
-    influential_ratio = round((influence_total / total_citations) * 100.0, 1) if total_citations > 0 else 0.0
+    influential_ratio = (
+        round((influence_total / total_citations) * 100.0, 1)
+        if total_citations > 0
+        else 0.0
+    )
     influential_subtext = f"{influential_ratio:.1f}% of total citations"
     if not influence_available:
         influential_subtext = "Semantic Scholar influential signal unavailable"
-    fallback_monthly_influential = [max(0, int(value or 0)) for value in influence_monthly_added_totals[-12:]]
+    fallback_monthly_influential = [
+        max(0, int(value or 0)) for value in influence_monthly_added_totals[-12:]
+    ]
     fallback_monthly_cumulative: list[int] = []
     fallback_running_total = 0
     for value in fallback_monthly_influential:
@@ -2265,11 +2420,15 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     field_percentile_cohort_count = 0
 
     if "OpenAlex" in data_sources:
-        openalex_mailto = _openalex_mailto(fallback_email=str(user.email or "").strip() or None)
+        openalex_mailto = _openalex_mailto(
+            fallback_email=str(user.email or "").strip() or None
+        )
         field_cohort_max_pages = _openalex_field_cohort_max_pages()
         field_cohort_min_size = _openalex_field_cohort_min_size()
         field_exact_rank_max_requests = _openalex_field_percentile_max_exact_ranks()
-        field_exact_rank_runtime_limit_seconds = _openalex_field_percentile_exact_runtime_seconds()
+        field_exact_rank_runtime_limit_seconds = (
+            _openalex_field_percentile_exact_runtime_seconds()
+        )
         work_field_cache: dict[str, dict[str, Any]] = {}
         cohort_cache: dict[tuple[str, int], dict[str, Any]] = {}
         exact_rank_cache: dict[tuple[str, int, int], float | None] = {}
@@ -2302,7 +2461,11 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 if paper_year is not None and 1900 <= paper_year <= now.year
                 else _safe_int(work_field.get("publication_year"))
             )
-            if resolved_year is None or resolved_year < 1900 or resolved_year > now.year:
+            if (
+                resolved_year is None
+                or resolved_year < 1900
+                or resolved_year > now.year
+            ):
                 continue
 
             cohort_key = (field_id, int(resolved_year))
@@ -2316,7 +2479,11 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 )
                 cohort_values = [
                     max(0, int(_safe_int(value) or 0))
-                    for value in (cohort_payload.get("citations") if isinstance(cohort_payload, dict) else [])
+                    for value in (
+                        cohort_payload.get("citations")
+                        if isinstance(cohort_payload, dict)
+                        else []
+                    )
                 ]
                 cohort_values.sort()
                 total_results_exact = _openalex_field_year_total_count(
@@ -2338,7 +2505,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                     "sample_size": len(cohort_values),
                     "total_results": max(0, int(resolved_total_results)),
                     "cutoffs": {
-                        str(threshold): _percentile_cutoff(cohort_values, float(threshold))
+                        str(threshold): _percentile_cutoff(
+                            cohort_values, float(threshold)
+                        )
                         for threshold in FIELD_PERCENTILE_THRESHOLDS
                     },
                 }
@@ -2378,9 +2547,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                     )
                     rank_raw = exact_rank_payload.get("percentile_rank")
                     percentile_rank = (
-                        float(rank_raw)
-                        if isinstance(rank_raw, (int, float))
-                        else None
+                        float(rank_raw) if isinstance(rank_raw, (int, float)) else None
                     )
                 else:
                     if (
@@ -2404,7 +2571,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                             elapsed,
                         )
                 if percentile_rank is None:
-                    percentile_rank = _empirical_percentile_rank(cohort_values, paper_citations)
+                    percentile_rank = _empirical_percentile_rank(
+                        cohort_values, paper_citations
+                    )
                 exact_rank_cache[exact_rank_key] = percentile_rank
             if percentile_rank is None:
                 continue
@@ -2429,7 +2598,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                         "journal": row.get("journal"),
                         "citations_lifetime": paper_citations,
                         "field_percentile_rank": round(percentile_rank, 2),
-                        "field_name": str(work_field.get("field_name") or "").strip() or "Unknown field",
+                        "field_name": str(work_field.get("field_name") or "").strip()
+                        or "Unknown field",
                         "field_id": field_id,
                         "cohort_year": int(resolved_year),
                         "cohort_sample_size": cohort_size,
@@ -2446,10 +2616,14 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         if field_percentile_evaluated > 0:
             field_percentile_available = True
             for threshold in FIELD_PERCENTILE_THRESHOLDS:
-                share = (field_percentile_counts[threshold] / float(field_percentile_evaluated)) * 100.0
+                share = (
+                    field_percentile_counts[threshold]
+                    / float(field_percentile_evaluated)
+                ) * 100.0
                 field_percentile_shares[str(threshold)] = round(share, 2)
             field_percentile_coverage_pct = round(
-                (field_percentile_evaluated / float(max(1, len(per_work_rows)))) * 100.0,
+                (field_percentile_evaluated / float(max(1, len(per_work_rows))))
+                * 100.0,
                 1,
             )
             sorted_ranks = sorted(percentile_ranks)
@@ -2469,12 +2643,18 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         reverse=True,
     )[:100]
     field_percentile_default_share = (
-        float(field_percentile_shares.get(str(field_percentile_default_threshold)) or 0.0)
+        float(
+            field_percentile_shares.get(str(field_percentile_default_threshold)) or 0.0
+        )
         if field_percentile_available
         else 0.0
     )
     field_percentile_cohort_size_median = (
-        float(sorted(field_percentile_used_cohort_sizes)[len(field_percentile_used_cohort_sizes) // 2])
+        float(
+            sorted(field_percentile_used_cohort_sizes)[
+                len(field_percentile_used_cohort_sizes) // 2
+            ]
+        )
         if field_percentile_used_cohort_sizes
         else 0.0
     )
@@ -2495,17 +2675,23 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     )
     this_year_tooltip, this_year_tooltip_details = _build_tooltip(
         definition="What is this: total authored publications with per-year output over the latest 5 complete years.",
-        data_sources=["ORCID", "OpenAlex"] if "OpenAlex" in data_sources else data_sources,
+        data_sources=["ORCID", "OpenAlex"]
+        if "OpenAlex" in data_sources
+        else data_sources,
         computation="count(publications) grouped by publication year",
     )
     momentum_tooltip, momentum_tooltip_details = _build_tooltip(
         definition="What is this: MomentumIndex compares recent citation pace with prior pace.",
-        data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+        data_sources=[
+            src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}
+        ],
         computation="MomentumIndex = (avg/month last 3m)/(avg/month prior 9m)*100",
     )
     h_tooltip, h_tooltip_details = _build_tooltip(
         definition="What is this: current h-index with a one-year projection.",
-        data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+        data_sources=[
+            src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}
+        ],
         computation=(
             "estimate from papers near threshold [h-2,h+2] using last-12m citation velocity; "
             "reported as low/medium/high confidence band"
@@ -2513,7 +2699,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     )
     concentration_tooltip, concentration_tooltip_details = _build_tooltip(
         definition="What is this: percentage of lifetime citations coming from your top 3 papers.",
-        data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+        data_sources=[
+            src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}
+        ],
         computation="Top3Share=(sum(top3 citations)/total citations)*100; profile band from Gini(citations across papers)",
     )
     influence_tooltip, influence_tooltip_details = _build_tooltip(
@@ -2553,7 +2741,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         definition=(
             "What is this: collaboration network breadth and repeat-collaboration structure."
         ),
-        data_sources=["OpenAlex", "ORCID"] if "OpenAlex" in data_sources else data_sources,
+        data_sources=["OpenAlex", "ORCID"]
+        if "OpenAlex" in data_sources
+        else data_sources,
         computation=(
             "UniqueCollaborators = distinct non-user coauthors across works; "
             "RepeatCollaboratorRate% = collaborators with >=2 shared works / unique collaborators * 100; "
@@ -2597,7 +2787,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             tooltip=total_tooltip,
             tooltip_details=total_tooltip_details,
             data_source=["OpenAlex"] if "OpenAlex" in data_sources else data_sources,
-            confidence_score=_confidence_score_from_publications(total_citation_publications),
+            confidence_score=_confidence_score_from_publications(
+                total_citation_publications
+            ),
             stability="stable",
             drilldown={
                 "title": "Total citations",
@@ -2653,8 +2845,12 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             sparkline=last5_publication_values,
             tooltip=this_year_tooltip,
             tooltip_details=this_year_tooltip_details,
-            data_source=["ORCID", "OpenAlex"] if "OpenAlex" in data_sources else data_sources,
-            confidence_score=_confidence_score_from_publications(publication_volume_publications),
+            data_source=["ORCID", "OpenAlex"]
+            if "OpenAlex" in data_sources
+            else data_sources,
+            confidence_score=_confidence_score_from_publications(
+                publication_volume_publications
+            ),
             stability="stable",
             drilldown={
                 "title": "Total publications",
@@ -2665,7 +2861,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "metadata": {
                     "intermediate_values": {
                         "total_publications": total_publications,
-                        "known_year_publications": sum(last5_publication_values) + current_year_publications,
+                        "known_year_publications": sum(last5_publication_values)
+                        + current_year_publications,
                         "unknown_year_publications": unknown_year_publications,
                         "last5_years": last5_complete_years,
                         "last5_values": last5_publication_values,
@@ -2711,7 +2908,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             sparkline=monthly_last_12,
             tooltip=momentum_tooltip,
             tooltip_details=momentum_tooltip_details,
-            data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
+            data_source=[
+                src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}
+            ],
             confidence_score=_confidence_score_from_publications(momentum_publications),
             stability="stable" if momentum_index_state != "Slowing" else "unstable",
             drilldown={
@@ -2744,10 +2943,14 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "values": h_yearly_values,
                 "projected_year": now.year,
                 "projected_value": h_projected_current_year,
-                "progress_to_next_pct": float(h_projection.get("progress_to_next_pct") or 0.0),
+                "progress_to_next_pct": float(
+                    h_projection.get("progress_to_next_pct") or 0.0
+                ),
                 "current_h_index": h_index,
                 "next_h_index": h_index + 1,
-                "projection_probability": float(h_projection.get("projection_probability") or 0.0),
+                "projection_probability": float(
+                    h_projection.get("projection_probability") or 0.0
+                ),
                 "projection_confidence_label": h_confidence_label,
                 "candidate_gaps": h_candidate_gaps,
                 "gap_text": h_gap_text,
@@ -2758,8 +2961,12 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             sparkline=h_index_series,
             tooltip=h_tooltip,
             tooltip_details=h_tooltip_details,
-            data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-            confidence_score=_confidence_score_from_publications(h_projection_publications),
+            data_source=[
+                src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}
+            ],
+            confidence_score=_confidence_score_from_publications(
+                h_projection_publications
+            ),
             stability="stable",
             drilldown={
                 "title": "h-index projection",
@@ -2797,7 +3004,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "gini_coefficient": concentration_gini,
                 "gini_profile_label": concentration_classification,
                 "top_papers_count": min(3, total_publications),
-                "remaining_papers_count": max(0, total_publications - min(3, total_publications)),
+                "remaining_papers_count": max(
+                    0, total_publications - min(3, total_publications)
+                ),
                 "total_publications": total_publications,
                 "uncited_publications_count": uncited_publications_count,
                 "uncited_publications_pct": round(uncited_publications_pct, 2),
@@ -2808,8 +3017,12 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             sparkline=concentration_series,
             tooltip=concentration_tooltip,
             tooltip_details=concentration_tooltip_details,
-            data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-            confidence_score=_confidence_score_from_publications(concentration_publications),
+            data_source=[
+                src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}
+            ],
+            confidence_score=_confidence_score_from_publications(
+                concentration_publications
+            ),
             stability="stable",
             drilldown={
                 "title": "Impact concentration",
@@ -2822,7 +3035,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                         "top3_citations": top3_citations,
                         "total_citations": total_citations,
                         "top_papers_count": min(3, total_publications),
-                        "remaining_papers_count": max(0, total_publications - min(3, total_publications)),
+                        "remaining_papers_count": max(
+                            0, total_publications - min(3, total_publications)
+                        ),
                         "total_publications": total_publications,
                         "concentration_pct": concentration_risk,
                         "classification": concentration_classification,
@@ -2838,7 +3053,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             key="influential_citations",
             label="Influential citations",
             value=influence_total if influence_available else None,
-            value_display=_format_int(influence_total) if influence_available else "Not available",
+            value_display=_format_int(influence_total)
+            if influence_available
+            else "Not available",
             subtext=influential_subtext,
             badge={
                 "label": "Available" if influence_available else "Unavailable",
@@ -2859,7 +3076,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             tooltip=influence_tooltip,
             tooltip_details=influence_tooltip_details,
             data_source=["Semantic Scholar"] if influence_available else ["OpenAlex"],
-            confidence_score=_confidence_score_from_publications(influence_publications),
+            confidence_score=_confidence_score_from_publications(
+                influence_publications
+            ),
             stability="stable",
             drilldown={
                 "title": "Influential citations",
@@ -2887,7 +3106,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         _metric_tile(
             key="field_percentile_share",
             label="Field percentile share",
-            value=field_percentile_default_share if field_percentile_available else None,
+            value=field_percentile_default_share
+            if field_percentile_available
+            else None,
             value_display=f"{int(round(field_percentile_default_share))}%"
             if field_percentile_available
             else "Not available",
@@ -2923,7 +3144,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             tooltip=field_percentile_tooltip,
             tooltip_details=field_percentile_tooltip_details,
             data_source=["OpenAlex"] if "OpenAlex" in data_sources else data_sources,
-            confidence_score=_confidence_score_from_publications(field_percentile_publications),
+            confidence_score=_confidence_score_from_publications(
+                field_percentile_publications
+            ),
             stability="stable" if field_percentile_available else "unstable",
             drilldown={
                 "title": "Field percentile share",
@@ -2943,7 +3166,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                         "default_threshold": field_percentile_default_threshold,
                         "share_by_threshold_pct": field_percentile_shares,
                         "count_by_threshold": {
-                            str(threshold): int(field_percentile_counts.get(threshold, 0))
+                            str(threshold): int(
+                                field_percentile_counts.get(threshold, 0)
+                            )
                             for threshold in FIELD_PERCENTILE_THRESHOLDS
                         },
                         "evaluated_papers": field_percentile_evaluated,
@@ -2994,7 +3219,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             tooltip=authorship_tooltip,
             tooltip_details=authorship_tooltip_details,
             data_source=["OpenAlex"] if "OpenAlex" in data_sources else data_sources,
-            confidence_score=_confidence_score_from_publications(authorship_structure_publications),
+            confidence_score=_confidence_score_from_publications(
+                authorship_structure_publications
+            ),
             stability="stable" if authorship_known_papers > 0 else "unstable",
             drilldown={
                 "title": "Authorship composition",
@@ -3053,8 +3280,12 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             ],
             tooltip=collaboration_tooltip,
             tooltip_details=collaboration_tooltip_details,
-            data_source=["OpenAlex", "ORCID"] if "OpenAlex" in data_sources else data_sources,
-            confidence_score=_confidence_score_from_publications(collaboration_structure_publications),
+            data_source=["OpenAlex", "ORCID"]
+            if "OpenAlex" in data_sources
+            else data_sources,
+            confidence_score=_confidence_score_from_publications(
+                collaboration_structure_publications
+            ),
             stability="stable" if unique_collaborators_count > 0 else "unstable",
             drilldown={
                 "title": "Collaboration structure",
@@ -3070,7 +3301,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "metadata": {
                     "intermediate_values": {
                         "unique_collaborators": int(unique_collaborators_count),
-                        "repeat_collaborator_rate_pct": float(repeat_collaborator_rate_pct),
+                        "repeat_collaborator_rate_pct": float(
+                            repeat_collaborator_rate_pct
+                        ),
                         "repeat_collaborators": int(repeat_collaborators_count),
                         "institutions": int(unique_institutions_count),
                         "countries": int(unique_countries_count),
@@ -3114,10 +3347,18 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             "update_frequency": _update_frequency_label(),
             "sparkline_sets": {
                 "raw_monthly_citations_24m": _series_to_sparkline(monthly_added_totals),
-                "rolling_citations_12m": _series_to_sparkline(rolling_last_12_series_24),
-                "momentum_weighted_monthly_12m": _series_to_sparkline(momentum_weighted_monthly),
-                "influential_monthly_citations_24m": _series_to_sparkline(influence_monthly_added_totals),
-                "influential_yearly_citations_lifespan": _series_to_sparkline(influential_history_values),
+                "rolling_citations_12m": _series_to_sparkline(
+                    rolling_last_12_series_24
+                ),
+                "momentum_weighted_monthly_12m": _series_to_sparkline(
+                    momentum_weighted_monthly
+                ),
+                "influential_monthly_citations_24m": _series_to_sparkline(
+                    influence_monthly_added_totals
+                ),
+                "influential_yearly_citations_lifespan": _series_to_sparkline(
+                    influential_history_values
+                ),
                 "field_percentile_share_by_threshold": _series_to_sparkline(
                     [
                         float(field_percentile_shares.get(str(threshold)) or 0.0)
@@ -3146,7 +3387,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     }
 
 
-def _persist_ready_bundle(*, user_id: str, payload: dict[str, Any], computed_at: datetime) -> None:
+def _persist_ready_bundle(
+    *, user_id: str, payload: dict[str, Any], computed_at: datetime
+) -> None:
     create_all_tables()
     with session_scope() as session:
         user = _resolve_user_or_raise(session, user_id)
@@ -3320,7 +3563,9 @@ def _response_from_row(
         "status": status,
         "is_stale": stale,
         "is_updating": status == RUNNING_STATUS,
-        "last_error": str(row.last_error or "").strip() or None if row is not None else None,
+        "last_error": str(row.last_error or "").strip() or None
+        if row is not None
+        else None,
     }
 
 
@@ -3336,16 +3581,22 @@ def get_publication_top_metrics(*, user_id: str) -> dict[str, Any]:
             enqueue = True
         else:
             status = _normalize_status(row.status)
-            computed_at = _coerce_utc(row.computed_at) if row.computed_at is not None else None
+            computed_at = (
+                _coerce_utc(row.computed_at) if row.computed_at is not None else None
+            )
             stale = _is_stale(computed_at=computed_at, now=_utcnow())
             payload = _read_bundle_payload(row)
             metadata = payload.get("metadata") if isinstance(payload, dict) else {}
             schema_version = (
-                _safe_int(metadata.get("schema_version")) if isinstance(metadata, dict) else None
+                _safe_int(metadata.get("schema_version"))
+                if isinstance(metadata, dict)
+                else None
             )
             schema_outdated = (schema_version or 0) < TOP_METRICS_SCHEMA_VERSION
             should_retry_failed = status == FAILED_STATUS
-            if (stale or schema_outdated or should_retry_failed) and status != RUNNING_STATUS:
+            if (
+                stale or schema_outdated or should_retry_failed
+            ) and status != RUNNING_STATUS:
                 enqueue = True
                 status = RUNNING_STATUS
             response = _response_from_row(row, status_override=status)
@@ -3363,7 +3614,9 @@ def get_publication_metric_detail(*, user_id: str, metric_id: str) -> dict[str, 
 
     tiles = response.get("tiles")
     if not isinstance(tiles, list):
-        raise PublicationMetricsNotFoundError("Publication metrics payload is unavailable.")
+        raise PublicationMetricsNotFoundError(
+            "Publication metrics payload is unavailable."
+        )
 
     for tile in tiles:
         if not isinstance(tile, dict):

@@ -121,7 +121,9 @@ def _normalize_name(value: str | None) -> str:
     if len(clean) < 2:
         raise PublicationInsightsBootstrapValidationError("Name is required.")
     if len(clean) > 255:
-        raise PublicationInsightsBootstrapValidationError("Name must be 255 characters or fewer.")
+        raise PublicationInsightsBootstrapValidationError(
+            "Name must be 255 characters or fewer."
+        )
     return clean
 
 
@@ -181,7 +183,9 @@ def _openalex_abstract_from_inverted_index(value: Any) -> str | None:
     if not tokens_with_positions:
         return None
     tokens_with_positions.sort(key=lambda item: item[0])
-    abstract = re.sub(r"\s+", " ", " ".join(token for _, token in tokens_with_positions).strip())
+    abstract = re.sub(
+        r"\s+", " ", " ".join(token for _, token in tokens_with_positions).strip()
+    )
     return abstract or None
 
 
@@ -230,8 +234,14 @@ def _resolve_openalex_author(
     for item in results:
         if not isinstance(item, dict):
             continue
-        candidate_name = re.sub(r"\s+", " ", str(item.get("display_name") or "").strip()).lower()
-        if clean_target and candidate_name and (clean_target == candidate_name or clean_target in candidate_name):
+        candidate_name = re.sub(
+            r"\s+", " ", str(item.get("display_name") or "").strip()
+        ).lower()
+        if (
+            clean_target
+            and candidate_name
+            and (clean_target == candidate_name or clean_target in candidate_name)
+        ):
             selected = item
             break
     if selected is None:
@@ -278,7 +288,9 @@ def _fetch_openalex_works_for_author(
             url="https://api.openalex.org/works",
             params=params,
         )
-        rows = payload.get("results") if isinstance(payload.get("results"), list) else []
+        rows = (
+            payload.get("results") if isinstance(payload.get("results"), list) else []
+        )
         for row in rows:
             if not isinstance(row, dict):
                 continue
@@ -301,17 +313,25 @@ def _fetch_openalex_works_for_author(
 
 
 def _extract_authors(work_payload: dict[str, Any]) -> list[dict[str, str]]:
-    authorships = work_payload.get("authorships") if isinstance(work_payload.get("authorships"), list) else []
+    authorships = (
+        work_payload.get("authorships")
+        if isinstance(work_payload.get("authorships"), list)
+        else []
+    )
     authors: list[dict[str, str]] = []
     seen: set[str] = set()
     for item in authorships:
         if not isinstance(item, dict):
             continue
         author = item.get("author") if isinstance(item.get("author"), dict) else {}
-        display_name = re.sub(r"\s+", " ", str(author.get("display_name") or "").strip())
+        display_name = re.sub(
+            r"\s+", " ", str(author.get("display_name") or "").strip()
+        )
         if not display_name:
             continue
-        candidate_orcid = _normalize_orcid_from_url(str(author.get("orcid") or "").strip() or None)
+        candidate_orcid = _normalize_orcid_from_url(
+            str(author.get("orcid") or "").strip() or None
+        )
         dedupe_key = f"{display_name.lower()}::{(candidate_orcid or '').lower()}"
         if dedupe_key in seen:
             continue
@@ -336,7 +356,11 @@ def _work_from_openalex(work_payload: dict[str, Any]) -> dict[str, Any]:
         if isinstance(work_payload.get("primary_location"), dict)
         else {}
     )
-    source = primary_location.get("source") if isinstance(primary_location.get("source"), dict) else {}
+    source = (
+        primary_location.get("source")
+        if isinstance(primary_location.get("source"), dict)
+        else {}
+    )
     host_venue = (
         work_payload.get("host_venue")
         if isinstance(work_payload.get("host_venue"), dict)
@@ -345,22 +369,21 @@ def _work_from_openalex(work_payload: dict[str, Any]) -> dict[str, Any]:
     venue_name = re.sub(
         r"\s+",
         " ",
-        str(
-            source.get("display_name")
-            or host_venue.get("display_name")
-            or ""
-        ).strip(),
+        str(source.get("display_name") or host_venue.get("display_name") or "").strip(),
     )
     publisher = re.sub(
         r"\s+",
         " ",
         str(
-            source.get("host_organization_name")
-            or host_venue.get("publisher")
-            or ""
+            source.get("host_organization_name") or host_venue.get("publisher") or ""
         ).strip(),
     )
-    abstract = _openalex_abstract_from_inverted_index(work_payload.get("abstract_inverted_index")) or ""
+    abstract = (
+        _openalex_abstract_from_inverted_index(
+            work_payload.get("abstract_inverted_index")
+        )
+        or ""
+    )
     work_id_url = str(work_payload.get("id") or "").strip()
     work_url = f"https://doi.org/{doi}" if doi else work_id_url
     return {
@@ -381,7 +404,9 @@ def _work_from_openalex(work_payload: dict[str, Any]) -> dict[str, Any]:
 def _resolve_user_or_raise(session, user_id: str) -> User:
     user = session.get(User, user_id)
     if user is None:
-        raise PublicationInsightsBootstrapNotFoundError(f"User '{user_id}' was not found.")
+        raise PublicationInsightsBootstrapNotFoundError(
+            f"User '{user_id}' was not found."
+        )
     return user
 
 
@@ -404,7 +429,9 @@ def bootstrap_publication_insights_from_orcid(
         raise PublicationInsightsBootstrapValidationError("ORCID is required.")
     clean_name = _normalize_name(full_name)
     normalized_providers = _normalize_providers(providers)
-    target_max_works = max(1, min(int(max_works or _openalex_default_max_works()), 2000))
+    target_max_works = max(
+        1, min(int(max_works or _openalex_default_max_works()), 2000)
+    )
 
     user_email: str | None = None
     with session_scope() as session:
@@ -440,7 +467,9 @@ def bootstrap_publication_insights_from_orcid(
             "No OpenAlex author profile matched that ORCID."
         )
     openalex_author_id = str(author_identity.get("openalex_author_id") or "").strip()
-    openalex_author_name = str(author_identity.get("openalex_author_name") or "").strip() or clean_name
+    openalex_author_name = (
+        str(author_identity.get("openalex_author_name") or "").strip() or clean_name
+    )
     if not openalex_author_id:
         raise PublicationInsightsBootstrapValidationError(
             "Could not resolve OpenAlex author ID from ORCID."
@@ -458,7 +487,8 @@ def bootstrap_publication_insights_from_orcid(
     with session_scope() as session:
         user = _resolve_user_or_raise(session, user_id)
         baseline_count = (
-            session.scalar(select(func.count(Work.id)).where(Work.user_id == user_id)) or 0
+            session.scalar(select(func.count(Work.id)).where(Work.user_id == user_id))
+            or 0
         )
         existing_work_ids_before = {
             str(item)
@@ -487,14 +517,18 @@ def bootstrap_publication_insights_from_orcid(
             upserted_ids.append(work_id)
             if work_id not in existing_work_ids_before:
                 imported_count += 1
-            openalex_work_id = _extract_openalex_work_id(work_payload.get("openalex_work_id"))
+            openalex_work_id = _extract_openalex_work_id(
+                work_payload.get("openalex_work_id")
+            )
             if openalex_work_id:
                 row = session.get(Work, work_id)
                 if row is not None and not str(row.openalex_work_id or "").strip():
                     row.openalex_work_id = openalex_work_id
         if imported_count <= 0:
             current_count = (
-                session.scalar(select(func.count(Work.id)).where(Work.user_id == user_id))
+                session.scalar(
+                    select(func.count(Work.id)).where(Work.user_id == user_id)
+                )
                 or baseline_count
             )
             imported_count = max(0, int(current_count) - int(baseline_count))
@@ -503,9 +537,7 @@ def bootstrap_publication_insights_from_orcid(
 
     sync_job_payload: dict[str, Any] | None = None
     metrics_sync_enqueued = False
-    message = (
-        f"Imported {imported_count} publication{'s' if imported_count != 1 else ''} from OpenAlex."
-    )
+    message = f"Imported {imported_count} publication{'s' if imported_count != 1 else ''} from OpenAlex."
     try:
         sync_job = enqueue_persona_sync_job(
             user_id=user_id,
@@ -516,9 +548,7 @@ def bootstrap_publication_insights_from_orcid(
         )
         sync_job_payload = serialize_persona_sync_job(sync_job)
         metrics_sync_enqueued = True
-        message = (
-            f"{message} Metrics sync queued to populate publication insights."
-        )
+        message = f"{message} Metrics sync queued to populate publication insights."
     except PersonaSyncJobConflictError:
         active_jobs = list_persona_sync_jobs(user_id=user_id, limit=10)
         active = next(
@@ -527,9 +557,7 @@ def bootstrap_publication_insights_from_orcid(
         )
         if active is not None:
             sync_job_payload = serialize_persona_sync_job(active)
-        message = (
-            f"{message} Another sync job is already active, so insights will refresh when it completes."
-        )
+        message = f"{message} Another sync job is already active, so insights will refresh when it completes."
     except (PersonaSyncJobValidationError, PersonaNotFoundError) as exc:
         raise PublicationInsightsBootstrapValidationError(str(exc)) from exc
 

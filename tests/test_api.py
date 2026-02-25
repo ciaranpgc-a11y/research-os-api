@@ -2231,7 +2231,7 @@ def test_v1_auth_oauth_connect_and_callback_endpoints(monkeypatch, tmp_path) -> 
 
     monkeypatch.setattr(
         "research_os.api.app.create_oauth_connect_url",
-        lambda provider: {
+        lambda provider, frontend_origin=None: {
             "provider": "orcid",
             "state": "state-123",
             "url": "https://orcid.org/oauth/authorize?state=state-123",
@@ -2239,7 +2239,7 @@ def test_v1_auth_oauth_connect_and_callback_endpoints(monkeypatch, tmp_path) -> 
     )
     monkeypatch.setattr(
         "research_os.api.app.complete_oauth_callback",
-        lambda provider, state, code: {
+        lambda provider, state, code, frontend_origin=None: {
             "provider": "orcid",
             "is_new_user": False,
             "user": {
@@ -2290,7 +2290,7 @@ def test_v1_orcid_connect_callback_and_import(monkeypatch, tmp_path) -> None:
 
         monkeypatch.setattr(
             "research_os.api.app.create_orcid_connect_url",
-            lambda user_id: {
+            lambda user_id, frontend_origin=None: {
                 "url": "https://orcid.org/oauth/authorize?state=test",
                 "state": "test",
             },
@@ -2299,7 +2299,7 @@ def test_v1_orcid_connect_callback_and_import(monkeypatch, tmp_path) -> None:
 
         monkeypatch.setattr(
             "research_os.api.app.complete_orcid_callback",
-            lambda state, code: {
+            lambda state, code, frontend_origin=None: {
                 "connected": True,
                 "user_id": register_response.json()["user"]["id"],
                 "orcid_id": "0000-0002-1825-0097",

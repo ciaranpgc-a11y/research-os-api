@@ -30,7 +30,7 @@ export const dashboardTileStyles = {
   barShape:
     'w-full origin-bottom rounded-sm transition-transform duration-150 group-hover/tile:scale-[1.03]',
   valuePill:
-    'pointer-events-none absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-1 py-[1px] text-[0.52rem] font-normal leading-none text-[hsl(var(--tone-neutral-700))]',
+    'pointer-events-none absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-1 py-px text-[0.52rem] font-normal leading-none text-[hsl(var(--tone-neutral-700))]',
   emptyChart:
     'flex h-14 items-center justify-center rounded-md border border-dashed border-[hsl(var(--tone-accent-200))] bg-background text-micro text-[hsl(var(--tone-neutral-500))]',
 } as const

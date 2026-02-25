@@ -145,7 +145,9 @@ def _snapshot_rank(row: MetricsSnapshot) -> tuple[int, datetime]:
     return _provider_priority(row.provider), _coerce_utc(row.captured_at)
 
 
-def _latest_metrics_by_work(session, *, work_ids: list[str]) -> dict[str, MetricsSnapshot]:
+def _latest_metrics_by_work(
+    session, *, work_ids: list[str]
+) -> dict[str, MetricsSnapshot]:
     if not work_ids:
         return {}
     rows = session.scalars(
@@ -185,7 +187,9 @@ def _sum_citations(rows: dict[str, MetricsSnapshot]) -> int:
 def _is_history_snapshot_usable(snapshot: MetricsSnapshot | None) -> bool:
     if snapshot is None:
         return False
-    payload = snapshot.metric_payload if isinstance(snapshot.metric_payload, dict) else {}
+    payload = (
+        snapshot.metric_payload if isinstance(snapshot.metric_payload, dict) else {}
+    )
     note = str(payload.get("note") or "").strip().lower()
     if not note:
         return True
@@ -199,8 +203,12 @@ def _is_history_snapshot_usable(snapshot: MetricsSnapshot | None) -> bool:
     return True
 
 
-def _extract_counts_by_year(snapshot: MetricsSnapshot, *, now_year: int) -> dict[int, int]:
-    payload = snapshot.metric_payload if isinstance(snapshot.metric_payload, dict) else {}
+def _extract_counts_by_year(
+    snapshot: MetricsSnapshot, *, now_year: int
+) -> dict[int, int]:
+    payload = (
+        snapshot.metric_payload if isinstance(snapshot.metric_payload, dict) else {}
+    )
     raw = payload.get("counts_by_year")
     if not isinstance(raw, list):
         return {}
@@ -221,7 +229,11 @@ def _extract_counts_by_year(snapshot: MetricsSnapshot, *, now_year: int) -> dict
 
 
 def _fallback_year_for_work(work: Work | None, *, now_year: int) -> int:
-    if work is not None and isinstance(work.year, int) and 1900 <= work.year <= now_year:
+    if (
+        work is not None
+        and isinstance(work.year, int)
+        and 1900 <= work.year <= now_year
+    ):
         return int(work.year)
     return now_year
 
@@ -256,7 +268,7 @@ def _estimate_window_citations(
 
 
 def _build_timeseries_points_from_yearly_counts(
-    yearly_counts: dict[int, int]
+    yearly_counts: dict[int, int],
 ) -> list[dict[str, Any]]:
     points: list[dict[str, Any]] = []
     running_total = 0
@@ -299,7 +311,9 @@ def _compute_per_year_with_yoy(points: list[dict[str, Any]]) -> list[dict[str, A
             {
                 "year": int(point.get("year") or 0),
                 "citations_added": added,
-                "total_citations_end_year": max(0, int(point.get("total_citations_end_year") or 0)),
+                "total_citations_end_year": max(
+                    0, int(point.get("total_citations_end_year") or 0)
+                ),
                 "yoy_delta": yoy_delta,
                 "yoy_pct": yoy_pct,
             }
@@ -319,11 +333,20 @@ def _domain_label(work: Work | None) -> str:
             " ".join(str(x) for x in (work.keywords or [])),
         ]
     ).lower()
-    if any(token in text for token in ["cardio", "heart", "aortic", "vascular", "hypertension"]):
+    if any(
+        token in text
+        for token in ["cardio", "heart", "aortic", "vascular", "hypertension"]
+    ):
         return "Cardiovascular"
-    if any(token in text for token in ["cancer", "oncology", "tumour", "tumor", "carcinoma"]):
+    if any(
+        token in text
+        for token in ["cancer", "oncology", "tumour", "tumor", "carcinoma"]
+    ):
         return "Oncology"
-    if any(token in text for token in ["education", "learning", "training", "beme", "curriculum"]):
+    if any(
+        token in text
+        for token in ["education", "learning", "training", "beme", "curriculum"]
+    ):
         return "Medical Education"
     if any(token in text for token in ["respiratory", "pulmonary", "lung"]):
         return "Respiratory"
@@ -390,7 +413,9 @@ def _is_metric_payload_current(payload: dict[str, Any]) -> bool:
     return _safe_int(payload.get("schema_version")) == ANALYTICS_SCHEMA_VERSION
 
 
-def _build_empty_payload(*, computed_at: datetime, failures_in_row: int = 0) -> dict[str, Any]:
+def _build_empty_payload(
+    *, computed_at: datetime, failures_in_row: int = 0
+) -> dict[str, Any]:
     now_iso = _to_iso_utc(computed_at)
     return {
         "schema_version": ANALYTICS_SCHEMA_VERSION,
@@ -447,7 +472,9 @@ def _read_failures_in_row(payload: dict[str, Any]) -> int:
     return max(0, value if value is not None else 0)
 
 
-def _set_failures_in_row(payload: dict[str, Any], failures_in_row: int) -> dict[str, Any]:
+def _set_failures_in_row(
+    payload: dict[str, Any], failures_in_row: int
+) -> dict[str, Any]:
     metadata = payload.get("metadata")
     if not isinstance(metadata, dict):
         metadata = {}
@@ -463,7 +490,9 @@ def _bundle_row_query(user_id: str):
     )
 
 
-def _load_bundle_row(session, *, user_id: str, for_update: bool = False) -> PublicationMetric | None:
+def _load_bundle_row(
+    session, *, user_id: str, for_update: bool = False
+) -> PublicationMetric | None:
     query = _bundle_row_query(user_id)
     if for_update:
         query = query.with_for_update()
@@ -482,11 +511,23 @@ def _bundle_payload_from_row(row: PublicationMetric | None) -> dict[str, Any]:
             "schema_version": ANALYTICS_SCHEMA_VERSION,
             "computed_at": metric_json.get("computed_at"),
             "summary": copy.deepcopy(metric_json),
-            "timeseries": {"schema_version": ANALYTICS_SCHEMA_VERSION, "computed_at": metric_json.get("computed_at"), "points": []},
-            "top_drivers": {"schema_version": ANALYTICS_SCHEMA_VERSION, "computed_at": metric_json.get("computed_at"), "window": "last_12_months", "drivers": []},
+            "timeseries": {
+                "schema_version": ANALYTICS_SCHEMA_VERSION,
+                "computed_at": metric_json.get("computed_at"),
+                "points": [],
+            },
+            "top_drivers": {
+                "schema_version": ANALYTICS_SCHEMA_VERSION,
+                "computed_at": metric_json.get("computed_at"),
+                "window": "last_12_months",
+                "drivers": [],
+            },
             "per_year": [],
             "domain_breakdown_12m": [],
-            "metadata": {"schema_version": ANALYTICS_SCHEMA_VERSION, "failures_in_row": 0},
+            "metadata": {
+                "schema_version": ANALYTICS_SCHEMA_VERSION,
+                "failures_in_row": 0,
+            },
         }
     return {}
 
@@ -495,7 +536,9 @@ def _legacy_bundle_payload(session, *, user_id: str) -> dict[str, Any] | None:
     rows = session.scalars(
         select(PublicationMetric).where(
             PublicationMetric.user_id == user_id,
-            PublicationMetric.metric_key.in_([SUMMARY_KEY, TIMESERIES_KEY, TOP_DRIVERS_KEY]),
+            PublicationMetric.metric_key.in_(
+                [SUMMARY_KEY, TIMESERIES_KEY, TOP_DRIVERS_KEY]
+            ),
         )
     ).all()
     if not rows:
@@ -507,13 +550,24 @@ def _legacy_bundle_payload(session, *, user_id: str) -> dict[str, Any] | None:
     summary = dict(summary_row.metric_json)
     timeseries = (
         dict(by_key[TIMESERIES_KEY].metric_json)
-        if TIMESERIES_KEY in by_key and isinstance(by_key[TIMESERIES_KEY].metric_json, dict)
-        else {"schema_version": ANALYTICS_SCHEMA_VERSION, "computed_at": summary.get("computed_at"), "points": []}
+        if TIMESERIES_KEY in by_key
+        and isinstance(by_key[TIMESERIES_KEY].metric_json, dict)
+        else {
+            "schema_version": ANALYTICS_SCHEMA_VERSION,
+            "computed_at": summary.get("computed_at"),
+            "points": [],
+        }
     )
     top_drivers = (
         dict(by_key[TOP_DRIVERS_KEY].metric_json)
-        if TOP_DRIVERS_KEY in by_key and isinstance(by_key[TOP_DRIVERS_KEY].metric_json, dict)
-        else {"schema_version": ANALYTICS_SCHEMA_VERSION, "computed_at": summary.get("computed_at"), "window": "last_12_months", "drivers": []}
+        if TOP_DRIVERS_KEY in by_key
+        and isinstance(by_key[TOP_DRIVERS_KEY].metric_json, dict)
+        else {
+            "schema_version": ANALYTICS_SCHEMA_VERSION,
+            "computed_at": summary.get("computed_at"),
+            "window": "last_12_months",
+            "drivers": [],
+        }
     )
     computed_at = _parse_metric_timestamp(summary.get("computed_at"))
     return {
@@ -522,7 +576,11 @@ def _legacy_bundle_payload(session, *, user_id: str) -> dict[str, Any] | None:
         "summary": summary,
         "timeseries": timeseries,
         "top_drivers": top_drivers,
-        "per_year": _compute_per_year_with_yoy(timeseries.get("points") if isinstance(timeseries.get("points"), list) else []),
+        "per_year": _compute_per_year_with_yoy(
+            timeseries.get("points")
+            if isinstance(timeseries.get("points"), list)
+            else []
+        ),
         "domain_breakdown_12m": [],
         "metadata": {"schema_version": ANALYTICS_SCHEMA_VERSION, "failures_in_row": 0},
     }
@@ -575,7 +633,9 @@ def _openalex_request_with_retry(*, url: str, params: dict[str, Any]) -> dict[st
     return {}
 
 
-def _resolve_openalex_author_id(*, orcid_id: str | None, mailto: str | None) -> str | None:
+def _resolve_openalex_author_id(
+    *, orcid_id: str | None, mailto: str | None
+) -> str | None:
     clean_orcid = _normalize_orcid_id(orcid_id)
     if not clean_orcid:
         return None
@@ -609,8 +669,12 @@ def _compute_payload(session, *, user_id: str, computed_at: datetime) -> dict[st
     cutoff_24 = now - timedelta(days=730)
 
     latest = _latest_metrics_by_work(session, work_ids=work_ids)
-    at_12 = _latest_metrics_by_work_at_or_before(session, work_ids=work_ids, cutoff=cutoff_12)
-    at_24 = _latest_metrics_by_work_at_or_before(session, work_ids=work_ids, cutoff=cutoff_24)
+    at_12 = _latest_metrics_by_work_at_or_before(
+        session, work_ids=work_ids, cutoff=cutoff_12
+    )
+    at_24 = _latest_metrics_by_work_at_or_before(
+        session, work_ids=work_ids, cutoff=cutoff_24
+    )
     latest_total = _sum_citations(latest)
     work_by_id = {str(work.id): work for work in works}
 
@@ -628,13 +692,19 @@ def _compute_payload(session, *, user_id: str, computed_at: datetime) -> dict[st
             has_provider_yearly_history = True
             distributed = sum(yearly.values())
             if distributed < citations:
-                fallback_year = _fallback_year_for_work(work_by_id.get(work_id), now_year=now.year)
-                yearly[fallback_year] = yearly.get(fallback_year, 0) + (citations - distributed)
+                fallback_year = _fallback_year_for_work(
+                    work_by_id.get(work_id), now_year=now.year
+                )
+                yearly[fallback_year] = yearly.get(fallback_year, 0) + (
+                    citations - distributed
+                )
             yearly_by_work[work_id] = yearly
             for year, count in yearly.items():
                 aggregate_yearly[year] += max(0, int(count or 0))
         elif citations > 0:
-            fallback_year = _fallback_year_for_work(work_by_id.get(work_id), now_year=now.year)
+            fallback_year = _fallback_year_for_work(
+                work_by_id.get(work_id), now_year=now.year
+            )
             fallback_yearly[fallback_year] += citations
 
     growth_by_work: dict[str, int] = {}
@@ -642,10 +712,16 @@ def _compute_payload(session, *, user_id: str, computed_at: datetime) -> dict[st
     citations_previous_12 = 0
     for work_id in work_ids:
         latest_snapshot = latest.get(work_id)
-        current = max(0, int((latest_snapshot.citations_count if latest_snapshot else 0) or 0))
+        current = max(
+            0, int((latest_snapshot.citations_count if latest_snapshot else 0) or 0)
+        )
         snap_12 = at_12.get(work_id)
         snap_24 = at_24.get(work_id)
-        latest_provider = str((latest_snapshot.provider if latest_snapshot else "") or "").strip().lower()
+        latest_provider = (
+            str((latest_snapshot.provider if latest_snapshot else "") or "")
+            .strip()
+            .lower()
+        )
         if latest_provider:
             if snap_12 is not None and (
                 str(snap_12.provider or "").strip().lower() != latest_provider
@@ -659,16 +735,22 @@ def _compute_payload(session, *, user_id: str, computed_at: datetime) -> dict[st
                 snap_24 = None
         yearly = yearly_by_work.get(work_id, {})
         if yearly:
-            last_12 = _estimate_window_citations(yearly, start=cutoff_12, end=now, now=now)
+            last_12 = _estimate_window_citations(
+                yearly, start=cutoff_12, end=now, now=now
+            )
         elif snap_12 is not None:
             last_12 = max(0, current - int(snap_12.citations_count or 0))
         else:
             last_12 = 0
 
         if yearly:
-            prev_12 = _estimate_window_citations(yearly, start=cutoff_24, end=cutoff_12, now=now)
+            prev_12 = _estimate_window_citations(
+                yearly, start=cutoff_24, end=cutoff_12, now=now
+            )
         elif snap_12 is not None and snap_24 is not None:
-            prev_12 = max(0, int(snap_12.citations_count or 0) - int(snap_24.citations_count or 0))
+            prev_12 = max(
+                0, int(snap_12.citations_count or 0) - int(snap_24.citations_count or 0)
+            )
         elif snap_12 is not None:
             prev_12 = max(0, int(snap_12.citations_count or 0))
         else:
@@ -685,7 +767,11 @@ def _compute_payload(session, *, user_id: str, computed_at: datetime) -> dict[st
 
     yoy_percent: float | None = None
     if citations_previous_12 > 0:
-        yoy_percent = round(((citations_last_12 - citations_previous_12) / citations_previous_12) * 100.0, 1)
+        yoy_percent = round(
+            ((citations_last_12 - citations_previous_12) / citations_previous_12)
+            * 100.0,
+            1,
+        )
     citations_pm_12 = round(citations_last_12 / 12.0, 2)
     citations_pm_prev_12 = round(citations_previous_12 / 12.0, 2)
     acceleration_pm = round(citations_pm_12 - citations_pm_prev_12, 2)
@@ -694,7 +780,9 @@ def _compute_payload(session, *, user_id: str, computed_at: datetime) -> dict[st
     if has_provider_yearly_history:
         for year, count in fallback_yearly.items():
             aggregate_yearly[year] += max(0, int(count or 0))
-        timeseries_points = _build_timeseries_points_from_yearly_counts(aggregate_yearly)
+        timeseries_points = _build_timeseries_points_from_yearly_counts(
+            aggregate_yearly
+        )
     elif fallback_yearly:
         timeseries_points = _build_timeseries_points_from_yearly_counts(fallback_yearly)
     else:
@@ -712,7 +800,9 @@ def _compute_payload(session, *, user_id: str, computed_at: datetime) -> dict[st
         if first_val > 0:
             cagr_3y = round((((last_val / first_val) ** (1 / 2.0)) - 1.0) * 100.0, 2)
 
-    citations_ytd = max(0, int(aggregate_yearly.get(now.year, 0))) if aggregate_yearly else 0
+    citations_ytd = (
+        max(0, int(aggregate_yearly.get(now.year, 0))) if aggregate_yearly else 0
+    )
     top_drivers: list[dict[str, Any]] = []
     domain_totals: dict[str, int] = defaultdict(int)
     domain_works: dict[str, set[str]] = defaultdict(set)
@@ -723,7 +813,11 @@ def _compute_payload(session, *, user_id: str, computed_at: datetime) -> dict[st
         work = work_by_id.get(work_id)
         snap = latest.get(work_id)
         current = int(snap.citations_count or 0) if snap is not None else 0
-        share = round((growth / citations_last_12) * 100.0, 2) if citations_last_12 > 0 else 0.0
+        share = (
+            round((growth / citations_last_12) * 100.0, 2)
+            if citations_last_12 > 0
+            else 0.0
+        )
         domain = _domain_label(work)
         top_drivers.append(
             {
@@ -736,24 +830,41 @@ def _compute_payload(session, *, user_id: str, computed_at: datetime) -> dict[st
                 "provider": snap.provider if snap is not None else "none",
                 "share_12m_pct": share,
                 "primary_domain_label": domain,
-                "momentum_badge": _momentum_badge(citations_last_12=growth, share_12m_pct=share),
+                "momentum_badge": _momentum_badge(
+                    citations_last_12=growth, share_12m_pct=share
+                ),
             }
         )
         domain_totals[domain] += growth
         domain_works[domain].add(work_id)
-    top_drivers.sort(key=lambda item: (int(item["citations_last_12_months"]), int(item["current_citations"]), int(item["year"] or 0)), reverse=True)
+    top_drivers.sort(
+        key=lambda item: (
+            int(item["citations_last_12_months"]),
+            int(item["current_citations"]),
+            int(item["year"] or 0),
+        ),
+        reverse=True,
+    )
     top5 = sum(int(item["citations_last_12_months"]) for item in top_drivers[:5])
     top10 = sum(int(item["citations_last_12_months"]) for item in top_drivers[:10])
-    top5_share = round((top5 / citations_last_12) * 100.0, 2) if citations_last_12 > 0 else 0.0
-    top10_share = round((top10 / citations_last_12) * 100.0, 2) if citations_last_12 > 0 else 0.0
+    top5_share = (
+        round((top5 / citations_last_12) * 100.0, 2) if citations_last_12 > 0 else 0.0
+    )
+    top10_share = (
+        round((top10 / citations_last_12) * 100.0, 2) if citations_last_12 > 0 else 0.0
+    )
     domain_breakdown = [
         {
             "label": label,
             "citations_last_12_months": int(total),
-            "share_12m_pct": round((int(total) / citations_last_12) * 100.0, 2) if citations_last_12 > 0 else 0.0,
+            "share_12m_pct": round((int(total) / citations_last_12) * 100.0, 2)
+            if citations_last_12 > 0
+            else 0.0,
             "works_count": len(domain_works.get(label, set())),
         }
-        for label, total in sorted(domain_totals.items(), key=lambda item: int(item[1]), reverse=True)
+        for label, total in sorted(
+            domain_totals.items(), key=lambda item: int(item[1]), reverse=True
+        )
     ]
 
     summary = {
@@ -780,8 +891,17 @@ def _compute_payload(session, *, user_id: str, computed_at: datetime) -> dict[st
         "schema_version": ANALYTICS_SCHEMA_VERSION,
         "computed_at": now_iso,
         "summary": summary,
-        "timeseries": {"schema_version": ANALYTICS_SCHEMA_VERSION, "computed_at": now_iso, "points": timeseries_points},
-        "top_drivers": {"schema_version": ANALYTICS_SCHEMA_VERSION, "computed_at": now_iso, "window": "last_12_months", "drivers": top_drivers},
+        "timeseries": {
+            "schema_version": ANALYTICS_SCHEMA_VERSION,
+            "computed_at": now_iso,
+            "points": timeseries_points,
+        },
+        "top_drivers": {
+            "schema_version": ANALYTICS_SCHEMA_VERSION,
+            "computed_at": now_iso,
+            "window": "last_12_months",
+            "drivers": top_drivers,
+        },
         "per_year": per_year,
         "domain_breakdown_12m": domain_breakdown,
         "metadata": {
@@ -849,11 +969,15 @@ def _persist_failed_bundle(*, user_id: str, detail: str) -> None:
         failures = _read_failures_in_row(payload) + 1
         payload = _set_failures_in_row(payload, failures)
         row.payload_json = payload
-        row.metric_json = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+        row.metric_json = (
+            payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+        )
         row.status = FAILED_STATUS
         row.last_error = str(detail or "Unknown analytics failure")[:2000]
         row.updated_at = now
-        row.next_scheduled_at = now + timedelta(seconds=_failure_backoff_seconds(failures))
+        row.next_scheduled_at = now + timedelta(
+            seconds=_failure_backoff_seconds(failures)
+        )
         row.orcid_id = user.orcid_id
         session.flush()
 
@@ -932,7 +1056,9 @@ def _mark_job_running(*, user_id: str, force: bool) -> bool:
             payload = _build_empty_payload(computed_at=now)
             row.payload_json = payload
             row.metric_json = payload.get("summary", {})
-        stale = _is_stale(computed_at=_coerce_utc_or_none(row.computed_at), now=now) or not _is_metric_payload_current(payload)
+        stale = _is_stale(
+            computed_at=_coerce_utc_or_none(row.computed_at), now=now
+        ) or not _is_metric_payload_current(payload)
         if _should_enqueue_from_row(row, now=now, stale=stale, force=force):
             row.status = RUNNING_STATUS
             row.last_error = None
@@ -958,10 +1084,16 @@ def enqueue_publications_analytics_recompute(
     try:
         _get_executor().submit(_run_background_compute, user_id)
         if reason:
-            logger.info("publications_analytics_enqueue", extra={"user_id": user_id, "reason": reason})
+            logger.info(
+                "publications_analytics_enqueue",
+                extra={"user_id": user_id, "reason": reason},
+            )
         return True
     except Exception as exc:
-        _persist_failed_bundle(user_id=user_id, detail=f"Failed to enqueue publications analytics recompute: {exc}")
+        _persist_failed_bundle(
+            user_id=user_id,
+            detail=f"Failed to enqueue publications analytics recompute: {exc}",
+        )
         return False
 
 
@@ -997,7 +1129,11 @@ def compute_publications_analytics(
 
 
 def _analytics_response(
-    *, payload: dict[str, Any], computed_at: datetime | None, status: str, is_stale: bool
+    *,
+    payload: dict[str, Any],
+    computed_at: datetime | None,
+    status: str,
+    is_stale: bool,
 ) -> dict[str, Any]:
     clean_payload = dict(payload) if isinstance(payload, dict) else {}
     if not clean_payload:
@@ -1051,9 +1187,13 @@ def get_publications_analytics(*, user_id: str) -> dict[str, Any]:
             if not payload:
                 payload = _build_empty_payload(computed_at=now)
             computed_at = _coerce_utc_or_none(row.computed_at)
-            stale = _is_stale(computed_at=computed_at, now=now) or not _is_metric_payload_current(payload)
+            stale = _is_stale(
+                computed_at=computed_at, now=now
+            ) or not _is_metric_payload_current(payload)
             status = _normalize_status(row.status)
-            should_enqueue = _should_enqueue_from_row(row, now=now, stale=stale, force=False)
+            should_enqueue = _should_enqueue_from_row(
+                row, now=now, stale=stale, force=False
+            )
             response = _analytics_response(
                 payload=payload,
                 computed_at=computed_at,
@@ -1061,7 +1201,9 @@ def get_publications_analytics(*, user_id: str) -> dict[str, Any]:
                 is_stale=stale,
             )
 
-    if should_enqueue and enqueue_publications_analytics_recompute(user_id=user_id, reason="stale_read"):
+    if should_enqueue and enqueue_publications_analytics_recompute(
+        user_id=user_id, reason="stale_read"
+    ):
         response["status"] = RUNNING_STATUS
         response["is_updating"] = True
     return response
@@ -1071,7 +1213,9 @@ def get_publications_analytics_summary(
     *, user_id: str, refresh: bool = False, refresh_metrics: bool = False
 ) -> dict[str, Any]:
     if refresh:
-        payload = compute_publications_analytics(user_id=user_id, refresh_metrics=refresh_metrics)
+        payload = compute_publications_analytics(
+            user_id=user_id, refresh_metrics=refresh_metrics
+        )
         summary = payload.get("summary")
         return dict(summary) if isinstance(summary, dict) else {}
     response = get_publications_analytics(user_id=user_id)
@@ -1086,7 +1230,9 @@ def get_publications_analytics_timeseries(
     *, user_id: str, refresh: bool = False, refresh_metrics: bool = False
 ) -> dict[str, Any]:
     if refresh:
-        payload = compute_publications_analytics(user_id=user_id, refresh_metrics=refresh_metrics)
+        payload = compute_publications_analytics(
+            user_id=user_id, refresh_metrics=refresh_metrics
+        )
         timeseries = payload.get("timeseries")
         return dict(timeseries) if isinstance(timeseries, dict) else {}
     response = get_publications_analytics(user_id=user_id)
@@ -1107,7 +1253,9 @@ def get_publications_analytics_top_drivers(
     if limit < 1:
         raise PublicationsAnalyticsValidationError("limit must be at least 1.")
     if refresh:
-        payload = compute_publications_analytics(user_id=user_id, refresh_metrics=refresh_metrics)
+        payload = compute_publications_analytics(
+            user_id=user_id, refresh_metrics=refresh_metrics
+        )
         top_drivers = payload.get("top_drivers")
     else:
         response = get_publications_analytics(user_id=user_id)
@@ -1127,7 +1275,9 @@ def _try_acquire_scheduler_leader(now: datetime) -> bool:
     create_all_tables()
     with session_scope() as session:
         row = session.scalars(
-            select(AppRuntimeLock).where(AppRuntimeLock.lock_name == SCHEDULER_LOCK_NAME).with_for_update()
+            select(AppRuntimeLock)
+            .where(AppRuntimeLock.lock_name == SCHEDULER_LOCK_NAME)
+            .with_for_update()
         ).first()
         if row is None:
             session.add(
@@ -1139,7 +1289,10 @@ def _try_acquire_scheduler_leader(now: datetime) -> bool:
             )
             session.flush()
             return True
-        if _coerce_utc(row.lease_expires_at) <= now or str(row.owner_id or "") == _INSTANCE_ID:
+        if (
+            _coerce_utc(row.lease_expires_at) <= now
+            or str(row.owner_id or "") == _INSTANCE_ID
+        ):
             row.owner_id = _INSTANCE_ID
             row.lease_expires_at = lease_expires
             session.flush()
@@ -1154,7 +1307,9 @@ def run_publications_analytics_scheduler_tick() -> int:
     with session_scope() as session:
         user_ids = [str(item) for item in session.scalars(select(User.id)).all()]
         rows = session.scalars(
-            select(PublicationMetric).where(PublicationMetric.metric_key == BUNDLE_METRIC_KEY)
+            select(PublicationMetric).where(
+                PublicationMetric.metric_key == BUNDLE_METRIC_KEY
+            )
         ).all()
         rows_by_user = {
             str(row.user_id): {
@@ -1168,7 +1323,9 @@ def run_publications_analytics_scheduler_tick() -> int:
     for user_id in user_ids:
         row = rows_by_user.get(user_id)
         if row is None:
-            if enqueue_publications_analytics_recompute(user_id=user_id, reason="scheduled_missing"):
+            if enqueue_publications_analytics_recompute(
+                user_id=user_id, reason="scheduled_missing"
+            ):
                 enqueued += 1
             continue
         if str(row["status"]) == RUNNING_STATUS:
@@ -1176,7 +1333,9 @@ def run_publications_analytics_scheduler_tick() -> int:
         next_scheduled = _coerce_utc_or_none(row["next_scheduled_at"])
         stale = _is_stale(computed_at=_coerce_utc_or_none(row["computed_at"]), now=now)
         due = (next_scheduled is not None and next_scheduled <= now) or stale
-        if due and enqueue_publications_analytics_recompute(user_id=user_id, reason="scheduled_due"):
+        if due and enqueue_publications_analytics_recompute(
+            user_id=user_id, reason="scheduled_due"
+        ):
             enqueued += 1
     return enqueued
 

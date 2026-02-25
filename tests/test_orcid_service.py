@@ -221,9 +221,7 @@ def test_orcid_import_reports_zero_new_works_on_repeat_sync(
     call_urls: list[str] = []
 
     class _TrackingOrcidClient(_FakeOrcidClient):
-        def get(
-            self, url: str, headers: dict[str, str] | None = None
-        ) -> _FakeResponse:
+        def get(self, url: str, headers: dict[str, str] | None = None) -> _FakeResponse:
             call_urls.append(url)
             return super().get(url, headers=headers)
 
@@ -261,7 +259,9 @@ def test_orcid_import_reports_zero_new_works_on_repeat_sync(
 def test_orcid_import_dedupes_duplicate_contributors(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     orcid_id = "0000-0002-1825-0097"
-    user_id = _create_orcid_user(email="orcid-import-dup-authors@example.com", orcid_id=orcid_id)
+    user_id = _create_orcid_user(
+        email="orcid-import-dup-authors@example.com", orcid_id=orcid_id
+    )
 
     works_url = f"https://pub.orcid.org/v3.0/{orcid_id}/works"
     work_505_url = f"https://pub.orcid.org/v3.0/{orcid_id}/work/505"
@@ -316,7 +316,9 @@ def test_orcid_import_dedupes_duplicate_contributors(monkeypatch, tmp_path) -> N
         work = session.scalars(select(Work).where(Work.user_id == user_id)).first()
         assert work is not None
         authorship_count = session.scalar(
-            select(func.count(WorkAuthorship.id)).where(WorkAuthorship.work_id == work.id)
+            select(func.count(WorkAuthorship.id)).where(
+                WorkAuthorship.work_id == work.id
+            )
         )
         assert int(authorship_count or 0) == 1
 

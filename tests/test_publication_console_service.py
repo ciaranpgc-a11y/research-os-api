@@ -141,7 +141,9 @@ def test_publication_detail_endpoint_is_scoped_to_owner(monkeypatch, tmp_path) -
 
 def test_authors_hydration_enqueues_and_persists(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
-    user_id, work_id = _seed_user_and_work(email="authors@example.com", title="Hydration Work")
+    user_id, work_id = _seed_user_and_work(
+        email="authors@example.com", title="Hydration Work"
+    )
 
     monkeypatch.setattr(
         publication_console_service,
@@ -149,7 +151,11 @@ def test_authors_hydration_enqueues_and_persists(monkeypatch, tmp_path) -> None:
         lambda **kwargs: {
             "status": "READY",
             "authors_json": [
-                {"name": "Alice Example", "orcid_id": "0000-0000-0000-0001", "affiliations": ["AAWE"]},
+                {
+                    "name": "Alice Example",
+                    "orcid_id": "0000-0000-0000-0001",
+                    "affiliations": ["AAWE"],
+                },
                 {"name": "Bob Example", "orcid_id": None, "affiliations": ["AAWE"]},
             ],
             "affiliations_json": [{"name": "AAWE"}],
@@ -162,7 +168,9 @@ def test_authors_hydration_enqueues_and_persists(monkeypatch, tmp_path) -> None:
         fn(user_id=user_id, publication_id=publication_id)
         return True
 
-    monkeypatch.setattr(publication_console_service, "_submit_background_job", _immediate_submit)
+    monkeypatch.setattr(
+        publication_console_service, "_submit_background_job", _immediate_submit
+    )
 
     first = publication_console_service.get_publication_authors(
         user_id=user_id,
@@ -181,7 +189,9 @@ def test_authors_hydration_enqueues_and_persists(monkeypatch, tmp_path) -> None:
 
 def test_authors_hydration_fallback_order(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
-    user_id, work_id = _seed_user_and_work(email="fallback@example.com", title="Fallback Work")
+    user_id, work_id = _seed_user_and_work(
+        email="fallback@example.com", title="Fallback Work"
+    )
 
     with session_scope() as session:
         work = session.get(Work, work_id)
@@ -195,7 +205,10 @@ def test_authors_hydration_fallback_order(monkeypatch, tmp_path) -> None:
         monkeypatch.setattr(
             publication_console_service,
             "_extract_authors_from_crossref",
-            lambda doi: ([{"name": "Crossref Author", "orcid_id": None, "affiliations": []}], []),
+            lambda doi: (
+                [{"name": "Crossref Author", "orcid_id": None, "affiliations": []}],
+                [],
+            ),
         )
         result_crossref = publication_console_service._hydrate_authors_data(
             work=work,
@@ -213,12 +226,18 @@ def test_authors_hydration_fallback_order(monkeypatch, tmp_path) -> None:
         monkeypatch.setattr(
             publication_console_service,
             "_extract_openalex_work_record",
-            lambda **kwargs: ({"id": "https://openalex.org/W999", "authorships": []}, "W999"),
+            lambda **kwargs: (
+                {"id": "https://openalex.org/W999", "authorships": []},
+                "W999",
+            ),
         )
         monkeypatch.setattr(
             publication_console_service,
             "_extract_authors_from_openalex",
-            lambda work_record: ([{"name": "OpenAlex Author", "orcid_id": None, "affiliations": []}], []),
+            lambda work_record: (
+                [{"name": "OpenAlex Author", "orcid_id": None, "affiliations": []}],
+                [],
+            ),
         )
         result_openalex = publication_console_service._hydrate_authors_data(
             work=work,
@@ -230,7 +249,9 @@ def test_authors_hydration_fallback_order(monkeypatch, tmp_path) -> None:
 
 def test_impact_endpoint_stale_while_revalidate_statuses(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
-    user_id, work_id = _seed_user_and_work(email="impact@example.com", title="Impact Work")
+    user_id, work_id = _seed_user_and_work(
+        email="impact@example.com", title="Impact Work"
+    )
 
     now = datetime.now(timezone.utc)
     with session_scope() as session:

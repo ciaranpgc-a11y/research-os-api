@@ -103,7 +103,9 @@ def _ensure_collaborator_affiliations_table() -> None:
             sa.Column("country", sa.String(length=64), nullable=True),
             sa.Column("start_year", sa.Integer(), nullable=True),
             sa.Column("end_year", sa.Integer(), nullable=True),
-            sa.Column("is_primary", sa.Boolean(), nullable=False, server_default=sa.false()),
+            sa.Column(
+                "is_primary", sa.Boolean(), nullable=False, server_default=sa.false()
+            ),
             sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
             sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
             sa.ForeignKeyConstraint(
@@ -163,14 +165,18 @@ def _ensure_collaboration_metrics_table() -> None:
                 name="uq_collaboration_metrics_owner_collaborator",
             ),
         )
-    if not _index_exists("collaboration_metrics", "ix_collaboration_metrics_owner_user_id"):
+    if not _index_exists(
+        "collaboration_metrics", "ix_collaboration_metrics_owner_user_id"
+    ):
         op.create_index(
             "ix_collaboration_metrics_owner_user_id",
             "collaboration_metrics",
             ["owner_user_id"],
             unique=False,
         )
-    if not _index_exists("collaboration_metrics", "ix_collaboration_metrics_collaborator_id"):
+    if not _index_exists(
+        "collaboration_metrics", "ix_collaboration_metrics_collaborator_id"
+    ):
         op.create_index(
             "ix_collaboration_metrics_collaborator_id",
             "collaboration_metrics",
@@ -184,7 +190,9 @@ def _ensure_collaboration_metrics_table() -> None:
             ["owner_user_id"],
             unique=False,
         )
-    if not _index_exists("collaboration_metrics", "ix_collaboration_metrics_collaborator"):
+    if not _index_exists(
+        "collaboration_metrics", "ix_collaboration_metrics_collaborator"
+    ):
         op.create_index(
             "ix_collaboration_metrics_collaborator",
             "collaboration_metrics",
@@ -215,9 +223,21 @@ def _ensure_manuscript_authors_table() -> None:
             sa.Column("orcid_id", sa.String(length=64), nullable=True),
             sa.Column("institution", sa.String(length=255), nullable=True),
             sa.Column("author_order", sa.Integer(), nullable=False),
-            sa.Column("is_corresponding", sa.Boolean(), nullable=False, server_default=sa.false()),
-            sa.Column("equal_contribution", sa.Boolean(), nullable=False, server_default=sa.false()),
-            sa.Column("is_external", sa.Boolean(), nullable=False, server_default=sa.false()),
+            sa.Column(
+                "is_corresponding",
+                sa.Boolean(),
+                nullable=False,
+                server_default=sa.false(),
+            ),
+            sa.Column(
+                "equal_contribution",
+                sa.Boolean(),
+                nullable=False,
+                server_default=sa.false(),
+            ),
+            sa.Column(
+                "is_external", sa.Boolean(), nullable=False, server_default=sa.false()
+            ),
             sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
             sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
             sa.ForeignKeyConstraint(
@@ -305,14 +325,18 @@ def _ensure_manuscript_affiliations_table() -> None:
                 name="uq_manuscript_affiliations_superscript",
             ),
         )
-    if not _index_exists("manuscript_affiliations", "ix_manuscript_affiliations_manuscript_id"):
+    if not _index_exists(
+        "manuscript_affiliations", "ix_manuscript_affiliations_manuscript_id"
+    ):
         op.create_index(
             "ix_manuscript_affiliations_manuscript_id",
             "manuscript_affiliations",
             ["manuscript_id"],
             unique=False,
         )
-    if not _index_exists("manuscript_affiliations", "ix_manuscript_affiliations_owner_user_id"):
+    if not _index_exists(
+        "manuscript_affiliations", "ix_manuscript_affiliations_owner_user_id"
+    ):
         op.create_index(
             "ix_manuscript_affiliations_owner_user_id",
             "manuscript_affiliations",
@@ -326,7 +350,9 @@ def _ensure_manuscript_affiliations_table() -> None:
             ["owner_user_id"],
             unique=False,
         )
-    if not _index_exists("manuscript_affiliations", "ix_manuscript_affiliations_manuscript"):
+    if not _index_exists(
+        "manuscript_affiliations", "ix_manuscript_affiliations_manuscript"
+    ):
         op.create_index(
             "ix_manuscript_affiliations_manuscript",
             "manuscript_affiliations",
