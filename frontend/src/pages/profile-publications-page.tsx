@@ -869,14 +869,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     let cancelled = false
 
-    const stageLabel = (value: string | null | undefined): string => {
-      const clean = (value || '').trim().replace(/[_-]+/g, ' ')
-      if (!clean) {
-        return 'processing'
-      }
-      return clean
-    }
-
     const poll = async () => {
       try {
         const job = await fetchPersonaSyncJob(token, activeSyncJob.id)
@@ -885,9 +877,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         }
         setActiveSyncJob(job)
         if (job.status === 'queued' || job.status === 'running') {
-          setStatus(
-            `Background sync running (${job.progress_percent}% • ${stageLabel(job.current_stage)}).`,
-          )
           return
         }
         if (job.status === 'completed') {
@@ -1188,7 +1177,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const ownerEmail = user?.email || ''
   const hIndex = analyticsSummary?.h_index ?? 0
   const analyticsComputedAt = analyticsResponse?.computed_at || analyticsSummary?.computed_at || null
-  const analyticsUpdating = analyticsResponse?.status === 'RUNNING'
   const analyticsFailed = analyticsResponse?.status === 'FAILED' || analyticsResponse?.last_update_failed
   const topDrivers = (analyticsTopDrivers?.drivers || []).slice(0, 5)
   const publicationsPerYearPoints = useMemo(() => {
@@ -1529,7 +1517,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             <p className="text-xs text-muted-foreground">Analytics computed</p>
             <p className="font-semibold">{formatShortDate(analyticsComputedAt)}</p>
             <p className="text-xs text-muted-foreground">Auto-updates daily</p>
-            {analyticsUpdating ? <p className="text-xs text-muted-foreground">Updating...</p> : null}
             {analyticsFailed ? <p className="text-xs text-amber-700">Last update failed</p> : null}
           </div>
         </CardContent>
@@ -1870,4 +1857,5 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     </section>
   )
 }
+
 

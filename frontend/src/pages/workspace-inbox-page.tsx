@@ -4,13 +4,15 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { decryptWorkspaceInboxText } from '@/lib/workspace-inbox-crypto'
 import { houseForms, houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
-import { readWorkspaceOwnerNameFromProfile } from '@/lib/workspace-owner'
+import { readWorkspaceOwnerNameFromProfile, WORKSPACE_OWNER_REQUIRED_MESSAGE } from '@/lib/workspace-owner'
 import { cn } from '@/lib/utils'
 import {
   INBOX_MESSAGES_STORAGE_KEY,
   useWorkspaceInboxStore,
 } from '@/store/use-workspace-inbox-store'
 import { useWorkspaceStore } from '@/store/use-workspace-store'
+
+type FilterKey = 'all' | 'active' | 'pinned' | 'archived' | 'recent'
 
 type DecryptedInboxMessage = {
   id: string
@@ -42,6 +44,13 @@ type WindowWithSpeechRecognition = Window & {
 const INBOX_TYPING_STORAGE_KEY = 'aawe-workspace-inbox-typing-v1'
 const TYPING_STALE_MS = 5000
 const TYPING_HEARTBEAT_MS = 1200
+const FILTER_OPTIONS: Array<{ key: FilterKey; label: string }> = [
+  { key: 'all', label: 'All' },
+  { key: 'active', label: 'Active' },
+  { key: 'pinned', label: 'Pinned' },
+  { key: 'recent', label: 'Recent (14 days)' },
+  { key: 'archived', label: 'Archived' },
+]
 
 function formatTimestamp(value: string): string {
   const parsed = Date.parse(value)
@@ -55,6 +64,15 @@ function formatTimestamp(value: string): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function isRecentWorkspace(value: string): boolean {
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) {
+    return false
+  }
+  const fourteenDaysMs = 14 * 24 * 60 * 60 * 1000
+  return Date.now() - parsed <= fourteenDaysMs
 }
 
 function normalizeName(value: string | null | undefined): string {
@@ -166,7 +184,10 @@ export function WorkspaceInboxPage() {
   const workspaceId = (params.workspaceId || '').trim()
   const ensureWorkspace = useWorkspaceStore((state) => state.ensureWorkspace)
   const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId)
+  const createWorkspace = useWorkspaceStore((state) => state.createWorkspace)
   const workspaces = useWorkspaceStore((state) => state.workspaces)
+  const authorRequests = useWorkspaceStore((state) => state.authorRequests)
+  const invitationsSent = useWorkspaceStore((state) => state.invitationsSent)
   const sendWorkspaceMessage = useWorkspaceInboxStore((state) => state.sendWorkspaceMessage)
   const refreshMessagesFromStorage = useWorkspaceInboxStore((state) => state.refreshMessagesFromStorage)
   const allMessages = useWorkspaceInboxStore((state) => state.messages)
@@ -198,6 +219,9 @@ export function WorkspaceInboxPage() {
   }, [currentUserName, workspace])
   const canSpeakDraft = typeof window !== 'undefined' && 'speechSynthesis' in window
 
+  const [workspaceOwnerName, setWorkspaceOwnerName] = useState<string | null>(() =>
+    readWorkspaceOwnerNameFromProfile(),
+  )
   const [draft, setDraft] = useState('')
   const [messages, setMessages] = useState<DecryptedInboxMessage[]>([])
   const [typingMap, setTypingMap] = useState<TypingMapRecord>(() => pruneTypingMap(readTypingMap()))
@@ -209,6 +233,7 @@ export function WorkspaceInboxPage() {
   const [error, setError] = useState('')
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const conversationRef = useRef<HTMLDivElement | null>(null)
+  const composerRef = useRef<HTMLTextAreaElement | null>(null)
 
   useEffect(() => {
     if (!workspaceId) {
@@ -217,6 +242,18 @@ export function WorkspaceInboxPage() {
     ensureWorkspace(workspaceId)
     setActiveWorkspaceId(workspaceId)
   }, [ensureWorkspace, setActiveWorkspaceId, workspaceId])
+
+  useEffect(() => {
+    const refreshOwner = () => {
+      setWorkspaceOwnerName(readWorkspaceOwnerNameFromProfile())
+    }
+    window.addEventListener('storage', refreshOwner)
+    window.addEventListener('focus', refreshOwner)
+    return () => {
+      window.removeEventListener('storage', refreshOwner)
+      window.removeEventListener('focus', refreshOwner)
+    }
+  }, [])
 
   const publishTypingState = useCallback((typing: boolean) => {
     if (!workspaceId || !currentUserName) {
@@ -491,12 +528,55 @@ export function WorkspaceInboxPage() {
     navigate('/workspaces')
   }
 
+  const onOpenWorkspacesView = (view: 'workspaces' | 'invitations', filter?: FilterKey) => {
+    const queryParams = new URLSearchParams()
+    queryParams.set('view', view)
+    if (filter) {
+      queryParams.set('filter', filter)
+    }
+    const query = queryParams.toString()
+    navigate(query ? `/workspaces?${query}` : '/workspaces')
+  }
+
+  const onCreateWorkspaceFromSidebar = () => {
+    if (!workspaceOwnerName) {
+      setError(WORKSPACE_OWNER_REQUIRED_MESSAGE)
+      return
+    }
+    try {
+      const created = createWorkspace('New Workspace')
+      setActiveWorkspaceId(created.id)
+      navigate(`/w/${created.id}/overview`)
+    } catch (createWorkspaceError) {
+      setError(
+        createWorkspaceError instanceof Error
+          ? createWorkspaceError.message
+          : 'Workspace could not be created.',
+      )
+    }
+  }
+
   const onOpenWorkspaceOverview = () => {
     if (!workspaceId) {
       return
     }
     navigate(`/w/${workspaceId}/overview`)
   }
+
+  const filterCounts = useMemo<Record<FilterKey, number>>(
+    () => ({
+      all: workspaces.length,
+      active: workspaces.filter((item) => !item.archived).length,
+      pinned: workspaces.filter((item) => item.pinned).length,
+      archived: workspaces.filter((item) => item.archived).length,
+      recent: workspaces.filter((item) => isRecentWorkspace(item.updatedAt)).length,
+    }),
+    [workspaces],
+  )
+  const incomingInvitationCount = authorRequests.length
+  const outgoingInvitationCount = invitationsSent.length
+  const totalInvitationCount = incomingInvitationCount + outgoingInvitationCount
+  const canCreateWorkspace = Boolean(workspaceOwnerName)
 
   const conversationLastUpdated = useMemo(() => {
     if (messages.length === 0) {
@@ -508,13 +588,13 @@ export function WorkspaceInboxPage() {
   return (
     <div data-house-scope="workspace-inbox" className="min-h-screen bg-background text-foreground">
       <div className="mx-auto w-full max-w-sz-1380 px-4 py-4 md:px-6">
-        <section className="grid min-h-[calc(100vh-2rem)] gap-4 nav:grid-cols-[280px_minmax(0,1fr)]">
+        <section className="grid min-h-[calc(100vh-2rem)] gap-4 nav:grid-cols-[280px_minmax(0,1fr)_280px]">
           <aside className={cn('flex min-h-0 flex-col', houseLayout.sidebar)} data-house-role="left-nav-shell">
             <div className={houseLayout.sidebarHeader}>
               <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
-                <h1 className={houseTypography.sectionTitle}>Inbox</h1>
+                <h1 className={houseTypography.sectionTitle}>Workspaces home</h1>
                 <p className={houseTypography.fieldHelper}>
-                  {workspace?.name || workspaceId || 'Unknown workspace'}
+                  Library-level filters and actions for all workspaces.
                 </p>
               </div>
             </div>
@@ -523,6 +603,31 @@ export function WorkspaceInboxPage() {
               <section className={houseLayout.sidebarSection}>
                 <p className={houseNavigation.sectionLabel}>Views</p>
                 <div className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => onOpenWorkspacesView('workspaces')}
+                    className={houseNavigation.item}
+                  >
+                    <span className="truncate pl-2">Workspaces</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenWorkspacesView('invitations')}
+                    className={houseNavigation.item}
+                  >
+                    <span className="truncate pl-2">Invitations</span>
+                    <div className={cn('ml-2 flex items-center gap-1.5', houseNavigation.itemMeta)}>
+                      <span className={cn(houseNavigation.itemCount, 'gap-1')}>
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                        {incomingInvitationCount}
+                      </span>
+                      <span className={cn(houseNavigation.itemCount, 'gap-1')}>
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500" />
+                        {outgoingInvitationCount}
+                      </span>
+                      <span className={houseNavigation.itemCount}>{totalInvitationCount}</span>
+                    </div>
+                  </button>
                   <div className={cn(houseNavigation.item, houseNavigation.itemActive)}>
                     <span className="truncate pl-2">Inbox</span>
                   </div>
@@ -534,18 +639,145 @@ export function WorkspaceInboxPage() {
                   >
                     <span className="truncate pl-2">Workspace overview</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={onOpenWorkspacesHome}
-                    className={houseNavigation.item}
-                  >
-                    <span className="truncate pl-2">Workspaces home</span>
-                  </button>
                 </div>
               </section>
 
               <section className={houseLayout.sidebarSection}>
-                <p className={houseNavigation.sectionLabel}>Mailbox</p>
+                <p className={houseNavigation.sectionLabel}>States</p>
+                <div className="space-y-1">
+                  {FILTER_OPTIONS.map((option) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => onOpenWorkspacesView('workspaces', option.key)}
+                      className={houseNavigation.item}
+                    >
+                      <span className="truncate pl-2 text-left">{option.label}</span>
+                      <span className={cn(houseNavigation.itemCount, 'ml-2')}>
+                        {filterCounts[option.key]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className={houseLayout.sidebarSection}>
+                <p className={houseNavigation.sectionLabel}>Actions</p>
+                <Button
+                  type="button"
+                  className={cn('w-full justify-start', houseForms.actionButtonPrimary, houseTypography.buttonText)}
+                  onClick={onCreateWorkspaceFromSidebar}
+                  disabled={!canCreateWorkspace}
+                >
+                  Create workspace
+                </Button>
+                {!canCreateWorkspace ? (
+                  <p className={houseTypography.fieldHelper}>{WORKSPACE_OWNER_REQUIRED_MESSAGE}</p>
+                ) : null}
+                <Button
+                  type="button"
+                  className={cn('w-full justify-start', houseForms.actionButton, houseTypography.buttonText)}
+                  onClick={onOpenWorkspacesHome}
+                >
+                  Open workspaces home
+                </Button>
+              </section>
+            </div>
+          </aside>
+
+          <section className={cn('flex min-h-0 flex-col rounded-lg border border-border', houseSurfaces.card)}>
+            <div className="border-b border-border px-4 py-3">
+              <h2 className={houseTypography.sectionTitle}>Conversation</h2>
+              <p className={houseTypography.sectionSubtitle}>Messages cannot be deleted. Newest messages appear at the bottom.</p>
+            </div>
+
+            <div ref={conversationRef} className="flex-1 space-y-2 overflow-y-auto p-3">
+              {loadingMessages ? (
+                <p className={houseTypography.fieldHelper}>Decrypting inbox messages...</p>
+              ) : messages.length === 0 ? (
+                <p className={houseTypography.fieldHelper}>No messages yet.</p>
+              ) : (
+                messages.map((message) => {
+                  const isMine = isSamePerson(message.senderName, currentUserName)
+                  const tone = participantTone(message.senderName, currentUserName)
+                  return (
+                    <article
+                      key={message.id}
+                      className={cn(
+                        'max-w-[82%] rounded-md border px-3 py-2',
+                        tone.bubbleClass,
+                        isMine ? 'ml-auto' : 'mr-auto',
+                      )}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className={houseTypography.fieldLabel}>{isMine ? `${message.senderName} (You)` : message.senderName}</p>
+                        <p className={houseTypography.fieldHelper}>{formatTimestamp(message.createdAt)}</p>
+                      </div>
+                      <p className={cn('mt-1 whitespace-pre-wrap', houseTypography.text)}>{message.body}</p>
+                    </article>
+                  )
+                })
+              )}
+            </div>
+
+            <footer className="space-y-2 border-t border-border p-3">
+              <label htmlFor="workspace-inbox-message" className={houseTypography.fieldLabel}>Compose message</label>
+              <textarea
+                id="workspace-inbox-message"
+                ref={composerRef}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Write an inbox message..."
+                className={cn('min-h-24 w-full rounded-md px-3 py-2 text-sm', houseForms.textarea)}
+                disabled={sending}
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    className={cn(houseForms.actionButton, houseTypography.buttonText)}
+                    onClick={onToggleDictation}
+                    disabled={!dictationSupported}
+                  >
+                    {dictating ? 'Stop dictation' : 'Voice compose'}
+                  </Button>
+                  <Button
+                    type="button"
+                    className={cn(houseForms.actionButton, houseTypography.buttonText)}
+                    onClick={onReadDraft}
+                    disabled={!canSpeakDraft}
+                  >
+                    Read draft
+                  </Button>
+                </div>
+                <Button
+                  type="button"
+                  onClick={() => void onSend()}
+                  className={cn(houseForms.actionButtonPrimary, houseTypography.buttonText)}
+                  disabled={sending}
+                >
+                  {sending ? 'Sending...' : 'Send encrypted'}
+                </Button>
+              </div>
+              {typingSummary ? <p className={houseTypography.fieldHelper}>{typingSummary}</p> : null}
+              {status ? <p className={houseTypography.fieldHelper}>{status}</p> : null}
+              {error ? <p className="text-sm text-[hsl(var(--tone-danger-700))]">{error}</p> : null}
+            </footer>
+          </section>
+
+          <aside className={cn('flex min-h-0 flex-col', houseLayout.sidebar)} data-house-role="right-nav-shell">
+            <div className={houseLayout.sidebarHeader}>
+              <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+                <h2 className={houseTypography.sectionTitle}>Inbox navigation</h2>
+                <p className={houseTypography.fieldHelper}>
+                  {workspace?.name || workspaceId || 'Unknown workspace'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex-1 space-y-4 overflow-y-auto p-3">
+              <section className={houseLayout.sidebarSection}>
+                <p className={houseNavigation.sectionLabel}>Conversation</p>
                 <div className="space-y-1">
                   <div className={houseNavigation.item}>
                     <span className="truncate pl-2">Messages</span>
@@ -616,89 +848,42 @@ export function WorkspaceInboxPage() {
                     <span className="truncate pl-2">Encryption</span>
                     <span className={houseNavigation.itemCount}>on</span>
                   </div>
+                  <div className={houseNavigation.item}>
+                    <span className="truncate pl-2">Retention</span>
+                    <span className={houseNavigation.itemCount}>No delete</span>
+                  </div>
+                </div>
+              </section>
+
+              <section className={houseLayout.sidebarSection}>
+                <p className={houseNavigation.sectionLabel}>Jump to</p>
+                <div className="space-y-1">
+                  <button
+                    type="button"
+                    className={houseNavigation.item}
+                    onClick={() => composerRef.current?.focus()}
+                  >
+                    <span className="truncate pl-2">Compose message</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={houseNavigation.item}
+                    onClick={onOpenWorkspaceOverview}
+                    disabled={!workspaceId}
+                  >
+                    <span className="truncate pl-2">Workspace overview</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={houseNavigation.item}
+                    onClick={onOpenWorkspacesHome}
+                  >
+                    <span className="truncate pl-2">Workspaces home</span>
+                  </button>
                 </div>
               </section>
             </div>
           </aside>
-
-          <section className={cn('flex min-h-0 flex-col rounded-lg border border-border', houseSurfaces.card)}>
-            <div className="border-b border-border px-4 py-3">
-              <h2 className={houseTypography.sectionTitle}>Conversation</h2>
-              <p className={houseTypography.sectionSubtitle}>Messages cannot be deleted. Newest messages appear at the bottom.</p>
-            </div>
-
-            <div ref={conversationRef} className="flex-1 space-y-2 overflow-y-auto p-3">
-              {loadingMessages ? (
-                <p className={houseTypography.fieldHelper}>Decrypting inbox messages...</p>
-              ) : messages.length === 0 ? (
-                <p className={houseTypography.fieldHelper}>No messages yet.</p>
-              ) : (
-                messages.map((message) => {
-                  const isMine = isSamePerson(message.senderName, currentUserName)
-                  const tone = participantTone(message.senderName, currentUserName)
-                  return (
-                    <article
-                      key={message.id}
-                      className={cn(
-                        'max-w-[82%] rounded-md border px-3 py-2',
-                        tone.bubbleClass,
-                        isMine ? 'ml-auto' : 'mr-auto',
-                      )}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className={houseTypography.fieldLabel}>{isMine ? `${message.senderName} (You)` : message.senderName}</p>
-                        <p className={houseTypography.fieldHelper}>{formatTimestamp(message.createdAt)}</p>
-                      </div>
-                      <p className={cn('mt-1 whitespace-pre-wrap', houseTypography.text)}>{message.body}</p>
-                    </article>
-                  )
-                })
-              )}
-            </div>
-
-            <footer className="space-y-2 border-t border-border p-3">
-              <label htmlFor="workspace-inbox-message" className={houseTypography.fieldLabel}>Compose message</label>
-              <textarea
-                id="workspace-inbox-message"
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder="Write an inbox message..."
-                className={cn('min-h-24 w-full rounded-md px-3 py-2 text-sm', houseForms.textarea)}
-                disabled={sending}
-              />
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    className={cn(houseForms.actionButton, houseTypography.buttonText)}
-                    onClick={onToggleDictation}
-                    disabled={!dictationSupported}
-                  >
-                    {dictating ? 'Stop dictation' : 'Voice compose'}
-                  </Button>
-                  <Button
-                    type="button"
-                    className={cn(houseForms.actionButton, houseTypography.buttonText)}
-                    onClick={onReadDraft}
-                    disabled={!canSpeakDraft}
-                  >
-                    Read draft
-                  </Button>
-                </div>
-                <Button
-                  type="button"
-                  onClick={() => void onSend()}
-                  className={cn(houseForms.actionButtonPrimary, houseTypography.buttonText)}
-                  disabled={sending}
-                >
-                  {sending ? 'Sending...' : 'Send encrypted'}
-                </Button>
-              </div>
-              {typingSummary ? <p className={houseTypography.fieldHelper}>{typingSummary}</p> : null}
-              {status ? <p className={houseTypography.fieldHelper}>{status}</p> : null}
-              {error ? <p className="text-sm text-[hsl(var(--tone-danger-700))]">{error}</p> : null}
-            </footer>
-          </section>
         </section>
       </div>
     </div>

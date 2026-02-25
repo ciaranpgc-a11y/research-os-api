@@ -352,24 +352,6 @@ function buildRollingWindowLabel(monthLabels: string[], endYear: number): string
   return `${MONTH_SHORT[startMonthIndex]} ${String(startYear).slice(-2)}-${MONTH_SHORT[endMonthIndex]} ${String(endYear).slice(-2)}`
 }
 
-function getHIndexTrajectoryBarCount(tile: PublicationMetricTilePayload): number {
-  const chartData = (tile.chart_data || {}) as Record<string, unknown>
-  const years = toNumberArray(chartData.years).map((item) => Math.round(item))
-  const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
-  if (!years.length || !values.length || years.length !== values.length) {
-    return 0
-  }
-  const projectedYearRaw = Number(chartData.projected_year)
-  const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
-  const uniqueYears = new Set<number>(years.filter((year) => year !== projectedYear))
-  uniqueYears.add(projectedYear)
-  return uniqueYears.size
-}
-
-function getHIndexNeedsBarCount(): number {
-  return 5
-}
-
 function selectPublicationBucketSize(count: number): number {
   if (count <= MAX_PUBLICATION_CHART_BARS) {
     return 1
@@ -1055,10 +1037,12 @@ function HIndexYearChart({
   tile,
   showCaption = false,
   animate = true,
+  collapse = false,
 }: {
   tile: PublicationMetricTilePayload
   showCaption?: boolean
   animate?: boolean
+  collapse?: boolean
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
@@ -1096,12 +1080,20 @@ function HIndexYearChart({
   }
   const animationKey = bars.map((bar) => `${bar.year}-${bar.value}-${bar.current ? 1 : 0}`).join('|')
   const hasBars = bars.length > 0
-  const targetValues = useMemo(
+  const rawTargetValues = useMemo(
     () => bars.map((bar) => Math.max(0, bar.value)),
     [bars],
   )
-  const animatedValues = useEasedSeries(targetValues, `${animationKey}|values`, animate && hasBars)
-  const targetMax = Math.max(1, ...targetValues) * 1.18
+  const targetValues = useMemo(
+    () => (collapse ? rawTargetValues.map(() => 0) : rawTargetValues),
+    [collapse, rawTargetValues],
+  )
+  const animatedValues = useEasedSeries(
+    targetValues,
+    `${animationKey}|values|${collapse ? 'collapse' : 'expand'}`,
+    animate && hasBars,
+  )
+  const targetMax = Math.max(1, ...rawTargetValues) * 1.18
   const animatedMax = useEasedValue(targetMax, `${animationKey}|max`, animate && hasBars)
 
   useEffect(() => {
@@ -3192,9 +3184,11 @@ function TotalPublicationsDrilldownWorkspace({
 function HIndexNeedsChart({
   tile,
   animate = true,
+  collapse = false,
 }: {
   tile: PublicationMetricTilePayload
   animate?: boolean
+  collapse?: boolean
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
@@ -3236,12 +3230,20 @@ function HIndexNeedsChart({
     () => bars.map((bar) => `${bar.key}-${bar.count}`).join('|'),
     [bars],
   )
-  const targetCounts = useMemo(
+  const rawTargetCounts = useMemo(
     () => bars.map((bar) => Math.max(0, bar.count)),
     [bars],
   )
-  const animatedCounts = useEasedSeries(targetCounts, `${animationKey}|counts`, animate)
-  const targetMax = Math.max(1, ...targetCounts) * 1.18
+  const targetCounts = useMemo(
+    () => (collapse ? rawTargetCounts.map(() => 0) : rawTargetCounts),
+    [collapse, rawTargetCounts],
+  )
+  const animatedCounts = useEasedSeries(
+    targetCounts,
+    `${animationKey}|counts|${collapse ? 'collapse' : 'expand'}`,
+    animate,
+  )
+  const targetMax = Math.max(1, ...rawTargetCounts) * 1.18
   const animatedMax = useEasedValue(targetMax, `${animationKey}|max`, animate)
 
   useEffect(() => {
@@ -3345,88 +3347,41 @@ function HIndexTrajectoryPanel({
   mode: HIndexViewMode
 }) {
   const [renderMode, setRenderMode] = useState<HIndexViewMode>(mode)
-  const [outgoingMode, setOutgoingMode] = useState<HIndexViewMode | null>(null)
-  const [crossfading, setCrossfading] = useState(false)
-  const transitionMs = 420
+  const [visible, setVisible] = useState(true)
+  const fadeMs = 170
 
   useEffect(() => {
     if (mode === renderMode) {
       return
     }
     if (prefersReducedMotion()) {
-      setOutgoingMode(null)
-      setCrossfading(false)
       setRenderMode(mode)
-      return
-    }
-    const currentCount = renderMode === 'trajectory'
-      ? getHIndexTrajectoryBarCount(tile)
-      : getHIndexNeedsBarCount()
-    const nextCount = mode === 'trajectory'
-      ? getHIndexTrajectoryBarCount(tile)
-      : getHIndexNeedsBarCount()
-    const requiresCrossfadeCycle = currentCount > 0 && nextCount > 0 && currentCount !== nextCount
-    if (!requiresCrossfadeCycle) {
-      setOutgoingMode(null)
-      setCrossfading(false)
-      setRenderMode(mode)
+      setVisible(true)
       return
     }
 
-    setOutgoingMode(renderMode)
-    setCrossfading(false)
-    let raf = 0
-    const timeoutId = window.setTimeout(() => {
-      setOutgoingMode(null)
-      setCrossfading(false)
-    }, transitionMs)
-    raf = window.requestAnimationFrame(() => {
-      // Mount incoming view on the frame where fade begins so both directions
-      // follow the same lifecycle (out -> in) for mixed bar counts.
+    setVisible(false)
+    const timer = window.setTimeout(() => {
       setRenderMode(mode)
-      setCrossfading(true)
-    })
+      setVisible(true)
+    }, fadeMs)
 
     return () => {
-      window.cancelAnimationFrame(raf)
-      window.clearTimeout(timeoutId)
+      window.clearTimeout(timer)
     }
-  }, [mode, renderMode, tile])
-
-  const transitionStyle = {
-    transitionDuration: `${transitionMs}ms`,
-    transitionTimingFunction: 'cubic-bezier(0.2, 0.68, 0.16, 1)',
-  }
+  }, [mode, renderMode])
 
   return (
-    <div className="relative flex h-full min-h-0 w-full flex-col">
-      {outgoingMode ? (
-        <div
-          className={cn(
-            'pointer-events-none absolute inset-0 transition-[opacity,transform]',
-            crossfading ? 'opacity-0 scale-[0.986] translate-y-0.5' : 'opacity-100 scale-100 translate-y-0',
-          )}
-          style={transitionStyle}
-        >
-          {outgoingMode === 'needed'
-            ? <HIndexNeedsChart tile={tile} animate={false} />
-            : <HIndexYearChart tile={tile} showCaption={false} animate={false} />}
-        </div>
-      ) : null}
-
-      <div
-        className={cn(
-          outgoingMode ? 'h-full w-full transition-[opacity,transform]' : 'h-full w-full',
-          outgoingMode
-            ? (crossfading ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-[1.015] -translate-y-0.5')
-            : 'opacity-100',
-        )}
-        style={outgoingMode ? transitionStyle : undefined}
-      >
-        {renderMode === 'needed'
-          ? <HIndexNeedsChart tile={tile} animate />
-          : <HIndexYearChart tile={tile} showCaption={false} animate />}
-      </div>
+    <div
+      className={cn(
+        'h-full w-full transition-opacity ease-out',
+        visible ? 'opacity-100' : 'opacity-0',
+      )}
+      style={{ transitionDuration: `${fadeMs}ms` }}
+    >
+      {renderMode === 'needed'
+        ? <HIndexNeedsChart tile={tile} animate={false} />
+        : <HIndexYearChart tile={tile} showCaption={false} animate={false} />}
     </div>
   )
 }
@@ -3866,7 +3821,6 @@ export function PublicationsTopStrip({
         <CardContent className="space-y-2 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
             <div className="flex flex-wrap items-center gap-2">
-              {metrics?.is_updating ? <span className="text-amber-700">Updating...</span> : null}
               {metrics?.status === 'FAILED' ? <span className="text-amber-700">Last update failed</span> : null}
             </div>
             <button

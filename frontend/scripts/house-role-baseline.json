@@ -22,7 +22,7 @@
   "src/components/layout/workspace-navigator.tsx": 19,
   "src/components/publications/MetricTile.tsx": 13,
   "src/components/publications/PublicationsTopStrip.stories.tsx": 2,
-  "src/components/publications/PublicationsTopStrip.tsx": 393,
+  "src/components/publications/PublicationsTopStrip.tsx": 391,
   "src/components/study-core/RecommendationCard.tsx": 6,
   "src/components/study-core/Step1Panel.tsx": 128,
   "src/components/study-core/Step2Panel.tsx": 42,
@@ -78,7 +78,7 @@
   "src/pages/version-history-page.tsx": 1,
   "src/pages/workspace-exports-page.tsx": 0,
   "src/pages/workspace-inbox-page.stories.tsx": 5,
-  "src/pages/workspace-inbox-page.tsx": 53,
+  "src/pages/workspace-inbox-page.tsx": 72,
   "src/pages/workspaces-page.stories.tsx": 5,
   "src/pages/workspaces-page.tsx": 170
 }
