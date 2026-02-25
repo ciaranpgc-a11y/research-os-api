@@ -940,12 +940,12 @@ class PersonaImportOrcidResponse(BaseModel):
 
 class PersonaSyncJobOrcidImportRequest(BaseModel):
     overwrite_user_metadata: bool = False
-    run_metrics_sync: bool = False
+    run_metrics_sync: bool = True
     providers: list[Literal["openalex", "semantic_scholar", "manual"]] = Field(
         default_factory=lambda: ["openalex", "semantic_scholar"]
     )
     refresh_analytics: bool = True
-    refresh_metrics: bool = False
+    refresh_metrics: bool = True
 
 
 class PersonaSyncJobMetricsRequest(BaseModel):

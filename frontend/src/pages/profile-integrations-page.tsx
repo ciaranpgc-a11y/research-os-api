@@ -634,10 +634,10 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
     try {
       const job = await enqueueOrcidImportSyncJob(token, {
         overwriteUserMetadata: false,
-        runMetricsSync: false,
-        providers: ['openalex'],
+        runMetricsSync: true,
+        providers: ['openalex', 'semantic_scholar'],
         refreshAnalytics: true,
-        refreshMetrics: false,
+        refreshMetrics: true,
       })
       setActiveSyncJob(job)
       if (user?.id) {

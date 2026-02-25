@@ -494,10 +494,10 @@ export async function enqueueOrcidImportSyncJob(
       headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         overwrite_user_metadata: Boolean(options?.overwriteUserMetadata),
-        run_metrics_sync: Boolean(options?.runMetricsSync),
+        run_metrics_sync: options?.runMetricsSync ?? true,
         providers: options?.providers || ['openalex', 'semantic_scholar'],
         refresh_analytics: options?.refreshAnalytics ?? true,
-        refresh_metrics: Boolean(options?.refreshMetrics),
+        refresh_metrics: options?.refreshMetrics ?? true,
       }),
     },
     'Could not start ORCID sync job',

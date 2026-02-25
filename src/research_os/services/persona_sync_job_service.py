@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import threading
 from datetime import datetime, timezone
 from typing import Any
@@ -67,6 +68,19 @@ def _normalize_providers(
         seen.add(clean)
         normalized.append(clean)
     return normalized
+
+
+def _orcid_import_always_sync_metrics() -> bool:
+    return str(os.getenv("ORCID_IMPORT_JOB_ALWAYS_SYNC_METRICS", "1")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _orcid_import_default_providers() -> list[str]:
+    return ["openalex", "semantic_scholar"]
 
 
 def _json_safe(value: Any) -> Any:
@@ -159,10 +173,12 @@ def _run_persona_sync_job(job_id: str) -> None:
             )
             result_payload["orcid_import"] = _json_safe(import_payload)
 
-            if job.run_metrics_sync and providers:
+            should_sync_metrics = bool(job.run_metrics_sync) or _orcid_import_always_sync_metrics()
+            effective_providers = providers or _orcid_import_default_providers()
+            if should_sync_metrics and effective_providers:
                 _set_stage(job, stage="syncing_metrics", progress=70)
                 session.commit()
-                metrics_payload = sync_metrics(user_id=user_id, providers=providers)
+                metrics_payload = sync_metrics(user_id=user_id, providers=effective_providers)
                 result_payload["metrics_sync"] = _json_safe(metrics_payload)
 
         elif job.job_type == "metrics_sync":
@@ -239,6 +255,8 @@ def enqueue_persona_sync_job(
             + ", ".join(sorted(_ALLOWED_JOB_TYPES))
         )
     normalized_providers = _normalize_providers(providers)
+    if normalized_job_type == "orcid_import" and not normalized_providers:
+        normalized_providers = _orcid_import_default_providers()
     if normalized_job_type == "metrics_sync" and not normalized_providers:
         normalized_providers = ["openalex"]
 
