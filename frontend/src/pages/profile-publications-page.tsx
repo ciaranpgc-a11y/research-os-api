@@ -3,7 +3,7 @@ import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
-import { publicationsHouseHeadings } from '@/components/publications/publications-house-style'
+import { publicationsHouseDetail, publicationsHouseHeadings } from '@/components/publications/publications-house-style'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -58,9 +58,18 @@ const HOUSE_SELECT_CLASS = houseForms.select
 const HOUSE_TABLE_HEAD_TEXT_CLASS = houseTypography.tableHead
 const HOUSE_TABLE_CELL_TEXT_CLASS = houseTypography.tableCell
 const HOUSE_BANNER_CLASS = houseSurfaces.banner
-const HOUSE_BANNER_SUCCESS_CLASS = houseSurfaces.bannerSuccess
 const HOUSE_BANNER_DANGER_CLASS = houseSurfaces.bannerDanger
-const HOUSE_BANNER_INFO_CLASS = houseSurfaces.bannerInfo
+const HOUSE_BANNER_PUBLICATIONS_CLASS = houseSurfaces.bannerPublications
+const HOUSE_PUBLICATION_DETAIL_PANEL_CLASS = publicationsHouseDetail.panel
+const HOUSE_PUBLICATION_DETAIL_SCROLL_CLASS = publicationsHouseDetail.scroll
+const HOUSE_PUBLICATION_DETAIL_HEADER_CLASS = publicationsHouseDetail.header
+const HOUSE_PUBLICATION_DETAIL_TITLE_CLASS = publicationsHouseDetail.title
+const HOUSE_PUBLICATION_DETAIL_TABS_CLASS = publicationsHouseDetail.tabs
+const HOUSE_PUBLICATION_DETAIL_TAB_CLASS = publicationsHouseDetail.tab
+const HOUSE_PUBLICATION_DETAIL_BODY_CLASS = publicationsHouseDetail.body
+const HOUSE_PUBLICATION_DETAIL_SECTION_CLASS = publicationsHouseDetail.section
+const HOUSE_PUBLICATION_DETAIL_LABEL_CLASS = publicationsHouseDetail.sectionLabel
+const HOUSE_PUBLICATION_DETAIL_INFO_CLASS = publicationsHouseDetail.info
 
 const WORK_TYPE_LABELS: Record<string, string> = {
   'journal-article': 'Journal article',
@@ -1358,7 +1367,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
       <Card>
         <CardHeader className="pb-2">
-          <h2 className={publicationsHouseHeadings.h1}>Publication library</h2>
+          <h2 className={publicationsHouseHeadings.sectionTitle}>Publication library</h2>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
@@ -1485,7 +1494,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               )}
             </div>
 
-                        <Card className="h-fit xl:sticky xl:top-4">
+            <Card className={`h-fit xl:sticky xl:top-4 ${HOUSE_PUBLICATION_DETAIL_PANEL_CLASS}`}>
               {!selectedWork ? (
                 <CardContent className="p-3 text-sm text-muted-foreground">
                   Select a publication to view details.
@@ -1493,36 +1502,36 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               ) : (
                 <CardContent className="p-0 text-sm">
                   <Tabs value={activeDetailTab} onValueChange={onDetailTabChange} className="w-full">
-                    <div className="max-h-[78vh] overflow-auto">
-                      <div className="sticky top-0 z-20 border-b border-border bg-card px-3 py-3">
-                        <p className="text-sm font-semibold leading-snug">
+                    <div className={`max-h-[78vh] overflow-auto ${HOUSE_PUBLICATION_DETAIL_SCROLL_CLASS}`}>
+                      <div className={HOUSE_PUBLICATION_DETAIL_HEADER_CLASS}>
+                        <p className={HOUSE_PUBLICATION_DETAIL_TITLE_CLASS}>
                           {selectedDetail?.title || selectedWork.title}
                         </p>
-                        <TabsList className="mt-2 grid h-auto w-full grid-cols-5 gap-1 bg-muted/40 p-1">
-                          <TabsTrigger value="overview" className="text-micro">Overview</TabsTrigger>
-                          <TabsTrigger value="content" className="text-micro">Content</TabsTrigger>
-                          <TabsTrigger value="impact" className="text-micro">Impact</TabsTrigger>
-                          <TabsTrigger value="files" className="text-micro">Files</TabsTrigger>
-                          <TabsTrigger value="ai" className="text-micro">AI Insights</TabsTrigger>
+                        <TabsList className={`mt-2 grid h-auto w-full grid-cols-5 gap-1 ${HOUSE_PUBLICATION_DETAIL_TABS_CLASS}`}>
+                          <TabsTrigger value="overview" className={`text-micro ${HOUSE_PUBLICATION_DETAIL_TAB_CLASS}`}>Overview</TabsTrigger>
+                          <TabsTrigger value="content" className={`text-micro ${HOUSE_PUBLICATION_DETAIL_TAB_CLASS}`}>Content</TabsTrigger>
+                          <TabsTrigger value="impact" className={`text-micro ${HOUSE_PUBLICATION_DETAIL_TAB_CLASS}`}>Impact</TabsTrigger>
+                          <TabsTrigger value="files" className={`text-micro ${HOUSE_PUBLICATION_DETAIL_TAB_CLASS}`}>Files</TabsTrigger>
+                          <TabsTrigger value="ai" className={`text-micro ${HOUSE_PUBLICATION_DETAIL_TAB_CLASS}`}>AI Insights</TabsTrigger>
                         </TabsList>
                       </div>
 
-                      <div className="space-y-3 px-3 pb-3">
+                      <div className={`space-y-3 ${HOUSE_PUBLICATION_DETAIL_BODY_CLASS}`}>
                         {activePaneError ? (
                           <p className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-700">{activePaneError}</p>
                         ) : null}
                         {activePaneLoading ? (
-                          <p className="text-xs text-muted-foreground">Loading...</p>
+                          <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_PUBLICATIONS_CLASS} text-xs`}>Loading...</p>
                         ) : null}
 
                         <TabsContent value="overview" className="space-y-3">
                           <div className="grid grid-cols-2 gap-2">
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">Year</p><p className="font-semibold">{detailYear ?? 'n/a'}</p></div>
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">Journal</p><p className="font-medium">{detailJournal || 'Not available'}</p></div>
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">Type</p><p className="font-medium">{detailPublicationType || 'Not available'}</p></div>
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">Citations</p><p className="font-semibold">{detailCitations}</p></div>
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">PMID</p>{detailPmid ? <a className="text-emerald-700 underline-offset-2 hover:underline" href={`https://pubmed.ncbi.nlm.nih.gov/${detailPmid}/`} target="_blank" rel="noreferrer">{detailPmid}</a> : <p className="text-muted-foreground">Not available</p>}</div>
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">DOI</p>{detailDoi ? <a className="break-all text-emerald-700 underline-offset-2 hover:underline" href={doiToUrl(detailDoi) || undefined} target="_blank" rel="noreferrer">{detailDoi}</a> : <p className="text-muted-foreground">Not available</p>}</div>
+                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Year</p><p className="font-semibold">{detailYear ?? 'n/a'}</p></div>
+                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Journal</p><p className="font-medium">{detailJournal || 'Not available'}</p></div>
+                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Type</p><p className="font-medium">{detailPublicationType || 'Not available'}</p></div>
+                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Citations</p><p className="font-semibold">{detailCitations}</p></div>
+                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>PMID</p>{detailPmid ? <a className="text-emerald-700 underline-offset-2 hover:underline" href={`https://pubmed.ncbi.nlm.nih.gov/${detailPmid}/`} target="_blank" rel="noreferrer">{detailPmid}</a> : <p className="text-muted-foreground">Not available</p>}</div>
+                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>DOI</p>{detailDoi ? <a className="break-all text-emerald-700 underline-offset-2 hover:underline" href={doiToUrl(detailDoi) || undefined} target="_blank" rel="noreferrer">{detailDoi}</a> : <p className="text-muted-foreground">Not available</p>}</div>
                           </div>
 
                           <div className="space-y-1">
@@ -1555,7 +1564,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             <Button type="button" size="sm" variant="outline" onClick={() => navigate('/workspace')}>Add to manuscript</Button>
                           </div>
 
-                          <div className="rounded border border-border bg-muted/15 px-2 py-1.5 text-xs text-muted-foreground">
+                          <div className={`${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS} text-xs text-muted-foreground`}>
                             <p>Added: {formatShortDate(selectedDetail?.created_at || selectedWork.created_at)}</p>
                             <p>Updated: {formatShortDate(selectedDetail?.updated_at || selectedWork.updated_at)}</p>
                           </div>
@@ -1566,13 +1575,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             <Button type="button" size="sm" variant={contentMode === 'plain' ? 'default' : 'outline'} onClick={() => void onContentModeChange('plain')}>Plain</Button>
                             <Button type="button" size="sm" variant={contentMode === 'highlighted' ? 'default' : 'outline'} onClick={() => void onContentModeChange('highlighted')}>Highlighted</Button>
                           </div>
-                          <div className="space-y-2 rounded border border-border bg-muted/10 p-2">
-                            <p className="text-micro uppercase text-muted-foreground">Abstract</p>
+                          <div className={`space-y-2 ${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}`}>
+                            <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Abstract</p>
                             <p className="whitespace-pre-wrap text-xs leading-relaxed">{detailAbstract ? abstractPreview : 'No abstract available.'}</p>
                             {detailAbstract.length > 700 ? <Button type="button" size="sm" variant="outline" onClick={onToggleAbstractExpanded}>{abstractExpanded ? 'Collapse' : 'Expand'}</Button> : null}
                           </div>
                           {contentMode === 'highlighted' ? (
-                            <div className="space-y-1 rounded border border-border bg-emerald-50/40 p-2 text-xs">
+                            <div className={`space-y-1 text-xs ${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}`}>
                               <p><span className="font-semibold">Objective:</span> {selectedAiResponse?.payload?.extractive_key_points?.objective || 'Not stated in abstract.'}</p>
                               <p><span className="font-semibold">Methods:</span> {selectedAiResponse?.payload?.extractive_key_points?.methods || 'Not stated in abstract.'}</p>
                               <p><span className="font-semibold">Findings:</span> {selectedAiResponse?.payload?.extractive_key_points?.main_findings || 'Not stated in abstract.'}</p>
@@ -1593,13 +1602,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           {selectedImpactResponse?.status === 'RUNNING' ? <p className="text-xs text-muted-foreground">Computing impact insights...</p> : null}
                           {selectedImpactResponse?.status === 'FAILED' ? <p className="text-xs text-amber-700">Last impact update failed. Showing cached data.</p> : null}
                           <div className="grid grid-cols-2 gap-2">
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">Total citations</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_total ?? detailCitations}</p></div>
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">Citations (12m)</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_last_12m ?? 0}</p></div>
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">YoY %</p><p className={`font-semibold ${growthToneClass(selectedImpactResponse?.payload?.yoy_pct ?? null)}`}>{formatSignedPercent(selectedImpactResponse?.payload?.yoy_pct ?? null)}</p></div>
-                            <div className="rounded border border-border px-2 py-1.5"><p className="text-micro uppercase text-muted-foreground">Acceleration</p><p className="font-semibold">{selectedImpactResponse?.payload?.acceleration_citations_per_month ?? 0}/month</p></div>
+                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Total citations</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_total ?? detailCitations}</p></div>
+                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Citations (12m)</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_last_12m ?? 0}</p></div>
+                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>YoY %</p><p className={`font-semibold ${growthToneClass(selectedImpactResponse?.payload?.yoy_pct ?? null)}`}>{formatSignedPercent(selectedImpactResponse?.payload?.yoy_pct ?? null)}</p></div>
+                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Acceleration</p><p className="font-semibold">{selectedImpactResponse?.payload?.acceleration_citations_per_month ?? 0}/month</p></div>
                           </div>
-                          <div className="space-y-1 rounded border border-border px-2 py-1.5">
-                            <p className="text-micro uppercase text-muted-foreground">Key citing papers</p>
+                          <div className={`space-y-1 ${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}`}>
+                            <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Key citing papers</p>
                             {(selectedImpactResponse?.payload?.key_citing_papers || []).length === 0 ? <p className="text-xs text-muted-foreground">Not available from source.</p> : (selectedImpactResponse?.payload?.key_citing_papers || []).slice(0, 5).map((paper, index) => <p key={`${paper.title}-${index}`} className="text-xs">{paper.year ?? 'n/a'} | {paper.title}</p>)}
                           </div>
                         </TabsContent>
@@ -1630,7 +1639,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           ) : (
                             <div className="space-y-2">
                               {(selectedFilesPayload?.items || []).map((file) => (
-                                <div key={file.id} className="rounded border border-border px-2 py-1.5">
+                                <div key={file.id} className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}>
                                   <p className="break-all text-xs font-medium leading-snug">{file.file_name}</p>
                                   <p className="text-micro text-muted-foreground">{file.file_type} | {file.source === 'OA_LINK' ? 'OA link' : 'Uploaded'} | {formatShortDate(file.created_at)}</p>
                                   <div className="mt-1 flex gap-1">
@@ -1648,23 +1657,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         </TabsContent>
 
                         <TabsContent value="ai" className="space-y-3">
-                          <p className="rounded border border-border bg-muted/15 px-2 py-1 text-micro text-muted-foreground">AI-generated draft insights. Verify against full text.</p>
+                          <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_PUBLICATION_DETAIL_INFO_CLASS} text-micro`}>AI-generated draft insights. Verify against full text.</p>
                           {selectedAiResponse?.status === 'RUNNING' ? <p className="text-xs text-muted-foreground">Generating insights...</p> : null}
                           {selectedAiResponse?.status === 'FAILED' ? <p className="text-xs text-amber-700">Last AI update failed. Showing cached data.</p> : null}
-                          <div className="space-y-1 rounded border border-border px-2 py-1.5">
-                            <p className="text-micro uppercase text-muted-foreground">Performance summary</p>
+                          <div className={`space-y-1 ${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}`}>
+                            <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Performance summary</p>
                             <p className="text-xs leading-relaxed">{selectedAiResponse?.payload?.performance_summary || 'Not available'}</p>
                           </div>
-                          <div className="rounded border border-border px-2 py-1.5">
-                            <p className="text-micro uppercase text-muted-foreground">Trajectory</p>
+                          <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}>
+                            <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Trajectory</p>
                             <p className="text-xs font-medium">{(selectedAiResponse?.payload?.trajectory_classification || 'UNKNOWN').replace(/_/g, ' ')}</p>
                           </div>
-                          <div className="space-y-1 rounded border border-border px-2 py-1.5">
-                            <p className="text-micro uppercase text-muted-foreground">Reuse suggestions</p>
+                          <div className={`space-y-1 ${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}`}>
+                            <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Reuse suggestions</p>
                             {(selectedAiResponse?.payload?.reuse_suggestions || []).length === 0 ? <p className="text-xs text-muted-foreground">No suggestions yet.</p> : (selectedAiResponse?.payload?.reuse_suggestions || []).map((item, index) => <p key={`${item}-${index}`} className="text-xs">- {item}</p>)}
                           </div>
-                          <div className="space-y-1 rounded border border-border px-2 py-1.5">
-                            <p className="text-micro uppercase text-muted-foreground">Caution flags</p>
+                          <div className={`space-y-1 ${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}`}>
+                            <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Caution flags</p>
                             {(selectedAiResponse?.payload?.caution_flags || []).length === 0 ? <p className="text-xs text-muted-foreground">No caution flags.</p> : (selectedAiResponse?.payload?.caution_flags || []).map((item, index) => <p key={`${item}-${index}`} className="text-xs">- {item}</p>)}
                           </div>
                         </TabsContent>
@@ -1679,10 +1688,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         </CardContent>
       </Card>
 
-      {status ? <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_SUCCESS_CLASS}`}>{status}</p> : null}
+      {status ? <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_PUBLICATIONS_CLASS}`}>{status}</p> : null}
       {error ? <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_DANGER_CLASS}`}>{error}</p> : null}
       {(loading || richImporting || syncing || fullSyncing) ? (
-        <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_INFO_CLASS}`}>Working...</p>
+        <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_PUBLICATIONS_CLASS}`}>Working...</p>
       ) : null}
     </section>
   )

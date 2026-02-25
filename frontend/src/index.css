@@ -877,6 +877,12 @@
     color: hsl(var(--tone-danger-700));
   }
 
+  .house-banner-publications {
+    border-color: hsl(var(--tone-positive-300) / 0.94);
+    background-color: hsl(var(--tone-positive-50) / 0.9);
+    color: hsl(var(--tone-positive-800));
+  }
+
   .house-metric-pill {
     display: inline-flex;
     align-items: center;
@@ -892,9 +898,9 @@
   }
 
   .house-metric-pill-publications {
-    border-color: hsl(var(--tone-accent-300) / 0.94);
-    background-color: hsl(var(--tone-accent-50) / 0.82);
-    color: hsl(var(--tone-accent-800));
+    border-color: hsl(var(--tone-positive-300) / 0.94);
+    background-color: hsl(var(--tone-positive-50) / 0.84);
+    color: hsl(var(--tone-positive-800));
     justify-content: center;
     align-items: center;
     text-align: center;
@@ -1215,6 +1221,198 @@
   .house-table-resize-handle[data-house-dragging='true']::before,
   .house-table-resize-handle:focus-visible::before {
     background-color: hsl(var(--tone-accent-500) / 0.86);
+  }
+
+  .house-table-column-controls {
+    position: absolute;
+    top: 0.42rem;
+    right: 0.42rem;
+    z-index: 34;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--motion-duration-fast) ease-out;
+  }
+
+  .house-table-shell:hover > .house-table-column-controls,
+  .house-table-column-controls[open],
+  .house-table-column-controls:focus-within {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .house-table-column-controls-trigger {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 1.65rem;
+    border: 1px solid hsl(var(--stroke-soft) / 0.95);
+    border-radius: 9999px;
+    background-color: hsl(var(--tone-neutral-50) / 0.96);
+    padding-inline: 0.62rem;
+    font-size: 0.6875rem;
+    line-height: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: hsl(var(--tone-neutral-700));
+    cursor: pointer;
+    user-select: none;
+    box-shadow: 0 1px 2px hsl(var(--tone-neutral-900) / 0.07);
+  }
+
+  .house-table-column-controls-trigger::-webkit-details-marker {
+    display: none;
+  }
+
+  .house-table-column-controls-trigger:hover {
+    border-color: hsl(var(--tone-accent-300) / 0.92);
+    color: hsl(var(--tone-accent-800));
+  }
+
+  .house-table-column-controls-trigger:focus-visible {
+    outline: none;
+    border-color: hsl(var(--tone-accent-500) / 0.88);
+    box-shadow: 0 0 0 2px hsl(var(--tone-accent-200) / 0.82);
+  }
+
+  .house-table-column-controls-panel {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    right: 0;
+    display: grid;
+    gap: 0.4rem;
+    min-width: 14rem;
+    max-width: min(20rem, 88vw);
+    max-height: min(18rem, 65vh);
+    overflow: auto;
+    border: 1px solid hsl(var(--stroke-strong) / 0.94);
+    border-radius: 0.5rem;
+    background-color: hsl(var(--tone-neutral-50));
+    padding: 0.48rem;
+    box-shadow: 0 8px 22px hsl(var(--tone-neutral-900) / 0.12);
+  }
+
+  .house-table-column-controls-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.48rem;
+    border: 1px solid hsl(var(--stroke-subtle) / 0.94);
+    border-radius: 0.375rem;
+    background-color: hsl(var(--tone-neutral-50));
+    padding: 0.38rem;
+  }
+
+  .house-table-column-controls-row[data-column-hidden='true'] {
+    background-color: hsl(var(--tone-neutral-100) / 0.74);
+    color: hsl(var(--tone-neutral-500));
+  }
+
+  .house-table-column-controls-visibility {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.44rem;
+    font-size: 0.75rem;
+    line-height: 1.05rem;
+    font-weight: 600;
+    color: hsl(var(--tone-neutral-700));
+  }
+
+  .house-table-column-controls-visibility input[type='checkbox'] {
+    accent-color: hsl(var(--tone-accent-600));
+  }
+
+  .house-table-column-controls-visibility span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .house-table-column-controls-align {
+    height: 1.75rem;
+    min-width: 5.7rem;
+    padding-inline: 0.55rem;
+    font-size: 0.75rem;
+    line-height: 1.05rem;
+    font-weight: 600;
+  }
+
+  .house-publication-detail-panel {
+    border: 1px solid hsl(var(--stroke-strong) / 0.96);
+    border-radius: 0.625rem;
+    background-color: hsl(var(--card));
+    overflow: hidden;
+  }
+
+  .house-publication-detail-scroll {
+    background-color: hsl(var(--tone-neutral-50));
+  }
+
+  .house-publication-detail-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    border-bottom: 1px solid hsl(var(--stroke-strong) / 0.94);
+    background-color: hsl(var(--tone-neutral-50) / 0.96);
+    padding: 0.72rem 0.8rem 0.66rem;
+    backdrop-filter: blur(2px) saturate(1.04);
+  }
+
+  .house-publication-detail-title {
+    font-size: 0.965rem;
+    line-height: 1.45rem;
+    font-weight: 600;
+    color: hsl(var(--tone-neutral-900));
+  }
+
+  .house-publication-detail-tabs {
+    border: 1px solid hsl(var(--tone-positive-200) / 0.94);
+    border-radius: 0.52rem;
+    background-color: hsl(var(--tone-positive-50) / 0.72);
+    padding: 0.2rem;
+  }
+
+  .house-publication-detail-tab {
+    min-height: 1.92rem;
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+    color: hsl(var(--tone-neutral-700));
+  }
+
+  .house-publication-detail-tab[data-state='active'] {
+    border-color: hsl(var(--tone-positive-300) / 0.94);
+    background-color: hsl(var(--tone-neutral-50));
+    color: hsl(var(--tone-positive-800));
+    box-shadow: none;
+  }
+
+  .house-publication-detail-body {
+    padding: 0.72rem 0.8rem 0.84rem;
+    background-color: hsl(var(--tone-neutral-50));
+  }
+
+  .house-publication-detail-section {
+    border: 1px solid hsl(var(--stroke-strong) / 0.94);
+    border-radius: 0.5rem;
+    background-color: hsl(var(--card));
+    padding: 0.5rem 0.62rem;
+  }
+
+  .house-publication-detail-label {
+    font-size: 0.6875rem;
+    line-height: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: hsl(var(--tone-neutral-500));
+  }
+
+  .house-publication-detail-info {
+    border-color: hsl(var(--tone-positive-300) / 0.94);
+    background-color: hsl(var(--tone-positive-50) / 0.86);
+    color: hsl(var(--tone-positive-800));
   }
 
   .house-drilldown-sheet {

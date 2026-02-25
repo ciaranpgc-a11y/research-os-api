@@ -500,8 +500,8 @@ export function ResultsPage() {
 
   return (
     <PageFrame title="Data" description="" hideScaffoldHeader>
-      <div className="grid gap-3" data-house-role="data-page-layout">
-        <div data-house-role="data-main-column" className="order-2 space-y-3">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]" data-house-role="data-page-layout">
+        <div data-house-role="data-main-column" className="space-y-3">
           <Card data-house-role="workspace-card">
             <CardContent className="flex flex-wrap items-center gap-2 pt-5">
               <Badge variant="outline">{workspaceLabel}</Badge>
@@ -632,7 +632,7 @@ export function ResultsPage() {
           </div>
         </div>
 
-        <div className="order-1 grid gap-3" data-house-role="data-actions-panel">
+        <aside className="grid gap-3" data-house-role="data-right-panel">
           <Card data-house-role="workspace-card" className="order-2">
             <CardHeader>
               <CardTitle data-house-role="section-title">Upload</CardTitle>
@@ -860,7 +860,7 @@ export function ResultsPage() {
               </p>
             </CardContent>
           </Card>
-        </div>
+        </aside>
       </div>
 
       <div data-house-role="results-status-row" className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

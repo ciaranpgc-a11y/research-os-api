@@ -1,6 +1,5 @@
 import { Outlet, useLocation } from 'react-router-dom'
 
-import { InsightPanel } from '@/components/layout/insight-panel'
 import { ProfilePanel } from '@/components/layout/profile-panel'
 import { StudyNavigator } from '@/components/layout/study-navigator'
 import { TopBar } from '@/components/layout/top-bar'
@@ -17,8 +16,8 @@ export function AppShell() {
   const setRightPanelOpen = useAaweStore((state) => state.setRightPanelOpen)
   const isStudyCoreRoute = location.pathname === '/study-core'
   const isProfileRoute = location.pathname === '/profile' || location.pathname === '/impact'
-  const showRightPanel = !isStudyCoreRoute
-  const rightPanel = isProfileRoute ? <ProfilePanel /> : <InsightPanel />
+  const showRightPanel = isProfileRoute
+  const rightPanel = <ProfilePanel />
 
   return (
     <div data-house-scope="app" data-house-role="app-shell" className="flex h-screen flex-col bg-background text-foreground">
@@ -31,10 +30,7 @@ export function AppShell() {
         data-house-role="app-grid"
         className={cn(
           'grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[280px_minmax(0,1fr)]',
-          showRightPanel &&
-            (isProfileRoute
-              ? 'insight:grid-cols-[280px_minmax(0,1fr)_320px]'
-              : 'insight:grid-cols-[280px_minmax(0,1fr)_340px]'),
+          showRightPanel && 'insight:grid-cols-[280px_minmax(0,1fr)_320px]',
         )}
       >
         <aside data-house-role="left-nav-panel" className="hidden border-r border-border nav:block">
@@ -76,10 +72,7 @@ export function AppShell() {
         <Sheet open={rightPanelOpen} onOpenChange={setRightPanelOpen}>
           <SheetContent
             side="right"
-            className={cn(
-              'p-0 insight:hidden',
-              isProfileRoute ? 'w-sz-320 sm:w-sz-320' : 'w-sz-340 sm:w-sz-340',
-            )}
+            className="w-sz-320 p-0 insight:hidden sm:w-sz-320"
           >
             {rightPanel}
           </SheetContent>

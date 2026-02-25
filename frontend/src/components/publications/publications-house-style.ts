@@ -2,6 +2,7 @@ import { houseChartColors, houseDividers, houseDrilldown, houseMotion, houseSurf
 
 export const publicationsHouseHeadings = {
   title: houseTypography.title,
+  sectionTitle: houseTypography.sectionTitle,
   h1: houseTypography.h1,
   h1Soft: houseTypography.h1Soft,
   h2: houseTypography.h2,
@@ -22,6 +23,7 @@ export const publicationsHouseSurfaces = {
   bannerSuccess: houseSurfaces.bannerSuccess,
   bannerWarning: houseSurfaces.bannerWarning,
   bannerDanger: houseSurfaces.bannerDanger,
+  bannerPublications: houseSurfaces.bannerPublications,
   metricPill: houseSurfaces.metricPill,
   metricPillPublications: houseSurfaces.metricPillPublications,
   leftBorder: houseSurfaces.leftBorder,
@@ -68,6 +70,19 @@ export const publicationsHouseActions = {
   sectionToolsPublications: 'house-section-tools-publications',
   sectionToolButton: 'house-section-tool-button',
   sectionToolDivider: 'house-section-tool-divider',
+} as const
+
+export const publicationsHouseDetail = {
+  panel: 'house-publication-detail-panel',
+  scroll: 'house-publication-detail-scroll',
+  header: 'house-publication-detail-header',
+  title: 'house-publication-detail-title',
+  tabs: 'house-publication-detail-tabs',
+  tab: 'house-publication-detail-tab',
+  body: 'house-publication-detail-body',
+  section: 'house-publication-detail-section',
+  sectionLabel: 'house-publication-detail-label',
+  info: 'house-publication-detail-info',
 } as const
 
 export const publicationsHouseDrilldown = {

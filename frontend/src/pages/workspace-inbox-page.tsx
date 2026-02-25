@@ -397,6 +397,7 @@ export function WorkspaceInboxPage() {
   const [participantFilter, setParticipantFilter] = useState<ParticipantFilterKey>(() =>
     sanitizeParticipantFilter(searchParams.get('participants')),
   )
+  const [rightNavCollapsed, setRightNavCollapsed] = useState(false)
   const [conversationSearchQuery, setConversationSearchQuery] = useState('')
   const [messageSearchQuery, setMessageSearchQuery] = useState('')
   const [activeMessageSearchIndex, setActiveMessageSearchIndex] = useState(0)
@@ -1330,7 +1331,14 @@ export function WorkspaceInboxPage() {
         onOpenLeftNav={() => {}}
         showLeftNavButton={false}
       />
-      <section className="grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[280px_minmax(0,1fr)_280px]">
+      <section
+        className={cn(
+          'grid min-h-0 flex-1 grid-cols-1',
+          rightNavCollapsed
+            ? 'nav:grid-cols-[280px_minmax(0,1fr)_56px]'
+            : 'nav:grid-cols-[280px_minmax(0,1fr)_280px]',
+        )}
+      >
         <aside className="hidden border-r border-border nav:block">
           <div className={cn('flex h-full flex-col', houseLayout.sidebar)} data-house-role="left-nav-shell">
             <div className={houseLayout.sidebarHeader}>
@@ -1657,18 +1665,52 @@ export function WorkspaceInboxPage() {
           </div>
         </main>
 
-        <aside data-house-role="right-nav-aside" className="hidden border-l border-border nav:block">
-          <div className={cn('flex h-full flex-col', houseLayout.sidebar)} data-house-role="right-nav-shell">
-            <div data-house-role="right-nav-header" className={houseLayout.sidebarHeader}>
-              <div data-house-role="right-nav-title-wrap" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, HOUSE_LEFT_BORDER_WORKSPACE_CLASS)}>
-                <h2 data-house-role="right-nav-title" className={houseTypography.sectionTitle}>Inbox</h2>
-                <p data-house-role="right-nav-subtitle" className={houseTypography.fieldHelper}>
-                  {currentInboxLocationLabel}
-                </p>
-              </div>
+        <aside
+          data-house-role="right-nav-aside"
+          className={cn('hidden border-l border-border nav:block', rightNavCollapsed && 'bg-card')}
+        >
+          {rightNavCollapsed ? (
+            <div className={cn('flex h-full flex-col items-center gap-2 p-2', houseLayout.sidebar)} data-house-role="right-nav-shell-collapsed">
+              <Button
+                type="button"
+                size="sm"
+                variant="house"
+                className="h-8 px-2"
+                onClick={() => setRightNavCollapsed(false)}
+                data-ui="inbox-right-nav-expand"
+                aria-label="Expand inbox navigation panel"
+              >
+                Expand
+              </Button>
+              <p className={cn('text-xs uppercase tracking-[0.08em]', houseTypography.fieldHelper)} data-ui="inbox-right-nav-collapsed-label">
+                Inbox
+              </p>
             </div>
+          ) : (
+            <div className={cn('flex h-full flex-col', houseLayout.sidebar)} data-house-role="right-nav-shell">
+              <div data-house-role="right-nav-header" className={houseLayout.sidebarHeader}>
+                <div className="flex items-start justify-between gap-2">
+                  <div data-house-role="right-nav-title-wrap" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, HOUSE_LEFT_BORDER_WORKSPACE_CLASS)}>
+                    <h2 data-house-role="right-nav-title" className={houseTypography.sectionTitle}>Inbox</h2>
+                    <p data-house-role="right-nav-subtitle" className={houseTypography.fieldHelper}>
+                      {currentInboxLocationLabel}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="house"
+                    className="h-8 px-2"
+                    onClick={() => setRightNavCollapsed(true)}
+                    data-ui="inbox-right-nav-collapse"
+                    aria-label="Collapse inbox navigation panel"
+                  >
+                    Collapse
+                  </Button>
+                </div>
+              </div>
 
-            <div data-house-role="right-nav-content" className="flex-1 space-y-4 overflow-y-auto p-3">
+              <div data-house-role="right-nav-content" className="flex-1 space-y-4 overflow-y-auto p-3">
               <section className={houseLayout.sidebarSection} data-ui="inbox-right-views-section">
                 <p className={houseNavigation.sectionLabel} data-ui="inbox-right-views-label">Views</p>
                 <div className="space-y-1" data-ui="inbox-right-views-list">
@@ -1810,8 +1852,9 @@ export function WorkspaceInboxPage() {
                   </div>
                 </section>
               ) : null}
+              </div>
             </div>
-          </div>
+          )}
         </aside>
       </section>
     </div>

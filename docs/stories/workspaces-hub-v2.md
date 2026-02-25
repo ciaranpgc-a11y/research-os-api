@@ -129,7 +129,9 @@ Out of scope (this story):
 - Upgraded Workspaces-home Data Library to true server-backed query/sort/pagination controls (`query`, ownership scope, sort field/direction, page, page size).
 - Replaced local name-only permission add flow with directory-backed collaborator lookup and ID-resolved grant updates (`collaborator_user_ids`).
 - Updated data-library API contract and frontend consumers to use metadata-rich list responses (`items`, `total`, `has_more`, paging metadata) for scale-ready navigation.
-- Realigned the individual workspace `Data` page so Data actions are center-first: `Access from personal library` appears before `Upload`, with right-rail-only composition removed.
+- Realigned the individual workspace `Data` page to house-style right rail composition, with `Access from personal library` above `Upload`.
+- Removed `Insight & Integrity` side-panel wiring from workspace and non-profile app shells to keep focus on core workspace actions.
+- Added collapse/expand behavior to the inbox right panel so conversation content can use more horizontal space when reviewing long threads.
 
 ## QA Checklist
 

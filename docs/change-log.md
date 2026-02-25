@@ -2,23 +2,31 @@
 
 ## 2026-02-25
 
-### Workspace Data Page Layout Realignment
+### Workspace Data Right-Rail + Insight Panel Removal
 
 - **Area:** Individual workspace Data page information architecture.
 - **What changed:**
-- Removed the dedicated right-side Data panel layout and switched the page content to a single central flow.
+- Restored the dedicated right-side Data panel layout using house-token structure (`main + right rail`).
 - Renamed the page heading to `Data`.
-- Reordered Data actions so `Access from personal library` appears first (for pulling files into the workbook), followed by `Upload`.
+- Kept Data action order in the right panel as `Access from personal library` first (for pulling files into the workbook), followed by `Upload`.
 - Preserved house-token styling patterns and existing workspace file/preview behavior.
+- Removed `Insight & Integrity` right-rail injection from workspace and non-profile app shells.
+- Added collapse/expand controls for the workspace inbox right navigation panel so users can widen the conversation area on demand.
 - **Why it changed:**
-- Align Data interactions with the main workspace reading flow and reduce split-attention between center and right rails.
+- Keep Data actions in the expected right panel pattern and remove low-value Insight/Integrity UI noise from primary workflows.
+- Improve reading space for long conversation threads without losing quick access to inbox navigation metadata.
 - **Key files touched:**
 - `frontend/src/pages/results-page.tsx`
+- `frontend/src/components/layout/workspace-layout.tsx`
+- `frontend/src/components/layout/app-shell.tsx`
+- `frontend/src/pages/workspace-inbox-page.tsx`
 - **Verification performed:**
 - `npm --prefix frontend run --silent typecheck`
 - `npx eslint src/pages/results-page.tsx` (run from `frontend/`)
+- `npx eslint src/components/layout/workspace-layout.tsx src/components/layout/app-shell.tsx` (run from `frontend/`)
+- `npx eslint src/pages/workspace-inbox-page.tsx` (run from `frontend/`)
 - **Follow-up:**
-- Consider merging `Files` and `Preview` into a tabbed center canvas once workbook operations are expanded.
+- Optionally replace removed right-rail space with contextual tools only when a page has high-value actions.
 
 ### Workspace Ownership + Shared Inbox Hardening
 

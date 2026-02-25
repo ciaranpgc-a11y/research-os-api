@@ -271,7 +271,7 @@ const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label:
   { value: 'all', label: 'All' },
 ]
 const HOUSE_HEADING_TITLE_CLASS = publicationsHouseHeadings.title
-const HOUSE_HEADING_H1_CLASS = publicationsHouseHeadings.h1
+const HOUSE_HEADING_SECTION_TITLE_CLASS = publicationsHouseHeadings.sectionTitle
 const HOUSE_HEADING_H1_SOFT_CLASS = publicationsHouseHeadings.h1Soft
 const HOUSE_HEADING_H2_CLASS = publicationsHouseHeadings.h2
 const HOUSE_HEADING_H3_CLASS = publicationsHouseHeadings.h3
@@ -294,6 +294,7 @@ const HOUSE_SURFACE_PANEL_BARE_CLASS = publicationsHouseSurfaces.panelBare
 const HOUSE_SURFACE_BANNER_CLASS = publicationsHouseSurfaces.banner
 const HOUSE_SURFACE_BANNER_INFO_CLASS = publicationsHouseSurfaces.bannerInfo
 const HOUSE_SURFACE_BANNER_WARNING_CLASS = publicationsHouseSurfaces.bannerWarning
+const HOUSE_SURFACE_BANNER_PUBLICATIONS_CLASS = publicationsHouseSurfaces.bannerPublications
 const HOUSE_SURFACE_METRIC_PILL_CLASS = publicationsHouseSurfaces.metricPill
 const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS = publicationsHouseSurfaces.metricPillPublications
 const HOUSE_SURFACE_LEFT_BORDER_CLASS = publicationsHouseSurfaces.leftBorder
@@ -4354,7 +4355,7 @@ export function PublicationsTopStrip({
         <CardContent className="p-0">
           <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5">
             <div className="min-w-0">
-              <p className={HOUSE_HEADING_H1_CLASS}>Publication insights</p>
+              <p className={HOUSE_HEADING_SECTION_TITLE_CLASS}>Publication insights</p>
               {metrics?.status === 'FAILED' ? (
                 <p className={cn('mt-1', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>Last update failed</p>
               ) : null}
@@ -4429,7 +4430,7 @@ export function PublicationsTopStrip({
           </div>
 
           {!insightsVisible ? (
-            <div className={cn('mx-3 mb-3', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_INFO_CLASS)}>
+            <div className={cn('mx-3 mb-3', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_PUBLICATIONS_CLASS)}>
               Publication insights are hidden.
             </div>
           ) : loading && tiles.length === 0 ? (

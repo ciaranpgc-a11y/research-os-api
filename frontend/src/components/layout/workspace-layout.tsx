@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { Outlet, useLocation, useParams } from 'react-router-dom'
 
-import { InsightPanel } from '@/components/layout/insight-panel'
 import { TopBar } from '@/components/layout/top-bar'
 import { WorkspaceNavigator } from '@/components/layout/workspace-navigator'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -17,13 +16,10 @@ export function WorkspaceLayout() {
   const workspaceId = (params.workspaceId || '').trim()
   const isGuest = !getAuthSessionToken()
   const leftPanelOpen = useAaweStore((state) => state.leftPanelOpen)
-  const rightPanelOpen = useAaweStore((state) => state.rightPanelOpen)
   const setLeftPanelOpen = useAaweStore((state) => state.setLeftPanelOpen)
-  const setRightPanelOpen = useAaweStore((state) => state.setRightPanelOpen)
   const ensureWorkspace = useWorkspaceStore((state) => state.ensureWorkspace)
   const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId)
   const isRunWizardRoute = location.pathname.includes('/run-wizard')
-  const showRightPanel = !isRunWizardRoute
 
   useEffect(() => {
     if (!workspaceId) {
@@ -42,10 +38,7 @@ export function WorkspaceLayout() {
 
       <div
         data-house-role="workspace-grid"
-        className={cn(
-          'grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[280px_minmax(0,1fr)]',
-          showRightPanel && 'insight:grid-cols-[280px_minmax(0,1fr)_340px]',
-        )}
+        className="grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[280px_minmax(0,1fr)]"
       >
         <aside data-house-role="left-nav-panel" className="hidden border-r border-border nav:block">
           <WorkspaceNavigator workspaceId={workspaceId} />
@@ -66,12 +59,6 @@ export function WorkspaceLayout() {
             </div>
           </ScrollArea>
         </main>
-
-        {showRightPanel ? (
-          <aside data-house-role="right-insight-panel" className="hidden border-l border-border insight:block">
-            <InsightPanel />
-          </aside>
-        ) : null}
       </div>
 
       <Sheet open={leftPanelOpen} onOpenChange={setLeftPanelOpen}>
@@ -79,14 +66,6 @@ export function WorkspaceLayout() {
           <WorkspaceNavigator workspaceId={workspaceId} onNavigate={() => setLeftPanelOpen(false)} />
         </SheetContent>
       </Sheet>
-
-      {showRightPanel ? (
-        <Sheet open={rightPanelOpen} onOpenChange={setRightPanelOpen}>
-          <SheetContent side="right" className="w-sz-340 p-0 insight:hidden sm:w-sz-340">
-            <InsightPanel />
-          </SheetContent>
-        </Sheet>
-      ) : null}
     </div>
   )
 }
