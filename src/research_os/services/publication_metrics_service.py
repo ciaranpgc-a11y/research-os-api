@@ -2087,6 +2087,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         field_cohort_min_size = _openalex_field_cohort_min_size()
         work_field_cache: dict[str, dict[str, Any]] = {}
         cohort_cache: dict[tuple[str, int], dict[str, Any]] = {}
+        exact_rank_cache: dict[tuple[str, int, int], float | None] = {}
         percentile_ranks: list[float] = []
         used_cohort_keys: set[tuple[str, int]] = set()
 
@@ -2129,13 +2130,24 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                     for value in (cohort_payload.get("citations") if isinstance(cohort_payload, dict) else [])
                 ]
                 cohort_values.sort()
+                total_results_exact = _openalex_field_year_total_count(
+                    field_id=field_id,
+                    year=int(resolved_year),
+                    mailto=openalex_mailto,
+                )
+                sampled_total_results = max(
+                    0,
+                    int(_safe_int((cohort_payload or {}).get("total_results")) or 0),
+                )
+                resolved_total_results = (
+                    int(total_results_exact)
+                    if total_results_exact is not None and total_results_exact >= 0
+                    else sampled_total_results
+                )
                 cohort_entry = {
                     "citations": cohort_values,
                     "sample_size": len(cohort_values),
-                    "total_results": max(
-                        0,
-                        int(_safe_int((cohort_payload or {}).get("total_results")) or 0),
-                    ),
+                    "total_results": max(0, int(resolved_total_results)),
                     "cutoffs": {
                         str(threshold): _percentile_cutoff(cohort_values, float(threshold))
                         for threshold in FIELD_PERCENTILE_THRESHOLDS
@@ -2147,12 +2159,35 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 if isinstance(cohort_entry.get("citations"), list)
                 else []
             )
-            cohort_size = len(cohort_values)
+            sampled_cohort_size = len(cohort_values)
+            total_results = max(
+                0,
+                int(_safe_int(cohort_entry.get("total_results")) or 0),
+            )
+            cohort_size = max(sampled_cohort_size, total_results)
             if cohort_size < field_cohort_min_size:
                 continue
 
             paper_citations = max(0, int(row.get("citations_lifetime") or 0))
-            percentile_rank = _empirical_percentile_rank(cohort_values, paper_citations)
+            exact_rank_key = (field_id, int(resolved_year), paper_citations)
+            percentile_rank = exact_rank_cache.get(exact_rank_key)
+            if exact_rank_key not in exact_rank_cache:
+                exact_rank_payload = _openalex_field_year_percentile_rank_exact(
+                    field_id=field_id,
+                    year=int(resolved_year),
+                    citations=paper_citations,
+                    mailto=openalex_mailto,
+                    total_count=total_results if total_results > 0 else None,
+                )
+                rank_raw = exact_rank_payload.get("percentile_rank")
+                percentile_rank = (
+                    float(rank_raw)
+                    if isinstance(rank_raw, (int, float))
+                    else None
+                )
+                if percentile_rank is None:
+                    percentile_rank = _empirical_percentile_rank(cohort_values, paper_citations)
+                exact_rank_cache[exact_rank_key] = percentile_rank
             if percentile_rank is None:
                 continue
 
@@ -2180,10 +2215,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                         "field_id": field_id,
                         "cohort_year": int(resolved_year),
                         "cohort_sample_size": cohort_size,
-                        "cohort_total_results": max(
-                            0,
-                            int(_safe_int(cohort_entry.get("total_results")) or 0),
-                        ),
+                        "cohort_total_results": total_results,
                         "cohort_percentile_cutoffs": cohort_entry.get("cutoffs"),
                         "confidence_score": row.get("confidence_score"),
                         "confidence_label": row.get("confidence_label"),
