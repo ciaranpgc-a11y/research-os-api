@@ -110,23 +110,69 @@ const totalPublicationsTile = buildTile({
   id: 'tile-total-publications',
   key: 'this_year_vs_last',
   label: 'Total publications',
-  value: 5,
-  valueDisplay: '5 papers',
+  value: 24,
+  valueDisplay: '24',
   deltaValue: 1,
-  deltaDisplay: '+1 vs prior year',
+  deltaDisplay: null,
   deltaDirection: 'up',
   deltaTone: 'positive',
   deltaColorCode: 'hsl(var(--tone-positive-700))',
-  subtext: 'Current library year profile',
+  subtext: 'Lifetime publications',
   chartType: 'bar_year_5',
   chartData: {
     years: [2021, 2022, 2023, 2024, 2025],
-    values: [1, 1, 1, 1, 1],
-    mean_value: 1,
+    values: [2, 6, 3, 8, 5],
+    mean_value: 4.8,
     projected_year: 2026,
-    current_year_ytd: 0,
+    current_year_ytd: 6,
   },
-  sparkline: [1, 1, 1, 1, 1],
+  sparkline: [2, 6, 3, 8, 5],
+})
+
+const totalPublicationsLowVolumeTile = buildTile({
+  id: 'tile-total-publications-low-volume',
+  key: 'this_year_vs_last',
+  label: 'Total publications',
+  value: 4,
+  valueDisplay: '4',
+  deltaValue: 0,
+  deltaDisplay: 'Flat vs prior year',
+  deltaDirection: 'flat',
+  deltaTone: 'neutral',
+  deltaColorCode: 'hsl(var(--tone-neutral-600))',
+  subtext: 'Low-output profile with intermittent years',
+  chartType: 'bar_year_5',
+  chartData: {
+    years: [2021, 2022, 2023, 2024, 2025],
+    values: [0, 1, 0, 2, 1],
+    mean_value: 0.8,
+    projected_year: 2026,
+    current_year_ytd: 1,
+  },
+  sparkline: [0, 1, 0, 2, 1],
+})
+
+const totalPublicationsHighVarianceTile = buildTile({
+  id: 'tile-total-publications-high-variance',
+  key: 'this_year_vs_last',
+  label: 'Total publications',
+  value: 131,
+  valueDisplay: '131',
+  deltaValue: -12,
+  deltaDisplay: '-12 vs prior year',
+  deltaDirection: 'down',
+  deltaTone: 'caution',
+  deltaColorCode: 'hsl(var(--tone-warning-700))',
+  subtext: 'High-volume output with strong year-to-year swings',
+  chartType: 'bar_year_5',
+  chartData: {
+    years: [2021, 2022, 2023, 2024, 2025],
+    values: [12, 28, 16, 44, 31],
+    mean_value: 26.2,
+    projected_year: 2026,
+    current_year_ytd: 19,
+  },
+  sparkline: [12, 28, 16, 44, 31],
 })
 
 const citationMomentumTile = buildTile({
@@ -391,6 +437,8 @@ export const TotalCitationsNoData: Story = { args: singleTileArgs(totalCitations
 export const TotalCitationsLoading: Story = { args: loadingArgs }
 
 export const TotalPublicationsDefault: Story = { args: singleTileArgs(totalPublicationsTile) }
+export const TotalPublicationsLowVolume: Story = { args: singleTileArgs(totalPublicationsLowVolumeTile) }
+export const TotalPublicationsHighVariance: Story = { args: singleTileArgs(totalPublicationsHighVarianceTile) }
 export const TotalPublicationsNoData: Story = { args: singleTileArgs(totalPublicationsEmptyTile) }
 export const TotalPublicationsLoading: Story = { args: loadingArgs }
 
