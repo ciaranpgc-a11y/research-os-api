@@ -109,6 +109,67 @@ const savedFixture: ProfilePersonalDetailsPageFixture = {
   status: 'Personal details saved.',
 }
 
+const noRolesFixture: ProfilePersonalDetailsPageFixture = {
+  ...connectedFixture,
+  personalDetails: {
+    ...connectedFixture.personalDetails,
+    jobRole: '',
+    jobRoles: [],
+  },
+}
+
+const noAffiliationFixture: ProfilePersonalDetailsPageFixture = {
+  ...connectedFixture,
+  personalDetails: {
+    ...connectedFixture.personalDetails,
+    organisation: '',
+    affiliations: [],
+    affiliationAddress: '',
+    affiliationCity: '',
+    affiliationRegion: '',
+    affiliationPostalCode: '',
+    country: '',
+  },
+}
+
+const noPublicationAffiliationsFixture: ProfilePersonalDetailsPageFixture = {
+  ...connectedFixture,
+  personalDetails: {
+    ...connectedFixture.personalDetails,
+    publicationAffiliations: [],
+  },
+}
+
+const loadingFixture: ProfilePersonalDetailsPageFixture = {
+  ...connectedFixture,
+  loading: true,
+  status: '',
+  error: '',
+}
+
+const errorFixture: ProfilePersonalDetailsPageFixture = {
+  ...connectedFixture,
+  loading: false,
+  error: 'Could not load personal details.',
+}
+
+const singleRoleFixture: ProfilePersonalDetailsPageFixture = {
+  ...connectedFixture,
+  personalDetails: {
+    ...connectedFixture.personalDetails,
+    jobRole: 'British Heart Foundation Fellow',
+    jobRoles: ['British Heart Foundation Fellow'],
+    organisation: 'University of East Anglia',
+    affiliations: ['University of East Anglia'],
+    affiliationAddress: '',
+    affiliationCity: 'Norwich',
+    affiliationRegion: 'England',
+    affiliationPostalCode: '',
+    country: 'United Kingdom',
+    publicationAffiliations: ['University of East Anglia (GB)'],
+  },
+}
+
 const reviewOneFixture: ProfilePersonalDetailsPageFixture = {
   token: 'storybook-session-token',
   user: {
@@ -190,6 +251,42 @@ export const Unlinked: Story = {
 export const SavedState: Story = {
   args: {
     fixture: savedFixture,
+  },
+}
+
+export const NoRoles: Story = {
+  args: {
+    fixture: noRolesFixture,
+  },
+}
+
+export const NoAffiliation: Story = {
+  args: {
+    fixture: noAffiliationFixture,
+  },
+}
+
+export const NoPublicationAffiliations: Story = {
+  args: {
+    fixture: noPublicationAffiliationsFixture,
+  },
+}
+
+export const SingleRoleSingleAffiliation: Story = {
+  args: {
+    fixture: singleRoleFixture,
+  },
+}
+
+export const LoadingState: Story = {
+  args: {
+    fixture: loadingFixture,
+  },
+}
+
+export const ErrorState: Story = {
+  args: {
+    fixture: errorFixture,
   },
 }
 

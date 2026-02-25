@@ -684,6 +684,13 @@ function resolveEditableAccountEmail(input: {
   return clean
 }
 
+function buildJournalBylineFromDraft(draft: PersonalDetailsDraft): string {
+  const role = normalizeRole(draft.jobRoles[0] || draft.jobRole)
+  const affiliation = sanitizeAffiliation(draft.affiliations[0] || draft.organisation)
+  const country = trimValue(draft.country)
+  return [role, affiliation, country].filter(Boolean).join(', ')
+}
+
 export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPageProps = {}) {
   const navigate = useNavigate()
   const isFixtureMode = Boolean(fixture)
@@ -720,7 +727,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [affiliationEditorOpen, setAffiliationEditorOpen] = useState(
     () => !Boolean(initialDraft.jobRoles[0] || initialDraft.affiliations[0] || initialDraft.country),
   )
-  const [showAffiliationComposer, setShowAffiliationComposer] = useState(false)
   const [showPublicationAffiliationComposer, setShowPublicationAffiliationComposer] = useState(false)
   const [affiliationEditorBaseline, setAffiliationEditorBaseline] = useState<AffiliationEditorSnapshot>(
     () => buildAffiliationEditorSnapshot({
@@ -728,6 +734,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       primaryAffiliationInput: sanitizeAffiliation(initialDraft.organisation),
     }),
   )
+  const [committedJournalByline, setCommittedJournalByline] = useState(() => buildJournalBylineFromDraft(initialDraft))
+  const [affiliationSaveFlashActive, setAffiliationSaveFlashActive] = useState(false)
   const [draggingJobRoleIndex, setDraggingJobRoleIndex] = useState<number | null>(null)
   const [jobRoleDropTargetIndex, setJobRoleDropTargetIndex] = useState<number | null>(null)
   const [draggingPublicationAffiliationIndex, setDraggingPublicationAffiliationIndex] = useState<number | null>(null)
@@ -739,16 +747,77 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [status, setStatus] = useState(fixture?.status ?? '')
   const [error, setError] = useState(fixture?.error ?? '')
   const [, setLastSavedAt] = useState<string | null>(initialStoredDetails?.updatedAt ?? null)
+  const draftRef = useRef<PersonalDetailsDraft>(initialDraft)
   const draftEditedRef = useRef(false)
   const emailEditedRef = useRef(false)
   const primaryAddressLookupSequenceRef = useRef(0)
   const lastResolvedPrimaryAffiliationKeyRef = useRef('')
   const lastAutoPopulateAffiliationKeyRef = useRef('')
   const wasAffiliationEditorOpenRef = useRef(affiliationEditorOpen)
+  const affiliationEditorPanelRef = useRef<HTMLDivElement | null>(null)
   const jobRoleInputRefs = useRef<Array<HTMLInputElement | null>>([])
+  const affiliationSummaryToggleRef = useRef<HTMLButtonElement | null>(null)
+  const affiliationSaveFlashTimerRef = useRef<number | null>(null)
   const profilePhotoInputRef = useRef<HTMLInputElement | null>(null)
   const profilePhotoFrameRef = useRef<HTMLButtonElement | null>(null)
   const profilePhotoDraggingRef = useRef(false)
+
+  const clearAffiliationSaveFeedbackTimers = () => {
+    if (affiliationSaveFlashTimerRef.current !== null) {
+      window.clearTimeout(affiliationSaveFlashTimerRef.current)
+      affiliationSaveFlashTimerRef.current = null
+    }
+  }
+
+  const triggerAffiliationSavedFeedback = () => {
+    clearAffiliationSaveFeedbackTimers()
+    setAffiliationSaveFlashActive(true)
+    affiliationSaveFlashTimerRef.current = window.setTimeout(() => {
+      setAffiliationSaveFlashActive(false)
+      affiliationSaveFlashTimerRef.current = null
+    }, 1400)
+  }
+
+  const runAffiliationActionPreservingPagePosition = (action: () => void | Promise<unknown>) => {
+    const beforeScrollX = window.scrollX
+    const beforeScrollY = window.scrollY
+    const restore = () => {
+      if (
+        Math.abs(window.scrollY - beforeScrollY) <= 1
+        && Math.abs(window.scrollX - beforeScrollX) <= 1
+      ) {
+        return
+      }
+      window.scrollTo({
+        top: beforeScrollY,
+        left: beforeScrollX,
+        behavior: 'auto',
+      })
+    }
+    const queueRestore = () => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(restore)
+      })
+    }
+    const result = action()
+    queueRestore()
+    if (result instanceof Promise) {
+      void result.finally(() => {
+        queueRestore()
+      })
+    }
+  }
+
+  const setAffiliationEditorOpenPreservingPosition = (nextOpen: boolean) => {
+    const summaryToggle = affiliationSummaryToggleRef.current
+    if (!summaryToggle) {
+      setAffiliationEditorOpen(nextOpen)
+      return
+    }
+    runAffiliationActionPreservingPagePosition(() => {
+      setAffiliationEditorOpen(nextOpen)
+    })
+  }
 
   useEffect(() => {
     if (!isFixtureMode) {
@@ -765,6 +834,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setUser(fixtureUser)
     setOrcidStatus(fixture?.orcidStatus ?? null)
     setDraft(fixtureDraft)
+    setCommittedJournalByline(buildJournalBylineFromDraft(fixtureDraft))
     setPrimaryAffiliationInput(sanitizeAffiliation(fixtureDraft.organisation))
     setPrimaryAffiliationInputFocused(false)
     setAffiliationEditorOpen(!Boolean(fixtureDraft.jobRoles[0] || fixtureDraft.affiliations[0] || fixtureDraft.country))
@@ -780,7 +850,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setPublicationAffiliationSuggestionsLoading(false)
     setPublicationAffiliationSuggestionsError('')
     setAffiliationMetadataByName({})
-    setShowAffiliationComposer(false)
     setShowPublicationAffiliationComposer(false)
     setAffiliationEditorBaseline(buildAffiliationEditorSnapshot({
       draft: fixtureDraft,
@@ -804,7 +873,26 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     wasAffiliationEditorOpenRef.current = !Boolean(
       fixtureDraft.jobRoles[0] || fixtureDraft.affiliations[0] || fixtureDraft.country,
     )
+    if (affiliationSaveFlashTimerRef.current !== null) {
+      window.clearTimeout(affiliationSaveFlashTimerRef.current)
+      affiliationSaveFlashTimerRef.current = null
+    }
+    setAffiliationSaveFlashActive(false)
   }, [fixture, isFixtureMode])
+
+  useEffect(() => {
+    draftRef.current = draft
+  }, [draft])
+
+  useEffect(
+    () => () => {
+      if (affiliationSaveFlashTimerRef.current !== null) {
+        window.clearTimeout(affiliationSaveFlashTimerRef.current)
+        affiliationSaveFlashTimerRef.current = null
+      }
+    },
+    [],
+  )
 
   useEffect(() => {
     if (isFixtureMode) {
@@ -863,6 +951,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
         if (!draftEditedRef.current) {
           setDraft(resolvedDraft)
+          setCommittedJournalByline(buildJournalBylineFromDraft(resolvedDraft))
           setPrimaryAffiliationInput(sanitizeAffiliation(resolvedDraft.organisation))
           setPrimaryAffiliationInputFocused(false)
           setAffiliationEditorOpen(!Boolean(resolvedDraft.jobRoles[0] || resolvedDraft.affiliations[0] || resolvedDraft.country))
@@ -1013,6 +1102,13 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     }
   }, [draft.publicationAffiliations, isFixtureMode, publicationAffiliationInput, token])
 
+  useEffect(() => {
+    if (affiliationEditorOpen) {
+      return
+    }
+    setCommittedJournalByline(buildJournalBylineFromDraft(draft))
+  }, [affiliationEditorOpen, draft])
+
   const orcidLinked = Boolean(orcidStatus?.linked || user?.orcid_id)
   const primaryAffiliationLabel = sanitizeAffiliation(draft.affiliations[0] || draft.organisation)
   const primaryAffiliationKey = sanitizeAffiliation(draft.organisation || draft.affiliations[0] || '').toLowerCase()
@@ -1021,12 +1117,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     lastName: draft.lastName,
     fallbackName: user?.name,
   })
-  const journalByline = useMemo(() => {
-    const role = normalizeRole(draft.jobRoles[0] || draft.jobRole)
-    const affiliation = sanitizeAffiliation(draft.affiliations[0] || draft.organisation)
-    const country = trimValue(draft.country)
-    return [role, affiliation, country].filter(Boolean).join(', ')
-  }, [draft.affiliations, draft.country, draft.jobRole, draft.jobRoles, draft.organisation])
+  const journalByline = committedJournalByline
   const affiliationEditorSnapshot = useMemo(
     () =>
       buildAffiliationEditorSnapshot({
@@ -1154,6 +1245,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   }
 
   const onAddJobRole = () => {
+    const beforeScrollY = window.scrollY
     let focusIndex = 0
     let addedNewRow = false
     setDraft((current) => {
@@ -1181,8 +1273,18 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       if (!input) {
         return
       }
-      input.focus()
+      try {
+        input.focus({ preventScroll: true })
+      } catch {
+        input.focus()
+      }
       input.select()
+      if (Math.abs(window.scrollY - beforeScrollY) > 1) {
+        window.scrollTo({
+          top: beforeScrollY,
+          behavior: 'auto',
+        })
+      }
     })
   }
 
@@ -1226,10 +1328,13 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const onJobRoleEntryChange = (index: number, value: string) => {
     draftEditedRef.current = true
     setDraft((current) => {
-      if (index < 0 || index >= current.jobRoles.length) {
+      if (index < 0) {
         return current
       }
       const nextRoles = [...current.jobRoles]
+      while (nextRoles.length <= index) {
+        nextRoles.push('')
+      }
       nextRoles[index] = value
       return {
         ...current,
@@ -1253,60 +1358,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       }
     })
     setDraggingJobRoleIndex(null)
-  }
-
-  const onAddAffiliation = (value: string, metadata?: AffiliationMetadataItem) => {
-    const clean = sanitizeAffiliation(value)
-    if (!clean) {
-      return
-    }
-    const metadataPayload = {
-      address: sanitizeAffiliation(metadata?.address),
-      city: sanitizeAffiliation(metadata?.city),
-      region: sanitizeAffiliation(metadata?.region),
-      postalCode: sanitizeAffiliation(metadata?.postalCode),
-      country: sanitizeAffiliation(metadata?.country),
-    }
-    const metadataAvailable = Boolean(
-      metadataPayload.address
-      || metadataPayload.city
-      || metadataPayload.region
-      || metadataPayload.postalCode
-      || metadataPayload.country,
-    )
-    const cacheKey = clean.toLowerCase()
-    draftEditedRef.current = true
-    setDraft((current) => {
-      const nextAffiliations = [clean]
-      return {
-        ...current,
-        affiliations: nextAffiliations,
-        organisation: nextAffiliations[0] || clean,
-        affiliationAddress: metadataAvailable ? (metadataPayload.address || current.affiliationAddress) : current.affiliationAddress,
-        affiliationCity: metadataAvailable ? (metadataPayload.city || current.affiliationCity) : current.affiliationCity,
-        affiliationRegion: metadataAvailable ? (metadataPayload.region || current.affiliationRegion) : current.affiliationRegion,
-        affiliationPostalCode: metadataAvailable ? (metadataPayload.postalCode || current.affiliationPostalCode) : current.affiliationPostalCode,
-        country: metadataAvailable ? (metadataPayload.country || current.country) : current.country,
-      }
-    })
-    if (metadataAvailable) {
-      setAffiliationMetadataByName((current) => ({
-        ...current,
-        [cacheKey]: {
-          address: metadataPayload.address,
-          city: metadataPayload.city,
-          region: metadataPayload.region,
-          postalCode: metadataPayload.postalCode,
-          country: metadataPayload.country,
-        },
-      }))
-    }
-    setPrimaryAffiliationInput(clean)
-    setPrimaryAffiliationSuggestions([])
-    setPrimaryAffiliationSuggestionsError('')
-    setPrimaryAffiliationInputFocused(false)
-    lastAutoPopulateAffiliationKeyRef.current = clean.toLowerCase()
-    setShowAffiliationComposer(false)
   }
 
   const onPrimaryAffiliationEntryChange = (value: string) => {
@@ -1342,6 +1393,44 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     onPrimaryAffiliationEntryBlur()
   }
 
+  const commitJournalBylineFromDraft = (sourceDraft: PersonalDetailsDraft = draftRef.current) => {
+    setCommittedJournalByline(buildJournalBylineFromDraft(sourceDraft))
+  }
+
+  const onAffiliationEditorPanelBlurCapture = () => {
+    window.requestAnimationFrame(() => {
+      const panel = affiliationEditorPanelRef.current
+      if (!panel) {
+        return
+      }
+      const active = document.activeElement
+      if (active instanceof HTMLElement && panel.contains(active)) {
+        return
+      }
+      commitJournalBylineFromDraft()
+    })
+  }
+
+  const onToggleAffiliationEditor = () => {
+    const nextOpen = !affiliationEditorOpen
+    if (!nextOpen) {
+      commitJournalBylineFromDraft()
+    }
+    setAffiliationEditorOpenPreservingPosition(nextOpen)
+  }
+
+  const onOpenAffiliationEditor = () => {
+    runAffiliationActionPreservingPagePosition(() => {
+      setAffiliationEditorOpen(true)
+    })
+  }
+
+  const onTogglePublicationAffiliationComposer = () => {
+    runAffiliationActionPreservingPagePosition(() => {
+      setShowPublicationAffiliationComposer((current) => !current)
+    })
+  }
+
   const onApplyAffiliationEditorChanges = () => {
     const cleanAffiliation = sanitizeAffiliation(primaryAffiliationInput)
     const normalizedRoles = normalizeJobRoles(draft.jobRoles)
@@ -1375,90 +1464,95 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       draft: nextDraft,
       primaryAffiliationInput: cleanAffiliation,
     }))
+    commitJournalBylineFromDraft(nextDraft)
     setPrimaryAffiliationInputFocused(false)
     setPrimaryAffiliationSuggestions([])
     setPrimaryAffiliationSuggestionsError('')
     setPrimaryAffiliationAddressError('')
-    setAffiliationEditorOpen(false)
-    setShowAffiliationComposer(false)
+    setAffiliationEditorOpenPreservingPosition(false)
+    triggerAffiliationSavedFeedback()
   }
 
   const onRemoveAffiliationEntry = (value: string) => {
-    const clean = sanitizeAffiliation(value)
-    if (!clean) {
-      return
-    }
-    draftEditedRef.current = true
-    setDraft((current) => {
-      const nextAffiliations = normalizeAffiliations(current.affiliations.filter((item) => item.toLowerCase() !== clean.toLowerCase()))
-      const nextPrimary = nextAffiliations[0] || ''
-      return {
-        ...current,
-        affiliations: nextAffiliations,
-        organisation: nextPrimary,
+    runAffiliationActionPreservingPagePosition(() => {
+      const clean = sanitizeAffiliation(value)
+      if (!clean) {
+        return
       }
+      draftEditedRef.current = true
+      setDraft((current) => {
+        const nextAffiliations = normalizeAffiliations(current.affiliations.filter((item) => item.toLowerCase() !== clean.toLowerCase()))
+        const nextPrimary = nextAffiliations[0] || ''
+        return {
+          ...current,
+          affiliations: nextAffiliations,
+          organisation: nextPrimary,
+        }
+      })
+      setAffiliationMetadataByName((current) => {
+        const next = { ...current }
+        delete next[clean.toLowerCase()]
+        return next
+      })
+      if (sanitizeAffiliation(primaryAffiliationInput).toLowerCase() === clean.toLowerCase()) {
+        setPrimaryAffiliationInput('')
+      }
+      lastAutoPopulateAffiliationKeyRef.current = ''
     })
-    setAffiliationMetadataByName((current) => {
-      const next = { ...current }
-      delete next[clean.toLowerCase()]
-      return next
-    })
-    if (sanitizeAffiliation(primaryAffiliationInput).toLowerCase() === clean.toLowerCase()) {
-      setPrimaryAffiliationInput('')
-    }
-    lastAutoPopulateAffiliationKeyRef.current = ''
   }
 
   const onAddPublicationAffiliation = (value: string, metadata?: AffiliationMetadataItem) => {
-    const clean = sanitizeAffiliation(value)
-    if (!clean) {
-      return
-    }
-    const metadataPayload = {
-      address: sanitizeAffiliation(metadata?.address),
-      city: sanitizeAffiliation(metadata?.city),
-      region: sanitizeAffiliation(metadata?.region),
-      postalCode: sanitizeAffiliation(metadata?.postalCode),
-      country: sanitizeAffiliation(metadata?.country),
-    }
-    const metadataAvailable = Boolean(
-      metadataPayload.address
-      || metadataPayload.city
-      || metadataPayload.region
-      || metadataPayload.postalCode
-      || metadataPayload.country,
-    )
-    const cacheKey = clean.toLowerCase()
-    draftEditedRef.current = true
-    setDraft((current) => ({
-      ...current,
-      publicationAffiliations: normalizeAffiliations([...current.publicationAffiliations, clean]),
-      affiliations: current.affiliations.length > 0 ? current.affiliations : [clean],
-      organisation: sanitizeAffiliation(current.organisation) || clean,
-      affiliationAddress: sanitizeAffiliation(current.affiliationAddress) || metadataPayload.address,
-      affiliationCity: sanitizeAffiliation(current.affiliationCity) || metadataPayload.city,
-      affiliationRegion: sanitizeAffiliation(current.affiliationRegion) || metadataPayload.region,
-      affiliationPostalCode: sanitizeAffiliation(current.affiliationPostalCode) || metadataPayload.postalCode,
-      country:
-        sanitizeAffiliation(current.country) ||
-        (metadataAvailable ? metadataPayload.country : ''),
-    }))
-    if (metadataAvailable) {
-      setAffiliationMetadataByName((current) => ({
+    runAffiliationActionPreservingPagePosition(() => {
+      const clean = sanitizeAffiliation(value)
+      if (!clean) {
+        return
+      }
+      const metadataPayload = {
+        address: sanitizeAffiliation(metadata?.address),
+        city: sanitizeAffiliation(metadata?.city),
+        region: sanitizeAffiliation(metadata?.region),
+        postalCode: sanitizeAffiliation(metadata?.postalCode),
+        country: sanitizeAffiliation(metadata?.country),
+      }
+      const metadataAvailable = Boolean(
+        metadataPayload.address
+        || metadataPayload.city
+        || metadataPayload.region
+        || metadataPayload.postalCode
+        || metadataPayload.country,
+      )
+      const cacheKey = clean.toLowerCase()
+      draftEditedRef.current = true
+      setDraft((current) => ({
         ...current,
-        [cacheKey]: {
-          address: metadataPayload.address,
-          city: metadataPayload.city,
-          region: metadataPayload.region,
-          postalCode: metadataPayload.postalCode,
-          country: metadataPayload.country,
-        },
+        publicationAffiliations: normalizeAffiliations([...current.publicationAffiliations, clean]),
+        affiliations: current.affiliations.length > 0 ? current.affiliations : [clean],
+        organisation: sanitizeAffiliation(current.organisation) || clean,
+        affiliationAddress: sanitizeAffiliation(current.affiliationAddress) || metadataPayload.address,
+        affiliationCity: sanitizeAffiliation(current.affiliationCity) || metadataPayload.city,
+        affiliationRegion: sanitizeAffiliation(current.affiliationRegion) || metadataPayload.region,
+        affiliationPostalCode: sanitizeAffiliation(current.affiliationPostalCode) || metadataPayload.postalCode,
+        country:
+          sanitizeAffiliation(current.country) ||
+          (metadataAvailable ? metadataPayload.country : ''),
       }))
-    }
-    setPublicationAffiliationInput('')
-    setPublicationAffiliationSuggestions([])
-    setPublicationAffiliationSuggestionsError('')
-    setShowPublicationAffiliationComposer(false)
+      if (metadataAvailable) {
+        setAffiliationMetadataByName((current) => ({
+          ...current,
+          [cacheKey]: {
+            address: metadataPayload.address,
+            city: metadataPayload.city,
+            region: metadataPayload.region,
+            postalCode: metadataPayload.postalCode,
+            country: metadataPayload.country,
+          },
+        }))
+      }
+      setPublicationAffiliationInput('')
+      setPublicationAffiliationSuggestions([])
+      setPublicationAffiliationSuggestionsError('')
+      setShowPublicationAffiliationComposer(false)
+    })
   }
 
   const resolvePrimaryAffiliationAddress = async (input: {
@@ -1545,67 +1639,70 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     }
   }
 
-  const onApplyPrimaryAffiliationSuggestion = async (suggestion: AffiliationSuggestionItem) => {
-    const clean = sanitizeAffiliation(suggestion.name)
-    if (!clean) {
-      return
-    }
-    const metadata: AffiliationMetadataItem = {
-      address: sanitizeAffiliation(suggestion.address),
-      city: sanitizeAffiliation(suggestion.city),
-      region: sanitizeAffiliation(suggestion.region),
-      postalCode: sanitizeAffiliation(suggestion.postalCode),
-      country: sanitizeAffiliation(suggestion.countryName),
-    }
-    const normalizedKey = clean.toLowerCase()
-    draftEditedRef.current = true
-    setDraft((current) => ({
-      ...current,
-      organisation: clean,
-      affiliations: [clean],
-      affiliationAddress: metadata.address,
-      affiliationCity: metadata.city,
-      affiliationRegion: metadata.region,
-      affiliationPostalCode: metadata.postalCode,
-      country: metadata.country,
-    }))
-    setAffiliationMetadataByName((current) => ({
-      ...current,
-      [normalizedKey]: metadata,
-    }))
-    setPrimaryAffiliationInput(clean)
-    setPrimaryAffiliationSuggestions([])
-    setPrimaryAffiliationSuggestionsError('')
-    setPrimaryAffiliationAddressError('')
-    setPrimaryAffiliationInputFocused(false)
-    lastAutoPopulateAffiliationKeyRef.current = normalizedKey
-    setShowAffiliationComposer(false)
-    await resolvePrimaryAffiliationAddress({
-      organisation: clean,
-      seedMetadata: metadata,
-      replaceExisting: true,
+  const onApplyPrimaryAffiliationSuggestion = (suggestion: AffiliationSuggestionItem) => {
+    runAffiliationActionPreservingPagePosition(async () => {
+      const clean = sanitizeAffiliation(suggestion.name)
+      if (!clean) {
+        return
+      }
+      const metadata: AffiliationMetadataItem = {
+        address: sanitizeAffiliation(suggestion.address),
+        city: sanitizeAffiliation(suggestion.city),
+        region: sanitizeAffiliation(suggestion.region),
+        postalCode: sanitizeAffiliation(suggestion.postalCode),
+        country: sanitizeAffiliation(suggestion.countryName),
+      }
+      const normalizedKey = clean.toLowerCase()
+      draftEditedRef.current = true
+      setDraft((current) => ({
+        ...current,
+        organisation: clean,
+        affiliations: [clean],
+        affiliationAddress: metadata.address,
+        affiliationCity: metadata.city,
+        affiliationRegion: metadata.region,
+        affiliationPostalCode: metadata.postalCode,
+        country: metadata.country,
+      }))
+      setAffiliationMetadataByName((current) => ({
+        ...current,
+        [normalizedKey]: metadata,
+      }))
+      setPrimaryAffiliationInput(clean)
+      setPrimaryAffiliationSuggestions([])
+      setPrimaryAffiliationSuggestionsError('')
+      setPrimaryAffiliationAddressError('')
+      setPrimaryAffiliationInputFocused(false)
+      lastAutoPopulateAffiliationKeyRef.current = normalizedKey
+      await resolvePrimaryAffiliationAddress({
+        organisation: clean,
+        seedMetadata: metadata,
+        replaceExisting: true,
+      })
     })
   }
 
   const onSetPrimaryAffiliation = (value: string) => {
-    const clean = sanitizeAffiliation(value)
-    if (!clean) {
-      return
-    }
-    const metadata = affiliationMetadataByName[clean.toLowerCase()]
-    draftEditedRef.current = true
-    setDraft((current) => ({
-      ...current,
-      organisation: clean,
-      affiliations: [clean],
-      affiliationAddress: metadata ? sanitizeAffiliation(metadata.address) : current.affiliationAddress,
-      affiliationCity: metadata ? sanitizeAffiliation(metadata.city) : current.affiliationCity,
-      affiliationRegion: metadata ? sanitizeAffiliation(metadata.region) : current.affiliationRegion,
-      affiliationPostalCode: metadata ? sanitizeAffiliation(metadata.postalCode) : current.affiliationPostalCode,
-      country: metadata ? sanitizeAffiliation(metadata.country) : current.country,
-    }))
-    setPrimaryAffiliationInput(clean)
-    lastAutoPopulateAffiliationKeyRef.current = clean.toLowerCase()
+    runAffiliationActionPreservingPagePosition(() => {
+      const clean = sanitizeAffiliation(value)
+      if (!clean) {
+        return
+      }
+      const metadata = affiliationMetadataByName[clean.toLowerCase()]
+      draftEditedRef.current = true
+      setDraft((current) => ({
+        ...current,
+        organisation: clean,
+        affiliations: [clean],
+        affiliationAddress: metadata ? sanitizeAffiliation(metadata.address) : current.affiliationAddress,
+        affiliationCity: metadata ? sanitizeAffiliation(metadata.city) : current.affiliationCity,
+        affiliationRegion: metadata ? sanitizeAffiliation(metadata.region) : current.affiliationRegion,
+        affiliationPostalCode: metadata ? sanitizeAffiliation(metadata.postalCode) : current.affiliationPostalCode,
+        country: metadata ? sanitizeAffiliation(metadata.country) : current.country,
+      }))
+      setPrimaryAffiliationInput(clean)
+      lastAutoPopulateAffiliationKeyRef.current = clean.toLowerCase()
+    })
   }
 
   const onResolvePrimaryAffiliationFromCurrent = async (organisationOverride?: string) => {
@@ -1741,31 +1838,33 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   }
 
   const onRemovePublicationAffiliation = (value: string) => {
-    const targetKey = sanitizeAffiliation(value).toLowerCase()
-    const wasPrimary = sanitizeAffiliation(draft.organisation).toLowerCase() === targetKey
-    draftEditedRef.current = true
-    setDraft((current) => {
-      const nextAffiliations = normalizeAffiliations(current.affiliations.filter((item) => item.toLowerCase() !== targetKey))
-      return {
-        ...current,
-        publicationAffiliations: current.publicationAffiliations.filter(
-          (item) => item.toLowerCase() !== targetKey,
-        ),
-        affiliations: nextAffiliations,
-        organisation:
-          sanitizeAffiliation(current.organisation).toLowerCase() === targetKey
-            ? (nextAffiliations[0] || '')
-            : current.organisation,
+    runAffiliationActionPreservingPagePosition(() => {
+      const targetKey = sanitizeAffiliation(value).toLowerCase()
+      const wasPrimary = sanitizeAffiliation(draft.organisation).toLowerCase() === targetKey
+      draftEditedRef.current = true
+      setDraft((current) => {
+        const nextAffiliations = normalizeAffiliations(current.affiliations.filter((item) => item.toLowerCase() !== targetKey))
+        return {
+          ...current,
+          publicationAffiliations: current.publicationAffiliations.filter(
+            (item) => item.toLowerCase() !== targetKey,
+          ),
+          affiliations: nextAffiliations,
+          organisation:
+            sanitizeAffiliation(current.organisation).toLowerCase() === targetKey
+              ? (nextAffiliations[0] || '')
+              : current.organisation,
+        }
+      })
+      setAffiliationMetadataByName((current) => {
+        const next = { ...current }
+        delete next[targetKey]
+        return next
+      })
+      if (wasPrimary) {
+        setPrimaryAffiliationInput('')
       }
     })
-    setAffiliationMetadataByName((current) => {
-      const next = { ...current }
-      delete next[targetKey]
-      return next
-    })
-    if (wasPrimary) {
-      setPrimaryAffiliationInput('')
-    }
   }
 
   const onSave = async () => {
@@ -2084,30 +2183,35 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       </Card>
 
       <Card className="border-[hsl(var(--tone-neutral-200))]">
-        <CardHeader className="space-y-1 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
-          <CardTitle className={HOUSE_CARD_TITLE_CLASS}>
-            Affiliation
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 pt-3 text-sm">
-          <div className="flex justify-end">
+        <CardHeader className="border-b border-[hsl(var(--tone-neutral-200))] pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className={HOUSE_CARD_TITLE_CLASS}>
+              Affiliation
+            </CardTitle>
             <Button
               type="button"
               size="sm"
               variant="house"
               className={HOUSE_ACTION_BUTTON_CLASS}
-              onClick={() => {
-                setAffiliationEditorOpen(true)
-                setShowAffiliationComposer((current) => !current)
-              }}
+              onClick={onOpenAffiliationEditor}
             >
               <Plus className="mr-1.5 h-4 w-4" />
-              {showAffiliationComposer ? 'Hide add form' : 'Add new'}
+              Add new
             </Button>
           </div>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-3 text-sm">
 
-          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]">
+          <div
+            className={cn(
+              'rounded-md border border-[hsl(var(--tone-neutral-200))] transition-[background-color,border-color,box-shadow] duration-700 ease-out',
+              affiliationSaveFlashActive
+                ? 'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] shadow-[0_0_0_1px_hsl(var(--tone-positive-200)/0.55)]'
+                : 'bg-[hsl(var(--tone-neutral-50))]',
+            )}
+          >
             <button
+              ref={affiliationSummaryToggleRef}
               type="button"
               className={cn(
                 'w-full px-3 py-2.5 text-left transition-colors',
@@ -2115,155 +2219,167 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   ? 'bg-[hsl(var(--tone-neutral-100))]'
                   : 'hover:bg-[hsl(var(--tone-neutral-100))]',
               )}
-              onClick={() => setAffiliationEditorOpen((current) => !current)}
+              onClick={onToggleAffiliationEditor}
               aria-expanded={affiliationEditorOpen}
               aria-controls="affiliation-editor-panel"
             >
-              <span className="flex items-center gap-2">
-                <ChevronRight
-                  className={cn(
-                    'h-4 w-4 text-[hsl(var(--tone-neutral-500))] transition-transform duration-200',
-                    affiliationEditorOpen
-                      ? 'translate-x-0.5 rotate-90 text-[hsl(var(--tone-neutral-700))]'
-                      : '',
-                  )}
-                  aria-hidden
-                />
-                <p
-                  className={cn(
-                    'text-sm font-medium text-[hsl(var(--tone-neutral-900))] transition-transform duration-200',
-                    affiliationEditorOpen ? 'translate-x-0.5' : '',
-                  )}
-                >
-                  {journalByline || 'No affiliations recorded.'}
-                </p>
+              <span className="flex items-center justify-between gap-3">
+                <span className="flex min-w-0 items-center gap-2">
+                  <ChevronRight
+                    className={cn(
+                      'h-4 w-4 text-[hsl(var(--tone-neutral-500))] transition-transform duration-200',
+                      affiliationEditorOpen
+                        ? 'translate-x-0.5 rotate-90 text-[hsl(var(--tone-neutral-700))]'
+                        : '',
+                    )}
+                    aria-hidden
+                  />
+                  <p
+                    className={cn(
+                      'truncate text-sm font-medium text-[hsl(var(--tone-neutral-900))] transition-transform duration-200',
+                      affiliationEditorOpen ? 'translate-x-0.5' : '',
+                    )}
+                  >
+                    {journalByline || 'No affiliations recorded.'}
+                  </p>
+                </span>
               </span>
             </button>
           </div>
 
-          {showAffiliationComposer ? (
-            <div className="space-y-2 rounded-md bg-background p-2">
-              <span className="house-field-label">Add affiliation</span>
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  value={primaryAffiliationInput}
-                  onChange={(event) => {
-                    const next = event.target.value
-                    setPrimaryAffiliationInput(next)
-                    onFieldChange('organisation', next)
-                  }}
-                  onBlur={() => {
-                    void onResolvePrimaryAffiliationFromCurrent()
-                  }}
-                  placeholder="Start typing an institution"
-                  autoComplete="organization"
-                />
-                <Button
-                  type="button"
-                  variant="house"
-                  size="sm"
-                  className={HOUSE_ACTION_BUTTON_CLASS}
-                  onClick={() => onAddAffiliation(primaryAffiliationInput)}
-                  disabled={!sanitizeAffiliation(primaryAffiliationInput)}
-                >
-                  Add new
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
           {affiliationEditorOpen ? (
-            <div id="affiliation-editor-panel" className="ml-1 space-y-3 border-l border-[hsl(var(--tone-neutral-200))] pl-3">
-              <div className="space-y-2 p-1">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="house-field-label">Roles</p>
-                  <Button
-                    type="button"
-                    variant="house"
-                    size="sm"
-                    className={HOUSE_ACTION_BUTTON_CLASS}
-                    onClick={onAddJobRole}
-                  >
-                    <Plus className="mr-1.5 h-4 w-4" />
-                    Add new role
-                  </Button>
-                </div>
-
-                {draft.jobRoles.length > 0 ? (
-                  <div className="space-y-1.5">
-                    {draft.jobRoles.map((role, index) => (
-                      <div
-                        key={`role-${index}`}
-                        draggable
-                        onDragStart={() => onDragStartJobRole(index)}
-                        onDragOver={(event) => onDragOverJobRole(event, index)}
-                        onDrop={() => onDropJobRole(index)}
-                        onDragEnd={() => {
-                          setDraggingJobRoleIndex(null)
-                          setJobRoleDropTargetIndex(null)
-                        }}
-                        className={cn(
-                          'group flex flex-wrap items-center gap-2 rounded-md border border-transparent px-2 py-1.5 transition-all duration-200 ease-out',
-                          draggingJobRoleIndex === index
-                            ? 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] shadow-sm scale-[1.01]'
-                            : 'bg-background',
-                          jobRoleDropTargetIndex === index && draggingJobRoleIndex !== index
-                            ? 'border-dashed border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50)/0.55)]'
-                            : '',
-                        )}
-                      >
-                        <span
-                        className={cn(
-                          'inline-flex cursor-grab items-center text-[hsl(var(--tone-neutral-500))] transition-transform duration-150 active:cursor-grabbing',
-                          draggingJobRoleIndex === index ? 'scale-110 text-[hsl(var(--tone-accent-700))]' : 'group-hover:scale-105',
-                        )}
-                          title="Drag to reorder"
-                        >
-                          <GripVertical className="h-4 w-4" />
-                        </span>
-                        <span className="text-xs font-medium text-[hsl(var(--tone-neutral-700))]">{index + 1}.</span>
-                        <Input
-                          ref={(element) => {
-                            jobRoleInputRefs.current[index] = element
-                          }}
-                          value={role}
-                          onChange={(event) => onJobRoleEntryChange(index, event.target.value)}
-                          onBlur={() => onJobRoleEntryBlur(index)}
-                          placeholder="Role"
-                          autoComplete="organization-title"
-                          className="h-8 min-w-[12rem] flex-1 border-0 bg-transparent px-2 shadow-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--tone-accent-400))]"
-                        />
-                        {index === 0 ? (
-                          <span className="rounded-full border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-1.5 py-0.5 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-positive-700))]">
-                            Primary
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => onSetPrimaryJobRole(role)}
-                            className="rounded-full border border-[hsl(var(--tone-neutral-300))] px-1.5 py-0.5 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-700))]"
-                          >
-                            Set primary
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => onRemoveJobRole(index)}
-                          className="ml-auto text-[hsl(var(--tone-neutral-500))] transition-colors hover:text-[hsl(var(--tone-danger-700))]"
-                          aria-label={`Remove role ${index + 1}`}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
+            <div
+              id="affiliation-editor-panel"
+              ref={affiliationEditorPanelRef}
+              onBlurCapture={onAffiliationEditorPanelBlurCapture}
+              className="ml-1 space-y-3 border-l border-[hsl(var(--tone-neutral-200))] pl-3"
+            >
+                <div className="space-y-1.5 p-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="house-field-label">Roles</p>
                   </div>
-                ) : null}
-              </div>
+
+                  <div
+                    className={cn(
+                      'grid gap-2',
+                      normalizeRole(draft.jobRoles[0] || '').length > 0
+                        ? 'md:grid-cols-[minmax(0,75%)_auto] md:items-start md:gap-3'
+                        : 'md:max-w-[75%]',
+                    )}
+                  >
+                    <div className="space-y-1.5 w-full">
+                      {(draft.jobRoles.length > 0 ? draft.jobRoles : ['']).map((role, index) => {
+                        const hasRoleRows = draft.jobRoles.length > 0
+                        return (
+                          <div
+                            key={`role-${index}`}
+                            draggable={hasRoleRows}
+                            onDragStart={() => {
+                              if (!hasRoleRows) {
+                                return
+                              }
+                              onDragStartJobRole(index)
+                            }}
+                            onDragOver={(event) => {
+                              if (!hasRoleRows) {
+                                return
+                              }
+                              onDragOverJobRole(event, index)
+                            }}
+                            onDrop={() => {
+                              if (!hasRoleRows) {
+                                return
+                              }
+                              onDropJobRole(index)
+                            }}
+                            onDragEnd={() => {
+                              setDraggingJobRoleIndex(null)
+                              setJobRoleDropTargetIndex(null)
+                            }}
+                            className={cn(
+                              'group w-full flex flex-wrap items-center gap-2 rounded-md border border-transparent px-2 py-1.5 transition-all duration-200 ease-out',
+                              draggingJobRoleIndex === index
+                                ? 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] shadow-sm scale-[1.01]'
+                                : 'bg-background',
+                              jobRoleDropTargetIndex === index && draggingJobRoleIndex !== index
+                                ? 'border-dashed border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50)/0.55)]'
+                                : '',
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                'inline-flex items-center text-[hsl(var(--tone-neutral-500))] transition-transform duration-150',
+                                hasRoleRows
+                                  ? 'cursor-grab active:cursor-grabbing'
+                                  : 'cursor-default opacity-45',
+                                draggingJobRoleIndex === index && hasRoleRows ? 'scale-110 text-[hsl(var(--tone-accent-700))]' : '',
+                              )}
+                              title={hasRoleRows ? 'Drag to reorder' : undefined}
+                            >
+                              <GripVertical className="h-4 w-4" />
+                            </span>
+                            <span className="text-xs font-medium text-[hsl(var(--tone-neutral-700))]">{index + 1}.</span>
+                            <Input
+                              ref={(element) => {
+                                jobRoleInputRefs.current[index] = element
+                              }}
+                              value={role}
+                              onChange={(event) => onJobRoleEntryChange(index, event.target.value)}
+                              onBlur={() => onJobRoleEntryBlur(index)}
+                              placeholder="Role"
+                              autoComplete="organization-title"
+                              className="h-8 min-w-[12rem] flex-1 border-0 bg-transparent px-2 shadow-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--tone-accent-400))]"
+                            />
+                            {hasRoleRows && index === 0 ? (
+                              <span className="inline-flex w-[6.75rem] justify-center rounded-full border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-1.5 py-0.5 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-positive-700))]">
+                                Primary
+                              </span>
+                            ) : null}
+                            {hasRoleRows && index > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => onSetPrimaryJobRole(role)}
+                                className="inline-flex w-[6.75rem] justify-center rounded-full border border-[hsl(var(--tone-neutral-300))] px-1.5 py-0.5 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-700))]"
+                              >
+                                Set primary
+                              </button>
+                            ) : null}
+                            {hasRoleRows ? (
+                              <button
+                                type="button"
+                                onClick={() => onRemoveJobRole(index)}
+                                className="ml-auto text-[hsl(var(--tone-neutral-500))] transition-colors hover:text-[hsl(var(--tone-danger-700))]"
+                                aria-label={`Remove role ${index + 1}`}
+                              >
+                                Remove
+                              </button>
+                            ) : null}
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {normalizeRole(draft.jobRoles[0] || '').length > 0 ? (
+                      <div className="flex justify-start md:justify-center md:self-start">
+                        <Button
+                          type="button"
+                          variant="house"
+                          size="sm"
+                          className={HOUSE_ACTION_BUTTON_CLASS}
+                          onClick={onAddJobRole}
+                        >
+                          <Plus className="mr-1.5 h-4 w-4" />
+                          Add new role
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
 
               <div className="space-y-2 p-1">
                 <p className="house-field-label">Affiliation</p>
 
-                <div className="flex flex-wrap items-center gap-2 rounded-md bg-background px-2 py-1.5">
+                <div className="flex flex-wrap items-center gap-2">
                   <Input
                     value={primaryAffiliationInput}
                     onChange={(event) => onPrimaryAffiliationEntryChange(event.target.value)}
@@ -2318,7 +2434,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   <p className="text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationAddressError}</p>
                 ) : null}
 
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="ml-3 grid gap-3 sm:grid-cols-2">
                   <label className="space-y-1 sm:col-span-2">
                     <span className="house-field-label">Address line 1</span>
                     <Input
@@ -2401,7 +2517,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               variant="house"
               size="sm"
               className={HOUSE_ACTION_BUTTON_CLASS}
-              onClick={() => setShowPublicationAffiliationComposer((current) => !current)}
+              onClick={onTogglePublicationAffiliationComposer}
             >
               <Plus className="mr-1.5 h-4 w-4" />
               {showPublicationAffiliationComposer ? 'Hide add form' : 'Add new'}
