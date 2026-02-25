@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
+import { houseTypography } from '@/lib/house-style'
 import { deleteMe, fetchMe, updateMe } from '@/lib/impact-api'
 import type { AuthUser } from '@/types/impact'
 
@@ -20,6 +21,10 @@ const ACCOUNT_CACHE_PREFIXES = [
   'aawe_orcid_sync_summary:',
   'aawe_orcid_active_sync_job:',
 ]
+const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
+const HOUSE_PAGE_SUBTITLE_CLASS = houseTypography.subtitle
+const HOUSE_FIELD_LABEL_CLASS = houseTypography.fieldLabel
+const HOUSE_HELPER_TEXT_CLASS = houseTypography.fieldHelper
 
 function clearAccountCache(): void {
   if (typeof window === 'undefined') {
@@ -162,25 +167,25 @@ export function ProfileManageAccountPage() {
   }
 
   return (
-    <section className="space-y-4">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Manage account</h1>
-        <p className="text-sm text-[hsl(var(--tone-neutral-600))]">
+    <section data-house-role="page" className="space-y-4">
+      <header data-house-role="page-header" className="space-y-1">
+        <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Manage account</h1>
+        <p data-house-role="page-subtitle" className={HOUSE_PAGE_SUBTITLE_CLASS}>
           Password and account lifecycle controls for this profile.
         </p>
       </header>
 
-      <Card className="border-[hsl(var(--tone-neutral-200))]">
+      <Card data-house-role="section-card" className="border-[hsl(var(--tone-neutral-200))]">
         <CardHeader className="pb-2">
-          <CardTitle>Change password</CardTitle>
-          <CardDescription>
+          <CardTitle data-house-role="section-title">Change password</CardTitle>
+          <CardDescription data-house-role="section-subtitle">
             Use a strong password with uppercase, lowercase, and numeric characters.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent data-house-role="section-content" className="space-y-3">
           <div className="grid gap-3 md:max-w-xl md:grid-cols-2">
-            <label className="space-y-1 md:col-span-2">
-              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">New password</span>
+            <label data-house-role="field-group" className="space-y-1 md:col-span-2">
+              <span data-house-role="field-label" className={HOUSE_FIELD_LABEL_CLASS}>New password</span>
               <Input
                 type="password"
                 value={password}
@@ -190,8 +195,8 @@ export function ProfileManageAccountPage() {
                 disabled={passwordBusy}
               />
             </label>
-            <label className="space-y-1 md:col-span-2">
-              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Confirm password</span>
+            <label data-house-role="field-group" className="space-y-1 md:col-span-2">
+              <span data-house-role="field-label" className={HOUSE_FIELD_LABEL_CLASS}>Confirm password</span>
               <Input
                 type="password"
                 value={confirmPassword}
@@ -203,39 +208,39 @@ export function ProfileManageAccountPage() {
             </label>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" onClick={() => void onChangePassword()} disabled={passwordBusy || loading}>
+          <div data-house-role="action-row" className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="housePrimary" onClick={() => void onChangePassword()} disabled={passwordBusy || loading}>
               {passwordBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {passwordBusy ? 'Changing...' : 'Change password'}
             </Button>
           </div>
 
           {passwordStatus ? (
-            <div className="rounded-md border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-3 py-2 text-sm text-[hsl(var(--tone-positive-700))]">
+            <div data-house-role="status-success" className="rounded-md border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-3 py-2 text-sm text-[hsl(var(--tone-positive-700))]">
               {passwordStatus}
             </div>
           ) : null}
           {passwordError ? (
-            <div className="rounded-md border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-3 py-2 text-sm text-[hsl(var(--tone-danger-700))]">
+            <div data-house-role="status-error" className="rounded-md border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-3 py-2 text-sm text-[hsl(var(--tone-danger-700))]">
               {passwordError}
             </div>
           ) : null}
         </CardContent>
       </Card>
 
-      <Card className="border-[hsl(var(--tone-danger-200))]">
+      <Card data-house-role="section-card-danger" className="border-[hsl(var(--tone-danger-200))]">
         <CardHeader className="pb-2">
-          <CardTitle className="text-[hsl(var(--tone-danger-800))]">Delete account</CardTitle>
-          <CardDescription>
+          <CardTitle data-house-role="section-title-danger" className="text-[hsl(var(--tone-danger-800))]">Delete account</CardTitle>
+          <CardDescription data-house-role="section-subtitle">
             This permanently removes your sign-in and profile records. This action cannot be undone.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-[hsl(var(--tone-neutral-700))]">
+        <CardContent data-house-role="section-content" className="space-y-3">
+          <p data-house-role="body-text" className={HOUSE_HELPER_TEXT_CLASS}>
             Account email: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{user?.email || 'Not available'}</span>
           </p>
-          <label className="space-y-1 md:max-w-sm">
-            <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Type DELETE to confirm</span>
+          <label data-house-role="field-group" className="space-y-1 md:max-w-sm">
+            <span data-house-role="field-label" className={HOUSE_FIELD_LABEL_CLASS}>Type DELETE to confirm</span>
             <Input
               value={deletePhrase}
               onChange={(event) => setDeletePhrase(event.target.value)}
@@ -244,7 +249,7 @@ export function ProfileManageAccountPage() {
             />
           </label>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div data-house-role="action-row" className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="destructive"
@@ -257,7 +262,7 @@ export function ProfileManageAccountPage() {
           </div>
 
           {deleteError ? (
-            <div className="rounded-md border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-3 py-2 text-sm text-[hsl(var(--tone-danger-700))]">
+            <div data-house-role="status-error" className="rounded-md border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-3 py-2 text-sm text-[hsl(var(--tone-danger-700))]">
               {deleteError}
             </div>
           ) : null}

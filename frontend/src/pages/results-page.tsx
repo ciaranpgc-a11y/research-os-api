@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { houseForms, houseTypography } from '@/lib/house-style'
 import { PageFrame } from '@/pages/page-frame'
 import { useDataWorkspaceStore } from '@/store/use-data-workspace-store'
 import type {
@@ -368,21 +369,22 @@ export function ResultsPage() {
       title="Data Library"
       description="Upload spreadsheets, preview sheets, and curate research-grade working table objects."
     >
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'uploads' | 'working')}>
-        <TabsList>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'uploads' | 'working')} data-house-role="workspace-tabs">
+        <TabsList data-house-role="workspace-tabs-list">
           <TabsTrigger value="uploads">Uploads</TabsTrigger>
           <TabsTrigger value="working">Working Tables</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="uploads" className="space-y-3">
-          <Card>
+        <TabsContent value="uploads" className="space-y-3" data-house-role="tab-content-uploads">
+          <Card data-house-role="workspace-card">
             <CardHeader>
-              <CardTitle className="text-sm">Upload Data Assets</CardTitle>
-              <CardDescription>Drop .csv or .xlsx files to preview sheets and promote them to Working Tables.</CardDescription>
+              <CardTitle data-house-role="section-title">Upload Data Assets</CardTitle>
+              <CardDescription data-house-role="section-subtitle">Drop .csv or .xlsx files to preview sheets and promote them to Working Tables.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-3" data-house-role="section-content">
               <button
                 type="button"
+                data-house-role="upload-dropzone"
                 className={`w-full rounded-md border border-dashed p-6 text-left transition-colors ${
                   isDragActive ? 'border-primary bg-primary/5' : 'border-border bg-muted/20 hover:bg-muted/30'
                 }`}
@@ -406,8 +408,8 @@ export function ResultsPage() {
                 <div className="flex items-center gap-3">
                   <UploadCloud className="h-6 w-6 text-muted-foreground" />
                   <div className="space-y-1">
-                    <p className="text-sm font-medium">Drop files here or click to browse</p>
-                    <p className="text-xs text-muted-foreground">Accepted formats: .csv and .xlsx</p>
+                    <p className={houseTypography.sectionSubtitle} data-house-role="section-subtitle">Drop files here or click to browse</p>
+                    <p className={houseTypography.fieldHelper} data-house-role="field-helper">Accepted formats: .csv and .xlsx</p>
                   </div>
                 </div>
               </button>
@@ -437,10 +439,10 @@ export function ResultsPage() {
           </Card>
 
           <div className="grid gap-3 lg:grid-cols-[280px_minmax(0,1fr)]">
-            <Card>
+            <Card data-house-role="workspace-card">
               <CardHeader>
-                <CardTitle className="text-sm">Files</CardTitle>
-                <CardDescription>{dataAssets.length} asset(s) uploaded.</CardDescription>
+                <CardTitle data-house-role="section-title">Files</CardTitle>
+                <CardDescription data-house-role="section-subtitle">{dataAssets.length} asset(s) uploaded.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
                 {dataAssets.length === 0 ? (
@@ -472,12 +474,12 @@ export function ResultsPage() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card data-house-role="workspace-card">
               <CardHeader>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <CardTitle className="text-sm">Preview</CardTitle>
-                    <CardDescription>Inspect the selected sheet (first {MAX_PREVIEW_ROWS} rows).</CardDescription>
+                    <CardTitle data-house-role="section-title">Preview</CardTitle>
+                    <CardDescription data-house-role="section-subtitle">Inspect the selected sheet (first {MAX_PREVIEW_ROWS} rows).</CardDescription>
                   </div>
                   <Button size="sm" onClick={onPromoteToWorkingTable} disabled={!selectedAsset || !selectedSheet}>
                     Promote to Working Table
@@ -491,12 +493,13 @@ export function ResultsPage() {
                   <>
                     {selectedAsset.kind === 'xlsx' ? (
                       <div className="max-w-sm space-y-1">
-                        <label htmlFor="sheet-select" className="text-xs font-medium text-muted-foreground">
+                        <label htmlFor="sheet-select" className={houseTypography.fieldLabel} data-house-role="field-label">
                           Sheet
                         </label>
                         <select
                           id="sheet-select"
-                          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+                          data-house-role="form-select"
+                          className={`h-9 w-full rounded-md px-3 text-sm ${houseForms.select}`}
                           value={selectedSheet.name}
                           onChange={(event) => setSelectedSheetName(event.target.value)}
                         >
@@ -547,9 +550,9 @@ export function ResultsPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="working" className="space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">Manage structured working table objects for downstream drafting and exports.</p>
+        <TabsContent value="working" className="space-y-3" data-house-role="tab-content-working">
+          <div className="flex items-center justify-between" data-house-role="section-row">
+            <p className={houseTypography.sectionSubtitle} data-house-role="section-subtitle">Manage structured working table objects for downstream drafting and exports.</p>
             <Button size="sm" onClick={onCreateWorkingTable}>
               <Plus className="mr-1 h-4 w-4" />
               New working table
@@ -557,10 +560,10 @@ export function ResultsPage() {
           </div>
 
           <div className="grid gap-3 lg:grid-cols-[280px_minmax(0,1fr)]">
-            <Card>
+            <Card data-house-role="workspace-card">
               <CardHeader>
-                <CardTitle className="text-sm">Working Tables</CardTitle>
-                <CardDescription>{workingTables.length} table(s) available.</CardDescription>
+                <CardTitle data-house-role="section-title">Working Tables</CardTitle>
+                <CardDescription data-house-role="section-subtitle">{workingTables.length} table(s) available.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
                 {workingTables.length === 0 ? (
@@ -588,10 +591,10 @@ export function ResultsPage() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card data-house-role="workspace-card">
               <CardHeader>
-                <CardTitle className="text-sm">{selectedWorkingTable?.name ?? 'Working Table Editor'}</CardTitle>
-                <CardDescription>Research-grade editor for table object metadata, grid, notes, and diagnostics.</CardDescription>
+                <CardTitle data-house-role="section-title">{selectedWorkingTable?.name ?? 'Working Table Editor'}</CardTitle>
+                <CardDescription data-house-role="section-subtitle">Research-grade editor for table object metadata, grid, notes, and diagnostics.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {!selectedWorkingTable ? (

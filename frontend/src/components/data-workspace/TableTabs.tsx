@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { houseForms, houseTypography } from '@/lib/house-style'
 import type { WorkingTable, WorkingTableAbbreviation, WorkingTableColumnMeta } from '@/types/data-workspace'
 
 type TableTabsProps = {
@@ -289,8 +290,8 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
   }
 
   return (
-    <Tabs defaultValue="grid">
-      <TabsList className="grid w-full grid-cols-5">
+    <Tabs defaultValue="grid" data-house-role="workspace-tabs">
+      <TabsList className="grid w-full grid-cols-5" data-house-role="workspace-tabs-list">
         <TabsTrigger value="grid">Grid</TabsTrigger>
         <TabsTrigger value="footnotes">Footnotes</TabsTrigger>
         <TabsTrigger value="summary">Summary</TabsTrigger>
@@ -298,8 +299,8 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
         <TabsTrigger value="export">Export</TabsTrigger>
       </TabsList>
 
-      <TabsContent value="grid" className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      <TabsContent value="grid" className="space-y-3" data-house-role="tab-content-grid">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" data-house-role="status-row">
           <Badge variant="outline">{table.columns.length} columns</Badge>
           <Badge variant="outline">{table.rows.length} rows</Badge>
           <Button size="sm" variant="outline" onClick={onOpenAddColumn}>
@@ -386,16 +387,17 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
         </div>
       </TabsContent>
 
-      <TabsContent value="footnotes" className="space-y-3">
-        <details open className="rounded-md border border-border p-3">
-          <summary className="cursor-pointer text-sm font-medium">Footnotes</summary>
+      <TabsContent value="footnotes" className="space-y-3" data-house-role="tab-content-footnotes">
+        <details open className="rounded-md border border-border p-3" data-house-role="workspace-detail-panel">
+          <summary className={houseTypography.sectionTitle}>Footnotes</summary>
           <div className="mt-3 space-y-2">
             {footnotes.length === 0 ? <p className="text-xs text-muted-foreground">No footnotes yet.</p> : null}
             {footnotes.map((footnote, index) => (
               <div key={`footnote-${index}`} className="space-y-1 rounded border border-border/60 p-2">
                 <p className="text-xs font-medium">{alphabetLabel(index)})</p>
                 <textarea
-                  className="min-h-16 w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs"
+                  data-house-role="form-textarea"
+                  className={`min-h-16 w-full rounded-md px-2 py-1.5 text-xs ${houseForms.textarea}`}
                   value={footnote}
                   onChange={(event) => onUpdateFootnote(index, event.target.value)}
                 />
@@ -412,8 +414,8 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
           </div>
         </details>
 
-        <details open className="rounded-md border border-border p-3">
-          <summary className="cursor-pointer text-sm font-medium">Abbreviations</summary>
+        <details open className="rounded-md border border-border p-3" data-house-role="workspace-detail-panel">
+          <summary className={houseTypography.sectionTitle}>Abbreviations</summary>
           <div className="mt-3 space-y-2">
             {abbreviations.length === 0 ? <p className="text-xs text-muted-foreground">No abbreviations yet.</p> : null}
             {abbreviations.map((item, index) => (
@@ -441,7 +443,7 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
         </details>
       </TabsContent>
 
-      <TabsContent value="summary" className="space-y-3">
+      <TabsContent value="summary" className="space-y-3" data-house-role="tab-content-summary">
         <div className="grid gap-2">
           {columnSummaries.map((summary) => (
             <div key={summary.column} className="rounded-md border border-border p-2 text-xs">
@@ -465,9 +467,9 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
         </div>
       </TabsContent>
 
-      <TabsContent value="validate" className="space-y-3">
-        <div className="rounded-md border border-border p-3 text-xs">
-          <p className="font-medium">Validation checks</p>
+      <TabsContent value="validate" className="space-y-3" data-house-role="tab-content-validate">
+        <div className="rounded-md border border-border p-3 text-xs" data-house-role="validation-panel">
+          <p className={houseTypography.sectionTitle}>Validation checks</p>
           <ul className="mt-2 space-y-1 text-muted-foreground">
             <li>Duplicate columns: {validationChecks.duplicateColumns.length}</li>
             <li>Empty rows: {validationChecks.emptyRowsCount}</li>
@@ -485,9 +487,9 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
         </div>
       </TabsContent>
 
-      <TabsContent value="export" className="space-y-3">
-        <p className="text-sm text-muted-foreground">Export current table state for downstream analysis or documentation.</p>
-        <div className="flex flex-wrap gap-2">
+      <TabsContent value="export" className="space-y-3" data-house-role="tab-content-export">
+        <p className={houseTypography.sectionSubtitle} data-house-role="section-subtitle">Export current table state for downstream analysis or documentation.</p>
+        <div className="flex flex-wrap gap-2" data-house-role="action-row">
           <Button variant="outline" onClick={onExportCsv}>
             <Download className="mr-1 h-4 w-4" />
             Export CSV
@@ -501,4 +503,3 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
     </Tabs>
   )
 }
-

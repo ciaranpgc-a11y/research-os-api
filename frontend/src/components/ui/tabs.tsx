@@ -4,7 +4,14 @@ import * as TabsPrimitive from '@radix-ui/react-tabs'
 import { houseMotion, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 
-const Tabs = TabsPrimitive.Root
+const Tabs = ({ className, ...props }: React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root>) => (
+  <TabsPrimitive.Root
+    data-ui="tabs"
+    data-house-role="tabs-container"
+    className={cn(className)}
+    {...props}
+  />
+)
 
 const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
@@ -12,6 +19,8 @@ const TabsList = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.List
     ref={ref}
+    data-ui="tabs-list"
+    data-house-role="tabs-list"
     className={cn(houseSurfaces.topPanel, 'inline-flex h-9 items-center justify-center rounded-md p-1 text-[hsl(var(--tone-neutral-700))]', className)}
     {...props}
   />
@@ -24,6 +33,8 @@ const TabsTrigger = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.Trigger
     ref={ref}
+    data-ui="tabs-trigger"
+    data-house-role="tabs-trigger"
     className={cn(
       houseMotion.toggleButton,
       houseTypography.buttonText,
@@ -41,6 +52,8 @@ const TabsContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.Content
     ref={ref}
+    data-ui="tabs-content"
+    data-house-role="tabs-content"
     className={cn('mt-4 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2', className)}
     {...props}
   />

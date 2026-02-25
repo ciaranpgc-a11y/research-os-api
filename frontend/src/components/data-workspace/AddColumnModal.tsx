@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { houseForms, houseTypography } from '@/lib/house-style'
 import type { WorkingTableColumnMeta, WorkingTableColumnType } from '@/types/data-workspace'
 
 type AddColumnModalProps = {
@@ -66,14 +67,14 @@ export function AddColumnModal({ open, onOpenChange, existingColumns, onAddColum
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:w-sz-420">
-        <div className="space-y-4 pr-6">
-          <div className="space-y-1">
-            <h3 className="text-base font-semibold">Add Column</h3>
-            <p className="text-sm text-muted-foreground">Define column metadata before adding it to the working table.</p>
+      <SheetContent side="right" className="w-full sm:w-sz-420" data-house-role="modal-sheet">
+        <div className="space-y-4 pr-6" data-house-role="modal-content">
+          <div className="space-y-1" data-house-role="modal-header">
+            <h3 className={houseTypography.sectionTitle} data-house-role="section-title">Add Column</h3>
+            <p className={houseTypography.sectionSubtitle} data-house-role="section-subtitle">Define column metadata before adding it to the working table.</p>
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-1" data-house-role="field-group">
             <Label htmlFor="add-column-name">Column name</Label>
             <Input
               id="add-column-name"
@@ -83,11 +84,12 @@ export function AddColumnModal({ open, onOpenChange, existingColumns, onAddColum
             />
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-1" data-house-role="field-group">
             <Label htmlFor="add-column-type">Data type</Label>
             <select
               id="add-column-type"
-              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+              data-house-role="form-select"
+              className={`h-9 w-full rounded-md px-3 text-sm ${houseForms.select}`}
               value={dataType}
               onChange={(event) => setDataType(event.target.value as WorkingTableColumnType)}
             >
@@ -99,7 +101,7 @@ export function AddColumnModal({ open, onOpenChange, existingColumns, onAddColum
             </select>
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-1" data-house-role="field-group">
             <Label htmlFor="add-column-unit">Unit (optional)</Label>
             <Input
               id="add-column-unit"
@@ -109,12 +111,13 @@ export function AddColumnModal({ open, onOpenChange, existingColumns, onAddColum
             />
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-1" data-house-role="field-group">
             <Label htmlFor="add-column-role">Role tag (optional)</Label>
             <input
               id="add-column-role"
               list="add-column-role-options"
-              className="flex h-9 w-full rounded-md border border-border bg-background px-3 py-1 text-sm"
+              data-house-role="form-input"
+              className={`flex h-9 w-full rounded-md px-3 py-1 text-sm ${houseForms.input}`}
               value={roleTag}
               onChange={(event) => setRoleTag(event.target.value)}
               placeholder="Select or enter role"
@@ -126,15 +129,14 @@ export function AddColumnModal({ open, onOpenChange, existingColumns, onAddColum
             </datalist>
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2">
+          <div className="flex items-center justify-end gap-2 pt-2" data-house-role="action-row">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button onClick={onSubmit}>Add column</Button>
+            <Button variant="housePrimary" onClick={onSubmit}>Add column</Button>
           </div>
         </div>
       </SheetContent>
     </Sheet>
   )
 }
-

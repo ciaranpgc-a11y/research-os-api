@@ -21,13 +21,14 @@ export function AppShell() {
   const rightPanel = isProfileRoute ? <ProfilePanel /> : <InsightPanel />
 
   return (
-    <div className="flex h-screen flex-col bg-background text-foreground">
+    <div data-house-scope="app" data-house-role="app-shell" className="flex h-screen flex-col bg-background text-foreground">
       <TopBar
         scope={isProfileRoute ? 'account' : 'workspace'}
         onOpenLeftNav={() => setLeftPanelOpen(true)}
       />
 
       <div
+        data-house-role="app-grid"
         className={cn(
           'grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[280px_minmax(0,1fr)]',
           showRightPanel &&
@@ -36,13 +37,14 @@ export function AppShell() {
               : 'insight:grid-cols-[280px_minmax(0,1fr)_360px]'),
         )}
       >
-        <aside className="hidden border-r border-border nav:block">
+        <aside data-house-role="left-nav-panel" className="hidden border-r border-border nav:block">
           <StudyNavigator />
         </aside>
 
-        <main className="min-w-0 overflow-hidden bg-background">
+        <main data-house-role="content-main" className="min-w-0 overflow-hidden bg-background">
           <ScrollArea className="h-full">
             <div
+              data-house-role="content-container"
               className={cn(
                 'mx-auto w-full py-4',
                 isStudyCoreRoute
@@ -58,7 +60,7 @@ export function AppShell() {
         </main>
 
         {showRightPanel ? (
-          <aside className="hidden border-l border-border insight:block">
+          <aside data-house-role="right-insight-panel" className="hidden border-l border-border insight:block">
             {rightPanel}
           </aside>
         ) : null}

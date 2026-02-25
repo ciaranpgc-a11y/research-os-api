@@ -15,6 +15,8 @@ const SheetOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
+    data-ui="sheet-overlay"
+    data-house-role="sheet-overlay"
     className={cn('fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out', className)}
     {...props}
   />
@@ -31,6 +33,8 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof DialogPrimitive.Co
       <SheetOverlay />
       <DialogPrimitive.Content
         ref={ref}
+        data-ui="sheet-content"
+        data-house-role="sheet-content"
         className={cn(
           'fixed z-50 bg-background p-5 shadow-lg transition ease-in-out data-[state=closed]:duration-200 data-[state=open]:duration-300',
           side === 'right' && 'inset-y-0 right-0 h-full border-l border-border data-[state=open]:animate-in',
@@ -41,7 +45,11 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof DialogPrimitive.Co
         )}
         {...props}
       >
-        <SheetClose className="absolute right-3 top-3 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring">
+        <SheetClose
+          data-ui="sheet-close"
+          data-house-role="sheet-close"
+          className="absolute right-3 top-3 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring"
+        >
           <X className="h-4 w-4" />
           <span className="sr-only">Close</span>
         </SheetClose>

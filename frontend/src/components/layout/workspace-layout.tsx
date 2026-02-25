@@ -34,27 +34,31 @@ export function WorkspaceLayout() {
   }, [ensureWorkspace, setActiveWorkspaceId, workspaceId])
 
   return (
-    <div className="flex h-screen flex-col bg-background text-foreground">
+    <div data-house-scope="workspace" data-house-role="workspace-shell" className="flex h-screen flex-col bg-background text-foreground">
       <TopBar
         scope="workspace"
         onOpenLeftNav={() => setLeftPanelOpen(true)}
       />
 
       <div
+        data-house-role="workspace-grid"
         className={cn(
           'grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[280px_minmax(0,1fr)]',
           showRightPanel && 'insight:grid-cols-[280px_minmax(0,1fr)_360px]',
         )}
       >
-        <aside className="hidden border-r border-border nav:block">
+        <aside data-house-role="left-nav-panel" className="hidden border-r border-border nav:block">
           <WorkspaceNavigator workspaceId={workspaceId} />
         </aside>
 
-        <main className="min-w-0 overflow-hidden bg-background">
+        <main data-house-role="content-main" className="min-w-0 overflow-hidden bg-background">
           <ScrollArea className="h-full">
-            <div className={cn('mx-auto w-full py-4', isRunWizardRoute ? 'max-w-none px-3 md:px-4' : 'max-w-6xl px-4 md:px-6')}>
+            <div
+              data-house-role="content-container"
+              className={cn('mx-auto w-full py-4', isRunWizardRoute ? 'max-w-none px-3 md:px-4' : 'max-w-6xl px-4 md:px-6')}
+            >
               {isGuest ? (
-                <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <div data-house-role="guest-banner" className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                   Not saved. Create an account to keep this workspace and sync profile context.
                 </div>
               ) : null}
@@ -64,7 +68,7 @@ export function WorkspaceLayout() {
         </main>
 
         {showRightPanel ? (
-          <aside className="hidden border-l border-border insight:block">
+          <aside data-house-role="right-insight-panel" className="hidden border-l border-border insight:block">
             <InsightPanel />
           </aside>
         ) : null}

@@ -3,6 +3,7 @@ import { MoreHorizontal, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { houseForms, houseTypography } from '@/lib/house-style'
 import type { WorkingTable, WorkingTableMetadata } from '@/types/data-workspace'
 
 type TableHeaderProps = {
@@ -66,10 +67,10 @@ export function TableHeader({
   const metadata = ensureMetadata(table)
 
   return (
-    <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-sz-280 flex-1 space-y-1">
-          <Label htmlFor={`table-name-${table.id}`} className="text-xs uppercase tracking-wide text-muted-foreground">
+    <div data-house-role="workspace-table-header" className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2" data-house-role="section-row">
+        <div className="min-w-sz-280 flex-1 space-y-1" data-house-role="field-group">
+          <Label htmlFor={`table-name-${table.id}`} className={houseTypography.fieldLabel}>
             Table name
           </Label>
           <Input
@@ -81,12 +82,12 @@ export function TableHeader({
           />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" data-house-role="action-row">
           <Button size="sm" variant="outline" onClick={onAddRow}>
             <Plus className="mr-1 h-4 w-4" />
             Add row
           </Button>
-          <Button size="sm" variant="outline" onClick={onOpenAddColumn}>
+          <Button size="sm" variant="house" onClick={onOpenAddColumn}>
             <Plus className="mr-1 h-4 w-4" />
             Add column
           </Button>
@@ -114,12 +115,13 @@ export function TableHeader({
         </div>
       </div>
 
-      <div className="grid gap-2 md:grid-cols-2">
-        <div className="space-y-1">
+      <div className="grid gap-2 md:grid-cols-2" data-house-role="metadata-grid">
+        <div className="space-y-1" data-house-role="field-group">
           <Label htmlFor={`table-type-${table.id}`}>Table type</Label>
           <select
             id={`table-type-${table.id}`}
-            className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+            data-house-role="form-select"
+            className={`h-9 w-full rounded-md px-3 text-sm ${houseForms.select}`}
             value={metadata.tableType}
             onChange={(event) => onUpdateTable(updateMetadata(table, { tableType: event.target.value }))}
           >
@@ -131,7 +133,7 @@ export function TableHeader({
           </select>
         </div>
 
-        <div className="space-y-1">
+        <div className="space-y-1" data-house-role="field-group">
           <Label htmlFor={`table-provenance-${table.id}`}>Provenance / source</Label>
           <Input
             id={`table-provenance-${table.id}`}
@@ -141,18 +143,19 @@ export function TableHeader({
           />
         </div>
 
-        <div className="space-y-1 md:col-span-2">
+        <div className="space-y-1 md:col-span-2" data-house-role="field-group">
           <Label htmlFor={`table-description-${table.id}`}>Description</Label>
           <textarea
             id={`table-description-${table.id}`}
-            className="min-h-20 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            data-house-role="form-textarea"
+            className={`min-h-20 w-full rounded-md px-3 py-2 text-sm ${houseForms.textarea}`}
             value={metadata.description}
             onChange={(event) => onUpdateTable(updateMetadata(table, { description: event.target.value }))}
             placeholder="Describe table purpose and scope."
           />
         </div>
 
-        <div className="space-y-1 md:col-span-2">
+        <div className="space-y-1 md:col-span-2" data-house-role="field-group">
           <Label htmlFor={`table-conventions-${table.id}`}>Conventions / units</Label>
           <Input
             id={`table-conventions-${table.id}`}
@@ -163,8 +166,7 @@ export function TableHeader({
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">Last edited: {formatLastEdited(metadata.lastEditedAt)}</p>
+      <p data-house-role="field-helper" className={houseTypography.fieldHelper}>Last edited: {formatLastEdited(metadata.lastEditedAt)}</p>
     </div>
   )
 }
-

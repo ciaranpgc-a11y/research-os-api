@@ -51,6 +51,7 @@ export const houseMotion = {
 export const houseForms = {
   input: 'house-input',
   select: 'house-select',
+  textarea: 'house-textarea',
   actionButton: 'house-button-action',
   actionButtonPrimary: 'house-button-action-primary',
   actionButtonGhost: 'house-button-action-ghost',
@@ -83,6 +84,7 @@ export const houseElements = {
   buttonText: houseTypography.buttonText,
   formInput: houseForms.input,
   formSelect: houseForms.select,
+  formTextarea: houseForms.textarea,
   actionButton: houseForms.actionButton,
   actionButtonPrimary: houseForms.actionButtonPrimary,
   actionButtonGhost: houseForms.actionButtonGhost,
