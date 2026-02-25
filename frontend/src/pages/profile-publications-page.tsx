@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp, ChevronsUpDown, SlidersHorizontal } from 'lucide-react'
+import { ChevronDown, ChevronUp, ChevronsUpDown, Loader2, Paperclip, SlidersHorizontal } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
@@ -55,6 +55,13 @@ type PublicationTableColumnPreference = {
   align: PublicationTableColumnAlign
   width: number
 }
+type PublicationOaPdfStatus = 'available' | 'missing' | 'checking' | 'unknown'
+type PublicationOaPdfStatusRecord = {
+  status: PublicationOaPdfStatus
+  downloadUrl: string | null
+  fileName: string | null
+  updatedAt: string
+}
 
 const PUBLICATION_TABLE_COLUMN_ORDER: PublicationTableColumnKey[] = ['title', 'year', 'venue', 'work_type', 'citations']
 const PUBLICATION_TABLE_COLUMN_DEFINITIONS: Record<PublicationTableColumnKey, { label: string; sortField: PublicationSortField }> = {
@@ -80,6 +87,7 @@ const PUBLICATIONS_TOP_METRICS_CACHE_KEY = 'aawe_publications_top_metrics_cache'
 const PUBLICATIONS_ACTIVE_SYNC_JOB_STORAGE_PREFIX = 'aawe_publications_active_sync_job:'
 const PUBLICATIONS_LIBRARY_COLUMNS_STORAGE_PREFIX = 'aawe_publications_library_columns:'
 const PUBLICATIONS_OA_AUTO_ATTEMPTED_STORAGE_PREFIX = 'aawe_publications_oa_auto_attempted:'
+const PUBLICATIONS_OA_STATUS_STORAGE_PREFIX = 'aawe_publications_oa_status:'
 const PUBLICATIONS_OA_AUTO_MAX_PER_PASS = 60
 const PUBLICATIONS_OA_AUTO_INTER_REQUEST_DELAY_MS = 220
 const PUBLICATIONS_OA_AUTO_STATUS_CLEAR_DELAY_MS = 9000
@@ -466,6 +474,10 @@ function publicationsOaAutoAttemptedStorageKey(userId: string): string {
   return `${PUBLICATIONS_OA_AUTO_ATTEMPTED_STORAGE_PREFIX}${userId}`
 }
 
+function publicationsOaStatusStorageKey(userId: string): string {
+  return `${PUBLICATIONS_OA_STATUS_STORAGE_PREFIX}${userId}`
+}
+
 function loadPublicationsOaAutoAttempted(userId: string): Set<string> {
   if (typeof window === 'undefined') {
     return new Set<string>()
@@ -494,6 +506,95 @@ function savePublicationsOaAutoAttempted(userId: string, attempted: Set<string>)
   }
   const values = Array.from(attempted).slice(-4000)
   window.localStorage.setItem(publicationsOaAutoAttemptedStorageKey(userId), JSON.stringify(values))
+}
+
+function loadPublicationsOaStatus(userId: string): Record<string, PublicationOaPdfStatusRecord> {
+  if (typeof window === 'undefined') {
+    return {}
+  }
+  const raw = window.localStorage.getItem(publicationsOaStatusStorageKey(userId))
+  if (!raw) {
+    return {}
+  }
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const next: Record<string, PublicationOaPdfStatusRecord> = {}
+    for (const [workId, value] of Object.entries(parsed)) {
+      if (!value || typeof value !== 'object') {
+        continue
+      }
+      const payload = value as Record<string, unknown>
+      const rawStatus = String(payload.status || '').trim().toLowerCase()
+      const status: PublicationOaPdfStatus =
+        rawStatus === 'available' || rawStatus === 'missing' || rawStatus === 'checking'
+          ? rawStatus
+          : 'unknown'
+      next[workId] = {
+        status,
+        downloadUrl: String(payload.downloadUrl || '').trim() || null,
+        fileName: String(payload.fileName || '').trim() || null,
+        updatedAt: String(payload.updatedAt || '').trim() || new Date().toISOString(),
+      }
+    }
+    return next
+  } catch {
+    return {}
+  }
+}
+
+function savePublicationsOaStatus(
+  userId: string,
+  statusByWorkId: Record<string, PublicationOaPdfStatusRecord>,
+): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  const entries = Object.entries(statusByWorkId).slice(-5000)
+  const payload = entries.reduce<Record<string, PublicationOaPdfStatusRecord>>((accumulator, [workId, value]) => {
+    accumulator[workId] = value
+    return accumulator
+  }, {})
+  window.localStorage.setItem(publicationsOaStatusStorageKey(userId), JSON.stringify(payload))
+}
+
+function publicationOaStatusVisualStatus(
+  work: { doi?: string | null },
+  record: PublicationOaPdfStatusRecord | null | undefined,
+): PublicationOaPdfStatus {
+  if (record?.status) {
+    return record.status
+  }
+  const hasDoi = Boolean((work.doi || '').trim())
+  if (!hasDoi) {
+    return 'missing'
+  }
+  return 'unknown'
+}
+
+function publicationOaStatusToneClass(status: PublicationOaPdfStatus): string {
+  if (status === 'available') {
+    return 'text-[hsl(var(--tone-positive-700))]'
+  }
+  if (status === 'missing') {
+    return 'text-[hsl(var(--tone-danger-700))]'
+  }
+  return 'text-[hsl(var(--tone-neutral-500))]'
+}
+
+function publicationOaStatusLabel(status: PublicationOaPdfStatus, hasDoi: boolean): string {
+  if (status === 'available') {
+    return 'Open-access PDF available'
+  }
+  if (status === 'checking') {
+    return 'Checking for open-access PDF'
+  }
+  if (status === 'missing' && !hasDoi) {
+    return 'Open-access PDF unavailable (missing DOI)'
+  }
+  if (status === 'missing') {
+    return 'Open-access PDF not found'
+  }
+  return 'Open-access PDF pending background check'
 }
 
 function loadActivePublicationDetailTab(): PublicationDetailTab {
@@ -783,7 +884,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [expandedAbstractByWorkId, setExpandedAbstractByWorkId] = useState<Record<string, boolean>>({})
   const [contentModeByWorkId, setContentModeByWorkId] = useState<Record<string, 'plain' | 'highlighted'>>({})
   const [uploadingFile, setUploadingFile] = useState(false)
-  const [findingOa, setFindingOa] = useState(false)
+  const [oaPdfStatusByWorkId, setOaPdfStatusByWorkId] = useState<Record<string, PublicationOaPdfStatusRecord>>({})
   const [autoOaFinding, setAutoOaFinding] = useState(false)
   const [autoOaStatus, setAutoOaStatus] = useState('')
   const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null)
