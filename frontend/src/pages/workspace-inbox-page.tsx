@@ -586,10 +586,10 @@ export function WorkspaceInboxPage() {
   }, [messages])
 
   return (
-    <div data-house-scope="workspace-inbox" className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto w-full max-w-sz-1380 px-4 py-4 md:px-6">
-        <section className="grid min-h-[calc(100vh-2rem)] gap-4 nav:grid-cols-[280px_minmax(0,1fr)_280px]">
-          <aside className={cn('flex min-h-0 flex-col', houseLayout.sidebar)} data-house-role="left-nav-shell">
+    <div data-house-scope="workspace-inbox" className="h-screen overflow-hidden bg-background text-foreground">
+      <section className="grid h-full min-h-0 grid-cols-1 nav:grid-cols-[280px_minmax(0,1fr)_280px]">
+        <aside className="hidden border-r border-border nav:block">
+          <div className={cn('flex h-full flex-col', houseLayout.sidebar)} data-house-role="left-nav-shell">
             <div className={houseLayout.sidebarHeader}>
               <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
                 <h1 className={houseTypography.sectionTitle}>Workspaces home</h1>
@@ -683,9 +683,12 @@ export function WorkspaceInboxPage() {
                 </Button>
               </section>
             </div>
-          </aside>
+          </div>
+        </aside>
 
-          <section className={cn('flex min-h-0 flex-col rounded-lg border border-border', houseSurfaces.card)}>
+        <main className="min-w-0 flex-1 overflow-hidden bg-background">
+          <div className="h-full px-4 py-4 md:px-6">
+            <section className={cn('flex h-full min-h-0 flex-col rounded-lg border border-border', houseSurfaces.card)}>
             <div className="border-b border-border px-4 py-3">
               <h2 className={houseTypography.sectionTitle}>Conversation</h2>
               <p className={houseTypography.sectionSubtitle}>Messages cannot be deleted. Newest messages appear at the bottom.</p>
@@ -763,9 +766,12 @@ export function WorkspaceInboxPage() {
               {status ? <p className={houseTypography.fieldHelper}>{status}</p> : null}
               {error ? <p className="text-sm text-[hsl(var(--tone-danger-700))]">{error}</p> : null}
             </footer>
-          </section>
+            </section>
+          </div>
+        </main>
 
-          <aside className={cn('flex min-h-0 flex-col', houseLayout.sidebar)} data-house-role="right-nav-shell">
+        <aside className="hidden border-l border-border nav:block">
+          <div className={cn('flex h-full flex-col', houseLayout.sidebar)} data-house-role="right-nav-shell">
             <div className={houseLayout.sidebarHeader}>
               <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
                 <h2 className={houseTypography.sectionTitle}>Inbox navigation</h2>
@@ -883,9 +889,9 @@ export function WorkspaceInboxPage() {
                 </div>
               </section>
             </div>
-          </aside>
-        </section>
-      </div>
+          </div>
+        </aside>
+      </section>
     </div>
   )
 }

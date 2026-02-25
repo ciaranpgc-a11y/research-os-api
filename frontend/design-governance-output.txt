@@ -1,0 +1,16 @@
+
+> frontend@0.0.0 design:governance
+> node scripts/design-governance-check.mjs
+
+Design governance check failed with 11 violation(s).
+src/pages/workspace-inbox-page.tsx:797:21 [house-role] Every intrinsic JSX element must be tagged (`data-house-role`, `data-house-scope`, or `data-ui`). -> <span className="truncate pl-2">
+src/pages/workspace-inbox-page.tsx:798:21 [house-role] Every intrinsic JSX element must be tagged (`data-house-role`, `data-house-scope`, or `data-ui`). -> <span className={houseNavigation.itemCount}>
+src/pages/workspace-inbox-page.tsx:800:19 [house-role] Every intrinsic JSX element must be tagged (`data-house-role`, `data-house-scope`, or `data-ui`). -> <div className={houseNavigation.item}>
+src/pages/workspace-inbox-page.tsx:801:21 [house-role] Every intrinsic JSX element must be tagged (`data-house-role`, `data-house-scope`, or `data-ui`). -> <span className="truncate pl-2">
+src/pages/workspace-inbox-page.tsx:802:21 [house-role] Every intrinsic JSX element must be tagged (`data-house-role`, `data-house-scope`, or `data-ui`). -> <span className={cn('max-w-sz-130 truncate', houseNavigation.itemMeta)}>
+src/pages/workspace-inbox-page.tsx:809:15 [house-role] Every intrinsic JSX element must be tagged (`data-house-role`, `data-house-scope`, or `data-ui`). -> <section className={houseLayout.sidebarSection}>
+src/pages/workspace-inbox-page.tsx:810:17 [house-role] Every intrinsic JSX element must be tagged (`data-house-role`, `data-house-scope`, or `data-ui`). -> <p className={houseNavigation.sectionLabel}>
+src/pages/workspace-inbox-page.tsx:811:17 [house-role] Every intrinsic JSX element must be tagged (`data-house-role`, `data-house-scope`, or `data-ui`). -> <div className="space-y-1">
+src/pages/workspace-inbox-page.tsx:813:21 [house-role] Every intrinsic JSX element must be tagged (`data-house-role`, `data-house-scope`, or `data-ui`). -> <p className={houseTypography.fieldHelper}>
+src/pages/workspace-inbox-page.tsx:820:25 [house-role] Every intrinsic JSX element must be tagged (`data-house-role`, `data-house-scope`, or `data-ui`). -> <div key={participant} className={houseNavigation.item}>
+src/pages/workspace-inbox-page.tsx:1:1 [house-role] Additional untagged intrinsic JSX elements omitted from output. -> +28 more
