@@ -88,6 +88,8 @@ const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label:
   { value: '5y', label: '5y' },
   { value: 'all', label: 'All' },
 ]
+const HOUSE_SUBHEADING_CLASS = 'text-[0.76rem] font-semibold uppercase tracking-[0.09em] text-[hsl(var(--tone-neutral-800))]'
+const HOUSE_SUBHEADING_SOFT_CLASS = 'text-[0.76rem] font-semibold uppercase tracking-[0.09em] text-[hsl(var(--tone-neutral-700))]'
 
 const MAX_PUBLICATION_CHART_BARS = 12
 
@@ -2484,8 +2486,8 @@ function TotalPublicationsDrilldownWorkspace({
   const workspaceSectionClass = 'rounded-md bg-[hsl(var(--tone-neutral-50)/0.34)] p-3'
   const workspacePanelClass = 'rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background px-3 py-2.5'
   const workspacePanelCompactClass = 'rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background p-2'
-  const workspaceHeadingClass = 'text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]'
-  const workspaceSubheadingClass = 'text-[0.58rem] font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]'
+  const workspaceHeadingClass = HOUSE_SUBHEADING_SOFT_CLASS
+  const workspaceSubheadingClass = HOUSE_SUBHEADING_SOFT_CLASS
 
   const availableTypes = useMemo(
     () => Array.from(new Set(publications.map((record) => record.type))).sort((left, right) => left.localeCompare(right)),
@@ -3696,7 +3698,7 @@ export function PublicationsTopStrip({
             </button>
           </div>
           <div className="rounded-sm bg-[hsl(var(--tone-neutral-50)/0.34)] px-2.5 py-1.5">
-            <p className="text-[0.76rem] font-semibold uppercase tracking-[0.09em] text-[hsl(var(--tone-neutral-800))]">
+            <p className={HOUSE_SUBHEADING_CLASS}>
               Publication insights
             </p>
           </div>
@@ -4014,7 +4016,7 @@ export function PublicationsTopStrip({
           )}
           <div className="rounded-sm bg-[hsl(var(--tone-neutral-50)/0.34)] px-2 py-2">
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="pt-1 text-[0.7rem] font-semibold uppercase tracking-[0.09em] text-[hsl(var(--tone-neutral-700))]">
+              <p className={cn(HOUSE_SUBHEADING_SOFT_CLASS, 'pt-1')}>
                 Tools
               </p>
               <div className="flex flex-wrap items-center gap-1.5">
