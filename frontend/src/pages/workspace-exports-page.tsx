@@ -2,6 +2,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { cn } from '@/lib/utils'
 
 export function WorkspaceExportsPage() {
   const navigate = useNavigate()
@@ -9,10 +11,10 @@ export function WorkspaceExportsPage() {
   const workspaceId = params.workspaceId || 'hf-registry'
 
   return (
-    <section className="space-y-4">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Exports</h1>
-        <p className="text-sm text-muted-foreground">
+    <section data-house-role="page" className="space-y-4">
+      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+        <h1 data-house-role="page-title" className={houseTypography.title}>Exports</h1>
+        <p data-house-role="page-subtitle" className={houseTypography.subtitle}>
           Package manuscript outputs and quality checks for submission workflows.
         </p>
       </header>

@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { houseTypography } from '@/lib/house-style'
+import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { cn } from '@/lib/utils'
 
 type PageFrameProps = {
   title: string
@@ -12,7 +13,10 @@ type PageFrameProps = {
 export function PageFrame({ title, description, children }: PageFrameProps) {
   return (
     <section data-house-role="page" className="space-y-4">
-      <header data-house-role="page-header" className="space-y-1">
+      <header
+        data-house-role="page-header"
+        className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}
+      >
         <h1 data-house-role="page-title" className={houseTypography.title}>{title}</h1>
         <p data-house-role="page-subtitle" className={houseTypography.subtitle}>{description}</p>
       </header>

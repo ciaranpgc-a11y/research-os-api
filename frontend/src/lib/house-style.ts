@@ -38,6 +38,21 @@ export const houseSurfaces = {
   tableRow: 'house-table-row',
 } as const
 
+export const houseLayout = {
+  pageHeader: 'house-page-header',
+  sidebar: 'house-sidebar-shell',
+  sidebarHeader: 'house-sidebar-header',
+  sidebarSection: 'house-sidebar-section',
+} as const
+
+export const houseNavigation = {
+  sectionLabel: 'house-nav-section-label',
+  item: 'house-nav-item',
+  itemActive: 'house-nav-item-active',
+  itemMeta: 'house-nav-item-meta',
+  itemCount: 'house-nav-item-count',
+} as const
+
 export const houseMotion = {
   chartPanel: 'house-chart-frame',
   chartEnter: 'house-motion-enter',
@@ -95,6 +110,15 @@ export const houseElements = {
   softPanel: houseSurfaces.softPanel,
   card: houseSurfaces.card,
   leftBorder: houseSurfaces.leftBorder,
+  pageHeader: houseLayout.pageHeader,
+  sidebar: houseLayout.sidebar,
+  sidebarHeader: houseLayout.sidebarHeader,
+  sidebarSection: houseLayout.sidebarSection,
+  navSectionLabel: houseNavigation.sectionLabel,
+  navItem: houseNavigation.item,
+  navItemActive: houseNavigation.itemActive,
+  navItemMeta: houseNavigation.itemMeta,
+  navItemCount: houseNavigation.itemCount,
   tableShell: houseSurfaces.tableShell,
   tableHead: houseSurfaces.tableHead,
   tableRow: houseSurfaces.tableRow,

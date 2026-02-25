@@ -8,6 +8,7 @@ import {
 } from '@/lib/workspace-owner'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { houseForms, houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import { useWorkspaceStore, type WorkspaceHealth } from '@/store/use-workspace-store'
 
@@ -123,26 +124,28 @@ export function WorkspaceNavigator({ workspaceId, onNavigate }: WorkspaceNavigat
   }
 
   return (
-    <aside className="flex h-full flex-col bg-card">
-      <div className="space-y-3 border-b border-border p-4">
-        <div className="flex items-center gap-2">
-          <h1 className="text-sm font-semibold leading-tight">
+    <aside className={cn('flex h-full flex-col', houseLayout.sidebar)}>
+      <div className={houseLayout.sidebarHeader}>
+        <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+          <div className="flex items-center gap-2">
+            <h1 className={houseTypography.sectionTitle}>
             {activeWorkspace?.name ?? 'Workspace'}
-          </h1>
-          {activeWorkspace ? (
-            <span
-              className={cn('h-2.5 w-2.5 rounded-full', workspaceHealthClass(activeWorkspace.health))}
-              title={`Workspace health: ${activeWorkspace.health}`}
-            />
-          ) : null}
+            </h1>
+            {activeWorkspace ? (
+              <span
+                className={cn('h-2.5 w-2.5 rounded-full', workspaceHealthClass(activeWorkspace.health))}
+                title={`Workspace health: ${activeWorkspace.health}`}
+              />
+            ) : null}
+          </div>
+          <p className={houseTypography.fieldHelper}>Version {activeWorkspace?.version ?? '0.1'}</p>
         </div>
-        <p className="text-xs text-muted-foreground">Version {activeWorkspace?.version ?? '0.1'}</p>
-        <div className="space-y-2">
-          <label className="text-micro uppercase tracking-wide text-muted-foreground">Workspace</label>
+        <div className={houseLayout.sidebarSection}>
+          <label className={houseNavigation.sectionLabel}>Workspace</label>
           <select
             value={workspaceId}
             onChange={(event) => onWorkspaceChange(event.target.value)}
-            className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+            className={cn('h-9 w-full rounded-md px-2 text-sm', houseForms.select)}
           >
             {workspaces.map((workspace) => (
               <option key={workspace.id} value={workspace.id}>
@@ -153,8 +156,7 @@ export function WorkspaceNavigator({ workspaceId, onNavigate }: WorkspaceNavigat
           <Button
             type="button"
             size="sm"
-            variant="outline"
-            className="w-full"
+            className={cn('w-full', houseForms.actionButton, houseTypography.buttonText)}
             onClick={onCreateWorkspace}
             disabled={!workspaceOwnerName}
           >
@@ -172,7 +174,7 @@ export function WorkspaceNavigator({ workspaceId, onNavigate }: WorkspaceNavigat
         <div className="space-y-4 p-3">
           {WORKSPACE_NAV_GROUPS.map((group, index) => (
             <section key={group.title} className="space-y-2.5">
-              <p className="px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <p className={houseNavigation.sectionLabel}>
                 {group.title}
               </p>
               <nav className="space-y-1">
@@ -185,12 +187,12 @@ export function WorkspaceNavigator({ workspaceId, onNavigate }: WorkspaceNavigat
                       onClick={onNavigate}
                       className={({ isActive }) =>
                         cn(
-                          'block rounded-md border border-transparent px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground',
-                          isActive && 'border-border bg-accent/50 text-foreground font-medium',
+                          houseNavigation.item,
+                          isActive && houseNavigation.itemActive,
                         )
                       }
                     >
-                      {item.label}
+                      <span className="truncate pl-2">{item.label}</span>
                     </NavLink>
                   )
                 })}

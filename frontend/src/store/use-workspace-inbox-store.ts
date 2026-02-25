@@ -14,6 +14,7 @@ export type WorkspaceInboxMessageRecord = {
 type WorkspaceInboxStore = {
   messages: WorkspaceInboxMessageRecord[]
   listWorkspaceMessages: (workspaceId: string) => WorkspaceInboxMessageRecord[]
+  refreshMessagesFromStorage: () => void
   sendWorkspaceMessage: (input: {
     workspaceId: string
     senderName: string
@@ -21,7 +22,7 @@ type WorkspaceInboxStore = {
   }) => Promise<WorkspaceInboxMessageRecord>
 }
 
-const INBOX_MESSAGES_STORAGE_KEY = 'aawe-workspace-inbox-messages-v1'
+export const INBOX_MESSAGES_STORAGE_KEY = 'aawe-workspace-inbox-messages-v1'
 
 function trimValue(value: string | null | undefined): string {
   return (value || '').trim()
@@ -87,6 +88,9 @@ export const useWorkspaceInboxStore = create<WorkspaceInboxStore>((set, get) => 
       .messages
       .filter((message) => message.workspaceId === cleanWorkspaceId)
       .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
+  },
+  refreshMessagesFromStorage: () => {
+    set({ messages: readStoredMessages() })
   },
   sendWorkspaceMessage: async ({ workspaceId, senderName, body }) => {
     const cleanWorkspaceId = trimValue(workspaceId)

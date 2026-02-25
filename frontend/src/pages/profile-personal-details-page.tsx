@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
-import { houseForms, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseForms, houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import {
   fetchAffiliationAddressForMe,
@@ -2002,9 +2002,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   return (
     <section className="space-y-4">
       <header>
-        <div className={cn(HOUSE_LEFT_BORDER_CLASS, 'space-y-1')}>
-          <h1 className={HOUSE_PAGE_TITLE_CLASS}>Personal details</h1>
-          <p className={HOUSE_PAGE_SUBTITLE_CLASS}>
+        <div className={cn(houseLayout.pageHeader, HOUSE_LEFT_BORDER_CLASS)}>
+          <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Personal details</h1>
+          <p data-house-role="page-subtitle" className={HOUSE_PAGE_SUBTITLE_CLASS}>
             Editable account identity fields used across profile workflows.
           </p>
         </div>

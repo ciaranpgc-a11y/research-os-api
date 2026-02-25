@@ -1433,8 +1433,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   return (
     <section className="space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className={publicationsHouseHeadings.title}>Publications</h1>
+        <div className="house-page-header house-left-border">
+          <h1 data-house-role="page-title" className={publicationsHouseHeadings.title}>Publications</h1>
         </div>
       </header>
 

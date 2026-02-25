@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
-import { houseTypography } from '@/lib/house-style'
+import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { deleteMe, fetchMe, updateMe } from '@/lib/impact-api'
+import { cn } from '@/lib/utils'
 import type { AuthUser } from '@/types/impact'
 
 const ACCOUNT_CACHE_KEYS = [
@@ -168,7 +169,10 @@ export function ProfileManageAccountPage() {
 
   return (
     <section data-house-role="page" className="space-y-4">
-      <header data-house-role="page-header" className="space-y-1">
+      <header
+        data-house-role="page-header"
+        className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}
+      >
         <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Manage account</h1>
         <p data-house-role="page-subtitle" className={HOUSE_PAGE_SUBTITLE_CLASS}>
           Password and account lifecycle controls for this profile.

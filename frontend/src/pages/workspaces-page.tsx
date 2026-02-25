@@ -11,7 +11,7 @@ import {
   WORKSPACE_OWNER_REQUIRED_MESSAGE,
   readWorkspaceOwnerNameFromProfile,
 } from '@/lib/workspace-owner'
-import { houseForms, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseForms, houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import { useAaweStore } from '@/store/use-aawe-store'
 import {
@@ -37,7 +37,10 @@ const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
 const HOUSE_PAGE_SUBTITLE_CLASS = houseTypography.subtitle
 const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
 const HOUSE_SECTION_SUBTITLE_CLASS = houseTypography.sectionSubtitle
-const HOUSE_FIELD_LABEL_CLASS = houseTypography.fieldLabel
+const HOUSE_PAGE_HEADER_CLASS = houseLayout.pageHeader
+const HOUSE_SIDEBAR_CLASS = houseLayout.sidebar
+const HOUSE_SIDEBAR_HEADER_CLASS = houseLayout.sidebarHeader
+const HOUSE_SIDEBAR_SECTION_CLASS = houseLayout.sidebarSection
 const HOUSE_FIELD_HELPER_CLASS = houseTypography.fieldHelper
 const HOUSE_BUTTON_TEXT_CLASS = houseTypography.buttonText
 const HOUSE_LEFT_BORDER_CLASS = houseSurfaces.leftBorder
@@ -51,6 +54,11 @@ const HOUSE_INPUT_CLASS = houseForms.input
 const HOUSE_SELECT_CLASS = houseForms.select
 const HOUSE_ACTION_BUTTON_CLASS = houseForms.actionButton
 const HOUSE_PRIMARY_ACTION_BUTTON_CLASS = houseForms.actionButtonPrimary
+const HOUSE_NAV_SECTION_LABEL_CLASS = houseNavigation.sectionLabel
+const HOUSE_NAV_ITEM_CLASS = houseNavigation.item
+const HOUSE_NAV_ITEM_ACTIVE_CLASS = houseNavigation.itemActive
+const HOUSE_NAV_ITEM_META_CLASS = houseNavigation.itemMeta
+const HOUSE_NAV_ITEM_COUNT_CLASS = houseNavigation.itemCount
 
 function formatTimestamp(value: string): string {
   const parsed = Date.parse(value)
@@ -196,10 +204,13 @@ function WorkspacesHomeSidebar({
   filterKey,
   counts,
   onFilterChange,
+  onOpenInbox,
   onCreateWorkspace,
   onClearSearch,
   incomingInvitationCount,
   outgoingInvitationCount,
+  canOpenInbox,
+  inboxWorkspaceName,
   canClearSearch,
   canCreateWorkspace,
   createBlockedMessage,
@@ -210,10 +221,13 @@ function WorkspacesHomeSidebar({
   filterKey: FilterKey
   counts: Record<FilterKey, number>
   onFilterChange: (next: FilterKey) => void
+  onOpenInbox: () => void
   onCreateWorkspace: () => void
   onClearSearch: () => void
   incomingInvitationCount: number
   outgoingInvitationCount: number
+  canOpenInbox: boolean
+  inboxWorkspaceName: string
   canClearSearch: boolean
   canCreateWorkspace: boolean
   createBlockedMessage: string
@@ -221,17 +235,19 @@ function WorkspacesHomeSidebar({
 }) {
   const totalInvitationCount = incomingInvitationCount + outgoingInvitationCount
   return (
-    <aside className="flex h-full flex-col bg-card">
-      <div className="space-y-1 border-b border-border px-4 py-3.5">
-        <h1 className={HOUSE_SECTION_TITLE_CLASS}>Workspaces home</h1>
-        <p className={HOUSE_FIELD_HELPER_CLASS}>
-          Library-level filters and actions for all workspaces.
-        </p>
+    <aside className={cn('flex h-full flex-col', HOUSE_SIDEBAR_CLASS)} data-house-role="left-nav-shell">
+      <div className={HOUSE_SIDEBAR_HEADER_CLASS}>
+        <div className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
+          <h1 data-house-role="section-title" className={HOUSE_SECTION_TITLE_CLASS}>Workspaces home</h1>
+          <p data-house-role="section-subtitle" className={HOUSE_FIELD_HELPER_CLASS}>
+            Library-level filters and actions for all workspaces.
+          </p>
+        </div>
       </div>
       <ScrollArea className="flex-1">
         <div className="space-y-4 p-3">
-          <section className="space-y-1.5">
-            <p className={cn('px-2', HOUSE_FIELD_LABEL_CLASS)}>
+          <section className={HOUSE_SIDEBAR_SECTION_CLASS}>
+            <p className={HOUSE_NAV_SECTION_LABEL_CLASS}>
               Views
             </p>
             <div className="space-y-1">
@@ -242,13 +258,11 @@ function WorkspacesHomeSidebar({
                   onNavigate?.()
                 }}
                 className={cn(
-                  'flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-sm transition-colors',
-                  centerView === 'workspaces'
-                    ? 'border-emerald-400 bg-emerald-50 text-emerald-900'
-                    : 'border-border bg-background text-muted-foreground hover:text-foreground',
+                  HOUSE_NAV_ITEM_CLASS,
+                  centerView === 'workspaces' && HOUSE_NAV_ITEM_ACTIVE_CLASS,
                 )}
               >
-                <span>Workspaces</span>
+                <span className="truncate pl-2">Workspaces</span>
               </button>
               <button
                 type="button"
@@ -257,32 +271,47 @@ function WorkspacesHomeSidebar({
                   onNavigate?.()
                 }}
                 className={cn(
-                  'flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-sm transition-colors',
-                  centerView === 'invitations'
-                    ? 'border-emerald-400 bg-emerald-50 text-emerald-900'
-                    : 'border-border bg-background text-muted-foreground hover:text-foreground',
+                  HOUSE_NAV_ITEM_CLASS,
+                  centerView === 'invitations' && HOUSE_NAV_ITEM_ACTIVE_CLASS,
                 )}
               >
-                <span>Invitations</span>
-                <div className="ml-2 flex items-center gap-1.5">
-                  <span className="inline-flex items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 text-micro text-muted-foreground">
+                <span className="truncate pl-2">Invitations</span>
+                <div className={cn('ml-2 flex items-center gap-1.5', HOUSE_NAV_ITEM_META_CLASS)}>
+                  <span className={cn(HOUSE_NAV_ITEM_COUNT_CLASS, 'gap-1')}>
                     <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
                     {incomingInvitationCount}
                   </span>
-                  <span className="inline-flex items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 text-micro text-muted-foreground">
+                  <span className={cn(HOUSE_NAV_ITEM_COUNT_CLASS, 'gap-1')}>
                     <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500" />
                     {outgoingInvitationCount}
                   </span>
-                  <span className="rounded border border-border bg-muted/50 px-1.5 py-0.5 text-micro text-muted-foreground">
+                  <span className={HOUSE_NAV_ITEM_COUNT_CLASS}>
                     {totalInvitationCount}
                   </span>
                 </div>
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenInbox()
+                  onNavigate?.()
+                }}
+                className={cn(
+                  HOUSE_NAV_ITEM_CLASS,
+                  !canOpenInbox && 'cursor-not-allowed opacity-60',
+                )}
+                disabled={!canOpenInbox}
+              >
+                <span className="truncate pl-2 text-left">Inbox</span>
+              </button>
+              <p className={cn('pl-2 text-xs text-muted-foreground', HOUSE_NAV_ITEM_META_CLASS)}>
+                {canOpenInbox ? `Open inbox for ${inboxWorkspaceName}.` : 'Create a workspace to open inbox.'}
+              </p>
             </div>
           </section>
 
-          <section className="space-y-1.5">
-            <p className={cn('px-2', HOUSE_FIELD_LABEL_CLASS)}>
+          <section className={HOUSE_SIDEBAR_SECTION_CLASS}>
+            <p className={HOUSE_NAV_SECTION_LABEL_CLASS}>
               States
             </p>
             <div className="space-y-1">
@@ -295,21 +324,12 @@ function WorkspacesHomeSidebar({
                     onNavigate?.()
                   }}
                   className={cn(
-                    'flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-sm transition-colors',
-                    filterKey === option.key
-                      ? 'border-emerald-400 bg-emerald-50 text-emerald-900'
-                      : 'border-border bg-background text-muted-foreground hover:text-foreground',
+                    HOUSE_NAV_ITEM_CLASS,
+                    filterKey === option.key && HOUSE_NAV_ITEM_ACTIVE_CLASS,
                   )}
                 >
-                  <span className="truncate text-left">{option.label}</span>
-                  <span
-                    className={cn(
-                      'ml-2 rounded border px-1.5 py-0.5 text-micro',
-                      filterKey === option.key
-                        ? 'border-emerald-300 bg-emerald-100 text-emerald-800'
-                        : 'border-border bg-muted/50 text-muted-foreground',
-                    )}
-                  >
+                  <span className="truncate pl-2 text-left">{option.label}</span>
+                  <span className={cn(HOUSE_NAV_ITEM_COUNT_CLASS, 'ml-2')}>
                     {counts[option.key]}
                   </span>
                 </button>
@@ -317,8 +337,8 @@ function WorkspacesHomeSidebar({
             </div>
           </section>
 
-          <section className="space-y-2">
-            <p className={cn('px-2', HOUSE_FIELD_LABEL_CLASS)}>
+          <section className={HOUSE_SIDEBAR_SECTION_CLASS}>
+            <p className={HOUSE_NAV_SECTION_LABEL_CLASS}>
               Actions
             </p>
             <Button
@@ -333,7 +353,7 @@ function WorkspacesHomeSidebar({
               Create workspace
             </Button>
             {!canCreateWorkspace ? (
-              <p className={cn('px-1', HOUSE_FIELD_HELPER_CLASS)}>{createBlockedMessage}</p>
+              <p className={HOUSE_FIELD_HELPER_CLASS}>{createBlockedMessage}</p>
             ) : null}
             <Button
               type="button"
@@ -347,7 +367,6 @@ function WorkspacesHomeSidebar({
               Clear search
             </Button>
           </section>
-
         </div>
       </ScrollArea>
     </aside>
@@ -357,6 +376,7 @@ function WorkspacesHomeSidebar({
 export function WorkspacesPage() {
   const navigate = useNavigate()
   const workspaces = useWorkspaceStore((state) => state.workspaces)
+  const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId)
   const authorRequests = useWorkspaceStore((state) => state.authorRequests)
   const invitationsSent = useWorkspaceStore((state) => state.invitationsSent)
   const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId)
@@ -449,6 +469,14 @@ export function WorkspacesPage() {
       ].sort((left, right) => Date.parse(right.invitedAt) - Date.parse(left.invitedAt)),
     [authorRequests, invitationsSent],
   )
+  const inboxWorkspace = useMemo(
+    () =>
+      (activeWorkspaceId ? workspaces.find((workspace) => workspace.id === activeWorkspaceId) : null) ||
+      workspaces[0] ||
+      null,
+    [activeWorkspaceId, workspaces],
+  )
+  const canOpenInbox = Boolean(inboxWorkspace)
 
   useEffect(() => {
     if (!menuState) {
@@ -554,6 +582,14 @@ export function WorkspacesPage() {
     navigate(`/w/${workspaceId}/overview`)
   }
 
+  const onOpenWorkspaceInbox = () => {
+    if (!inboxWorkspace) {
+      return
+    }
+    setActiveWorkspaceId(inboxWorkspace.id)
+    navigate(`/w/${inboxWorkspace.id}/inbox`)
+  }
+
   const onStartRenameWorkspace = (workspace: WorkspaceRecord) => {
     setRenamingWorkspaceId(workspace.id)
     setRenameDraft(workspace.name)
@@ -647,10 +683,13 @@ export function WorkspacesPage() {
             filterKey={filterKey}
             counts={filterCounts}
             onFilterChange={setFilterKey}
+            onOpenInbox={onOpenWorkspaceInbox}
             onCreateWorkspace={onCreateWorkspace}
             onClearSearch={() => setQuery('')}
             incomingInvitationCount={incomingInvitationCount}
             outgoingInvitationCount={outgoingInvitationCount}
+            canOpenInbox={canOpenInbox}
+            inboxWorkspaceName={inboxWorkspace?.name || 'workspace'}
             canClearSearch={hasSearchQuery}
             canCreateWorkspace={canCreateWorkspace}
             createBlockedMessage={WORKSPACE_OWNER_REQUIRED_MESSAGE}
@@ -662,9 +701,9 @@ export function WorkspacesPage() {
             <div className="mx-auto w-full max-w-sz-1380 space-y-4 px-4 py-4 md:px-6">
               <section className={cn('rounded-lg border border-border p-4', HOUSE_CARD_CLASS)}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className={HOUSE_LEFT_BORDER_CLASS}>
-                    <h1 className={HOUSE_PAGE_TITLE_CLASS}>Workspaces</h1>
-                    <p className={HOUSE_PAGE_SUBTITLE_CLASS}>Manage, filter, and open your workspace list.</p>
+                  <div className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
+                    <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Workspaces</h1>
+                    <p data-house-role="page-subtitle" className={HOUSE_PAGE_SUBTITLE_CLASS}>Manage, filter, and open your workspace list.</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Input
@@ -1074,10 +1113,13 @@ export function WorkspacesPage() {
             filterKey={filterKey}
             counts={filterCounts}
             onFilterChange={setFilterKey}
+            onOpenInbox={onOpenWorkspaceInbox}
             onCreateWorkspace={onCreateWorkspace}
             onClearSearch={() => setQuery('')}
             incomingInvitationCount={incomingInvitationCount}
             outgoingInvitationCount={outgoingInvitationCount}
+            canOpenInbox={canOpenInbox}
+            inboxWorkspaceName={inboxWorkspace?.name || 'workspace'}
             canClearSearch={hasSearchQuery}
             canCreateWorkspace={canCreateWorkspace}
             createBlockedMessage={WORKSPACE_OWNER_REQUIRED_MESSAGE}

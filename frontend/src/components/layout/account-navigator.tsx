@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom'
 
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { getAuthSessionToken } from '@/lib/auth-session'
+import { houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { fetchOrcidStatus, fetchPersonaState } from '@/lib/impact-api'
 import { writeCachedPersonaState } from '@/lib/persona-cache'
 import { cn } from '@/lib/utils'
@@ -58,13 +59,6 @@ const PROFILE_PREFETCH_PATHS = new Set([
   '/profile/manage-account',
 ])
 
-const accountNavItemBase =
-  'relative flex items-center rounded-md border px-3 py-1.5 text-sm font-medium leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))]'
-const accountNavItemIdle =
-  'border-transparent text-[hsl(var(--tone-neutral-700))] hover:border-[hsl(var(--tone-accent-200))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]'
-const accountNavItemActive =
-  'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-100))] text-[hsl(var(--tone-accent-900))]'
-
 export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
   const prefetchInFlight = useRef(false)
 
@@ -102,15 +96,17 @@ export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
   }, [])
 
   return (
-    <aside className="flex h-full flex-col bg-card">
-      <div className="border-b border-[hsl(var(--tone-neutral-200))] px-4 py-3.5">
-        <h1 className="text-label font-semibold text-[hsl(var(--tone-neutral-900))]">Profile</h1>
+    <aside className={cn('flex h-full flex-col', houseLayout.sidebar)}>
+      <div className={houseLayout.sidebarHeader}>
+        <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+          <h1 className={houseTypography.sectionTitle}>Profile</h1>
+        </div>
       </div>
       <ScrollArea className="flex-1">
         <nav className="space-y-3 p-3">
           {ACCOUNT_SECTIONS.map((section) => (
-            <section key={section.label} className="space-y-1.5">
-              <p className="px-3 text-caption uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
+            <section key={section.label} className={houseLayout.sidebarSection}>
+              <p className={houseNavigation.sectionLabel}>
                 {section.label}
               </p>
               <div className="space-y-1">
@@ -131,21 +127,10 @@ export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
                       }
                     }}
                     className={({ isActive }) =>
-                      cn(accountNavItemBase, accountNavItemIdle, isActive && accountNavItemActive)
+                      cn(houseNavigation.item, isActive && houseNavigation.itemActive)
                     }
                   >
-                    {({ isActive }) => (
-                      <>
-                        <span
-                          aria-hidden
-                          className={cn(
-                            'absolute left-1.5 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-transparent transition-colors',
-                            isActive && 'bg-[hsl(var(--tone-accent-500))]',
-                          )}
-                        />
-                        <span className="truncate pl-2">{item.label}</span>
-                      </>
-                    )}
+                    <span className="truncate pl-2">{item.label}</span>
                   </NavLink>
                 ))}
               </div>

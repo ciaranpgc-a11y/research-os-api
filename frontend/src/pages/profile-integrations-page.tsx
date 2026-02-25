@@ -17,7 +17,9 @@ import {
 } from '@/lib/impact-api'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
+import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import type { AuthUser, OrcidStatusPayload, PersonaStatePayload, PersonaSyncJobPayload } from '@/types/impact'
+import { cn } from '@/lib/utils'
 
 function formatShortTimestamp(value: string | null | undefined): string | null {
   if (!value) {
@@ -788,9 +790,9 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
   }
 
   return (
-    <section className="space-y-4">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Integrations</h1>
+    <section data-house-role="page" className="space-y-4">
+      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+        <h1 data-house-role="page-title" className={houseTypography.title}>Integrations</h1>
       </header>
 
       <Card className="border-[hsl(var(--tone-neutral-200))]">

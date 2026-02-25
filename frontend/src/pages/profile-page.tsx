@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { readAccountSettings, settingsCompleteness } from '@/lib/account-preferences'
 import { getAuthSessionToken } from '@/lib/auth-session'
+import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { fetchMe, fetchOrcidStatus, fetchPublicationsAnalyticsSummary } from '@/lib/impact-api'
+import { cn } from '@/lib/utils'
 import type {
   AuthUser,
   OrcidStatusPayload,
@@ -97,9 +99,9 @@ export function ProfilePage() {
 
   const settings = readAccountSettings()
   return (
-    <section className="space-y-4">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Profile home</h1>
+    <section data-house-role="page" className="space-y-4">
+      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+        <h1 data-house-role="page-title" className={houseTypography.title}>Profile home</h1>
       </header>
 
       <Card>

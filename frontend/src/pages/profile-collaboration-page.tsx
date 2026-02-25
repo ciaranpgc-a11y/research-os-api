@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { getAuthSessionToken } from '@/lib/auth-session'
+import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import {
   createCollaborator,
   deleteCollaborator,
@@ -34,6 +35,7 @@ import type {
   CollaborationImportOpenAlexPayload,
   CollaborationMetricsSummaryPayload,
 } from '@/types/impact'
+import { cn } from '@/lib/utils'
 
 type CollaboratorFormState = {
   full_name: string
@@ -582,10 +584,10 @@ export function ProfileCollaborationPage() {
   }
 
   return (
-    <section className="space-y-4">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Collaboration</h1>
-        <p className="text-sm text-muted-foreground">
+    <section data-house-role="page" className="space-y-4">
+      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+        <h1 data-house-role="page-title" className={houseTypography.title}>Collaboration</h1>
+        <p data-house-role="page-subtitle" className={houseTypography.subtitle}>
           Structured collaborator records, co-authorship intelligence, and manuscript author suggestions.
         </p>
       </header>

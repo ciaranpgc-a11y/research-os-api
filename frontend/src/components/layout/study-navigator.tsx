@@ -5,6 +5,7 @@ import { NAV_GROUPS, type NavGroup, type NavItem } from '@/components/navigation
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import { useStudyCoreWizardStore } from '@/store/use-study-core-wizard-store'
 
@@ -67,8 +68,8 @@ function healthDotClass(health: ProjectHealth): string {
 function Group({ group, qcCounts, onNavigate }: { group: NavGroup; qcCounts: QcCounts; onNavigate?: () => void }) {
   const itemIndent = group.title === 'MANUSCRIPT' ? 'pl-4' : ''
   return (
-    <section className="space-y-2.5">
-      <p className="px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground opacity-80">{group.title}</p>
+    <section className={houseLayout.sidebarSection}>
+      <p className={houseNavigation.sectionLabel}>{group.title}</p>
       <nav className="space-y-1">
         {group.items.map((item: NavItem) => {
           const itemBadgeVariant = getBadgeVariant(item.path, qcCounts)
@@ -80,13 +81,13 @@ function Group({ group, qcCounts, onNavigate }: { group: NavGroup; qcCounts: QcC
                 onClick={onNavigate}
                 className={({ isActive }) =>
                   cn(
-                    'flex items-center justify-between border-l-3 border-transparent px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground/90',
+                    houseNavigation.item,
                     itemIndent,
-                    isActive && 'border-l-primary bg-accent/45 text-foreground font-medium',
+                    isActive && houseNavigation.itemActive,
                   )
                 }
               >
-                <span>{item.label}</span>
+                <span className="truncate pl-2">{item.label}</span>
                 {item.badge ? (
                   <Badge variant="outline" className={cn('h-5 min-w-5 px-1 text-caption font-medium', badgeClass(itemBadgeVariant))}>
                     {item.badge}
@@ -126,18 +127,20 @@ export function StudyNavigator({ onNavigate }: StudyNavigatorProps) {
   const projectHealth = getProjectHealth(qcCounts)
 
   return (
-    <aside className="flex h-full flex-col bg-card">
-      <div className="space-y-2 border-b border-border p-4">
-        <div className="flex items-center gap-2">
-          <h1 className="text-sm font-semibold leading-tight">HF Registry Manuscript</h1>
-          <span
-            className={cn('h-2.5 w-2.5 rounded-full', healthDotClass(projectHealth))}
-            aria-label={`Project health ${projectHealth}`}
-            title={`Project health: ${projectHealth}`}
-          />
+    <aside className={cn('flex h-full flex-col', houseLayout.sidebar)}>
+      <div className={houseLayout.sidebarHeader}>
+        <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+          <div className="flex items-center gap-2">
+            <h1 className={houseTypography.sectionTitle}>HF Registry Manuscript</h1>
+            <span
+              className={cn('h-2.5 w-2.5 rounded-full', healthDotClass(projectHealth))}
+              aria-label={`Project health ${projectHealth}`}
+              title={`Project health: ${projectHealth}`}
+            />
+          </div>
+          <p className={houseTypography.fieldHelper}>Research Workspace</p>
+          <p className={houseTypography.fieldHelper}>Version 0.1</p>
         </div>
-        <p className="text-xs text-muted-foreground">Research Workspace</p>
-        <p className="text-xs text-muted-foreground">Version 0.1</p>
       </div>
       <ScrollArea className="flex-1">
         <div className="space-y-5 p-3">

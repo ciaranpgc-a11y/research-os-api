@@ -11,20 +11,20 @@ export function AccountLayout() {
   const setLeftPanelOpen = useAaweStore((state) => state.setLeftPanelOpen)
 
   return (
-    <div className="flex h-screen flex-col bg-background text-foreground">
+    <div data-house-scope="account" data-house-role="account-shell" className="flex h-screen flex-col bg-background text-foreground">
       <TopBar
         scope="account"
         onOpenLeftNav={() => setLeftPanelOpen(true)}
       />
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[250px_minmax(0,1fr)]">
-        <aside className="hidden border-r border-border nav:block">
+      <div data-house-role="account-grid" className="grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[250px_minmax(0,1fr)]">
+        <aside data-house-role="left-nav-panel" className="hidden border-r border-border nav:block">
           <AccountNavigator />
         </aside>
 
-        <main className="min-w-0 overflow-hidden bg-background">
+        <main data-house-role="content-main" className="min-w-0 overflow-hidden bg-background">
           <ScrollArea className="h-full">
-            <div className="mx-auto w-full max-w-sz-1320 px-4 py-4 md:px-6">
+            <div data-house-role="content-container" className="mx-auto w-full max-w-sz-1320 px-4 py-4 md:px-6">
               <Outlet />
             </div>
           </ScrollArea>

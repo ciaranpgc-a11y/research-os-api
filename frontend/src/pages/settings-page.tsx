@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { readAccountSettings, writeAccountSettings } from '@/lib/account-preferences'
+import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 
 export function SettingsPage() {
@@ -18,10 +19,10 @@ export function SettingsPage() {
   }
 
   return (
-    <section className="space-y-4">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Settings & preferences</h1>
-        <p className="text-sm text-[hsl(var(--tone-neutral-600))]">
+    <section data-house-role="page" className="space-y-4">
+      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+        <h1 data-house-role="page-title" className={houseTypography.title}>Settings & preferences</h1>
+        <p data-house-role="page-subtitle" className={houseTypography.subtitle}>
           Control profile and publications preferences.
         </p>
       </header>
