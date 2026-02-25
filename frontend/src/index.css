@@ -760,6 +760,30 @@
     transform: translateY(0.5px);
   }
 
+  .house-section-tools .house-section-tool-button:not(.house-section-tool-toggle) {
+    border-color: transparent;
+    background-color: transparent;
+    color: hsl(var(--tone-neutral-700));
+    box-shadow: none;
+  }
+
+  .house-section-tools .house-section-tool-button:not(.house-section-tool-toggle):hover {
+    border-color: hsl(var(--stroke-soft) / 0.95);
+    background-color: hsl(var(--tone-neutral-50));
+    color: hsl(var(--tone-neutral-900));
+    box-shadow: none;
+  }
+
+  .house-section-tools-publications .house-section-tool-button:not(.house-section-tool-toggle) {
+    color: hsl(var(--tone-positive-700));
+  }
+
+  .house-section-tools-publications .house-section-tool-button:not(.house-section-tool-toggle):hover {
+    border-color: hsl(var(--tone-positive-300) / 0.92);
+    background-color: hsl(var(--tone-positive-100) / 0.78);
+    color: hsl(var(--tone-positive-800));
+  }
+
   .house-button-action-primary {
     border: 0;
     background-color: hsl(var(--tone-neutral-900));

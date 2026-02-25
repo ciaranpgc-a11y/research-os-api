@@ -52,6 +52,10 @@ const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const PUBLICATIONS_ANALYTICS_CACHE_KEY = 'aawe_publications_analytics_cache'
 const PUBLICATIONS_TOP_METRICS_CACHE_KEY = 'aawe_publications_top_metrics_cache'
 const PUBLICATIONS_ACTIVE_SYNC_JOB_STORAGE_PREFIX = 'aawe_publications_active_sync_job:'
+const PUBLICATIONS_OA_AUTO_ATTEMPTED_STORAGE_PREFIX = 'aawe_publications_oa_auto_attempted:'
+const PUBLICATIONS_OA_AUTO_MAX_PER_PASS = 60
+const PUBLICATIONS_OA_AUTO_INTER_REQUEST_DELAY_MS = 220
+const PUBLICATIONS_OA_AUTO_STATUS_CLEAR_DELAY_MS = 9000
 const PUBLICATION_DETAIL_ACTIVE_TAB_STORAGE_KEY = 'aawe.pubDetail.activeTab'
 const HOUSE_SECTION_DIVIDER_STRONG_CLASS = houseDividers.strong
 const HOUSE_SELECT_CLASS = houseForms.select
@@ -340,6 +344,40 @@ function clearPublicationsActiveSyncJobId(userId: string): void {
   window.localStorage.removeItem(publicationsActiveSyncJobStorageKey(userId))
 }
 
+function publicationsOaAutoAttemptedStorageKey(userId: string): string {
+  return `${PUBLICATIONS_OA_AUTO_ATTEMPTED_STORAGE_PREFIX}${userId}`
+}
+
+function loadPublicationsOaAutoAttempted(userId: string): Set<string> {
+  if (typeof window === 'undefined') {
+    return new Set<string>()
+  }
+  const raw = window.localStorage.getItem(publicationsOaAutoAttemptedStorageKey(userId))
+  if (!raw) {
+    return new Set<string>()
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) {
+      return new Set<string>()
+    }
+    const values = parsed
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+    return new Set<string>(values)
+  } catch {
+    return new Set<string>()
+  }
+}
+
+function savePublicationsOaAutoAttempted(userId: string, attempted: Set<string>): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  const values = Array.from(attempted).slice(-4000)
+  window.localStorage.setItem(publicationsOaAutoAttemptedStorageKey(userId), JSON.stringify(values))
+}
+
 function loadActivePublicationDetailTab(): PublicationDetailTab {
   if (typeof window === 'undefined') {
     return 'overview'
@@ -616,9 +654,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [contentModeByWorkId, setContentModeByWorkId] = useState<Record<string, 'plain' | 'highlighted'>>({})
   const [uploadingFile, setUploadingFile] = useState(false)
   const [findingOa, setFindingOa] = useState(false)
+  const [autoOaFinding, setAutoOaFinding] = useState(false)
+  const [autoOaStatus, setAutoOaStatus] = useState('')
   const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null)
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null)
   const [filesDragOver, setFilesDragOver] = useState(false)
+  const autoOaInFlightRef = useRef(false)
+  const autoOaStatusClearTimerRef = useRef<number | null>(null)
   const filePickerRef = useRef<HTMLInputElement | null>(null)
 
   const loadData = useCallback(async (
@@ -718,6 +760,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   useEffect(() => {
     saveActivePublicationDetailTab(activeDetailTab)
   }, [activeDetailTab])
+
+  useEffect(() => () => {
+    if (autoOaStatusClearTimerRef.current !== null) {
+      window.clearTimeout(autoOaStatusClearTimerRef.current)
+      autoOaStatusClearTimerRef.current = null
+    }
+  }, [])
 
   const setPaneLoading = useCallback((workId: string, tab: PublicationDetailTab, loadingValue: boolean) => {
     const key = publicationPaneKey(workId, tab)
@@ -1088,6 +1137,88 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     })
   }, [filteredWorks])
 
+  useEffect(() => {
+    if (isFixtureMode || !token || !user?.id || autoOaInFlightRef.current) {
+      return
+    }
+    const works = personaState?.works ?? []
+    if (works.length === 0) {
+      return
+    }
+
+    const attempted = loadPublicationsOaAutoAttempted(user.id)
+    const candidates = works
+      .filter((work) => Boolean((work.doi || '').trim()))
+      .filter((work) => !attempted.has(work.id))
+      .slice(0, PUBLICATIONS_OA_AUTO_MAX_PER_PASS)
+    if (candidates.length === 0) {
+      return
+    }
+
+    let cancelled = false
+    autoOaInFlightRef.current = true
+    setAutoOaFinding(true)
+    setAutoOaStatus(`Background PDF ingest: 0/${candidates.length}`)
+    if (autoOaStatusClearTimerRef.current !== null) {
+      window.clearTimeout(autoOaStatusClearTimerRef.current)
+      autoOaStatusClearTimerRef.current = null
+    }
+
+    const run = async () => {
+      let checked = 0
+      let linked = 0
+      let unchanged = 0
+      let unavailable = 0
+      try {
+        for (const work of candidates) {
+          if (cancelled) {
+            break
+          }
+          attempted.add(work.id)
+          try {
+            const payload = await linkPublicationOpenAccessPdf(token, work.id)
+            if (payload.created && payload.file) {
+              linked += 1
+            } else {
+              unchanged += 1
+            }
+          } catch {
+            unavailable += 1
+          }
+          checked += 1
+          savePublicationsOaAutoAttempted(user.id, attempted)
+          if (cancelled) {
+            break
+          }
+          setAutoOaStatus(`Background PDF ingest: ${checked}/${candidates.length} checked`)
+          if (checked < candidates.length) {
+            await new Promise<void>((resolve) => {
+              window.setTimeout(resolve, PUBLICATIONS_OA_AUTO_INTER_REQUEST_DELAY_MS)
+            })
+          }
+        }
+      } finally {
+        savePublicationsOaAutoAttempted(user.id, attempted)
+        autoOaInFlightRef.current = false
+        setAutoOaFinding(false)
+        if (!cancelled) {
+          setAutoOaStatus(
+            `Background PDF ingest complete: ${linked} linked, ${unchanged} already linked, ${unavailable} unavailable.`,
+          )
+          autoOaStatusClearTimerRef.current = window.setTimeout(() => {
+            setAutoOaStatus('')
+            autoOaStatusClearTimerRef.current = null
+          }, PUBLICATIONS_OA_AUTO_STATUS_CLEAR_DELAY_MS)
+        }
+      }
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [isFixtureMode, personaState?.works, token, user?.id])
+
   const selectedWork = useMemo(() => {
     if (!selectedWorkId) {
       return null
@@ -1404,6 +1535,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   ))}
                 </select>
               </div>
+              {autoOaStatus ? (
+                <p className="text-xs text-muted-foreground">
+                  {autoOaStatus}
+                  {autoOaFinding ? ' (running in background)' : ''}
+                </p>
+              ) : null}
 
               {filteredWorks.length === 0 ? (
                 <div className="rounded border border-dashed border-border p-4 text-sm text-muted-foreground">

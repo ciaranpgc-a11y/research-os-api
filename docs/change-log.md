@@ -9,7 +9,12 @@
 - Restored the dedicated right-side Data panel layout using house-token structure (`main + right rail`).
 - Renamed the page heading to `Data`.
 - Kept Data action order in the right panel as `Access from personal library` first (for pulling files into the workbook), followed by `Upload`.
-- Preserved house-token styling patterns and existing workspace file/preview behavior.
+- Added explicit `Collapse` / `Expand` controls on the Data right panel so users can reclaim center-pane width while keeping panel access one click away.
+- Switched Data right-panel desktop activation from `xl` to house `nav` breakpoint (`900px`) so the panel appears on standard laptop widths.
+- Renamed right-rail framing to `Data sources` for clearer collapse/expand semantics.
+- Added a house-token divider between `Access from personal library` and `Upload new dataset` sections in the right panel.
+- Removed all center-console content (workspace summary badges, files list, preview table, and bottom status badges) so the Data page now uses a right-rail-first composition.
+- Preserved house-token styling patterns and existing upload/personal-library behavior.
 - Removed `Insight & Integrity` right-rail injection from workspace and non-profile app shells.
 - Added collapse/expand controls for the workspace inbox right navigation panel so users can widen the conversation area on demand.
 - **Why it changed:**

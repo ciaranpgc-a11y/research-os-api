@@ -4418,7 +4418,7 @@ export function PublicationsTopStrip({
                 variant="house"
                 size="icon"
                 className={cn(
-                  'h-8 w-8 rounded-full transition-colors',
+                  'h-8 w-8 rounded-full transition-colors house-section-tool-toggle',
                   HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS,
                   insightsVisible
                     ? 'bg-[hsl(var(--tone-positive-100)/0.9)] text-[hsl(var(--tone-positive-700))] hover:bg-[hsl(var(--tone-positive-200)/0.88)]'

@@ -130,6 +130,8 @@ Out of scope (this story):
 - Replaced local name-only permission add flow with directory-backed collaborator lookup and ID-resolved grant updates (`collaborator_user_ids`).
 - Updated data-library API contract and frontend consumers to use metadata-rich list responses (`items`, `total`, `has_more`, paging metadata) for scale-ready navigation.
 - Realigned the individual workspace `Data` page to house-style right rail composition, with `Access from personal library` above `Upload`.
+- Added collapse/expand controls to the Data right rail and moved its desktop activation to the `nav` breakpoint so it is visible on standard laptop widths.
+- Renamed Data right-rail framing to `Data sources`, inserted a house-token divider between personal-library access and upload actions, and removed center-console content to keep the surface right-panel led.
 - Removed `Insight & Integrity` side-panel wiring from workspace and non-profile app shells to keep focus on core workspace actions.
 - Added collapse/expand behavior to the inbox right panel so conversation content can use more horizontal space when reviewing long threads.
 - Removed `Create new workspace` action from the individual workspace left panel.
