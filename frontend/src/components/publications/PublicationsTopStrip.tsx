@@ -91,6 +91,16 @@ type MomentumYearBreakdown = {
 
 type MomentumWindowMode = '12m' | '5y'
 
+type HIndexProgressMeta = {
+  currentH: number
+  targetH: number
+  progressPct: number
+  immediateCount: number
+  nearCount: number
+  longerCount: number
+  hasGapData: boolean
+}
+
 function fallbackMonthLabels(count: number): string[] {
   const today = new Date()
   return Array.from({ length: count }, (_, index) => {
@@ -268,6 +278,38 @@ function buildMomentumYearBreakdown(totalCitationsTile: PublicationMetricTilePay
     rate4y,
     liftPct,
     insufficientBaseline,
+  }
+}
+
+function buildHIndexProgressMeta(tile: PublicationMetricTilePayload): HIndexProgressMeta {
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const currentCandidates = [
+    Number(chartData.current_h_index),
+    Number(tile.main_value),
+    Number(tile.value),
+  ]
+  const currentCandidate = currentCandidates.find((item) => Number.isFinite(item) && item >= 0)
+  const currentH = Math.max(0, Math.round(currentCandidate ?? 0))
+  const nextHRaw = Number(chartData.next_h_index)
+  const nextHCandidate = Number.isFinite(nextHRaw) ? Math.round(nextHRaw) : currentH + 1
+  const targetH = nextHCandidate > currentH ? nextHCandidate : currentH + 1
+  const progressRaw = Number(chartData.progress_to_next_pct)
+  const progressPct = Number.isFinite(progressRaw)
+    ? Math.max(0, Math.min(100, progressRaw))
+    : 0
+  const candidateGaps = toNumberArray(chartData.candidate_gaps)
+    .map((item) => Math.max(0, Math.round(item)))
+  const immediateCount = candidateGaps.filter((gap) => gap <= 1).length
+  const nearCount = candidateGaps.filter((gap) => gap >= 2 && gap <= 3).length
+  const longerCount = candidateGaps.filter((gap) => gap >= 4).length
+  return {
+    currentH,
+    targetH,
+    progressPct,
+    immediateCount,
+    nearCount,
+    longerCount,
+    hasGapData: candidateGaps.length > 0,
   }
 }
 
@@ -1466,6 +1508,32 @@ function HIndexTrajectoryPanel({ tile }: { tile: PublicationMetricTilePayload })
   return <HIndexYearChart tile={tile} showCaption={false} />
 }
 
+function HIndexProgressBadge({ tile }: { tile: PublicationMetricTilePayload }) {
+  const progressMeta = buildHIndexProgressMeta(tile)
+  return (
+    <div className="w-full max-w-[11.7rem] space-y-1">
+      <div className="flex items-center justify-between text-[0.58rem] font-medium leading-none text-[hsl(var(--tone-neutral-600))]">
+        <span>Progress to h+1</span>
+        <span>Target {formatInt(progressMeta.targetH)}</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
+        <div
+          className="h-full rounded-full bg-[hsl(var(--tone-positive-600))] transition-[width] duration-500 ease-out"
+          style={{ width: `${progressMeta.progressPct}%` }}
+          aria-hidden="true"
+        />
+      </div>
+      <p className="text-[0.54rem] leading-[0.7rem] text-[hsl(var(--tone-neutral-500))]">
+        Needs elevating (&lt;=1 / 2-3 / &gt;=4):
+        {' '}
+        {progressMeta.hasGapData
+          ? `${progressMeta.immediateCount} / ${progressMeta.nearCount} / ${progressMeta.longerCount}`
+          : 'n/a'}
+      </p>
+    </div>
+  )
+}
+
 function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
@@ -2014,9 +2082,11 @@ export function PublicationsTopStrip({
                     />
                   )
                 } else if (tile.key === 'h_index_projection') {
-                  primaryValue = mainValueDisplay
-                  secondaryText = subtitle || 'h-index trajectory'
-                  detailText = effectiveDeltaDisplay || undefined
+                  const hIndexMeta = buildHIndexProgressMeta(tile)
+                  primaryValue = Number.isFinite(hIndexMeta.currentH) ? `h ${formatInt(hIndexMeta.currentH)}` : mainValueDisplay
+                  secondaryText = 'Progress to h+1'
+                  detailText = `Target h-index ${formatInt(hIndexMeta.targetH)}`
+                  badgeNode = <HIndexProgressBadge tile={tile} />
                   visual = <HIndexTrajectoryPanel tile={tile} />
                 } else if (tile.key === 'impact_concentration') {
                   primaryValue = mainValueDisplay
