@@ -90,6 +90,7 @@ type MomentumYearBreakdown = {
 }
 
 type MomentumWindowMode = '12m' | '5y'
+type HIndexViewMode = 'trajectory' | 'needed'
 
 type HIndexProgressMeta = {
   currentH: number
@@ -673,6 +674,7 @@ function StructuredMetricTile({
   tile,
   primaryValue,
   badge,
+  pinBadgeBottom = true,
   subtitle,
   detail,
   visual,
@@ -682,6 +684,7 @@ function StructuredMetricTile({
   tile: PublicationMetricTilePayload
   primaryValue: ReactNode
   badge?: ReactNode
+  pinBadgeBottom?: boolean
   subtitle: ReactNode
   detail?: ReactNode
   visual: ReactNode
@@ -730,7 +733,7 @@ function StructuredMetricTile({
           </p>
           <p className="mt-1 text-[0.72rem] font-medium leading-4 text-[hsl(var(--tone-neutral-700))]">{subtitle}</p>
           {detail ? <p className="text-[0.62rem] leading-4 text-[hsl(var(--tone-neutral-500))]">{detail}</p> : null}
-          {badge ? <div className="mt-auto pt-1">{badge}</div> : null}
+          {badge ? <div className={cn(pinBadgeBottom ? 'mt-auto pt-1' : 'pt-1')}>{badge}</div> : null}
         </div>
         <div className="flex h-full min-h-0 items-center">
           {visual}
@@ -1504,24 +1507,207 @@ function MomentumTilePanel({
   )
 }
 
-function HIndexTrajectoryPanel({ tile }: { tile: PublicationMetricTilePayload }) {
+function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
+  const [chartVisible, setChartVisible] = useState(true)
+  const [barsExpanded, setBarsExpanded] = useState(false)
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const candidateGaps = toNumberArray(chartData.candidate_gaps)
+    .map((item) => Math.max(0, Math.round(item)))
+    .sort((left, right) => left - right)
+  const displayedGaps = candidateGaps.slice(0, 5)
+  const bars = displayedGaps.map((gap, index) => ({
+    key: `gap-${index}`,
+    label: `P${index + 1}`,
+    gap,
+  }))
+  const animationKey = useMemo(
+    () => bars.map((bar) => `${bar.key}-${bar.gap}`).join('|'),
+    [bars],
+  )
+  useEffect(() => {
+    setChartVisible(false)
+    setBarsExpanded(false)
+    let rafOne = 0
+    let rafTwo = 0
+    rafOne = window.requestAnimationFrame(() => {
+      setChartVisible(true)
+      rafTwo = window.requestAnimationFrame(() => {
+        setBarsExpanded(true)
+      })
+    })
+    return () => {
+      window.cancelAnimationFrame(rafOne)
+      window.cancelAnimationFrame(rafTwo)
+    }
+  }, [animationKey])
+
+  if (!bars.length) {
+    return <div className={dashboardTileStyles.emptyChart}>No elevation candidates</div>
+  }
+
+  const maxGap = Math.max(1, ...bars.map((bar) => bar.gap))
+  const scaledMax = maxGap * 1.18
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div
+        className={cn(
+          'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-7 pt-4 transition-[opacity,transform,filter] duration-320 ease-out',
+          chartVisible ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]',
+        )}
+      >
+        <div className="absolute inset-x-2 bottom-7 top-4">
+          {[25, 50, 75].map((pct) => (
+            <div
+              key={`h-needed-grid-${pct}`}
+              className="pointer-events-none absolute inset-x-0 border-t border-[hsl(var(--tone-neutral-200))]"
+              style={{ bottom: `${pct}%` }}
+              aria-hidden="true"
+            />
+          ))}
+          <div className="absolute inset-0 flex items-end gap-1">
+            {bars.map((bar, index) => {
+              const heightPct = bar.gap <= 0 ? 3 : Math.max(6, (Math.max(0, bar.gap) / scaledMax) * 100)
+              const isActive = hoveredIndex === index
+              const toneClass = bar.gap <= 1
+                ? 'bg-[hsl(var(--tone-positive-600))]'
+                : bar.gap <= 3
+                  ? 'bg-[hsl(var(--tone-accent-500))]'
+                  : 'bg-[hsl(var(--tone-warning-500))]'
+              return (
+                <div
+                  key={bar.key}
+                  className="relative flex h-full min-h-0 flex-1 items-end"
+                  onMouseEnter={() => setHoveredIndex(index)}
+                  onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                >
+                  <span
+                    className={cn(
+                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-[0.6rem] leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
+                      isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
+                    )}
+                    style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
+                    aria-hidden="true"
+                  >
+                    +{formatInt(bar.gap)}
+                  </span>
+                  <span
+                    className={cn(
+                      'block w-full rounded-[4px] transition-[transform,filter,box-shadow] duration-220 ease-out',
+                      toneClass,
+                      isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
+                    )}
+                    style={{
+                      height: `${heightPct}%`,
+                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                      transformOrigin: 'bottom',
+                      transitionDelay: `${Math.min(220, index * 18)}ms`,
+                    }}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        </div>
+        <div className="pointer-events-none absolute inset-x-2 bottom-1 grid grid-flow-col auto-cols-fr items-start gap-1">
+          {bars.map((bar, index) => (
+            <div key={`${bar.key}-${index}-axis`} className="text-center leading-none">
+              <p className="text-[0.6rem] font-semibold text-[hsl(var(--tone-neutral-600))]">{bar.label}</p>
+              <p
+                className="mt-[1px] text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-transparent"
+                aria-hidden="true"
+              >
+                ytd
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function HIndexTrajectoryPanel({
+  tile,
+  mode,
+}: {
+  tile: PublicationMetricTilePayload
+  mode: HIndexViewMode
+}) {
+  if (mode === 'needed') {
+    return <HIndexNeedsChart tile={tile} />
+  }
   return <HIndexYearChart tile={tile} showCaption={false} />
 }
 
-function HIndexProgressBadge({ tile }: { tile: PublicationMetricTilePayload }) {
+function HIndexProgressBadge({
+  tile,
+  mode,
+  onModeChange,
+}: {
+  tile: PublicationMetricTilePayload
+  mode: HIndexViewMode
+  onModeChange: (mode: HIndexViewMode) => void
+}) {
   const progressMeta = buildHIndexProgressMeta(tile)
   return (
-    <div className="w-full max-w-[11.7rem] space-y-1">
-      <div className="flex items-center justify-between text-[0.58rem] font-medium leading-none text-[hsl(var(--tone-neutral-600))]">
-        <span>Progress to h+1</span>
-        <span>Target {formatInt(progressMeta.targetH)}</span>
+    <div className="w-full max-w-[11.7rem] space-y-1.5">
+      <div className="flex items-center gap-2">
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
+          <div
+            className="h-full rounded-full bg-[hsl(var(--tone-positive-600))] transition-[width] duration-500 ease-out"
+            style={{ width: `${progressMeta.progressPct}%` }}
+            aria-hidden="true"
+          />
+        </div>
+        <span className="text-[0.56rem] font-medium leading-none text-[hsl(var(--tone-neutral-600))]">
+          {Math.round(progressMeta.progressPct)}%
+        </span>
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
-        <div
-          className="h-full rounded-full bg-[hsl(var(--tone-positive-600))] transition-[width] duration-500 ease-out"
-          style={{ width: `${progressMeta.progressPct}%` }}
+      <div
+        className="relative inline-grid grid-cols-2 items-center rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5"
+        data-stop-tile-open="true"
+      >
+        <span
+          className={cn(
+            'pointer-events-none absolute inset-y-0.5 left-0.5 z-0 w-[calc(50%-0.125rem)] rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-transform duration-300 ease-out',
+            mode === 'needed' ? 'translate-x-full' : 'translate-x-0',
+          )}
           aria-hidden="true"
         />
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(
+            'relative z-[1] rounded-full px-2 py-[0.38rem] text-[0.62rem] font-medium leading-none transition-[color] duration-220 ease-out',
+            mode === 'trajectory' ? 'text-white' : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
+          )}
+          onClick={(event) => {
+            event.stopPropagation()
+            onModeChange('trajectory')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+          aria-pressed={mode === 'trajectory'}
+        >
+          Trend
+        </button>
+        <button
+          type="button"
+          data-stop-tile-open="true"
+          className={cn(
+            'relative z-[1] rounded-full px-2 py-[0.38rem] text-[0.62rem] font-medium leading-none transition-[color] duration-220 ease-out',
+            mode === 'needed' ? 'text-white' : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
+          )}
+          onClick={(event) => {
+            event.stopPropagation()
+            onModeChange('needed')
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+          aria-pressed={mode === 'needed'}
+        >
+          Needed
+        </button>
       </div>
       <p className="text-[0.54rem] leading-[0.7rem] text-[hsl(var(--tone-neutral-500))]">
         Needs elevating (&lt;=1 / 2-3 / &gt;=4):
@@ -1879,6 +2065,7 @@ export function PublicationsTopStrip({
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
   const [momentumWindowMode, setMomentumWindowMode] = useState<MomentumWindowMode>('12m')
+  const [hIndexViewMode, setHIndexViewMode] = useState<HIndexViewMode>('trajectory')
 
   const tiles = useMemo(() => {
     const source = metrics?.tiles ?? []
@@ -1986,6 +2173,7 @@ export function PublicationsTopStrip({
                 const momentumBreakdown = tile.key === 'momentum' ? buildMomentumBreakdown(tile) : null
                 let primaryValue: ReactNode = mainValueDisplay
                 let badgeNode: ReactNode | undefined
+                let pinBadgeBottom = true
                 let secondaryText: ReactNode = subtitle || '\u2014'
                 let detailText: ReactNode | undefined = effectiveDeltaDisplay || undefined
                 let visual: ReactNode = (
@@ -2084,10 +2272,19 @@ export function PublicationsTopStrip({
                 } else if (tile.key === 'h_index_projection') {
                   const hIndexMeta = buildHIndexProgressMeta(tile)
                   primaryValue = Number.isFinite(hIndexMeta.currentH) ? `h ${formatInt(hIndexMeta.currentH)}` : mainValueDisplay
-                  secondaryText = 'Progress to h+1'
-                  detailText = `Target h-index ${formatInt(hIndexMeta.targetH)}`
-                  badgeNode = <HIndexProgressBadge tile={tile} />
-                  visual = <HIndexTrajectoryPanel tile={tile} />
+                  secondaryText = `Progress to h ${formatInt(hIndexMeta.targetH)}`
+                  detailText = hIndexMeta.hasGapData
+                    ? `Needs elevating (<=1 / 2-3 / >=4): ${hIndexMeta.immediateCount} / ${hIndexMeta.nearCount} / ${hIndexMeta.longerCount}`
+                    : 'Needs elevating data not available'
+                  badgeNode = (
+                    <HIndexProgressBadge
+                      tile={tile}
+                      mode={hIndexViewMode}
+                      onModeChange={setHIndexViewMode}
+                    />
+                  )
+                  pinBadgeBottom = false
+                  visual = <HIndexTrajectoryPanel tile={tile} mode={hIndexViewMode} />
                 } else if (tile.key === 'impact_concentration') {
                   primaryValue = mainValueDisplay
                   secondaryText = subtitle || 'Lifetime citation distribution'
@@ -2110,6 +2307,7 @@ export function PublicationsTopStrip({
                     shouldIgnoreTileOpen={shouldIgnoreTileOpen}
                     primaryValue={primaryValue}
                     badge={badgeNode}
+                    pinBadgeBottom={pinBadgeBottom}
                     subtitle={secondaryText}
                     detail={detailText}
                     visual={visual}
