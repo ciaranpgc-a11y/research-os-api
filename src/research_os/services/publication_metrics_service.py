@@ -32,7 +32,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 15
+TOP_METRICS_SCHEMA_VERSION = 16
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 FIELD_PERCENTILE_THRESHOLDS = [50, 75, 90, 95, 99]
 
@@ -145,6 +145,16 @@ def _openalex_field_cohort_max_pages() -> int:
 def _openalex_field_cohort_min_size() -> int:
     value = _safe_int(os.getenv("PUB_METRICS_FIELD_PERCENTILE_MIN_COHORT", "100"))
     return max(20, value if value is not None else 100)
+
+
+def _openalex_field_percentile_max_exact_ranks() -> int:
+    value = _safe_int(os.getenv("PUB_METRICS_FIELD_PERCENTILE_MAX_EXACT_RANKS", "120"))
+    return max(0, min(5000, value if value is not None else 120))
+
+
+def _openalex_field_percentile_exact_runtime_seconds() -> float:
+    value = _safe_float(os.getenv("PUB_METRICS_FIELD_PERCENTILE_EXACT_RUNTIME_SECONDS", "25"))
+    return max(2.0, min(300.0, value if value is not None else 25.0))
 
 
 def _openalex_mailto(*, fallback_email: str | None = None) -> str | None:
@@ -2085,11 +2095,17 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         openalex_mailto = _openalex_mailto(fallback_email=str(user.email or "").strip() or None)
         field_cohort_max_pages = _openalex_field_cohort_max_pages()
         field_cohort_min_size = _openalex_field_cohort_min_size()
+        field_exact_rank_max_requests = _openalex_field_percentile_max_exact_ranks()
+        field_exact_rank_runtime_limit_seconds = _openalex_field_percentile_exact_runtime_seconds()
         work_field_cache: dict[str, dict[str, Any]] = {}
         cohort_cache: dict[tuple[str, int], dict[str, Any]] = {}
         exact_rank_cache: dict[tuple[str, int, int], float | None] = {}
         percentile_ranks: list[float] = []
         used_cohort_keys: set[tuple[str, int]] = set()
+        exact_rank_requests_made = 0
+        exact_rank_window_start = time.monotonic()
+        exact_rank_budget_exhausted = False
+        exact_rank_runtime_exhausted = False
 
         for row in per_work_rows:
             openalex_work_id = _extract_openalex_work_id(
@@ -2172,19 +2188,48 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             exact_rank_key = (field_id, int(resolved_year), paper_citations)
             percentile_rank = exact_rank_cache.get(exact_rank_key)
             if exact_rank_key not in exact_rank_cache:
-                exact_rank_payload = _openalex_field_year_percentile_rank_exact(
-                    field_id=field_id,
-                    year=int(resolved_year),
-                    citations=paper_citations,
-                    mailto=openalex_mailto,
-                    total_count=total_results if total_results > 0 else None,
+                elapsed = time.monotonic() - exact_rank_window_start
+                can_call_exact = (
+                    field_exact_rank_max_requests > 0
+                    and exact_rank_requests_made < field_exact_rank_max_requests
+                    and elapsed < field_exact_rank_runtime_limit_seconds
                 )
-                rank_raw = exact_rank_payload.get("percentile_rank")
-                percentile_rank = (
-                    float(rank_raw)
-                    if isinstance(rank_raw, (int, float))
-                    else None
-                )
+                if can_call_exact:
+                    exact_rank_requests_made += 1
+                    exact_rank_payload = _openalex_field_year_percentile_rank_exact(
+                        field_id=field_id,
+                        year=int(resolved_year),
+                        citations=paper_citations,
+                        mailto=openalex_mailto,
+                        total_count=total_results if total_results > 0 else None,
+                    )
+                    rank_raw = exact_rank_payload.get("percentile_rank")
+                    percentile_rank = (
+                        float(rank_raw)
+                        if isinstance(rank_raw, (int, float))
+                        else None
+                    )
+                else:
+                    if (
+                        not exact_rank_budget_exhausted
+                        and exact_rank_requests_made >= field_exact_rank_max_requests
+                    ):
+                        exact_rank_budget_exhausted = True
+                        logger.info(
+                            "Field percentile exact rank budget reached for user %s after %s requests",
+                            user.user_id,
+                            exact_rank_requests_made,
+                        )
+                    if (
+                        not exact_rank_runtime_exhausted
+                        and elapsed >= field_exact_rank_runtime_limit_seconds
+                    ):
+                        exact_rank_runtime_exhausted = True
+                        logger.info(
+                            "Field percentile exact rank runtime reached for user %s after %.1fs",
+                            user.user_id,
+                            elapsed,
+                        )
                 if percentile_rank is None:
                     percentile_rank = _empirical_percentile_rank(cohort_values, paper_citations)
                 exact_rank_cache[exact_rank_key] = percentile_rank
