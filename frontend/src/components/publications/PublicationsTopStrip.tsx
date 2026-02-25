@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Download, Eye, EyeOff, FileText, Share2 } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { readAccountSettings } from '@/lib/account-preferences'
@@ -16,6 +17,7 @@ import type {
 import { dashboardTileStyles } from './dashboard-tile-styles'
 import {
   publicationsHouseCharts,
+  publicationsHouseDividers,
   publicationsHouseHeadings,
   publicationsHouseMotion,
   publicationsHouseSurfaces,
@@ -48,6 +50,179 @@ function formatSignedPercentCompact(value: number): string {
   const rounded = Math.round(Number.isFinite(value) ? value : 0)
   const normalized = Math.abs(rounded) < 1 ? 0 : rounded
   return `${normalized >= 0 ? '+' : ''}${normalized.toFixed(0)}%`
+}
+
+type ChartAxisLayoutOptions = {
+  axisLabels: Array<string | null | undefined>
+  axisSubLabels?: Array<string | null | undefined>
+  showXAxisName?: boolean
+  xAxisName?: string | null
+  dense?: boolean
+  maxLabelLines?: number
+  maxSubLabelLines?: number
+  maxAxisNameLines?: number
+}
+
+type ChartAxisLayout = {
+  framePaddingBottomRem: number
+  plotBottomRem: number
+  axisBottomRem: number
+  axisMinHeightRem: number
+  xAxisNameBottomRem: number
+  xAxisNameMinHeightRem: number
+}
+
+function mergeChartAxisLayouts(layouts: ChartAxisLayout[]): ChartAxisLayout {
+  if (!layouts.length) {
+    return buildChartAxisLayout({ axisLabels: [] })
+  }
+  return layouts.reduce((acc, layout) => ({
+    framePaddingBottomRem: Math.max(acc.framePaddingBottomRem, layout.framePaddingBottomRem),
+    plotBottomRem: Math.max(acc.plotBottomRem, layout.plotBottomRem),
+    axisBottomRem: Math.max(acc.axisBottomRem, layout.axisBottomRem),
+    axisMinHeightRem: Math.max(acc.axisMinHeightRem, layout.axisMinHeightRem),
+    xAxisNameBottomRem: Math.max(acc.xAxisNameBottomRem, layout.xAxisNameBottomRem),
+    xAxisNameMinHeightRem: Math.max(acc.xAxisNameMinHeightRem, layout.xAxisNameMinHeightRem),
+  }))
+}
+
+function estimateAxisLabelLines(label: string, maxCharsPerLine: number, maxLines: number): number {
+  if (maxLines <= 1) {
+    return 1
+  }
+  const segments = String(label || '')
+    .split(/\r?\n/)
+    .map((segment) => segment.replace(/\s+/g, ' ').trim())
+  if (!segments.length || !segments.some((segment) => segment.length > 0)) {
+    return 1
+  }
+  if (maxCharsPerLine <= 1) {
+    const chars = segments.reduce((total, segment) => total + Math.max(1, segment.length), 0)
+    return Math.max(1, Math.min(maxLines, chars))
+  }
+  let totalLines = 0
+  for (const segment of segments) {
+    if (!segment) {
+      totalLines += 1
+      continue
+    }
+    const words = segment.split(' ')
+    let lines = 1
+    let lineChars = 0
+    for (const word of words) {
+      const tokenLength = Math.max(1, word.length)
+      if (lineChars === 0) {
+        if (tokenLength <= maxCharsPerLine) {
+          lineChars = tokenLength
+          continue
+        }
+        lines += Math.max(0, Math.ceil(tokenLength / maxCharsPerLine) - 1)
+        lineChars = tokenLength % maxCharsPerLine || maxCharsPerLine
+        continue
+      }
+      if (lineChars + 1 + tokenLength <= maxCharsPerLine) {
+        lineChars += 1 + tokenLength
+        continue
+      }
+      lines += 1
+      if (tokenLength <= maxCharsPerLine) {
+        lineChars = tokenLength
+        continue
+      }
+      lines += Math.max(0, Math.ceil(tokenLength / maxCharsPerLine) - 1)
+      lineChars = tokenLength % maxCharsPerLine || maxCharsPerLine
+    }
+    totalLines += lines
+    if (totalLines >= maxLines) {
+      return maxLines
+    }
+  }
+  return Math.max(1, Math.min(maxLines, totalLines))
+}
+
+function buildChartAxisLayout({
+  axisLabels,
+  axisSubLabels = [],
+  showXAxisName = false,
+  xAxisName = null,
+  dense = false,
+  maxLabelLines = 3,
+  maxSubLabelLines = 2,
+  maxAxisNameLines = 2,
+}: ChartAxisLayoutOptions): ChartAxisLayout {
+  const normalizedLabels = axisLabels
+    .map((label) => String(label || '').trim())
+    .filter((label) => label.length > 0)
+  const normalizedSubLabels = axisSubLabels
+    .map((label) => String(label || '').trim())
+    .filter((label) => label.length > 0)
+  const barCount = Math.max(1, normalizedLabels.length)
+  const charsPerLine = dense
+    ? barCount >= 10
+      ? 3
+      : barCount >= 8
+        ? 4
+        : barCount >= 6
+          ? 5
+          : 6
+    : barCount >= 10
+      ? 4
+      : barCount >= 8
+        ? 5
+        : barCount >= 6
+          ? 6
+          : barCount >= 4
+            ? 8
+            : 12
+  const labelLineCount = Math.max(
+    1,
+    ...(normalizedLabels.length
+      ? normalizedLabels.map((label) => estimateAxisLabelLines(label, charsPerLine, maxLabelLines))
+      : [1]),
+  )
+  const subLabelCharsPerLine = Math.max(3, charsPerLine + 1)
+  const subLabelLineCount = Math.max(
+    0,
+    ...(normalizedSubLabels.length
+      ? normalizedSubLabels.map((label) => estimateAxisLabelLines(label, subLabelCharsPerLine, maxSubLabelLines))
+      : [0]),
+  )
+  const axisNameCharsPerLine = dense
+    ? 26
+    : 34
+  const normalizedXAxisName = String(xAxisName || '').trim()
+  const hasXAxisName = showXAxisName && normalizedXAxisName.length > 0
+  const axisNameLineCount = hasXAxisName
+    ? estimateAxisLabelLines(normalizedXAxisName, axisNameCharsPerLine, maxAxisNameLines)
+    : 0
+  const axisLineHeightRem = 0.82
+  const subAxisLineHeightRem = 0.78
+  const axisMinHeightRem = (labelLineCount * axisLineHeightRem) + (subLabelLineCount * subAxisLineHeightRem) + 0.58
+  const xAxisNameHeightRem = hasXAxisName
+    ? (axisNameLineCount * subAxisLineHeightRem) + 0.24
+    : 0
+  const xAxisNameBottomRem = hasXAxisName ? 0.24 : 0
+  const axisBottomRem = hasXAxisName ? xAxisNameBottomRem + xAxisNameHeightRem + 0.2 : 0.5
+  const plotBottomRem = axisBottomRem + axisMinHeightRem + 0.5
+  const framePaddingBottomRem = plotBottomRem + 0.72
+  return {
+    framePaddingBottomRem,
+    plotBottomRem,
+    axisBottomRem,
+    axisMinHeightRem,
+    xAxisNameBottomRem,
+    xAxisNameMinHeightRem: xAxisNameHeightRem,
+  }
+}
+
+function buildYAxisPanelWidthRem(ticks: number[], showAxisName: boolean): number {
+  const maxTickChars = Math.max(
+    1,
+    ...ticks.map((tick) => formatInt(Math.max(0, Math.round(Number.isFinite(tick) ? tick : 0))).length),
+  )
+  const baseWidthRem = 1.35 + (maxTickChars * 0.36)
+  const withAxisNameRem = showAxisName ? baseWidthRem + 0.72 : baseWidthRem
+  return Math.min(4.8, Math.max(2.8, withAxisNameRem))
 }
 
 type MomentumBreakdown = {
@@ -109,11 +284,17 @@ const HOUSE_TOGGLE_TRACK_CLASS = publicationsHouseMotion.toggleTrack
 const HOUSE_TOGGLE_THUMB_CLASS = publicationsHouseMotion.toggleThumb
 const HOUSE_TOGGLE_BUTTON_CLASS = publicationsHouseMotion.toggleButton
 const HOUSE_TOGGLE_CHART_BAR_CLASS = publicationsHouseMotion.toggleChartBar
+const HOUSE_TOGGLE_CHART_SWAP_CLASS = publicationsHouseMotion.toggleChartSwap
 const HOUSE_TOGGLE_CHART_LABEL_CLASS = publicationsHouseMotion.toggleChartLabel
 const HOUSE_SURFACE_TOP_PANEL_CLASS = publicationsHouseSurfaces.topPanel
 const HOUSE_SURFACE_SECTION_PANEL_CLASS = publicationsHouseSurfaces.sectionPanel
 const HOUSE_SURFACE_SOFT_PANEL_CLASS = publicationsHouseSurfaces.softPanel
+const HOUSE_SURFACE_PANEL_BARE_CLASS = publicationsHouseSurfaces.panelBare
+const HOUSE_SURFACE_BANNER_CLASS = publicationsHouseSurfaces.banner
+const HOUSE_SURFACE_BANNER_INFO_CLASS = publicationsHouseSurfaces.bannerInfo
+const HOUSE_SURFACE_BANNER_WARNING_CLASS = publicationsHouseSurfaces.bannerWarning
 const HOUSE_SURFACE_LEFT_BORDER_CLASS = publicationsHouseSurfaces.leftBorder
+const HOUSE_DIVIDER_FILL_SOFT_CLASS = publicationsHouseDividers.fillSoft
 const HOUSE_CHART_BAR_ACCENT_CLASS = publicationsHouseCharts.barAccent
 const HOUSE_CHART_BAR_POSITIVE_CLASS = publicationsHouseCharts.barPositive
 const HOUSE_CHART_BAR_WARNING_CLASS = publicationsHouseCharts.barWarning
@@ -122,6 +303,10 @@ const HOUSE_CHART_BAR_CURRENT_CLASS = publicationsHouseCharts.barCurrent
 const HOUSE_CHART_GRID_LINE_CLASS = publicationsHouseCharts.gridLine
 const HOUSE_CHART_GRID_DASHED_CLASS = publicationsHouseCharts.gridDashed
 const HOUSE_CHART_AXIS_TEXT_CLASS = publicationsHouseCharts.axisText
+const HOUSE_METRIC_PROGRESS_PANEL_CLASS =
+  'flex flex-1 flex-col gap-2.5 rounded-sm border border-[hsl(var(--stroke-strong)/0.92)] bg-[hsl(var(--tone-neutral-50))] px-2 py-2 transition-[opacity,transform,filter] duration-320 ease-out'
+const HOUSE_LINE_CHART_SURFACE_CLASS =
+  'relative flex-1 rounded-sm border border-[hsl(var(--stroke-strong)/0.92)] bg-[hsl(var(--tone-neutral-50))] px-1.5 pb-1.5 pt-2'
 
 const MAX_PUBLICATION_CHART_BARS = 12
 
@@ -160,6 +345,74 @@ function useUnifiedToggleBarAnimation(animationKey: string, enabled: boolean): b
   }, [animationKey, enabled])
 
   return barsExpanded
+}
+
+function useHouseBarSetTransition<T extends { key: string }>({
+  bars,
+  animationKey,
+  enabled,
+  collapseMs = 200,
+}: {
+  bars: T[]
+  animationKey: string
+  enabled: boolean
+  collapseMs?: number
+}): {
+  renderBars: T[]
+  barsExpanded: boolean
+} {
+  const [renderBars, setRenderBars] = useState<T[]>(bars)
+  const [barsExpanded, setBarsExpanded] = useState(enabled)
+  const renderBarsRef = useRef(renderBars)
+
+  useEffect(() => {
+    renderBarsRef.current = renderBars
+  }, [renderBars])
+
+  useEffect(() => {
+    if (!enabled) {
+      setRenderBars(bars)
+      setBarsExpanded(false)
+      return
+    }
+    if (prefersReducedMotion()) {
+      setRenderBars(bars)
+      setBarsExpanded(true)
+      return
+    }
+
+    const previousBars = renderBarsRef.current
+    const barCountChanged = previousBars.length !== bars.length
+    if (!barCountChanged) {
+      setRenderBars(bars)
+      setBarsExpanded(true)
+      return
+    }
+
+    setBarsExpanded(false)
+    let timeoutId = 0
+    let rafOne = 0
+    let rafTwo = 0
+    timeoutId = window.setTimeout(() => {
+      setRenderBars(bars)
+      rafOne = window.requestAnimationFrame(() => {
+        rafTwo = window.requestAnimationFrame(() => {
+          setBarsExpanded(true)
+        })
+      })
+    }, Math.max(0, collapseMs))
+
+    return () => {
+      window.clearTimeout(timeoutId)
+      window.cancelAnimationFrame(rafOne)
+      window.cancelAnimationFrame(rafTwo)
+    }
+  }, [animationKey, bars, collapseMs, enabled])
+
+  return {
+    renderBars,
+    barsExpanded,
+  }
 }
 
 function useEasedValue(target: number, animationKey: string, enabled: boolean, durationMs = 420): number {
@@ -809,18 +1062,26 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
   const meanLinePercent = model.meanValue !== null
     ? Math.max(0, Math.min(100, (Math.max(0, model.meanValue) / scaledMax) * 100))
     : null
+  const axisLayout = buildChartAxisLayout({
+    axisLabels: model.bars.map((bar) => bar.axisLabel),
+    axisSubLabels: model.bars.map((bar) => bar.axisSubLabel || null),
+    dense: model.bars.length >= 6,
+  })
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
-          'pb-7',
           chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
         )}
+        style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
       >
-        <div className="absolute inset-x-2 bottom-7 top-4">
-          {[25, 50, 75].map((pct) => (
+        <div
+          className="absolute inset-x-2 top-4"
+          style={{ bottom: `${axisLayout.plotBottomRem}rem` }}
+        >
+          {[50].map((pct) => (
             <div
               key={`grid-${pct}`}
               className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
@@ -848,7 +1109,7 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
                 >
                   <span
                     className={cn(
-                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-[0.6rem] leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
+                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-caption leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
                       isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
                     )}
                     style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
@@ -860,7 +1121,7 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
                     className={cn(
                       'block w-full rounded transition-[transform,filter,box-shadow] duration-220 ease-out',
                       totalCitationsBarToneClass(bar),
-                      isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
+                      isActive && 'brightness-[1.08] saturate-[1.14]',
                     )}
                     style={{
                       height: `${heightPct}%`,
@@ -874,12 +1135,15 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
             })}
           </div>
         </div>
-        <div className="pointer-events-none absolute inset-x-2 bottom-1 grid grid-flow-col auto-cols-fr items-start gap-1">
+        <div
+          className="pointer-events-none absolute inset-x-2 grid grid-flow-col auto-cols-fr items-start gap-1"
+          style={{ bottom: `${axisLayout.axisBottomRem}rem`, minHeight: `${axisLayout.axisMinHeightRem}rem` }}
+        >
           {model.bars.map((bar) => (
             <div key={`${bar.key}-axis`} className="text-center leading-none">
-              <p className="text-[0.6rem] font-semibold text-[hsl(var(--tone-neutral-600))]">{bar.axisLabel}</p>
+              <p className="break-words px-0.5 text-caption font-semibold leading-tight text-[hsl(var(--tone-neutral-600))]">{bar.axisLabel}</p>
               {bar.axisSubLabel ? (
-                <p className="mt-px text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-600))]">
+                <p className="house-chart-axis-subtext break-words px-0.5">
                   {bar.axisSubLabel}
                 </p>
               ) : null}
@@ -925,7 +1189,7 @@ function TotalCitationsTile({
       className={cn(
         dashboardTileStyles.tileShell,
         tile.stability === 'unstable' && dashboardTileStyles.tileShellUnstable,
-        'min-h-36 bg-card px-3 py-2.5 hover:bg-card hover:border-[hsl(var(--tone-neutral-300))]',
+        'min-h-36 px-3 py-2.5',
       )}
     >
       <div className="grid h-full min-h-[9.5rem] grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)] gap-3">
@@ -937,7 +1201,7 @@ function TotalCitationsTile({
             TOTAL CITATIONS
           </p>
           <p
-            className="mt-2.5 text-[2.15rem] font-semibold leading-[1] tracking-tight text-foreground"
+            className="mt-2.5 text-display font-semibold leading-[1] tracking-tight text-foreground"
             data-testid={`metric-value-${tile.key}`}
           >
             {primaryValue}
@@ -946,7 +1210,7 @@ function TotalCitationsTile({
           <p className={HOUSE_TEXT_SOFT_CLASS}>Last 5 years shown</p>
         </div>
 
-        <div className="min-h-0">
+        <div className="min-h-0 border-l border-[hsl(var(--stroke-strong)/0.92)] pl-3">
           <TotalCitationsModeChart tile={tile} />
         </div>
       </div>
@@ -1000,7 +1264,7 @@ function StructuredMetricTile({
       className={cn(
         dashboardTileStyles.tileShell,
         tile.stability === 'unstable' && dashboardTileStyles.tileShellUnstable,
-        'min-h-36 bg-card px-3 py-2.5 hover:bg-card hover:border-[hsl(var(--tone-neutral-300))]',
+        'min-h-36 px-3 py-2.5',
       )}
     >
       <div className={cn('grid h-full min-h-[9.5rem] gap-3', contentGridClassName || 'grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)]')}>
@@ -1012,20 +1276,20 @@ function StructuredMetricTile({
             {String(tile.label || '').toUpperCase()}
           </p>
           <p
-            className="mt-2.5 text-[2.15rem] font-semibold leading-[1] tracking-tight text-foreground"
+            className="mt-2.5 text-display font-semibold leading-[1] tracking-tight text-foreground"
             data-testid={`metric-value-${tile.key}`}
           >
             {primaryValue}
           </p>
-          <p className={cn('mt-1', HOUSE_TEXT_CLASS)}>{subtitle}</p>
+          <p className={cn('mt-0.5 min-h-[2.5rem] leading-snug', HOUSE_TEXT_CLASS)}>{subtitle}</p>
           {typeof detail === 'string'
-            ? <p className={HOUSE_TEXT_SOFT_CLASS}>{detail}</p>
+            ? <p className={cn('min-h-[2.3rem] leading-snug', HOUSE_TEXT_SOFT_CLASS)}>{detail}</p>
             : detail
               ? <div className="pt-0.5">{detail}</div>
               : null}
           {badge ? <div className={cn(pinBadgeBottom ? 'mt-auto pt-1' : 'pt-1')}>{badge}</div> : null}
         </div>
-        <div className="flex h-full min-h-0 items-center">
+        <div className="flex h-full min-h-0 items-center border-l border-[hsl(var(--stroke-strong)/0.92)] pl-3">
           {visual}
         </div>
       </div>
@@ -1105,18 +1369,26 @@ function HIndexYearChart({
   }
 
   const scaledMax = Math.max(1, animatedMax)
+  const axisLayout = buildChartAxisLayout({
+    axisLabels: bars.map((bar) => String(bar.year).slice(-2)),
+    axisSubLabels: bars.map((bar) => (bar.current ? 'YTD' : null)),
+    dense: bars.length >= 6,
+  })
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
-          'pb-7',
           HOUSE_CHART_ENTERED_CLASS,
         )}
+        style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
       >
-        <div className="absolute inset-x-2 bottom-7 top-4">
-          {[25, 50, 75].map((pct) => (
+        <div
+          className="absolute inset-x-2 top-4"
+          style={{ bottom: `${axisLayout.plotBottomRem}rem` }}
+        >
+          {[50].map((pct) => (
             <div
               key={`h-grid-${pct}`}
               className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
@@ -1141,7 +1413,7 @@ function HIndexYearChart({
                 >
                   <span
                     className={cn(
-                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-[0.6rem] leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
+                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-caption leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
                       isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
                     )}
                     style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
@@ -1154,7 +1426,7 @@ function HIndexYearChart({
                       'block w-full rounded',
                       HOUSE_TOGGLE_CHART_BAR_CLASS,
                       toneClass,
-                      isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
+                      isActive && 'brightness-[1.08] saturate-[1.14]',
                     )}
                     style={{
                       height: `${heightPct}%`,
@@ -1168,12 +1440,15 @@ function HIndexYearChart({
             })}
           </div>
         </div>
-        <div className="pointer-events-none absolute inset-x-2 bottom-1 grid grid-flow-col auto-cols-fr items-start gap-1">
+        <div
+          className="pointer-events-none absolute inset-x-2 grid grid-flow-col auto-cols-fr items-start gap-1"
+          style={{ bottom: `${axisLayout.axisBottomRem}rem`, minHeight: `${axisLayout.axisMinHeightRem}rem` }}
+        >
           {bars.map((bar, index) => (
             <div key={`${bar.year}-${index}-axis`} className={cn('text-center leading-none', HOUSE_TOGGLE_CHART_LABEL_CLASS)}>
-              <p className="text-[0.6rem] font-semibold text-[hsl(var(--tone-neutral-600))]">{String(bar.year).slice(-2)}</p>
+              <p className="break-words px-0.5 text-caption font-semibold leading-tight text-[hsl(var(--tone-neutral-600))]">{String(bar.year).slice(-2)}</p>
               {bar.current ? (
-                <p className="mt-px text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-600))]">
+                <p className="house-chart-axis-subtext break-words px-0.5">
                   YTD
                 </p>
               ) : null}
@@ -1384,7 +1659,23 @@ function PublicationsPerYearChart({
     [activeBars, activeBucketSize, effectiveWindowMode],
   )
   const hasBars = hasValidSeries && historyBars.length > 0 && activeBars.length > 0
-  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars)
+  const legacyBarsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars)
+  const swapTransition = useHouseBarSetTransition({
+    bars: activeBars,
+    animationKey,
+    enabled: hasBars,
+  })
+  const renderBars = enableWindowToggle ? swapTransition.renderBars : activeBars
+  const barsExpanded = enableWindowToggle ? swapTransition.barsExpanded : legacyBarsExpanded
+  const renderedValuesTarget = useMemo(
+    () => renderBars.map((bar) => Math.max(0, bar.value)),
+    [renderBars],
+  )
+  const renderedValuesAnimated = useEasedSeries(
+    renderedValuesTarget,
+    `${animationKey}|rendered|${renderBars.map((bar) => bar.key).join('|')}`,
+    hasBars && barsExpanded,
+  )
 
   useEffect(() => {
     setHoveredIndex(null)
@@ -1394,7 +1685,7 @@ function PublicationsPerYearChart({
     return <div className={dashboardTileStyles.emptyChart}>No publication timeline</div>
   }
 
-  const maxValue = Math.max(1, ...activeBars.map((bar) => Math.max(0, bar.value)))
+  const maxValue = Math.max(1, ...renderedValuesTarget)
   const axisScale = showAxes
     ? buildNiceAxis(maxValue)
     : null
@@ -1405,18 +1696,42 @@ function PublicationsPerYearChart({
     ? axisScale.ticks
     : [0, axisMax * 0.25, axisMax * 0.5, axisMax * 0.75, axisMax]
   const gridTickValues = yAxisTickValues.slice(1, -1)
-  const chartLeftInset = showAxes ? '3.4rem' : '0.5rem'
+  const resolvedXAxisLabel = usingMonthlyBars ? 'Publication month' : xAxisLabel
+  const xAxisLabelLayout = buildChartAxisLayout({
+    axisLabels: renderBars.map((bar) => bar.axisLabel),
+    axisSubLabels: renderBars.map((bar) => bar.axisSubLabel || null),
+    showXAxisName: showAxes,
+    xAxisName: showAxes ? resolvedXAxisLabel : null,
+    dense: renderBars.length >= 7 || usingMonthlyBars,
+    maxLabelLines: 2,
+    maxSubLabelLines: 2,
+    maxAxisNameLines: 2,
+  })
+  const yAxisPanelWidthRem = showAxes
+    ? buildYAxisPanelWidthRem(yAxisTickValues, Boolean(yAxisLabel))
+    : 0
+  const chartLeftInset = showAxes ? `${yAxisPanelWidthRem + 0.55}rem` : '0.5rem'
 
   const plotAreaStyle = {
     left: chartLeftInset,
     right: '0.5rem',
     top: '1rem',
-    bottom: isCompactTileMode ? '1.75rem' : showAxes ? '3.1rem' : '2.2rem',
+    bottom: `${xAxisLabelLayout.plotBottomRem}rem`,
   }
   const xAxisTicksStyle = {
     left: chartLeftInset,
     right: '0.5rem',
-    bottom: isCompactTileMode ? '0.25rem' : showAxes ? '1.15rem' : '0.35rem',
+    bottom: `${xAxisLabelLayout.axisBottomRem}rem`,
+    minHeight: `${xAxisLabelLayout.axisMinHeightRem}rem`,
+  }
+  const yAxisPanelStyle = {
+    left: '0.25rem',
+    top: '1rem',
+    bottom: `${xAxisLabelLayout.plotBottomRem}rem`,
+    width: `${yAxisPanelWidthRem}rem`,
+  }
+  const chartFrameStyle = {
+    paddingBottom: `${xAxisLabelLayout.framePaddingBottomRem}rem`,
   }
   const yAxisTickOffsetRem = 0.4
   const activeWindowIndex = PUBLICATIONS_WINDOW_OPTIONS.findIndex((option) => option.value === windowMode)
@@ -1432,7 +1747,6 @@ function PublicationsPerYearChart({
     : null
   const periodHintText = windowRangeLabel || allRangeLabel || '\u00A0'
   const periodHintVisible = Boolean(windowRangeLabel || allRangeLabel)
-  const resolvedXAxisLabel = usingMonthlyBars ? 'Publication month' : xAxisLabel
   const averageLegendText = effectiveWindowMode === '1y'
     ? `Average monthly publications over 12 months = ${formatInt(meanValue)}`
     : effectiveWindowMode === '3y'
@@ -1442,12 +1756,18 @@ function PublicationsPerYearChart({
         : `Average yearly publications over ${Math.max(1, historyBars.length)} years = ${formatInt(meanValue)}`
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col">
+    <div
+      className="flex h-full min-h-0 w-full flex-col"
+      data-ui="publications-per-year-chart"
+      data-house-role="metric-chart"
+    >
       {enableWindowToggle ? (
         <div className="mb-2 flex items-center justify-between gap-2">
           <div
             className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
             data-stop-tile-open="true"
+            data-ui="publications-window-toggle"
+            data-house-role="chart-toggle"
           >
             <span
               className={HOUSE_TOGGLE_THUMB_CLASS}
@@ -1498,12 +1818,14 @@ function PublicationsPerYearChart({
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
-          showAxes ? 'pb-12' : isCompactTileMode ? 'pb-7' : 'pb-8',
           HOUSE_CHART_ENTERED_CLASS,
         )}
+        style={chartFrameStyle}
+        data-ui="publications-chart-frame"
+        data-house-role="chart-frame"
       >
         {showAxes && enableWindowToggle ? (
-          <div className="pointer-events-none absolute right-2 top-1.5 z-[2] flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-1.5 py-0.5 text-[0.58rem] font-semibold text-[hsl(var(--tone-neutral-700))]">
+          <div className="pointer-events-none absolute right-2 top-1.5 z-[2] flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-1.5 py-0.5 text-caption font-semibold text-[hsl(var(--tone-neutral-700))]">
             <span className="w-4 border-t border-dashed border-[hsl(var(--tone-neutral-500))]" aria-hidden="true" />
             <span>{averageLegendText}</span>
           </div>
@@ -1522,9 +1844,10 @@ function PublicationsPerYearChart({
             style={{ bottom: `${Math.max(0, Math.min(100, (Math.max(0, meanValue) / axisMax) * 100))}%` }}
             aria-hidden="true"
           />
-          <div className="absolute inset-0 flex items-end gap-1">
-            {activeBars.map((bar, index) => {
-              const heightPct = bar.value <= 0 ? 3 : Math.max(6, (Math.max(0, bar.value) / axisMax) * 100)
+          <div className="absolute inset-0 flex items-end gap-1" data-ui="chart-bars" data-house-role="chart-bars">
+            {renderBars.map((bar, index) => {
+              const animatedValue = Math.max(0, renderedValuesAnimated[index] ?? bar.value)
+              const heightPct = animatedValue <= 0 ? 3 : Math.max(6, (animatedValue / axisMax) * 100)
               const isActive = hoveredIndex === index
               const relative = bar.value >= meanValue * 1.1 ? 'above' : bar.value <= meanValue * 0.9 ? 'below' : 'near'
               const toneClass = bar.current
@@ -1543,26 +1866,27 @@ function PublicationsPerYearChart({
                 >
                   <span
                     className={cn(
-                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-[0.6rem] leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
+                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-caption leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
                       isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
                     )}
                     style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
                     aria-hidden="true"
                   >
-                    {formatInt(bar.value)}
+                    {formatInt(animatedValue)}
                   </span>
                   <span
                     className={cn(
                       'block w-full rounded',
                       HOUSE_TOGGLE_CHART_BAR_CLASS,
+                      HOUSE_TOGGLE_CHART_SWAP_CLASS,
                       toneClass,
-                      isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
+                      isActive && 'brightness-[1.08] saturate-[1.14]',
                     )}
                     style={{
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: `${Math.min(220, index * 18)}ms`,
+                      transitionDelay: barsExpanded ? `${Math.min(220, index * 18)}ms` : '0ms',
                     }}
                   />
                 </div>
@@ -1572,13 +1896,13 @@ function PublicationsPerYearChart({
         </div>
 
         {showAxes ? (
-          <div className="pointer-events-none absolute bottom-[3.1rem] left-1 top-4 w-[2.8rem]" aria-hidden="true">
+          <div className="pointer-events-none absolute" style={yAxisPanelStyle} aria-hidden="true">
             {yAxisTickValues.map((tickValue) => {
               const pct = axisMax <= 0 ? 0 : (tickValue / axisMax) * 100
               return (
                 <p
                   key={`pub-y-axis-${tickValue}`}
-                  className="absolute right-0 whitespace-nowrap text-[0.6rem] font-semibold tabular-nums leading-none text-[hsl(var(--tone-neutral-600))]"
+                  className="absolute right-0 whitespace-nowrap text-caption font-semibold tabular-nums leading-none text-[hsl(var(--tone-neutral-600))]"
                   style={{ bottom: `calc(${pct}% - ${yAxisTickOffsetRem}rem)` }}
                 >
                   {formatInt(tickValue)}
@@ -1592,13 +1916,13 @@ function PublicationsPerYearChart({
         ) : null}
 
         <div className={cn('pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1', HOUSE_TOGGLE_CHART_LABEL_CLASS)} style={xAxisTicksStyle}>
-          {activeBars.map((bar, index) => (
+          {renderBars.map((bar, index) => (
             <div key={`${bar.key}-${index}-axis`} className="text-center leading-none">
-              <p className="text-[0.62rem] font-semibold leading-[1.05] text-[hsl(var(--tone-neutral-600))]">
+              <p className="break-words px-0.5 text-caption font-semibold leading-[1.05] text-[hsl(var(--tone-neutral-600))]">
                 {bar.axisLabel}
               </p>
               {bar.axisSubLabel ? (
-                <p className="mt-px text-[0.56rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-600))]">
+                <p className="house-chart-axis-subtext break-words px-0.5">
                   {bar.axisSubLabel}
                 </p>
               ) : null}
@@ -1607,9 +1931,19 @@ function PublicationsPerYearChart({
         </div>
 
         {showAxes ? (
-          <p className={cn(HOUSE_HEADING_LABEL_CLASS, 'pointer-events-none absolute bottom-[0.2rem] text-center')} style={{ left: chartLeftInset, right: '0.5rem' }}>
-            {resolvedXAxisLabel}
-          </p>
+          <div
+            className="pointer-events-none absolute"
+            style={{
+              left: chartLeftInset,
+              right: '0.5rem',
+              bottom: `${xAxisLabelLayout.xAxisNameBottomRem}rem`,
+              minHeight: `${xAxisLabelLayout.xAxisNameMinHeightRem}rem`,
+            }}
+          >
+            <p className={cn(HOUSE_HEADING_LABEL_CLASS, 'break-words text-center leading-tight')}>
+              {resolvedXAxisLabel}
+            </p>
+          </div>
         ) : null}
       </div>
       {showCaption ? (
@@ -1720,15 +2054,15 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
             {hoveredSegment ? (
               <div
                 className={cn(
-                  'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-[0.6rem] leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
-                  hoveredSegment === 'top3' ? '-top-0.5' : '-bottom-0.5',
+                  'pointer-events-none absolute left-1/2 z-[2] w-[calc(100%-0.65rem)] max-w-full -translate-x-1/2 rounded-md border border-[hsl(var(--stroke-strong)/0.92)] bg-[hsl(var(--tone-neutral-50))] px-2 py-1 text-center text-caption leading-snug text-[hsl(var(--tone-neutral-700))] break-words transition-all duration-150 ease-out',
+                  hoveredSegment === 'top3' ? 'top-0.5' : 'bottom-0.5',
                 )}
               >
                 {hoveredSegment === 'top3'
-                  ? `Top 3 papers: ${top3PctRounded}% (${formatInt(top3)} citations)`
+                  ? `Top 3: ${top3PctRounded}% · ${formatInt(top3)} citations`
                   : remainingPapersCount === null
-                    ? `Remaining papers: ${restPctRounded}% (${formatInt(rest)} citations)`
-                    : `Remaining ${formatInt(remainingPapersCount)} papers: ${restPctRounded}% (${formatInt(rest)} citations)`}
+                    ? `Remaining: ${restPctRounded}% · ${formatInt(rest)} citations`
+                    : `Remaining ${formatInt(remainingPapersCount)} papers: ${restPctRounded}% · ${formatInt(rest)} citations`}
               </div>
             ) : null}
             <svg
@@ -1815,30 +2149,7 @@ function MomentumTilePanel({
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const monthlyBreakdown = buildMomentumBreakdown(tile)
   const useYearMode = mode === '5y' && Boolean(yearBreakdown?.bars.length)
-  const comparisonBars = useMemo(() => {
-    if (useYearMode) {
-      const baseline = yearBreakdown?.rate4y ?? null
-      const recent = yearBreakdown?.rate1y ?? null
-      if (baseline === null && recent === null) {
-        return []
-      }
-      return [
-        {
-          key: 'baseline',
-          label: 'Prior 4-year avg',
-          subLabel: yearBreakdown?.priorYearsLabel ? `(${yearBreakdown.priorYearsLabel})` : null,
-          value: baseline ?? 0,
-          recent: false,
-        },
-        {
-          key: 'recent',
-          label: 'Last 1-year avg',
-          subLabel: yearBreakdown?.recentYearLabel ? `(${yearBreakdown.recentYearLabel})` : null,
-          value: recent ?? 0,
-          recent: true,
-        },
-      ]
-    }
+  const monthlyComparisonBars = useMemo(() => {
     const baseline = monthlyBreakdown.rate9m
     const recent = monthlyBreakdown.rate3m
     if (baseline === null && recent === null) {
@@ -1847,30 +2158,54 @@ function MomentumTilePanel({
     return [
       {
         key: 'baseline',
-        label: 'Prior 9-month avg',
-        subLabel: monthlyBreakdown.baselineWindowLabel ? `(${monthlyBreakdown.baselineWindowLabel})` : null,
+        label: 'Prior avg',
+        subLabel: monthlyBreakdown.baselineWindowLabel,
         value: baseline ?? 0,
         recent: false,
       },
       {
         key: 'recent',
-        label: 'Last 3-month avg',
-        subLabel: monthlyBreakdown.recentWindowLabel ? `(${monthlyBreakdown.recentWindowLabel})` : null,
+        label: 'Recent avg',
+        subLabel: monthlyBreakdown.recentWindowLabel,
         value: recent ?? 0,
         recent: true,
       },
     ]
   }, [
-    monthlyBreakdown.baselineWindowLabel,
     monthlyBreakdown.rate3m,
     monthlyBreakdown.rate9m,
+    monthlyBreakdown.baselineWindowLabel,
     monthlyBreakdown.recentWindowLabel,
-    useYearMode,
-    yearBreakdown?.priorYearsLabel,
+  ])
+  const yearlyComparisonBars = useMemo(() => {
+    const baseline = yearBreakdown?.rate4y ?? null
+    const recent = yearBreakdown?.rate1y ?? null
+    if (baseline === null && recent === null) {
+      return []
+    }
+    return [
+      {
+        key: 'baseline',
+        label: 'Prior avg',
+        subLabel: yearBreakdown?.priorYearsLabel || null,
+        value: baseline ?? 0,
+        recent: false,
+      },
+      {
+        key: 'recent',
+        label: 'Recent avg',
+        subLabel: yearBreakdown?.recentYearLabel || null,
+        value: recent ?? 0,
+        recent: true,
+      },
+    ]
+  }, [
     yearBreakdown?.rate1y,
     yearBreakdown?.rate4y,
+    yearBreakdown?.priorYearsLabel,
     yearBreakdown?.recentYearLabel,
   ])
+  const comparisonBars = useYearMode ? yearlyComparisonBars : monthlyComparisonBars
   const emptyLabel = useYearMode ? 'No 5-year citation data' : 'No monthly citation data'
   const barValues = comparisonBars.map((bar) => Math.max(0, bar.value))
   const maxValue = Math.max(1, ...barValues)
@@ -1947,6 +2282,34 @@ function MomentumTilePanel({
     }
   }, [baselineTarget, recentTarget, scaledMaxTarget])
 
+  const axisLayout = useMemo(() => {
+    const candidates: ChartAxisLayout[] = []
+    const monthlyLayoutSource = monthlyComparisonBars.length ? monthlyComparisonBars : comparisonBars
+    if (monthlyLayoutSource.length) {
+      candidates.push(
+        buildChartAxisLayout({
+          axisLabels: monthlyLayoutSource.map((bar) => bar.label),
+          axisSubLabels: monthlyLayoutSource.map((bar) => bar.subLabel || null),
+          dense: false,
+          maxLabelLines: 2,
+          maxSubLabelLines: 3,
+        }),
+      )
+    }
+    if (yearlyComparisonBars.length) {
+      candidates.push(
+        buildChartAxisLayout({
+          axisLabels: yearlyComparisonBars.map((bar) => bar.label),
+          axisSubLabels: yearlyComparisonBars.map((bar) => bar.subLabel || null),
+          dense: false,
+          maxLabelLines: 2,
+          maxSubLabelLines: 3,
+        }),
+      )
+    }
+    return mergeChartAxisLayouts(candidates)
+  }, [comparisonBars, monthlyComparisonBars, yearlyComparisonBars])
+
   if (!hasComparisonBars) {
     return <div className={dashboardTileStyles.emptyChart}>{emptyLabel}</div>
   }
@@ -1954,16 +2317,19 @@ function MomentumTilePanel({
   const animatedMax = Math.max(1, animatedState.max)
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col">
+    <div className="flex h-full min-h-[8.2rem] w-full flex-col">
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
-          'pb-7',
           HOUSE_CHART_ENTERED_CLASS,
         )}
+        style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
       >
-        <div className="absolute inset-x-2 bottom-7 top-4">
-          {[25, 50, 75].map((pct) => (
+        <div
+          className="absolute inset-x-2 top-4"
+          style={{ bottom: `${axisLayout.plotBottomRem}rem` }}
+        >
+          {[50].map((pct) => (
             <div
               key={`momentum-grid-${pct}`}
               className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
@@ -1987,7 +2353,7 @@ function MomentumTilePanel({
                 >
                   <span
                     className={cn(
-                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-[0.6rem] leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
+                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-caption leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
                       isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
                     )}
                     style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
@@ -2000,7 +2366,7 @@ function MomentumTilePanel({
                       'block w-full rounded',
                       HOUSE_TOGGLE_CHART_BAR_CLASS,
                       toneClass,
-                      isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
+                      isActive && 'brightness-[1.08] saturate-[1.14]',
                     )}
                     style={{
                       height: `${heightPct}%`,
@@ -2015,21 +2381,23 @@ function MomentumTilePanel({
             })}
           </div>
         </div>
-        <div className="pointer-events-none absolute inset-x-2 bottom-1 grid min-h-[1.22rem] grid-flow-col auto-cols-fr items-start gap-1">
+        <div
+          className="pointer-events-none absolute inset-x-2 grid grid-flow-col auto-cols-fr items-start gap-1"
+          style={{ bottom: `${axisLayout.axisBottomRem}rem`, minHeight: `${axisLayout.axisMinHeightRem}rem` }}
+        >
           {comparisonBars.map((bar) => (
             <div
               key={`${bar.key}-axis`}
               className={cn('leading-none text-center', HOUSE_TOGGLE_CHART_LABEL_CLASS)}
             >
-              <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'whitespace-nowrap text-center')}>
+              <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-1 text-center leading-tight')}>
                 {bar.label}
               </p>
-              <p
-                className="mt-px text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-transparent"
-                aria-hidden="true"
-              >
-                ytd
-              </p>
+              {bar.subLabel ? (
+                <p className="house-chart-axis-subtext mt-px break-words px-1">
+                  {bar.subLabel}
+                </p>
+              ) : null}
             </div>
           ))}
         </div>
@@ -2095,18 +2463,25 @@ function FieldPercentilePanel({
   if (!hasPercentileData) {
     return <div className={dashboardTileStyles.emptyChart}>No field percentile data</div>
   }
+  const axisLayout = buildChartAxisLayout({
+    axisLabels: [barLabel],
+    dense: false,
+  })
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
-          'pb-7',
           HOUSE_CHART_ENTERED_CLASS,
         )}
+        style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
       >
-        <div className="absolute inset-x-2 bottom-7 top-4">
-          {[25, 50, 75].map((pct) => (
+        <div
+          className="absolute inset-x-2 top-4"
+          style={{ bottom: `${axisLayout.plotBottomRem}rem` }}
+        >
+          {[50].map((pct) => (
             <div
               key={`field-percentile-grid-${pct}`}
               className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
@@ -2122,7 +2497,7 @@ function FieldPercentilePanel({
             >
               <span
                 className={cn(
-                  'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-[0.6rem] leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
+                  'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-caption leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
                   hovered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
                 )}
                 style={{ bottom: `calc(${animatedHeightPct}% + 0.35rem)` }}
@@ -2135,7 +2510,7 @@ function FieldPercentilePanel({
                   'block w-full rounded',
                   HOUSE_TOGGLE_CHART_BAR_CLASS,
                   HOUSE_CHART_BAR_POSITIVE_CLASS,
-                  hovered && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
+                  hovered && 'brightness-[1.08] saturate-[1.14]',
                 )}
                 style={{
                   height: `${animatedHeightPct}%`,
@@ -2146,16 +2521,13 @@ function FieldPercentilePanel({
             </div>
           </div>
         </div>
-        <div className="pointer-events-none absolute inset-x-2 bottom-1 min-h-[1.22rem]">
+        <div
+          className="pointer-events-none absolute inset-x-2"
+          style={{ bottom: `${axisLayout.axisBottomRem}rem`, minHeight: `${axisLayout.axisMinHeightRem}rem` }}
+        >
           <div className={cn('leading-none text-center', HOUSE_TOGGLE_CHART_LABEL_CLASS)}>
-            <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'whitespace-nowrap text-center')}>
+            <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-0.5 text-center')}>
               {barLabel}
-            </p>
-            <p
-              className="mt-px text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-transparent"
-              aria-hidden="true"
-            >
-              ytd
             </p>
           </div>
         </div>
@@ -2222,13 +2594,13 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
     <div className="flex h-full min-h-0 w-full flex-col">
       <div
         className={cn(
-          'flex flex-1 flex-col gap-2.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2.5 py-2.5 transition-[opacity,transform,filter] duration-320 ease-out',
+          HOUSE_METRIC_PROGRESS_PANEL_CLASS,
           panelVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
         )}
       >
         {rows.map((row, index) => (
           <div key={row.key} className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2 text-[0.61rem] leading-none">
+            <div className="flex items-center justify-between gap-2 text-caption leading-none">
               <span className="font-semibold text-[hsl(var(--tone-neutral-700))]">{row.label}</span>
               <span className="font-semibold text-[hsl(var(--tone-neutral-700))]">{row.value}%</span>
             </div>
@@ -2255,16 +2627,149 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
 function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayload }) {
   const [panelVisible, setPanelVisible] = useState(true)
   const [barsExpanded, setBarsExpanded] = useState(false)
-  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const chartData = useMemo(
+    () => ((tile.chart_data || {}) as Record<string, unknown>),
+    [tile.chart_data],
+  )
+  const drilldownData = useMemo(
+    () => ((tile.drilldown || {}) as Record<string, unknown>),
+    [tile.drilldown],
+  )
   const uniqueCollaboratorsRaw = Number(chartData.unique_collaborators)
   const repeatRateRaw = Number(chartData.repeat_collaborator_rate_pct)
-  const institutionsRaw = Number(chartData.institutions)
-  const countriesRaw = Number(chartData.countries)
+  const institutionCandidates = [
+    Number(chartData.institutions),
+    Number(chartData.institutions_count),
+    Number(chartData.unique_institutions),
+    Number(chartData.affiliated_institutions),
+  ]
+  const countryCandidates = [
+    Number(chartData.countries),
+    Number(chartData.countries_count),
+    Number(chartData.unique_countries),
+    Number(chartData.affiliated_countries),
+  ]
 
   const uniqueCollaborators = Number.isFinite(uniqueCollaboratorsRaw) ? Math.max(0, Math.round(uniqueCollaboratorsRaw)) : 0
   const repeatRatePct = Number.isFinite(repeatRateRaw) ? Math.max(0, Math.min(100, repeatRateRaw)) : 0
-  const institutions = Number.isFinite(institutionsRaw) ? Math.max(0, Math.round(institutionsRaw)) : 0
-  const countries = Number.isFinite(countriesRaw) ? Math.max(0, Math.round(countriesRaw)) : 0
+  const derivedCoverage = useMemo(() => {
+    const normalizedInstitutionSet = new Set<string>()
+    const normalizedCountrySet = new Set<string>()
+
+    const pushValue = (set: Set<string>, raw: unknown) => {
+      if (typeof raw !== 'string') {
+        return
+      }
+      const clean = raw.trim().toLowerCase()
+      if (!clean) {
+        return
+      }
+      set.add(clean)
+    }
+
+    const collectInstitution = (raw: unknown) => {
+      if (Array.isArray(raw)) {
+        raw.forEach(collectInstitution)
+        return
+      }
+      if (raw && typeof raw === 'object') {
+        const row = raw as Record<string, unknown>
+        pushValue(normalizedInstitutionSet, row.name)
+        pushValue(normalizedInstitutionSet, row.display_name)
+        pushValue(normalizedInstitutionSet, row.institution)
+        pushValue(normalizedInstitutionSet, row.institution_name)
+        pushValue(normalizedInstitutionSet, row.organization)
+        pushValue(normalizedInstitutionSet, row.organization_name)
+        return
+      }
+      pushValue(normalizedInstitutionSet, raw)
+    }
+
+    const collectCountry = (raw: unknown) => {
+      if (Array.isArray(raw)) {
+        raw.forEach(collectCountry)
+        return
+      }
+      if (raw && typeof raw === 'object') {
+        const row = raw as Record<string, unknown>
+        pushValue(normalizedCountrySet, row.name)
+        pushValue(normalizedCountrySet, row.display_name)
+        pushValue(normalizedCountrySet, row.country)
+        pushValue(normalizedCountrySet, row.country_name)
+        pushValue(normalizedCountrySet, row.country_code)
+        return
+      }
+      pushValue(normalizedCountrySet, raw)
+    }
+
+    const collectFromMapKeys = (
+      target: Set<string>,
+      raw: unknown,
+    ) => {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return
+      }
+      Object.keys(raw as Record<string, unknown>).forEach((key) => pushValue(target, key))
+    }
+
+    collectInstitution(chartData.institutions_list)
+    collectInstitution(chartData.institution_names)
+    collectInstitution(chartData.top_institutions)
+    collectInstitution(chartData.institutions_breakdown)
+    collectCountry(chartData.countries_list)
+    collectCountry(chartData.country_names)
+    collectCountry(chartData.top_countries)
+    collectCountry(chartData.countries_breakdown)
+    collectFromMapKeys(normalizedInstitutionSet, chartData.institutions_by_name)
+    collectFromMapKeys(normalizedCountrySet, chartData.countries_by_name)
+
+    const drilldownPublications = Array.isArray(drilldownData.publications)
+      ? drilldownData.publications
+      : []
+    drilldownPublications.forEach((entry) => {
+      if (!entry || typeof entry !== 'object') {
+        return
+      }
+      const row = entry as Record<string, unknown>
+      collectInstitution(row.institution)
+      collectInstitution(row.institution_name)
+      collectInstitution(row.institutions)
+      collectCountry(row.country)
+      collectCountry(row.country_name)
+      collectCountry(row.countries)
+
+      const affiliations = Array.isArray(row.affiliations) ? row.affiliations : []
+      affiliations.forEach((affiliation) => {
+        if (!affiliation || typeof affiliation !== 'object') {
+          return
+        }
+        const aff = affiliation as Record<string, unknown>
+        collectInstitution(aff.institution)
+        collectInstitution(aff.institution_name)
+        collectInstitution(aff.organization)
+        collectCountry(aff.country)
+        collectCountry(aff.country_name)
+      })
+    })
+
+    return {
+      institutionCount: normalizedInstitutionSet.size,
+      countryCount: normalizedCountrySet.size,
+    }
+  }, [chartData, drilldownData.publications])
+
+  const explicitInstitutionCount = institutionCandidates.find((value) => Number.isFinite(value) && value > 0)
+  const explicitCountryCount = countryCandidates.find((value) => Number.isFinite(value) && value > 0)
+  const institutionsBase = Math.max(
+    explicitInstitutionCount ? Math.round(explicitInstitutionCount) : 0,
+    derivedCoverage.institutionCount,
+  )
+  const countriesBase = Math.max(
+    explicitCountryCount ? Math.round(explicitCountryCount) : 0,
+    derivedCoverage.countryCount,
+  )
+  const institutions = institutionsBase > 0 ? institutionsBase : (uniqueCollaborators > 0 ? 1 : 0)
+  const countries = countriesBase > 0 ? countriesBase : (uniqueCollaborators > 0 ? 1 : 0)
 
   const animationKey = useMemo(
     () => `${uniqueCollaborators}-${Math.round(repeatRatePct)}-${institutions}-${countries}`,
@@ -2304,7 +2809,7 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
     <div className="flex h-full min-h-0 w-full flex-col">
       <div
         className={cn(
-          'flex flex-1 flex-col gap-2.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2.5 py-2.5 transition-[opacity,transform,filter] duration-320 ease-out',
+          HOUSE_METRIC_PROGRESS_PANEL_CLASS,
           panelVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
         )}
       >
@@ -2322,7 +2827,7 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
 
           return (
             <div key={row.key} className="space-y-1.5">
-              <div className="flex items-center justify-between gap-2 text-[0.61rem] leading-none">
+              <div className="flex items-center justify-between gap-2 text-caption leading-none">
                 <span className="font-semibold text-[hsl(var(--tone-neutral-700))]">{row.label}</span>
                 <span className="font-semibold text-[hsl(var(--tone-neutral-700))]">{valueLabel}</span>
               </div>
@@ -2759,7 +3264,7 @@ function TotalPublicationsDrilldownWorkspace({
     const rollingMean5yDisplay = Number.isInteger(rollingMean5yRounded)
       ? String(Math.round(rollingMean5yRounded))
       : rollingMean5yRounded.toFixed(1)
-    const microValueClass = 'mt-0.5 text-[0.88rem] font-semibold leading-none tabular-nums text-[hsl(var(--tone-neutral-800))]'
+    const microValueClass = 'mt-0.5 text-micro font-semibold leading-none tabular-nums text-[hsl(var(--tone-neutral-800))]'
     return (
       <div className="space-y-3">
         <div className={workspaceSectionClass}>
@@ -2769,7 +3274,7 @@ function TotalPublicationsDrilldownWorkspace({
               <p className={HOUSE_HEADING_H3_CLASS}>
                 Total publications
               </p>
-              <p className="mt-1 text-[1.7rem] font-semibold leading-none tracking-tight text-foreground">{headlineValue}</p>
+              <p className="mt-1 text-3xl font-semibold leading-none tracking-tight text-foreground">{headlineValue}</p>
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
               <div className={cn(workspacePanelClass, 'grid min-h-[4.5rem] grid-rows-[2rem_auto] py-2 text-center')}>
@@ -2790,11 +3295,11 @@ function TotalPublicationsDrilldownWorkspace({
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
             <div className={cn(workspacePanelClass, 'py-2')}>
               <p className={HOUSE_HEADING_H3_CLASS}>5-year rolling mean</p>
-              <p className="mt-0.5 text-[0.88rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{rollingMean5yDisplay}</p>
+              <p className="mt-0.5 text-micro font-semibold text-[hsl(var(--tone-neutral-800))]">{rollingMean5yDisplay}</p>
             </div>
             <div className={cn(workspacePanelClass, 'py-2')}>
               <p className={HOUSE_HEADING_H3_CLASS}>Career peak</p>
-              <p className="mt-0.5 text-[0.88rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{`${formatInt(peakYearData.count)} (${peakYearData.year})`}</p>
+              <p className="mt-0.5 text-micro font-semibold text-[hsl(var(--tone-neutral-800))]">{`${formatInt(peakYearData.count)} (${peakYearData.year})`}</p>
             </div>
           </div>
 
@@ -2826,7 +3331,7 @@ function TotalPublicationsDrilldownWorkspace({
             <div className="overflow-x-auto">
               <div className="relative min-w-[42.5rem]">
                 <div className="absolute inset-x-0 top-0 h-28">
-                  {[25, 50, 75].map((pct) => (
+                  {[50].map((pct) => (
                     <div key={`breakdown-grid-${pct}`} className={cn('absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)} style={{ top: `${pct}%` }} />
                   ))}
                 </div>
@@ -2859,7 +3364,7 @@ function TotalPublicationsDrilldownWorkspace({
                     )
                   })}
                 </div>
-                <div className="mt-1 flex items-center gap-1 text-[0.56rem] text-[hsl(var(--tone-neutral-600))]">
+                <div className="mt-1 flex items-center gap-1 text-caption text-[hsl(var(--tone-neutral-600))]">
                   {breakdownYears.map((year) => (
                     <span key={`breakdown-label-${year}`} className="min-w-[1.95rem] flex-1 text-center font-semibold">{String(year).slice(-2)}</span>
                   ))}
@@ -2867,7 +3372,7 @@ function TotalPublicationsDrilldownWorkspace({
               </div>
             </div>
             {hoveredYear !== null ? (
-              <div className="mt-2 rounded border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background px-2 py-1.5 text-[0.64rem] text-[hsl(var(--tone-neutral-700))]">
+              <div className="mt-2 rounded border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background px-2 py-1.5 text-caption text-[hsl(var(--tone-neutral-700))]">
                 <span className="font-semibold">{hoveredYear}</span>
                 <span>{` | Count ${formatInt(hoveredYearCount)}`}</span>
                 <span>{` | YoY ${hoveredYearYoY === null ? 'n/a' : `${hoveredYearYoY >= 0 ? '+' : ''}${hoveredYearYoY.toFixed(0)}%`}`}</span>
@@ -2887,7 +3392,7 @@ function TotalPublicationsDrilldownWorkspace({
                   key={`type-filter-${type}`}
                   type="button"
                   className={cn(
-                    'rounded-full border px-2.5 py-[0.25rem] text-[0.63rem] font-medium leading-none transition-colors',
+                    'rounded-full border px-2.5 py-[0.25rem] text-caption font-medium leading-none transition-colors',
                     isActive
                       ? 'border-[hsl(var(--tone-neutral-900))] bg-[hsl(var(--tone-neutral-900))] text-white'
                       : 'border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-700))]',
@@ -2909,7 +3414,7 @@ function TotalPublicationsDrilldownWorkspace({
             <p className={workspaceHeadingClass}>Venue concentration</p>
             <button
               type="button"
-              className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))]"
+              className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-caption font-medium text-[hsl(var(--tone-neutral-700))]"
               onClick={() => setShowAllVenues((current) => !current)}
             >
               {showAllVenues ? 'View top' : 'View all'}
@@ -2931,8 +3436,8 @@ function TotalPublicationsDrilldownWorkspace({
                   onClick={() => setSelectedVenue((current) => (current === row.venue ? null : row.venue))}
                   title={`Median citations ${row.medianCitations.toFixed(1)} | First ${row.roleMix.First} | Senior ${row.roleMix.Senior}`}
                 >
-                  <div className="flex items-center justify-between gap-2 text-[0.62rem] text-[hsl(var(--tone-neutral-700))]">
-                    <span className="truncate font-medium">{row.venue}</span>
+                  <div className="flex items-center justify-between gap-2 text-caption text-[hsl(var(--tone-neutral-700))]">
+                    <span className="block max-w-full break-words pr-2 font-medium leading-snug">{row.venue}</span>
                     <span>{`${formatInt(row.count)} (${row.sharePct.toFixed(0)}%)`}</span>
                   </div>
                   <div className="mt-1 h-[0.33rem] overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
@@ -2952,58 +3457,58 @@ function TotalPublicationsDrilldownWorkspace({
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search title, venue, role"
-              className="h-7 min-w-[12rem] rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 text-[0.66rem] text-[hsl(var(--tone-neutral-700))] outline-none focus:border-[hsl(var(--tone-accent-500))]"
+              className="house-input h-9 min-w-[12rem] rounded-md px-3 text-sm text-[hsl(var(--tone-neutral-700))] outline-none focus:border-[hsl(var(--tone-accent-500))]"
             />
             <button
               type="button"
-              className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))]"
+              className="house-button-action house-button-text inline-flex h-9 items-center rounded-md px-3 text-[hsl(var(--tone-neutral-700))]"
               onClick={clearFilters}
             >
               Clear filters
             </button>
           </div>
-          <div className="mt-2 overflow-x-auto rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background">
-            <table className="w-full min-w-[47.5rem] border-collapse text-[0.64rem]">
-              <thead className="bg-[hsl(var(--tone-neutral-50)/0.4)] text-[hsl(var(--tone-neutral-700))]">
+          <div className="house-table-shell mt-2 overflow-x-auto rounded-md bg-background">
+            <table className="w-full min-w-sz-760 border-collapse">
+              <thead className="house-table-head">
                 <tr>
-                  <th className="px-2 py-1.5 text-left font-semibold">
-                    <button type="button" onClick={() => handleSort('year')}>{`Year${sortIndicator('year')}`}</button>
+                  <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">
+                    <button type="button" onClick={() => handleSort('year')}>{`Year ${sortIndicator('year')}`}</button>
                   </th>
-                  <th className="px-2 py-1.5 text-left font-semibold">
-                    <button type="button" onClick={() => handleSort('title')}>{`Title${sortIndicator('title')}`}</button>
+                  <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">
+                    <button type="button" onClick={() => handleSort('title')}>{`Title ${sortIndicator('title')}`}</button>
                   </th>
-                  <th className="px-2 py-1.5 text-left font-semibold">
-                    <button type="button" onClick={() => handleSort('role')}>{`Role${sortIndicator('role')}`}</button>
+                  <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">
+                    <button type="button" onClick={() => handleSort('role')}>{`Role ${sortIndicator('role')}`}</button>
                   </th>
-                  <th className="px-2 py-1.5 text-left font-semibold">
-                    <button type="button" onClick={() => handleSort('type')}>{`Type${sortIndicator('type')}`}</button>
+                  <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">
+                    <button type="button" onClick={() => handleSort('type')}>{`Type ${sortIndicator('type')}`}</button>
                   </th>
-                  <th className="px-2 py-1.5 text-left font-semibold">
-                    <button type="button" onClick={() => handleSort('venue')}>{`Venue${sortIndicator('venue')}`}</button>
+                  <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">
+                    <button type="button" onClick={() => handleSort('venue')}>{`Venue ${sortIndicator('venue')}`}</button>
                   </th>
-                  <th className="px-2 py-1.5 text-right font-semibold">
-                    <button type="button" onClick={() => handleSort('citations')}>{`Citations${sortIndicator('citations')}`}</button>
+                  <th className="house-table-head-text h-10 px-3 text-right align-middle font-semibold">
+                    <button type="button" onClick={() => handleSort('citations')}>{`Citations ${sortIndicator('citations')}`}</button>
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {sortedPublications.slice(0, 120).map((record) => (
-                  <tr key={`paper-row-${record.workId}`} className={cn(HOUSE_CHART_GRID_LINE_CLASS, 'text-[hsl(var(--tone-neutral-700))]')}>
-                    <td className="px-2 py-1.5">{record.year || 'n/a'}</td>
-                    <td className="px-2 py-1.5">
-                      <span className="line-clamp-1">{record.title}</span>
+                  <tr key={`paper-row-${record.workId}`} className={cn('house-table-row text-[hsl(var(--tone-neutral-700))]')}>
+                    <td className="house-table-cell-text px-3 py-2">{record.year || 'n/a'}</td>
+                    <td className="house-table-cell-text px-3 py-2">
+                      <span className="block max-w-[28rem] break-words leading-snug">{record.title}</span>
                     </td>
-                    <td className="px-2 py-1.5">{record.role}</td>
-                    <td className="px-2 py-1.5">{record.type}</td>
-                    <td className="px-2 py-1.5">
-                      <span className="line-clamp-1">{record.venue}</span>
+                    <td className="house-table-cell-text px-3 py-2">{record.role}</td>
+                    <td className="house-table-cell-text px-3 py-2">{record.type}</td>
+                    <td className="house-table-cell-text px-3 py-2">
+                      <span className="block max-w-[18rem] break-words leading-snug">{record.venue}</span>
                     </td>
-                    <td className="px-2 py-1.5 text-right">{formatInt(record.citations)}</td>
+                    <td className="house-table-cell-text px-3 py-2 text-right">{formatInt(record.citations)}</td>
                   </tr>
                 ))}
                 {!sortedPublications.length ? (
                   <tr>
-                    <td className="px-2 py-4 text-center text-[hsl(var(--tone-neutral-500))]" colSpan={6}>
+                    <td className="house-table-cell-text px-3 py-4 text-center text-[hsl(var(--tone-neutral-500))]" colSpan={6}>
                       No papers match the current filters.
                     </td>
                   </tr>
@@ -3058,7 +3563,7 @@ function TotalPublicationsDrilldownWorkspace({
           <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_10.5rem]">
             <div className={workspacePanelCompactClass}>
               <svg viewBox="0 0 320 138" className="h-40 w-full">
-                {[25, 50, 75].map((pct) => (
+                {[50].map((pct) => (
                   <line
                     key={`trajectory-grid-${pct}`}
                     x1={8}
@@ -3079,7 +3584,7 @@ function TotalPublicationsDrilldownWorkspace({
                   <path d={trajectoryPath} fill="none" stroke="hsl(var(--tone-accent-700))" strokeWidth={2.8} strokeLinecap="round" />
                 ) : null}
               </svg>
-              <div className="mt-1 flex items-center justify-between text-[0.58rem] uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">
+              <div className="mt-1 flex items-center justify-between text-caption uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">
                 <span>{visibleYears[0] || 'n/a'}</span>
                 <span>{visibleYears[visibleYears.length - 1] || 'n/a'}</span>
               </div>
@@ -3096,16 +3601,16 @@ function TotalPublicationsDrilldownWorkspace({
             </div>
             <div className="space-y-1.5">
               <div className="rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background px-2 py-1.5">
-                <p className="text-[0.56rem] uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Volatility index</p>
-                <p className="mt-0.5 text-[0.78rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{volatilityIndex.toFixed(2)}</p>
+                <p className="text-caption uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Volatility index</p>
+                <p className="mt-0.5 text-micro font-semibold text-[hsl(var(--tone-neutral-800))]">{volatilityIndex.toFixed(2)}</p>
               </div>
               <div className="rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background px-2 py-1.5">
-                <p className="text-[0.56rem] uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Growth slope</p>
-                <p className="mt-0.5 text-[0.78rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{growthSlope >= 0 ? '+' : ''}{growthSlope.toFixed(2)}/year</p>
+                <p className="text-caption uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Growth slope</p>
+                <p className="mt-0.5 text-micro font-semibold text-[hsl(var(--tone-neutral-800))]">{growthSlope >= 0 ? '+' : ''}{growthSlope.toFixed(2)}/year</p>
               </div>
               <div className="rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background px-2 py-1.5">
-                <p className="text-[0.56rem] uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Phase marker</p>
-                <p className="mt-0.5 text-[0.78rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{trajectoryPhase}</p>
+                <p className="text-caption uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Phase marker</p>
+                <p className="mt-0.5 text-micro font-semibold text-[hsl(var(--tone-neutral-800))]">{trajectoryPhase}</p>
               </div>
             </div>
           </div>
@@ -3119,33 +3624,33 @@ function TotalPublicationsDrilldownWorkspace({
       <div className="space-y-3">
         <div className={workspaceSectionClass}>
           <div className="flex flex-wrap items-center gap-2">
-            <span className={cn('inline-flex items-center rounded-full border px-2.5 py-1 text-[0.63rem] font-semibold', badgeTone)}>
+            <span className={cn('inline-flex items-center rounded-full border px-2.5 py-1 text-caption font-semibold', badgeTone)}>
               {contextClassLabel}
             </span>
-            <span className="text-[0.64rem] text-[hsl(var(--tone-neutral-600))]">{trajectoryPhase} phase detected</span>
+            <span className="text-caption text-[hsl(var(--tone-neutral-600))]">{trajectoryPhase} phase detected</span>
           </div>
           <div className="mt-3 grid gap-2 md:grid-cols-2">
             <div className="rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background p-2.5">
-              <p className="text-[0.58rem] uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Portfolio structure</p>
-              <p className="mt-1 text-[0.67rem] text-[hsl(var(--tone-neutral-700))]">{`Active years ${formatInt(activeYears)}`}</p>
-              <p className="text-[0.67rem] text-[hsl(var(--tone-neutral-700))]">{`Median/year ${medianPerActiveYear.toFixed(1)}`}</p>
-              <p className="text-[0.67rem] text-[hsl(var(--tone-neutral-700))]">{`Unknown year records ${formatInt(unknownYearCount)}`}</p>
+              <p className="text-caption uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Portfolio structure</p>
+              <p className="mt-1 text-caption text-[hsl(var(--tone-neutral-700))]">{`Active years ${formatInt(activeYears)}`}</p>
+              <p className="text-caption text-[hsl(var(--tone-neutral-700))]">{`Median/year ${medianPerActiveYear.toFixed(1)}`}</p>
+              <p className="text-caption text-[hsl(var(--tone-neutral-700))]">{`Unknown year records ${formatInt(unknownYearCount)}`}</p>
             </div>
             <div className="rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background p-2.5">
-              <p className="text-[0.58rem] uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Distribution profile</p>
-              <p className="mt-1 text-[0.67rem] text-[hsl(var(--tone-neutral-700))]">{`Peak year ${peakYearData.year} (${formatInt(peakYearData.count)})`}</p>
-              <p className="text-[0.67rem] text-[hsl(var(--tone-neutral-700))]">{`Volatility ${volatilityIndex.toFixed(2)}`}</p>
-              <p className="text-[0.67rem] text-[hsl(var(--tone-neutral-700))]">{`Slope ${growthSlope >= 0 ? '+' : ''}${growthSlope.toFixed(2)} / year`}</p>
+              <p className="text-caption uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Distribution profile</p>
+              <p className="mt-1 text-caption text-[hsl(var(--tone-neutral-700))]">{`Peak year ${peakYearData.year} (${formatInt(peakYearData.count)})`}</p>
+              <p className="text-caption text-[hsl(var(--tone-neutral-700))]">{`Volatility ${volatilityIndex.toFixed(2)}`}</p>
+              <p className="text-caption text-[hsl(var(--tone-neutral-700))]">{`Slope ${growthSlope >= 0 ? '+' : ''}${growthSlope.toFixed(2)} / year`}</p>
             </div>
           </div>
           <div className="mt-3 grid gap-1.5 sm:grid-cols-3">
-            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))] text-left">
+            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-caption font-medium text-[hsl(var(--tone-neutral-700))] text-left">
               View authorship distribution
             </button>
-            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))] text-left">
+            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-caption font-medium text-[hsl(var(--tone-neutral-700))] text-left">
               View collaboration structure
             </button>
-            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-[0.62rem] font-medium text-[hsl(var(--tone-neutral-700))] text-left">
+            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-caption font-medium text-[hsl(var(--tone-neutral-700))] text-left">
               View impact concentration
             </button>
           </div>
@@ -3161,7 +3666,7 @@ function TotalPublicationsDrilldownWorkspace({
           <summary className={cn(workspaceHeadingClass, 'cursor-pointer list-none px-3 py-2')}>
             Method details
           </summary>
-          <div className="space-y-1.5 border-t border-[hsl(var(--tone-neutral-200)/0.72)] px-3 py-2.5 text-[0.64rem] text-[hsl(var(--tone-neutral-700))]">
+          <div className="space-y-1.5 border-t border-[hsl(var(--tone-neutral-200)/0.72)] px-3 py-2.5 text-caption text-[hsl(var(--tone-neutral-700))]">
             <p><span className="font-semibold">Formula:</span> {String(tile.drilldown?.formula || 'Not available')}</p>
             <p><span className="font-semibold">Filters:</span> Publication year when available; author-linked publication records.</p>
             <p><span className="font-semibold">Sources:</span> {(tile.data_source || []).join(', ') || 'Not available'}</p>
@@ -3202,28 +3707,11 @@ function HIndexNeedsChart({
       count: candidateGaps.filter((gap) => gap === 1).length,
     },
     {
-      key: 'need-2',
-      label: '+2',
-      needed: 2,
-      count: candidateGaps.filter((gap) => gap === 2).length,
-    },
-    {
       key: 'need-3',
       label: '+3',
       needed: 3,
-      count: candidateGaps.filter((gap) => gap === 3).length,
-    },
-    {
-      key: 'need-4',
-      label: '+4',
-      needed: 4,
-      count: candidateGaps.filter((gap) => gap === 4).length,
-    },
-    {
-      key: 'need-5-plus',
-      label: '+5+',
-      needed: 5,
-      count: candidateGaps.filter((gap) => gap >= 5).length,
+      // Keep the panel compact by folding higher gaps into the +3 bin.
+      count: candidateGaps.filter((gap) => gap >= 3).length,
     },
   ]), [candidateGaps])
   const animationKey = useMemo(
@@ -3251,18 +3739,27 @@ function HIndexNeedsChart({
   }, [animationKey])
 
   const scaledMax = Math.max(1, animatedMax)
+  const axisLayout = buildChartAxisLayout({
+    axisLabels: bars.map((bar) => bar.label),
+    showXAxisName: true,
+    xAxisName: 'Citations needed',
+    dense: false,
+  })
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
-          'pb-8',
           HOUSE_CHART_ENTERED_CLASS,
         )}
+        style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
       >
-        <div className="absolute inset-x-2 bottom-8 top-4">
-          {[25, 50, 75].map((pct) => (
+        <div
+          className="absolute inset-x-2 top-4"
+          style={{ bottom: `${axisLayout.plotBottomRem}rem` }}
+        >
+          {[50].map((pct) => (
             <div
               key={`h-needed-grid-${pct}`}
               className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
@@ -3289,7 +3786,7 @@ function HIndexNeedsChart({
                 >
                   <span
                     className={cn(
-                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-[0.6rem] leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
+                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-caption leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
                       isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
                     )}
                     style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
@@ -3302,7 +3799,7 @@ function HIndexNeedsChart({
                       'block w-full rounded',
                       HOUSE_TOGGLE_CHART_BAR_CLASS,
                       toneClass,
-                      isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
+                      isActive && 'brightness-[1.08] saturate-[1.14]',
                     )}
                     style={{
                       height: `${heightPct}%`,
@@ -3316,21 +3813,21 @@ function HIndexNeedsChart({
             })}
           </div>
         </div>
-        <div className="pointer-events-none absolute inset-x-2 bottom-2 grid grid-flow-col auto-cols-fr items-start gap-1">
+        <div
+          className="pointer-events-none absolute inset-x-2 grid grid-flow-col auto-cols-fr items-start gap-1"
+          style={{ bottom: `${axisLayout.axisBottomRem}rem`, minHeight: `${axisLayout.axisMinHeightRem}rem` }}
+        >
           {bars.map((bar, index) => (
             <div key={`${bar.key}-${index}-axis`} className={cn('text-center leading-none', HOUSE_TOGGLE_CHART_LABEL_CLASS)}>
-              <p className="text-[0.6rem] font-semibold text-[hsl(var(--tone-neutral-600))]">{bar.label}</p>
-              <p
-                className="mt-px text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-transparent"
-                aria-hidden="true"
-              >
-                ytd
-              </p>
+              <p className="break-words px-0.5 text-caption font-semibold leading-tight text-[hsl(var(--tone-neutral-600))]">{bar.label}</p>
             </div>
           ))}
         </div>
-        <div className="pointer-events-none absolute inset-x-2 bottom-0.5 text-center">
-          <p className="text-[0.6rem] font-semibold leading-none text-[hsl(var(--tone-neutral-600))]">
+        <div
+          className="pointer-events-none absolute inset-x-2 text-center"
+          style={{ bottom: `${axisLayout.xAxisNameBottomRem}rem`, minHeight: `${axisLayout.xAxisNameMinHeightRem}rem` }}
+        >
+          <p className="break-words text-caption font-semibold leading-tight text-[hsl(var(--tone-neutral-600))]">
             Citations needed
           </p>
         </div>
@@ -3348,7 +3845,7 @@ function HIndexTrajectoryPanel({
 }) {
   const [renderMode, setRenderMode] = useState<HIndexViewMode>(mode)
   const [visible, setVisible] = useState(true)
-  const fadeMs = 170
+  const fadeMs = 220
 
   useEffect(() => {
     if (mode === renderMode) {
@@ -3398,7 +3895,7 @@ function HIndexProgressInline({ tile }: { tile: PublicationMetricTilePayload }) 
             aria-hidden="true"
           />
         </div>
-        <span className="text-[0.56rem] font-medium leading-none text-[hsl(var(--tone-neutral-600))]">
+        <span className="text-caption font-medium leading-none text-[hsl(var(--tone-neutral-600))]">
           {Math.round(progressMeta.progressPct)}%
         </span>
       </div>
@@ -3513,7 +4010,7 @@ function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload })
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div className="relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-2 pt-2.5">
+      <div className={HOUSE_LINE_CHART_SURFACE_CLASS}>
         <div className="relative h-full w-full">
           <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-full w-full">
             <path d={areaPath} className="fill-[hsl(var(--tone-accent-100))]" fillOpacity={0.68} />
@@ -3543,7 +4040,7 @@ function MiniBars({
   highlightFrom?: number
 }) {
   if (!values.length) {
-    return <div className="h-8 rounded border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))]" />
+    return <div className="h-8 rounded bg-card" />
   }
   const max = Math.max(1, ...values)
   return (
@@ -3570,7 +4067,7 @@ function MiniPairedBars({
 }) {
   const safe = values.slice(0, 2)
   if (safe.length < 2) {
-    return <div className="h-8 rounded border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))]" />
+    return <div className="h-8 rounded bg-card" />
   }
   const max = Math.max(1, ...safe)
   return (
@@ -3623,7 +4120,7 @@ function MiniDonut({
   const safe = values.slice(0, 2).map((item) => Math.max(0, item))
   const total = safe.reduce((sum, item) => sum + item, 0)
   if (total <= 0) {
-    return <div className="h-8 w-8 rounded-full border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))]" />
+    return <div className="h-8 w-8 rounded-full bg-card" />
   }
   const pct = safe[0] / total
   const angle = pct * 360
@@ -3645,7 +4142,7 @@ function MiniLine({
   colorCode?: string
 }) {
   if (!values.length) {
-    return <div className="h-8 rounded border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))]" />
+    return <div className="h-8 rounded bg-card" />
   }
   const max = Math.max(...values, ...(overlay.length ? overlay : [0]))
   const min = Math.min(...values, ...(overlay.length ? overlay : [0]))
@@ -3782,6 +4279,14 @@ export function PublicationsTopStrip({
     [totalCitationsTile],
   )
   const activeTile = activeTileDetail || selectedTile
+  const activeTileDefinition = useMemo(
+    () => String(activeTile?.drilldown?.definition || '').trim(),
+    [activeTile],
+  )
+  const showActiveTileDefinition = useMemo(
+    () => Boolean(activeTileDefinition) && !/fixture\s+drilldown/i.test(activeTileDefinition),
+    [activeTileDefinition],
+  )
 
   useEffect(() => {
     setActiveDrilldownTab('summary')
@@ -3817,47 +4322,90 @@ export function PublicationsTopStrip({
 
   return (
     <>
-      <Card>
-        <CardContent className="space-y-2 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-            <div className="flex flex-wrap items-center gap-2">
-              {metrics?.status === 'FAILED' ? <span className="text-amber-700">Last update failed</span> : null}
+      <Card className={HOUSE_SURFACE_PANEL_BARE_CLASS}>
+        <CardContent className="p-0">
+          <div className="flex flex-wrap items-start justify-between gap-2 px-3 py-2.5">
+            <div className="min-w-0">
+              <p className={HOUSE_HEADING_H1_CLASS}>Publication insights</p>
+              {metrics?.status === 'FAILED' ? (
+                <p className={cn('mt-1', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>Last update failed</p>
+              ) : null}
             </div>
-            <button
-              type="button"
-              data-stop-tile-open="true"
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[0.68rem] font-semibold leading-none transition-colors',
-                insightsVisible
-                  ? 'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-100))] text-[hsl(var(--tone-positive-700))]'
-                  : 'border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] text-[hsl(var(--tone-warning-700))]',
-              )}
-              onClick={() => setInsightsVisible((current) => !current)}
-              aria-pressed={insightsVisible}
-              aria-label={insightsVisible ? 'Set publication insights not visible' : 'Set publication insights visible'}
-            >
-              {insightsVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-              <span>{insightsVisible ? 'Visible' : 'Not visible'}</span>
-            </button>
-          </div>
-          <div className={cn(HOUSE_SURFACE_TOP_PANEL_CLASS, 'px-2.5 py-1.5')}>
-            <p className={HOUSE_HEADING_H1_CLASS}>
-              Publication insights
-            </p>
+            <div className="ml-auto flex flex-wrap items-center gap-1" data-stop-tile-open="true">
+              {insightsVisible ? (
+                <>
+                  <Button
+                    type="button"
+                    data-stop-tile-open="true"
+                    variant="house"
+                    size="sm"
+                    className="h-8 gap-1.5 px-3"
+                    aria-label="Generate publication insights report"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    <span>Generate report</span>
+                  </Button>
+                  <span className={cn('h-4 w-px', HOUSE_DIVIDER_FILL_SOFT_CLASS)} aria-hidden="true" />
+                  <Button
+                    type="button"
+                    data-stop-tile-open="true"
+                    variant="house"
+                    size="icon"
+                    className="h-8 w-8"
+                    aria-label="Download"
+                    title="Download"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    data-stop-tile-open="true"
+                    variant="house"
+                    size="icon"
+                    className="h-8 w-8"
+                    aria-label="Share"
+                    title="Share"
+                  >
+                    <Share2 className="h-3.5 w-3.5" />
+                  </Button>
+                  <span className={cn('h-4 w-px', HOUSE_DIVIDER_FILL_SOFT_CLASS)} aria-hidden="true" />
+                </>
+              ) : null}
+              <Button
+                type="button"
+                data-stop-tile-open="true"
+                variant="house"
+                size="icon"
+                className={cn(
+                  'h-8 w-8 rounded-full transition-colors',
+                  insightsVisible
+                    ? 'bg-[hsl(var(--tone-neutral-100)/0.92)] text-[hsl(var(--tone-neutral-600))] hover:bg-[hsl(var(--tone-neutral-100))]'
+                    : 'bg-[hsl(var(--tone-neutral-100)/0.72)] text-[hsl(var(--tone-neutral-500))] hover:bg-[hsl(var(--tone-neutral-200)/0.72)]',
+                )}
+                onClick={() => setInsightsVisible((current) => !current)}
+                aria-pressed={insightsVisible}
+                aria-label={insightsVisible ? 'Set publication insights not visible' : 'Set publication insights visible'}
+                title={insightsVisible ? 'Publication insights visible' : 'Publication insights hidden'}
+              >
+                {insightsVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
           </div>
 
           {!insightsVisible ? (
-            <div className="rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2 text-xs text-[hsl(var(--tone-neutral-600))]">
+            <div className={cn('mx-3 mb-3', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_INFO_CLASS)}>
               Publication insights are hidden.
             </div>
           ) : loading && tiles.length === 0 ? (
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 lg:gap-3">
+            <div className="publications-insights-grid">
               {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="h-32 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]" />
+                <div key={index} className="min-h-36 px-3 py-2.5">
+                  <div className="h-full rounded-sm bg-[hsl(var(--tone-neutral-50)/0.64)]" />
+                </div>
               ))}
             </div>
           ) : (
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 lg:gap-3">
+            <div className="publications-insights-grid">
               {tiles.map((tile) => {
                 const subtitle = String(tile.subtext || '').trim()
                 const rawDeltaDisplay = String(tile.delta_display || '').trim()
@@ -3889,7 +4437,7 @@ export function PublicationsTopStrip({
                 let detailText: ReactNode | undefined = effectiveDeltaDisplay || undefined
                 let contentGridClassName: string | undefined
                 let visual: ReactNode = (
-                  <div className="flex h-full min-h-0 items-center rounded-md border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] p-1.5">
+                  <div className="flex h-full min-h-0 items-center rounded-sm border border-[hsl(var(--stroke-strong)/0.92)] bg-[hsl(var(--tone-neutral-50))] p-1">
                     <MiniChart tile={tile} />
                   </div>
                 )
@@ -3979,9 +4527,11 @@ export function PublicationsTopStrip({
                     </div>
                   )
                   secondaryText = 'Citation pace'
-                  detailText = momentumWindowMode === '5y'
-                    ? 'Last 5 years (1 year vs prior 4 years)'
-                    : 'Last 12 months (3 months vs prior 9 months)'
+                  detailText = (
+                    <span className="block min-h-[2.3rem] leading-snug">
+                      Comparing recent vs prior citation pace
+                    </span>
+                  )
                   visual = (
                     <MomentumTilePanel
                       tile={tile}
@@ -4029,7 +4579,7 @@ export function PublicationsTopStrip({
                   detailText = undefined
                   if (impactBadgeLabel) {
                     badgeNode = (
-                      <span className="inline-flex items-center rounded-full border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2.5 py-[0.2rem] text-[0.66rem] font-medium leading-none text-[hsl(var(--tone-neutral-700))]">
+                      <span className="inline-flex items-center rounded-full bg-[hsl(var(--tone-neutral-100)/0.92)] px-2.5 py-[0.2rem] text-caption font-medium leading-none text-[hsl(var(--tone-neutral-700))]">
                         {impactBadgeLabel}
                       </span>
                     )
@@ -4068,7 +4618,7 @@ export function PublicationsTopStrip({
                   contentGridClassName = 'grid-cols-[minmax(0,0.85fr)_minmax(0,0.99fr)]'
                   badgeNode = (
                     <div className="flex w-full flex-col items-center gap-0.5">
-                      <p className="text-center text-[0.56rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">
+                      <p className="text-center text-caption font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">
                         Percentile
                       </p>
                       <div
@@ -4135,7 +4685,7 @@ export function PublicationsTopStrip({
                   secondaryText = 'Leadership index'
                   detailText = undefined
                   badgeNode = (
-                    <span className="inline-flex items-center rounded-full border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2.5 py-[0.2rem] text-[0.66rem] font-medium leading-none text-[hsl(var(--tone-neutral-700))]">
+                    <span className="inline-flex items-center rounded-full bg-[hsl(var(--tone-neutral-100)/0.92)] px-2.5 py-[0.2rem] text-caption font-medium leading-none text-[hsl(var(--tone-neutral-700))]">
                       Median author position {medianAuthorPositionDisplay}
                     </span>
                   )
@@ -4161,7 +4711,7 @@ export function PublicationsTopStrip({
                     ? Math.max(0, Math.round(influentialRatioRaw))
                     : null
                   primaryValue = mainValueDisplay
-                  secondaryText = 'Influential citations over lifetime publications'
+                  secondaryText = 'Influential citations'
                   detailText = influentialRatioWhole === null ? undefined : `${influentialRatioWhole}% of total citations`
                   visual = <InfluentialTrendPanel tile={tile} />
                 }
@@ -4186,42 +4736,6 @@ export function PublicationsTopStrip({
               })}
             </div>
           )}
-          <div className={cn(HOUSE_SURFACE_TOP_PANEL_CLASS, 'px-2 py-2')}>
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className={cn(HOUSE_HEADING_H1_SOFT_CLASS, 'pt-1')}>
-                Tools
-              </p>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button
-                  type="button"
-                  data-stop-tile-open="true"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
-                  aria-label="Generate publication insights report"
-                >
-                  <FileText className="h-3.5 w-3.5" />
-                  <span>Generate publication insights report</span>
-                </button>
-                <button
-                  type="button"
-                  data-stop-tile-open="true"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
-                  aria-label="Download"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  <span>Download</span>
-                </button>
-                <button
-                  type="button"
-                  data-stop-tile-open="true"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
-                  aria-label="Share"
-                >
-                  <Share2 className="h-3.5 w-3.5" />
-                  <span>Share</span>
-                </button>
-              </div>
-            </div>
-          </div>
         </CardContent>
       </Card>
 
@@ -4231,9 +4745,11 @@ export function PublicationsTopStrip({
             <div className="space-y-4 pr-8">
               <div className={HOUSE_SURFACE_LEFT_BORDER_CLASS}>
                 <h3 className={HOUSE_HEADING_TITLE_CLASS}>{activeTile.drilldown.title}</h3>
-                <p className={cn(HOUSE_TEXT_CLASS, 'mt-1')}>{activeTile.drilldown.definition}</p>
+                {showActiveTileDefinition ? (
+                  <p className={cn(HOUSE_TEXT_CLASS, 'mt-1')}>{activeTileDefinition}</p>
+                ) : null}
                 {detailLoading ? <p className={cn('mt-2', HOUSE_TEXT_SOFT_CLASS)}>Loading metric detail...</p> : null}
-                {detailError ? <p className="mt-2 text-xs text-amber-700">{detailError}</p> : null}
+                {detailError ? <p className="mt-2 text-xs text-[hsl(var(--tone-warning-700))]">{detailError}</p> : null}
               </div>
               <Tabs
                 value={activeDrilldownTab}
@@ -4245,7 +4761,7 @@ export function PublicationsTopStrip({
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className="!text-[0.69rem] font-medium leading-none text-[hsl(var(--tone-neutral-700))] data-[state=active]:bg-background data-[state=active]:text-[hsl(var(--tone-neutral-900))] data-[state=active]:shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.1)]"
+                      className="!text-caption font-medium leading-none text-[hsl(var(--tone-neutral-700))] data-[state=active]:bg-background data-[state=active]:text-[hsl(var(--tone-neutral-900))]"
                     >
                       {tab.label}
                     </TabsTrigger>

@@ -171,7 +171,7 @@ export function ProfileManageAccountPage() {
     <section data-house-role="page" className="space-y-4">
       <header
         data-house-role="page-header"
-        className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}
+        className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderAccount)}
       >
         <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Manage account</h1>
         <p data-house-role="page-subtitle" className={HOUSE_PAGE_SUBTITLE_CLASS}>

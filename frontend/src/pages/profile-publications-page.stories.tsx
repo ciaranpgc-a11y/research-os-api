@@ -70,7 +70,7 @@ function buildTile(input: {
     stability: 'stable',
     drilldown: {
       title: input.label,
-      definition: 'Fixture drilldown for page-level Storybook rendering.',
+      definition: '',
       formula: 'Fixture only',
       confidence_note: 'No backend request required.',
       publications: [],

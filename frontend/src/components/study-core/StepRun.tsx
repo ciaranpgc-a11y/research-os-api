@@ -181,8 +181,9 @@ export function StepRun({
     if (!activeJob || !isActive(activeJob)) {
       return
     }
+    const token = getAuthSessionToken()
     const timer = window.setInterval(() => {
-      void fetchGenerationJob(activeJob.id)
+      void fetchGenerationJob({ token: token || undefined, jobId: activeJob.id })
         .then((payload) => {
           onActiveJobChange(payload)
           onJobStatusChange(toWizardStatus(payload))
@@ -347,7 +348,9 @@ export function StepRun({
     setBusy('run')
     onError('')
     try {
+      const token = getAuthSessionToken()
       const payload = await enqueueGeneration({
+        token: token || undefined,
         projectId: runContext.projectId,
         manuscriptId: runContext.manuscriptId,
         sections: selectedSections,
@@ -401,7 +404,11 @@ export function StepRun({
     setBusy('cancel')
     onError('')
     try {
-      const payload = await cancelGeneration(activeJob.id)
+      const token = getAuthSessionToken()
+      const payload = await cancelGeneration({
+        token: token || undefined,
+        jobId: activeJob.id,
+      })
       onActiveJobChange(payload)
       onJobStatusChange(toWizardStatus(payload))
       onStatus(`Job ${payload.id.slice(0, 8)} is ${payload.status}.`)
@@ -419,7 +426,11 @@ export function StepRun({
     setBusy('retry')
     onError('')
     try {
-      const payload = await retryGeneration(activeJob.id)
+      const token = getAuthSessionToken()
+      const payload = await retryGeneration({
+        token: token || undefined,
+        jobId: activeJob.id,
+      })
       onActiveJobChange(payload)
       onJobStatusChange('running')
       onStatus(`Retry queued (${payload.id.slice(0, 8)}).`)

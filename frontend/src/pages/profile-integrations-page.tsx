@@ -791,7 +791,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
 
   return (
     <section data-house-role="page" className="space-y-4">
-      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderAccount)}>
         <h1 data-house-role="page-title" className={houseTypography.title}>Integrations</h1>
       </header>
 
@@ -803,7 +803,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
                 iD
               </span>
               <div className="space-y-0.5">
-                <CardTitle className="text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">ORCID</CardTitle>
+                <CardTitle>ORCID</CardTitle>
                 <p className="text-caption uppercase tracking-[0.1em] text-[hsl(var(--tone-neutral-500))]">
                   Research identity and publication sync
                 </p>

@@ -44,7 +44,7 @@ export function WorkspaceLayout() {
         data-house-role="workspace-grid"
         className={cn(
           'grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[280px_minmax(0,1fr)]',
-          showRightPanel && 'insight:grid-cols-[280px_minmax(0,1fr)_360px]',
+          showRightPanel && 'insight:grid-cols-[280px_minmax(0,1fr)_340px]',
         )}
       >
         <aside data-house-role="left-nav-panel" className="hidden border-r border-border nav:block">
@@ -82,7 +82,7 @@ export function WorkspaceLayout() {
 
       {showRightPanel ? (
         <Sheet open={rightPanelOpen} onOpenChange={setRightPanelOpen}>
-          <SheetContent side="right" className="w-sz-360 p-0 insight:hidden sm:w-sz-360">
+          <SheetContent side="right" className="w-sz-340 p-0 insight:hidden sm:w-sz-340">
             <InsightPanel />
           </SheetContent>
         </Sheet>

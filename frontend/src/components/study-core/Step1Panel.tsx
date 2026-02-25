@@ -22,20 +22,20 @@ type Step1PanelProps = {
   onApplyWordLength: (value: string) => void
 }
 
-const ACTION_BUTTON_CLASS = 'bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500'
+const ACTION_BUTTON_CLASS = 'house-button-action-primary house-button-text'
 const OUTLINE_ACTION_BUTTON_CLASS =
-  'border-emerald-300 text-emerald-800 hover:bg-emerald-100 focus-visible:ring-emerald-500'
-const IGNORE_BUTTON_CLASS = 'border-slate-300 text-slate-700 hover:bg-slate-100 focus-visible:ring-slate-400'
-const SUMMARY_CARD_CLASS = 'space-y-2 rounded-md border border-emerald-400 bg-emerald-50 p-3 shadow-sm'
-const RESEARCH_CATEGORY_CARD_CLASS = 'space-y-2 rounded-md border border-violet-400 bg-violet-50 p-3 shadow-sm'
-const RESEARCH_TYPE_CARD_CLASS = 'space-y-2 rounded-md border border-sky-400 bg-sky-50 p-3 shadow-sm'
-const INTERPRETATION_CARD_CLASS = 'space-y-2 rounded-md border border-cyan-400 bg-cyan-50 p-3 shadow-sm'
-const JOURNAL_CARD_CLASS = 'space-y-2 rounded-md border border-amber-400 bg-amber-50 p-3 shadow-sm'
-const APPLIED_SUMMARY_CARD_CLASS = 'space-y-1 rounded-md border border-emerald-300 bg-emerald-50 p-3'
-const APPLIED_CATEGORY_CARD_CLASS = 'space-y-1 rounded-md border border-violet-300 bg-violet-50 p-3'
-const APPLIED_TYPE_CARD_CLASS = 'space-y-1 rounded-md border border-sky-300 bg-sky-50 p-3'
-const APPLIED_INTERPRETATION_CARD_CLASS = 'space-y-1 rounded-md border border-cyan-300 bg-cyan-50 p-3'
-const APPLIED_JOURNAL_CARD_CLASS = 'space-y-1 rounded-md border border-amber-300 bg-amber-50 p-3'
+  'house-button-action house-button-text'
+const IGNORE_BUTTON_CLASS = 'house-button-action house-button-text'
+const SUMMARY_CARD_CLASS = 'space-y-2 rounded-md border border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] p-3 shadow-sm'
+const RESEARCH_CATEGORY_CARD_CLASS = 'space-y-2 rounded-md border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] p-3 shadow-sm'
+const RESEARCH_TYPE_CARD_CLASS = 'space-y-2 rounded-md border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] p-3 shadow-sm'
+const INTERPRETATION_CARD_CLASS = 'space-y-2 rounded-md border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] p-3 shadow-sm'
+const JOURNAL_CARD_CLASS = 'space-y-2 rounded-md border border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-50))] p-3 shadow-sm'
+const APPLIED_SUMMARY_CARD_CLASS = 'space-y-1 rounded-md border border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50)/0.62)] p-3'
+const APPLIED_CATEGORY_CARD_CLASS = 'space-y-1 rounded-md border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50)/0.62)] p-3'
+const APPLIED_TYPE_CARD_CLASS = 'space-y-1 rounded-md border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50)/0.62)] p-3'
+const APPLIED_INTERPRETATION_CARD_CLASS = 'space-y-1 rounded-md border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50)/0.62)] p-3'
+const APPLIED_JOURNAL_CARD_CLASS = 'space-y-1 rounded-md border border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-50)/0.62)] p-3'
 const CARD_TRANSITION_CLASS = 'transition-all duration-300 ease-out'
 
 type AppliedKey = 'summary' | 'researchCategory' | 'researchType' | 'interpretationMode' | 'journal'
@@ -477,12 +477,12 @@ export function Step1Panel({
     if (isLive) {
       return {
         label: 'Live journal guidance',
-        className: 'border-emerald-300 bg-emerald-100 text-emerald-900',
+        className: 'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-100))] text-[hsl(var(--tone-positive-800))]',
       }
     }
     return {
       label: 'Fallback estimate',
-      className: 'border-amber-300 bg-amber-100 text-amber-900',
+      className: 'border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] text-[hsl(var(--tone-warning-800))]',
     }
   }, [requestError, suggestions])
 
@@ -985,12 +985,12 @@ export function Step1Panel({
     if (key === 'summary') {
       return (
         <div key="pending-summary" className={suggestionCardPulseClass('summary', SUMMARY_CARD_CLASS)}>
-          <p className="text-sm font-semibold text-emerald-900">Summary of research refinement</p>
-          <div className="rounded border border-emerald-300 bg-white p-2">
-            <p className="text-xs text-emerald-950">{summarySuggestion}</p>
+          <p className="text-sm font-semibold text-[hsl(var(--tone-positive-800))]">Summary of research refinement</p>
+          <div className="rounded border border-[hsl(var(--tone-positive-300))] bg-card p-2">
+            <p className="text-xs text-[hsl(var(--tone-positive-900))]">{summarySuggestion}</p>
           </div>
           <div className="space-y-2">
-            <p className="text-xs text-emerald-900">{isStale ? 'Inputs changed. Refresh before applying.' : 'Direct rewrite only; no new claims added.'}</p>
+            <p className="text-xs text-[hsl(var(--tone-positive-800))]">{isStale ? 'Inputs changed. Refresh before applying.' : 'Direct rewrite only; no new claims added.'}</p>
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
               <Button
                 size="sm"
@@ -1022,18 +1022,18 @@ export function Step1Panel({
             </div>
           </div>
           {showSummaryDiff ? (
-            <div className="space-y-2 rounded border border-emerald-300 bg-white p-2">
+            <div className="space-y-2 rounded border border-[hsl(var(--tone-positive-300))] bg-card p-2">
               <div>
-                <p className="text-micro font-semibold uppercase tracking-wide text-emerald-900">Current</p>
-                <p className="text-xs text-emerald-950">{summary}</p>
+                <p className="text-micro font-semibold uppercase tracking-wide text-[hsl(var(--tone-positive-800))]">Current</p>
+                <p className="text-xs text-[hsl(var(--tone-positive-900))]">{summary}</p>
               </div>
               <div>
-                <p className="text-micro font-semibold uppercase tracking-wide text-emerald-900">Suggested</p>
-                <p className="text-xs text-emerald-950">
+                <p className="text-micro font-semibold uppercase tracking-wide text-[hsl(var(--tone-positive-800))]">Suggested</p>
+                <p className="text-xs text-[hsl(var(--tone-positive-900))]">
                   {diffHighlightTokens(summary, summarySuggestion).map((token, index) => (
                     <span
                       key={`summary-diff-${index}`}
-                      className={token.changed ? 'rounded bg-emerald-200 px-0.5' : ''}
+                      className={token.changed ? 'rounded bg-[hsl(var(--tone-positive-200))] px-0.5' : ''}
                     >
                       {token.value}
                     </span>
@@ -1049,11 +1049,11 @@ export function Step1Panel({
     if (key === 'researchCategory' && researchCategorySuggestion) {
       return (
         <div key="pending-category" className={suggestionCardPulseClass('researchCategory', RESEARCH_CATEGORY_CARD_CLASS)}>
-          <p className="text-sm font-semibold text-violet-900">Research category suggestion</p>
-          <p className="text-xs text-violet-900">
+          <p className="text-sm font-semibold text-[hsl(var(--tone-accent-800))]">Research category suggestion</p>
+          <p className="text-xs text-[hsl(var(--tone-accent-800))]">
             Recommended category: <span className="font-semibold">{researchCategorySuggestion.value}</span>
           </p>
-          <p className="text-xs text-violet-900">{researchCategorySuggestion.rationale}</p>
+          <p className="text-xs text-[hsl(var(--tone-accent-800))]">{researchCategorySuggestion.rationale}</p>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button
               size="sm"
@@ -1081,11 +1081,11 @@ export function Step1Panel({
     if (key === 'researchType' && researchTypeSuggestion) {
       return (
         <div key="pending-type" className={suggestionCardPulseClass('researchType', RESEARCH_TYPE_CARD_CLASS)}>
-          <p className="text-sm font-semibold text-sky-900">Research type suggestion</p>
-          <p className="text-xs text-sky-900">
+          <p className="text-sm font-semibold text-[hsl(var(--tone-accent-800))]">Research type suggestion</p>
+          <p className="text-xs text-[hsl(var(--tone-accent-800))]">
             Recommended type: <span className="font-semibold">{researchTypeSuggestion.value}</span>
           </p>
-          <p className="text-xs text-sky-900">{researchTypeSuggestion.rationale}</p>
+          <p className="text-xs text-[hsl(var(--tone-accent-800))]">{researchTypeSuggestion.rationale}</p>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button
               size="sm"
@@ -1113,11 +1113,11 @@ export function Step1Panel({
     if (key === 'interpretationMode' && interpretationSuggestion) {
       return (
         <div key="pending-interpretation" className={suggestionCardPulseClass('interpretationMode', INTERPRETATION_CARD_CLASS)}>
-          <p className="text-sm font-semibold text-cyan-900">Interpretation mode suggestion</p>
-          <p className="text-xs text-cyan-900">
+          <p className="text-sm font-semibold text-[hsl(var(--tone-accent-800))]">Interpretation mode suggestion</p>
+          <p className="text-xs text-[hsl(var(--tone-accent-800))]">
             Recommended mode: <span className="font-semibold">{interpretationSuggestion.value}</span>
           </p>
-          <p className="text-xs text-cyan-900">{interpretationSuggestion.rationale}</p>
+          <p className="text-xs text-[hsl(var(--tone-accent-800))]">{interpretationSuggestion.rationale}</p>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button
               size="sm"
@@ -1146,7 +1146,7 @@ export function Step1Panel({
       return (
         <div key="pending-journal" className={suggestionCardPulseClass('journal', JOURNAL_CARD_CLASS)}>
           <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-amber-900">Journal recommendation</p>
+            <p className="text-sm font-semibold text-[hsl(var(--tone-warning-800))]">Journal recommendation</p>
             {journalProvenance ? (
               <span className={`rounded border px-1.5 py-0.5 text-micro font-medium ${journalProvenance.className}`}>
                 {journalProvenance.label}
@@ -1154,15 +1154,15 @@ export function Step1Panel({
             ) : null}
           </div>
           {articleSuggestion ? (
-            <div className="rounded border border-amber-300 bg-white p-2">
-              <p className="text-xs font-medium text-amber-950">Article type</p>
-              <p className="text-xs text-amber-900">{articleSuggestion.value}</p>
+            <div className="rounded border border-[hsl(var(--tone-warning-300))] bg-card p-2">
+              <p className="text-xs font-medium text-[hsl(var(--tone-warning-900))]">Article type</p>
+              <p className="text-xs text-[hsl(var(--tone-warning-800))]">{articleSuggestion.value}</p>
             </div>
           ) : null}
           {wordLengthSuggestion ? (
-            <div className="rounded border border-amber-300 bg-white p-2">
-              <p className="text-xs font-medium text-amber-950">Recommended word length</p>
-              <p className="text-xs text-amber-900">{wordLengthSuggestion.value}</p>
+            <div className="rounded border border-[hsl(var(--tone-warning-300))] bg-card p-2">
+              <p className="text-xs font-medium text-[hsl(var(--tone-warning-900))]">Recommended word length</p>
+              <p className="text-xs text-[hsl(var(--tone-warning-800))]">{wordLengthSuggestion.value}</p>
             </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -1209,8 +1209,8 @@ export function Step1Panel({
     if (key === 'summary') {
       return (
         <div key="applied-summary" className={APPLIED_SUMMARY_CARD_CLASS}>
-          <p className="text-sm font-medium text-slate-900">Summary refinement</p>
-          <p className="text-xs text-slate-700">Current summary matches the suggested rewrite.</p>
+          <p className="text-sm font-medium text-[hsl(var(--tone-neutral-800))]">Summary refinement</p>
+          <p className="text-xs text-[hsl(var(--tone-neutral-700))]">Current summary matches the suggested rewrite.</p>
           {revertControl}
         </div>
       )
@@ -1218,11 +1218,11 @@ export function Step1Panel({
     if (key === 'researchCategory' && researchCategorySuggestion) {
       return (
         <div key="applied-category" className={APPLIED_CATEGORY_CARD_CLASS}>
-          <p className="text-sm font-medium text-slate-900">Research category</p>
-          <p className="text-xs text-slate-700">
+          <p className="text-sm font-medium text-[hsl(var(--tone-neutral-800))]">Research category</p>
+          <p className="text-xs text-[hsl(var(--tone-neutral-700))]">
             Correct category selected: <span className="font-semibold">{researchCategorySuggestion.value}</span>
           </p>
-          <p className="text-xs text-slate-700">{researchCategorySuggestion.rationale}</p>
+          <p className="text-xs text-[hsl(var(--tone-neutral-700))]">{researchCategorySuggestion.rationale}</p>
           {revertControl}
         </div>
       )
@@ -1230,11 +1230,11 @@ export function Step1Panel({
     if (key === 'researchType' && researchTypeSuggestion) {
       return (
         <div key="applied-type" className={APPLIED_TYPE_CARD_CLASS}>
-          <p className="text-sm font-medium text-slate-900">Research type</p>
-          <p className="text-xs text-slate-700">
+          <p className="text-sm font-medium text-[hsl(var(--tone-neutral-800))]">Research type</p>
+          <p className="text-xs text-[hsl(var(--tone-neutral-700))]">
             Correct type selected: <span className="font-semibold">{researchTypeSuggestion.value}</span>
           </p>
-          <p className="text-xs text-slate-700">{researchTypeSuggestion.rationale}</p>
+          <p className="text-xs text-[hsl(var(--tone-neutral-700))]">{researchTypeSuggestion.rationale}</p>
           {revertControl}
         </div>
       )
@@ -1242,11 +1242,11 @@ export function Step1Panel({
     if (key === 'interpretationMode' && interpretationSuggestion) {
       return (
         <div key="applied-interpretation" className={APPLIED_INTERPRETATION_CARD_CLASS}>
-          <p className="text-sm font-medium text-slate-900">Interpretation mode</p>
-          <p className="text-xs text-slate-700">
+          <p className="text-sm font-medium text-[hsl(var(--tone-neutral-800))]">Interpretation mode</p>
+          <p className="text-xs text-[hsl(var(--tone-neutral-700))]">
             Correct mode selected: <span className="font-semibold">{interpretationSuggestion.value}</span>
           </p>
-          <p className="text-xs text-slate-700">{interpretationSuggestion.rationale}</p>
+          <p className="text-xs text-[hsl(var(--tone-neutral-700))]">{interpretationSuggestion.rationale}</p>
           {revertControl}
         </div>
       )
@@ -1255,16 +1255,16 @@ export function Step1Panel({
       return (
         <div key="applied-journal" className={APPLIED_JOURNAL_CARD_CLASS}>
           <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium text-slate-900">Journal recommendation</p>
+            <p className="text-sm font-medium text-[hsl(var(--tone-neutral-800))]">Journal recommendation</p>
             {journalProvenance ? (
               <span className={`rounded border px-1.5 py-0.5 text-micro font-medium ${journalProvenance.className}`}>
                 {journalProvenance.label}
               </span>
             ) : null}
           </div>
-          {articleSuggestion ? <p className="text-xs text-slate-700">Article type set: {articleSuggestion.value}</p> : null}
-          {wordLengthSuggestion ? <p className="text-xs text-slate-700">Word length set: {wordLengthSuggestion.value}</p> : null}
-          <p className="text-xs text-slate-700">Values are aligned with current recommendations.</p>
+          {articleSuggestion ? <p className="text-xs text-[hsl(var(--tone-neutral-700))]">Article type set: {articleSuggestion.value}</p> : null}
+          {wordLengthSuggestion ? <p className="text-xs text-[hsl(var(--tone-neutral-700))]">Word length set: {wordLengthSuggestion.value}</p> : null}
+          <p className="text-xs text-[hsl(var(--tone-neutral-700))]">Values are aligned with current recommendations.</p>
           {revertControl}
         </div>
       )
@@ -1288,10 +1288,10 @@ export function Step1Panel({
     if (key === 'summary' && summarySuggestion) {
       return (
         <div key="ignored-summary" className={SUMMARY_CARD_CLASS}>
-          <p className="text-sm font-semibold text-emerald-900">Summary of research refinement</p>
-          <p className="text-xs text-emerald-900">Ignored for now.</p>
-          <div className="rounded border border-emerald-300 bg-white p-2">
-            <p className="text-xs text-emerald-950">{summarySuggestion}</p>
+          <p className="text-sm font-semibold text-[hsl(var(--tone-positive-800))]">Summary of research refinement</p>
+          <p className="text-xs text-[hsl(var(--tone-positive-800))]">Ignored for now.</p>
+          <div className="rounded border border-[hsl(var(--tone-positive-300))] bg-card p-2">
+            <p className="text-xs text-[hsl(var(--tone-positive-900))]">{summarySuggestion}</p>
           </div>
           <div className="flex justify-end">{restoreControl}</div>
         </div>
@@ -1301,11 +1301,11 @@ export function Step1Panel({
     if (key === 'researchCategory' && researchCategorySuggestion) {
       return (
         <div key="ignored-category" className={RESEARCH_CATEGORY_CARD_CLASS}>
-          <p className="text-sm font-semibold text-violet-900">Research category suggestion</p>
-          <p className="text-xs text-violet-900">
+          <p className="text-sm font-semibold text-[hsl(var(--tone-accent-800))]">Research category suggestion</p>
+          <p className="text-xs text-[hsl(var(--tone-accent-800))]">
             Recommended category: <span className="font-semibold">{researchCategorySuggestion.value}</span>
           </p>
-          <p className="text-xs text-violet-900">{researchCategorySuggestion.rationale}</p>
+          <p className="text-xs text-[hsl(var(--tone-accent-800))]">{researchCategorySuggestion.rationale}</p>
           <div className="flex justify-end">{restoreControl}</div>
         </div>
       )
@@ -1314,11 +1314,11 @@ export function Step1Panel({
     if (key === 'researchType' && researchTypeSuggestion) {
       return (
         <div key="ignored-type" className={RESEARCH_TYPE_CARD_CLASS}>
-          <p className="text-sm font-semibold text-sky-900">Research type suggestion</p>
-          <p className="text-xs text-sky-900">
+          <p className="text-sm font-semibold text-[hsl(var(--tone-accent-800))]">Research type suggestion</p>
+          <p className="text-xs text-[hsl(var(--tone-accent-800))]">
             Recommended type: <span className="font-semibold">{researchTypeSuggestion.value}</span>
           </p>
-          <p className="text-xs text-sky-900">{researchTypeSuggestion.rationale}</p>
+          <p className="text-xs text-[hsl(var(--tone-accent-800))]">{researchTypeSuggestion.rationale}</p>
           <div className="flex justify-end">{restoreControl}</div>
         </div>
       )
@@ -1327,11 +1327,11 @@ export function Step1Panel({
     if (key === 'interpretationMode' && interpretationSuggestion) {
       return (
         <div key="ignored-interpretation" className={INTERPRETATION_CARD_CLASS}>
-          <p className="text-sm font-semibold text-cyan-900">Interpretation mode suggestion</p>
-          <p className="text-xs text-cyan-900">
+          <p className="text-sm font-semibold text-[hsl(var(--tone-accent-800))]">Interpretation mode suggestion</p>
+          <p className="text-xs text-[hsl(var(--tone-accent-800))]">
             Recommended mode: <span className="font-semibold">{interpretationSuggestion.value}</span>
           </p>
-          <p className="text-xs text-cyan-900">{interpretationSuggestion.rationale}</p>
+          <p className="text-xs text-[hsl(var(--tone-accent-800))]">{interpretationSuggestion.rationale}</p>
           <div className="flex justify-end">{restoreControl}</div>
         </div>
       )
@@ -1341,7 +1341,7 @@ export function Step1Panel({
       return (
         <div key="ignored-journal" className={JOURNAL_CARD_CLASS}>
           <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-amber-900">Journal recommendation</p>
+            <p className="text-sm font-semibold text-[hsl(var(--tone-warning-800))]">Journal recommendation</p>
             {journalProvenance ? (
               <span className={`rounded border px-1.5 py-0.5 text-micro font-medium ${journalProvenance.className}`}>
                 {journalProvenance.label}
@@ -1349,12 +1349,12 @@ export function Step1Panel({
             ) : null}
           </div>
           {articleSuggestion ? (
-            <p className="text-xs text-amber-900">
+            <p className="text-xs text-[hsl(var(--tone-warning-800))]">
               Article type: <span className="font-semibold">{articleSuggestion.value}</span>
             </p>
           ) : null}
           {wordLengthSuggestion ? (
-            <p className="text-xs text-amber-900">
+            <p className="text-xs text-[hsl(var(--tone-warning-800))]">
               Recommended word length: <span className="font-semibold">{wordLengthSuggestion.value}</span>
             </p>
           ) : null}
@@ -1370,7 +1370,7 @@ export function Step1Panel({
     <aside className="space-y-3 rounded-lg border border-border bg-card p-3">
       <h3 className="text-sm font-semibold">Research overview suggestions</h3>
 
-      <div className="space-y-2 rounded-md border border-slate-300 bg-slate-100 p-3">
+      <div className="space-y-2 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] p-3">
         <p className="text-sm font-medium">Suggestion controls</p>
         <div className="flex flex-wrap items-center gap-2">
           {primaryAction ? (
@@ -1421,12 +1421,12 @@ export function Step1Panel({
             </p>
           ) : null}
           {hasGenerated && pendingToRender.length === 0 && !loading && !isStale ? (
-            <p className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-2 text-xs text-emerald-900">
+            <p className="rounded-md border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-2 py-2 text-xs text-[hsl(var(--tone-positive-800))]">
               No pending actions. Current selections align with suggestions.
             </p>
           ) : null}
           {hasGenerated && isStale && !loading ? (
-            <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-xs text-amber-900">
+            <p className="rounded-md border border-[hsl(var(--tone-warning-200))] bg-[hsl(var(--tone-warning-50))] px-2 py-2 text-xs text-[hsl(var(--tone-warning-800))]">
               Suggestions are out of date after recent edits. Refresh suggestions to continue.
             </p>
           ) : null}

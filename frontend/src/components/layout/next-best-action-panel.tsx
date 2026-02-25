@@ -172,7 +172,7 @@ export function NextBestActionPanel() {
   return (
     <aside className="flex h-full flex-col bg-card">
       <div className="space-y-2 border-b border-border p-4">
-        <h2 className="text-sm font-semibold">Next best action</h2>
+        <h2 className="house-section-title">Next best action</h2>
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
       </div>
       <ScrollArea className="flex-1">
@@ -180,7 +180,7 @@ export function NextBestActionPanel() {
           {actions.map((action) => (
             <Card key={action.title}>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">{action.title}</CardTitle>
+                <CardTitle>{action.title}</CardTitle>
                 <CardDescription className="text-xs">{action.reason}</CardDescription>
               </CardHeader>
               <CardContent>
@@ -193,7 +193,7 @@ export function NextBestActionPanel() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Context snapshot</CardTitle>
+              <CardTitle>Context snapshot</CardTitle>
             </CardHeader>
             <CardContent className="space-y-1 text-xs">
               <p>Session: {token && user ? 'Signed in' : 'Guest'}</p>

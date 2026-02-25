@@ -5,9 +5,11 @@ import { useNavigate } from 'react-router-dom'
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
 import { publicationsHouseHeadings } from '@/components/publications/publications-house-style'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { houseDividers, houseForms, houseSurfaces, houseTypography } from '@/lib/house-style'
 import {
   deletePublicationFile,
   downloadPublicationFile,
@@ -51,6 +53,14 @@ const PUBLICATIONS_ANALYTICS_CACHE_KEY = 'aawe_publications_analytics_cache'
 const PUBLICATIONS_TOP_METRICS_CACHE_KEY = 'aawe_publications_top_metrics_cache'
 const PUBLICATIONS_ACTIVE_SYNC_JOB_STORAGE_PREFIX = 'aawe_publications_active_sync_job:'
 const PUBLICATION_DETAIL_ACTIVE_TAB_STORAGE_KEY = 'aawe.pubDetail.activeTab'
+const HOUSE_SECTION_DIVIDER_STRONG_CLASS = houseDividers.strong
+const HOUSE_SELECT_CLASS = houseForms.select
+const HOUSE_TABLE_HEAD_TEXT_CLASS = houseTypography.tableHead
+const HOUSE_TABLE_CELL_TEXT_CLASS = houseTypography.tableCell
+const HOUSE_BANNER_CLASS = houseSurfaces.banner
+const HOUSE_BANNER_SUCCESS_CLASS = houseSurfaces.bannerSuccess
+const HOUSE_BANNER_DANGER_CLASS = houseSurfaces.bannerDanger
+const HOUSE_BANNER_INFO_CLASS = houseSurfaces.bannerInfo
 
 const WORK_TYPE_LABELS: Record<string, string> = {
   'journal-article': 'Journal article',
@@ -527,7 +537,7 @@ function SortHeader({
     <button
       type="button"
       onClick={() => onSort(column)}
-      className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+      className="inline-flex items-center gap-1 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
     >
       <span>{label}</span>
       {active ? (
@@ -569,7 +579,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [personaState, setPersonaState] = useState<PersonaStatePayload | null>(initialCachedPersonaState)
   const [analyticsResponse, setAnalyticsResponse] = useState<PublicationsAnalyticsResponsePayload | null>(initialCachedAnalyticsResponse)
   const [analyticsSummary, setAnalyticsSummary] = useState<PublicationsAnalyticsSummaryPayload | null>(initialCachedAnalyticsSummary)
-  const [analyticsTopDrivers, setAnalyticsTopDrivers] = useState<PublicationsAnalyticsTopDriversPayload | null>(initialCachedAnalyticsTopDrivers)
+  const [, setAnalyticsTopDrivers] = useState<PublicationsAnalyticsTopDriversPayload | null>(initialCachedAnalyticsTopDrivers)
   const [topMetricsResponse, setTopMetricsResponse] = useState<PublicationsTopMetricsPayload | null>(initialCachedTopMetricsResponse)
   const [query, setQuery] = useState('')
   const [filterKey, setFilterKey] = useState<PublicationFilterKey>('all')
@@ -1176,89 +1186,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const ownerName = user?.name || ''
   const ownerEmail = user?.email || ''
   const hIndex = analyticsSummary?.h_index ?? 0
-  const analyticsComputedAt = analyticsResponse?.computed_at || analyticsSummary?.computed_at || null
-  const analyticsFailed = analyticsResponse?.status === 'FAILED' || analyticsResponse?.last_update_failed
-  const topDrivers = (analyticsTopDrivers?.drivers || []).slice(0, 5)
-  const publicationsPerYearPoints = useMemo(() => {
-    const countsByYear = new Map<number, number>()
-    for (const work of personaState?.works || []) {
-      const rawYear = work.year
-      if (typeof rawYear !== 'number' || Number.isNaN(rawYear)) {
-        continue
-      }
-      const year = Math.trunc(rawYear)
-      if (year < 1900 || year > 2100) {
-        continue
-      }
-      countsByYear.set(year, (countsByYear.get(year) || 0) + 1)
-    }
-    return Array.from(countsByYear.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([year, papers]) => ({ year, papers }))
-  }, [personaState?.works])
-  const maxYearlyPublications = Math.max(1, ...publicationsPerYearPoints.map((point) => Number(point.papers || 0)))
-  const latestPublicationYearPoint = publicationsPerYearPoints.at(-1) || null
-  const worksWithKnownYear = publicationsPerYearPoints.reduce((sum, point) => sum + point.papers, 0)
-  const authorshipRoleMix = useMemo(() => {
-    let first = 0
-    let second = 0
-    let last = 0
-    let other = 0
-    let unknown = 0
-    const works = personaState?.works || []
-    for (const work of works) {
-      const rawPosition = work.user_author_position
-      const rawAuthorCount = work.author_count
-      const userPosition = typeof rawPosition === 'number' && Number.isFinite(rawPosition) ? Math.trunc(rawPosition) : null
-      const authorCount = typeof rawAuthorCount === 'number' && Number.isFinite(rawAuthorCount)
-        ? Math.trunc(rawAuthorCount)
-        : Array.isArray(work.authors)
-          ? work.authors.length
-          : 0
-      if (!userPosition || userPosition <= 0 || authorCount <= 0) {
-        unknown += 1
-        continue
-      }
-      if (userPosition === 1) {
-        first += 1
-        continue
-      }
-      if (userPosition === 2) {
-        second += 1
-        continue
-      }
-      if (authorCount > 1 && userPosition === authorCount) {
-        last += 1
-        continue
-      }
-      other += 1
-    }
-    return {
-      first,
-      second,
-      last,
-      other,
-      unknown,
-      known: first + second + last + other,
-      total: works.length,
-    }
-  }, [personaState?.works])
-  const authorshipRoleSegments = useMemo(() => {
-    const known = Math.max(0, authorshipRoleMix.known)
-    if (known === 0) {
-      return []
-    }
-    const segments = [
-      { key: 'first', label: '1st', count: authorshipRoleMix.first, tone: 'bg-emerald-500' },
-      { key: 'second', label: '2nd', count: authorshipRoleMix.second, tone: 'bg-sky-500' },
-      { key: 'last', label: 'Last', count: authorshipRoleMix.last, tone: 'bg-violet-500' },
-      { key: 'other', label: 'Other', count: authorshipRoleMix.other, tone: 'bg-slate-500' },
-    ].filter((item) => item.count > 0)
-    return segments.map((item) => ({
-      ...item,
-      pct: (item.count / known) * 100,
-    }))
-  }, [authorshipRoleMix])
 
   const onSortColumn = (column: PublicationSortField) => {
     if (sortField === column) {
@@ -1421,110 +1348,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   return (
     <section className="space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="house-page-header house-left-border">
+        <div className="house-page-header house-left-border house-left-border-research">
           <h1 data-house-role="page-title" className={publicationsHouseHeadings.title}>Publications</h1>
         </div>
       </header>
 
       <PublicationsTopStrip metrics={topMetricsResponse} loading={loading || !topMetricsResponse} token={token || null} />
-
-      <div className="grid gap-3 xl:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Papers per year</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="rounded border border-border/70 bg-muted/20 px-2 py-1.5">
-              <p className="text-micro text-muted-foreground">Authorship role mix (1st / 2nd / last / other)</p>
-              {authorshipRoleMix.known > 0 ? (
-                <>
-                  <div className="mt-1 flex h-1.5 overflow-hidden rounded bg-muted">
-                    {authorshipRoleSegments.map((segment) => (
-                      <div
-                        key={segment.key}
-                        className={segment.tone}
-                        style={{ width: `${segment.pct}%` }}
-                        title={`${segment.label}: ${segment.count} papers`}
-                      />
-                    ))}
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-micro text-muted-foreground">
-                    <span>1st {authorshipRoleMix.first}</span>
-                    <span>2nd {authorshipRoleMix.second}</span>
-                    <span>Last {authorshipRoleMix.last}</span>
-                    <span>Other {authorshipRoleMix.other}</span>
-                    {authorshipRoleMix.unknown > 0 ? <span>Unknown {authorshipRoleMix.unknown}</span> : null}
-                  </div>
-                </>
-              ) : (
-                <p className="mt-1 text-micro text-muted-foreground">No authorship position data available yet.</p>
-              )}
-            </div>
-            {publicationsPerYearPoints.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No publication years available yet.</p>
-            ) : (
-              publicationsPerYearPoints.map((point) => {
-                const width = Math.max(2, Math.round((point.papers / maxYearlyPublications) * 100))
-                return (
-                  <div key={point.year} className="grid grid-cols-[56px_1fr_110px] items-center gap-2 text-sm">
-                    <span className="text-xs text-muted-foreground">{point.year}</span>
-                    <div className="h-2 rounded bg-muted">
-                      <div className="h-2 rounded bg-emerald-500" style={{ width: `${width}%` }} />
-                    </div>
-                    <span className="text-xs text-muted-foreground">{point.papers} paper{point.papers === 1 ? '' : 's'}</span>
-                  </div>
-                )
-              })
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Top 5 growth-driving papers (last 12m)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            {topDrivers.length === 0 ? (
-              <p className="text-muted-foreground">No growth-driving papers identified yet.</p>
-            ) : (
-              topDrivers.map((driver) => (
-                <div key={driver.work_id} className="rounded border border-border px-3 py-2">
-                  <p className="font-medium">{driver.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {driver.year ?? 'Year n/a'} | +{driver.citations_last_12_months} in last 12m | total {driver.current_citations}
-                  </p>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardContent className="grid gap-2 p-4 md:grid-cols-3 xl:grid-cols-3">
-          <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">Total works</p>
-            <p className="font-semibold">{personaState?.works.length ?? 0}</p>
-            <p className="text-xs text-muted-foreground">With known year: {worksWithKnownYear}</p>
-          </div>
-          <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">Latest publication year</p>
-            <p className="font-semibold">
-              {latestPublicationYearPoint ? `${latestPublicationYearPoint.year}: ${latestPublicationYearPoint.papers} paper${latestPublicationYearPoint.papers === 1 ? '' : 's'}` : 'n/a'}
-            </p>
-          </div>
-          <div className="rounded border border-border px-3 py-2 text-sm">
-            <p className="text-xs text-muted-foreground">Analytics computed</p>
-            <p className="font-semibold">{formatShortDate(analyticsComputedAt)}</p>
-            <p className="text-xs text-muted-foreground">Auto-updates daily</p>
-            {analyticsFailed ? <p className="text-xs text-amber-700">Last update failed</p> : null}
-          </div>
-        </CardContent>
-      </Card>
+      <div className={HOUSE_SECTION_DIVIDER_STRONG_CLASS} />
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Publication library</CardTitle>
+          <h2 className={publicationsHouseHeadings.h1}>Publication library</h2>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
@@ -1539,7 +1373,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 <select
                   value={filterKey}
                   onChange={(event) => setFilterKey(event.target.value as PublicationFilterKey)}
-                  className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                  className={`h-9 rounded-md px-2 text-sm ${HOUSE_SELECT_CLASS}`}
                 >
                   <option value="all">All works</option>
                   <option value="cited">Cited only</option>
@@ -1550,7 +1384,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 <select
                   value={typeFilter}
                   onChange={(event) => setTypeFilter(event.target.value)}
-                  className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                  className={`h-9 rounded-md px-2 text-sm ${HOUSE_SELECT_CLASS}`}
                 >
                   <option value="all">All types</option>
                   {typeFilterOptions.map((value) => (
@@ -1571,87 +1405,83 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   </ol>
                 </div>
               ) : (
-                <div className="overflow-x-auto rounded border border-border">
-                  <table className="w-full min-w-sz-760 text-sm">
-                    <thead className="bg-muted/35 text-left text-xs text-muted-foreground">
-                      <tr>
-                        <th className="px-2 py-2">
-                          <SortHeader
-                            label="Title"
-                            column="title"
-                            sortField={sortField}
-                            sortDirection={sortDirection}
-                            onSort={onSortColumn}
-                          />
-                        </th>
-                        <th className="px-2 py-2">
-                          <SortHeader
-                            label="Year"
-                            column="year"
-                            sortField={sortField}
-                            sortDirection={sortDirection}
-                            onSort={onSortColumn}
-                          />
-                        </th>
-                        <th className="px-2 py-2">
-                          <SortHeader
-                            label="Journal"
-                            column="venue"
-                            sortField={sortField}
-                            sortDirection={sortDirection}
-                            onSort={onSortColumn}
-                          />
-                        </th>
-                        <th className="px-2 py-2">
-                          <SortHeader
-                            label="Publication type"
-                            column="work_type"
-                            sortField={sortField}
-                            sortDirection={sortDirection}
-                            onSort={onSortColumn}
-                          />
-                        </th>
-                        <th className="px-2 py-2">
-                          <SortHeader
-                            label="Citations"
-                            column="citations"
-                            sortField={sortField}
-                            sortDirection={sortDirection}
-                            onSort={onSortColumn}
-                          />
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredWorks.map((work) => {
-                        const metrics = metricsByWorkId.get(work.id)
-                        const isSelected = selectedWorkId === work.id
-                        return (
-                          <tr
-                            key={work.id}
-                            onClick={() => setSelectedWorkId(work.id)}
-                            className={`cursor-pointer border-t border-border ${
-                              isSelected ? 'bg-emerald-50/70' : 'hover:bg-accent/30'
-                            }`}
+                <Table className="min-w-sz-760">
+                  <TableHeader className="text-left">
+                    <TableRow>
+                      <TableHead className={HOUSE_TABLE_HEAD_TEXT_CLASS}>
+                        <SortHeader
+                          label="Title"
+                          column="title"
+                          sortField={sortField}
+                          sortDirection={sortDirection}
+                          onSort={onSortColumn}
+                        />
+                      </TableHead>
+                      <TableHead className={HOUSE_TABLE_HEAD_TEXT_CLASS}>
+                        <SortHeader
+                          label="Year"
+                          column="year"
+                          sortField={sortField}
+                          sortDirection={sortDirection}
+                          onSort={onSortColumn}
+                        />
+                      </TableHead>
+                      <TableHead className={HOUSE_TABLE_HEAD_TEXT_CLASS}>
+                        <SortHeader
+                          label="Journal"
+                          column="venue"
+                          sortField={sortField}
+                          sortDirection={sortDirection}
+                          onSort={onSortColumn}
+                        />
+                      </TableHead>
+                      <TableHead className={HOUSE_TABLE_HEAD_TEXT_CLASS}>
+                        <SortHeader
+                          label="Publication type"
+                          column="work_type"
+                          sortField={sortField}
+                          sortDirection={sortDirection}
+                          onSort={onSortColumn}
+                        />
+                      </TableHead>
+                      <TableHead className={HOUSE_TABLE_HEAD_TEXT_CLASS}>
+                        <SortHeader
+                          label="Citations"
+                          column="citations"
+                          sortField={sortField}
+                          sortDirection={sortDirection}
+                          onSort={onSortColumn}
+                        />
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredWorks.map((work) => {
+                      const metrics = metricsByWorkId.get(work.id)
+                      const isSelected = selectedWorkId === work.id
+                      return (
+                        <TableRow
+                          key={work.id}
+                          onClick={() => setSelectedWorkId(work.id)}
+                          className={`cursor-pointer ${isSelected ? 'bg-emerald-50/70' : 'hover:bg-accent/30'}`}
+                        >
+                          <TableCell className={`font-medium ${HOUSE_TABLE_CELL_TEXT_CLASS}`}>{work.title}</TableCell>
+                          <TableCell className={`font-semibold ${HOUSE_TABLE_CELL_TEXT_CLASS}`}>{work.year ?? 'n/a'}</TableCell>
+                          <TableCell className={`font-medium ${HOUSE_TABLE_CELL_TEXT_CLASS}`}>{formatJournalName(work.venue_name) || 'n/a'}</TableCell>
+                          <TableCell className={HOUSE_TABLE_CELL_TEXT_CLASS}>{derivePublicationTypeLabel(work)}</TableCell>
+                          <TableCell
+                            className={`${HOUSE_TABLE_CELL_TEXT_CLASS} transition-colors ${citationCellTone(
+                              metrics?.citations ?? 0,
+                              hIndex,
+                            )}`}
                           >
-                            <td className="px-2 py-2 font-medium">{work.title}</td>
-                            <td className="px-2 py-2 font-semibold">{work.year ?? 'n/a'}</td>
-                            <td className="px-2 py-2 font-medium">{formatJournalName(work.venue_name) || 'n/a'}</td>
-                            <td className="px-2 py-2">{derivePublicationTypeLabel(work)}</td>
-                            <td
-                              className={`px-2 py-2 transition-colors ${citationCellTone(
-                                metrics?.citations ?? 0,
-                                hIndex,
-                              )}`}
-                            >
-                              {metrics?.citations ?? 0}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                            {metrics?.citations ?? 0}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
               )}
             </div>
 
@@ -1665,7 +1495,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   <Tabs value={activeDetailTab} onValueChange={onDetailTabChange} className="w-full">
                     <div className="max-h-[78vh] overflow-auto">
                       <div className="sticky top-0 z-20 border-b border-border bg-card px-3 py-3">
-                        <p className="line-clamp-2 text-sm font-semibold leading-snug">
+                        <p className="text-sm font-semibold leading-snug">
                           {selectedDetail?.title || selectedWork.title}
                         </p>
                         <TabsList className="mt-2 grid h-auto w-full grid-cols-5 gap-1 bg-muted/40 p-1">
@@ -1801,7 +1631,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             <div className="space-y-2">
                               {(selectedFilesPayload?.items || []).map((file) => (
                                 <div key={file.id} className="rounded border border-border px-2 py-1.5">
-                                  <p className="truncate text-xs font-medium">{file.file_name}</p>
+                                  <p className="break-all text-xs font-medium leading-snug">{file.file_name}</p>
                                   <p className="text-micro text-muted-foreground">{file.file_type} | {file.source === 'OA_LINK' ? 'OA link' : 'Uploaded'} | {formatShortDate(file.created_at)}</p>
                                   <div className="mt-1 flex gap-1">
                                     {file.source === 'OA_LINK' && file.download_url ? (
@@ -1849,10 +1679,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         </CardContent>
       </Card>
 
-      {status ? <p className="text-sm text-emerald-700">{status}</p> : null}
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {status ? <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_SUCCESS_CLASS}`}>{status}</p> : null}
+      {error ? <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_DANGER_CLASS}`}>{error}</p> : null}
       {(loading || richImporting || syncing || fullSyncing) ? (
-        <p className="text-xs text-muted-foreground">Working...</p>
+        <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_INFO_CLASS}`}>Working...</p>
       ) : null}
     </section>
   )

@@ -1,3 +1,5 @@
+import type { HouseSectionTone } from '@/lib/section-tone'
+
 export type NavItem = {
   label: string
   path: string
@@ -8,12 +10,14 @@ export type NavItem = {
 
 export type NavGroup = {
   title: string
+  tone: HouseSectionTone
   items: NavItem[]
 }
 
 export const NAV_GROUPS: NavGroup[] = [
   {
     title: 'WORKSPACE',
+    tone: 'workspace',
     items: [
       { label: 'Overview', path: '/overview' },
       { label: 'Profile', path: '/profile' },
@@ -23,6 +27,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'STUDY DATA',
+    tone: 'data',
     items: [
       { label: 'Data Library', path: '/results', badge: '2', badgeTone: 'neutral' },
       { label: 'Literature', path: '/literature' },
@@ -30,6 +35,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'MANUSCRIPT',
+    tone: 'manuscript',
     items: [
       { label: 'Title', path: '/manuscript/title' },
       { label: 'Abstract', path: '/manuscript/abstract' },
@@ -45,6 +51,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'GOVERNANCE',
+    tone: 'governance',
     items: [
       { label: 'Journal Targeting', path: '/journal-targeting' },
       { label: 'Claim Map', path: '/claim-map' },

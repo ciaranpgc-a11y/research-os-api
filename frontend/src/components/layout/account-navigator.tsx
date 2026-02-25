@@ -6,6 +6,7 @@ import { getAuthSessionToken } from '@/lib/auth-session'
 import { houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { fetchOrcidStatus, fetchPersonaState } from '@/lib/impact-api'
 import { writeCachedPersonaState } from '@/lib/persona-cache'
+import { getHouseLeftBorderToneClass, getHouseNavToneClass, type HouseSectionTone } from '@/lib/section-tone'
 import { cn } from '@/lib/utils'
 
 type AccountNavigatorProps = {
@@ -20,6 +21,7 @@ type AccountNavItem = {
 
 type AccountNavSection = {
   label: string
+  tone: HouseSectionTone
   items: AccountNavItem[]
 }
 
@@ -30,10 +32,12 @@ const PROFILE_PREFETCH_MIN_INTERVAL_MS = 45_000
 const ACCOUNT_SECTIONS: AccountNavSection[] = [
   {
     label: 'Overview',
+    tone: 'overview',
     items: [{ label: 'Profile home', path: '/profile', end: true }],
   },
   {
     label: 'Research',
+    tone: 'research',
     items: [
       { label: 'Publications', path: '/profile/publications' },
       { label: 'Collaboration', path: '/account/collaboration' },
@@ -42,6 +46,7 @@ const ACCOUNT_SECTIONS: AccountNavSection[] = [
   },
   {
     label: 'Account',
+    tone: 'account',
     items: [
       { label: 'Personal details', path: '/profile/personal-details' },
       { label: 'Settings & preferences', path: '/settings' },
@@ -98,7 +103,7 @@ export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
   return (
     <aside className={cn('flex h-full flex-col', houseLayout.sidebar)}>
       <div className={houseLayout.sidebarHeader}>
-        <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+        <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, getHouseLeftBorderToneClass('overview'))}>
           <h1 className={houseTypography.sectionTitle}>Profile</h1>
         </div>
       </div>
@@ -127,7 +132,7 @@ export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
                       }
                     }}
                     className={({ isActive }) =>
-                      cn(houseNavigation.item, isActive && houseNavigation.itemActive)
+                      cn(houseNavigation.item, getHouseNavToneClass(section.tone), isActive && houseNavigation.itemActive)
                     }
                   >
                     <span className="truncate pl-2">{item.label}</span>

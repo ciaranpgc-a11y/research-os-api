@@ -62,6 +62,11 @@ class Project(Base):
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid4())
     )
+    owner_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    collaborator_user_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    workspace_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(255))
     target_journal: Mapped[str] = mapped_column(String(128))
     journal_voice: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -84,6 +89,7 @@ class Project(Base):
     data_assets: Mapped[list["DataLibraryAsset"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
+    owner_user: Mapped["User | None"] = relationship(back_populates="owned_projects")
 
 
 class User(Base):
@@ -191,6 +197,61 @@ class User(Base):
     password_reset_codes: Mapped[list["AuthPasswordResetCode"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    workspace_state_caches: Mapped[list["WorkspaceStateCache"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    workspace_inbox_state_caches: Mapped[list["WorkspaceInboxStateCache"]] = (
+        relationship(back_populates="user", cascade="all, delete-orphan")
+    )
+    owned_projects: Mapped[list["Project"]] = relationship(back_populates="owner_user")
+    owned_data_assets: Mapped[list["DataLibraryAsset"]] = relationship(
+        back_populates="owner_user", cascade="all, delete-orphan"
+    )
+    owned_data_profiles: Mapped[list["DataProfile"]] = relationship(
+        back_populates="owner_user", cascade="all, delete-orphan"
+    )
+
+
+class WorkspaceStateCache(Base):
+    __tablename__ = "workspace_state_cache"
+    __table_args__ = (UniqueConstraint("user_id"),)
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    user: Mapped[User] = relationship(back_populates="workspace_state_caches")
+
+
+class WorkspaceInboxStateCache(Base):
+    __tablename__ = "workspace_inbox_state_cache"
+    __table_args__ = (UniqueConstraint("user_id"),)
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    payload_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    user: Mapped[User] = relationship(back_populates="workspace_inbox_state_caches")
 
 
 class AuthSession(Base):
@@ -375,6 +436,9 @@ class DataLibraryAsset(Base):
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid4())
     )
+    owner_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     project_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
@@ -391,6 +455,7 @@ class DataLibraryAsset(Base):
     )
 
     project: Mapped[Project | None] = relationship(back_populates="data_assets")
+    owner_user: Mapped[User | None] = relationship(back_populates="owned_data_assets")
     manuscript_links: Mapped[list["ManuscriptAssetLink"]] = relationship(
         back_populates="asset", cascade="all, delete-orphan"
     )
@@ -1026,6 +1091,9 @@ class DataProfile(Base):
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid4())
     )
+    owner_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     asset_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
     data_profile_json: Mapped[dict] = mapped_column(JSON, default=dict)
     human_summary: Mapped[str] = mapped_column(Text, default="")
@@ -1039,6 +1107,7 @@ class DataProfile(Base):
     artifacts: Mapped[list["PlannerArtifact"]] = relationship(
         back_populates="profile", cascade="all, delete-orphan"
     )
+    owner_user: Mapped[User | None] = relationship(back_populates="owned_data_profiles")
 
 
 class PlannerArtifact(Base):

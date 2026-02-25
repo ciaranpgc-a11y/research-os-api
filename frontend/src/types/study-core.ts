@@ -6,6 +6,9 @@ export type JournalOption = {
 
 export type ProjectRecord = {
   id: string
+  owner_user_id: string | null
+  collaborator_user_ids: string[]
+  workspace_id: string | null
   title: string
   target_journal: string
   journal_voice: string | null
@@ -84,6 +87,14 @@ export type WizardBootstrapPayload = {
   project: ProjectRecord
   manuscript: ManuscriptRecord
   inference: WizardInferState
+}
+
+export type WorkspaceRunContextPayload = {
+  workspace_id: string
+  project_id: string | null
+  manuscript_id: string | null
+  owner_user_id: string | null
+  collaborator_user_ids: string[]
 }
 
 export type GenerationEstimate = {
@@ -344,6 +355,7 @@ export type PlanSectionEditPayload = {
 
 export type LibraryAssetRecord = {
   id: string
+  owner_user_id: string | null
   project_id: string | null
   filename: string
   kind: string

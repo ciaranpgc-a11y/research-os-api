@@ -53,7 +53,7 @@ export function QCDashboardPage() {
             >
               <CardHeader>
                 <div className="flex items-center justify-between gap-2">
-                  <CardTitle className="text-sm">{item.category}</CardTitle>
+                  <CardTitle>{item.category}</CardTitle>
                   <Badge variant={severityVariantMap[item.severity]}>{item.severity}</Badge>
                 </div>
                 <CardDescription>{item.summary}</CardDescription>

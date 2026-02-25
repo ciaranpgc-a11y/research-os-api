@@ -29,6 +29,9 @@ export type ContextFormValues = {
 }
 
 type StepContextProps = {
+  token: string
+  workspaceId?: string | null
+  collaboratorNames?: string[]
   values: ContextFormValues
   targetJournal: string
   journals: JournalOption[]
@@ -173,6 +176,9 @@ function FieldHintLabel({
 }
 
 export function StepContext({
+  token,
+  workspaceId,
+  collaboratorNames,
   values,
   targetJournal,
   journals,
@@ -361,8 +367,11 @@ export function StepContext({
     try {
       const analysisSummary = buildAnalysisSummary(values)
       const payload = await bootstrapRunContext({
+        token,
         title: values.projectTitle.trim() || 'Untitled research overview',
         targetJournal: targetJournal || 'generic-original',
+        workspaceId: workspaceId || null,
+        collaboratorNames: collaboratorNames || [],
         answers: {
           study_type: values.studyArchitecture,
           research_objective: values.researchObjective,

@@ -1619,6 +1619,107 @@ def test_v1_get_generation_job_returns_404_for_missing_job(
     assert response.json()["error"]["type"] == "not_found"
 
 
+def test_v1_generation_job_id_endpoints_enforce_owner_collaborator_access(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "research_os.services.generation_job_service._start_generation_thread",
+        lambda _: None,
+    )
+
+    with TestClient(app) as client:
+        owner_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "jobs-owner@example.com",
+                "password": "StrongPassword123",
+                "name": "Jobs Owner",
+            },
+        )
+        collaborator_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "jobs-collaborator@example.com",
+                "password": "StrongPassword123",
+                "name": "Jobs Collaborator",
+            },
+        )
+        outsider_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "jobs-outsider@example.com",
+                "password": "StrongPassword123",
+                "name": "Jobs Outsider",
+            },
+        )
+        assert owner_register.status_code == 200
+        assert collaborator_register.status_code == 200
+        assert outsider_register.status_code == 200
+        owner_headers = _auth_headers(owner_register.json()["session_token"])
+        collaborator_headers = _auth_headers(collaborator_register.json()["session_token"])
+        outsider_headers = _auth_headers(outsider_register.json()["session_token"])
+
+        collaborator_me = client.get("/v1/auth/me", headers=collaborator_headers)
+        assert collaborator_me.status_code == 200
+        collaborator_user_id = collaborator_me.json()["id"]
+
+        create_project = client.post(
+            "/v1/projects",
+            headers=owner_headers,
+            json={
+                "title": "Owner Scoped Job Project",
+                "target_journal": "ehj",
+                "collaborator_user_ids": [collaborator_user_id],
+                "workspace_id": "jobs-access-workspace",
+            },
+        )
+        assert create_project.status_code == 200
+        project_id = create_project.json()["id"]
+
+        create_manuscript = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            headers=owner_headers,
+            json={"branch_name": "main"},
+        )
+        assert create_manuscript.status_code == 200
+        manuscript_id = create_manuscript.json()["id"]
+
+        enqueue_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/generate",
+            headers=owner_headers,
+            json={
+                "sections": ["methods"],
+                "notes_context": "Scoped access test",
+            },
+        )
+        assert enqueue_response.status_code == 200
+        job_id = enqueue_response.json()["id"]
+
+        owner_get = client.get(f"/v1/generation-jobs/{job_id}", headers=owner_headers)
+        collaborator_get = client.get(
+            f"/v1/generation-jobs/{job_id}", headers=collaborator_headers
+        )
+        outsider_get = client.get(f"/v1/generation-jobs/{job_id}", headers=outsider_headers)
+        anonymous_get = client.get(f"/v1/generation-jobs/{job_id}")
+
+        assert owner_get.status_code == 200
+        assert collaborator_get.status_code == 200
+        assert outsider_get.status_code == 404
+        assert anonymous_get.status_code == 404
+
+        outsider_cancel = client.post(
+            f"/v1/generation-jobs/{job_id}/cancel", headers=outsider_headers
+        )
+        outsider_retry = client.post(
+            f"/v1/generation-jobs/{job_id}/retry",
+            headers=outsider_headers,
+            json={},
+        )
+        assert outsider_cancel.status_code == 404
+        assert outsider_retry.status_code == 404
+
+
 def test_v1_list_generation_jobs_returns_recent_jobs_for_manuscript(
     monkeypatch, tmp_path
 ) -> None:
@@ -2062,6 +2163,840 @@ def test_v1_auth_register_login_me_patch_logout(monkeypatch, tmp_path) -> None:
     assert me_after_logout.status_code == 401
     assert login_response.status_code == 200
     assert login_response.json()["user"]["email"] == "ciaran@example.com"
+
+
+def test_v1_workspace_state_round_trip_persists_for_authenticated_user(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-user@example.com",
+                "password": "StrongPassword123",
+                "name": "Workspace User",
+            },
+        )
+        assert register_response.status_code == 200
+        token = register_response.json()["session_token"]
+        headers = _auth_headers(token)
+
+        initial_state_response = client.get("/v1/workspaces/state", headers=headers)
+        assert initial_state_response.status_code == 200
+        assert initial_state_response.json() == {
+            "workspaces": [],
+            "active_workspace_id": None,
+            "author_requests": [],
+            "invitations_sent": [],
+        }
+
+        put_workspace_state = client.put(
+            "/v1/workspaces/state",
+            headers=headers,
+            json={
+                "workspaces": [
+                    {
+                        "id": "hf-registry",
+                        "name": "HF Registry Manuscript",
+                        "owner_name": "Workspace User",
+                        "collaborators": ["Aisha Rahman", "Aisha Rahman"],
+                        "removed_collaborators": ["Aisha Rahman", "Unknown Person"],
+                        "version": "0.2",
+                        "health": "amber",
+                        "updated_at": "2026-02-25T10:00:00Z",
+                        "pinned": True,
+                        "archived": False,
+                    }
+                ],
+                "active_workspace_id": "hf-registry",
+                "author_requests": [
+                    {
+                        "id": "author-01",
+                        "workspace_id": "hf-registry",
+                        "workspace_name": "HF Registry Manuscript",
+                        "author_name": "Eleanor Hart",
+                        "invited_at": "2026-02-25T09:30:00Z",
+                    }
+                ],
+                "invitations_sent": [
+                    {
+                        "id": "invite-01",
+                        "workspace_id": "hf-registry",
+                        "workspace_name": "HF Registry Manuscript",
+                        "invitee_name": "Tom Price",
+                        "invited_at": "2026-02-25T09:45:00Z",
+                        "status": "pending",
+                    }
+                ],
+            },
+        )
+        assert put_workspace_state.status_code == 200
+        saved_state = put_workspace_state.json()
+        assert saved_state["active_workspace_id"] == "hf-registry"
+        assert saved_state["workspaces"][0]["collaborators"] == ["Aisha Rahman"]
+        assert saved_state["workspaces"][0]["removed_collaborators"] == ["Aisha Rahman"]
+
+        get_workspace_state = client.get("/v1/workspaces/state", headers=headers)
+        assert get_workspace_state.status_code == 200
+        assert get_workspace_state.json()["workspaces"][0]["id"] == "hf-registry"
+        assert get_workspace_state.json()["author_requests"][0]["id"] == "author-01"
+        assert get_workspace_state.json()["invitations_sent"][0]["id"] == "invite-01"
+
+        put_inbox_state = client.put(
+            "/v1/workspaces/inbox/state",
+            headers=headers,
+            json={
+                "messages": [
+                    {
+                        "id": "msg-01",
+                        "workspace_id": "hf-registry",
+                        "sender_name": "Workspace User",
+                        "encrypted_body": "ciphertext-1",
+                        "iv": "iv-1",
+                        "created_at": "2026-02-25T10:05:00Z",
+                    }
+                ],
+                "reads": {
+                    "hf-registry": {
+                        "Workspace User": "2026-02-25T10:05:00Z",
+                    }
+                },
+            },
+        )
+        assert put_inbox_state.status_code == 200
+        assert put_inbox_state.json()["messages"][0]["id"] == "msg-01"
+        assert "workspace user" in put_inbox_state.json()["reads"]["hf-registry"]
+
+        get_inbox_state = client.get("/v1/workspaces/inbox/state", headers=headers)
+        assert get_inbox_state.status_code == 200
+        assert get_inbox_state.json()["messages"][0]["workspace_id"] == "hf-registry"
+        assert get_inbox_state.json()["reads"]["hf-registry"]["workspace user"].endswith(
+            "Z"
+        )
+
+
+def test_v1_workspace_granular_endpoints_round_trip(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-granular@example.com",
+                "password": "StrongPassword123",
+                "name": "Workspace Owner",
+            },
+        )
+        assert register_response.status_code == 200
+        headers = _auth_headers(register_response.json()["session_token"])
+
+        list_initial = client.get("/v1/workspaces", headers=headers)
+        assert list_initial.status_code == 200
+        assert list_initial.json() == {"items": [], "active_workspace_id": None}
+
+        create_workspace = client.post(
+            "/v1/workspaces",
+            headers=headers,
+            json={
+                "id": "hf-registry",
+                "name": "HF Registry Manuscript",
+                "owner_name": "Workspace Owner",
+                "collaborators": [],
+                "removed_collaborators": [],
+                "version": "0.1",
+                "health": "amber",
+                "pinned": True,
+                "archived": False,
+            },
+        )
+        assert create_workspace.status_code == 200
+        assert create_workspace.json()["id"] == "hf-registry"
+        assert create_workspace.json()["owner_name"] == "Workspace Owner"
+
+        set_active = client.put(
+            "/v1/workspaces/active",
+            headers=headers,
+            json={"workspace_id": "hf-registry"},
+        )
+        assert set_active.status_code == 200
+        assert set_active.json()["active_workspace_id"] == "hf-registry"
+
+        patch_workspace = client.patch(
+            "/v1/workspaces/hf-registry",
+            headers=headers,
+            json={
+                "collaborators": ["Aisha Rahman", "Aisha Rahman"],
+                "removed_collaborators": ["Aisha Rahman", "Ghost User"],
+            },
+        )
+        assert patch_workspace.status_code == 200
+        assert patch_workspace.json()["collaborators"] == ["Aisha Rahman"]
+        assert patch_workspace.json()["removed_collaborators"] == ["Aisha Rahman"]
+
+        create_invitation = client.post(
+            "/v1/workspaces/invitations/sent",
+            headers=headers,
+            json={
+                "workspace_id": "hf-registry",
+                "invitee_name": "Tom Price",
+                "status": "pending",
+            },
+        )
+        assert create_invitation.status_code == 200
+        invitation_id = create_invitation.json()["id"]
+        assert create_invitation.json()["status"] == "pending"
+
+        list_invitations = client.get("/v1/workspaces/invitations/sent", headers=headers)
+        assert list_invitations.status_code == 200
+        assert list_invitations.json()["items"][0]["id"] == invitation_id
+
+        list_author_requests = client.get("/v1/workspaces/author-requests", headers=headers)
+        assert list_author_requests.status_code == 200
+        assert list_author_requests.json()["items"] == []
+
+        create_message = client.post(
+            "/v1/workspaces/inbox/messages",
+            headers=headers,
+            json={
+                "workspace_id": "hf-registry",
+                "sender_name": "Workspace Owner",
+                "encrypted_body": "ciphertext-1",
+                "iv": "iv-1",
+            },
+        )
+        assert create_message.status_code == 200
+        message_id = create_message.json()["id"]
+        assert create_message.json()["workspace_id"] == "hf-registry"
+
+        list_messages = client.get(
+            "/v1/workspaces/inbox/messages",
+            headers=headers,
+            params={"workspace_id": "hf-registry"},
+        )
+        assert list_messages.status_code == 200
+        assert len(list_messages.json()["items"]) == 1
+        assert list_messages.json()["items"][0]["id"] == message_id
+
+        mark_read = client.put(
+            "/v1/workspaces/inbox/reads",
+            headers=headers,
+            json={
+                "workspace_id": "hf-registry",
+                "reader_name": "Workspace Owner",
+                "read_at": "2026-02-25T10:05:00Z",
+            },
+        )
+        assert mark_read.status_code == 200
+        assert mark_read.json()["workspace_id"] == "hf-registry"
+        assert mark_read.json()["reader_key"] == "workspace owner"
+
+        list_reads = client.get("/v1/workspaces/inbox/reads", headers=headers)
+        assert list_reads.status_code == 200
+        assert list_reads.json()["reads"]["hf-registry"]["workspace owner"].endswith("Z")
+
+        delete_workspace = client.delete("/v1/workspaces/hf-registry", headers=headers)
+        assert delete_workspace.status_code == 200
+        assert delete_workspace.json()["success"] is True
+        assert delete_workspace.json()["active_workspace_id"] is None
+
+        list_after_delete = client.get("/v1/workspaces", headers=headers)
+        assert list_after_delete.status_code == 200
+        assert list_after_delete.json()["items"] == []
+
+
+def test_v1_workspace_author_request_accept_updates_invitation_status(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        owner_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-owner@example.com",
+                "password": "StrongPassword123",
+                "name": "Owner User",
+            },
+        )
+        invitee_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-invitee@example.com",
+                "password": "StrongPassword123",
+                "name": "Invitee User",
+            },
+        )
+        assert owner_register.status_code == 200
+        assert invitee_register.status_code == 200
+        owner_headers = _auth_headers(owner_register.json()["session_token"])
+        invitee_headers = _auth_headers(invitee_register.json()["session_token"])
+
+        create_workspace = client.post(
+            "/v1/workspaces",
+            headers=owner_headers,
+            json={
+                "id": "4d-flow-rhc-paper",
+                "name": "4D flow RHC paper",
+                "owner_name": "Owner User",
+                "collaborators": [],
+                "removed_collaborators": [],
+                "version": "0.1",
+                "health": "amber",
+                "pinned": False,
+                "archived": False,
+            },
+        )
+        assert create_workspace.status_code == 200
+
+        create_invitation = client.post(
+            "/v1/workspaces/invitations/sent",
+            headers=owner_headers,
+            json={
+                "workspace_id": "4d-flow-rhc-paper",
+                "invitee_name": "Invitee User",
+                "status": "pending",
+            },
+        )
+        assert create_invitation.status_code == 200
+        invitation_id = create_invitation.json()["id"]
+
+        invitee_requests = client.get("/v1/workspaces/author-requests", headers=invitee_headers)
+        assert invitee_requests.status_code == 200
+        assert len(invitee_requests.json()["items"]) == 1
+        request_id = invitee_requests.json()["items"][0]["id"]
+
+        accept_request = client.post(
+            f"/v1/workspaces/author-requests/{request_id}/accept",
+            headers=invitee_headers,
+            json={"collaborator_name": "Invitee User"},
+        )
+        assert accept_request.status_code == 200
+        assert accept_request.json()["workspace"]["name"] == "4D flow RHC paper"
+        assert accept_request.json()["workspace"]["owner_name"] == "Owner User"
+        assert accept_request.json()["workspace"]["collaborators"] == ["Invitee User"]
+
+        owner_invitations = client.get("/v1/workspaces/invitations/sent", headers=owner_headers)
+        assert owner_invitations.status_code == 200
+        matched = next(
+            item
+            for item in owner_invitations.json()["items"]
+            if item["id"] == invitation_id
+        )
+        assert matched["status"] == "accepted"
+
+        owner_workspaces = client.get("/v1/workspaces", headers=owner_headers)
+        assert owner_workspaces.status_code == 200
+        owner_workspace = next(
+            item
+            for item in owner_workspaces.json()["items"]
+            if item["id"] == "4d-flow-rhc-paper"
+        )
+        assert "Invitee User" in owner_workspace["collaborators"]
+        assert "Invitee User" not in owner_workspace["removed_collaborators"]
+
+
+def test_v1_workspace_invitation_requires_workspace_owner(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        owner_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-owner-enforce@example.com",
+                "password": "StrongPassword123",
+                "name": "Owner User",
+            },
+        )
+        collaborator_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-collab-enforce@example.com",
+                "password": "StrongPassword123",
+                "name": "Collaborator User",
+            },
+        )
+        target_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-target-enforce@example.com",
+                "password": "StrongPassword123",
+                "name": "Target User",
+            },
+        )
+        assert owner_register.status_code == 200
+        assert collaborator_register.status_code == 200
+        assert target_register.status_code == 200
+        owner_headers = _auth_headers(owner_register.json()["session_token"])
+        collaborator_headers = _auth_headers(collaborator_register.json()["session_token"])
+
+        create_workspace = client.post(
+            "/v1/workspaces",
+            headers=owner_headers,
+            json={
+                "id": "owner-only-invites",
+                "name": "Owner Only Invites",
+                "owner_name": "Owner User",
+                "collaborators": [],
+                "removed_collaborators": [],
+                "version": "0.1",
+                "health": "amber",
+                "pinned": False,
+                "archived": False,
+            },
+        )
+        assert create_workspace.status_code == 200
+
+        invite_collaborator = client.post(
+            "/v1/workspaces/invitations/sent",
+            headers=owner_headers,
+            json={
+                "workspace_id": "owner-only-invites",
+                "invitee_name": "Collaborator User",
+                "status": "pending",
+            },
+        )
+        assert invite_collaborator.status_code == 200
+
+        collaborator_requests = client.get(
+            "/v1/workspaces/author-requests", headers=collaborator_headers
+        )
+        assert collaborator_requests.status_code == 200
+        request_id = collaborator_requests.json()["items"][0]["id"]
+
+        accept_request = client.post(
+            f"/v1/workspaces/author-requests/{request_id}/accept",
+            headers=collaborator_headers,
+            json={"collaborator_name": "Collaborator User"},
+        )
+        assert accept_request.status_code == 200
+
+        collaborator_invite_attempt = client.post(
+            "/v1/workspaces/invitations/sent",
+            headers=collaborator_headers,
+            json={
+                "workspace_id": "owner-only-invites",
+                "invitee_name": "Target User",
+                "status": "pending",
+            },
+        )
+        assert collaborator_invite_attempt.status_code == 400
+        assert (
+            "Only the workspace owner can invite collaborators."
+            in collaborator_invite_attempt.json()["error"]["detail"]
+        )
+
+
+def test_v1_workspace_inbox_messages_are_shared_with_workspace_collaborators(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        owner_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-inbox-owner@example.com",
+                "password": "StrongPassword123",
+                "name": "Owner User",
+            },
+        )
+        collaborator_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-inbox-collab@example.com",
+                "password": "StrongPassword123",
+                "name": "Collaborator User",
+            },
+        )
+        assert owner_register.status_code == 200
+        assert collaborator_register.status_code == 200
+        owner_headers = _auth_headers(owner_register.json()["session_token"])
+        collaborator_headers = _auth_headers(collaborator_register.json()["session_token"])
+
+        create_workspace = client.post(
+            "/v1/workspaces",
+            headers=owner_headers,
+            json={
+                "id": "shared-inbox-workspace",
+                "name": "Shared Inbox Workspace",
+                "owner_name": "Owner User",
+                "collaborators": [],
+                "removed_collaborators": [],
+                "version": "0.1",
+                "health": "amber",
+                "pinned": False,
+                "archived": False,
+            },
+        )
+        assert create_workspace.status_code == 200
+
+        create_invitation = client.post(
+            "/v1/workspaces/invitations/sent",
+            headers=owner_headers,
+            json={
+                "workspace_id": "shared-inbox-workspace",
+                "invitee_name": "Collaborator User",
+                "status": "pending",
+            },
+        )
+        assert create_invitation.status_code == 200
+
+        collaborator_requests = client.get(
+            "/v1/workspaces/author-requests", headers=collaborator_headers
+        )
+        assert collaborator_requests.status_code == 200
+        request_id = collaborator_requests.json()["items"][0]["id"]
+
+        accept_request = client.post(
+            f"/v1/workspaces/author-requests/{request_id}/accept",
+            headers=collaborator_headers,
+            json={"collaborator_name": "Collaborator User"},
+        )
+        assert accept_request.status_code == 200
+
+        create_message = client.post(
+            "/v1/workspaces/inbox/messages",
+            headers=owner_headers,
+            json={
+                "id": "msg-shared-01",
+                "workspace_id": "shared-inbox-workspace",
+                "sender_name": "Owner User",
+                "encrypted_body": "ciphertext-shared",
+                "iv": "iv-shared",
+                "created_at": "2026-02-25T10:05:00Z",
+            },
+        )
+        assert create_message.status_code == 200
+
+        collaborator_messages = client.get(
+            "/v1/workspaces/inbox/messages",
+            headers=collaborator_headers,
+            params={"workspace_id": "shared-inbox-workspace"},
+        )
+        assert collaborator_messages.status_code == 200
+        assert any(
+            item["id"] == "msg-shared-01"
+            for item in collaborator_messages.json()["items"]
+        )
+
+
+def test_v1_workspace_run_context_requires_session_token(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        response = client.get("/v1/workspaces/hf-registry/run-context")
+
+    assert response.status_code == 401
+    assert response.json()["error"]["type"] == "unauthorized"
+
+
+def test_v1_workspace_run_context_respects_owner_and_collaborator_access(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        owner_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-context-owner@example.com",
+                "password": "StrongPassword123",
+                "name": "Workspace Context Owner",
+            },
+        )
+        collaborator_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-context-collab@example.com",
+                "password": "StrongPassword123",
+                "name": "Workspace Context Collaborator",
+            },
+        )
+        outsider_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-context-outsider@example.com",
+                "password": "StrongPassword123",
+                "name": "Workspace Context Outsider",
+            },
+        )
+        assert owner_register.status_code == 200
+        assert collaborator_register.status_code == 200
+        assert outsider_register.status_code == 200
+
+        owner_token = owner_register.json()["session_token"]
+        collaborator_token = collaborator_register.json()["session_token"]
+        outsider_token = outsider_register.json()["session_token"]
+        owner_headers = _auth_headers(owner_token)
+        collaborator_headers = _auth_headers(collaborator_token)
+        outsider_headers = _auth_headers(outsider_token)
+
+        owner_me = client.get("/v1/auth/me", headers=owner_headers)
+        collaborator_me = client.get("/v1/auth/me", headers=collaborator_headers)
+        assert owner_me.status_code == 200
+        assert collaborator_me.status_code == 200
+        owner_user_id = owner_me.json()["id"]
+        collaborator_user_id = collaborator_me.json()["id"]
+
+        create_workspace = client.post(
+            "/v1/workspaces",
+            headers=owner_headers,
+            json={
+                "id": "workspace-context-paper",
+                "name": "Workspace Context Paper",
+                "owner_name": "Workspace Context Owner",
+                "collaborators": ["Workspace Context Collaborator"],
+                "removed_collaborators": [],
+                "version": "0.1",
+                "health": "amber",
+                "pinned": False,
+                "archived": False,
+            },
+        )
+        assert create_workspace.status_code == 200
+
+        create_project = client.post(
+            "/v1/projects",
+            headers=owner_headers,
+            json={
+                "title": "Workspace Context Project",
+                "target_journal": "ehj",
+                "workspace_id": "workspace-context-paper",
+                "collaborator_user_ids": [collaborator_user_id],
+            },
+        )
+        assert create_project.status_code == 200
+        project_id = create_project.json()["id"]
+
+        create_manuscript = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            headers=owner_headers,
+            json={"branch_name": "main"},
+        )
+        assert create_manuscript.status_code == 200
+        manuscript_id = create_manuscript.json()["id"]
+
+        owner_context = client.get(
+            "/v1/workspaces/workspace-context-paper/run-context",
+            headers=owner_headers,
+        )
+        collaborator_context = client.get(
+            "/v1/workspaces/workspace-context-paper/run-context",
+            headers=collaborator_headers,
+        )
+        outsider_context = client.get(
+            "/v1/workspaces/workspace-context-paper/run-context",
+            headers=outsider_headers,
+        )
+
+        assert owner_context.status_code == 200
+        assert collaborator_context.status_code == 200
+        assert outsider_context.status_code == 200
+
+        owner_payload = owner_context.json()
+        collaborator_payload = collaborator_context.json()
+        outsider_payload = outsider_context.json()
+
+        assert owner_payload["project_id"] == project_id
+        assert owner_payload["manuscript_id"] == manuscript_id
+        assert owner_payload["owner_user_id"] == owner_user_id
+        assert collaborator_user_id in owner_payload["collaborator_user_ids"]
+
+        assert collaborator_payload["project_id"] == project_id
+        assert collaborator_payload["manuscript_id"] == manuscript_id
+        assert collaborator_payload["owner_user_id"] == owner_user_id
+        assert collaborator_user_id in collaborator_payload["collaborator_user_ids"]
+
+        assert outsider_payload["project_id"] is None
+        assert outsider_payload["manuscript_id"] is None
+        assert outsider_payload["owner_user_id"] is None
+        assert outsider_payload["collaborator_user_ids"] == []
+
+
+def test_v1_workspace_author_request_decline_updates_invitation_status(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        owner_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-owner-decline@example.com",
+                "password": "StrongPassword123",
+                "name": "Owner User",
+            },
+        )
+        invitee_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-invitee-decline@example.com",
+                "password": "StrongPassword123",
+                "name": "Invitee User",
+            },
+        )
+        assert owner_register.status_code == 200
+        assert invitee_register.status_code == 200
+        owner_headers = _auth_headers(owner_register.json()["session_token"])
+        invitee_headers = _auth_headers(invitee_register.json()["session_token"])
+
+        create_workspace = client.post(
+            "/v1/workspaces",
+            headers=owner_headers,
+            json={
+                "id": "decline-rhc-paper",
+                "name": "Decline RHC paper",
+                "owner_name": "Owner User",
+                "collaborators": [],
+                "removed_collaborators": [],
+                "version": "0.1",
+                "health": "amber",
+                "pinned": False,
+                "archived": False,
+            },
+        )
+        assert create_workspace.status_code == 200
+
+        create_invitation = client.post(
+            "/v1/workspaces/invitations/sent",
+            headers=owner_headers,
+            json={
+                "workspace_id": "decline-rhc-paper",
+                "invitee_name": "Invitee User",
+                "status": "pending",
+            },
+        )
+        assert create_invitation.status_code == 200
+        invitation_id = create_invitation.json()["id"]
+
+        invitee_requests = client.get("/v1/workspaces/author-requests", headers=invitee_headers)
+        assert invitee_requests.status_code == 200
+        assert len(invitee_requests.json()["items"]) == 1
+        request_id = invitee_requests.json()["items"][0]["id"]
+
+        decline_request = client.post(
+            f"/v1/workspaces/author-requests/{request_id}/decline",
+            headers=invitee_headers,
+        )
+        assert decline_request.status_code == 200
+        assert decline_request.json()["success"] is True
+        assert decline_request.json()["removed_request_id"] == request_id
+
+        invitee_requests_after = client.get("/v1/workspaces/author-requests", headers=invitee_headers)
+        assert invitee_requests_after.status_code == 200
+        assert invitee_requests_after.json()["items"] == []
+
+        owner_invitations = client.get("/v1/workspaces/invitations/sent", headers=owner_headers)
+        assert owner_invitations.status_code == 200
+        matched = next(
+            item
+            for item in owner_invitations.json()["items"]
+            if item["id"] == invitation_id
+        )
+        assert matched["status"] == "declined"
+
+
+def test_v1_workspace_inbox_websocket_relays_typing_events(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        register_a = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-ws-a@example.com",
+                "password": "StrongPassword123",
+                "name": "Realtime User A",
+            },
+        )
+        register_b = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-ws-b@example.com",
+                "password": "StrongPassword123",
+                "name": "Realtime User B",
+            },
+        )
+        assert register_a.status_code == 200
+        assert register_b.status_code == 200
+        token_a = register_a.json()["session_token"]
+        token_b = register_b.json()["session_token"]
+        headers_a = _auth_headers(token_a)
+        headers_b = _auth_headers(token_b)
+
+        create_workspace = client.post(
+            "/v1/workspaces",
+            headers=headers_a,
+            json={
+                "id": "hf-registry",
+                "name": "HF Registry",
+                "owner_name": "Realtime User A",
+                "collaborators": [],
+                "removed_collaborators": [],
+                "version": "0.1",
+                "health": "amber",
+                "pinned": False,
+                "archived": False,
+            },
+        )
+        assert create_workspace.status_code == 200
+
+        create_invitation = client.post(
+            "/v1/workspaces/invitations/sent",
+            headers=headers_a,
+            json={
+                "workspace_id": "hf-registry",
+                "invitee_name": "Realtime User B",
+                "status": "pending",
+            },
+        )
+        assert create_invitation.status_code == 200
+
+        invitee_requests = client.get("/v1/workspaces/author-requests", headers=headers_b)
+        assert invitee_requests.status_code == 200
+        request_id = invitee_requests.json()["items"][0]["id"]
+        accept_request = client.post(
+            f"/v1/workspaces/author-requests/{request_id}/accept",
+            headers=headers_b,
+            json={"collaborator_name": "Realtime User B"},
+        )
+        assert accept_request.status_code == 200
+
+        ws_url_a = f"/v1/workspaces/inbox/ws?workspace_id=hf-registry&token={token_a}"
+        ws_url_b = f"/v1/workspaces/inbox/ws?workspace_id=hf-registry&token={token_b}"
+
+        with client.websocket_connect(ws_url_a) as ws_a:
+            with client.websocket_connect(ws_url_b) as ws_b:
+                presence_event = ws_a.receive_json()
+                assert presence_event["type"] == "presence"
+                assert presence_event["workspace_id"] == "hf-registry"
+                assert presence_event["status"] == "joined"
+                assert presence_event["sender_name"] == "Realtime User B"
+
+                ws_a.send_json(
+                    {
+                        "type": "typing",
+                        "workspace_id": "hf-registry",
+                        "active": True,
+                    }
+                )
+                typing_event = ws_b.receive_json()
+                assert typing_event["type"] == "typing"
+                assert typing_event["workspace_id"] == "hf-registry"
+                assert typing_event["sender_name"] == "Realtime User A"
+                assert typing_event["active"] is True
+
+                ws_b.send_json({"type": "ping"})
+                pong_event = ws_b.receive_json()
+                assert pong_event["type"] == "pong"
+                assert pong_event["workspace_id"] == "hf-registry"
 
 
 def test_v1_auth_delete_me_removes_account(monkeypatch, tmp_path) -> None:

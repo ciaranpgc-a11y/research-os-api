@@ -16,6 +16,7 @@ from research_os.db import (
     ManuscriptAssetLink,
     ManuscriptPlan,
     PlannerArtifact,
+    Project,
     create_all_tables,
     session_scope,
 )
@@ -37,6 +38,73 @@ class DataAssetNotFoundError(RuntimeError):
 
 class PlannerValidationError(RuntimeError):
     pass
+
+
+def _trim(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _normalize_user_ids(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in values:
+        user_id = _trim(item)
+        if not user_id or user_id in seen:
+            continue
+        seen.add(user_id)
+        deduped.append(user_id)
+    return deduped
+
+
+def _project_allows_user(project: Project, user_id: str | None) -> bool:
+    clean_user_id = _trim(user_id)
+    if not clean_user_id:
+        return True
+    if _trim(project.owner_user_id) == clean_user_id:
+        return True
+    return clean_user_id in _normalize_user_ids(project.collaborator_user_ids)
+
+
+def _resolve_project_for_user(*, session, project_id: str, user_id: str | None) -> Project:
+    project = session.get(Project, _trim(project_id))
+    if project is None:
+        raise PlannerValidationError(f"Project '{project_id}' was not found.")
+    if not _project_allows_user(project, user_id):
+        raise PlannerValidationError(f"Project '{project_id}' was not found.")
+    return project
+
+
+def _resolve_manuscript_for_user(
+    *, session, manuscript_id: str, user_id: str | None
+) -> Manuscript:
+    manuscript = session.get(Manuscript, _trim(manuscript_id))
+    if manuscript is None:
+        raise PlannerValidationError(f"Manuscript '{manuscript_id}' was not found.")
+    project = _resolve_project_for_user(
+        session=session, project_id=str(manuscript.project_id), user_id=user_id
+    )
+    if str(manuscript.project_id) != str(project.id):
+        raise PlannerValidationError(f"Manuscript '{manuscript_id}' was not found.")
+    return manuscript
+
+
+def _asset_accessible_for_user(
+    *, session, asset: DataLibraryAsset, user_id: str | None
+) -> bool:
+    clean_user_id = _trim(user_id)
+    if not clean_user_id:
+        return True
+    if _trim(asset.owner_user_id) == clean_user_id:
+        return True
+    project_id = _trim(asset.project_id)
+    if not project_id:
+        return False
+    project = session.get(Project, project_id)
+    if project is None:
+        return False
+    return _project_allows_user(project, clean_user_id)
 
 
 def _storage_root() -> Path:
@@ -66,17 +134,27 @@ def _guess_kind(filename: str) -> str:
 
 
 def upload_library_assets(
-    *, files: list[tuple[str, str | None, bytes]], project_id: str | None = None
+    *,
+    files: list[tuple[str, str | None, bytes]],
+    project_id: str | None = None,
+    user_id: str | None = None,
 ) -> list[str]:
     create_all_tables()
     if not files:
         raise PlannerValidationError("At least one file is required for upload.")
     asset_ids: list[str] = []
     with session_scope() as session:
+        clean_project_id = _trim(project_id) or None
+        clean_user_id = _trim(user_id) or None
+        if clean_project_id:
+            _resolve_project_for_user(
+                session=session, project_id=clean_project_id, user_id=clean_user_id
+            )
         for raw_filename, mime_type, content in files:
             filename = _slugify_filename(raw_filename)
             asset = DataLibraryAsset(
-                project_id=project_id or None,
+                owner_user_id=clean_user_id,
+                project_id=clean_project_id,
                 filename=filename,
                 kind=_guess_kind(filename),
                 mime_type=(mime_type or "").strip() or None,
@@ -94,16 +172,30 @@ def upload_library_assets(
     return asset_ids
 
 
-def list_library_assets(*, project_id: str | None = None) -> list[dict[str, object]]:
+def list_library_assets(
+    *, project_id: str | None = None, user_id: str | None = None
+) -> list[dict[str, object]]:
     create_all_tables()
     with session_scope() as session:
+        clean_user_id = _trim(user_id) or None
+        clean_project_id = _trim(project_id) or None
         query = select(DataLibraryAsset).order_by(DataLibraryAsset.uploaded_at.desc())
-        if project_id:
-            query = query.where(DataLibraryAsset.project_id == project_id)
+        if clean_project_id:
+            _resolve_project_for_user(
+                session=session, project_id=clean_project_id, user_id=clean_user_id
+            )
+            query = query.where(DataLibraryAsset.project_id == clean_project_id)
         rows = session.scalars(query).all()
+        if clean_user_id:
+            rows = [
+                row
+                for row in rows
+                if _asset_accessible_for_user(session=session, asset=row, user_id=clean_user_id)
+            ]
         return [
             {
                 "id": row.id,
+                "owner_user_id": row.owner_user_id,
                 "project_id": row.project_id,
                 "filename": row.filename,
                 "kind": row.kind,
@@ -116,7 +208,11 @@ def list_library_assets(*, project_id: str | None = None) -> list[dict[str, obje
 
 
 def attach_assets_to_manuscript(
-    *, manuscript_id: str, asset_ids: list[str], section_context: str
+    *,
+    manuscript_id: str,
+    asset_ids: list[str],
+    section_context: str,
+    user_id: str | None = None,
 ) -> list[str]:
     create_all_tables()
     context = section_context.strip().upper()
@@ -129,12 +225,20 @@ def attach_assets_to_manuscript(
         raise PlannerValidationError("asset_ids must contain at least one id.")
 
     with session_scope() as session:
-        manuscript = session.get(Manuscript, manuscript_id)
-        if manuscript is None:
-            raise PlannerValidationError(f"Manuscript '{manuscript_id}' was not found.")
+        clean_user_id = _trim(user_id) or None
+        manuscript = _resolve_manuscript_for_user(
+            session=session, manuscript_id=manuscript_id, user_id=clean_user_id
+        )
         found = session.scalars(
             select(DataLibraryAsset).where(DataLibraryAsset.id.in_(clean_ids))
         ).all()
+        found = [
+            row
+            for row in found
+            if _asset_accessible_for_user(
+                session=session, asset=row, user_id=clean_user_id
+            )
+        ]
         found_ids = {row.id for row in found}
         missing = [item for item in clean_ids if item not in found_ids]
         if missing:
@@ -221,7 +325,10 @@ def _role_guesses(columns: list[str]) -> dict[str, list[str]]:
 
 
 def create_data_profile(
-    *, asset_ids: list[str], sampling: dict[str, int] | None = None
+    *,
+    asset_ids: list[str],
+    sampling: dict[str, int] | None = None,
+    user_id: str | None = None,
 ) -> dict[str, object]:
     create_all_tables()
     ids = [item.strip() for item in asset_ids if item.strip()]
@@ -231,9 +338,18 @@ def create_data_profile(
     max_chars = max(1000, min(int((sampling or {}).get("max_chars", 20000)), 200000))
 
     with session_scope() as session:
+        clean_user_id = _trim(user_id) or None
         assets = session.scalars(
             select(DataLibraryAsset).where(DataLibraryAsset.id.in_(ids))
         ).all()
+        if clean_user_id:
+            assets = [
+                row
+                for row in assets
+                if _asset_accessible_for_user(
+                    session=session, asset=row, user_id=clean_user_id
+                )
+            ]
         found_ids = {row.id for row in assets}
         missing = [item for item in ids if item not in found_ids]
         if missing:
@@ -344,7 +460,10 @@ def create_data_profile(
         human_summary = f"Profiled {len(assets)} asset(s); sampled {rows_sampled} row(s), detected {len(deduped_columns)} column(s)."
 
         profile = DataProfile(
-            asset_ids=ids, data_profile_json=profile_json, human_summary=human_summary
+            owner_user_id=clean_user_id,
+            asset_ids=ids,
+            data_profile_json=profile_json,
+            human_summary=human_summary,
         )
         session.add(profile)
         session.flush()
@@ -366,13 +485,35 @@ def _confirmed_fields(fields: dict[str, Any] | None) -> dict[str, str]:
     }
 
 
-def _load_profile_json(profile_id: str | None) -> dict[str, Any]:
+def _load_profile_json(
+    profile_id: str | None, *, user_id: str | None = None
+) -> dict[str, Any]:
     if not (profile_id or "").strip():
         return {}
     with session_scope() as session:
         profile = session.get(DataProfile, profile_id)
         if profile is None:
             raise DataAssetNotFoundError(f"Data profile '{profile_id}' was not found.")
+        clean_user_id = _trim(user_id) or None
+        if clean_user_id and not _trim(profile.owner_user_id):
+            pass
+        elif clean_user_id and _trim(profile.owner_user_id) != clean_user_id:
+            asset_ids = _normalize_user_ids(profile.asset_ids)
+            if asset_ids:
+                assets = session.scalars(
+                    select(DataLibraryAsset).where(DataLibraryAsset.id.in_(asset_ids))
+                ).all()
+                inaccessible = [
+                    row
+                    for row in assets
+                    if not _asset_accessible_for_user(
+                        session=session, asset=row, user_id=clean_user_id
+                    )
+                ]
+                if inaccessible:
+                    raise DataAssetNotFoundError(
+                        f"Data profile '{profile_id}' was not found."
+                    )
         return dict(profile.data_profile_json or {})
 
 
@@ -383,12 +524,13 @@ def _create_artifact(
     artifact_type: str,
     scaffold_json: dict[str, Any],
     human_summary: str,
+    user_id: str | None = None,
 ) -> dict[str, object]:
     create_all_tables()
     with session_scope() as session:
-        manuscript = session.get(Manuscript, manuscript_id)
-        if manuscript is None:
-            raise PlannerValidationError(f"Manuscript '{manuscript_id}' was not found.")
+        _resolve_manuscript_for_user(
+            session=session, manuscript_id=manuscript_id, user_id=user_id
+        )
         artifact = PlannerArtifact(
             manuscript_id=manuscript_id,
             profile_id=profile_id or None,
@@ -410,9 +552,10 @@ def create_analysis_scaffold(
     manuscript_id: str,
     profile_id: str | None,
     confirmed_fields: dict[str, Any] | None,
+    user_id: str | None = None,
 ) -> dict[str, object]:
     fields = _confirmed_fields(confirmed_fields)
-    profile_json = _load_profile_json(profile_id)
+    profile_json = _load_profile_json(profile_id, user_id=user_id)
     roles = dict(profile_json.get("variable_role_guesses", {}) or {})
     outcome = (
         fields["primary_outcome"]
@@ -462,6 +605,7 @@ def create_analysis_scaffold(
         artifact_type="analysis",
         scaffold_json=scaffold_json,
         human_summary="Analysis scaffold generated.",
+        user_id=user_id,
     )
 
 
@@ -470,8 +614,9 @@ def create_tables_scaffold(
     manuscript_id: str,
     profile_id: str | None,
     confirmed_fields: dict[str, Any] | None,
+    user_id: str | None = None,
 ) -> dict[str, object]:
-    profile_json = _load_profile_json(profile_id)
+    profile_json = _load_profile_json(profile_id, user_id=user_id)
     unresolved = list(profile_json.get("unresolved_questions", []) or [])
     scaffold_json = {
         "proposed_tables": [
@@ -507,6 +652,7 @@ def create_tables_scaffold(
         artifact_type="tables",
         scaffold_json=scaffold_json,
         human_summary="Tables scaffold generated.",
+        user_id=user_id,
     )
 
 
@@ -515,8 +661,9 @@ def create_figures_scaffold(
     manuscript_id: str,
     profile_id: str | None,
     confirmed_fields: dict[str, Any] | None,
+    user_id: str | None = None,
 ) -> dict[str, object]:
-    profile_json = _load_profile_json(profile_id)
+    profile_json = _load_profile_json(profile_id, user_id=user_id)
     unresolved = list(profile_json.get("unresolved_questions", []) or [])
     scaffold_json = {
         "proposed_figures": [
@@ -554,19 +701,20 @@ def create_figures_scaffold(
         artifact_type="figures",
         scaffold_json=scaffold_json,
         human_summary="Figures scaffold generated.",
+        user_id=user_id,
     )
 
 
 def save_manuscript_plan(
-    *, manuscript_id: str, plan_json: dict[str, Any]
+    *, manuscript_id: str, plan_json: dict[str, Any], user_id: str | None = None
 ) -> dict[str, object]:
     create_all_tables()
     if not isinstance(plan_json.get("sections"), list):
         raise PlannerValidationError("plan_json.sections must be a list.")
     with session_scope() as session:
-        manuscript = session.get(Manuscript, manuscript_id)
-        if manuscript is None:
-            raise PlannerValidationError(f"Manuscript '{manuscript_id}' was not found.")
+        _resolve_manuscript_for_user(
+            session=session, manuscript_id=manuscript_id, user_id=user_id
+        )
         existing = session.scalars(
             select(ManuscriptPlan).where(ManuscriptPlan.manuscript_id == manuscript_id)
         ).first()
@@ -590,12 +738,13 @@ def improve_plan_section(
     current_text: str,
     context: dict[str, Any] | None,
     tool: str,
+    user_id: str | None = None,
 ) -> dict[str, object]:
     create_all_tables()
     with session_scope() as session:
-        manuscript = session.get(Manuscript, manuscript_id)
-        if manuscript is None:
-            raise PlannerValidationError(f"Manuscript '{manuscript_id}' was not found.")
+        _resolve_manuscript_for_user(
+            session=session, manuscript_id=manuscript_id, user_id=user_id
+        )
 
     tool_name = tool.strip().lower()
     if tool_name not in TOOL_NAMES:
@@ -640,7 +789,9 @@ def improve_plan_section(
         )
     elif tool_name == "link_to_data":
         profile_id = str((context or {}).get("profile_id", "")).strip()
-        profile_json = _load_profile_json(profile_id) if profile_id else {}
+        profile_json = (
+            _load_profile_json(profile_id, user_id=user_id) if profile_id else {}
+        )
         role_summary = (
             profile_json.get("variable_role_guesses", {})
             if isinstance(profile_json.get("variable_role_guesses", {}), dict)

@@ -124,7 +124,7 @@ const HOUSE_ACTION_BUTTON_CLASS = `h-9 rounded-md px-3.5 ${houseTypography.butto
 const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
 const HOUSE_PAGE_SUBTITLE_CLASS = houseTypography.subtitle
 const HOUSE_CARD_TITLE_CLASS = houseTypography.sectionTitle
-const HOUSE_LEFT_BORDER_CLASS = houseSurfaces.leftBorder
+const HOUSE_LEFT_BORDER_CLASS = `${houseSurfaces.leftBorder} ${houseSurfaces.leftBorderAccount}`
 const HOUSE_SELECT_CLASS = `h-9 w-full rounded-md px-3 py-1 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${houseForms.select}`
 
 function formatDate(value: string | null | undefined): string {
@@ -2178,7 +2178,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   >
                     <span
                       aria-hidden
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-[0.58rem] font-semibold text-[hsl(var(--tone-neutral-700))]"
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-caption font-semibold text-[hsl(var(--tone-neutral-700))]"
                     >
                       RG
                     </span>

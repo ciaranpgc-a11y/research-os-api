@@ -1,4 +1,4 @@
-import { houseChartColors, houseMotion, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseChartColors, houseDividers, houseMotion, houseSurfaces, houseTypography } from '@/lib/house-style'
 
 export const publicationsHouseHeadings = {
   title: houseTypography.title,
@@ -16,10 +16,23 @@ export const publicationsHouseSurfaces = {
   sectionPanel: houseSurfaces.sectionPanel,
   softPanel: houseSurfaces.softPanel,
   card: houseSurfaces.card,
+  panelBare: houseSurfaces.panelBare,
+  banner: houseSurfaces.banner,
+  bannerInfo: houseSurfaces.bannerInfo,
+  bannerSuccess: houseSurfaces.bannerSuccess,
+  bannerWarning: houseSurfaces.bannerWarning,
+  bannerDanger: houseSurfaces.bannerDanger,
   leftBorder: houseSurfaces.leftBorder,
+  leftBorderPublications: houseSurfaces.leftBorderPublications,
   tableShell: houseSurfaces.tableShell,
   tableHead: houseSurfaces.tableHead,
   tableRow: houseSurfaces.tableRow,
+} as const
+
+export const publicationsHouseDividers = {
+  borderSoft: houseDividers.borderSoft,
+  fillSoft: houseDividers.fillSoft,
+  strong: houseDividers.strong,
 } as const
 
 export const publicationsHouseMotion = {
@@ -30,6 +43,7 @@ export const publicationsHouseMotion = {
   toggleThumb: houseMotion.toggleThumb,
   toggleButton: houseMotion.toggleButton,
   toggleChartBar: houseMotion.toggleChartBar,
+  toggleChartSwap: houseMotion.toggleChartSwap,
   toggleChartLabel: houseMotion.toggleChartLabel,
   labelTransition: houseMotion.labelTransition,
 } as const

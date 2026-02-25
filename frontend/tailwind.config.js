@@ -33,6 +33,16 @@ export default {
         body: ['var(--text-body-size)', { lineHeight: 'var(--text-body-line)' }],
         display: ['var(--text-display-size)', { lineHeight: 'var(--text-display-line)', letterSpacing: '-0.02em' }],
       },
+      transitionDuration: {
+        150: 'var(--motion-duration-fast)',
+        200: '200ms',
+        220: 'var(--motion-duration-base)',
+        300: '300ms',
+        320: 'var(--motion-duration-slow)',
+        420: 'var(--motion-duration-slower)',
+        500: 'var(--motion-duration-emphasis)',
+        700: 'var(--motion-duration-long)',
+      },
       spacing: {
         'sz-7': '0.4375rem',
         'sz-18': '1.125rem',

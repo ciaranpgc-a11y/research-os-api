@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useParams } from 'react-router-dom'
 
 import { Step1Panel } from '@/components/study-core/Step1Panel'
 import { Step2Panel } from '@/components/study-core/Step2Panel'
@@ -9,6 +10,7 @@ import { StepPlan } from '@/components/study-core/StepPlan'
 import { StepRun } from '@/components/study-core/StepRun'
 import { StudyCoreStepper, type WizardStepItem } from '@/components/study-core/StudyCoreStepper'
 import { Input } from '@/components/ui/input'
+import { getAuthSessionToken } from '@/lib/auth-session'
 import type { PlanSectionKey } from '@/lib/plan-section-readiness'
 import {
   CURATED_CARDIOLOGY_IMAGING_JOURNALS,
@@ -18,8 +20,9 @@ import {
   getStudyTypeDefaults,
   mergeJournalOptions,
 } from '@/lib/research-frame-options'
-import { fetchJournalOptions } from '@/lib/study-core-api'
+import { fetchJournalOptions, fetchWorkspaceRunContext } from '@/lib/study-core-api'
 import { useStudyCoreWizardStore, type WizardStep } from '@/store/use-study-core-wizard-store'
+import { useWorkspaceStore } from '@/store/use-workspace-store'
 import type {
   ClaimLinkSuggestion,
   GenerationEstimate,
@@ -36,7 +39,6 @@ type RunRecommendations = {
   mechanisticAsHypothesis: boolean
 }
 
-const CONTEXT_KEY = 'aawe-run-context'
 const RESEARCH_FRAME_SIGNATURE_KEY = 'aawe-research-frame-signature'
 const CORE_SECTIONS = ['introduction', 'methods', 'results', 'discussion', 'conclusion']
 const RESEARCH_TAXONOMY = getResearchTypeTaxonomy(true)
@@ -237,18 +239,6 @@ function buildGenerationBrief(values: ContextFormValues, sections: string[], gua
   return lines.filter(Boolean).join('\n')
 }
 
-function readStoredRunContext(): RunContext | null {
-  const raw = window.localStorage.getItem(CONTEXT_KEY)
-  if (!raw) {
-    return null
-  }
-  try {
-    return JSON.parse(raw) as RunContext
-  } catch {
-    return null
-  }
-}
-
 function isResearchFrameComplete(values: ContextFormValues): boolean {
   return Boolean(values.researchObjective.trim())
 }
@@ -268,6 +258,7 @@ const STEP_ITEMS: WizardStepItem[] = [
 ]
 
 export function StudyCorePage() {
+  const params = useParams<{ workspaceId: string }>()
   const currentStep = useStudyCoreWizardStore((state) => state.currentStep)
   const planStatus = useStudyCoreWizardStore((state) => state.planStatus)
   const jobStatus = useStudyCoreWizardStore((state) => state.jobStatus)
@@ -286,10 +277,23 @@ export function StudyCorePage() {
   const setQcSeverityCounts = useStudyCoreWizardStore((state) => state.setQcSeverityCounts)
   const setRunConfiguration = useStudyCoreWizardStore((state) => state.setRunConfiguration)
   const canNavigateToStep = useStudyCoreWizardStore((state) => state.canNavigateToStep)
+  const workspaceRecords = useWorkspaceStore((state) => state.workspaces)
+  const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId)
+  const sessionToken = getAuthSessionToken() || ''
+  const routeWorkspaceId = (params.workspaceId || '').trim()
+  const effectiveWorkspaceId = routeWorkspaceId || (activeWorkspaceId || '').trim()
+  const activeWorkspace = useMemo(
+    () => workspaceRecords.find((workspace) => workspace.id === effectiveWorkspaceId) || null,
+    [effectiveWorkspaceId, workspaceRecords],
+  )
+  const activeCollaboratorNames = useMemo(
+    () => (activeWorkspace ? [...activeWorkspace.collaborators] : []),
+    [activeWorkspace],
+  )
 
   const [journals, setJournals] = useState<JournalOption[]>(CURATED_CARDIOLOGY_IMAGING_JOURNALS)
   const [targetJournal, setTargetJournal] = useState('')
-  const [runContext, setRunContext] = useState<RunContext | null>(() => readStoredRunContext())
+  const [runContext, setRunContext] = useState<RunContext | null>(null)
   const [contextValues, setContextValues] = useState<ContextFormValues>({
     projectTitle: '',
     researchCategory: '',
@@ -461,13 +465,44 @@ export function StudyCorePage() {
   }, [targetJournal])
 
   useEffect(() => {
+    if (!sessionToken || !effectiveWorkspaceId) {
+      setRunContext(null)
+      return
+    }
+    let cancelled = false
+    void fetchWorkspaceRunContext({
+      token: sessionToken,
+      workspaceId: effectiveWorkspaceId,
+    })
+      .then((payload) => {
+        if (cancelled) {
+          return
+        }
+        if (payload.project_id && payload.manuscript_id) {
+          setRunContext({
+            projectId: payload.project_id,
+            manuscriptId: payload.manuscript_id,
+          })
+          return
+        }
+        setRunContext(null)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRunContext(null)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [effectiveWorkspaceId, sessionToken])
+
+  useEffect(() => {
     if (!runContext) {
-      window.localStorage.removeItem(CONTEXT_KEY)
       window.localStorage.removeItem(RESEARCH_FRAME_SIGNATURE_KEY)
       setSavedResearchFrameSignature(null)
       return
     }
-    window.localStorage.setItem(CONTEXT_KEY, JSON.stringify(runContext))
   }, [runContext])
 
   useEffect(() => {
@@ -749,6 +784,9 @@ export function StudyCorePage() {
     if (currentStep === 1) {
       return (
         <StepContext
+          token={sessionToken}
+          workspaceId={effectiveWorkspaceId || null}
+          collaboratorNames={activeCollaboratorNames}
           values={contextValues}
           targetJournal={targetJournal}
           journals={journals}
@@ -777,6 +815,8 @@ export function StudyCorePage() {
     if (currentStep === 2) {
       return (
         <StepPlan
+          token={sessionToken}
+          runContext={runContext}
           targetJournal={targetJournal}
           answers={answers}
           planningContext={{

@@ -57,7 +57,7 @@ function EmptyState() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">No active selection</CardTitle>
+        <CardTitle>No active selection</CardTitle>
         <CardDescription>Click a sentence or result to inspect.</CardDescription>
       </CardHeader>
       <CardContent className="text-xs text-muted-foreground">
@@ -79,7 +79,7 @@ function DiagnosticCard({
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">{title}</CardTitle>
+        <CardTitle>{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2 text-xs">{children}</CardContent>
@@ -199,7 +199,7 @@ function renderEvidence(insight: SelectionInsight | null) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">{insight.title}</CardTitle>
+        <CardTitle>{insight.title}</CardTitle>
         <CardDescription>{insight.summary}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -222,7 +222,7 @@ function renderQc(insight: SelectionInsight | null) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">QC Perspective</CardTitle>
+        <CardTitle>QC Perspective</CardTitle>
         <CardDescription>{insight.title}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2 text-xs">
@@ -247,7 +247,7 @@ function renderDerivation(insight: SelectionInsight | null) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">Derivation Trace</CardTitle>
+        <CardTitle>Derivation Trace</CardTitle>
         <CardDescription>{insight.item_id}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2 text-xs">
@@ -270,7 +270,7 @@ function renderCitations(insight: SelectionInsight | null) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">Citation Guidance</CardTitle>
+        <CardTitle>Citation Guidance</CardTitle>
         <CardDescription>Context-aware references for the selected item.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -761,7 +761,7 @@ export function InsightPanel() {
     <aside className="flex h-full flex-col bg-card">
       <div className="space-y-2 border-b border-border p-4">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">{panelTitle}</h2>
+          <h2 className="house-section-title">{panelTitle}</h2>
           <div className="flex items-center gap-1">
             {loadingInsight && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
             {showLegacyInspector ? (

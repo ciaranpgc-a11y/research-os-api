@@ -33,8 +33,8 @@ export function AppShell() {
           'grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[280px_minmax(0,1fr)]',
           showRightPanel &&
             (isProfileRoute
-              ? 'insight:grid-cols-[280px_minmax(0,1fr)_340px]'
-              : 'insight:grid-cols-[280px_minmax(0,1fr)_360px]'),
+              ? 'insight:grid-cols-[280px_minmax(0,1fr)_320px]'
+              : 'insight:grid-cols-[280px_minmax(0,1fr)_340px]'),
         )}
       >
         <aside data-house-role="left-nav-panel" className="hidden border-r border-border nav:block">
@@ -78,7 +78,7 @@ export function AppShell() {
             side="right"
             className={cn(
               'p-0 insight:hidden',
-              isProfileRoute ? 'w-sz-340 sm:w-sz-340' : 'w-sz-360 sm:w-sz-360',
+              isProfileRoute ? 'w-sz-320 sm:w-sz-320' : 'w-sz-340 sm:w-sz-340',
             )}
           >
             {rightPanel}

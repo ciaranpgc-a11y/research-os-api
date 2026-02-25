@@ -20,7 +20,7 @@ export function SettingsPage() {
 
   return (
     <section data-house-role="page" className="space-y-4">
-      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderAccount)}>
         <h1 data-house-role="page-title" className={houseTypography.title}>Settings & preferences</h1>
         <p data-house-role="page-subtitle" className={houseTypography.subtitle}>
           Control profile and publications preferences.
@@ -29,9 +29,7 @@ export function SettingsPage() {
 
       <Card className="border-[hsl(var(--tone-neutral-200))]">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">
-            Publications
-          </CardTitle>
+          <CardTitle>Publications</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-[hsl(var(--tone-neutral-700))]">
           <div className="space-y-1">
@@ -95,9 +93,7 @@ export function SettingsPage() {
 
       <Card className="border-[hsl(var(--tone-neutral-200))]">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">
-            Profile controls
-          </CardTitle>
+          <CardTitle>Profile controls</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-[hsl(var(--tone-neutral-700))]">
           <p>

@@ -49,10 +49,15 @@ class ProjectCreateRequest(BaseModel):
     language: str = "en-GB"
     study_type: str | None = None
     study_brief: str | None = None
+    workspace_id: str | None = None
+    collaborator_user_ids: list[str] = Field(default_factory=list)
 
 
 class ProjectResponse(BaseModel):
     id: str
+    owner_user_id: str | None = None
+    collaborator_user_ids: list[str] = Field(default_factory=list)
+    workspace_id: str | None = None
     title: str
     target_journal: str
     journal_voice: str | None = None
@@ -149,6 +154,8 @@ class WizardBootstrapRequest(BaseModel):
     journal_voice: str | None = None
     language: str = "en-GB"
     branch_name: str = "main"
+    workspace_id: str | None = None
+    collaborator_names: list[str] = Field(default_factory=list)
 
 
 class WizardBootstrapResponse(BaseModel):
@@ -412,6 +419,7 @@ class LibraryAssetUploadResponse(BaseModel):
 
 class LibraryAssetResponse(BaseModel):
     id: str
+    owner_user_id: str | None = None
     project_id: str | None = None
     filename: str
     kind: str
@@ -1638,6 +1646,187 @@ class ManuscriptAuthorsResponse(BaseModel):
         default_factory=list
     )
     rendered_authors_block: str = ""
+
+
+class WorkspaceStateResponse(BaseModel):
+    workspaces: list[dict[str, Any]] = Field(default_factory=list)
+    active_workspace_id: str | None = None
+    author_requests: list[dict[str, Any]] = Field(default_factory=list)
+    invitations_sent: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class WorkspaceStateUpdateRequest(BaseModel):
+    workspaces: list[dict[str, Any]] = Field(default_factory=list)
+    active_workspace_id: str | None = None
+    author_requests: list[dict[str, Any]] = Field(default_factory=list)
+    invitations_sent: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class WorkspaceInboxStateResponse(BaseModel):
+    messages: list[dict[str, Any]] = Field(default_factory=list)
+    reads: dict[str, dict[str, str]] = Field(default_factory=dict)
+
+
+class WorkspaceInboxStateUpdateRequest(BaseModel):
+    messages: list[dict[str, Any]] = Field(default_factory=list)
+    reads: dict[str, dict[str, str]] = Field(default_factory=dict)
+
+
+class WorkspaceRecordResponse(BaseModel):
+    id: str
+    name: str
+    owner_name: str
+    collaborators: list[str] = Field(default_factory=list)
+    removed_collaborators: list[str] = Field(default_factory=list)
+    version: str = "0.1"
+    health: Literal["green", "amber", "red"] = "amber"
+    updated_at: str
+    pinned: bool = False
+    archived: bool = False
+
+
+class WorkspaceListResponse(BaseModel):
+    items: list[WorkspaceRecordResponse] = Field(default_factory=list)
+    active_workspace_id: str | None = None
+
+
+class WorkspaceCreateRequest(BaseModel):
+    id: str | None = None
+    name: str
+    owner_name: str
+    collaborators: list[str] = Field(default_factory=list)
+    removed_collaborators: list[str] = Field(default_factory=list)
+    version: str = "0.1"
+    health: Literal["green", "amber", "red"] = "amber"
+    updated_at: str | None = None
+    pinned: bool = False
+    archived: bool = False
+
+
+class WorkspaceUpdateRequest(BaseModel):
+    name: str | None = None
+    owner_name: str | None = None
+    collaborators: list[str] | None = None
+    removed_collaborators: list[str] | None = None
+    version: str | None = None
+    health: Literal["green", "amber", "red"] | None = None
+    updated_at: str | None = None
+    pinned: bool | None = None
+    archived: bool | None = None
+
+
+class WorkspaceDeleteResponse(BaseModel):
+    success: bool = False
+    active_workspace_id: str | None = None
+
+
+class WorkspaceActiveUpdateRequest(BaseModel):
+    workspace_id: str | None = None
+
+
+class WorkspaceActiveUpdateResponse(BaseModel):
+    active_workspace_id: str | None = None
+
+
+class WorkspaceAuthorRequestResponse(BaseModel):
+    id: str
+    workspace_id: str
+    workspace_name: str
+    author_name: str
+    invited_at: str
+    source_inviter_user_id: str | None = None
+    source_invitation_id: str | None = None
+
+
+class WorkspaceAuthorRequestsResponse(BaseModel):
+    items: list[WorkspaceAuthorRequestResponse] = Field(default_factory=list)
+
+
+class WorkspaceAuthorRequestAcceptRequest(BaseModel):
+    collaborator_name: str | None = None
+
+
+class WorkspaceAuthorRequestAcceptResponse(BaseModel):
+    workspace: WorkspaceRecordResponse
+    removed_request_id: str
+
+
+class WorkspaceAuthorRequestDeclineResponse(BaseModel):
+    success: bool = False
+    removed_request_id: str
+
+
+class WorkspaceInvitationSentResponse(BaseModel):
+    id: str
+    workspace_id: str
+    workspace_name: str
+    invitee_name: str
+    invited_at: str
+    status: Literal["pending", "accepted", "declined"] = "pending"
+    invitee_user_id: str | None = None
+    linked_author_request_id: str | None = None
+
+
+class WorkspaceInvitationsSentResponse(BaseModel):
+    items: list[WorkspaceInvitationSentResponse] = Field(default_factory=list)
+
+
+class WorkspaceInvitationCreateRequest(BaseModel):
+    id: str | None = None
+    workspace_id: str
+    invitee_name: str
+    invited_at: str | None = None
+    status: Literal["pending", "accepted", "declined"] = "pending"
+
+
+class WorkspaceInvitationStatusUpdateRequest(BaseModel):
+    status: Literal["pending", "accepted", "declined"]
+
+
+class WorkspaceInboxMessageResponse(BaseModel):
+    id: str
+    workspace_id: str
+    sender_name: str
+    encrypted_body: str
+    iv: str
+    created_at: str
+
+
+class WorkspaceInboxMessagesResponse(BaseModel):
+    items: list[WorkspaceInboxMessageResponse] = Field(default_factory=list)
+
+
+class WorkspaceInboxMessageCreateRequest(BaseModel):
+    id: str | None = None
+    workspace_id: str
+    sender_name: str
+    encrypted_body: str
+    iv: str
+    created_at: str | None = None
+
+
+class WorkspaceInboxReadsResponse(BaseModel):
+    reads: dict[str, dict[str, str]] = Field(default_factory=dict)
+
+
+class WorkspaceInboxReadMarkRequest(BaseModel):
+    workspace_id: str
+    reader_name: str
+    read_at: str | None = None
+
+
+class WorkspaceInboxReadMarkResponse(BaseModel):
+    workspace_id: str
+    reader_key: str
+    read_at: str
+
+
+class WorkspaceRunContextResponse(BaseModel):
+    workspace_id: str
+    project_id: str | None = None
+    manuscript_id: str | None = None
+    owner_user_id: str | None = None
+    collaborator_user_ids: list[str] = Field(default_factory=list)
 
 
 class PersonaEmbeddingsGenerateRequest(BaseModel):

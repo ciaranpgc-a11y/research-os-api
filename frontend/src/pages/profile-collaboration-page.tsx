@@ -585,7 +585,7 @@ export function ProfileCollaborationPage() {
 
   return (
     <section data-house-role="page" className="space-y-4">
-      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderResearch)}>
         <h1 data-house-role="page-title" className={houseTypography.title}>Collaboration</h1>
         <p data-house-role="page-subtitle" className={houseTypography.subtitle}>
           Structured collaborator records, co-authorship intelligence, and manuscript author suggestions.
@@ -617,7 +617,7 @@ export function ProfileCollaborationPage() {
         <Card className="min-h-sz-580">
           <CardHeader className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="text-base">Collaborators</CardTitle>
+              <CardTitle>Collaborators</CardTitle>
               <div className="flex flex-wrap items-center gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={onAddCollaborator}>
                   <Plus className="mr-1 h-3.5 w-3.5" />
@@ -767,7 +767,7 @@ export function ProfileCollaborationPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">
+            <CardTitle>
               {isCreating ? 'Add collaborator' : selectedCollaborator ? 'Collaborator details' : 'Select collaborator'}
             </CardTitle>
             <CardDescription>
@@ -895,7 +895,7 @@ export function ProfileCollaborationPage() {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Strong collaborations</CardTitle>
+            <CardTitle>Strong collaborations</CardTitle>
             <CardDescription>Top 10 collaborators ranked by collaboration strength score.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -926,7 +926,7 @@ export function ProfileCollaborationPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Collaboration heat map</CardTitle>
+            <CardTitle>Collaboration heat map</CardTitle>
             <CardDescription>
               Toggle by geography, institution, or domain. Hover each cell for exact counts.
             </CardDescription>
@@ -983,7 +983,7 @@ export function ProfileCollaborationPage() {
 
       <Card>
         <CardHeader className="space-y-2">
-          <CardTitle className="flex items-center gap-2 text-base">
+          <CardTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4" />
             AI tools
           </CardTitle>

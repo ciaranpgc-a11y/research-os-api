@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { getHouseLeftBorderToneClass, getHouseNavToneClass } from '@/lib/section-tone'
 import { cn } from '@/lib/utils'
 import { useStudyCoreWizardStore } from '@/store/use-study-core-wizard-store'
 
@@ -67,6 +68,7 @@ function healthDotClass(health: ProjectHealth): string {
 
 function Group({ group, qcCounts, onNavigate }: { group: NavGroup; qcCounts: QcCounts; onNavigate?: () => void }) {
   const itemIndent = group.title === 'MANUSCRIPT' ? 'pl-4' : ''
+  const groupToneClass = getHouseNavToneClass(group.tone)
   return (
     <section className={houseLayout.sidebarSection}>
       <p className={houseNavigation.sectionLabel}>{group.title}</p>
@@ -82,6 +84,7 @@ function Group({ group, qcCounts, onNavigate }: { group: NavGroup; qcCounts: QcC
                 className={({ isActive }) =>
                   cn(
                     houseNavigation.item,
+                    groupToneClass,
                     itemIndent,
                     isActive && houseNavigation.itemActive,
                   )
@@ -129,7 +132,7 @@ export function StudyNavigator({ onNavigate }: StudyNavigatorProps) {
   return (
     <aside className={cn('flex h-full flex-col', houseLayout.sidebar)}>
       <div className={houseLayout.sidebarHeader}>
-        <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+        <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, getHouseLeftBorderToneClass('workspace'))}>
           <div className="flex items-center gap-2">
             <h1 className={houseTypography.sectionTitle}>HF Registry Manuscript</h1>
             <span

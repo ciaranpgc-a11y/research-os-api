@@ -68,6 +68,51 @@ _RETRYABLE_STATUSES = ("failed", "cancelled")
 _TERMINAL_STATUSES = ("completed", "failed", "cancelled")
 
 
+def _trim(value: str | None) -> str:
+    return str(value or "").strip()
+
+
+def _normalize_user_ids(values: list[str] | None) -> list[str]:
+    source = values if isinstance(values, list) else []
+    output: list[str] = []
+    seen: set[str] = set()
+    for value in source:
+        clean = _trim(str(value))
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        output.append(clean)
+    return output
+
+
+def _project_is_accessible_for_user(
+    *, project: Project, requesting_user_id: str | None
+) -> bool:
+    clean_user_id = _trim(requesting_user_id)
+    owner_user_id = _trim(project.owner_user_id)
+    collaborator_ids = _normalize_user_ids(project.collaborator_user_ids)
+    if clean_user_id:
+        if owner_user_id and clean_user_id == owner_user_id:
+            return True
+        return clean_user_id in collaborator_ids
+    return not owner_user_id and len(collaborator_ids) == 0
+
+
+def _assert_generation_job_access(
+    *, session, job: GenerationJob, requesting_user_id: str | None
+) -> None:
+    project = session.get(Project, job.project_id)
+    if project is None:
+        raise GenerationJobNotFoundError(
+            f"Generation job '{job.id}' was not found."
+        )
+    if _project_is_accessible_for_user(
+        project=project, requesting_user_id=requesting_user_id
+    ):
+        return
+    raise GenerationJobNotFoundError(f"Generation job '{job.id}' was not found.")
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -411,7 +456,9 @@ def enqueue_generation_job(
     return job
 
 
-def get_generation_job_record(job_id: str) -> GenerationJob:
+def get_generation_job_record(
+    job_id: str, *, requesting_user_id: str | None = None
+) -> GenerationJob:
     create_all_tables()
     SessionLocal = get_session_factory()
     session = SessionLocal()
@@ -421,6 +468,11 @@ def get_generation_job_record(job_id: str) -> GenerationJob:
             raise GenerationJobNotFoundError(
                 f"Generation job '{job_id}' was not found."
             )
+        _assert_generation_job_access(
+            session=session,
+            job=job,
+            requesting_user_id=requesting_user_id,
+        )
         session.expunge(job)
         return job
     finally:
@@ -460,7 +512,9 @@ def list_generation_jobs_for_manuscript(
         session.close()
 
 
-def cancel_generation_job(job_id: str) -> GenerationJob:
+def cancel_generation_job(
+    job_id: str, *, requesting_user_id: str | None = None
+) -> GenerationJob:
     create_all_tables()
     SessionLocal = get_session_factory()
     session = SessionLocal()
@@ -470,6 +524,11 @@ def cancel_generation_job(job_id: str) -> GenerationJob:
             raise GenerationJobNotFoundError(
                 f"Generation job '{job_id}' was not found."
             )
+        _assert_generation_job_access(
+            session=session,
+            job=job,
+            requesting_user_id=requesting_user_id,
+        )
 
         if job.status in _TERMINAL_STATUSES:
             session.expunge(job)
@@ -498,8 +557,11 @@ def retry_generation_job(
     *,
     max_estimated_cost_usd: float | None = None,
     project_daily_budget_usd: float | None = None,
+    requesting_user_id: str | None = None,
 ) -> GenerationJob:
-    source_job = get_generation_job_record(job_id)
+    source_job = get_generation_job_record(
+        job_id, requesting_user_id=requesting_user_id
+    )
     if source_job.status not in _RETRYABLE_STATUSES:
         raise GenerationJobStateError(
             (

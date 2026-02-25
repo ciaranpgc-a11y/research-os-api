@@ -56,6 +56,8 @@ type Key =
   | 'REFERENCES'
 
 type StepPlanProps = {
+  token: string
+  runContext: { projectId: string; manuscriptId: string } | null
   targetJournal: string
   answers: Record<string, string>
   planningContext: Context
@@ -77,7 +79,6 @@ type StepPlanProps = {
 
 type SuggestionState = { suggestions: string[]; alternatives: string[]; toConfirm: string[]; lastTool: string }
 
-const RUN_CONTEXT_KEY = 'aawe-run-context'
 const DEFAULT_RUN_SECTIONS = ['introduction', 'methods', 'results', 'discussion', 'conclusion']
 
 const ORDER: Array<{ key: Key; label: string; optional: boolean; fallback: string }> = [
@@ -128,30 +129,18 @@ function buildOutline(sections: ManuscriptPlanSection[]): OutlinePlanState {
 }
 
 function statusClass(status: ManuscriptPlanSection['status']): string {
-  if (status === 'reviewed') return 'border-emerald-300 bg-emerald-50 text-emerald-800'
-  if (status === 'locked') return 'border-amber-300 bg-amber-50 text-amber-900'
-  return 'border-slate-300 bg-slate-50 text-slate-700'
+  if (status === 'reviewed') return 'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))]'
+  if (status === 'locked') return 'border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-50))] text-[hsl(var(--tone-warning-800))]'
+  return 'border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-700))]'
 }
 
 function wordLengthClass(raw: string): string {
   const values = (raw.match(/\d[\d,]*/g) || []).map((v) => Number.parseInt(v.replace(/,/g, ''), 10)).filter(Number.isFinite)
   const high = values.length ? Math.max(...values) : 0
   if (!high) return 'rounded-md border border-border/70 bg-background p-2'
-  if (high < 1500) return 'rounded-md border border-emerald-300 bg-emerald-50/70 p-2'
-  if (high <= 4000) return 'rounded-md border border-amber-300 bg-amber-50/70 p-2'
-  return 'rounded-md border border-rose-300 bg-rose-50/70 p-2'
-}
-
-function readRunContext(): { projectId: string; manuscriptId: string } | null {
-  try {
-    const raw = window.localStorage.getItem(RUN_CONTEXT_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as { projectId?: string; manuscriptId?: string }
-    if (!parsed.projectId || !parsed.manuscriptId) return null
-    return { projectId: parsed.projectId, manuscriptId: parsed.manuscriptId }
-  } catch {
-    return null
-  }
+  if (high < 1500) return 'rounded-md border border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50)/0.72)] p-2'
+  if (high <= 4000) return 'rounded-md border border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-50)/0.72)] p-2'
+  return 'rounded-md border border-[hsl(var(--tone-danger-300))] bg-[hsl(var(--tone-danger-50)/0.72)] p-2'
 }
 
 function uniq(values: string[]): string[] {
@@ -184,6 +173,8 @@ function feedbackInit(): Record<Key, SuggestionState> {
 
 export function StepPlan(props: StepPlanProps) {
   const {
+    token,
+    runContext,
     targetJournal,
     answers,
     planningContext,
@@ -210,7 +201,6 @@ export function StepPlan(props: StepPlanProps) {
   void activeAiSection
 
   const [phase, setPhase] = useState<Phase>('data')
-  const [runCtx, setRunCtx] = useState<{ projectId: string; manuscriptId: string } | null>(() => readRunContext())
 
   const [assets, setAssets] = useState<LibraryAssetRecord[]>([])
   const [assetBusy, setAssetBusy] = useState(false)
@@ -262,21 +252,21 @@ export function StepPlan(props: StepPlanProps) {
     setAssetBusy(true)
     onError('')
     try {
-      const data = await listLibraryAssets(runCtx?.projectId)
+      const data = await listLibraryAssets({
+        token,
+        projectId: runContext?.projectId,
+      })
       setAssets(data)
     } catch (error) {
       onError(error instanceof Error ? error.message : 'Could not load assets.')
     } finally {
       setAssetBusy(false)
     }
-  }, [onError, runCtx?.projectId])
+  }, [onError, runContext?.projectId, token])
 
   useEffect(() => {
-    setRunCtx(readRunContext())
     void loadAssets()
-    // initial only
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [loadAssets])
 
   useEffect(() => {
     setResponses(clarificationResponses)
@@ -292,17 +282,21 @@ export function StepPlan(props: StepPlanProps) {
 
   const savePlan = useCallback(
     async (next: ManuscriptPlanJson) => {
-      if (!runCtx?.manuscriptId) return
+      if (!runContext?.manuscriptId) return
       setSaveBusy(true)
       try {
-        await saveManuscriptPlan({ manuscriptId: runCtx.manuscriptId, planJson: next })
+        await saveManuscriptPlan({
+          token,
+          manuscriptId: runContext.manuscriptId,
+          planJson: next,
+        })
       } catch (error) {
         onError(error instanceof Error ? error.message : 'Could not save plan.')
       } finally {
         setSaveBusy(false)
       }
     },
-    [onError, runCtx?.manuscriptId],
+    [onError, runContext?.manuscriptId, token],
   )
 
   const updatePlan = useCallback(
@@ -333,7 +327,11 @@ export function StepPlan(props: StepPlanProps) {
     setUploadBusy(true)
     onError('')
     try {
-      const payload = await uploadLibraryAssets({ files: Array.from(files), projectId: runCtx?.projectId })
+      const payload = await uploadLibraryAssets({
+        token,
+        files: Array.from(files),
+        projectId: runContext?.projectId,
+      })
       setSelectedAssetIds((current) => uniq([...current, ...payload.asset_ids]))
       await loadAssets()
       onStatus(`Uploaded ${payload.asset_ids.length} file(s) to Data Library.`)
@@ -352,11 +350,21 @@ export function StepPlan(props: StepPlanProps) {
     setProfileBusy(true)
     onError('')
     try {
-      if (runCtx?.manuscriptId) {
-        await attachAssetsToManuscript({ manuscriptId: runCtx.manuscriptId, assetIds: selectedAssetIds, sectionContext: 'PLANNER' })
+      if (runContext?.manuscriptId) {
+        await attachAssetsToManuscript({
+          token,
+          manuscriptId: runContext.manuscriptId,
+          assetIds: selectedAssetIds,
+          sectionContext: 'PLANNER',
+        })
       }
       setAttachedAssetIds((current) => uniq([...current, ...selectedAssetIds]))
-      const data = await createDataProfile({ assetIds: selectedAssetIds, maxRows: 200, maxChars: 20000 })
+      const data = await createDataProfile({
+        token,
+        assetIds: selectedAssetIds,
+        maxRows: 200,
+        maxChars: 20000,
+      })
       setProfile(data)
       setUseProfile(true)
       const roles = data.data_profile_json.variable_role_guesses
@@ -452,7 +460,7 @@ export function StepPlan(props: StepPlanProps) {
   }
 
   const generatePlan = async () => {
-    if (!runCtx?.manuscriptId) {
+    if (!runContext?.manuscriptId) {
       onError('Run context missing. Save Step 1 then return to Step 2.')
       return
     }
@@ -461,9 +469,24 @@ export function StepPlan(props: StepPlanProps) {
     onError('')
     try {
       const profileId = profile?.profile_id || null
-      const analysis = await createAnalysisScaffold({ manuscriptId: runCtx.manuscriptId, profileId, confirmedFields: confirmed })
-      const tables = await createTablesScaffold({ manuscriptId: runCtx.manuscriptId, profileId, confirmedFields: confirmed })
-      const figures = await createFiguresScaffold({ manuscriptId: runCtx.manuscriptId, profileId, confirmedFields: confirmed })
+      const analysis = await createAnalysisScaffold({
+        token,
+        manuscriptId: runContext.manuscriptId,
+        profileId,
+        confirmedFields: confirmed,
+      })
+      const tables = await createTablesScaffold({
+        token,
+        manuscriptId: runContext.manuscriptId,
+        profileId,
+        confirmedFields: confirmed,
+      })
+      const figures = await createFiguresScaffold({
+        token,
+        manuscriptId: runContext.manuscriptId,
+        profileId,
+        confirmedFields: confirmed,
+      })
       const assumptions = [
         'Planning scaffold only; no completed results are asserted.',
         planningContext.interpretationMode || 'Use conservative non-causal interpretation.',
@@ -509,7 +532,7 @@ export function StepPlan(props: StepPlanProps) {
         mk('REFERENCES', ORDER[8].fallback, ['Reporting checklist notes', 'Reference strategy']),
       ]
       const next: ManuscriptPlanJson = {
-        manuscript_id: runCtx.manuscriptId,
+        manuscript_id: runContext.manuscriptId,
         profile_id: profileId,
         confirmed_fields: confirmed,
         sections,
@@ -545,6 +568,7 @@ export function StepPlan(props: StepPlanProps) {
     setToolError('')
     try {
       const out = await improveManuscriptPlanSection({
+        token,
         manuscriptId: planJson.manuscript_id,
         sectionKey: active.key,
         currentText: active.content,
@@ -597,12 +621,13 @@ export function StepPlan(props: StepPlanProps) {
   }
 
   const regenerateTableShells = async () => {
-    if (!runCtx || !planJson) return
+    if (!runContext || !planJson) return
     setToolBusy(true)
     setToolError('')
     try {
       const out = await createTablesScaffold({
-        manuscriptId: runCtx.manuscriptId,
+        token,
+        manuscriptId: runContext.manuscriptId,
         profileId: planJson.profile_id,
         confirmedFields: planJson.confirmed_fields,
       })
@@ -628,12 +653,13 @@ export function StepPlan(props: StepPlanProps) {
   }
 
   const regenerateFigureShells = async () => {
-    if (!runCtx || !planJson) return
+    if (!runContext || !planJson) return
     setToolBusy(true)
     setToolError('')
     try {
       const out = await createFiguresScaffold({
-        manuscriptId: runCtx.manuscriptId,
+        token,
+        manuscriptId: runContext.manuscriptId,
         profileId: planJson.profile_id,
         confirmedFields: planJson.confirmed_fields,
       })
@@ -659,14 +685,19 @@ export function StepPlan(props: StepPlanProps) {
   }
 
   const uploadToSection = async (files: FileList | null) => {
-    if (!files?.length || !runCtx || !planJson) return
+    if (!files?.length || !runContext || !planJson) return
     setSectionUploadBusy(true)
     onError('')
     try {
-      const upload = await uploadLibraryAssets({ files: Array.from(files), projectId: runCtx.projectId })
+      const upload = await uploadLibraryAssets({
+        token,
+        files: Array.from(files),
+        projectId: runContext.projectId,
+      })
       if (upload.asset_ids.length) {
         await attachAssetsToManuscript({
-          manuscriptId: runCtx.manuscriptId,
+          token,
+          manuscriptId: runContext.manuscriptId,
           assetIds: upload.asset_ids,
           sectionContext: toCtx(expanded),
         })
@@ -697,10 +728,10 @@ export function StepPlan(props: StepPlanProps) {
         meta: `Journal standard: ${stars}`,
         className:
           score >= 4
-            ? 'rounded-md border border-emerald-300 bg-emerald-50/60 p-2'
+            ? 'rounded-md border border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50)/0.62)] p-2'
             : score === 3
-              ? 'rounded-md border border-amber-300 bg-amber-50/60 p-2'
-              : 'rounded-md border border-rose-300 bg-rose-50/60 p-2',
+              ? 'rounded-md border border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-50)/0.62)] p-2'
+              : 'rounded-md border border-[hsl(var(--tone-danger-300))] bg-[hsl(var(--tone-danger-50)/0.62)] p-2',
       },
       { label: 'Research category', value: planningContext.researchCategory || 'Not set', meta: '', className: 'rounded-md border border-border/70 bg-background p-2' },
       { label: 'Study type', value: planningContext.studyType || 'Not set', meta: '', className: 'rounded-md border border-border/70 bg-background p-2' },
@@ -755,12 +786,12 @@ export function StepPlan(props: StepPlanProps) {
               {assetBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Database className="mr-1 h-3.5 w-3.5" />}
               Attach from Data Library
             </Button>
-            <label className="inline-flex cursor-pointer items-center rounded-md border border-emerald-300 px-3 py-1.5 text-sm text-emerald-800 hover:bg-emerald-50">
+            <label className="house-button-action inline-flex cursor-pointer items-center rounded-md px-3 py-1.5 text-sm font-semibold">
               {uploadBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <UploadCloud className="mr-1 h-3.5 w-3.5" />}
               Upload data
               <input type="file" multiple className="hidden" onChange={(event) => void onUpload(event.target.files)} />
             </label>
-            <Button type="button" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => void profileData()} disabled={profileBusy || !selectedAssetIds.length}>
+            <Button type="button" className="house-button-action-primary text-sm font-semibold" onClick={() => void profileData()} disabled={profileBusy || !selectedAssetIds.length}>
               {profileBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Wand2 className="mr-1 h-3.5 w-3.5" />}
               Run data profiler
             </Button>
@@ -791,18 +822,18 @@ export function StepPlan(props: StepPlanProps) {
           </div>
 
           {profile ? (
-            <div className="space-y-2 rounded-md border border-emerald-300 bg-emerald-50/40 p-3">
-              <p className="text-sm font-semibold text-emerald-900">Data profile</p>
-              <p className="text-xs text-emerald-900">{profile.human_summary}</p>
+            <div className="space-y-2 rounded-md border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50)/0.55)] p-3">
+              <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-800))]">Data profile</p>
+              <p className="text-xs text-[hsl(var(--tone-neutral-700))]">{profile.human_summary}</p>
               {profile.data_profile_json.uncertainty.length ? (
-                <ul className="list-disc pl-5 text-xs text-amber-900">
+                <ul className="list-disc pl-5 text-xs text-[hsl(var(--tone-warning-800))]">
                   {profile.data_profile_json.uncertainty.map((item) => (
                     <li key={item}>{item}</li>
                   ))}
                 </ul>
               ) : null}
               {profile.data_profile_json.unresolved_questions.length ? (
-                <ul className="list-disc pl-5 text-xs text-slate-700">
+                <ul className="list-disc pl-5 text-xs text-[hsl(var(--tone-neutral-700))]">
                   {profile.data_profile_json.unresolved_questions.map((item) => (
                     <li key={item}>{item}</li>
                   ))}
@@ -815,7 +846,7 @@ export function StepPlan(props: StepPlanProps) {
                 <div><Label htmlFor="exposures">Key exposures</Label><Input id="exposures" value={confirmed.key_exposures} onChange={(e) => setConfirmed((c) => ({ ...c, key_exposures: e.target.value }))} /></div>
                 <div className="sm:col-span-2"><Label htmlFor="covariates">Key covariates</Label><Input id="covariates" value={confirmed.key_covariates} onChange={(e) => setConfirmed((c) => ({ ...c, key_covariates: e.target.value }))} /></div>
               </div>
-              <label className="flex items-center gap-2 text-sm text-emerald-900"><input type="checkbox" checked={useProfile} onChange={(e) => setUseProfile(e.target.checked)} />Use this profile to tailor questions + plan</label>
+              <label className="flex items-center gap-2 text-sm text-[hsl(var(--tone-neutral-700))]"><input type="checkbox" checked={useProfile} onChange={(e) => setUseProfile(e.target.checked)} />Use this profile to tailor questions + plan</label>
             </div>
           ) : null}
           <div className="flex gap-2">
@@ -862,7 +893,7 @@ export function StepPlan(props: StepPlanProps) {
               </div>
               <textarea className="min-h-20 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm" placeholder="Optional comment" value={comment} onChange={(e) => setComment(e.target.value)} />
               <div className="flex gap-2">
-                <Button type="button" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => void saveAnswerAndNext()} disabled={answer !== 'yes' && answer !== 'no'}>Save answer and continue</Button>
+                <Button type="button" className="house-button-action-primary text-sm font-semibold" onClick={() => void saveAnswerAndNext()} disabled={answer !== 'yes' && answer !== 'no'}>Save answer and continue</Button>
                 <Button type="button" variant="outline" onClick={() => void askNext(responses, true)} disabled={questionBusy}>Ask another targeted question</Button>
               </div>
             </div>
@@ -871,7 +902,7 @@ export function StepPlan(props: StepPlanProps) {
           )}
           {questionError ? <p className="text-xs text-destructive">{questionError}</p> : null}
           <div className="rounded-md border border-border/70 bg-muted/20 p-2"><p className="text-xs uppercase tracking-wide text-muted-foreground">Adaptive summary</p><p className="text-sm">{adaptiveSummary || planningContext.summary}</p></div>
-          <div className="flex gap-2"><Button type="button" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => void generatePlan()} disabled={toolBusy}>{toolBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <FileText className="mr-1 h-3.5 w-3.5" />}Generate manuscript plan</Button><Button type="button" variant="outline" onClick={() => setPhase('data')}>Back to data</Button></div>
+          <div className="flex gap-2"><Button type="button" className="house-button-action-primary text-sm font-semibold" onClick={() => void generatePlan()} disabled={toolBusy}>{toolBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <FileText className="mr-1 h-3.5 w-3.5" />}Generate manuscript plan</Button><Button type="button" variant="outline" onClick={() => setPhase('data')}>Back to data</Button></div>
         </section>
       ) : null}
 
@@ -1071,7 +1102,7 @@ export function StepPlan(props: StepPlanProps) {
                       <div className="rounded-md border border-border/70 bg-muted/20 p-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">To confirm</p>
                         {section.to_confirm.length ? (
-                          <ul className="list-disc pl-5 text-xs text-slate-700">
+                          <ul className="list-disc pl-5 text-xs text-[hsl(var(--tone-neutral-700))]">
                             {section.to_confirm.map((item) => (
                               <li key={`${item.question}-${item.why_it_matters}`}>{item.question}</li>
                             ))}
@@ -1084,7 +1115,7 @@ export function StepPlan(props: StepPlanProps) {
                         <div className="rounded-md border border-border/70 bg-muted/20 p-2">
                           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Table shells</p>
                           {(section.section_artifacts.tables || []).length ? (
-                            <ul className="list-disc pl-5 text-xs text-slate-700">
+                            <ul className="list-disc pl-5 text-xs text-[hsl(var(--tone-neutral-700))]">
                               {(section.section_artifacts.tables || []).map((table, idx) => (
                                 <li key={`table-${idx}`}>{String((table as { title?: string }).title || 'Table')}</li>
                               ))}
@@ -1098,7 +1129,7 @@ export function StepPlan(props: StepPlanProps) {
                         <div className="rounded-md border border-border/70 bg-muted/20 p-2">
                           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Figure placeholders</p>
                           {(section.section_artifacts.figures || []).length ? (
-                            <ul className="list-disc pl-5 text-xs text-slate-700">
+                            <ul className="list-disc pl-5 text-xs text-[hsl(var(--tone-neutral-700))]">
                               {(section.section_artifacts.figures || []).map((figure, idx) => (
                                 <li key={`figure-${idx}`}>{String((figure as { title?: string }).title || 'Figure')}</li>
                               ))}
@@ -1108,7 +1139,7 @@ export function StepPlan(props: StepPlanProps) {
                           )}
                         </div>
                       ) : null}
-                      {fb.alternatives.length ? <div className="space-y-2 rounded-md border border-indigo-200 bg-indigo-50/40 p-2">{fb.alternatives.map((alt) => <div key={alt} className="space-y-1 rounded border border-indigo-200 bg-white p-2"><p className="text-xs text-slate-700">{alt}</p><Button type="button" size="sm" variant="outline" onClick={() => updatePlan((current) => ({ ...current, sections: current.sections.map((item) => item.key === section.key ? { ...item, content: alt, summary: firstLine(alt, item.summary) } : item) }))}>Apply alternative</Button></div>)}</div> : null}
+                      {fb.alternatives.length ? <div className="space-y-2 rounded-md border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50)/0.42)] p-2">{fb.alternatives.map((alt) => <div key={alt} className="space-y-1 rounded border border-[hsl(var(--tone-accent-200))] bg-card p-2"><p className="text-xs text-[hsl(var(--tone-neutral-700))]">{alt}</p><Button type="button" size="sm" variant="outline" onClick={() => updatePlan((current) => ({ ...current, sections: current.sections.map((item) => item.key === section.key ? { ...item, content: alt, summary: firstLine(alt, item.summary) } : item) }))}>Apply alternative</Button></div>)}</div> : null}
                     </div>
                   ) : null}
                 </article>
@@ -1120,10 +1151,10 @@ export function StepPlan(props: StepPlanProps) {
             {active ? (
               <>
                 <div className="rounded-md border border-border/70 bg-background p-2"><p className="text-xs uppercase tracking-wide text-muted-foreground">Current section</p><p className="text-sm font-medium">{ORDER.find((item) => item.key === active.key)?.label || active.key}</p><p className="text-xs text-muted-foreground">{active.summary}</p></div>
-                <div className="rounded-md border border-border/70 bg-background p-2"><p className="text-xs uppercase tracking-wide text-muted-foreground">Context</p><p className="text-xs text-slate-700">Attached assets: {active.section_assets.attached_asset_ids.length}</p><p className="text-xs text-slate-700">Profile linked: {planJson?.profile_id ? 'Yes' : 'No'}</p></div>
+                <div className="rounded-md border border-border/70 bg-background p-2"><p className="text-xs uppercase tracking-wide text-muted-foreground">Context</p><p className="text-xs text-[hsl(var(--tone-neutral-700))]">Attached assets: {active.section_assets.attached_asset_ids.length}</p><p className="text-xs text-[hsl(var(--tone-neutral-700))]">Profile linked: {planJson?.profile_id ? 'Yes' : 'No'}</p></div>
                 <div className="rounded-md border border-border/70 bg-background p-2">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Suggestions</p>
-                  {feedback[active.key as Key].suggestions.length ? <ul className="list-disc pl-5 text-xs text-slate-700">{feedback[active.key as Key].suggestions.map((item) => <li key={item}>{item}</li>)}</ul> : <p className="text-xs text-muted-foreground">Run section tools to generate suggestions.</p>}
+                  {feedback[active.key as Key].suggestions.length ? <ul className="list-disc pl-5 text-xs text-[hsl(var(--tone-neutral-700))]">{feedback[active.key as Key].suggestions.map((item) => <li key={item}>{item}</li>)}</ul> : <p className="text-xs text-muted-foreground">Run section tools to generate suggestions.</p>}
                 </div>
                 <div className="rounded-md border border-border/70 bg-background p-2">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Upload and attach data</p>

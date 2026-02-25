@@ -310,12 +310,12 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
         </div>
 
         <div className="max-h-sz-520 overflow-auto rounded-md border border-border">
-          <table className="w-full min-w-sz-720 text-xs">
-            <thead className="bg-muted/70">
+          <table className="w-full min-w-sz-720 text-sm">
+            <thead className="house-table-head">
               <tr>
-                <th className="sticky left-0 top-0 z-30 border-b border-r border-border bg-muted px-2 py-1 text-left">#</th>
+                <th className="house-table-head-text sticky left-0 top-0 z-30 border-b border-r border-border bg-muted px-2 py-1 text-left">#</th>
                 {table.columns.map((column, columnIndex) => (
-                  <th key={column} className="sticky top-0 z-20 border-b border-r border-border bg-muted px-2 py-1">
+                  <th key={column} className="house-table-head-text sticky top-0 z-20 border-b border-r border-border bg-muted px-2 py-1">
                     <div className="space-y-1">
                       <div className="flex items-center gap-1">
                         <Input
@@ -346,17 +346,17 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
                     </div>
                   </th>
                 ))}
-                <th className="sticky top-0 z-20 border-b border-border bg-muted px-2 py-1 text-right">Row</th>
+                <th className="house-table-head-text sticky top-0 z-20 border-b border-border bg-muted px-2 py-1 text-right">Row</th>
               </tr>
             </thead>
             <tbody>
               {table.rows.map((row, rowIndex) => (
                 <tr key={`${table.id}-row-${rowIndex}`} className="odd:bg-muted/20">
-                  <td className="sticky left-0 z-10 border-b border-r border-border bg-background px-2 py-1 text-muted-foreground">
+                  <td className="house-table-cell-text sticky left-0 z-10 border-b border-r border-border bg-background px-2 py-1 text-muted-foreground">
                     {rowIndex + 1}
                   </td>
                   {table.columns.map((column) => (
-                    <td key={`${rowIndex}-${column}`} className="border-b border-r border-border/70 px-2 py-1">
+                    <td key={`${rowIndex}-${column}`} className="house-table-cell-text border-b border-r border-border/70 px-2 py-1">
                       <Input
                         value={row[column] ?? ''}
                         onChange={(event) => onUpdateCell(rowIndex, column, event.target.value)}
@@ -364,7 +364,7 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
                       />
                     </td>
                   ))}
-                  <td className="border-b border-border/70 px-2 py-1 text-right">
+                  <td className="house-table-cell-text border-b border-border/70 px-2 py-1 text-right">
                     <details className="relative inline-block">
                       <summary className="flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded border border-border bg-background">
                         <MoreHorizontal className="h-3.5 w-3.5" />

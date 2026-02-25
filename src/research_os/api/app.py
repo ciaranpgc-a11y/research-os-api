@@ -1,17 +1,20 @@
 import base64
+import asyncio
 import logging
 import os
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from threading import Lock
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import urlparse
 from uuid import uuid4
 
 from fastapi import FastAPI
 from fastapi import Query
 from fastapi import Request
+from fastapi import WebSocket
+from fastapi import WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.responses import PlainTextResponse
@@ -114,6 +117,32 @@ from research_os.api.schemas import (
     ManuscriptAuthorSuggestionsResponse,
     ManuscriptAuthorsResponse,
     ManuscriptAuthorsSaveRequest,
+    WorkspaceActiveUpdateRequest,
+    WorkspaceActiveUpdateResponse,
+    WorkspaceAuthorRequestAcceptRequest,
+    WorkspaceAuthorRequestAcceptResponse,
+    WorkspaceAuthorRequestDeclineResponse,
+    WorkspaceAuthorRequestsResponse,
+    WorkspaceCreateRequest,
+    WorkspaceDeleteResponse,
+    WorkspaceInboxMessageCreateRequest,
+    WorkspaceInboxMessageResponse,
+    WorkspaceInboxMessagesResponse,
+    WorkspaceInboxReadMarkRequest,
+    WorkspaceInboxReadMarkResponse,
+    WorkspaceInboxReadsResponse,
+    WorkspaceInboxStateResponse,
+    WorkspaceInboxStateUpdateRequest,
+    WorkspaceInvitationCreateRequest,
+    WorkspaceInvitationSentResponse,
+    WorkspaceInvitationsSentResponse,
+    WorkspaceInvitationStatusUpdateRequest,
+    WorkspaceRunContextResponse,
+    WorkspaceListResponse,
+    WorkspaceRecordResponse,
+    WorkspaceStateResponse,
+    WorkspaceStateUpdateRequest,
+    WorkspaceUpdateRequest,
     ManuscriptGenerateRequest,
     ManuscriptSnapshotCreateRequest,
     ManuscriptSnapshotRestoreRequest,
@@ -206,6 +235,7 @@ from research_os.services.project_service import (
     create_manuscript_for_project,
     create_project_record,
     get_project_record,
+    get_workspace_run_context,
     get_project_manuscript,
     list_manuscript_snapshots,
     list_project_manuscripts,
@@ -405,6 +435,30 @@ from research_os.services.wizard_service import (
     bootstrap_project_from_wizard,
     infer_wizard_state,
 )
+from research_os.services.workspace_service import (
+    WorkspaceNotFoundError,
+    WorkspaceValidationError,
+    accept_workspace_author_request,
+    create_workspace_inbox_message,
+    create_workspace_invitation,
+    create_workspace_record,
+    decline_workspace_author_request,
+    delete_workspace_record,
+    get_workspace_inbox_state,
+    get_workspace_state,
+    list_workspace_author_requests,
+    list_workspace_inbox_messages,
+    list_workspace_inbox_reads,
+    list_workspace_invitations_sent,
+    list_workspace_records,
+    mark_workspace_inbox_read,
+    has_workspace_access,
+    save_workspace_inbox_state,
+    save_workspace_state,
+    set_active_workspace,
+    update_workspace_invitation_status,
+    update_workspace_record,
+)
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -514,6 +568,56 @@ async def app_lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Research OS API", version="0.1.0", lifespan=app_lifespan)
+
+
+class WorkspaceInboxRealtimeHub:
+    def __init__(self) -> None:
+        self._connections_by_workspace: dict[str, set[WebSocket]] = defaultdict(set)
+        self._workspace_by_connection: dict[WebSocket, str] = {}
+        self._lock = asyncio.Lock()
+
+    async def connect(self, *, workspace_id: str, websocket: WebSocket) -> None:
+        await websocket.accept()
+        async with self._lock:
+            self._connections_by_workspace[workspace_id].add(websocket)
+            self._workspace_by_connection[websocket] = workspace_id
+
+    async def disconnect(self, websocket: WebSocket) -> None:
+        async with self._lock:
+            workspace_id = self._workspace_by_connection.pop(websocket, "")
+            if not workspace_id:
+                return
+            connections = self._connections_by_workspace.get(workspace_id)
+            if not connections:
+                return
+            connections.discard(websocket)
+            if not connections:
+                self._connections_by_workspace.pop(workspace_id, None)
+
+    async def broadcast(
+        self,
+        *,
+        workspace_id: str,
+        payload: dict[str, Any],
+        exclude: WebSocket | None = None,
+    ) -> None:
+        async with self._lock:
+            targets = list(self._connections_by_workspace.get(workspace_id) or [])
+
+        stale_targets: list[WebSocket] = []
+        for target in targets:
+            if exclude is not None and target is exclude:
+                continue
+            try:
+                await target.send_json(payload)
+            except Exception:
+                stale_targets.append(target)
+
+        for target in stale_targets:
+            await self.disconnect(target)
+
+
+_workspace_inbox_realtime_hub = WorkspaceInboxRealtimeHub()
 
 default_allow_origins = [
     "http://localhost:5173",
@@ -742,6 +846,43 @@ def _extract_session_token(request: Request) -> str:
     if auth_header.lower().startswith("bearer "):
         return auth_header[7:].strip()
     cookie_token = str(request.cookies.get("aawe_session", "")).strip()
+    return cookie_token
+
+
+def _resolve_request_user_optional(
+    request: Request,
+) -> tuple[str | None, JSONResponse | None]:
+    token = _extract_session_token(request)
+    if not token:
+        return None, None
+    try:
+        user = get_user_by_session_token(token)
+    except AuthNotFoundError as exc:
+        return None, _build_unauthorized_response(str(exc))
+    return str(user["id"]), None
+
+
+def _resolve_request_user_required(
+    request: Request,
+) -> tuple[str | None, JSONResponse | None]:
+    token = _extract_session_token(request)
+    if not token:
+        return None, _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+    except AuthNotFoundError as exc:
+        return None, _build_unauthorized_response(str(exc))
+    return str(user["id"]), None
+
+
+def _extract_ws_session_token(websocket: WebSocket) -> str:
+    query_token = str(websocket.query_params.get("token", "")).strip()
+    if query_token:
+        return query_token
+    auth_header = str(websocket.headers.get("Authorization", "")).strip()
+    if auth_header.lower().startswith("bearer "):
+        return auth_header[7:].strip()
+    cookie_token = str(websocket.cookies.get("aawe_session", "")).strip()
     return cookie_token
 
 
@@ -2633,6 +2774,651 @@ def v1_save_manuscript_authors(
         return _build_bad_request_response(str(exc))
 
 
+@app.get(
+    "/v1/workspaces",
+    response_model=WorkspaceListResponse,
+    responses=NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_list_workspaces(request: Request) -> WorkspaceListResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = list_workspace_records(user_id=str(user["id"]))
+        return WorkspaceListResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/workspaces",
+    response_model=WorkspaceRecordResponse,
+    responses=NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_create_workspace(
+    request: Request, payload: WorkspaceCreateRequest
+) -> WorkspaceRecordResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = create_workspace_record(
+            user_id=str(user["id"]),
+            payload=payload.model_dump(),
+        )
+        return WorkspaceRecordResponse(**result)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.patch(
+    "/v1/workspaces/{workspace_id}",
+    response_model=WorkspaceRecordResponse,
+    responses=NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_update_workspace(
+    request: Request,
+    workspace_id: str,
+    payload: WorkspaceUpdateRequest,
+) -> WorkspaceRecordResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = update_workspace_record(
+            user_id=str(user["id"]),
+            workspace_id=workspace_id,
+            patch=payload.model_dump(exclude_none=True),
+        )
+        return WorkspaceRecordResponse(**result)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.delete(
+    "/v1/workspaces/{workspace_id}",
+    response_model=WorkspaceDeleteResponse,
+    responses=NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_delete_workspace(
+    request: Request, workspace_id: str
+) -> WorkspaceDeleteResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = delete_workspace_record(
+            user_id=str(user["id"]),
+            workspace_id=workspace_id,
+        )
+        return WorkspaceDeleteResponse(**result)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.put(
+    "/v1/workspaces/active",
+    response_model=WorkspaceActiveUpdateResponse,
+    responses=NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_set_active_workspace(
+    request: Request,
+    payload: WorkspaceActiveUpdateRequest,
+) -> WorkspaceActiveUpdateResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = set_active_workspace(
+            user_id=str(user["id"]),
+            workspace_id=payload.workspace_id,
+        )
+        return WorkspaceActiveUpdateResponse(**result)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/workspaces/{workspace_id}/run-context",
+    response_model=WorkspaceRunContextResponse,
+    responses=NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_get_workspace_run_context(
+    request: Request,
+    workspace_id: str,
+) -> WorkspaceRunContextResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_required(request)
+    if auth_error is not None:
+        return auth_error
+    try:
+        payload = get_workspace_run_context(
+            workspace_id=workspace_id,
+            requesting_user_id=requesting_user_id or "",
+        )
+        return WorkspaceRunContextResponse(**payload)
+    except ProjectNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+
+
+@app.get(
+    "/v1/workspaces/author-requests",
+    response_model=WorkspaceAuthorRequestsResponse,
+    responses=NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_list_workspace_author_requests(
+    request: Request,
+) -> WorkspaceAuthorRequestsResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = list_workspace_author_requests(user_id=str(user["id"]))
+        return WorkspaceAuthorRequestsResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/workspaces/author-requests/{request_id}/accept",
+    response_model=WorkspaceAuthorRequestAcceptResponse,
+    responses=NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_accept_workspace_author_request(
+    request: Request,
+    request_id: str,
+    payload: WorkspaceAuthorRequestAcceptRequest,
+) -> WorkspaceAuthorRequestAcceptResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = accept_workspace_author_request(
+            user_id=str(user["id"]),
+            request_id=request_id,
+            collaborator_name=payload.collaborator_name,
+        )
+        return WorkspaceAuthorRequestAcceptResponse(**result)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/workspaces/author-requests/{request_id}/decline",
+    response_model=WorkspaceAuthorRequestDeclineResponse,
+    responses=NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_decline_workspace_author_request(
+    request: Request,
+    request_id: str,
+) -> WorkspaceAuthorRequestDeclineResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = decline_workspace_author_request(
+            user_id=str(user["id"]),
+            request_id=request_id,
+        )
+        return WorkspaceAuthorRequestDeclineResponse(**result)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/workspaces/invitations/sent",
+    response_model=WorkspaceInvitationsSentResponse,
+    responses=NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_list_workspace_invitations_sent(
+    request: Request,
+) -> WorkspaceInvitationsSentResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = list_workspace_invitations_sent(user_id=str(user["id"]))
+        return WorkspaceInvitationsSentResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/workspaces/invitations/sent",
+    response_model=WorkspaceInvitationSentResponse,
+    responses=NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_create_workspace_invitation(
+    request: Request,
+    payload: WorkspaceInvitationCreateRequest,
+) -> WorkspaceInvitationSentResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = create_workspace_invitation(
+            user_id=str(user["id"]),
+            payload=payload.model_dump(),
+        )
+        return WorkspaceInvitationSentResponse(**result)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.patch(
+    "/v1/workspaces/invitations/sent/{invitation_id}",
+    response_model=WorkspaceInvitationSentResponse,
+    responses=NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_update_workspace_invitation(
+    request: Request,
+    invitation_id: str,
+    payload: WorkspaceInvitationStatusUpdateRequest,
+) -> WorkspaceInvitationSentResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = update_workspace_invitation_status(
+            user_id=str(user["id"]),
+            invitation_id=invitation_id,
+            status=payload.status,
+        )
+        return WorkspaceInvitationSentResponse(**result)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/workspaces/inbox/messages",
+    response_model=WorkspaceInboxMessagesResponse,
+    responses=NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_list_workspace_inbox_messages(
+    request: Request,
+    workspace_id: str | None = Query(default=None),
+) -> WorkspaceInboxMessagesResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = list_workspace_inbox_messages(
+            user_id=str(user["id"]),
+            workspace_id=workspace_id,
+        )
+        return WorkspaceInboxMessagesResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/workspaces/inbox/messages",
+    response_model=WorkspaceInboxMessageResponse,
+    responses=NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_create_workspace_inbox_message(
+    request: Request,
+    payload: WorkspaceInboxMessageCreateRequest,
+) -> WorkspaceInboxMessageResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = create_workspace_inbox_message(
+            user_id=str(user["id"]),
+            payload=payload.model_dump(),
+        )
+        return WorkspaceInboxMessageResponse(**result)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/workspaces/inbox/reads",
+    response_model=WorkspaceInboxReadsResponse,
+    responses=NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_list_workspace_inbox_reads(
+    request: Request,
+    workspace_id: str | None = Query(default=None),
+) -> WorkspaceInboxReadsResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = list_workspace_inbox_reads(
+            user_id=str(user["id"]),
+            workspace_id=workspace_id,
+        )
+        return WorkspaceInboxReadsResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.put(
+    "/v1/workspaces/inbox/reads",
+    response_model=WorkspaceInboxReadMarkResponse,
+    responses=NOT_FOUND_RESPONSES | BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_mark_workspace_inbox_read(
+    request: Request,
+    payload: WorkspaceInboxReadMarkRequest,
+) -> WorkspaceInboxReadMarkResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = mark_workspace_inbox_read(
+            user_id=str(user["id"]),
+            payload=payload.model_dump(),
+        )
+        return WorkspaceInboxReadMarkResponse(**result)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.websocket("/v1/workspaces/inbox/ws")
+async def v1_workspace_inbox_ws(websocket: WebSocket) -> None:
+    workspace_id = str(websocket.query_params.get("workspace_id", "")).strip()
+    if not workspace_id:
+        await websocket.close(code=1008, reason="workspace_id is required.")
+        return
+
+    token = _extract_ws_session_token(websocket)
+    if not token:
+        await websocket.close(code=1008, reason="Session token is required.")
+        return
+
+    try:
+        user = get_user_by_session_token(token)
+    except AuthNotFoundError:
+        await websocket.close(code=1008, reason="Session token is invalid.")
+        return
+
+    sender_user_id = str(user.get("id") or "").strip()
+    sender_name = str(user.get("name") or "").strip() or "Unknown user"
+    if not has_workspace_access(user_id=sender_user_id, workspace_id=workspace_id):
+        await websocket.close(code=1008, reason="Workspace access denied.")
+        return
+
+    await _workspace_inbox_realtime_hub.connect(
+        workspace_id=workspace_id,
+        websocket=websocket,
+    )
+    await _workspace_inbox_realtime_hub.broadcast(
+        workspace_id=workspace_id,
+        payload={
+            "type": "presence",
+            "workspace_id": workspace_id,
+            "sender_user_id": sender_user_id,
+            "sender_name": sender_name,
+            "status": "joined",
+            "sent_at_unix_ms": int(time.time() * 1000),
+        },
+        exclude=websocket,
+    )
+    try:
+        while True:
+            payload = await websocket.receive_json()
+            if not isinstance(payload, dict):
+                continue
+            event_type = str(payload.get("type") or "").strip().lower()
+            if event_type not in {"typing", "message_sent", "read_marked", "ping"}:
+                continue
+
+            if event_type == "ping":
+                await websocket.send_json(
+                    {
+                        "type": "pong",
+                        "workspace_id": workspace_id,
+                        "sent_at_unix_ms": int(time.time() * 1000),
+                    }
+                )
+                continue
+
+            payload_workspace_id = str(payload.get("workspace_id") or workspace_id).strip()
+            if payload_workspace_id != workspace_id:
+                continue
+
+            event_payload: dict[str, Any] = {
+                "type": event_type,
+                "workspace_id": workspace_id,
+                "sender_user_id": sender_user_id,
+                "sender_name": sender_name,
+                "sent_at_unix_ms": int(time.time() * 1000),
+            }
+            if event_type == "typing":
+                event_payload["active"] = bool(payload.get("active"))
+            if event_type == "message_sent":
+                message_id = str(payload.get("message_id") or "").strip()
+                created_at = str(payload.get("created_at") or "").strip()
+                if message_id:
+                    event_payload["message_id"] = message_id
+                if created_at:
+                    event_payload["created_at"] = created_at
+            if event_type == "read_marked":
+                reader_name = str(payload.get("reader_name") or sender_name).strip() or sender_name
+                read_at = str(payload.get("read_at") or "").strip()
+                event_payload["reader_name"] = reader_name
+                if read_at:
+                    event_payload["read_at"] = read_at
+
+            await _workspace_inbox_realtime_hub.broadcast(
+                workspace_id=workspace_id,
+                payload=event_payload,
+                exclude=websocket,
+            )
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        logger.warning(
+            "workspace_inbox_realtime_ws_error",
+            extra={
+                "workspace_id": workspace_id,
+                "sender_user_id": sender_user_id,
+                "detail": str(exc),
+            },
+        )
+    finally:
+        await _workspace_inbox_realtime_hub.disconnect(websocket)
+        await _workspace_inbox_realtime_hub.broadcast(
+            workspace_id=workspace_id,
+            payload={
+                "type": "presence",
+                "workspace_id": workspace_id,
+                "sender_user_id": sender_user_id,
+                "sender_name": sender_name,
+                "status": "left",
+                "sent_at_unix_ms": int(time.time() * 1000),
+            },
+            exclude=websocket,
+        )
+
+
+@app.get(
+    "/v1/workspaces/state",
+    response_model=WorkspaceStateResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_get_workspace_state(request: Request) -> WorkspaceStateResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = get_workspace_state(user_id=str(user["id"]))
+        return WorkspaceStateResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.put(
+    "/v1/workspaces/state",
+    response_model=WorkspaceStateResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_put_workspace_state(
+    request: Request,
+    payload: WorkspaceStateUpdateRequest,
+) -> WorkspaceStateResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = save_workspace_state(
+            user_id=str(user["id"]),
+            payload=payload.model_dump(),
+        )
+        return WorkspaceStateResponse(**result)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/workspaces/inbox/state",
+    response_model=WorkspaceInboxStateResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_get_workspace_inbox_state(
+    request: Request,
+) -> WorkspaceInboxStateResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        payload = get_workspace_inbox_state(user_id=str(user["id"]))
+        return WorkspaceInboxStateResponse(**payload)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.put(
+    "/v1/workspaces/inbox/state",
+    response_model=WorkspaceInboxStateResponse,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_put_workspace_inbox_state(
+    request: Request,
+    payload: WorkspaceInboxStateUpdateRequest,
+) -> WorkspaceInboxStateResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+        result = save_workspace_inbox_state(
+            user_id=str(user["id"]),
+            payload=payload.model_dump(),
+        )
+        return WorkspaceInboxStateResponse(**result)
+    except AuthNotFoundError as exc:
+        return _build_unauthorized_response(str(exc))
+    except WorkspaceValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
 @app.post(
     "/v1/persona/metrics/sync",
     response_model=PersonaMetricsSyncResponse,
@@ -2854,6 +3640,9 @@ async def v1_upload_library_assets(
     request: Request,
     project_id: str | None = Query(default=None),
 ) -> LibraryAssetUploadResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    if auth_error is not None:
+        return auth_error
     try:
         project_id_value = project_id
         file_payloads: list[tuple[str, str | None, bytes]] = []
@@ -2918,6 +3707,7 @@ async def v1_upload_library_assets(
         asset_ids = upload_library_assets(
             files=file_payloads,
             project_id=project_id_value,
+            user_id=requesting_user_id,
         )
         return LibraryAssetUploadResponse(asset_ids=asset_ids)
     except PlannerValidationError as exc:
@@ -2930,9 +3720,13 @@ async def v1_upload_library_assets(
     tags=["v1"],
 )
 def v1_list_library_assets(
+    request: Request,
     project_id: str | None = Query(default=None),
-) -> list[LibraryAssetResponse]:
-    payload = list_library_assets(project_id=project_id)
+) -> list[LibraryAssetResponse] | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    if auth_error is not None:
+        return auth_error
+    payload = list_library_assets(project_id=project_id, user_id=requesting_user_id)
     return [LibraryAssetResponse(**item) for item in payload]
 
 
@@ -2944,18 +3738,23 @@ def v1_list_library_assets(
 )
 def v1_attach_assets_to_manuscript(
     manuscript_id: str,
-    request: ManuscriptAttachAssetsRequest,
+    payload: ManuscriptAttachAssetsRequest,
+    http_request: Request,
 ) -> ManuscriptAttachAssetsResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
         attached = attach_assets_to_manuscript(
             manuscript_id=manuscript_id,
-            asset_ids=request.asset_ids,
-            section_context=request.section_context,
+            asset_ids=payload.asset_ids,
+            section_context=payload.section_context,
+            user_id=requesting_user_id,
         )
         return ManuscriptAttachAssetsResponse(
             manuscript_id=manuscript_id,
             attached_asset_ids=attached,
-            section_context=request.section_context,
+            section_context=payload.section_context,
         )
     except DataAssetNotFoundError as exc:
         return _build_not_found_response(str(exc))
@@ -2970,14 +3769,19 @@ def v1_attach_assets_to_manuscript(
     tags=["v1"],
 )
 def v1_create_data_profile(
-    request: DataProfileRequest,
+    payload: DataProfileRequest,
+    http_request: Request,
 ) -> DataProfileResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
-        payload = create_data_profile(
-            asset_ids=request.asset_ids,
-            sampling=request.sampling.model_dump(),
+        result = create_data_profile(
+            asset_ids=payload.asset_ids,
+            sampling=payload.sampling.model_dump(),
+            user_id=requesting_user_id,
         )
-        return DataProfileResponse(**payload)
+        return DataProfileResponse(**result)
     except DataAssetNotFoundError as exc:
         return _build_not_found_response(str(exc))
     except PlannerValidationError as exc:
@@ -2991,15 +3795,20 @@ def v1_create_data_profile(
     tags=["v1"],
 )
 def v1_create_analysis_scaffold(
-    request: AnalysisScaffoldRequest,
+    payload: AnalysisScaffoldRequest,
+    http_request: Request,
 ) -> AnalysisScaffoldResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
-        payload = create_analysis_scaffold(
-            manuscript_id=request.manuscript_id,
-            profile_id=request.profile_id,
-            confirmed_fields=request.confirmed_fields.model_dump(),
+        result = create_analysis_scaffold(
+            manuscript_id=payload.manuscript_id,
+            profile_id=payload.profile_id,
+            confirmed_fields=payload.confirmed_fields.model_dump(),
+            user_id=requesting_user_id,
         )
-        return AnalysisScaffoldResponse(**payload)
+        return AnalysisScaffoldResponse(**result)
     except DataAssetNotFoundError as exc:
         return _build_not_found_response(str(exc))
     except PlannerValidationError as exc:
@@ -3013,15 +3822,20 @@ def v1_create_analysis_scaffold(
     tags=["v1"],
 )
 def v1_create_tables_scaffold(
-    request: TablesScaffoldRequest,
+    payload: TablesScaffoldRequest,
+    http_request: Request,
 ) -> TablesScaffoldResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
-        payload = create_tables_scaffold(
-            manuscript_id=request.manuscript_id,
-            profile_id=request.profile_id,
-            confirmed_fields=request.confirmed_fields.model_dump(),
+        result = create_tables_scaffold(
+            manuscript_id=payload.manuscript_id,
+            profile_id=payload.profile_id,
+            confirmed_fields=payload.confirmed_fields.model_dump(),
+            user_id=requesting_user_id,
         )
-        return TablesScaffoldResponse(**payload)
+        return TablesScaffoldResponse(**result)
     except DataAssetNotFoundError as exc:
         return _build_not_found_response(str(exc))
     except PlannerValidationError as exc:
@@ -3035,15 +3849,20 @@ def v1_create_tables_scaffold(
     tags=["v1"],
 )
 def v1_create_figures_scaffold(
-    request: FiguresScaffoldRequest,
+    payload: FiguresScaffoldRequest,
+    http_request: Request,
 ) -> FiguresScaffoldResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
-        payload = create_figures_scaffold(
-            manuscript_id=request.manuscript_id,
-            profile_id=request.profile_id,
-            confirmed_fields=request.confirmed_fields.model_dump(),
+        result = create_figures_scaffold(
+            manuscript_id=payload.manuscript_id,
+            profile_id=payload.profile_id,
+            confirmed_fields=payload.confirmed_fields.model_dump(),
+            user_id=requesting_user_id,
         )
-        return FiguresScaffoldResponse(**payload)
+        return FiguresScaffoldResponse(**result)
     except DataAssetNotFoundError as exc:
         return _build_not_found_response(str(exc))
     except PlannerValidationError as exc:
@@ -3058,14 +3877,19 @@ def v1_create_figures_scaffold(
 )
 def v1_save_manuscript_plan(
     manuscript_id: str,
-    request: ManuscriptPlanUpdateRequest,
+    payload: ManuscriptPlanUpdateRequest,
+    http_request: Request,
 ) -> ManuscriptPlanUpdateResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
-        payload = save_manuscript_plan(
+        result = save_manuscript_plan(
             manuscript_id=manuscript_id,
-            plan_json=request.plan_json,
+            plan_json=payload.plan_json,
+            user_id=requesting_user_id,
         )
-        return ManuscriptPlanUpdateResponse(**payload)
+        return ManuscriptPlanUpdateResponse(**result)
     except DataAssetNotFoundError as exc:
         return _build_not_found_response(str(exc))
     except PlannerValidationError as exc:
@@ -3080,17 +3904,22 @@ def v1_save_manuscript_plan(
 )
 def v1_improve_manuscript_plan_section(
     manuscript_id: str,
-    request: PlanSectionImproveRequest,
+    payload: PlanSectionImproveRequest,
+    http_request: Request,
 ) -> PlanSectionImproveResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
-        payload = improve_plan_section(
+        result = improve_plan_section(
             manuscript_id=manuscript_id,
-            section_key=request.section_key,
-            current_text=request.current_text,
-            context=request.context.model_dump(),
-            tool=request.tool,
+            section_key=payload.section_key,
+            current_text=payload.current_text,
+            context=payload.context.model_dump(),
+            tool=payload.tool,
+            user_id=requesting_user_id,
         )
-        return PlanSectionImproveResponse(**payload)
+        return PlanSectionImproveResponse(**result)
     except DataAssetNotFoundError as exc:
         return _build_not_found_response(str(exc))
     except PlannerValidationError as exc:
@@ -3274,7 +4103,11 @@ def v1_research_overview_suggestions(
 )
 def v1_generate_aawe_grounded_draft(
     request: GroundedDraftRequest,
+    http_request: Request,
 ) -> GroundedDraftResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     if (
         request.generation_mode == "targeted"
         and not (request.target_instruction or "").strip()
@@ -3314,6 +4147,7 @@ def v1_generate_aawe_grounded_draft(
                 project_id=project_id,
                 manuscript_id=manuscript_id,
                 sections={payload["section"]: payload["draft"]},
+                requesting_user_id=requesting_user_id,
             )
         except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
             return _build_not_found_response(str(exc))
@@ -3336,9 +4170,17 @@ def v1_synthesize_title_abstract(
     project_id: str,
     manuscript_id: str,
     request: TitleAbstractSynthesisRequest,
+    http_request: Request,
 ) -> TitleAbstractSynthesisResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
-        manuscript = get_project_manuscript(project_id, manuscript_id)
+        manuscript = get_project_manuscript(
+            project_id,
+            manuscript_id,
+            requesting_user_id=requesting_user_id,
+        )
     except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
         return _build_not_found_response(str(exc))
 
@@ -3359,6 +4201,7 @@ def v1_synthesize_title_abstract(
                 "title": payload["title"],
                 "abstract": payload["abstract"],
             },
+            requesting_user_id=requesting_user_id,
         )
         persisted = True
         manuscript_payload = ManuscriptResponse.model_validate(updated_manuscript)
@@ -3382,9 +4225,17 @@ def v1_run_cross_section_consistency_check(
     project_id: str,
     manuscript_id: str,
     request: ConsistencyCheckRequest,
+    http_request: Request,
 ) -> ConsistencyCheckResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
-        manuscript = get_project_manuscript(project_id, manuscript_id)
+        manuscript = get_project_manuscript(
+            project_id,
+            manuscript_id,
+            requesting_user_id=requesting_user_id,
+        )
     except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
         return _build_not_found_response(str(exc))
 
@@ -3418,9 +4269,17 @@ def v1_regenerate_section_paragraph(
     manuscript_id: str,
     section: str,
     request: ParagraphRegenerationRequest,
+    http_request: Request,
 ) -> ParagraphRegenerationResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
-        manuscript = get_project_manuscript(project_id, manuscript_id)
+        manuscript = get_project_manuscript(
+            project_id,
+            manuscript_id,
+            requesting_user_id=requesting_user_id,
+        )
     except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
         return _build_not_found_response(str(exc))
 
@@ -3469,6 +4328,7 @@ def v1_regenerate_section_paragraph(
             project_id=project_id,
             manuscript_id=manuscript_id,
             sections={section_key: updated_section_text},
+            requesting_user_id=requesting_user_id,
         )
         persisted = True
         manuscript_payload = ManuscriptResponse.model_validate(updated_manuscript)
@@ -3496,10 +4356,21 @@ def v1_generate_submission_pack(
     project_id: str,
     manuscript_id: str,
     request: SubmissionPackRequest,
+    http_request: Request,
 ) -> SubmissionPackResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
-        project = get_project_record(project_id)
-        manuscript = get_project_manuscript(project_id, manuscript_id)
+        project = get_project_record(
+            project_id,
+            requesting_user_id=requesting_user_id,
+        )
+        manuscript = get_project_manuscript(
+            project_id,
+            manuscript_id,
+            requesting_user_id=requesting_user_id,
+        )
     except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
         return _build_not_found_response(str(exc))
 
@@ -3649,7 +4520,13 @@ def v1_wizard_infer(request: WizardInferRequest) -> WizardInferResponse:
 
 
 @app.post("/v1/wizard/bootstrap", response_model=WizardBootstrapResponse, tags=["v1"])
-def v1_wizard_bootstrap(request: WizardBootstrapRequest) -> WizardBootstrapResponse:
+def v1_wizard_bootstrap(
+    request: WizardBootstrapRequest,
+    http_request: Request,
+) -> WizardBootstrapResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     project, manuscript, inference = bootstrap_project_from_wizard(
         title=request.title,
         target_journal=request.target_journal,
@@ -3657,6 +4534,9 @@ def v1_wizard_bootstrap(request: WizardBootstrapRequest) -> WizardBootstrapRespo
         journal_voice=request.journal_voice,
         language=request.language,
         branch_name=request.branch_name,
+        owner_user_id=requesting_user_id,
+        workspace_id=request.workspace_id,
+        collaborator_names=request.collaborator_names,
     )
     return WizardBootstrapResponse(
         project=project,
@@ -3666,12 +4546,21 @@ def v1_wizard_bootstrap(request: WizardBootstrapRequest) -> WizardBootstrapRespo
 
 
 @app.get("/v1/projects", response_model=list[ProjectResponse], tags=["v1"])
-def v1_list_projects() -> list[ProjectResponse]:
-    return list_project_records()
+def v1_list_projects(request: Request) -> list[ProjectResponse] | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    if auth_error is not None:
+        return auth_error
+    return list_project_records(requesting_user_id=requesting_user_id)
 
 
 @app.post("/v1/projects", response_model=ProjectResponse, tags=["v1"])
-def v1_create_project(request: ProjectCreateRequest) -> ProjectResponse:
+def v1_create_project(
+    request: ProjectCreateRequest,
+    http_request: Request,
+) -> ProjectResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     return create_project_record(
         title=request.title,
         target_journal=request.target_journal,
@@ -3679,6 +4568,9 @@ def v1_create_project(request: ProjectCreateRequest) -> ProjectResponse:
         language=request.language,
         study_type=request.study_type,
         study_brief=request.study_brief,
+        owner_user_id=requesting_user_id,
+        collaborator_user_ids=request.collaborator_user_ids,
+        workspace_id=request.workspace_id,
     )
 
 
@@ -3688,9 +4580,17 @@ def v1_create_project(request: ProjectCreateRequest) -> ProjectResponse:
     responses=NOT_FOUND_RESPONSES,
     tags=["v1"],
 )
-def v1_list_manuscripts(project_id: str) -> list[ManuscriptResponse] | JSONResponse:
+def v1_list_manuscripts(
+    project_id: str,
+    request: Request,
+) -> list[ManuscriptResponse] | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    if auth_error is not None:
+        return auth_error
     try:
-        return list_project_manuscripts(project_id)
+        return list_project_manuscripts(
+            project_id, requesting_user_id=requesting_user_id
+        )
     except ProjectNotFoundError as exc:
         return _build_not_found_response(str(exc))
 
@@ -3702,13 +4602,19 @@ def v1_list_manuscripts(project_id: str) -> list[ManuscriptResponse] | JSONRespo
     tags=["v1"],
 )
 def v1_create_manuscript(
-    project_id: str, request: ManuscriptCreateRequest
+    project_id: str,
+    request: ManuscriptCreateRequest,
+    http_request: Request,
 ) -> ManuscriptResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
         return create_manuscript_for_project(
             project_id=project_id,
             branch_name=request.branch_name,
             sections=request.sections,
+            requesting_user_id=requesting_user_id,
         )
     except ProjectNotFoundError as exc:
         return _build_not_found_response(str(exc))
@@ -3723,10 +4629,19 @@ def v1_create_manuscript(
     tags=["v1"],
 )
 def v1_get_manuscript(
-    project_id: str, manuscript_id: str
+    project_id: str,
+    manuscript_id: str,
+    request: Request,
 ) -> ManuscriptResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    if auth_error is not None:
+        return auth_error
     try:
-        return get_project_manuscript(project_id, manuscript_id)
+        return get_project_manuscript(
+            project_id,
+            manuscript_id,
+            requesting_user_id=requesting_user_id,
+        )
     except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
         return _build_not_found_response(str(exc))
 
@@ -3741,12 +4656,17 @@ def v1_update_manuscript_sections(
     project_id: str,
     manuscript_id: str,
     request: ManuscriptSectionsUpdateRequest,
+    http_request: Request,
 ) -> ManuscriptResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
         return update_project_manuscript_sections(
             project_id=project_id,
             manuscript_id=manuscript_id,
             sections=request.sections,
+            requesting_user_id=requesting_user_id,
         )
     except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
         return _build_not_found_response(str(exc))
@@ -3759,13 +4679,20 @@ def v1_update_manuscript_sections(
     tags=["v1"],
 )
 def v1_list_manuscript_snapshots(
-    project_id: str, manuscript_id: str, limit: int = Query(default=20, ge=1, le=100)
+    project_id: str,
+    manuscript_id: str,
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=100),
 ) -> list[ManuscriptSnapshotResponse] | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    if auth_error is not None:
+        return auth_error
     try:
         snapshots = list_manuscript_snapshots(
             project_id=project_id,
             manuscript_id=manuscript_id,
             limit=limit,
+            requesting_user_id=requesting_user_id,
         )
         return [
             ManuscriptSnapshotResponse.model_validate(snapshot)
@@ -3785,13 +4712,18 @@ def v1_create_manuscript_snapshot(
     project_id: str,
     manuscript_id: str,
     request: ManuscriptSnapshotCreateRequest,
+    http_request: Request,
 ) -> ManuscriptSnapshotResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
         snapshot = create_manuscript_snapshot(
             project_id=project_id,
             manuscript_id=manuscript_id,
             label=request.label,
             include_sections=request.include_sections,
+            requesting_user_id=requesting_user_id,
         )
         return ManuscriptSnapshotResponse.model_validate(snapshot)
     except (ProjectNotFoundError, ManuscriptNotFoundError) as exc:
@@ -3808,8 +4740,12 @@ def v1_restore_manuscript_snapshot(
     project_id: str,
     manuscript_id: str,
     snapshot_id: str,
+    http_request: Request,
     request: ManuscriptSnapshotRestoreRequest | None = None,
 ) -> ManuscriptResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
         restore_request = request or ManuscriptSnapshotRestoreRequest()
         manuscript = restore_manuscript_snapshot(
@@ -3818,6 +4754,7 @@ def v1_restore_manuscript_snapshot(
             snapshot_id=snapshot_id,
             restore_mode=restore_request.mode,
             sections=restore_request.sections,
+            requesting_user_id=requesting_user_id,
         )
         return ManuscriptResponse.model_validate(manuscript)
     except (
@@ -3839,13 +4776,18 @@ def v1_restore_manuscript_snapshot(
 def v1_export_manuscript_markdown(
     project_id: str,
     manuscript_id: str,
+    request: Request,
     include_empty: bool = Query(default=False),
-) -> PlainTextResponse:
+) -> PlainTextResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    if auth_error is not None:
+        return auth_error
     try:
         filename, markdown = export_project_manuscript_markdown(
             project_id=project_id,
             manuscript_id=manuscript_id,
             include_empty_sections=include_empty,
+            requesting_user_id=requesting_user_id,
         )
         return PlainTextResponse(
             content=markdown,
@@ -3866,7 +4808,11 @@ def v1_qc_gated_export_manuscript_markdown(
     project_id: str,
     manuscript_id: str,
     request: QCGatedExportRequest,
+    http_request: Request,
 ) -> PlainTextResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     qc_payload = run_qc_checks()
     high_severity_count = int(qc_payload.get("high_severity_count", 0))
     if high_severity_count > 0:
@@ -3883,6 +4829,7 @@ def v1_qc_gated_export_manuscript_markdown(
             project_id=project_id,
             manuscript_id=manuscript_id,
             include_empty_sections=request.include_empty,
+            requesting_user_id=requesting_user_id,
         )
         return PlainTextResponse(
             content=markdown,
@@ -3903,8 +4850,17 @@ def v1_generate_manuscript(
     project_id: str,
     manuscript_id: str,
     request: ManuscriptGenerateRequest,
+    http_request: Request,
 ) -> GenerationJobResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
+        get_project_manuscript(
+            project_id,
+            manuscript_id,
+            requesting_user_id=requesting_user_id,
+        )
         job = enqueue_generation_job(
             project_id=project_id,
             manuscript_id=manuscript_id,
@@ -3931,9 +4887,20 @@ def v1_generate_manuscript(
     tags=["v1"],
 )
 def v1_list_generation_jobs(
-    project_id: str, manuscript_id: str, limit: int = Query(default=20, ge=1, le=100)
+    project_id: str,
+    manuscript_id: str,
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=100),
 ) -> list[GenerationJobResponse] | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    if auth_error is not None:
+        return auth_error
     try:
+        get_project_manuscript(
+            project_id,
+            manuscript_id,
+            requesting_user_id=requesting_user_id,
+        )
         jobs = list_generation_jobs_for_manuscript(
             project_id=project_id,
             manuscript_id=manuscript_id,
@@ -3950,9 +4917,16 @@ def v1_list_generation_jobs(
     responses=NOT_FOUND_RESPONSES,
     tags=["v1"],
 )
-def v1_get_generation_job(job_id: str) -> GenerationJobResponse | JSONResponse:
+def v1_get_generation_job(
+    job_id: str, request: Request
+) -> GenerationJobResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    if auth_error is not None:
+        return auth_error
     try:
-        job = get_generation_job_record(job_id)
+        job = get_generation_job_record(
+            job_id, requesting_user_id=requesting_user_id
+        )
         return GenerationJobResponse(**serialize_generation_job(job))
     except GenerationJobNotFoundError as exc:
         return _build_not_found_response(str(exc))
@@ -3964,9 +4938,16 @@ def v1_get_generation_job(job_id: str) -> GenerationJobResponse | JSONResponse:
     responses=NOT_FOUND_RESPONSES | CONFLICT_RESPONSES,
     tags=["v1"],
 )
-def v1_cancel_generation_job(job_id: str) -> GenerationJobResponse | JSONResponse:
+def v1_cancel_generation_job(
+    job_id: str, request: Request
+) -> GenerationJobResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    if auth_error is not None:
+        return auth_error
     try:
-        job = cancel_generation_job(job_id)
+        job = cancel_generation_job(
+            job_id, requesting_user_id=requesting_user_id
+        )
         return GenerationJobResponse(**serialize_generation_job(job))
     except GenerationJobNotFoundError as exc:
         return _build_not_found_response(str(exc))
@@ -3981,13 +4962,19 @@ def v1_cancel_generation_job(job_id: str) -> GenerationJobResponse | JSONRespons
     tags=["v1"],
 )
 def v1_retry_generation_job(
-    job_id: str, request: GenerationJobRetryRequest
+    job_id: str,
+    request: GenerationJobRetryRequest,
+    http_request: Request,
 ) -> GenerationJobResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
         job = retry_generation_job(
             job_id,
             max_estimated_cost_usd=request.max_estimated_cost_usd,
             project_daily_budget_usd=request.project_daily_budget_usd,
+            requesting_user_id=requesting_user_id,
         )
         return GenerationJobResponse(**serialize_generation_job(job))
     except GenerationJobNotFoundError as exc:

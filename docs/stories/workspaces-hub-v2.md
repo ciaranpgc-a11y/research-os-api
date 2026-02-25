@@ -89,6 +89,30 @@ Out of scope (this story):
 - Keep room for future home-page navigation model, but do not reuse the in-workspace navigator now.
 - Reuse existing tokens/components to stay compliant with `docs/design-governance.md`.
 
+## Implementation Updates
+
+### 2026-02-25
+
+- Added per-workspace inbox conversation text search in the header with result navigation.
+- Added in-message highlight rendering for matched text and active-hit auto-scroll behavior.
+- Preserved non-destructive message retention behavior while improving long-thread usability.
+- Simplified Workspaces home by removing duplicate helper subtitle copy and removing left-sidebar action controls.
+- Relocated `Open inbox for <workspace>` helper from the left panel to the main workspace summary row next to workspace count text.
+- Standardized unread cells as always-clickable conversation links with consistent status coloring.
+- Moved pin/unpin behavior into workspace menu actions and switched pinned indication to a compact green pin icon before workspace titles.
+- Upgraded non-owner collaborator hover UX to styled tooltips with explicit owner/read-only guidance.
+- Added a Storybook workspace navigation harness that opens populated `/w/:workspaceId/...` routes and supports in-story navigation across workspace sections.
+- Added workspace-scoped backend run-context endpoint integration for Study Core (`/v1/workspaces/{workspace_id}/run-context`), removing dependency on legacy local-only run-context storage.
+- Completed owner/collaborator project creation wiring from wizard bootstrap (`owner_user_id`, `collaborator_user_ids`, `workspace_id`) so a workspace run is attributed to the owner and visible to accepted collaborators.
+- Updated Step 2 data-planner calls and manuscript routes to send authenticated context, aligning frontend behavior with owner/collaborator access checks.
+- Extended Results page to sync uploaded assets into persisted backend Data Library while preserving local parsing and preview UX.
+- Enforced owner-only invitation creation and collaborator-management updates at API level (not only in frontend controls).
+- Synced accepted author requests back into owner workspace collaborator state so collaborator banners stay accurate.
+- Synced owner collaborator state updates into collaborator workspace records to keep membership/removal state coherent across accounts.
+- Updated inbox message persistence to fan out encrypted message records to all workspace participants so messages survive sign-in/out for collaborators, not only senders.
+- Added workspace access checks to inbox websocket and inbox data endpoints to block non-participants.
+- Hardened generation-job-by-id endpoints so only project owner/collaborators can fetch/cancel/retry jobs for owned projects.
+
 ## QA Checklist
 
 - Desktop: list controls, table/cards, sorting, menu actions.

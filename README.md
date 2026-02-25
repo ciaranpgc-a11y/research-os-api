@@ -179,3 +179,11 @@ docker run --rm -p 8000:8000 -e OPENAI_API_KEY=YOUR_KEY research-os-api
 ## Logging
 
 The API emits structured JSON logs and attaches `X-Request-ID` to responses for traceability.
+
+## Documentation Rules
+
+Major changes must be documented in the same delivery.
+
+- Rules: `docs/change-documentation-rules.md`
+- Running audit log: `docs/change-log.md`
+- Feature/story details: `docs/stories/`

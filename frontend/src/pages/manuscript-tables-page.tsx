@@ -140,7 +140,7 @@ export function ManuscriptTablesPage() {
           <CardHeader>
             <div className="flex items-center justify-between gap-2">
               <div>
-                <CardTitle className="text-sm">Tables</CardTitle>
+                <CardTitle>Tables</CardTitle>
                 <CardDescription>{manuscriptTables.length} manuscript table(s)</CardDescription>
               </div>
               <Button size="sm" onClick={onAddTable}>
@@ -176,7 +176,7 @@ export function ManuscriptTablesPage() {
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <CardTitle className="text-sm">{selectedTable?.title ?? 'Table Builder'}</CardTitle>
+                <CardTitle>{selectedTable?.title ?? 'Table Builder'}</CardTitle>
                 <CardDescription>Edit publication table metadata and cell values.</CardDescription>
               </div>
               {selectedTable ? (
@@ -229,12 +229,12 @@ export function ManuscriptTablesPage() {
                 </div>
 
                 <ScrollArea className="h-sz-420 rounded-md border border-border">
-                  <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-muted/60">
+                  <table className="w-full text-sm">
+                    <thead className="house-table-head sticky top-0">
                       <tr>
-                        <th className="border-b border-border px-2 py-1 text-left">#</th>
+                        <th className="house-table-head-text border-b border-border px-2 py-1 text-left">#</th>
                         {selectedTable.columns.map((column, columnIndex) => (
-                          <th key={`${selectedTable.id}-column-${columnIndex}`} className="border-b border-border px-2 py-1">
+                          <th key={`${selectedTable.id}-column-${columnIndex}`} className="house-table-head-text border-b border-border px-2 py-1">
                             <div className="flex items-center gap-1">
                               <Input
                                 value={column}
@@ -252,15 +252,15 @@ export function ManuscriptTablesPage() {
                             </div>
                           </th>
                         ))}
-                        <th className="border-b border-border px-2 py-1 text-right">Row</th>
+                        <th className="house-table-head-text border-b border-border px-2 py-1 text-right">Row</th>
                       </tr>
                     </thead>
                     <tbody>
                       {selectedTable.rows.map((row, rowIndex) => (
                         <tr key={`${selectedTable.id}-row-${rowIndex}`} className="odd:bg-muted/20">
-                          <td className="border-b border-border/70 px-2 py-1 text-muted-foreground">{rowIndex + 1}</td>
+                          <td className="house-table-cell-text border-b border-border/70 px-2 py-1 text-muted-foreground">{rowIndex + 1}</td>
                           {selectedTable.columns.map((_, columnIndex) => (
-                            <td key={`${selectedTable.id}-cell-${rowIndex}-${columnIndex}`} className="border-b border-border/70 px-2 py-1">
+                            <td key={`${selectedTable.id}-cell-${rowIndex}-${columnIndex}`} className="house-table-cell-text border-b border-border/70 px-2 py-1">
                               <Input
                                 value={row[columnIndex] ?? ''}
                                 onChange={(event) => onUpdateCell(rowIndex, columnIndex, event.target.value)}
@@ -268,7 +268,7 @@ export function ManuscriptTablesPage() {
                               />
                             </td>
                           ))}
-                          <td className="border-b border-border/70 px-2 py-1 text-right">
+                          <td className="house-table-cell-text border-b border-border/70 px-2 py-1 text-right">
                             <Button size="sm" variant="ghost" onClick={() => onRemoveRow(rowIndex)}>
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
@@ -290,4 +290,3 @@ export function ManuscriptTablesPage() {
     </PageFrame>
   )
 }
-

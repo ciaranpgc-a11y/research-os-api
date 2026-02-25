@@ -267,7 +267,7 @@ export function ManuscriptPage() {
         {paragraphs.length === 0 ? (
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">
+              <CardTitle>
                 {normalizedQuery ? 'No paragraph cards match search' : 'No paragraph cards yet'}
               </CardTitle>
               <CardDescription>
@@ -296,7 +296,7 @@ export function ManuscriptPage() {
                 >
                   <CardHeader className="space-y-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <CardTitle className="text-sm">{claimMapView ? `Claim Node ${paragraph.id}` : paragraph.heading}</CardTitle>
+                      <CardTitle>{claimMapView ? `Claim Node ${paragraph.id}` : paragraph.heading}</CardTitle>
                       <div className="flex items-center gap-2">
                         <Badge variant="secondary">{paragraph.tag}</Badge>
                         {missingCount > 0 ? (
@@ -370,7 +370,7 @@ export function ManuscriptPage() {
         <SheetContent side="right" className="w-full p-0 sm:max-w-sz-520">
           <div className="flex h-full flex-col">
             <div className="space-y-1 border-b border-border px-5 py-4 pr-11">
-              <h3 className="text-sm font-semibold">Citation Manager</h3>
+              <h3 className="house-section-title">Citation Manager</h3>
               <p className="text-xs text-muted-foreground">
                 {activeClaim ? `${activeClaim.heading} (${activeClaim.id})` : 'Select a claim paragraph to edit citations.'}
               </p>
@@ -421,7 +421,7 @@ export function ManuscriptPage() {
                 {!loadingClaimCitations && claimCitationState ? (
                   <Card className="border-border bg-muted/20">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-xs">Attached citations</CardTitle>
+                      <CardTitle>Attached citations</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
                       {claimCitationState.attached_citations.length === 0 ? (
@@ -448,7 +448,7 @@ export function ManuscriptPage() {
                 ) : citationLibrary.length === 0 ? (
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-sm">No citation records found</CardTitle>
+                      <CardTitle>No citation records found</CardTitle>
                       <CardDescription>Try a different query.</CardDescription>
                     </CardHeader>
                   </Card>
@@ -459,7 +459,7 @@ export function ManuscriptPage() {
                       <Card key={citation.id}>
                         <CardHeader className="space-y-1 pb-2">
                           <div className="flex items-start justify-between gap-2">
-                            <CardTitle className="text-sm leading-snug">{citation.title}</CardTitle>
+                            <CardTitle className="leading-snug">{citation.title}</CardTitle>
                             <Badge variant="outline">{citation.id}</Badge>
                           </div>
                           <CardDescription>

@@ -64,6 +64,8 @@ def test_alembic_upgrade_head_creates_schema_for_fresh_database(
     assert "publication_ai_cache" in table_names
     assert "publication_files" in table_names
     assert "publication_metrics_source_cache" in table_names
+    assert "workspace_state_cache" in table_names
+    assert "workspace_inbox_state_cache" in table_names
     assert "alembic_version" in table_names
 
 

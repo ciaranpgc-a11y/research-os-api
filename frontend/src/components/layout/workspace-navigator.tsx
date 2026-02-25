@@ -9,6 +9,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { houseForms, houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { getHouseLeftBorderToneClass, getHouseNavToneClass, type HouseSectionTone } from '@/lib/section-tone'
 import { cn } from '@/lib/utils'
 import { useWorkspaceStore, type WorkspaceHealth } from '@/store/use-workspace-store'
 
@@ -19,12 +20,14 @@ type WorkspaceNavigatorProps = {
 
 type WorkspaceNavGroup = {
   title: string
+  tone: HouseSectionTone
   items: Array<{ label: string; slug: string }>
 }
 
 const WORKSPACE_NAV_GROUPS: WorkspaceNavGroup[] = [
   {
     title: 'Workspace',
+    tone: 'workspace',
     items: [
       { label: 'Overview', slug: 'overview' },
       { label: 'Inbox', slug: 'inbox' },
@@ -36,6 +39,7 @@ const WORKSPACE_NAV_GROUPS: WorkspaceNavGroup[] = [
   },
   {
     title: 'Manuscript',
+    tone: 'manuscript',
     items: [
       { label: 'Introduction', slug: 'manuscript/introduction' },
       { label: 'Methods', slug: 'manuscript/methods' },
@@ -48,6 +52,7 @@ const WORKSPACE_NAV_GROUPS: WorkspaceNavGroup[] = [
   },
   {
     title: 'Governance',
+    tone: 'governance',
     items: [
       { label: 'Quality Check', slug: 'qc' },
       { label: 'Claim Map', slug: 'claim-map' },
@@ -126,10 +131,10 @@ export function WorkspaceNavigator({ workspaceId, onNavigate }: WorkspaceNavigat
   return (
     <aside className={cn('flex h-full flex-col', houseLayout.sidebar)}>
       <div className={houseLayout.sidebarHeader}>
-        <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+        <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, getHouseLeftBorderToneClass('workspace'))}>
           <div className="flex items-center gap-2">
             <h1 className={houseTypography.sectionTitle}>
-            {activeWorkspace?.name ?? 'Workspace'}
+              {activeWorkspace?.name ?? 'Workspace'}
             </h1>
             {activeWorkspace ? (
               <span
@@ -188,6 +193,7 @@ export function WorkspaceNavigator({ workspaceId, onNavigate }: WorkspaceNavigat
                       className={({ isActive }) =>
                         cn(
                           houseNavigation.item,
+                          getHouseNavToneClass(group.tone),
                           isActive && houseNavigation.itemActive,
                         )
                       }

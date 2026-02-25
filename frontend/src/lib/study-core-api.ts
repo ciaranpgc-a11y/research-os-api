@@ -35,6 +35,7 @@ import type {
   ResearchOverviewSuggestionsPayload,
   SectionPlanPayload,
   TitleAbstractPayload,
+  WorkspaceRunContextPayload,
   WizardBootstrapPayload,
 } from '@/types/study-core'
 
@@ -64,6 +65,7 @@ export async function fetchJournalOptions(): Promise<JournalOption[]> {
 }
 
 export async function uploadLibraryAssets(input: {
+  token?: string
   files: File[]
   projectId?: string
 }): Promise<LibraryAssetUploadPayload> {
@@ -88,6 +90,7 @@ export async function uploadLibraryAssets(input: {
   }
   const response = await fetch(`${API_BASE_URL}/v1/library/assets/upload`, {
     method: 'POST',
+    headers: authHeaders(input.token || ''),
     body: formData,
   })
   if (response.ok) {
@@ -108,7 +111,7 @@ export async function uploadLibraryAssets(input: {
   )
   const fallbackResponse = await fetch(`${API_BASE_URL}/v1/library/assets/upload`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       project_id: projectId || null,
       files: jsonFiles,
@@ -120,13 +123,18 @@ export async function uploadLibraryAssets(input: {
   return (await fallbackResponse.json()) as LibraryAssetUploadPayload
 }
 
-export async function listLibraryAssets(projectId?: string): Promise<LibraryAssetRecord[]> {
+export async function listLibraryAssets(input: {
+  token?: string
+  projectId?: string
+}): Promise<LibraryAssetRecord[]> {
   const search = new URLSearchParams()
-  if ((projectId || '').trim()) {
-    search.set('project_id', projectId!.trim())
+  if ((input.projectId || '').trim()) {
+    search.set('project_id', input.projectId!.trim())
   }
   const suffix = search.toString() ? `?${search.toString()}` : ''
-  const response = await fetch(`${API_BASE_URL}/v1/library/assets${suffix}`)
+  const response = await fetch(`${API_BASE_URL}/v1/library/assets${suffix}`, {
+    headers: authHeaders(input.token || ''),
+  })
   if (!response.ok) {
     throw new Error(await parseApiError(response, `Asset list failed (${response.status})`))
   }
@@ -134,13 +142,14 @@ export async function listLibraryAssets(projectId?: string): Promise<LibraryAsse
 }
 
 export async function attachAssetsToManuscript(input: {
+  token?: string
   manuscriptId: string
   assetIds: string[]
   sectionContext: 'RESULTS' | 'TABLES' | 'FIGURES' | 'PLANNER'
 }): Promise<ManuscriptAttachAssetsPayload> {
   const response = await fetch(`${API_BASE_URL}/v1/manuscripts/${encodeURIComponent(input.manuscriptId)}/attach-assets`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       asset_ids: input.assetIds,
       section_context: input.sectionContext,
@@ -153,13 +162,14 @@ export async function attachAssetsToManuscript(input: {
 }
 
 export async function createDataProfile(input: {
+  token?: string
   assetIds: string[]
   maxRows?: number
   maxChars?: number
 }): Promise<DataProfilePayload> {
   const response = await fetch(`${API_BASE_URL}/v1/data/profile`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       asset_ids: input.assetIds,
       sampling: {
@@ -175,13 +185,14 @@ export async function createDataProfile(input: {
 }
 
 export async function createAnalysisScaffold(input: {
+  token?: string
   manuscriptId: string
   profileId?: string | null
   confirmedFields: PlannerConfirmedFields
 }): Promise<AnalysisScaffoldPayload> {
   const response = await fetch(`${API_BASE_URL}/v1/scaffold/analysis-plan`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       manuscript_id: input.manuscriptId,
       profile_id: input.profileId ?? null,
@@ -195,13 +206,14 @@ export async function createAnalysisScaffold(input: {
 }
 
 export async function createTablesScaffold(input: {
+  token?: string
   manuscriptId: string
   profileId?: string | null
   confirmedFields: PlannerConfirmedFields
 }): Promise<TablesScaffoldPayload> {
   const response = await fetch(`${API_BASE_URL}/v1/scaffold/tables`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       manuscript_id: input.manuscriptId,
       profile_id: input.profileId ?? null,
@@ -215,13 +227,14 @@ export async function createTablesScaffold(input: {
 }
 
 export async function createFiguresScaffold(input: {
+  token?: string
   manuscriptId: string
   profileId?: string | null
   confirmedFields: PlannerConfirmedFields
 }): Promise<FiguresScaffoldPayload> {
   const response = await fetch(`${API_BASE_URL}/v1/scaffold/figures`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       manuscript_id: input.manuscriptId,
       profile_id: input.profileId ?? null,
@@ -235,12 +248,13 @@ export async function createFiguresScaffold(input: {
 }
 
 export async function saveManuscriptPlan(input: {
+  token?: string
   manuscriptId: string
   planJson: ManuscriptPlanJson
 }): Promise<ManuscriptPlanUpdatePayload> {
   const response = await fetch(`${API_BASE_URL}/v1/manuscripts/${encodeURIComponent(input.manuscriptId)}/plan`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       plan_json: input.planJson,
     }),
@@ -252,6 +266,7 @@ export async function saveManuscriptPlan(input: {
 }
 
 export async function improveManuscriptPlanSection(input: {
+  token?: string
   manuscriptId: string
   sectionKey: string
   currentText: string
@@ -263,7 +278,7 @@ export async function improveManuscriptPlanSection(input: {
 }): Promise<PlanSectionImprovePayload> {
   const response = await fetch(`${API_BASE_URL}/v1/manuscripts/${encodeURIComponent(input.manuscriptId)}/plan/section-improve`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       section_key: input.sectionKey,
       current_text: input.currentText,
@@ -281,25 +296,47 @@ export async function improveManuscriptPlanSection(input: {
 }
 
 export async function bootstrapRunContext(input: {
+  token?: string
   title: string
   targetJournal: string
   answers: Record<string, string>
+  workspaceId?: string | null
+  collaboratorNames?: string[]
 }): Promise<WizardBootstrapPayload> {
   const response = await fetch(`${API_BASE_URL}/v1/wizard/bootstrap`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       title: input.title,
       target_journal: input.targetJournal,
       answers: input.answers,
       branch_name: 'main',
       language: 'en-GB',
+      workspace_id: input.workspaceId || null,
+      collaborator_names: input.collaboratorNames || [],
     }),
   })
   if (!response.ok) {
     throw new Error(await parseApiError(response, `Bootstrap failed (${response.status})`))
   }
   return (await response.json()) as WizardBootstrapPayload
+}
+
+export async function fetchWorkspaceRunContext(input: {
+  token: string
+  workspaceId: string
+}): Promise<WorkspaceRunContextPayload> {
+  const response = await fetch(
+    `${API_BASE_URL}/v1/workspaces/${encodeURIComponent(input.workspaceId)}/run-context`,
+    {
+      method: 'GET',
+      headers: authHeaders(input.token),
+    },
+  )
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Workspace run context lookup failed (${response.status})`))
+  }
+  return (await response.json()) as WorkspaceRunContextPayload
 }
 
 export async function estimateGeneration(input: {
@@ -511,6 +548,7 @@ export async function runClaimLinker(input: {
 }
 
 export async function generateGroundedDraft(input: {
+  token?: string
   section: string
   notesContext: string
   styleProfile: 'technical' | 'concise' | 'narrative_review'
@@ -526,7 +564,7 @@ export async function generateGroundedDraft(input: {
 }): Promise<GroundedDraftPayload> {
   const response = await fetch(`${API_BASE_URL}/v1/aawe/draft/grounded`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       section: input.section,
       notes_context: input.notesContext,
@@ -549,6 +587,7 @@ export async function generateGroundedDraft(input: {
 }
 
 export async function synthesizeTitleAbstract(input: {
+  token?: string
   projectId: string
   manuscriptId: string
   styleProfile: 'technical' | 'concise' | 'narrative_review'
@@ -559,7 +598,7 @@ export async function synthesizeTitleAbstract(input: {
     `${API_BASE_URL}/v1/aawe/projects/${encodeURIComponent(input.projectId)}/manuscripts/${encodeURIComponent(input.manuscriptId)}/synthesize/title-abstract`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         style_profile: input.styleProfile,
         max_abstract_words: input.maxAbstractWords,
@@ -574,6 +613,7 @@ export async function synthesizeTitleAbstract(input: {
 }
 
 export async function generateSubmissionPack(input: {
+  token?: string
   projectId: string
   manuscriptId: string
   styleProfile: 'technical' | 'concise' | 'narrative_review'
@@ -583,7 +623,7 @@ export async function generateSubmissionPack(input: {
     `${API_BASE_URL}/v1/aawe/projects/${encodeURIComponent(input.projectId)}/manuscripts/${encodeURIComponent(input.manuscriptId)}/submission-pack`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         style_profile: input.styleProfile,
         include_plain_language_summary: input.includePlainLanguageSummary,
@@ -597,6 +637,7 @@ export async function generateSubmissionPack(input: {
 }
 
 export async function runConsistencyCheck(input: {
+  token?: string
   projectId: string
   manuscriptId: string
   includeLowSeverity: boolean
@@ -605,7 +646,7 @@ export async function runConsistencyCheck(input: {
     `${API_BASE_URL}/v1/aawe/projects/${encodeURIComponent(input.projectId)}/manuscripts/${encodeURIComponent(input.manuscriptId)}/consistency/check`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         include_low_severity: input.includeLowSeverity,
       }),
@@ -618,6 +659,7 @@ export async function runConsistencyCheck(input: {
 }
 
 export async function regenerateParagraph(input: {
+  token?: string
   projectId: string
   manuscriptId: string
   section: string
@@ -633,7 +675,7 @@ export async function regenerateParagraph(input: {
     `${API_BASE_URL}/v1/aawe/projects/${encodeURIComponent(input.projectId)}/manuscripts/${encodeURIComponent(input.manuscriptId)}/sections/${encodeURIComponent(input.section)}/paragraphs/regenerate`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         paragraph_index: input.paragraphIndex,
         notes_context: input.notesContext,
@@ -672,6 +714,7 @@ export async function autofillCitations(input: {
 }
 
 export async function updateManuscriptSections(input: {
+  token?: string
   projectId: string
   manuscriptId: string
   sections: Record<string, string>
@@ -680,7 +723,7 @@ export async function updateManuscriptSections(input: {
     `${API_BASE_URL}/v1/projects/${encodeURIComponent(input.projectId)}/manuscripts/${encodeURIComponent(input.manuscriptId)}`,
     {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
       body: JSON.stringify({ sections: input.sections }),
     },
   )
@@ -691,6 +734,7 @@ export async function updateManuscriptSections(input: {
 }
 
 export async function enqueueGeneration(input: {
+  token?: string
   projectId: string
   manuscriptId: string
   sections: string[]
@@ -702,7 +746,7 @@ export async function enqueueGeneration(input: {
     `${API_BASE_URL}/v1/projects/${encodeURIComponent(input.projectId)}/manuscripts/${encodeURIComponent(input.manuscriptId)}/generate`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         sections: input.sections,
         notes_context: input.notesContext,
@@ -717,17 +761,29 @@ export async function enqueueGeneration(input: {
   return (await response.json()) as GenerationJobPayload
 }
 
-export async function fetchGenerationJob(jobId: string): Promise<GenerationJobPayload> {
-  const response = await fetch(`${API_BASE_URL}/v1/generation-jobs/${encodeURIComponent(jobId)}`)
+export async function fetchGenerationJob(input: {
+  token?: string
+  jobId: string
+}): Promise<GenerationJobPayload> {
+  const response = await fetch(`${API_BASE_URL}/v1/generation-jobs/${encodeURIComponent(input.jobId)}`, {
+    headers: authHeaders(input.token || ''),
+  })
   if (!response.ok) {
     throw new Error(await parseApiError(response, `Generation job lookup failed (${response.status})`))
   }
   return (await response.json()) as GenerationJobPayload
 }
 
-export async function listGenerationJobs(projectId: string, manuscriptId: string): Promise<GenerationJobPayload[]> {
+export async function listGenerationJobs(input: {
+  token?: string
+  projectId: string
+  manuscriptId: string
+}): Promise<GenerationJobPayload[]> {
   const response = await fetch(
-    `${API_BASE_URL}/v1/projects/${encodeURIComponent(projectId)}/manuscripts/${encodeURIComponent(manuscriptId)}/generation-jobs?limit=8`,
+    `${API_BASE_URL}/v1/projects/${encodeURIComponent(input.projectId)}/manuscripts/${encodeURIComponent(input.manuscriptId)}/generation-jobs?limit=8`,
+    {
+      headers: authHeaders(input.token || ''),
+    },
   )
   if (!response.ok) {
     throw new Error(await parseApiError(response, `Generation history failed (${response.status})`))
@@ -735,9 +791,13 @@ export async function listGenerationJobs(projectId: string, manuscriptId: string
   return (await response.json()) as GenerationJobPayload[]
 }
 
-export async function cancelGeneration(jobId: string): Promise<GenerationJobPayload> {
-  const response = await fetch(`${API_BASE_URL}/v1/generation-jobs/${encodeURIComponent(jobId)}/cancel`, {
+export async function cancelGeneration(input: {
+  token?: string
+  jobId: string
+}): Promise<GenerationJobPayload> {
+  const response = await fetch(`${API_BASE_URL}/v1/generation-jobs/${encodeURIComponent(input.jobId)}/cancel`, {
     method: 'POST',
+    headers: authHeaders(input.token || ''),
   })
   if (!response.ok) {
     throw new Error(await parseApiError(response, `Cancel failed (${response.status})`))
@@ -745,10 +805,13 @@ export async function cancelGeneration(jobId: string): Promise<GenerationJobPayl
   return (await response.json()) as GenerationJobPayload
 }
 
-export async function retryGeneration(jobId: string): Promise<GenerationJobPayload> {
-  const response = await fetch(`${API_BASE_URL}/v1/generation-jobs/${encodeURIComponent(jobId)}/retry`, {
+export async function retryGeneration(input: {
+  token?: string
+  jobId: string
+}): Promise<GenerationJobPayload> {
+  const response = await fetch(`${API_BASE_URL}/v1/generation-jobs/${encodeURIComponent(input.jobId)}/retry`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
     body: JSON.stringify({}),
   })
   if (!response.ok) {
@@ -766,14 +829,13 @@ function inferFilename(contentDisposition: string | null, fallback: string): str
 }
 
 export async function exportQcGatedMarkdown(
-  projectId: string,
-  manuscriptId: string,
+  input: { token?: string; projectId: string; manuscriptId: string },
 ): Promise<{ filename: string; content: string }> {
   const response = await fetch(
-    `${API_BASE_URL}/v1/aawe/projects/${encodeURIComponent(projectId)}/manuscripts/${encodeURIComponent(manuscriptId)}/export/markdown`,
+    `${API_BASE_URL}/v1/aawe/projects/${encodeURIComponent(input.projectId)}/manuscripts/${encodeURIComponent(input.manuscriptId)}/export/markdown`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
       body: JSON.stringify({ include_empty: false }),
     },
   )
@@ -786,11 +848,13 @@ export async function exportQcGatedMarkdown(
 }
 
 export async function exportManuscriptMarkdownWithWarnings(
-  projectId: string,
-  manuscriptId: string,
+  input: { token?: string; projectId: string; manuscriptId: string },
 ): Promise<{ filename: string; content: string }> {
   const response = await fetch(
-    `${API_BASE_URL}/v1/projects/${encodeURIComponent(projectId)}/manuscripts/${encodeURIComponent(manuscriptId)}/export/markdown?include_empty=false`,
+    `${API_BASE_URL}/v1/projects/${encodeURIComponent(input.projectId)}/manuscripts/${encodeURIComponent(input.manuscriptId)}/export/markdown?include_empty=false`,
+    {
+      headers: authHeaders(input.token || ''),
+    },
   )
   if (!response.ok) {
     throw new Error(await parseApiError(response, `Export with warnings failed (${response.status})`))
@@ -829,9 +893,16 @@ export async function exportReferencePack(input: {
   return { filename, content }
 }
 
-export async function fetchManuscript(projectId: string, manuscriptId: string): Promise<ManuscriptRecord> {
+export async function fetchManuscript(input: {
+  token?: string
+  projectId: string
+  manuscriptId: string
+}): Promise<ManuscriptRecord> {
   const response = await fetch(
-    `${API_BASE_URL}/v1/projects/${encodeURIComponent(projectId)}/manuscripts/${encodeURIComponent(manuscriptId)}`,
+    `${API_BASE_URL}/v1/projects/${encodeURIComponent(input.projectId)}/manuscripts/${encodeURIComponent(input.manuscriptId)}`,
+    {
+      headers: authHeaders(input.token || ''),
+    },
   )
   if (!response.ok) {
     throw new Error(await parseApiError(response, `Manuscript lookup failed (${response.status})`))
@@ -917,11 +988,16 @@ export async function saveManuscriptAuthors(input: {
   return (await response.json()) as ManuscriptAuthorsPayload
 }
 
-export async function fetchProject(projectId: string): Promise<ProjectRecord | null> {
-  const response = await fetch(`${API_BASE_URL}/v1/projects`)
+export async function fetchProject(input: {
+  token?: string
+  projectId: string
+}): Promise<ProjectRecord | null> {
+  const response = await fetch(`${API_BASE_URL}/v1/projects`, {
+    headers: authHeaders(input.token || ''),
+  })
   if (!response.ok) {
     throw new Error(await parseApiError(response, `Project lookup failed (${response.status})`))
   }
   const projects = (await response.json()) as ProjectRecord[]
-  return projects.find((project) => project.id === projectId) ?? null
+  return projects.find((project) => project.id === input.projectId) ?? null
 }

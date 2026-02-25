@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Pin } from 'lucide-react'
 
 import { TopBar } from '@/components/layout/top-bar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { listCollaborators } from '@/lib/impact-api'
 import {
@@ -14,8 +16,15 @@ import {
   readWorkspaceOwnerNameFromProfile,
 } from '@/lib/workspace-owner'
 import { houseForms, houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { getHouseLeftBorderToneClass, getHouseNavToneClass } from '@/lib/section-tone'
+import { matchesScopedStorageEventKey } from '@/lib/user-scoped-storage'
 import { cn } from '@/lib/utils'
 import { useAaweStore } from '@/store/use-aawe-store'
+import {
+  INBOX_MESSAGES_STORAGE_KEY,
+  INBOX_READS_STORAGE_KEY,
+  useWorkspaceInboxStore,
+} from '@/store/use-workspace-inbox-store'
 import type { CollaboratorPayload } from '@/types/impact'
 import {
   useWorkspaceStore,
@@ -44,7 +53,6 @@ const FILTER_OPTIONS: Array<{ key: FilterKey; label: string }> = [
 ]
 
 const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
-const HOUSE_PAGE_SUBTITLE_CLASS = houseTypography.subtitle
 const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
 const HOUSE_SECTION_SUBTITLE_CLASS = houseTypography.sectionSubtitle
 const HOUSE_PAGE_HEADER_CLASS = houseLayout.pageHeader
@@ -53,7 +61,7 @@ const HOUSE_SIDEBAR_HEADER_CLASS = houseLayout.sidebarHeader
 const HOUSE_SIDEBAR_SECTION_CLASS = houseLayout.sidebarSection
 const HOUSE_FIELD_HELPER_CLASS = houseTypography.fieldHelper
 const HOUSE_BUTTON_TEXT_CLASS = houseTypography.buttonText
-const HOUSE_LEFT_BORDER_CLASS = houseSurfaces.leftBorder
+const HOUSE_LEFT_BORDER_CLASS = cn(houseSurfaces.leftBorder, getHouseLeftBorderToneClass('workspace'))
 const HOUSE_CARD_CLASS = houseSurfaces.card
 const HOUSE_TABLE_SHELL_CLASS = houseSurfaces.tableShell
 const HOUSE_TABLE_HEAD_CLASS = houseSurfaces.tableHead
@@ -67,8 +75,16 @@ const HOUSE_PRIMARY_ACTION_BUTTON_CLASS = houseForms.actionButtonPrimary
 const HOUSE_NAV_SECTION_LABEL_CLASS = houseNavigation.sectionLabel
 const HOUSE_NAV_ITEM_CLASS = houseNavigation.item
 const HOUSE_NAV_ITEM_ACTIVE_CLASS = houseNavigation.itemActive
+const HOUSE_NAV_ITEM_WORKSPACE_CLASS = getHouseNavToneClass('workspace')
+const HOUSE_NAV_ITEM_GOVERNANCE_CLASS = getHouseNavToneClass('governance')
 const HOUSE_NAV_ITEM_META_CLASS = houseNavigation.itemMeta
 const HOUSE_NAV_ITEM_COUNT_CLASS = houseNavigation.itemCount
+
+type WorkspaceInboxSignal = {
+  unreadCount: number
+  firstUnreadMessageId: string | null
+  lastActivityAt: string
+}
 
 function formatTimestamp(value: string): string {
   const parsed = Date.parse(value)
@@ -108,6 +124,36 @@ function workspaceStage(workspace: WorkspaceRecord): string {
 
 function workspaceStatus(workspace: WorkspaceRecord): 'Active' | 'Archived' {
   return workspace.archived ? 'Archived' : 'Active'
+}
+
+function normalizePerson(value: string | null | undefined): string {
+  return (value || '').trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+function parseCenterView(value: string | null): CenterView {
+  return value === 'invitations' ? 'invitations' : 'workspaces'
+}
+
+function parseFilterKey(value: string | null): FilterKey {
+  if (value === 'active' || value === 'pinned' || value === 'archived' || value === 'recent') {
+    return value
+  }
+  return 'all'
+}
+
+function parseSortColumn(value: string | null): SortColumn {
+  if (value === 'name' || value === 'stage' || value === 'status') {
+    return value
+  }
+  return 'updatedAt'
+}
+
+function parseSortDirection(value: string | null): SortDirection {
+  return value === 'asc' ? 'asc' : 'desc'
+}
+
+function parseViewMode(value: string | null): ViewMode {
+  return value === 'cards' ? 'cards' : 'table'
 }
 
 function normalizeCollaboratorName(value: string | null | undefined): string {
@@ -195,6 +241,12 @@ function statusRank(status: 'Active' | 'Archived'): number {
   return status === 'Active' ? 1 : 2
 }
 
+function unreadToneClass(unreadCount: number): string {
+  return unreadCount > 0
+    ? 'border-amber-300 bg-amber-50 text-amber-800'
+    : 'border-emerald-300 bg-emerald-50 text-emerald-800'
+}
+
 function sortWorkspaces(
   workspaces: WorkspaceRecord[],
   sortColumn: SortColumn,
@@ -276,15 +328,9 @@ function WorkspacesHomeSidebar({
   counts,
   onFilterChange,
   onOpenInbox,
-  onCreateWorkspace,
-  onClearSearch,
   incomingInvitationCount,
   outgoingInvitationCount,
   canOpenInbox,
-  inboxWorkspaceName,
-  canClearSearch,
-  canCreateWorkspace,
-  createBlockedMessage,
   onNavigate,
 }: {
   centerView: CenterView
@@ -293,15 +339,9 @@ function WorkspacesHomeSidebar({
   counts: Record<FilterKey, number>
   onFilterChange: (next: FilterKey) => void
   onOpenInbox: () => void
-  onCreateWorkspace: () => void
-  onClearSearch: () => void
   incomingInvitationCount: number
   outgoingInvitationCount: number
   canOpenInbox: boolean
-  inboxWorkspaceName: string
-  canClearSearch: boolean
-  canCreateWorkspace: boolean
-  createBlockedMessage: string
   onNavigate?: () => void
 }) {
   const totalInvitationCount = incomingInvitationCount + outgoingInvitationCount
@@ -310,9 +350,6 @@ function WorkspacesHomeSidebar({
       <div className={HOUSE_SIDEBAR_HEADER_CLASS}>
         <div className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
           <h1 data-house-role="section-title" className={HOUSE_SECTION_TITLE_CLASS}>Workspaces home</h1>
-          <p data-house-role="section-subtitle" className={HOUSE_FIELD_HELPER_CLASS}>
-            Library-level filters and actions for all workspaces.
-          </p>
         </div>
       </div>
       <ScrollArea className="flex-1">
@@ -330,6 +367,7 @@ function WorkspacesHomeSidebar({
                 }}
                 className={cn(
                   HOUSE_NAV_ITEM_CLASS,
+                  HOUSE_NAV_ITEM_WORKSPACE_CLASS,
                   centerView === 'workspaces' && HOUSE_NAV_ITEM_ACTIVE_CLASS,
                 )}
               >
@@ -343,6 +381,7 @@ function WorkspacesHomeSidebar({
                 }}
                 className={cn(
                   HOUSE_NAV_ITEM_CLASS,
+                  HOUSE_NAV_ITEM_WORKSPACE_CLASS,
                   centerView === 'invitations' && HOUSE_NAV_ITEM_ACTIVE_CLASS,
                 )}
               >
@@ -369,15 +408,13 @@ function WorkspacesHomeSidebar({
                 }}
                 className={cn(
                   HOUSE_NAV_ITEM_CLASS,
+                  HOUSE_NAV_ITEM_WORKSPACE_CLASS,
                   !canOpenInbox && 'cursor-not-allowed opacity-60',
                 )}
                 disabled={!canOpenInbox}
               >
                 <span className="truncate pl-2 text-left">Inbox</span>
               </button>
-              <p className={cn('pl-2 text-xs text-muted-foreground', HOUSE_NAV_ITEM_META_CLASS)}>
-                {canOpenInbox ? `Open inbox for ${inboxWorkspaceName}.` : 'Create a workspace to open inbox.'}
-              </p>
             </div>
           </section>
 
@@ -396,6 +433,7 @@ function WorkspacesHomeSidebar({
                   }}
                   className={cn(
                     HOUSE_NAV_ITEM_CLASS,
+                    HOUSE_NAV_ITEM_GOVERNANCE_CLASS,
                     filterKey === option.key && HOUSE_NAV_ITEM_ACTIVE_CLASS,
                   )}
                 >
@@ -406,37 +444,6 @@ function WorkspacesHomeSidebar({
                 </button>
               ))}
             </div>
-          </section>
-
-          <section className={HOUSE_SIDEBAR_SECTION_CLASS}>
-            <p className={HOUSE_NAV_SECTION_LABEL_CLASS}>
-              Actions
-            </p>
-            <Button
-              type="button"
-              className={cn('w-full justify-start', HOUSE_PRIMARY_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
-              onClick={() => {
-                onCreateWorkspace()
-                onNavigate?.()
-              }}
-              disabled={!canCreateWorkspace}
-            >
-              Create workspace
-            </Button>
-            {!canCreateWorkspace ? (
-              <p className={HOUSE_FIELD_HELPER_CLASS}>{createBlockedMessage}</p>
-            ) : null}
-            <Button
-              type="button"
-              className={cn('w-full justify-start', HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
-              onClick={() => {
-                onClearSearch()
-                onNavigate?.()
-              }}
-              disabled={!canClearSearch}
-            >
-              Clear search
-            </Button>
           </section>
         </div>
       </ScrollArea>
@@ -456,16 +463,14 @@ function CollaboratorBanners({
   onToggleRemoved: (workspace: WorkspaceRecord, collaboratorName: string) => void
 }) {
   const removed = collaboratorRemovedSet(workspace)
+  const ownerName = normalizeCollaboratorName(workspace.ownerName) || 'The workspace owner'
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {workspace.collaborators.length === 0 ? (
-        <span className="text-xs text-muted-foreground">-</span>
-      ) : (
-        workspace.collaborators.map((collaborator) => {
+      <TooltipProvider delayDuration={120}>
+        {workspace.collaborators.map((collaborator) => {
           const isRemoved = removed.has(normalizeCollaboratorName(collaborator).toLowerCase())
-          return (
+          const collaboratorButton = (
             <button
-              key={collaborator}
               type="button"
               onClick={(event) => {
                 event.stopPropagation()
@@ -474,13 +479,13 @@ function CollaboratorBanners({
                 }
                 onToggleRemoved(workspace, collaborator)
               }}
-              disabled={!canManage}
+              aria-disabled={!canManage}
               title={
                 canManage
                   ? isRemoved
                     ? 'Click to restore collaborator'
                     : 'Click to remove collaborator'
-                  : 'Only the workspace owner can manage collaborators'
+                  : undefined
               }
               className={cn(
                 'rounded border px-1.5 py-0.5 text-micro',
@@ -493,8 +498,31 @@ function CollaboratorBanners({
               {collaborator}
             </button>
           )
-        })
-      )}
+
+          if (canManage) {
+            return (
+              <span key={collaborator} className="contents">
+                {collaboratorButton}
+              </span>
+            )
+          }
+
+          const tooltipMessage = isRemoved
+            ? `${ownerName} manages collaborators. ${collaborator} is marked removed and only the owner can restore access.`
+            : `${ownerName} manages collaborators. You can view participants but only the owner can edit this list.`
+
+          return (
+            <Tooltip key={collaborator}>
+              <TooltipTrigger asChild>
+                <span className="inline-flex">{collaboratorButton}</span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[18rem] text-xs leading-relaxed">
+                {tooltipMessage}
+              </TooltipContent>
+            </Tooltip>
+          )
+        })}
+      </TooltipProvider>
       <button
         type="button"
         aria-label={`Add collaborator to ${workspace.name}`}
@@ -519,10 +547,12 @@ function CollaboratorBanners({
 
 export function WorkspacesPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const workspaces = useWorkspaceStore((state) => state.workspaces)
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId)
   const authorRequests = useWorkspaceStore((state) => state.authorRequests)
   const invitationsSent = useWorkspaceStore((state) => state.invitationsSent)
+  const hydrateWorkspaceStoreFromRemote = useWorkspaceStore((state) => state.hydrateFromRemote)
   const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId)
   const createWorkspace = useWorkspaceStore((state) => state.createWorkspace)
   const updateWorkspace = useWorkspaceStore((state) => state.updateWorkspace)
@@ -532,13 +562,18 @@ export function WorkspacesPage() {
   const declineAuthorRequest = useWorkspaceStore((state) => state.declineAuthorRequest)
   const leftPanelOpen = useAaweStore((state) => state.leftPanelOpen)
   const setLeftPanelOpen = useAaweStore((state) => state.setLeftPanelOpen)
+  const inboxMessages = useWorkspaceInboxStore((state) => state.messages)
+  const inboxReads = useWorkspaceInboxStore((state) => state.reads)
+  const hydrateWorkspaceInboxFromRemote = useWorkspaceInboxStore((state) => state.hydrateFromRemote)
+  const refreshInboxMessagesFromStorage = useWorkspaceInboxStore((state) => state.refreshMessagesFromStorage)
+  const refreshInboxReadsFromStorage = useWorkspaceInboxStore((state) => state.refreshReadsFromStorage)
 
-  const [centerView, setCenterView] = useState<CenterView>('workspaces')
-  const [query, setQuery] = useState('')
-  const [viewMode, setViewMode] = useState<ViewMode>('table')
-  const [filterKey, setFilterKey] = useState<FilterKey>('all')
-  const [sortColumn, setSortColumn] = useState<SortColumn>('updatedAt')
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const [centerView, setCenterView] = useState<CenterView>(() => parseCenterView(searchParams.get('view')))
+  const [query, setQuery] = useState(() => (searchParams.get('q') || '').trim())
+  const [viewMode, setViewMode] = useState<ViewMode>(() => parseViewMode(searchParams.get('mode')))
+  const [filterKey, setFilterKey] = useState<FilterKey>(() => parseFilterKey(searchParams.get('filter')))
+  const [sortColumn, setSortColumn] = useState<SortColumn>(() => parseSortColumn(searchParams.get('sort')))
+  const [sortDirection, setSortDirection] = useState<SortDirection>(() => parseSortDirection(searchParams.get('dir')))
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
   const [createError, setCreateError] = useState('')
   const [invitationStatus, setInvitationStatus] = useState('')
@@ -558,6 +593,10 @@ export function WorkspacesPage() {
   const [renameDraft, setRenameDraft] = useState('')
   const [workspaceOwnerName, setWorkspaceOwnerName] = useState<string | null>(() =>
     readWorkspaceOwnerNameFromProfile(),
+  )
+  const currentReaderName = useMemo(
+    () => (readWorkspaceOwnerNameFromProfile() || workspaceOwnerName || 'You').trim() || 'You',
+    [workspaceOwnerName],
   )
 
   const filteredWorkspaces = useMemo(() => {
@@ -595,7 +634,35 @@ export function WorkspacesPage() {
     }),
     [workspaces],
   )
-  const hasSearchQuery = query.trim().length > 0
+  const workspaceInboxSignals = useMemo<Record<string, WorkspaceInboxSignal>>(() => {
+    const readerKey = normalizePerson(currentReaderName)
+    const signalByWorkspaceId: Record<string, WorkspaceInboxSignal> = {}
+    for (const workspace of workspaces) {
+      const messages = inboxMessages
+        .filter((message) => message.workspaceId === workspace.id)
+        .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
+      const lastReadAt = inboxReads[workspace.id]?.[readerKey] || null
+      const lastReadMs = lastReadAt ? Date.parse(lastReadAt) : Number.NEGATIVE_INFINITY
+      const unreadMessages = messages.filter(
+        (message) =>
+          normalizePerson(message.senderName) !== readerKey &&
+          Date.parse(message.createdAt) > lastReadMs,
+      )
+      const latestMessage = messages[messages.length - 1] || null
+      const lastActivitySource = latestMessage
+        ? Math.max(Date.parse(workspace.updatedAt), Date.parse(latestMessage.createdAt))
+        : Date.parse(workspace.updatedAt)
+      const lastActivityAt = Number.isNaN(lastActivitySource)
+        ? workspace.updatedAt
+        : new Date(lastActivitySource).toISOString()
+      signalByWorkspaceId[workspace.id] = {
+        unreadCount: unreadMessages.length,
+        firstUnreadMessageId: unreadMessages[0]?.id || null,
+        lastActivityAt,
+      }
+    }
+    return signalByWorkspaceId
+  }, [currentReaderName, inboxMessages, inboxReads, workspaces])
   const incomingInvitationCount = authorRequests.length
   const outgoingInvitationCount = invitationsSent.length
   const invitationRows = useMemo(
@@ -674,6 +741,11 @@ export function WorkspacesPage() {
   const canConfirmAddCollaborator = Boolean(canManageAddCollaboratorWorkspace && collaboratorTargetName)
 
   useEffect(() => {
+    void hydrateWorkspaceStoreFromRemote()
+    void hydrateWorkspaceInboxFromRemote()
+  }, [hydrateWorkspaceInboxFromRemote, hydrateWorkspaceStoreFromRemote])
+
+  useEffect(() => {
     if (!menuState) {
       return
     }
@@ -732,6 +804,38 @@ export function WorkspacesPage() {
   }, [])
 
   useEffect(() => {
+    const nextParams = new URLSearchParams()
+    nextParams.set('view', centerView)
+    nextParams.set('filter', filterKey)
+    nextParams.set('mode', viewMode)
+    nextParams.set('sort', sortColumn)
+    nextParams.set('dir', sortDirection)
+    if (query.trim()) {
+      nextParams.set('q', query.trim())
+    }
+    const current = searchParams.toString()
+    const next = nextParams.toString()
+    if (current !== next) {
+      setSearchParams(nextParams, { replace: true })
+    }
+  }, [centerView, filterKey, viewMode, sortColumn, sortDirection, query, searchParams, setSearchParams])
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (matchesScopedStorageEventKey(event.key, INBOX_MESSAGES_STORAGE_KEY)) {
+        refreshInboxMessagesFromStorage()
+      }
+      if (matchesScopedStorageEventKey(event.key, INBOX_READS_STORAGE_KEY)) {
+        refreshInboxReadsFromStorage()
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [refreshInboxMessagesFromStorage, refreshInboxReadsFromStorage])
+
+  useEffect(() => {
     if (!addCollaboratorSheetOpen) {
       setDirectoryCollaborators([])
       setCollaboratorLookupLoading(false)
@@ -751,7 +855,7 @@ export function WorkspacesPage() {
     if (!token) {
       setDirectoryCollaborators([])
       setCollaboratorLookupLoading(false)
-      setCollaboratorLookupError('Sign in to search the full collaborator directory. Showing local matches only.')
+      setCollaboratorLookupError('Sign in to search the full collaborator directory. Showing workspace-network matches only.')
       return
     }
 
@@ -775,7 +879,7 @@ export function WorkspacesPage() {
             return
           }
           setDirectoryCollaborators([])
-          setCollaboratorLookupError('Directory lookup unavailable. Showing local suggestions only.')
+          setCollaboratorLookupError('Directory lookup unavailable. Showing workspace-network suggestions only.')
         })
         .finally(() => {
           if (!cancelled) {
@@ -973,12 +1077,39 @@ export function WorkspacesPage() {
     navigate(`/w/${workspaceId}/overview`)
   }
 
+  const buildWorkspacesReturnPath = () => {
+    const params = new URLSearchParams()
+    params.set('view', centerView)
+    params.set('filter', filterKey)
+    params.set('mode', viewMode)
+    params.set('sort', sortColumn)
+    params.set('dir', sortDirection)
+    if (query.trim()) {
+      params.set('q', query.trim())
+    }
+    const encoded = params.toString()
+    return encoded ? `/workspaces?${encoded}` : '/workspaces'
+  }
+
+  const onOpenWorkspaceInboxForWorkspace = (workspaceId: string, focusUnread = false) => {
+    const returnTo = buildWorkspacesReturnPath()
+    const params = new URLSearchParams()
+    params.set('returnTo', returnTo)
+    const signal = workspaceInboxSignals[workspaceId]
+    if (focusUnread && signal?.firstUnreadMessageId) {
+      params.set('at', 'first-unread')
+    }
+    const encoded = params.toString()
+    setActiveWorkspaceId(workspaceId)
+    navigate(encoded ? `/w/${workspaceId}/inbox?${encoded}` : `/w/${workspaceId}/inbox`)
+  }
+
   const onOpenWorkspaceInbox = () => {
     if (!inboxWorkspace) {
       return
     }
-    setActiveWorkspaceId(inboxWorkspace.id)
-    navigate(`/w/${inboxWorkspace.id}/inbox`)
+    const signal = workspaceInboxSignals[inboxWorkspace.id]
+    onOpenWorkspaceInboxForWorkspace(inboxWorkspace.id, Boolean(signal?.unreadCount))
   }
 
   const onStartRenameWorkspace = (workspace: WorkspaceRecord) => {
@@ -1043,7 +1174,7 @@ export function WorkspacesPage() {
     event.stopPropagation()
     const rect = event.currentTarget.getBoundingClientRect()
     const menuWidth = 160
-    const menuHeight = 132
+    const menuHeight = 168
     const gap = 6
     const rightAlignedX = rect.right - menuWidth
     const x = Math.max(8, Math.min(rightAlignedX, window.innerWidth - menuWidth - 8))
@@ -1075,15 +1206,9 @@ export function WorkspacesPage() {
             counts={filterCounts}
             onFilterChange={setFilterKey}
             onOpenInbox={onOpenWorkspaceInbox}
-            onCreateWorkspace={onCreateWorkspace}
-            onClearSearch={() => setQuery('')}
             incomingInvitationCount={incomingInvitationCount}
             outgoingInvitationCount={outgoingInvitationCount}
             canOpenInbox={canOpenInbox}
-            inboxWorkspaceName={inboxWorkspace?.name || 'workspace'}
-            canClearSearch={hasSearchQuery}
-            canCreateWorkspace={canCreateWorkspace}
-            createBlockedMessage={WORKSPACE_OWNER_REQUIRED_MESSAGE}
           />
         </aside>
 
@@ -1094,7 +1219,6 @@ export function WorkspacesPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
                     <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Workspaces</h1>
-                    <p data-house-role="page-subtitle" className={HOUSE_PAGE_SUBTITLE_CLASS}>Manage, filter, and open your workspace list.</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Input
@@ -1199,18 +1323,12 @@ export function WorkspacesPage() {
                   </div>
                 </div>
 
-                <div className="border-b border-border px-4 py-2">
-                  <p className={HOUSE_FIELD_HELPER_CLASS}>
-                    {filteredWorkspaces.length} workspace{filteredWorkspaces.length === 1 ? '' : 's'} shown. Click a workspace to open it.
-                  </p>
-                </div>
-
                 {filteredWorkspaces.length === 0 ? (
                   <div className="p-6 text-sm text-muted-foreground">No workspaces match the current filter.</div>
                 ) : viewMode === 'table' ? (
                   <div className={HOUSE_TABLE_SHELL_CLASS}>
-                    <table className="w-full min-w-sz-760 text-sm">
-                      <thead className={cn('text-left text-xs uppercase tracking-wide', HOUSE_TABLE_HEAD_CLASS)}>
+                    <table className="w-full min-w-sz-980 text-sm">
+                      <thead className={cn('text-left', HOUSE_TABLE_HEAD_CLASS)}>
                         <tr>
                           <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>
                             <SortableHeader
@@ -1232,15 +1350,7 @@ export function WorkspacesPage() {
                               onSort={onSort}
                             />
                           </th>
-                          <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>
-                            <SortableHeader
-                              label="Updated"
-                              column="updatedAt"
-                              activeColumn={sortColumn}
-                              direction={sortDirection}
-                              onSort={onSort}
-                            />
-                          </th>
+                          <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Last activity</th>
                           <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>
                             <SortableHeader
                               label="Status"
@@ -1250,101 +1360,119 @@ export function WorkspacesPage() {
                               onSort={onSort}
                             />
                           </th>
+                          <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Unread</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredWorkspaces.map((workspace) => (
-                          <tr
-                            key={workspace.id}
-                            className={cn('cursor-pointer', HOUSE_TABLE_ROW_CLASS)}
-                            onClick={() => onOpenWorkspace(workspace.id)}
-                          >
-                            <td className={cn('px-3 py-2 font-medium', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0 flex-1">
-                                  {renamingWorkspaceId === workspace.id ? (
-                                    <div className="space-y-2" onClick={(event) => event.stopPropagation()}>
-                                      <Input
-                                        value={renameDraft}
-                                        onChange={(event) => setRenameDraft(event.target.value)}
-                                        className="h-8"
-                                        autoFocus
-                                      />
-                                      <div className="flex items-center gap-2">
-                                        <Button type="button" size="sm" onClick={() => onSaveRenameWorkspace(workspace)}>
-                                          Save
-                                        </Button>
-                                        <Button type="button" size="sm" variant="outline" onClick={onCancelRenameWorkspace}>
-                                          Cancel
-                                        </Button>
+                        {filteredWorkspaces.map((workspace) => {
+                          const signal = workspaceInboxSignals[workspace.id] || {
+                            unreadCount: 0,
+                            firstUnreadMessageId: null,
+                            lastActivityAt: workspace.updatedAt,
+                          }
+                          return (
+                            <tr
+                              key={workspace.id}
+                              className={cn('cursor-pointer', HOUSE_TABLE_ROW_CLASS)}
+                              onClick={() => onOpenWorkspace(workspace.id)}
+                            >
+                              <td className={cn('px-3 py-2 align-middle font-medium', HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    {renamingWorkspaceId === workspace.id ? (
+                                      <div className="space-y-2" onClick={(event) => event.stopPropagation()}>
+                                        <Input
+                                          value={renameDraft}
+                                          onChange={(event) => setRenameDraft(event.target.value)}
+                                          className="h-8"
+                                          autoFocus
+                                        />
+                                        <div className="flex items-center gap-2">
+                                          <Button type="button" size="sm" onClick={() => onSaveRenameWorkspace(workspace)}>
+                                            Save
+                                          </Button>
+                                          <Button type="button" size="sm" variant="outline" onClick={onCancelRenameWorkspace}>
+                                            Cancel
+                                          </Button>
+                                        </div>
                                       </div>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <p className="truncate">{workspace.name}</p>
-                                      <div className="mt-1 flex flex-wrap gap-1">
-                                        {workspace.pinned ? (
-                                          <span className="rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-micro text-emerald-700">
-                                            Pinned
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
+                                    ) : (
+                                      <>
+                                        <p className="flex min-w-0 items-center gap-1.5">
+                                          {workspace.pinned ? <Pin size={13} className="shrink-0 text-emerald-600" aria-label="Pinned workspace" /> : null}
+                                          <span className="truncate">{workspace.name}</span>
+                                        </p>
+                                      </>
+                                    )}
+                                  </div>
 
-                                <WorkspaceMenuTrigger
-                                  menuOpen={menuState?.workspaceId === workspace.id}
-                                  onToggleMenu={(event) => onToggleWorkspaceMenu(workspace.id, event)}
+                                  <WorkspaceMenuTrigger
+                                    menuOpen={menuState?.workspaceId === workspace.id}
+                                    onToggleMenu={(event) => onToggleWorkspaceMenu(workspace.id, event)}
+                                  />
+                                </div>
+                              </td>
+                              <td className={cn('px-3 py-2 align-middle text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>{workspace.ownerName}</td>
+                              <td className={cn('px-3 py-2 align-middle text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                                <CollaboratorBanners
+                                  workspace={workspace}
+                                  canManage={isWorkspaceOwner(workspace, workspaceOwnerName)}
+                                  onAddCollaborator={onAddCollaborator}
+                                  onToggleRemoved={onToggleCollaboratorRemoved}
                                 />
-                              </div>
-                            </td>
-                            <td className={cn('px-3 py-2 text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>{workspace.ownerName}</td>
-                            <td className={cn('px-3 py-2 text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                              <CollaboratorBanners
-                                workspace={workspace}
-                                canManage={isWorkspaceOwner(workspace, workspaceOwnerName)}
-                                onAddCollaborator={onAddCollaborator}
-                                onToggleRemoved={onToggleCollaboratorRemoved}
-                              />
-                            </td>
-                            <td className={cn('px-3 py-2', HOUSE_TABLE_CELL_TEXT_CLASS)}>{workspaceStage(workspace)}</td>
-                            <td className={cn('px-3 py-2', HOUSE_TABLE_CELL_TEXT_CLASS)}>{formatTimestamp(workspace.updatedAt)}</td>
-                            <td className={cn('px-3 py-2', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={cn(
-                                    'inline-block h-2.5 w-2.5 rounded-full',
-                                    workspace.archived ? 'bg-amber-500' : 'bg-emerald-500',
-                                  )}
-                                />
-                                <span>{workspaceStatus(workspace)}</span>
+                              </td>
+                              <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>{workspaceStage(workspace)}</td>
+                              <td className={cn('px-3 py-2 align-middle text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                                {formatTimestamp(signal.lastActivityAt)}
+                              </td>
+                              <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={cn(
+                                      'inline-block h-2.5 w-2.5 rounded-full',
+                                      workspace.archived ? 'bg-amber-500' : 'bg-emerald-500',
+                                    )}
+                                  />
+                                  <span>{workspaceStatus(workspace)}</span>
+                                </div>
+                              </td>
+                              <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
                                 <button
                                   type="button"
-                                  className="ml-auto rounded border border-border bg-background px-2 py-0.5 text-micro text-muted-foreground hover:text-foreground"
+                                  className={cn(
+                                    'inline-flex min-w-8 items-center justify-center rounded border px-2 py-0.5 text-xs font-medium',
+                                    unreadToneClass(signal.unreadCount),
+                                  )}
                                   onClick={(event) => {
                                     event.stopPropagation()
-                                    onTogglePinned(workspace)
+                                    onOpenWorkspaceInboxForWorkspace(workspace.id, signal.unreadCount > 0)
                                   }}
+                                  aria-label={`Open inbox for ${workspace.name}. ${signal.unreadCount} unread message${signal.unreadCount === 1 ? '' : 's'}.`}
                                 >
-                                  {workspace.pinned ? 'Unpin' : 'Pin'}
+                                  {signal.unreadCount}
                                 </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                              </td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
                 ) : (
                   <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
-                    {filteredWorkspaces.map((workspace) => (
-                      <button
-                        key={workspace.id}
-                        type="button"
-                        onClick={() => onOpenWorkspace(workspace.id)}
-                        className="rounded-lg border border-border bg-background p-3 text-left hover:bg-accent/30"
-                      >
+                    {filteredWorkspaces.map((workspace) => {
+                      const signal = workspaceInboxSignals[workspace.id] || {
+                        unreadCount: 0,
+                        firstUnreadMessageId: null,
+                        lastActivityAt: workspace.updatedAt,
+                      }
+                      return (
+                        <button
+                          key={workspace.id}
+                          type="button"
+                          onClick={() => onOpenWorkspace(workspace.id)}
+                          className="rounded-lg border border-border bg-background p-3 text-left hover:bg-accent/30"
+                        >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             {renamingWorkspaceId === workspace.id ? (
@@ -1366,7 +1494,10 @@ export function WorkspacesPage() {
                               </div>
                             ) : (
                               <>
-                                <p className="font-medium">{workspace.name}</p>
+                                <p className="flex min-w-0 items-center gap-1.5 font-medium">
+                                  {workspace.pinned ? <Pin size={13} className="shrink-0 text-emerald-600" aria-label="Pinned workspace" /> : null}
+                                  <span className="truncate">{workspace.name}</span>
+                                </p>
                                 <p className="mt-1 text-xs text-muted-foreground">Owner {workspace.ownerName}</p>
                                 <div className="mt-2 space-y-1" onClick={(event) => event.stopPropagation()}>
                                   <p className="text-xs text-muted-foreground">Collaborators</p>
@@ -1378,7 +1509,7 @@ export function WorkspacesPage() {
                                   />
                                 </div>
                                 <p className="mt-1 text-xs text-muted-foreground">
-                                  Updated {formatTimestamp(workspace.updatedAt)}
+                                  Last activity {formatTimestamp(signal.lastActivityAt)}
                                 </p>
                               </>
                             )}
@@ -1389,6 +1520,19 @@ export function WorkspacesPage() {
                           />
                         </div>
                         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                          <button
+                            type="button"
+                            className={cn(
+                              'rounded border px-1.5 py-0.5 font-medium',
+                              unreadToneClass(signal.unreadCount),
+                            )}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onOpenWorkspaceInboxForWorkspace(workspace.id, signal.unreadCount > 0)
+                            }}
+                          >
+                            {signal.unreadCount}
+                          </button>
                           <span className="rounded border border-border bg-muted/40 px-1.5 py-0.5">
                             {workspaceStage(workspace)}
                           </span>
@@ -1400,14 +1544,15 @@ export function WorkspacesPage() {
                             className="rounded border border-border bg-background px-1.5 py-0.5 text-muted-foreground hover:text-foreground"
                             onClick={(event) => {
                               event.stopPropagation()
-                              onTogglePinned(workspace)
+                              onOpenWorkspaceInboxForWorkspace(workspace.id, signal.unreadCount > 0)
                             }}
                           >
-                            {workspace.pinned ? 'Unpin' : 'Pin'}
+                            Open inbox
                           </button>
                         </div>
-                      </button>
-                    ))}
+                        </button>
+                      )
+                    })}
                   </div>
                 )}
                   </>
@@ -1439,7 +1584,7 @@ export function WorkspacesPage() {
                     ) : (
                       <div className={HOUSE_TABLE_SHELL_CLASS}>
                         <table className="w-full min-w-sz-760 text-sm">
-                          <thead className={cn('text-left text-xs uppercase tracking-wide', HOUSE_TABLE_HEAD_CLASS)}>
+                          <thead className={cn('text-left', HOUSE_TABLE_HEAD_CLASS)}>
                             <tr>
                               <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Direction</th>
                               <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Workspace</th>
@@ -1578,15 +1723,15 @@ export function WorkspacesPage() {
                             className={cn(
                               'w-full rounded border px-2 py-1.5 text-left',
                               isSelected
-                                ? 'border-emerald-300 bg-emerald-50'
+                                ? 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))]'
                                 : 'border-transparent bg-background hover:border-border hover:bg-accent/30',
                             )}
                           >
                             <p className={houseTypography.text}>{candidate.name}</p>
-                            <div className="mt-0.5 flex items-center justify-between gap-2">
-                              <p className={houseTypography.fieldHelper}>{candidate.subtitle}</p>
-                              <span className="text-micro text-muted-foreground">
-                                {candidate.source === 'directory' ? 'Directory' : 'Local'}
+                            <div className="mt-0.5 flex items-center justify-between gap-2" data-ui="collaborator-candidate-meta">
+                              <p className={houseTypography.fieldHelper} data-ui="collaborator-candidate-subtitle">{candidate.subtitle}</p>
+                              <span className="text-micro text-muted-foreground" data-ui="collaborator-candidate-source">
+                                {candidate.source === 'directory' ? 'Directory' : 'Workspace network'}
                               </span>
                             </div>
                           </button>
@@ -1597,12 +1742,10 @@ export function WorkspacesPage() {
                 </ScrollArea>
               </div>
 
-              {collaboratorTargetName ? (
-                <p className={HOUSE_FIELD_HELPER_CLASS}>Selected: {collaboratorTargetName}</p>
-              ) : null}
+              {collaboratorTargetName ? <p className={HOUSE_FIELD_HELPER_CLASS} data-ui="collaborator-candidate-selected">Selected: {collaboratorTargetName}</p> : null}
             </div>
 
-            <div className="flex items-center justify-end gap-2 border-t border-border p-3">
+            <div className="flex items-center justify-end gap-2 border-t border-border p-3" data-ui="collaborator-sheet-actions">
               <Button
                 type="button"
                 className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
@@ -1632,15 +1775,9 @@ export function WorkspacesPage() {
             counts={filterCounts}
             onFilterChange={setFilterKey}
             onOpenInbox={onOpenWorkspaceInbox}
-            onCreateWorkspace={onCreateWorkspace}
-            onClearSearch={() => setQuery('')}
             incomingInvitationCount={incomingInvitationCount}
             outgoingInvitationCount={outgoingInvitationCount}
             canOpenInbox={canOpenInbox}
-            inboxWorkspaceName={inboxWorkspace?.name || 'workspace'}
-            canClearSearch={hasSearchQuery}
-            canCreateWorkspace={canCreateWorkspace}
-            createBlockedMessage={WORKSPACE_OWNER_REQUIRED_MESSAGE}
             onNavigate={() => setLeftPanelOpen(false)}
           />
         </SheetContent>
@@ -1648,9 +1785,10 @@ export function WorkspacesPage() {
 
       {menuState && menuWorkspace
         ? createPortal(
-            <div className="fixed inset-0 z-50" onClick={() => setMenuState(null)}>
+            <div className="fixed inset-0 z-50" data-ui="workspace-menu-overlay" onClick={() => setMenuState(null)}>
               <div
                 data-workspace-menu="true"
+                data-ui="workspace-menu-shell"
                 className="fixed w-40 rounded-md border border-border bg-card p-1 shadow-lg"
                 style={{ left: menuState.x, top: menuState.y }}
                 onClick={(event) => event.stopPropagation()}
@@ -1674,6 +1812,17 @@ export function WorkspacesPage() {
                   onClick={() => onStartRenameWorkspace(menuWorkspace)}
                 >
                   Rename
+                </button>
+                <button
+                  type="button"
+                  data-house-role="workspace-menu-item-pin"
+                  className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50"
+                  onClick={() => {
+                    onTogglePinned(menuWorkspace)
+                    setMenuState(null)
+                  }}
+                >
+                  {menuWorkspace.pinned ? 'Unpin' : 'Pin'}
                 </button>
                 <button
                   type="button"

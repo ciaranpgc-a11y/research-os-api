@@ -25,3 +25,11 @@ To enable MSW locally, create/update `.env.local` with:
 ```env
 VITE_ENABLE_MSW=true
 ```
+
+## Optional: inbox realtime tuning
+You can tune workspace inbox realtime behavior in `.env.local`:
+
+```env
+VITE_WORKSPACE_INBOX_WS_RECONNECT_DELAY_MS=1500
+VITE_WORKSPACE_INBOX_FALLBACK_SYNC_MS=30000
+```

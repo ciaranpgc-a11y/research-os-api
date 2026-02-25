@@ -36,11 +36,11 @@ export class AppErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-slate-100 p-6">
-          <div className="mx-auto max-w-xl rounded-lg border border-red-200 bg-white p-6 shadow-sm">
-            <p className="text-xs uppercase tracking-wide text-red-700">Application error</p>
-            <h1 className="mt-2 text-xl font-semibold text-slate-900">The page failed to render</h1>
-            <p className="mt-2 text-sm text-slate-700">{this.state.message}</p>
+        <div className="min-h-screen bg-background p-6">
+          <div className="mx-auto max-w-xl rounded-lg border border-[hsl(var(--tone-danger-200))] bg-card p-6 shadow-sm">
+            <p className="text-xs uppercase tracking-wide text-[hsl(var(--tone-danger-700))]">Application error</p>
+            <h1 className="mt-2 text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">The page failed to render</h1>
+            <p className="mt-2 text-sm text-[hsl(var(--tone-neutral-700))]">{this.state.message}</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <Button onClick={this.onReload}>Reload page</Button>
               <Button variant="outline" onClick={() => (window.location.href = '/auth')}>

@@ -127,7 +127,7 @@ export function ProfilePanel() {
     <aside className="flex h-full flex-col bg-card">
       <div className="space-y-2 border-b border-border p-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Profile context</h2>
+          <h2 className="house-section-title">Profile context</h2>
           <span
             className={
               token && user
@@ -148,7 +148,7 @@ export function ProfilePanel() {
         <div className="space-y-3 p-4">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Session</CardTitle>
+              <CardTitle>Session</CardTitle>
               <CardDescription className="text-xs">
                 {token && user ? user.email : 'No active account session in this browser tab.'}
               </CardDescription>
@@ -176,7 +176,7 @@ export function ProfilePanel() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Impact readiness</CardTitle>
+              <CardTitle>Impact readiness</CardTitle>
               <CardDescription className="text-xs">Quick profile health checks.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2 text-xs">
@@ -190,7 +190,7 @@ export function ProfilePanel() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Next action</CardTitle>
+              <CardTitle>Next action</CardTitle>
               <CardDescription className="text-xs">{nextAction.detail}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">

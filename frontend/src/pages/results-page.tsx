@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import { FileSpreadsheet, Loader2, Plus, UploadCloud } from 'lucide-react'
 
@@ -10,9 +11,16 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { getAuthSessionToken } from '@/lib/auth-session'
 import { houseForms, houseTypography } from '@/lib/house-style'
+import {
+  fetchWorkspaceRunContext,
+  listLibraryAssets as listPersistedLibraryAssets,
+  uploadLibraryAssets as uploadPersistedLibraryAssets,
+} from '@/lib/study-core-api'
 import { PageFrame } from '@/pages/page-frame'
 import { useDataWorkspaceStore } from '@/store/use-data-workspace-store'
+import type { LibraryAssetRecord } from '@/types/study-core'
 import type {
   DataAsset,
   SheetData,
@@ -185,6 +193,8 @@ function stampTable(table: WorkingTable): WorkingTable {
 }
 
 export function ResultsPage() {
+  const params = useParams<{ workspaceId: string }>()
+  const workspaceId = (params.workspaceId || '').trim()
   const dataAssets = useDataWorkspaceStore((state) => state.dataAssets)
   const workingTables = useDataWorkspaceStore((state) => state.workingTables)
   const manuscriptTables = useDataWorkspaceStore((state) => state.manuscriptTables)
@@ -201,10 +211,46 @@ export function ResultsPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [isDragActive, setIsDragActive] = useState(false)
   const [uploadError, setUploadError] = useState('')
+  const [persistSyncError, setPersistSyncError] = useState('')
   const [status, setStatus] = useState('')
   const [addColumnOpen, setAddColumnOpen] = useState(false)
+  const [persistedProjectId, setPersistedProjectId] = useState<string | null>(null)
+  const [persistedAssets, setPersistedAssets] = useState<LibraryAssetRecord[]>([])
+  const [persistSyncBusy, setPersistSyncBusy] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  const refreshPersistedAssets = useCallback(async () => {
+    const token = getAuthSessionToken()
+    if (!token) {
+      setPersistedAssets([])
+      setPersistedProjectId(null)
+      return
+    }
+    setPersistSyncBusy(true)
+    setPersistSyncError('')
+    try {
+      let resolvedProjectId: string | null = null
+      if (workspaceId) {
+        const context = await fetchWorkspaceRunContext({ token, workspaceId })
+        resolvedProjectId = context.project_id || null
+      }
+      setPersistedProjectId(resolvedProjectId)
+      const items = await listPersistedLibraryAssets({
+        token,
+        projectId: resolvedProjectId || undefined,
+      })
+      setPersistedAssets(items)
+    } catch (error) {
+      setPersistSyncError(error instanceof Error ? error.message : 'Could not load persisted data assets.')
+    } finally {
+      setPersistSyncBusy(false)
+    }
+  }, [workspaceId])
+
+  useEffect(() => {
+    void refreshPersistedAssets()
+  }, [refreshPersistedAssets])
 
   useEffect(() => {
     if (dataAssets.length === 0) {
@@ -276,27 +322,51 @@ export function ResultsPage() {
       return
     }
     setIsUploading(true)
+    setPersistSyncBusy(true)
     setUploadError('')
+    setPersistSyncError('')
     setStatus('')
     const errors: string[] = []
     const addedIds: string[] = []
+    const parsedFiles: File[] = []
     for (const file of files) {
       try {
         const asset = await parseDataAsset(file)
         addDataAsset(asset)
         addedIds.push(asset.id)
+        parsedFiles.push(file)
       } catch (error) {
         errors.push(error instanceof Error ? error.message : `Could not parse ${file.name}.`)
       }
     }
+    let persistedSynced = 0
+    const token = getAuthSessionToken()
+    if (token && parsedFiles.length > 0) {
+      try {
+        const uploaded = await uploadPersistedLibraryAssets({
+          token,
+          files: parsedFiles,
+          projectId: persistedProjectId || undefined,
+        })
+        persistedSynced = uploaded.asset_ids.length
+        await refreshPersistedAssets()
+      } catch (error) {
+        setPersistSyncError(error instanceof Error ? error.message : 'Could not sync files to persisted data library.')
+      }
+    }
     if (addedIds.length > 0) {
       setSelectedAssetId(addedIds[0])
-      setStatus(`Uploaded ${addedIds.length} file(s) to Data Library.`)
+      if (persistedSynced > 0) {
+        setStatus(`Uploaded ${addedIds.length} file(s) and synced ${persistedSynced} to persisted Data Library.`)
+      } else {
+        setStatus(`Uploaded ${addedIds.length} file(s) to Data Library.`)
+      }
     }
     if (errors.length > 0) {
       setUploadError(errors.join(' '))
     }
     setIsUploading(false)
+    setPersistSyncBusy(false)
   }
 
   const onPromoteToWorkingTable = () => {
@@ -433,7 +503,15 @@ export function ResultsPage() {
                   Uploading and parsing files...
                 </p>
               ) : null}
+              {persistSyncBusy ? (
+                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Syncing to persisted data library...
+                </p>
+              ) : null}
               {uploadError ? <p className="text-xs text-destructive">{uploadError}</p> : null}
+              {persistSyncError ? <p className="text-xs text-destructive">{persistSyncError}</p> : null}
+              <p className="text-xs text-muted-foreground">Persisted data assets: {persistedAssets.length}</p>
               {status ? <p className="text-xs text-emerald-600">{status}</p> : null}
             </CardContent>
           </Card>
@@ -442,7 +520,9 @@ export function ResultsPage() {
             <Card data-house-role="workspace-card">
               <CardHeader>
                 <CardTitle data-house-role="section-title">Files</CardTitle>
-                <CardDescription data-house-role="section-subtitle">{dataAssets.length} asset(s) uploaded.</CardDescription>
+                <CardDescription data-house-role="section-subtitle">
+                  {dataAssets.length} local preview asset(s) | {persistedAssets.length} persisted asset(s).
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
                 {dataAssets.length === 0 ? (
@@ -513,12 +593,12 @@ export function ResultsPage() {
                     ) : null}
 
                     <ScrollArea className="h-sz-360 rounded-md border border-border">
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-muted/60">
+                      <table className="w-full text-sm">
+                        <thead className="house-table-head sticky top-0">
                           <tr>
-                            <th className="border-b border-border px-2 py-1 text-left">#</th>
+                            <th className="house-table-head-text border-b border-border px-2 py-1 text-left">#</th>
                             {selectedSheet.columns.map((column) => (
-                              <th key={column} className="border-b border-border px-2 py-1 text-left">
+                              <th key={column} className="house-table-head-text border-b border-border px-2 py-1 text-left">
                                 {column}
                               </th>
                             ))}
@@ -527,9 +607,9 @@ export function ResultsPage() {
                         <tbody>
                           {previewRows.map((row, rowIndex) => (
                             <tr key={`${selectedSheet.name}-row-${rowIndex}`} className="odd:bg-muted/20">
-                              <td className="border-b border-border/70 px-2 py-1 text-muted-foreground">{rowIndex + 1}</td>
+                              <td className="house-table-cell-text border-b border-border/70 px-2 py-1 text-muted-foreground">{rowIndex + 1}</td>
                               {selectedSheet.columns.map((column) => (
-                                <td key={`${rowIndex}-${column}`} className="border-b border-border/70 px-2 py-1">
+                                <td key={`${rowIndex}-${column}`} className="house-table-cell-text border-b border-border/70 px-2 py-1">
                                   {row[column]}
                                 </td>
                               ))}
@@ -580,8 +660,8 @@ export function ResultsPage() {
                         }`}
                         onClick={() => setSelectedWorkingTableId(normalized.id)}
                       >
-                        <p className="font-medium">{normalized.name}</p>
-                        <p className="text-muted-foreground">
+                        <p data-house-role="table-list-item-title" className="font-medium">{normalized.name}</p>
+                        <p data-house-role="table-list-item-meta" className="text-muted-foreground">
                           {normalized.metadata?.tableType || 'Working table'} | {normalized.columns.length} columns | {normalized.rows.length} rows
                         </p>
                       </button>
@@ -598,7 +678,7 @@ export function ResultsPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {!selectedWorkingTable ? (
-                  <p className="text-xs text-muted-foreground">Select a working table to start editing.</p>
+                  <p data-house-role="working-table-empty" className="text-xs text-muted-foreground">Select a working table to start editing.</p>
                 ) : (
                   <>
                     <TableHeader
@@ -618,11 +698,12 @@ export function ResultsPage() {
         </TabsContent>
       </Tabs>
 
-      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      <div data-house-role="results-status-row" className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <Badge variant="outline" className="gap-1">
           <FileSpreadsheet className="h-3.5 w-3.5" />
-          Files: {dataAssets.length}
+          Local files: {dataAssets.length}
         </Badge>
+        <Badge variant="outline">Persisted assets: {persistedAssets.length}</Badge>
         <Badge variant="outline">Working tables: {workingTables.length}</Badge>
         <Badge variant="outline">Manuscript tables: {manuscriptTables.length}</Badge>
       </div>

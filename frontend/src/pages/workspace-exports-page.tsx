@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { getHouseLeftBorderToneClass } from '@/lib/section-tone'
 import { cn } from '@/lib/utils'
 
 export function WorkspaceExportsPage() {
@@ -12,7 +13,10 @@ export function WorkspaceExportsPage() {
 
   return (
     <section data-house-role="page" className="space-y-4">
-      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+      <header
+        data-house-role="page-header"
+        className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, getHouseLeftBorderToneClass('workspace'))}
+      >
         <h1 data-house-role="page-title" className={houseTypography.title}>Exports</h1>
         <p data-house-role="page-subtitle" className={houseTypography.subtitle}>
           Package manuscript outputs and quality checks for submission workflows.
@@ -20,7 +24,7 @@ export function WorkspaceExportsPage() {
       </header>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Export checklist</CardTitle>
+          <CardTitle>Export checklist</CardTitle>
           <CardDescription>Run QC first, then export manuscript and supporting evidence.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">

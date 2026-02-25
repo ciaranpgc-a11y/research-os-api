@@ -17,7 +17,7 @@ const SheetOverlay = React.forwardRef<
     ref={ref}
     data-ui="sheet-overlay"
     data-house-role="sheet-overlay"
-    className={cn('fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out', className)}
+    className={cn('fixed inset-0 z-50 bg-[hsl(var(--tone-neutral-900)/0.34)] data-[state=open]:animate-in data-[state=closed]:animate-out', className)}
     {...props}
   />
 ))

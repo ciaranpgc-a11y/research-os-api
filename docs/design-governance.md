@@ -35,11 +35,14 @@ It must not communicate:
 - All color usage must derive exclusively from token definitions.
 - No hard-coded color values are permitted outside token files.
 - No additional accent colors may be introduced without updating this governance document.
+- Raw white/black surface utilities (`bg-white`, `bg-black`, `border-white`, `border-black`) are prohibited.
+- Overlays must use tokenized neutral tones with alpha, never raw black overlays.
 - Accent usage must be limited to:
 - Primary interactive states
 - Highlighted data states
 - Selected navigation states
 - Accent may not dominate layout.
+- Neutral surfaces must be drawn from `background`, `card`, `muted`, and `tone-neutral-*` tokens.
 
 ### 2.2 Spacing
 
@@ -83,6 +86,14 @@ Structure must be defined through:
 - Spatial grouping
 
 Not heavy shadow.
+
+Separator-first framing is required:
+
+- Avoid nested container borders (frame-in-frame patterns).
+- Use one structural outer boundary per section at most.
+- Prefer soft separators between section bands and tool rows.
+- For borderless section shells, use `house-panel-bare`.
+- For neutral separators, use `house-divider-border-soft` and `house-divider-fill-soft`.
 
 ### 3.3 Radius
 
@@ -147,6 +158,39 @@ Motion must be:
 - Functional
 
 No theatrical animation permitted.
+
+Approved motion duration tokens:
+
+- 150ms
+- 200ms
+- 220ms
+- 300ms
+- 320ms
+- 420ms
+- 500ms
+- 700ms
+
+No other duration tokens are permitted in UI classes.
+
+### 6.3 Control Sizing
+
+- Primary control height is `h-9`.
+- Large/auth control height is `h-10`.
+- Compact control height is `h-8`.
+- New controls must use one of these three heights unless governance is updated.
+
+### 6.4 Navigation Rail Contracts
+
+- Approved left rail widths: `250px`, `280px`.
+- Approved right rail widths: `280px`, `320px`, `340px`.
+- Grid rail templates must use approved widths only.
+
+### 6.5 Section Tone Contract
+
+- Section rail and active-nav accent colors must come from the shared section tone resolver (`frontend/src/lib/section-tone.ts`).
+- New top-level sections must declare a semantic tone (`overview`, `research`, `account`, `workspace`, `data`, `manuscript`, `governance`).
+- Do not hard-code one-off rail/accent colors in page components.
+- For new routes, update tone resolution rules in one place and let shared components inherit those changes.
 
 ### 6.2 Hover and Tooltip Governance
 
@@ -221,6 +265,12 @@ Codex must enforce:
 - No arbitrary spacing
 - No rogue typography sizes
 - No unapproved color usage
+- No raw white/black surface utilities
+- No unsupported motion duration tokens
+- No unsupported navigation rail width templates
+- No `CardTitle` text-size overrides (`text-xs`, `text-sm`, `text-base`, etc.)
+- No `text-xs` typography on `<table>`, `<thead>`, or `<th>` elements
+- Table typography must use shared table components or `house-table-*` tokens
 
 PRs violating governance must fail.
 
@@ -234,3 +284,11 @@ Axiomos must feel:
 - Structurally coherent
 
 If a design choice adds decoration but not structure, it is incorrect.
+
+## 13. Documentation and Audit Rules
+
+- Major UX and behavior changes must include same-delivery documentation updates.
+- `docs/change-log.md` must be updated for all major changes.
+- Relevant story documents under `docs/stories/` must be updated as scope evolves.
+- Missing major-change documentation is considered a governance violation.
+- See `docs/change-documentation-rules.md` for the full rule set.

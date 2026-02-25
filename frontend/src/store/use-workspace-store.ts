@@ -1,5 +1,23 @@
 import { create } from 'zustand'
 
+import { getAuthSessionToken } from '@/lib/auth-session'
+import {
+  acceptWorkspaceAuthorRequestApi,
+  createWorkspaceInvitationApi,
+  createWorkspaceRecordApi,
+  declineWorkspaceAuthorRequestApi,
+  deleteWorkspaceRecordApi,
+  listWorkspaces,
+  listWorkspaceAuthorRequestsApi,
+  listWorkspaceInvitationsSentApi,
+  setActiveWorkspaceApi,
+  updateWorkspaceRecordApi,
+} from '@/lib/workspace-api'
+import {
+  readScopedStorageItem,
+  removeScopedStorageItem,
+  writeScopedStorageItem,
+} from '@/lib/user-scoped-storage'
 import {
   WORKSPACE_OWNER_REQUIRED_MESSAGE,
   readWorkspaceOwnerNameFromProfile,
@@ -13,7 +31,7 @@ export type WorkspaceRecord = {
   name: string
   ownerName: string
   collaborators: string[]
-  removedCollaborators?: string[]
+  removedCollaborators: string[]
   version: string
   health: WorkspaceHealth
   updatedAt: string
@@ -58,6 +76,7 @@ type WorkspaceStore = {
   activeWorkspaceId: string | null
   authorRequests: WorkspaceAuthorRequest[]
   invitationsSent: WorkspaceInvitationSent[]
+  hydrateFromRemote: () => Promise<void>
   setActiveWorkspaceId: (workspaceId: string | null) => void
   ensureWorkspace: (workspaceId: string) => void
   createWorkspace: (name?: string) => WorkspaceRecord
@@ -150,12 +169,71 @@ function defaultInvitationsSent(): WorkspaceInvitationSent[] {
   return []
 }
 
+function normalizeWorkspaceRecords(
+  values: Array<Partial<WorkspaceRecord>>,
+  fallbackOwnerName: string,
+): WorkspaceRecord[] {
+  return values.map((workspace) => {
+    const collaborators = normalizeCollaborators((workspace as { collaborators?: unknown }).collaborators)
+    const removedCollaborators = normalizeRemovedCollaborators(
+      (workspace as { removedCollaborators?: unknown }).removedCollaborators,
+      collaborators,
+    )
+    return {
+      id: trimValue(workspace.id) || `workspace-${Date.now().toString(36)}`,
+      name: normalizeName(workspace.name) || 'Workspace',
+      ownerName: normalizeName(workspace.ownerName) || fallbackOwnerName,
+      collaborators,
+      removedCollaborators,
+      version: trimValue(workspace.version) || '0.1',
+      health:
+        workspace.health === 'green' || workspace.health === 'amber' || workspace.health === 'red'
+          ? workspace.health
+          : 'amber',
+      updatedAt: trimValue(workspace.updatedAt) || nowIso(),
+      pinned: Boolean(workspace.pinned),
+      archived: Boolean(workspace.archived),
+    }
+  })
+}
+
+function normalizeAuthorRequestRecords(values: Array<Partial<WorkspaceAuthorRequest>>): WorkspaceAuthorRequest[] {
+  return values
+    .map((request) => ({
+      id: trimValue(request.id) || buildId('author-request'),
+      workspaceId: trimValue(request.workspaceId) || buildId('workspace'),
+      workspaceName: normalizeName(request.workspaceName) || 'Untitled workspace',
+      authorName: normalizeName(request.authorName) || 'Unknown author',
+      invitedAt: trimValue(request.invitedAt) || nowIso(),
+    }))
+    .filter((request) => request.workspaceId && request.workspaceName)
+}
+
+function normalizeInvitationSentRecords(values: Array<Partial<WorkspaceInvitationSent>>): WorkspaceInvitationSent[] {
+  return values
+    .map((invitation) => {
+      const status: WorkspaceInvitationStatus =
+        invitation.status === 'accepted' || invitation.status === 'declined'
+          ? invitation.status
+          : 'pending'
+      return {
+        id: trimValue(invitation.id) || buildId('invite'),
+        workspaceId: trimValue(invitation.workspaceId) || buildId('workspace'),
+        workspaceName: normalizeName(invitation.workspaceName) || 'Untitled workspace',
+        inviteeName: normalizeName(invitation.inviteeName) || 'Unknown collaborator',
+        invitedAt: trimValue(invitation.invitedAt) || nowIso(),
+        status,
+      }
+    })
+    .filter((invitation) => invitation.workspaceId && invitation.inviteeName)
+}
+
 function readStoredWorkspaces(): WorkspaceRecord[] {
   if (typeof window === 'undefined') {
     return defaultWorkspaces()
   }
   const fallbackOwnerName = defaultOwnerName()
-  const raw = window.localStorage.getItem(WORKSPACES_STORAGE_KEY)
+  const raw = readScopedStorageItem(WORKSPACES_STORAGE_KEY)
   if (!raw) {
     return defaultWorkspaces()
   }
@@ -164,28 +242,7 @@ function readStoredWorkspaces(): WorkspaceRecord[] {
     if (!Array.isArray(parsed) || parsed.length === 0) {
       return defaultWorkspaces()
     }
-    return parsed.map((workspace) => {
-      const collaborators = normalizeCollaborators((workspace as { collaborators?: unknown }).collaborators)
-      const removedCollaborators = normalizeRemovedCollaborators(
-        (workspace as { removedCollaborators?: unknown }).removedCollaborators,
-        collaborators,
-      )
-      return {
-        id: trimValue(workspace.id) || `workspace-${Date.now().toString(36)}`,
-        name: normalizeName(workspace.name) || 'Workspace',
-        ownerName: normalizeName(workspace.ownerName) || fallbackOwnerName,
-        collaborators,
-        removedCollaborators,
-        version: trimValue(workspace.version) || '0.1',
-        health:
-          workspace.health === 'green' || workspace.health === 'amber' || workspace.health === 'red'
-            ? workspace.health
-            : 'amber',
-        updatedAt: trimValue(workspace.updatedAt) || nowIso(),
-        pinned: Boolean(workspace.pinned),
-        archived: Boolean(workspace.archived),
-      }
-    })
+    return normalizeWorkspaceRecords(parsed, fallbackOwnerName)
   } catch {
     return defaultWorkspaces()
   }
@@ -195,14 +252,14 @@ function persistWorkspaces(workspaces: WorkspaceRecord[]): void {
   if (typeof window === 'undefined') {
     return
   }
-  window.localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(workspaces))
+  writeScopedStorageItem(WORKSPACES_STORAGE_KEY, JSON.stringify(workspaces))
 }
 
 function readStoredAuthorRequests(): WorkspaceAuthorRequest[] {
   if (typeof window === 'undefined') {
     return defaultAuthorRequests()
   }
-  const raw = window.localStorage.getItem(AUTHOR_REQUESTS_STORAGE_KEY)
+  const raw = readScopedStorageItem(AUTHOR_REQUESTS_STORAGE_KEY)
   if (!raw) {
     return defaultAuthorRequests()
   }
@@ -211,15 +268,7 @@ function readStoredAuthorRequests(): WorkspaceAuthorRequest[] {
     if (!Array.isArray(parsed)) {
       return defaultAuthorRequests()
     }
-    return parsed
-      .map((request) => ({
-        id: trimValue(request.id) || buildId('author-request'),
-        workspaceId: trimValue(request.workspaceId) || buildId('workspace'),
-        workspaceName: normalizeName(request.workspaceName) || 'Untitled workspace',
-        authorName: normalizeName(request.authorName) || 'Unknown author',
-        invitedAt: trimValue(request.invitedAt) || nowIso(),
-      }))
-      .filter((request) => request.workspaceId && request.workspaceName)
+    return normalizeAuthorRequestRecords(parsed)
   } catch {
     return defaultAuthorRequests()
   }
@@ -229,14 +278,14 @@ function persistAuthorRequests(authorRequests: WorkspaceAuthorRequest[]): void {
   if (typeof window === 'undefined') {
     return
   }
-  window.localStorage.setItem(AUTHOR_REQUESTS_STORAGE_KEY, JSON.stringify(authorRequests))
+  writeScopedStorageItem(AUTHOR_REQUESTS_STORAGE_KEY, JSON.stringify(authorRequests))
 }
 
 function readStoredInvitationsSent(): WorkspaceInvitationSent[] {
   if (typeof window === 'undefined') {
     return defaultInvitationsSent()
   }
-  const raw = window.localStorage.getItem(INVITATIONS_SENT_STORAGE_KEY)
+  const raw = readScopedStorageItem(INVITATIONS_SENT_STORAGE_KEY)
   if (!raw) {
     return defaultInvitationsSent()
   }
@@ -245,22 +294,7 @@ function readStoredInvitationsSent(): WorkspaceInvitationSent[] {
     if (!Array.isArray(parsed)) {
       return defaultInvitationsSent()
     }
-    return parsed
-      .map((invitation) => {
-        const status: WorkspaceInvitationStatus =
-          invitation.status === 'accepted' || invitation.status === 'declined'
-            ? invitation.status
-            : 'pending'
-        return {
-          id: trimValue(invitation.id) || buildId('invite'),
-          workspaceId: trimValue(invitation.workspaceId) || buildId('workspace'),
-          workspaceName: normalizeName(invitation.workspaceName) || 'Untitled workspace',
-          inviteeName: normalizeName(invitation.inviteeName) || 'Unknown collaborator',
-          invitedAt: trimValue(invitation.invitedAt) || nowIso(),
-          status,
-        }
-      })
-      .filter((invitation) => invitation.workspaceId && invitation.inviteeName)
+    return normalizeInvitationSentRecords(parsed)
   } catch {
     return defaultInvitationsSent()
   }
@@ -270,14 +304,14 @@ function persistInvitationsSent(invitationsSent: WorkspaceInvitationSent[]): voi
   if (typeof window === 'undefined') {
     return
   }
-  window.localStorage.setItem(INVITATIONS_SENT_STORAGE_KEY, JSON.stringify(invitationsSent))
+  writeScopedStorageItem(INVITATIONS_SENT_STORAGE_KEY, JSON.stringify(invitationsSent))
 }
 
 function readStoredActiveWorkspaceId(workspaces: WorkspaceRecord[]): string | null {
   if (typeof window === 'undefined') {
     return workspaces[0]?.id ?? null
   }
-  const raw = window.localStorage.getItem(ACTIVE_WORKSPACE_STORAGE_KEY)
+  const raw = readScopedStorageItem(ACTIVE_WORKSPACE_STORAGE_KEY)
   if (!raw) {
     return workspaces[0]?.id ?? null
   }
@@ -292,10 +326,36 @@ function persistActiveWorkspaceId(workspaceId: string | null): void {
     return
   }
   if (!workspaceId) {
-    window.localStorage.removeItem(ACTIVE_WORKSPACE_STORAGE_KEY)
+    removeScopedStorageItem(ACTIVE_WORKSPACE_STORAGE_KEY)
     return
   }
-  window.localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, workspaceId)
+  writeScopedStorageItem(ACTIVE_WORKSPACE_STORAGE_KEY, workspaceId)
+}
+
+type WorkspaceStateSnapshot = {
+  workspaces: WorkspaceRecord[]
+  activeWorkspaceId: string | null
+  authorRequests: WorkspaceAuthorRequest[]
+  invitationsSent: WorkspaceInvitationSent[]
+}
+
+function persistSnapshotLocal(snapshot: WorkspaceStateSnapshot): void {
+  persistWorkspaces(snapshot.workspaces)
+  persistActiveWorkspaceId(snapshot.activeWorkspaceId)
+  persistAuthorRequests(snapshot.authorRequests)
+  persistInvitationsSent(snapshot.invitationsSent)
+}
+
+function runRemoteWorkspaceAction(
+  action: (token: string) => Promise<unknown>,
+): void {
+  const token = getAuthSessionToken()
+  if (!token) {
+    return
+  }
+  void action(token).catch(() => {
+    // Keep local state when remote mutation fails.
+  })
 }
 
 function slugifyWorkspaceName(value: string): string {
@@ -317,9 +377,58 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   activeWorkspaceId: initialActiveWorkspaceId,
   authorRequests: initialAuthorRequests,
   invitationsSent: initialInvitationsSent,
+  hydrateFromRemote: async () => {
+    const token = getAuthSessionToken()
+    if (!token) {
+      return
+    }
+    try {
+      const [workspaceListing, authorRequests, invitationsSent] = await Promise.all([
+        listWorkspaces(token),
+        listWorkspaceAuthorRequestsApi(token),
+        listWorkspaceInvitationsSentApi(token),
+      ])
+      const remote = {
+        workspaces: workspaceListing.items,
+        activeWorkspaceId: workspaceListing.activeWorkspaceId,
+        authorRequests,
+        invitationsSent,
+      }
+      const fallbackOwnerName = defaultOwnerName()
+      const remoteWorkspaces = normalizeWorkspaceRecords(
+        (remote.workspaces || []) as Array<Partial<WorkspaceRecord>>,
+        fallbackOwnerName,
+      )
+      const remoteAuthorRequests = normalizeAuthorRequestRecords(
+        (remote.authorRequests || []) as Array<Partial<WorkspaceAuthorRequest>>,
+      )
+      const remoteInvitationsSent = normalizeInvitationSentRecords(
+        (remote.invitationsSent || []) as Array<Partial<WorkspaceInvitationSent>>,
+      )
+
+      const requestedActiveWorkspaceId = trimValue(remote.activeWorkspaceId)
+      const resolvedActiveWorkspaceId =
+        requestedActiveWorkspaceId &&
+        remoteWorkspaces.some((workspace) => workspace.id === requestedActiveWorkspaceId)
+          ? requestedActiveWorkspaceId
+          : remoteWorkspaces[0]?.id || null
+
+      const snapshot: WorkspaceStateSnapshot = {
+        workspaces: remoteWorkspaces,
+        activeWorkspaceId: resolvedActiveWorkspaceId,
+        authorRequests: remoteAuthorRequests,
+        invitationsSent: remoteInvitationsSent,
+      }
+      persistSnapshotLocal(snapshot)
+      set(snapshot)
+    } catch {
+      // Keep local state when remote hydration fails.
+    }
+  },
   setActiveWorkspaceId: (workspaceId) => {
     persistActiveWorkspaceId(workspaceId)
     set({ activeWorkspaceId: workspaceId })
+    runRemoteWorkspaceAction((token) => setActiveWorkspaceApi(token, workspaceId))
   },
   ensureWorkspace: (workspaceId) => {
     const cleanWorkspaceId = trimValue(workspaceId)
@@ -331,6 +440,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       if (state.activeWorkspaceId !== cleanWorkspaceId) {
         persistActiveWorkspaceId(cleanWorkspaceId)
         set({ activeWorkspaceId: cleanWorkspaceId })
+        runRemoteWorkspaceAction((token) => setActiveWorkspaceApi(token, cleanWorkspaceId))
       }
       return
     }
@@ -350,12 +460,16 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       archived: false,
     }
     const nextWorkspaces = [nextWorkspace, ...state.workspaces]
-    persistWorkspaces(nextWorkspaces)
-    persistActiveWorkspaceId(cleanWorkspaceId)
-    set({
+    const snapshot: WorkspaceStateSnapshot = {
       workspaces: nextWorkspaces,
       activeWorkspaceId: cleanWorkspaceId,
-    })
+      authorRequests: state.authorRequests,
+      invitationsSent: state.invitationsSent,
+    }
+    persistSnapshotLocal(snapshot)
+    set(snapshot)
+    runRemoteWorkspaceAction((token) => createWorkspaceRecordApi(token, nextWorkspace))
+    runRemoteWorkspaceAction((token) => setActiveWorkspaceApi(token, cleanWorkspaceId))
   },
   createWorkspace: (name) => {
     const ownerName = readWorkspaceOwnerNameFromProfile()
@@ -381,12 +495,16 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       archived: false,
     }
     const nextWorkspaces = [nextWorkspace, ...state.workspaces]
-    persistWorkspaces(nextWorkspaces)
-    persistActiveWorkspaceId(nextWorkspace.id)
-    set({
+    const snapshot: WorkspaceStateSnapshot = {
       workspaces: nextWorkspaces,
       activeWorkspaceId: nextWorkspace.id,
-    })
+      authorRequests: state.authorRequests,
+      invitationsSent: state.invitationsSent,
+    }
+    persistSnapshotLocal(snapshot)
+    set(snapshot)
+    runRemoteWorkspaceAction((token) => createWorkspaceRecordApi(token, nextWorkspace))
+    runRemoteWorkspaceAction((token) => setActiveWorkspaceApi(token, nextWorkspace.id))
     return nextWorkspace
   },
   updateWorkspace: (workspaceId, patch) => {
@@ -413,8 +531,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         removedCollaborators: nextRemovedCollaborators,
       }
     })
-    persistWorkspaces(nextWorkspaces)
+    persistSnapshotLocal({
+      workspaces: nextWorkspaces,
+      activeWorkspaceId: state.activeWorkspaceId,
+      authorRequests: state.authorRequests,
+      invitationsSent: state.invitationsSent,
+    })
     set({ workspaces: nextWorkspaces })
+    runRemoteWorkspaceAction((token) => updateWorkspaceRecordApi(token, cleanWorkspaceId, patch))
   },
   deleteWorkspace: (workspaceId) => {
     const cleanWorkspaceId = trimValue(workspaceId)
@@ -427,12 +551,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       state.activeWorkspaceId === cleanWorkspaceId
         ? nextWorkspaces.find((workspace) => !workspace.archived)?.id || nextWorkspaces[0]?.id || null
         : state.activeWorkspaceId
-    persistWorkspaces(nextWorkspaces)
-    persistActiveWorkspaceId(nextActiveWorkspaceId)
+    persistSnapshotLocal({
+      workspaces: nextWorkspaces,
+      activeWorkspaceId: nextActiveWorkspaceId,
+      authorRequests: state.authorRequests,
+      invitationsSent: state.invitationsSent,
+    })
     set({
       workspaces: nextWorkspaces,
       activeWorkspaceId: nextActiveWorkspaceId,
     })
+    runRemoteWorkspaceAction((token) => deleteWorkspaceRecordApi(token, cleanWorkspaceId))
   },
   sendWorkspaceInvitation: (workspaceId, inviteeName) => {
     const cleanWorkspaceId = trimValue(workspaceId)
@@ -474,8 +603,21 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       status: 'pending',
     }
     const nextInvitationsSent = [nextInvitation, ...state.invitationsSent]
-    persistInvitationsSent(nextInvitationsSent)
+    persistSnapshotLocal({
+      workspaces: state.workspaces,
+      activeWorkspaceId: state.activeWorkspaceId,
+      authorRequests: state.authorRequests,
+      invitationsSent: nextInvitationsSent,
+    })
     set({ invitationsSent: nextInvitationsSent })
+    runRemoteWorkspaceAction((token) =>
+      createWorkspaceInvitationApi(token, {
+        workspaceId: cleanWorkspaceId,
+        inviteeName: cleanInviteeName,
+        invitedAt: nextInvitation.invitedAt,
+        status: nextInvitation.status,
+      }),
+    )
     return nextInvitation
   },
   acceptAuthorRequest: (requestId) => {
@@ -508,14 +650,20 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
     const nextWorkspaces = [nextWorkspace, ...state.workspaces]
     const nextAuthorRequests = state.authorRequests.filter((item) => item.id !== cleanRequestId)
-    persistWorkspaces(nextWorkspaces)
-    persistAuthorRequests(nextAuthorRequests)
-    persistActiveWorkspaceId(nextWorkspace.id)
+    persistSnapshotLocal({
+      workspaces: nextWorkspaces,
+      activeWorkspaceId: nextWorkspace.id,
+      authorRequests: nextAuthorRequests,
+      invitationsSent: state.invitationsSent,
+    })
     set({
       workspaces: nextWorkspaces,
       activeWorkspaceId: nextWorkspace.id,
       authorRequests: nextAuthorRequests,
     })
+    runRemoteWorkspaceAction((token) =>
+      acceptWorkspaceAuthorRequestApi(token, cleanRequestId, currentCollaboratorName()),
+    )
     return nextWorkspace
   },
   declineAuthorRequest: (requestId) => {
@@ -525,7 +673,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
     const state = get()
     const nextAuthorRequests = state.authorRequests.filter((item) => item.id !== cleanRequestId)
-    persistAuthorRequests(nextAuthorRequests)
+    persistSnapshotLocal({
+      workspaces: state.workspaces,
+      activeWorkspaceId: state.activeWorkspaceId,
+      authorRequests: nextAuthorRequests,
+      invitationsSent: state.invitationsSent,
+    })
     set({ authorRequests: nextAuthorRequests })
+    runRemoteWorkspaceAction((token) => declineWorkspaceAuthorRequestApi(token, cleanRequestId))
   },
 }))

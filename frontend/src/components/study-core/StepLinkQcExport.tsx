@@ -2,6 +2,7 @@ import { Download, Loader2, ShieldCheck } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { getAuthSessionToken } from '@/lib/auth-session'
 import {
   exportManuscriptMarkdownWithWarnings,
   exportQcGatedMarkdown,
@@ -128,7 +129,12 @@ export function StepLinkQcExport({
     setBusy('export')
     onError('')
     try {
-      const payload = await exportQcGatedMarkdown(runContext.projectId, runContext.manuscriptId)
+      const token = getAuthSessionToken()
+      const payload = await exportQcGatedMarkdown({
+        token: token || undefined,
+        projectId: runContext.projectId,
+        manuscriptId: runContext.manuscriptId,
+      })
       downloadText(payload.filename, payload.content, 'text/markdown;charset=utf-8')
       onStatus(`Exported ${payload.filename}.`)
     } catch (error) {
@@ -164,7 +170,12 @@ export function StepLinkQcExport({
     setBusy('export-override')
     onError('')
     try {
-      const payload = await exportManuscriptMarkdownWithWarnings(runContext.projectId, runContext.manuscriptId)
+      const token = getAuthSessionToken()
+      const payload = await exportManuscriptMarkdownWithWarnings({
+        token: token || undefined,
+        projectId: runContext.projectId,
+        manuscriptId: runContext.manuscriptId,
+      })
       downloadText(payload.filename, payload.content, 'text/markdown;charset=utf-8')
       onStatus(`Exported ${payload.filename} with warnings.`)
     } catch (error) {

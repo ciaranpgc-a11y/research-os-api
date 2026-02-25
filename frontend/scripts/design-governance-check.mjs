@@ -7,6 +7,9 @@ const ALLOWED_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.css'])
 const JSX_EXTENSIONS = new Set(['.tsx', '.jsx'])
 const HOUSE_ROLE_BASELINE_PATH = path.join(ROOT, 'scripts', 'house-role-baseline.json')
 const APP_ENTRY_FILE = path.join(ROOT, 'src', 'App.tsx')
+const ALLOWED_DURATION_TOKENS = new Set(['150', '200', '220', '300', '320', '420', '500', '700'])
+const ALLOWED_NAV_LEFT_WIDTHS = new Set(['250', '280'])
+const ALLOWED_NAV_RIGHT_WIDTHS = new Set(['', '280', '320', '340'])
 
 const RULES = [
   {
@@ -19,7 +22,94 @@ const RULES = [
     message: 'Arbitrary px utilities are not allowed. Use spacing/type tokens.',
     regex: /[A-Za-z0-9:-]+-\[[0-9]+px\]/g,
   },
+  {
+    id: 'arbitrary-rem-type',
+    message: 'Arbitrary rem typography utilities are not allowed. Use house typography or text tokens.',
+    regex: /!?((text|leading)-\[[0-9.]+rem\])/g,
+  },
+  {
+    id: 'raw-neutral-extreme',
+    message: 'Raw white/black surface utilities are not allowed. Use design tokens.',
+    regex: /\b(?:bg|border)-(?:white|black)(?:\/[0-9]{1,3})?\b/g,
+  },
 ]
+
+function collectCardTitleSizeOverrides(source) {
+  const overrides = []
+  const patterns = [
+    /<CardTitle[^>]*className\s*=\s*"[^"]*text-(?:xs|sm|base|lg|xl)[^"]*"[^>]*>/g,
+    /<CardTitle[^>]*className\s*=\s*'[^']*text-(?:xs|sm|base|lg|xl)[^']*'[^>]*>/g,
+    /<CardTitle[^>]*className\s*=\s*\{[^}]*text-(?:xs|sm|base|lg|xl)[^}]*\}[^>]*>/g,
+  ]
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      overrides.push({
+        index: match.index ?? 0,
+        snippet: String(match[0] || '').slice(0, 140),
+        message:
+          'Do not override CardTitle typography with text size utilities. Use CardTitle defaults or house typography tokens.',
+      })
+    }
+  }
+  return overrides
+}
+
+function collectTableXsTypography(source) {
+  const invalid = []
+  const patterns = [
+    /<(?:table|thead|th)\b[^>]*className\s*=\s*"[^"]*\btext-xs\b[^"]*"[^>]*>/g,
+    /<(?:table|thead|th)\b[^>]*className\s*=\s*'[^']*\btext-xs\b[^']*'[^>]*>/g,
+    /<(?:table|thead|th)\b[^>]*className\s*=\s*\{[^}]*\btext-xs\b[^}]*\}[^>]*>/g,
+  ]
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      invalid.push({
+        index: match.index ?? 0,
+        snippet: String(match[0] || '').slice(0, 140),
+        message:
+          'text-xs is not allowed on table shells/headers. Use house table tokens (`house-table-head-text`, `house-table-cell-text`) or shared Table components.',
+      })
+    }
+  }
+  return invalid
+}
+
+function collectUnsupportedDurationTokens(source) {
+  const unsupported = []
+  const durationPattern = /\bduration-(\d{2,4})\b/g
+  for (const match of source.matchAll(durationPattern)) {
+    const token = String(match[1] || '')
+    if (ALLOWED_DURATION_TOKENS.has(token)) {
+      continue
+    }
+    unsupported.push({
+      index: match.index ?? 0,
+      snippet: String(match[0] || ''),
+      message:
+        `Duration token ${token} is not approved. Allowed tokens: ${Array.from(ALLOWED_DURATION_TOKENS).join(', ')}`,
+    })
+  }
+  return unsupported
+}
+
+function collectUnsupportedNavGridWidths(source) {
+  const invalid = []
+  const navGridPattern = /\bgrid-cols-\[(\d+)px_minmax\(0,1fr\)(?:_(\d+)px)?\]/g
+  for (const match of source.matchAll(navGridPattern)) {
+    const leftWidth = String(match[1] || '')
+    const rightWidth = String(match[2] || '')
+    if (ALLOWED_NAV_LEFT_WIDTHS.has(leftWidth) && ALLOWED_NAV_RIGHT_WIDTHS.has(rightWidth)) {
+      continue
+    }
+    invalid.push({
+      index: match.index ?? 0,
+      snippet: String(match[0] || ''),
+      message:
+        `Unsupported nav grid width contract. Allowed left widths: ${Array.from(ALLOWED_NAV_LEFT_WIDTHS).join(', ')}. Allowed right widths: ${Array.from(ALLOWED_NAV_RIGHT_WIDTHS).filter(Boolean).join(', ')}`,
+    })
+  }
+  return invalid
+}
 
 function listFiles(dir) {
   const out = []
@@ -68,13 +158,19 @@ function collectUntaggedIntrinsicElements(source) {
   const untagged = []
   const openingTagPattern = /<([a-z][a-z0-9-]*)(\s[^<>]*?)?(\/?)>/g
   const taggedAttrPattern = /\b(data-house-role|data-house-scope|data-ui)\s*=/
+  const TYPE_KEYWORD_TAGS = new Set(['typeof', 'keyof', 'infer'])
 
   for (const match of source.matchAll(openingTagPattern)) {
+    const tagName = String(match[1] || '').toLowerCase()
     const fullMatch = String(match[0] || '')
     const attrs = String(match[2] || '')
     const index = match.index ?? 0
 
     if (fullMatch.startsWith('</') || fullMatch.startsWith('<!--')) {
+      continue
+    }
+
+    if (TYPE_KEYWORD_TAGS.has(tagName)) {
       continue
     }
 
@@ -113,6 +209,58 @@ for (const dir of TARGET_DIRS) {
           message: rule.message,
         })
       }
+    }
+
+    const unsupportedDurationTokens = collectUnsupportedDurationTokens(source)
+    for (const item of unsupportedDurationTokens) {
+      const { line, col } = getLineAndCol(source, item.index)
+      violations.push({
+        file: relativePath,
+        line,
+        col,
+        rule: 'unsupported-duration-token',
+        snippet: item.snippet,
+        message: item.message,
+      })
+    }
+
+    const unsupportedNavGridWidths = collectUnsupportedNavGridWidths(source)
+    for (const item of unsupportedNavGridWidths) {
+      const { line, col } = getLineAndCol(source, item.index)
+      violations.push({
+        file: relativePath,
+        line,
+        col,
+        rule: 'unsupported-nav-grid-width',
+        snippet: item.snippet,
+        message: item.message,
+      })
+    }
+
+    const cardTitleOverrides = collectCardTitleSizeOverrides(source)
+    for (const item of cardTitleOverrides) {
+      const { line, col } = getLineAndCol(source, item.index)
+      violations.push({
+        file: relativePath,
+        line,
+        col,
+        rule: 'card-title-size-override',
+        snippet: item.snippet,
+        message: item.message,
+      })
+    }
+
+    const tableXsViolations = collectTableXsTypography(source)
+    for (const item of tableXsViolations) {
+      const { line, col } = getLineAndCol(source, item.index)
+      violations.push({
+        file: relativePath,
+        line,
+        col,
+        rule: 'table-text-xs-disallowed',
+        snippet: item.snippet,
+        message: item.message,
+      })
     }
 
     if (JSX_EXTENSIONS.has(extension)) {

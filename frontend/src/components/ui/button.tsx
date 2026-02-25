@@ -6,20 +6,20 @@ import { houseForms, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-[background-color,border-color,color,transform] duration-220 ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center whitespace-nowrap rounded-md ring-offset-background transition-[background-color,border-color,color,transform] duration-220 ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
-        secondary: 'bg-muted text-foreground hover:bg-muted/80',
-        outline: 'border border-[hsl(var(--tone-neutral-300))] bg-background text-[hsl(var(--tone-neutral-800))] hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]',
+        default: `${houseForms.actionButtonPrimary} ${houseTypography.buttonText}`,
+        secondary: `${houseForms.actionButton} ${houseTypography.buttonText}`,
+        outline: `border border-[hsl(var(--stroke-strong)/0.94)] bg-[hsl(var(--tone-neutral-50))] ${houseTypography.buttonText} text-[hsl(var(--tone-neutral-800))] hover:border-[hsl(var(--tone-accent-400)/0.88)] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]`,
         house: `${houseForms.actionButton} ${houseTypography.buttonText}`,
         housePrimary: `${houseForms.actionButtonPrimary} ${houseTypography.buttonText}`,
-        ghost: 'hover:bg-accent hover:text-accent-foreground',
-        destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+        ghost: `${houseTypography.buttonText} hover:bg-accent hover:text-accent-foreground`,
+        destructive: `${houseTypography.buttonText} bg-destructive text-destructive-foreground hover:bg-destructive/90`,
       },
       size: {
-        default: 'h-9 px-4 py-2',
+        default: `h-9 px-3 ${houseTypography.buttonText}`,
         sm: `h-9 rounded-md px-3 ${houseTypography.buttonText}`,
         lg: 'h-10 rounded-md px-8',
         icon: 'h-9 w-9',

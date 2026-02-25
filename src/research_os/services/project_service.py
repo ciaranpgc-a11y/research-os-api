@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+from typing import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -10,6 +11,7 @@ from research_os.db import (
     Manuscript,
     ManuscriptSnapshot,
     Project,
+    User,
     create_all_tables,
     session_scope,
 )
@@ -43,6 +45,43 @@ class ManuscriptSnapshotNotFoundError(RuntimeError):
 
 class ManuscriptSnapshotRestoreModeError(RuntimeError):
     """Raised when snapshot restore mode is invalid."""
+
+
+def _trim(value: str | None) -> str:
+    return str(value or "").strip()
+
+
+def _normalize_user_ids(values: Iterable[str] | None) -> list[str]:
+    source = list(values or [])
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in source:
+        user_id = _trim(value)
+        if not user_id or user_id in seen:
+            continue
+        seen.add(user_id)
+        deduped.append(user_id)
+    return deduped
+
+
+def _project_collaborator_ids(project: Project) -> list[str]:
+    raw = project.collaborator_user_ids if isinstance(project.collaborator_user_ids, list) else []
+    return _normalize_user_ids(str(item) for item in raw)
+
+
+def _project_is_accessible(project: Project, requesting_user_id: str | None) -> bool:
+    user_id = _trim(requesting_user_id)
+    if not user_id:
+        return True
+    if _trim(project.owner_user_id) == user_id:
+        return True
+    return user_id in _project_collaborator_ids(project)
+
+
+def _assert_project_access(project: Project, requesting_user_id: str | None) -> None:
+    if _project_is_accessible(project, requesting_user_id):
+        return
+    raise ProjectNotFoundError(f"Project '{project.id}' was not found.")
 
 
 def _utc_timestamp_label() -> str:
@@ -101,10 +140,26 @@ def create_project_record(
     language: str = "en-GB",
     study_type: str | None = None,
     study_brief: str | None = None,
+    owner_user_id: str | None = None,
+    collaborator_user_ids: list[str] | None = None,
+    workspace_id: str | None = None,
 ) -> Project:
     create_all_tables()
+    clean_owner_user_id = _trim(owner_user_id) or None
+    clean_collaborator_ids = _normalize_user_ids(collaborator_user_ids)
+    if clean_owner_user_id:
+        clean_collaborator_ids = [
+            item for item in clean_collaborator_ids if item != clean_owner_user_id
+        ]
     with session_scope() as session:
+        if clean_owner_user_id and session.get(User, clean_owner_user_id) is None:
+            raise ProjectNotFoundError(
+                f"Project owner user '{clean_owner_user_id}' was not found."
+            )
         project = Project(
+            owner_user_id=clean_owner_user_id,
+            collaborator_user_ids=clean_collaborator_ids,
+            workspace_id=_trim(workspace_id) or None,
             title=title,
             target_journal=target_journal,
             journal_voice=journal_voice,
@@ -119,23 +174,31 @@ def create_project_record(
         return project
 
 
-def list_project_records() -> list[Project]:
+def list_project_records(*, requesting_user_id: str | None = None) -> list[Project]:
     create_all_tables()
+    requested_user_id = _trim(requesting_user_id) or None
     with session_scope() as session:
         projects = session.scalars(
             select(Project).order_by(Project.updated_at.desc())
         ).all()
+        if requested_user_id:
+            projects = [
+                project
+                for project in projects
+                if _project_is_accessible(project, requested_user_id)
+            ]
         for project in projects:
             session.expunge(project)
         return projects
 
 
-def get_project_record(project_id: str) -> Project:
+def get_project_record(project_id: str, *, requesting_user_id: str | None = None) -> Project:
     create_all_tables()
     with session_scope() as session:
         project = session.get(Project, project_id)
         if project is None:
             raise ProjectNotFoundError(f"Project '{project_id}' was not found.")
+        _assert_project_access(project, requesting_user_id)
         session.expunge(project)
         return project
 
@@ -145,12 +208,14 @@ def create_manuscript_for_project(
     project_id: str,
     branch_name: str = "main",
     sections: list[str] | None = None,
+    requesting_user_id: str | None = None,
 ) -> Manuscript:
     create_all_tables()
     with session_scope() as session:
         project = session.get(Project, project_id)
         if project is None:
             raise ProjectNotFoundError(f"Project '{project_id}' was not found.")
+        _assert_project_access(project, requesting_user_id)
         try:
             manuscript = Manuscript(
                 project_id=project.id,
@@ -168,12 +233,15 @@ def create_manuscript_for_project(
             ) from exc
 
 
-def list_project_manuscripts(project_id: str) -> list[Manuscript]:
+def list_project_manuscripts(
+    project_id: str, *, requesting_user_id: str | None = None
+) -> list[Manuscript]:
     create_all_tables()
     with session_scope() as session:
         project = session.get(Project, project_id)
         if project is None:
             raise ProjectNotFoundError(f"Project '{project_id}' was not found.")
+        _assert_project_access(project, requesting_user_id)
         manuscripts = session.scalars(
             select(Manuscript)
             .where(Manuscript.project_id == project_id)
@@ -184,12 +252,15 @@ def list_project_manuscripts(project_id: str) -> list[Manuscript]:
         return manuscripts
 
 
-def get_project_manuscript(project_id: str, manuscript_id: str) -> Manuscript:
+def get_project_manuscript(
+    project_id: str, manuscript_id: str, *, requesting_user_id: str | None = None
+) -> Manuscript:
     create_all_tables()
     with session_scope() as session:
         project = session.get(Project, project_id)
         if project is None:
             raise ProjectNotFoundError(f"Project '{project_id}' was not found.")
+        _assert_project_access(project, requesting_user_id)
         manuscript = session.get(Manuscript, manuscript_id)
         if manuscript is None or manuscript.project_id != project_id:
             raise ManuscriptNotFoundError(
@@ -204,12 +275,14 @@ def update_project_manuscript_sections(
     project_id: str,
     manuscript_id: str,
     sections: dict[str, str],
+    requesting_user_id: str | None = None,
 ) -> Manuscript:
     create_all_tables()
     with session_scope() as session:
         project = session.get(Project, project_id)
         if project is None:
             raise ProjectNotFoundError(f"Project '{project_id}' was not found.")
+        _assert_project_access(project, requesting_user_id)
         manuscript = session.get(Manuscript, manuscript_id)
         if manuscript is None or manuscript.project_id != project_id:
             raise ManuscriptNotFoundError(
@@ -230,12 +303,14 @@ def create_manuscript_snapshot(
     manuscript_id: str,
     label: str | None = None,
     include_sections: list[str] | None = None,
+    requesting_user_id: str | None = None,
 ) -> ManuscriptSnapshot:
     create_all_tables()
     with session_scope() as session:
         project = session.get(Project, project_id)
         if project is None:
             raise ProjectNotFoundError(f"Project '{project_id}' was not found.")
+        _assert_project_access(project, requesting_user_id)
         manuscript = session.get(Manuscript, manuscript_id)
         if manuscript is None or manuscript.project_id != project_id:
             raise ManuscriptNotFoundError(
@@ -264,13 +339,18 @@ def create_manuscript_snapshot(
 
 
 def list_manuscript_snapshots(
-    project_id: str, manuscript_id: str, *, limit: int = 20
+    project_id: str,
+    manuscript_id: str,
+    *,
+    limit: int = 20,
+    requesting_user_id: str | None = None,
 ) -> list[ManuscriptSnapshot]:
     create_all_tables()
     with session_scope() as session:
         project = session.get(Project, project_id)
         if project is None:
             raise ProjectNotFoundError(f"Project '{project_id}' was not found.")
+        _assert_project_access(project, requesting_user_id)
         manuscript = session.get(Manuscript, manuscript_id)
         if manuscript is None or manuscript.project_id != project_id:
             raise ManuscriptNotFoundError(
@@ -301,12 +381,14 @@ def restore_manuscript_snapshot(
     snapshot_id: str,
     restore_mode: str = "replace",
     sections: list[str] | None = None,
+    requesting_user_id: str | None = None,
 ) -> Manuscript:
     create_all_tables()
     with session_scope() as session:
         project = session.get(Project, project_id)
         if project is None:
             raise ProjectNotFoundError(f"Project '{project_id}' was not found.")
+        _assert_project_access(project, requesting_user_id)
         manuscript = session.get(Manuscript, manuscript_id)
         if manuscript is None or manuscript.project_id != project_id:
             raise ManuscriptNotFoundError(
@@ -359,12 +441,14 @@ def export_project_manuscript_markdown(
     project_id: str,
     manuscript_id: str,
     include_empty_sections: bool = False,
+    requesting_user_id: str | None = None,
 ) -> tuple[str, str]:
     create_all_tables()
     with session_scope() as session:
         project = session.get(Project, project_id)
         if project is None:
             raise ProjectNotFoundError(f"Project '{project_id}' was not found.")
+        _assert_project_access(project, requesting_user_id)
         manuscript = session.get(Manuscript, manuscript_id)
         if manuscript is None or manuscript.project_id != project_id:
             raise ManuscriptNotFoundError(
@@ -413,3 +497,76 @@ def export_project_manuscript_markdown(
         )
         markdown = "\n".join(lines).strip() + "\n"
         return filename, markdown
+
+
+def resolve_user_ids_from_names(
+    *, names: list[str], exclude_user_id: str | None = None
+) -> list[str]:
+    clean_names = [name.strip() for name in names if str(name or "").strip()]
+    if not clean_names:
+        return []
+
+    lowered_to_original = {name.lower(): name for name in clean_names}
+    excluded = _trim(exclude_user_id)
+    resolved_ids: list[str] = []
+    create_all_tables()
+    with session_scope() as session:
+        users = session.scalars(select(User)).all()
+        for user in users:
+            user_name = _trim(user.name)
+            if not user_name:
+                continue
+            lookup_key = user_name.lower()
+            if lookup_key not in lowered_to_original:
+                continue
+            if excluded and _trim(user.id) == excluded:
+                continue
+            user_id = _trim(user.id)
+            if user_id and user_id not in resolved_ids:
+                resolved_ids.append(user_id)
+    return resolved_ids
+
+
+def get_workspace_run_context(
+    *, workspace_id: str, requesting_user_id: str
+) -> dict[str, str | list[str] | None]:
+    clean_workspace_id = _trim(workspace_id)
+    clean_user_id = _trim(requesting_user_id)
+    if not clean_workspace_id:
+        raise ProjectNotFoundError("Workspace id is required.")
+    if not clean_user_id:
+        raise ProjectNotFoundError("User id is required.")
+
+    create_all_tables()
+    with session_scope() as session:
+        projects = session.scalars(
+            select(Project)
+            .where(Project.workspace_id == clean_workspace_id)
+            .order_by(Project.updated_at.desc())
+        ).all()
+        project: Project | None = None
+        for candidate in projects:
+            if _project_is_accessible(candidate, clean_user_id):
+                project = candidate
+                break
+        if project is None:
+            return {
+                "workspace_id": clean_workspace_id,
+                "project_id": None,
+                "manuscript_id": None,
+                "owner_user_id": None,
+                "collaborator_user_ids": [],
+            }
+
+        manuscript = session.scalars(
+            select(Manuscript)
+            .where(Manuscript.project_id == project.id)
+            .order_by(Manuscript.updated_at.desc())
+        ).first()
+        return {
+            "workspace_id": clean_workspace_id,
+            "project_id": _trim(project.id) or None,
+            "manuscript_id": _trim(manuscript.id) if manuscript is not None else None,
+            "owner_user_id": _trim(project.owner_user_id) or None,
+            "collaborator_user_ids": _project_collaborator_ids(project),
+        }

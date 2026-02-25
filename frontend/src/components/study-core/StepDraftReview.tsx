@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { getAuthSessionToken } from '@/lib/auth-session'
 import { fetchManuscript, generateGroundedDraft, updateManuscriptSections } from '@/lib/study-core-api'
 import { manuscriptParagraphs } from '@/mock/manuscript'
 import type { ClaimLinkSuggestion } from '@/types/study-core'
@@ -70,7 +71,12 @@ export function StepDraftReview({
     if (!missingSection) {
       return
     }
-    void fetchManuscript(runContext.projectId, runContext.manuscriptId)
+    const token = getAuthSessionToken()
+    void fetchManuscript({
+      token: token || undefined,
+      projectId: runContext.projectId,
+      manuscriptId: runContext.manuscriptId,
+    })
       .then((payload) => {
         for (const section of sections) {
           const sectionText = payload.sections[section]
@@ -92,7 +98,9 @@ export function StepDraftReview({
     setBusySection(section)
     onError('')
     try {
+      const token = getAuthSessionToken()
       const payload = await generateGroundedDraft({
+        token: token || undefined,
         section,
         notesContext: generationBrief,
         styleProfile,
@@ -137,7 +145,9 @@ export function StepDraftReview({
     setBusySection(section)
     onError('')
     try {
+      const token = getAuthSessionToken()
       await updateManuscriptSections({
+        token: token || undefined,
         projectId: runContext.projectId,
         manuscriptId: runContext.manuscriptId,
         sections: { [section]: draft },

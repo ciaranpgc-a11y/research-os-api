@@ -3,6 +3,7 @@ from __future__ import annotations
 from research_os.services.project_service import (
     create_manuscript_for_project,
     create_project_record,
+    resolve_user_ids_from_names,
 )
 
 JOURNAL_PRESETS = (
@@ -246,6 +247,9 @@ def bootstrap_project_from_wizard(
     journal_voice: str | None,
     language: str,
     branch_name: str,
+    owner_user_id: str | None = None,
+    workspace_id: str | None = None,
+    collaborator_names: list[str] | None = None,
 ):
     inference = infer_wizard_state(target_journal, answers)
     resolved_voice = journal_voice or str(inference["journal_voice"])
@@ -258,6 +262,10 @@ def bootstrap_project_from_wizard(
     study_brief = (
         " | ".join(part.strip() for part in study_brief_parts if part.strip()) or None
     )
+    collaborator_user_ids = resolve_user_ids_from_names(
+        names=list(collaborator_names or []),
+        exclude_user_id=owner_user_id,
+    )
     project = create_project_record(
         title=title,
         target_journal=target_journal,
@@ -265,10 +273,14 @@ def bootstrap_project_from_wizard(
         language=language,
         study_type=str(inference["inferred_study_type"]),
         study_brief=study_brief,
+        owner_user_id=owner_user_id,
+        collaborator_user_ids=collaborator_user_ids,
+        workspace_id=workspace_id,
     )
     manuscript = create_manuscript_for_project(
         project_id=project.id,
         branch_name=branch_name,
         sections=list(inference["recommended_sections"]),
+        requesting_user_id=owner_user_id,
     )
     return project, manuscript, inference

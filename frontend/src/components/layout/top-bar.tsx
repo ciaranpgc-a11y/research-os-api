@@ -20,15 +20,15 @@ type TopBarProps = {
 }
 
 const topNavItemBase =
-  'inline-flex h-9 items-center rounded-md border border-transparent px-3 text-label font-medium leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))]'
-const topNavItemIdle =
-  'text-[hsl(var(--tone-neutral-700))] hover:border-[hsl(var(--tone-accent-200))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]'
-const topNavItemActive =
-  'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-100))] text-[hsl(var(--tone-accent-800))]'
+  'house-top-nav-item text-label focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))]'
+const topNavItemIdle = ''
+const topNavItemActive = 'house-top-nav-item-active'
+const topNavItemWorkspace = 'house-top-nav-item-workspace'
+const topNavItemProfile = 'house-top-nav-item-profile'
 const utilityButtonClass =
-  'h-9 border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))] hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))] focus-visible:ring-[hsl(var(--tone-accent-500))]'
+  'house-top-utility-button !border-0 focus-visible:ring-[hsl(var(--tone-accent-500))]'
 const searchInputClass =
-  'h-9 border-[hsl(var(--tone-neutral-300))] bg-card pl-9 text-label text-[hsl(var(--tone-neutral-800))] placeholder:text-[hsl(var(--tone-neutral-500))] focus-visible:border-[hsl(var(--tone-accent-300))] focus-visible:ring-[hsl(var(--tone-accent-500))]'
+  'h-9 bg-[hsl(var(--tone-neutral-100)/0.72)] pl-9 text-label text-[hsl(var(--tone-neutral-800))] placeholder:text-[hsl(var(--tone-neutral-500))] focus-visible:ring-[hsl(var(--tone-accent-500))]'
 
 export function TopBar({
   scope,
@@ -67,7 +67,7 @@ export function TopBar({
   return (
     <header className="border-b border-[hsl(var(--tone-neutral-200))] bg-card/95 backdrop-blur">
       <div className="flex h-14 items-center gap-3 px-3 nav:px-4">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-[12.5rem] shrink-0 items-center gap-2 xl:min-w-[15.5rem] 2xl:min-w-72">
           {showLeftNavButton ? (
             <TooltipProvider delayDuration={100}>
               <Tooltip>
@@ -83,12 +83,12 @@ export function TopBar({
           ) : null}
 
           <div className="flex min-w-0 items-center gap-2.5">
-            <AxiomosMark className="h-7 text-[hsl(var(--primary))]" />
-            <div className="min-w-0">
-              <span className="block truncate text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
+            <AxiomosMark className="h-7 w-auto shrink-0 text-[hsl(var(--primary))]" />
+            <div className="min-w-0 pr-1">
+              <span className="block whitespace-nowrap text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
                 Axiomos
               </span>
-              <span className="hidden truncate text-caption uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))] lg:block">
+              <span className="hidden whitespace-nowrap text-caption uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-500))] 2xl:block">
                 The Research Operating System
               </span>
             </div>
@@ -98,21 +98,21 @@ export function TopBar({
             <button
               type="button"
               onClick={() => navigate('/workspaces')}
-              className={cn(topNavItemBase, topNavItemIdle, scope === 'workspace' && topNavItemActive)}
+              className={cn(topNavItemBase, topNavItemWorkspace, topNavItemIdle, scope === 'workspace' && topNavItemActive)}
             >
               Workspaces
             </button>
             <button
               type="button"
               onClick={() => navigate('/profile')}
-              className={cn(topNavItemBase, topNavItemIdle, scope === 'account' && topNavItemActive)}
+              className={cn(topNavItemBase, topNavItemProfile, topNavItemIdle, scope === 'account' && topNavItemActive)}
             >
               Profile
             </button>
           </nav>
         </div>
 
-        <div className="mx-auto hidden w-full max-w-4xl items-center gap-2 md:flex">
+        <div className="mx-auto hidden w-full max-w-3xl items-center gap-2 md:flex">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--tone-neutral-500))]" />
             <Input

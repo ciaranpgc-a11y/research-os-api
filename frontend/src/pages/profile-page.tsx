@@ -100,7 +100,7 @@ export function ProfilePage() {
   const settings = readAccountSettings()
   return (
     <section data-house-role="page" className="space-y-4">
-      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderOverview)}>
         <h1 data-house-role="page-title" className={houseTypography.title}>Profile home</h1>
       </header>
 
@@ -122,7 +122,7 @@ export function ProfilePage() {
       <div className="grid gap-3 xl:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Citation executive summary</CardTitle>
+            <CardTitle>Citation executive summary</CardTitle>
             <CardDescription>Computed in Publications analytics and surfaced here only.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
@@ -149,7 +149,7 @@ export function ProfilePage() {
       <div className="grid gap-3 xl:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Integrations</CardTitle>
+            <CardTitle>Integrations</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p>
@@ -163,7 +163,7 @@ export function ProfilePage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Publications</CardTitle>
+            <CardTitle>Publications</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p>
@@ -180,7 +180,7 @@ export function ProfilePage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Impact</CardTitle>
+            <CardTitle>Impact</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p className="text-muted-foreground">
@@ -194,7 +194,7 @@ export function ProfilePage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Settings & preferences</CardTitle>
+            <CardTitle>Settings & preferences</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <p>
@@ -213,7 +213,7 @@ export function ProfilePage() {
       {!citationSummary ? (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Start profile data</CardTitle>
+            <CardTitle>Start profile data</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <ol className="list-decimal space-y-1 pl-5">
