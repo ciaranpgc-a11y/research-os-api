@@ -1517,31 +1517,31 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
   const bars = [
     {
       key: 'need-1',
-      label: '1',
+      label: '+1',
       needed: 1,
       count: candidateGaps.filter((gap) => gap === 1).length,
     },
     {
       key: 'need-2',
-      label: '2',
+      label: '+2',
       needed: 2,
       count: candidateGaps.filter((gap) => gap === 2).length,
     },
     {
       key: 'need-3',
-      label: '3',
+      label: '+3',
       needed: 3,
       count: candidateGaps.filter((gap) => gap === 3).length,
     },
     {
       key: 'need-4',
-      label: '4',
+      label: '+4',
       needed: 4,
       count: candidateGaps.filter((gap) => gap === 4).length,
     },
     {
       key: 'need-5-plus',
-      label: '5+',
+      label: '+5+',
       needed: 5,
       count: candidateGaps.filter((gap) => gap >= 5).length,
     },
@@ -1734,13 +1734,6 @@ function HIndexProgressBadge({
           Needed
         </button>
       </div>
-      <p className="text-[0.54rem] leading-[0.7rem] text-[hsl(var(--tone-neutral-500))]">
-        Citations needed (&lt;=1 / 2-3 / &gt;=4):
-        {' '}
-        {progressMeta.hasGapData
-          ? `${progressMeta.immediateCount} / ${progressMeta.nearCount} / ${progressMeta.longerCount}`
-          : 'n/a'}
-      </p>
     </div>
   )
 }
@@ -2298,11 +2291,7 @@ export function PublicationsTopStrip({
                   const hIndexMeta = buildHIndexProgressMeta(tile)
                   primaryValue = Number.isFinite(hIndexMeta.currentH) ? `h ${formatInt(hIndexMeta.currentH)}` : mainValueDisplay
                   secondaryText = `Progress to h ${formatInt(hIndexMeta.targetH)}`
-                  detailText = hIndexViewMode === 'needed'
-                    ? 'Citations needed (x-axis), number of papers (y-axis)'
-                    : hIndexMeta.hasGapData
-                      ? `Citations needed (<=1 / 2-3 / >=4): ${hIndexMeta.immediateCount} / ${hIndexMeta.nearCount} / ${hIndexMeta.longerCount}`
-                      : 'Citations-needed data not available'
+                  detailText = undefined
                   badgeNode = (
                     <HIndexProgressBadge
                       tile={tile}
