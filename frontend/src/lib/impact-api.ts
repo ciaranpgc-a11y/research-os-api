@@ -1,6 +1,7 @@
 import { API_BASE_URL } from '@/lib/api'
 import type { ApiErrorPayload } from '@/types/insight'
 import type {
+  AffiliationAddressResolutionPayload,
   AffiliationSuggestionsPayload,
   AuthEmailVerificationRequestPayload,
   AuthLoginChallengePayload,
@@ -239,6 +240,38 @@ export async function fetchAffiliationSuggestionsForMe(
       headers: authHeaders(token),
     },
     'Affiliation suggestions lookup failed',
+    { timeoutMs: 45_000, retryCount: 1 },
+  )
+}
+
+export async function fetchAffiliationAddressForMe(
+  token: string,
+  input: {
+    name: string
+    city?: string
+    region?: string
+    country?: string
+  },
+): Promise<AffiliationAddressResolutionPayload> {
+  const params = new URLSearchParams({
+    name: String(input.name || '').trim(),
+  })
+  if (String(input.city || '').trim()) {
+    params.set('city', String(input.city || '').trim())
+  }
+  if (String(input.region || '').trim()) {
+    params.set('region', String(input.region || '').trim())
+  }
+  if (String(input.country || '').trim()) {
+    params.set('country', String(input.country || '').trim())
+  }
+  return requestJson<AffiliationAddressResolutionPayload>(
+    `${API_BASE_URL}/v1/auth/me/affiliation-address?${params.toString()}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Affiliation address lookup failed',
     { timeoutMs: 45_000, retryCount: 1 },
   )
 }

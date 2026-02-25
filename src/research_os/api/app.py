@@ -24,6 +24,7 @@ from research_os.db import session_scope
 from research_os.api.schemas import (
     AnalysisScaffoldRequest,
     AnalysisScaffoldResponse,
+    AffiliationAddressResolutionResponse,
     AffiliationSuggestionItemResponse,
     AffiliationSuggestionsResponse,
     AuthLoginRequest,
@@ -182,6 +183,7 @@ from research_os.api.schemas import (
 from research_os.services.affiliation_suggestion_service import (
     AffiliationSuggestionValidationError,
     fetch_affiliation_suggestions,
+    resolve_affiliation_address,
 )
 from research_os.services.citation_service import (
     CitationRecordNotFoundError,
@@ -1153,6 +1155,42 @@ def v1_auth_me_affiliation_suggestions(
             limit=max(1, min(8, int(limit))),
             items=[AffiliationSuggestionItemResponse(**item) for item in items],
         )
+    except (AuthValidationError, AuthNotFoundError) as exc:
+        return _build_unauthorized_response(str(exc))
+    except AffiliationSuggestionValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/auth/me/affiliation-address",
+    response_model=AffiliationAddressResolutionResponse,
+    responses=UNAUTHORIZED_RESPONSES | BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_auth_me_affiliation_address(
+    request: Request,
+    name: str = Query(min_length=2),
+    city: str | None = Query(default=None),
+    region: str | None = Query(default=None),
+    country: str | None = Query(default=None),
+) -> AffiliationAddressResolutionResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        get_user_by_session_token(token)
+        resolved = resolve_affiliation_address(
+            name=name,
+            city=city,
+            region=region,
+            country=country,
+        )
+        if not resolved:
+            return AffiliationAddressResolutionResponse(
+                resolved=False,
+                name=str(name).strip(),
+            )
+        return AffiliationAddressResolutionResponse(**resolved)
     except (AuthValidationError, AuthNotFoundError) as exc:
         return _build_unauthorized_response(str(exc))
     except AffiliationSuggestionValidationError as exc:

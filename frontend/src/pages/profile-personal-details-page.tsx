@@ -6,8 +6,19 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
-import { fetchAffiliationSuggestionsForMe, fetchMe, fetchOrcidStatus, updateMe } from '@/lib/impact-api'
-import type { AffiliationSuggestionItemPayload, AuthUser, OrcidStatusPayload } from '@/types/impact'
+import {
+  fetchAffiliationAddressForMe,
+  fetchAffiliationSuggestionsForMe,
+  fetchMe,
+  fetchOrcidStatus,
+  updateMe,
+} from '@/lib/impact-api'
+import type {
+  AffiliationAddressResolutionPayload,
+  AffiliationSuggestionItemPayload,
+  AuthUser,
+  OrcidStatusPayload,
+} from '@/types/impact'
 
 type PersonalDetailsDraft = {
   salutation: string
@@ -46,6 +57,7 @@ type AffiliationSuggestionItem = {
   city: string | null
   region: string | null
   address: string | null
+  postalCode: string | null
   source: 'openalex' | 'ror'
 }
 
@@ -68,6 +80,7 @@ type AffiliationMetadataItem = {
   address: string
   city: string
   region: string
+  postalCode: string
   country: string
 }
 
@@ -174,6 +187,7 @@ function mapAffiliationSuggestionItem(
     toNullableAffiliationPart(raw.address)
     || buildAffiliationAddress({ city, region, countryName })
     || null
+  const postalCode = toNullableAffiliationPart(raw.postal_code)
   const label = sanitizeAffiliation(raw.label) || buildAffiliationSuggestionLabel({
     name,
     city,
@@ -188,7 +202,36 @@ function mapAffiliationSuggestionItem(
     city,
     region,
     address,
+    postalCode,
     source: raw.source === 'ror' ? 'ror' : 'openalex',
+  }
+}
+
+function mapAffiliationAddressResolution(
+  raw: AffiliationAddressResolutionPayload,
+): AffiliationMetadataItem | null {
+  if (!raw.resolved) {
+    return null
+  }
+  const line1 = sanitizeAffiliation(raw.line_1)
+  const city = sanitizeAffiliation(raw.city)
+  const region = sanitizeAffiliation(raw.region)
+  const postalCode = sanitizeAffiliation(raw.postal_code)
+  const country = sanitizeAffiliation(raw.country_name)
+  const address = line1 || buildAffiliationAddress({
+    city: toNullableAffiliationPart(city),
+    region: toNullableAffiliationPart(region),
+    countryName: toNullableAffiliationPart(country),
+  })
+  if (!address && !city && !region && !postalCode && !country) {
+    return null
+  }
+  return {
+    address: sanitizeAffiliation(address),
+    city,
+    region,
+    postalCode,
+    country,
   }
 }
 
@@ -543,6 +586,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [draggingPublicationAffiliationIndex, setDraggingPublicationAffiliationIndex] = useState<number | null>(null)
   const [aiPrimaryBusy, setAiPrimaryBusy] = useState(false)
   const [aiPublicationBusy, setAiPublicationBusy] = useState(false)
+  const [primaryAffiliationAddressResolving, setPrimaryAffiliationAddressResolving] = useState(false)
+  const [primaryAffiliationAddressError, setPrimaryAffiliationAddressError] = useState('')
   const [loading, setLoading] = useState(Boolean(fixture?.loading ?? !fixture))
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState(fixture?.status ?? '')
@@ -550,6 +595,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(initialStoredDetails?.updatedAt ?? null)
   const draftEditedRef = useRef(false)
   const emailEditedRef = useRef(false)
+  const primaryAddressLookupSequenceRef = useRef(0)
 
   useEffect(() => {
     if (!isFixtureMode) {
@@ -581,12 +627,15 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setDraggingPublicationAffiliationIndex(null)
     setAiPrimaryBusy(false)
     setAiPublicationBusy(false)
+    setPrimaryAffiliationAddressResolving(false)
+    setPrimaryAffiliationAddressError('')
     setLoading(Boolean(fixture?.loading))
     setStatus(fixture?.status ?? '')
     setError(fixture?.error ?? '')
     setLastSavedAt(stored?.updatedAt ?? null)
     draftEditedRef.current = false
     emailEditedRef.current = false
+    primaryAddressLookupSequenceRef.current = 0
   }, [fixture, isFixtureMode])
 
   useEffect(() => {
@@ -800,10 +849,15 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       address: sanitizeAffiliation(metadata?.address),
       city: sanitizeAffiliation(metadata?.city),
       region: sanitizeAffiliation(metadata?.region),
+      postalCode: sanitizeAffiliation(metadata?.postalCode),
       country: sanitizeAffiliation(metadata?.country),
     }
     const metadataAvailable = Boolean(
-      metadataPayload.address || metadataPayload.city || metadataPayload.region || metadataPayload.country,
+      metadataPayload.address
+      || metadataPayload.city
+      || metadataPayload.region
+      || metadataPayload.postalCode
+      || metadataPayload.country,
     )
     const cacheKey = clean.toLowerCase()
     draftEditedRef.current = true
@@ -814,6 +868,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       affiliationAddress: sanitizeAffiliation(current.affiliationAddress) || metadataPayload.address,
       affiliationCity: sanitizeAffiliation(current.affiliationCity) || metadataPayload.city,
       affiliationRegion: sanitizeAffiliation(current.affiliationRegion) || metadataPayload.region,
+      affiliationPostalCode: sanitizeAffiliation(current.affiliationPostalCode) || metadataPayload.postalCode,
       country:
         sanitizeAffiliation(current.country) ||
         (metadataAvailable ? metadataPayload.country : ''),
@@ -825,6 +880,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           address: metadataPayload.address,
           city: metadataPayload.city,
           region: metadataPayload.region,
+          postalCode: metadataPayload.postalCode,
           country: metadataPayload.country,
         },
       }))
@@ -835,7 +891,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setShowPublicationAffiliationComposer(false)
   }
 
-  const onApplyPrimaryAffiliationSuggestion = (suggestion: AffiliationSuggestionItem) => {
+  const onApplyPrimaryAffiliationSuggestion = async (suggestion: AffiliationSuggestionItem) => {
     const clean = sanitizeAffiliation(suggestion.name)
     if (!clean) {
       return
@@ -844,16 +900,19 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       address: sanitizeAffiliation(suggestion.address),
       city: sanitizeAffiliation(suggestion.city),
       region: sanitizeAffiliation(suggestion.region),
+      postalCode: sanitizeAffiliation(suggestion.postalCode),
       country: sanitizeAffiliation(suggestion.countryName),
     }
+    const normalizedKey = clean.toLowerCase()
     draftEditedRef.current = true
     setDraft((current) => ({
       ...current,
       organisation: clean,
-      affiliationAddress: sanitizeAffiliation(current.affiliationAddress) || metadata.address,
-      affiliationCity: sanitizeAffiliation(current.affiliationCity) || metadata.city,
-      affiliationRegion: sanitizeAffiliation(current.affiliationRegion) || metadata.region,
-      country: sanitizeAffiliation(current.country) || metadata.country,
+      affiliationAddress: metadata.address,
+      affiliationCity: metadata.city,
+      affiliationRegion: metadata.region,
+      affiliationPostalCode: metadata.postalCode,
+      country: metadata.country,
       publicationAffiliations: normalizeAffiliations([
         clean,
         ...current.publicationAffiliations,
@@ -861,11 +920,69 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     }))
     setAffiliationMetadataByName((current) => ({
       ...current,
-      [clean.toLowerCase()]: metadata,
+      [normalizedKey]: metadata,
     }))
     setPrimaryAffiliationInput('')
     setPrimaryAffiliationSuggestions([])
     setPrimaryAffiliationSuggestionsError('')
+    setPrimaryAffiliationAddressError('')
+
+    const cleanToken = trimValue(token)
+    if (!cleanToken) {
+      return
+    }
+    const requestId = primaryAddressLookupSequenceRef.current + 1
+    primaryAddressLookupSequenceRef.current = requestId
+    setPrimaryAffiliationAddressResolving(true)
+    try {
+      const resolved = await fetchAffiliationAddressForMe(cleanToken, {
+        name: clean,
+        city: metadata.city,
+        region: metadata.region,
+        country: metadata.country,
+      })
+      if (primaryAddressLookupSequenceRef.current !== requestId) {
+        return
+      }
+      const resolvedMetadata = mapAffiliationAddressResolution(resolved)
+      if (!resolvedMetadata) {
+        return
+      }
+      setAffiliationMetadataByName((current) => ({
+        ...current,
+        [normalizedKey]: {
+          ...current[normalizedKey],
+          ...resolvedMetadata,
+        },
+      }))
+      setDraft((current) => {
+        if (sanitizeAffiliation(current.organisation).toLowerCase() !== normalizedKey) {
+          return current
+        }
+        return {
+          ...current,
+          affiliationAddress: resolvedMetadata.address || current.affiliationAddress,
+          affiliationCity: resolvedMetadata.city || current.affiliationCity,
+          affiliationRegion: resolvedMetadata.region || current.affiliationRegion,
+          affiliationPostalCode: resolvedMetadata.postalCode || current.affiliationPostalCode,
+          country: resolvedMetadata.country || current.country,
+        }
+      })
+      setPrimaryAffiliationAddressError('')
+    } catch (lookupError) {
+      if (primaryAddressLookupSequenceRef.current !== requestId) {
+        return
+      }
+      const message =
+        lookupError instanceof Error
+          ? lookupError.message
+          : 'Address lookup could not resolve more detail.'
+      setPrimaryAffiliationAddressError(message)
+    } finally {
+      if (primaryAddressLookupSequenceRef.current === requestId) {
+        setPrimaryAffiliationAddressResolving(false)
+      }
+    }
   }
 
   const onSetPrimaryAffiliation = (value: string) => {
@@ -878,10 +995,11 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setDraft((current) => ({
       ...current,
       organisation: clean,
-      affiliationAddress: sanitizeAffiliation(metadata?.address) || current.affiliationAddress,
-      affiliationCity: sanitizeAffiliation(metadata?.city) || current.affiliationCity,
-      affiliationRegion: sanitizeAffiliation(metadata?.region) || current.affiliationRegion,
-      country: sanitizeAffiliation(metadata?.country) || current.country,
+      affiliationAddress: metadata ? sanitizeAffiliation(metadata.address) : current.affiliationAddress,
+      affiliationCity: metadata ? sanitizeAffiliation(metadata.city) : current.affiliationCity,
+      affiliationRegion: metadata ? sanitizeAffiliation(metadata.region) : current.affiliationRegion,
+      affiliationPostalCode: metadata ? sanitizeAffiliation(metadata.postalCode) : current.affiliationPostalCode,
+      country: metadata ? sanitizeAffiliation(metadata.country) : current.country,
     }))
   }
 
@@ -905,7 +1023,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         setStatus('No affiliation suggestions found for AI assist.')
         return
       }
-      onApplyPrimaryAffiliationSuggestion(best)
+      await onApplyPrimaryAffiliationSuggestion(best)
       setStatus(`AI assist set primary affiliation to ${best.name}.`)
     } catch (lookupError) {
       setError(
@@ -942,6 +1060,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           address: suggestion.address || '',
           city: suggestion.city || '',
           region: suggestion.region || '',
+          postalCode: suggestion.postalCode || '',
           country: suggestion.countryName || '',
         })
       }
@@ -1029,11 +1148,14 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setDraggingPublicationAffiliationIndex(null)
     setAiPrimaryBusy(false)
     setAiPublicationBusy(false)
+    setPrimaryAffiliationAddressResolving(false)
+    setPrimaryAffiliationAddressError('')
     setLastSavedAt(stored?.updatedAt ?? null)
     setStatus('')
     setError('')
     draftEditedRef.current = false
     emailEditedRef.current = false
+    primaryAddressLookupSequenceRef.current += 1
   }
 
   const onSave = async () => {
@@ -1341,7 +1463,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     <button
                       key={`primary:${suggestion.source}:${suggestion.name}:${suggestion.countryCode || ''}`}
                       type="button"
-                      onClick={() => onApplyPrimaryAffiliationSuggestion(suggestion)}
+                      onClick={() => {
+                        void onApplyPrimaryAffiliationSuggestion(suggestion)
+                      }}
                       className="rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-800))]"
                       title={suggestion.label}
                     >
@@ -1354,9 +1478,15 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 <p className="text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationSuggestionsError}</p>
               ) : (
                 <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
-                  AI assist ranks OpenAlex and ROR institution matches and can auto-fill city, region, and country.
+                  AI assist ranks OpenAlex and ROR institution matches, then resolves fuller address details using OpenStreetMap.
                 </p>
               )}
+              {primaryAffiliationAddressResolving ? (
+                <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Resolving full address details...</p>
+              ) : null}
+              {primaryAffiliationAddressError ? (
+                <p className="text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationAddressError}</p>
+              ) : null}
             </div>
 
             <label className="space-y-1 sm:col-span-2">
@@ -1495,6 +1625,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                         address: suggestion.address || '',
                         city: suggestion.city || '',
                         region: suggestion.region || '',
+                        postalCode: suggestion.postalCode || '',
                         country: suggestion.countryName || '',
                       })}
                       className="rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-800))]"
@@ -1566,7 +1697,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             <p className="text-micro text-[hsl(var(--tone-warning-700))]">{publicationAffiliationSuggestionsError}</p>
           ) : (
             <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
-              AI suggestions and OpenAlex plus ROR lookup are used to reduce manual typing and keep affiliation ordering publication-ready.
+              AI suggestions use OpenAlex and ROR institution lookup, with OpenStreetMap fallback for richer address details.
             </p>
           )}
         </CardContent>

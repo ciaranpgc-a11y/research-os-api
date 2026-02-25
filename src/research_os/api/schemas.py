@@ -776,6 +776,7 @@ class AffiliationSuggestionItemResponse(BaseModel):
     city: str | None = None
     region: str | None = None
     address: str | None = None
+    postal_code: str | None = None
     source: Literal["openalex", "ror"]
 
 
@@ -783,6 +784,19 @@ class AffiliationSuggestionsResponse(BaseModel):
     query: str
     limit: int
     items: list[AffiliationSuggestionItemResponse] = Field(default_factory=list)
+
+
+class AffiliationAddressResolutionResponse(BaseModel):
+    resolved: bool
+    name: str
+    line_1: str | None = None
+    city: str | None = None
+    region: str | None = None
+    postal_code: str | None = None
+    country_name: str | None = None
+    country_code: str | None = None
+    formatted: str | None = None
+    source: Literal["openstreetmap"] | None = None
 
 
 class AuthRegisterRequest(BaseModel):

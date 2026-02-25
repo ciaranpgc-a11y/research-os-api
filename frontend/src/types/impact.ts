@@ -26,6 +26,7 @@ export type AffiliationSuggestionItemPayload = {
   city: string | null
   region: string | null
   address: string | null
+  postal_code: string | null
   source: 'openalex' | 'ror'
 }
 
@@ -33,6 +34,19 @@ export type AffiliationSuggestionsPayload = {
   query: string
   limit: number
   items: AffiliationSuggestionItemPayload[]
+}
+
+export type AffiliationAddressResolutionPayload = {
+  resolved: boolean
+  name: string
+  line_1: string | null
+  city: string | null
+  region: string | null
+  postal_code: string | null
+  country_name: string | null
+  country_code: string | null
+  formatted: string | null
+  source: 'openstreetmap' | null
 }
 
 export type AuthLoginChallengePayload = {
