@@ -2,24 +2,25 @@ import * as React from 'react'
 import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
 
+import { houseSurfaces, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-[background-color,border-color,color,transform] duration-220 ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {
         default: 'bg-primary text-primary-foreground hover:bg-primary/90',
         secondary: 'bg-muted text-foreground hover:bg-muted/80',
         outline: 'border border-border bg-background hover:bg-accent hover:text-accent-foreground',
-        house: 'border border-[hsl(var(--tone-neutral-300))] bg-background text-[hsl(var(--tone-neutral-800))] hover:border-[hsl(var(--tone-neutral-400))] hover:bg-[hsl(var(--tone-neutral-100))]',
+        house: `${houseSurfaces.softPanel} ${houseTypography.text} border-[hsl(var(--tone-neutral-300))] hover:border-[hsl(var(--tone-neutral-400))] hover:bg-[hsl(var(--tone-neutral-100))]`,
         housePrimary: 'bg-[hsl(var(--tone-neutral-900))] text-white hover:bg-[hsl(var(--tone-neutral-800))]',
         ghost: 'hover:bg-accent hover:text-accent-foreground',
         destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
       },
       size: {
         default: 'h-9 px-4 py-2',
-        sm: 'h-8 rounded-md px-3 text-xs',
+        sm: `h-8 rounded-md px-3 ${houseTypography.textSoft}`,
         lg: 'h-10 rounded-md px-8',
         icon: 'h-9 w-9',
       },

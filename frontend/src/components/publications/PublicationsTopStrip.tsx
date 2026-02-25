@@ -14,7 +14,12 @@ import type {
 } from '@/types/impact'
 
 import { dashboardTileStyles } from './dashboard-tile-styles'
-import { publicationsHouseHeadings } from './publications-house-style'
+import {
+  publicationsHouseCharts,
+  publicationsHouseHeadings,
+  publicationsHouseMotion,
+  publicationsHouseSurfaces,
+} from './publications-house-style'
 
 type PublicationsTopStripProps = {
   metrics: PublicationsTopMetricsPayload | null
@@ -89,17 +94,33 @@ const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label:
   { value: '5y', label: '5y' },
   { value: 'all', label: 'All' },
 ]
+const HOUSE_HEADING_TITLE_CLASS = publicationsHouseHeadings.title
 const HOUSE_HEADING_H1_CLASS = publicationsHouseHeadings.h1
 const HOUSE_HEADING_H1_SOFT_CLASS = publicationsHouseHeadings.h1Soft
 const HOUSE_HEADING_H2_CLASS = publicationsHouseHeadings.h2
 const HOUSE_HEADING_H3_CLASS = publicationsHouseHeadings.h3
+const HOUSE_TEXT_CLASS = publicationsHouseHeadings.text
+const HOUSE_TEXT_SOFT_CLASS = publicationsHouseHeadings.textSoft
 const HOUSE_HEADING_LABEL_CLASS = publicationsHouseHeadings.label
-const HOUSE_CHART_TRANSITION_CLASS = 'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pt-4 transition-[opacity,transform,filter] duration-320 ease-out'
-const HOUSE_CHART_ENTERED_CLASS = 'opacity-100 translate-y-0 scale-100 blur-0'
-const HOUSE_CHART_EXITED_CLASS = 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]'
-const HOUSE_TOGGLE_TRACK_CLASS = 'relative isolate inline-grid items-center overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5'
-const HOUSE_TOGGLE_THUMB_CLASS = 'pointer-events-none absolute inset-y-0.5 z-0 rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-[left,width] duration-320 ease-out'
-const HOUSE_TOGGLE_BUTTON_CLASS = 'relative z-[1] rounded-full px-2.5 py-1 text-[0.68rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]'
+const HOUSE_CHART_TRANSITION_CLASS = publicationsHouseMotion.chartPanel
+const HOUSE_CHART_ENTERED_CLASS = publicationsHouseMotion.chartEnter
+const HOUSE_CHART_EXITED_CLASS = publicationsHouseMotion.chartExit
+const HOUSE_TOGGLE_TRACK_CLASS = publicationsHouseMotion.toggleTrack
+const HOUSE_TOGGLE_THUMB_CLASS = publicationsHouseMotion.toggleThumb
+const HOUSE_TOGGLE_BUTTON_CLASS = publicationsHouseMotion.toggleButton
+const HOUSE_LABEL_TRANSITION_CLASS = publicationsHouseMotion.labelTransition
+const HOUSE_SURFACE_TOP_PANEL_CLASS = publicationsHouseSurfaces.topPanel
+const HOUSE_SURFACE_SECTION_PANEL_CLASS = publicationsHouseSurfaces.sectionPanel
+const HOUSE_SURFACE_SOFT_PANEL_CLASS = publicationsHouseSurfaces.softPanel
+const HOUSE_SURFACE_LEFT_BORDER_CLASS = publicationsHouseSurfaces.leftBorder
+const HOUSE_CHART_BAR_ACCENT_CLASS = publicationsHouseCharts.barAccent
+const HOUSE_CHART_BAR_POSITIVE_CLASS = publicationsHouseCharts.barPositive
+const HOUSE_CHART_BAR_WARNING_CLASS = publicationsHouseCharts.barWarning
+const HOUSE_CHART_BAR_NEUTRAL_CLASS = publicationsHouseCharts.barNeutral
+const HOUSE_CHART_BAR_CURRENT_CLASS = publicationsHouseCharts.barCurrent
+const HOUSE_CHART_GRID_LINE_CLASS = publicationsHouseCharts.gridLine
+const HOUSE_CHART_GRID_DASHED_CLASS = publicationsHouseCharts.gridDashed
+const HOUSE_CHART_AXIS_TEXT_CLASS = publicationsHouseCharts.axisText
 
 const MAX_PUBLICATION_CHART_BARS = 12
 
@@ -535,15 +556,15 @@ function relationVsMean(value: number, meanValue: number | null): TotalCitations
 
 function totalCitationsBarToneClass(bar: TotalCitationsBar): string {
   if (bar.isYtd) {
-    return 'border border-dashed border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))]'
+    return HOUSE_CHART_BAR_CURRENT_CLASS
   }
   if (bar.relation === 'above') {
-    return 'bg-[hsl(var(--tone-positive-600))]'
+    return HOUSE_CHART_BAR_POSITIVE_CLASS
   }
   if (bar.relation === 'below') {
-    return 'bg-[hsl(var(--tone-warning-500))]'
+    return HOUSE_CHART_BAR_WARNING_CLASS
   }
-  return 'bg-[hsl(var(--tone-neutral-400))]'
+  return HOUSE_CHART_BAR_NEUTRAL_CLASS
 }
 
 function buildTotalCitationsChartModel(tile: PublicationMetricTilePayload): TotalCitationsChartModel {
@@ -652,14 +673,14 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
           {[25, 50, 75].map((pct) => (
             <div
               key={`grid-${pct}`}
-              className="pointer-events-none absolute inset-x-0 border-t border-[hsl(var(--tone-neutral-200))]"
+              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
               style={{ bottom: `${pct}%` }}
               aria-hidden="true"
             />
           ))}
           {meanLinePercent !== null ? (
             <div
-              className="pointer-events-none absolute inset-x-0 border-t border-dashed border-[hsl(var(--tone-neutral-400))]"
+              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_DASHED_CLASS)}
               style={{ bottom: `${meanLinePercent}%` }}
               aria-hidden="true"
             />
@@ -771,8 +792,8 @@ function TotalCitationsTile({
           >
             {primaryValue}
           </p>
-          <p className="mt-1 text-[0.72rem] font-medium leading-4 text-[hsl(var(--tone-neutral-700))]">Lifetime citations</p>
-          <p className="text-[0.62rem] leading-4 text-[hsl(var(--tone-neutral-500))]">Last 5 years shown</p>
+          <p className={cn('mt-1', HOUSE_TEXT_CLASS)}>Lifetime citations</p>
+          <p className={HOUSE_TEXT_SOFT_CLASS}>Last 5 years shown</p>
         </div>
 
         <div className="min-h-0">
@@ -846,9 +867,9 @@ function StructuredMetricTile({
           >
             {primaryValue}
           </p>
-          <p className="mt-1 text-[0.72rem] font-medium leading-4 text-[hsl(var(--tone-neutral-700))]">{subtitle}</p>
+          <p className={cn('mt-1', HOUSE_TEXT_CLASS)}>{subtitle}</p>
           {typeof detail === 'string'
-            ? <p className="text-[0.62rem] leading-4 text-[hsl(var(--tone-neutral-500))]">{detail}</p>
+            ? <p className={HOUSE_TEXT_SOFT_CLASS}>{detail}</p>
             : detail
               ? <div className="pt-0.5">{detail}</div>
               : null}
@@ -936,7 +957,7 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
           {[25, 50, 75].map((pct) => (
             <div
               key={`h-grid-${pct}`}
-              className="pointer-events-none absolute inset-x-0 border-t border-[hsl(var(--tone-neutral-200))]"
+              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
               style={{ bottom: `${pct}%` }}
               aria-hidden="true"
             />
@@ -946,8 +967,8 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
               const heightPct = bar.value <= 0 ? 3 : Math.max(6, (Math.max(0, bar.value) / scaledMax) * 100)
               const isActive = hoveredIndex === index
               const toneClass = bar.current
-                ? 'border border-dashed border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))]'
-                : 'bg-[hsl(var(--tone-accent-500))]'
+                ? HOUSE_CHART_BAR_CURRENT_CLASS
+                : HOUSE_CHART_BAR_ACCENT_CLASS
               return (
                 <div
                   key={`${bar.year}-${index}`}
@@ -1310,12 +1331,14 @@ function PublicationsPerYearChart({
               </button>
             ))}
           </div>
-          <p
-            className={cn(
-              'min-h-[0.9rem] text-[0.56rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-600))] transition-opacity duration-200',
-              periodHintVisible ? 'opacity-100' : 'opacity-0',
-            )}
-            aria-live="polite"
+            <p
+              className={cn(
+                'min-h-[0.9rem]',
+                HOUSE_HEADING_LABEL_CLASS,
+                HOUSE_LABEL_TRANSITION_CLASS,
+                periodHintVisible ? 'opacity-100' : 'opacity-0',
+              )}
+              aria-live="polite"
           >
             {periodHintText}
           </p>
@@ -1351,13 +1374,13 @@ function PublicationsPerYearChart({
           {gridTickValues.map((tickValue) => (
             <div
               key={`pub-grid-${tickValue}`}
-              className="pointer-events-none absolute inset-x-0 border-t border-[hsl(var(--tone-neutral-200))]"
+              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
               style={{ bottom: `${(tickValue / axisMax) * 100}%` }}
               aria-hidden="true"
             />
           ))}
           <div
-            className="pointer-events-none absolute inset-x-0 border-t border-dashed border-[hsl(var(--tone-neutral-400))]"
+            className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_DASHED_CLASS)}
             style={{ bottom: `${Math.max(0, Math.min(100, (Math.max(0, meanValue) / axisMax) * 100))}%` }}
             aria-hidden="true"
           />
@@ -1367,12 +1390,12 @@ function PublicationsPerYearChart({
               const isActive = hoveredIndex === index
               const relative = bar.value >= meanValue * 1.1 ? 'above' : bar.value <= meanValue * 0.9 ? 'below' : 'near'
               const toneClass = bar.current
-                ? 'border border-dashed border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))]'
+                ? HOUSE_CHART_BAR_CURRENT_CLASS
                 : relative === 'above'
-                  ? 'bg-[hsl(var(--tone-positive-600))]'
+                  ? HOUSE_CHART_BAR_POSITIVE_CLASS
                   : relative === 'below'
-                    ? 'bg-[hsl(var(--tone-warning-500))]'
-                    : 'bg-[hsl(var(--tone-accent-500))]'
+                    ? HOUSE_CHART_BAR_WARNING_CLASS
+                    : HOUSE_CHART_BAR_ACCENT_CLASS
               return (
                 <div
                   key={`${bar.key}-${index}`}
@@ -1865,7 +1888,7 @@ function MomentumTilePanel({
           {[25, 50, 75].map((pct) => (
             <div
               key={`momentum-grid-${pct}`}
-              className="pointer-events-none absolute inset-x-0 border-t border-[hsl(var(--tone-neutral-200))]"
+              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
               style={{ bottom: `${pct}%` }}
               aria-hidden="true"
             />
@@ -1876,7 +1899,7 @@ function MomentumTilePanel({
               const heightPct = animatedValue <= 0 ? 5 : Math.max(10, (Math.max(0, animatedValue) / animatedMax) * 100)
               const isActive = hoveredIndex === index
               const yOffset = isActive ? -1 : 0
-              const toneClass = bar.recent ? 'bg-[hsl(var(--tone-positive-600))]' : 'bg-[hsl(var(--tone-accent-500))]'
+              const toneClass = bar.recent ? HOUSE_CHART_BAR_POSITIVE_CLASS : HOUSE_CHART_BAR_ACCENT_CLASS
               return (
                 <div
                   key={bar.key}
@@ -1918,11 +1941,12 @@ function MomentumTilePanel({
             <div
               key={`${bar.key}-axis`}
               className={cn(
-                'leading-none text-center transition-[opacity,transform] duration-220 ease-out',
+                'leading-none text-center',
+                HOUSE_LABEL_TRANSITION_CLASS,
                 labelsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-0.5',
               )}
             >
-              <p className="whitespace-nowrap text-center text-[0.6rem] font-semibold text-[hsl(var(--tone-neutral-600))]">
+              <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'whitespace-nowrap text-center')}>
                 {bar.label}
               </p>
               <p
@@ -2031,7 +2055,7 @@ function FieldPercentilePanel({
           {[25, 50, 75].map((pct) => (
             <div
               key={`field-percentile-grid-${pct}`}
-              className="pointer-events-none absolute inset-x-0 border-t border-[hsl(var(--tone-neutral-200))]"
+              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
               style={{ bottom: `${pct}%` }}
               aria-hidden="true"
             />
@@ -2054,7 +2078,8 @@ function FieldPercentilePanel({
               </span>
               <span
                 className={cn(
-                  'block w-full rounded bg-[hsl(var(--tone-positive-600))] transition-[transform,filter,box-shadow] duration-220 ease-out',
+                  'block w-full rounded transition-[transform,filter,box-shadow] duration-220 ease-out',
+                  HOUSE_CHART_BAR_POSITIVE_CLASS,
                   hovered && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
                 )}
                 style={{
@@ -2069,11 +2094,12 @@ function FieldPercentilePanel({
         <div className="pointer-events-none absolute inset-x-2 bottom-1 min-h-[1.22rem]">
           <div
             className={cn(
-              'leading-none text-center transition-[opacity,transform] duration-220 ease-out',
+              'leading-none text-center',
+              HOUSE_LABEL_TRANSITION_CLASS,
               labelsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-0.5',
             )}
           >
-            <p className="whitespace-nowrap text-center text-[0.6rem] font-semibold text-[hsl(var(--tone-neutral-600))]">
+            <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'whitespace-nowrap text-center')}>
               {barLabel}
             </p>
             <p
@@ -2137,10 +2163,10 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
   }
 
   const rows = [
-    { key: 'first', label: 'First authorship', value: Math.round(firstAuthorshipPct), tone: 'bg-[hsl(var(--tone-accent-500))]' },
+    { key: 'first', label: 'First authorship', value: Math.round(firstAuthorshipPct), tone: HOUSE_CHART_BAR_ACCENT_CLASS },
     { key: 'second', label: 'Second authorship', value: Math.round(secondAuthorshipPct), tone: 'bg-[hsl(var(--tone-neutral-500))]' },
-    { key: 'senior', label: 'Senior authorship', value: Math.round(seniorAuthorshipPct), tone: 'bg-[hsl(var(--tone-warning-500))]' },
-    { key: 'leadership', label: 'Leadership index', value: Math.round(leadershipIndexPct), tone: 'bg-[hsl(var(--tone-positive-600))]' },
+    { key: 'senior', label: 'Senior authorship', value: Math.round(seniorAuthorshipPct), tone: HOUSE_CHART_BAR_WARNING_CLASS },
+    { key: 'leadership', label: 'Leadership index', value: Math.round(leadershipIndexPct), tone: HOUSE_CHART_BAR_POSITIVE_CLASS },
   ]
 
   return (
@@ -2214,8 +2240,8 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
 
   const rows = [
     { key: 'collaborators', label: 'Unique collaborators', value: uniqueCollaborators, unit: 'count', tone: 'bg-[hsl(var(--tone-accent-600))]' },
-    { key: 'repeat_rate', label: 'Repeat collaborator rate', value: repeatRatePct, unit: 'percent', tone: 'bg-[hsl(var(--tone-positive-600))]' },
-    { key: 'institutions', label: 'Institutions', value: institutions, unit: 'count', tone: 'bg-[hsl(var(--tone-warning-500))]' },
+    { key: 'repeat_rate', label: 'Repeat collaborator rate', value: repeatRatePct, unit: 'percent', tone: HOUSE_CHART_BAR_POSITIVE_CLASS },
+    { key: 'institutions', label: 'Institutions', value: institutions, unit: 'count', tone: HOUSE_CHART_BAR_WARNING_CLASS },
     { key: 'countries', label: 'Countries', value: countries, unit: 'count', tone: 'bg-[hsl(var(--tone-neutral-500))]' },
   ] as const
 
@@ -2503,9 +2529,9 @@ function TotalPublicationsDrilldownWorkspace({
   const unknownYearCount = publications.filter((record) => record.year === null).length
   const ytdCountRaw = Number((tile.chart_data || {}).current_year_ytd)
   const ytdCount = Number.isFinite(ytdCountRaw) ? Math.max(0, Math.round(ytdCountRaw)) : 0
-  const workspaceSectionClass = 'rounded-md bg-[hsl(var(--tone-neutral-50)/0.34)] p-3'
-  const workspacePanelClass = 'rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background px-3 py-2.5'
-  const workspacePanelCompactClass = 'rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background p-2'
+  const workspaceSectionClass = HOUSE_SURFACE_SECTION_PANEL_CLASS
+  const workspacePanelClass = cn(HOUSE_SURFACE_SOFT_PANEL_CLASS, 'px-3 py-2.5')
+  const workspacePanelCompactClass = cn(HOUSE_SURFACE_SOFT_PANEL_CLASS, 'p-2')
   const workspaceHeadingClass = HOUSE_HEADING_H1_SOFT_CLASS
   const workspaceSubheadingClass = HOUSE_HEADING_H1_SOFT_CLASS
 
@@ -2752,7 +2778,7 @@ function TotalPublicationsDrilldownWorkspace({
               <div className="relative min-w-[42.5rem]">
                 <div className="absolute inset-x-0 top-0 h-28">
                   {[25, 50, 75].map((pct) => (
-                    <div key={`breakdown-grid-${pct}`} className="absolute inset-x-0 border-t border-[hsl(var(--tone-neutral-200))]" style={{ top: `${pct}%` }} />
+                    <div key={`breakdown-grid-${pct}`} className={cn('absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)} style={{ top: `${pct}%` }} />
                   ))}
                 </div>
                 <div className="relative flex h-28 items-end gap-1">
@@ -2776,7 +2802,7 @@ function TotalPublicationsDrilldownWorkspace({
                         <span
                           className={cn(
                             'block w-full rounded transition-[height,filter] duration-220 ease-out',
-                            isSelected ? 'bg-[hsl(var(--tone-accent-700))]' : 'bg-[hsl(var(--tone-accent-500))]',
+                            isSelected ? 'bg-[hsl(var(--tone-accent-700))]' : HOUSE_CHART_BAR_ACCENT_CLASS,
                           )}
                           style={{ height: `${heightPct}%` }}
                         />
@@ -2913,7 +2939,7 @@ function TotalPublicationsDrilldownWorkspace({
               </thead>
               <tbody>
                 {sortedPublications.slice(0, 120).map((record) => (
-                  <tr key={`paper-row-${record.workId}`} className="border-t border-[hsl(var(--tone-neutral-200))] text-[hsl(var(--tone-neutral-700))]">
+                  <tr key={`paper-row-${record.workId}`} className={cn(HOUSE_CHART_GRID_LINE_CLASS, 'text-[hsl(var(--tone-neutral-700))]')}>
                     <td className="px-2 py-1.5">{record.year || 'n/a'}</td>
                     <td className="px-2 py-1.5">
                       <span className="line-clamp-1">{record.title}</span>
@@ -3186,7 +3212,7 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
           {[25, 50, 75].map((pct) => (
             <div
               key={`h-needed-grid-${pct}`}
-              className="pointer-events-none absolute inset-x-0 border-t border-[hsl(var(--tone-neutral-200))]"
+              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
               style={{ bottom: `${pct}%` }}
               aria-hidden="true"
             />
@@ -3196,10 +3222,10 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
               const heightPct = bar.count <= 0 ? 3 : Math.max(6, (Math.max(0, bar.count) / scaledMax) * 100)
               const isActive = hoveredIndex === index
               const toneClass = bar.needed <= 1
-                ? 'bg-[hsl(var(--tone-positive-600))]'
+                ? HOUSE_CHART_BAR_POSITIVE_CLASS
                 : bar.needed <= 3
-                  ? 'bg-[hsl(var(--tone-accent-500))]'
-                  : 'bg-[hsl(var(--tone-warning-500))]'
+                  ? HOUSE_CHART_BAR_ACCENT_CLASS
+                  : HOUSE_CHART_BAR_WARNING_CLASS
               return (
                 <div
                   key={bar.key}
@@ -3278,7 +3304,7 @@ function HIndexProgressInline({ tile }: { tile: PublicationMetricTilePayload }) 
       <div className="flex items-center gap-2">
         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
           <div
-            className="h-full rounded-full bg-[hsl(var(--tone-positive-600))] transition-[width] duration-500 ease-out"
+            className={cn('h-full rounded-full transition-[width] duration-500 ease-out', HOUSE_CHART_BAR_POSITIVE_CLASS)}
             style={{ width: `${progressMeta.progressPct}%` }}
             aria-hidden="true"
           />
@@ -3433,7 +3459,7 @@ function MiniBars({
         return (
           <div
             key={`${index}-${value}`}
-            className={cn('w-full rounded-sm bg-[hsl(var(--tone-accent-400))]', highlighted && 'bg-[hsl(var(--tone-positive-600))]')}
+            className={cn('w-full rounded-sm bg-[hsl(var(--tone-accent-400))]', highlighted && HOUSE_CHART_BAR_POSITIVE_CLASS)}
             style={{ height }}
           />
         )
@@ -3720,7 +3746,7 @@ export function PublicationsTopStrip({
               <span>{insightsVisible ? 'Visible' : 'Not visible'}</span>
             </button>
           </div>
-          <div className="rounded-sm bg-[hsl(var(--tone-neutral-50)/0.34)] px-2.5 py-1.5">
+          <div className={cn(HOUSE_SURFACE_TOP_PANEL_CLASS, 'px-2.5 py-1.5')}>
             <p className={HOUSE_HEADING_H1_CLASS}>
               Publication insights
             </p>
@@ -4042,7 +4068,7 @@ export function PublicationsTopStrip({
               })}
             </div>
           )}
-          <div className="rounded-sm bg-[hsl(var(--tone-neutral-50)/0.34)] px-2 py-2">
+          <div className={cn(HOUSE_SURFACE_TOP_PANEL_CLASS, 'px-2 py-2')}>
             <div className="flex flex-wrap items-start justify-between gap-2">
               <p className={cn(HOUSE_HEADING_H1_SOFT_CLASS, 'pt-1')}>
                 Tools
@@ -4085,10 +4111,10 @@ export function PublicationsTopStrip({
         <SheetContent side="right" className="w-full overflow-y-auto p-4 sm:max-w-sz-560">
           {activeTile ? (
             <div className="space-y-4 pr-8">
-              <div>
-                <h3 className="text-lg font-semibold">{activeTile.drilldown.title}</h3>
-                <p className="text-sm text-muted-foreground">{activeTile.drilldown.definition}</p>
-                {detailLoading ? <p className="mt-2 text-xs text-muted-foreground">Loading metric detail...</p> : null}
+              <div className={HOUSE_SURFACE_LEFT_BORDER_CLASS}>
+                <h3 className={HOUSE_HEADING_TITLE_CLASS}>{activeTile.drilldown.title}</h3>
+                <p className={cn(HOUSE_TEXT_CLASS, 'mt-1')}>{activeTile.drilldown.definition}</p>
+                {detailLoading ? <p className={cn('mt-2', HOUSE_TEXT_SOFT_CLASS)}>Loading metric detail...</p> : null}
                 {detailError ? <p className="mt-2 text-xs text-amber-700">{detailError}</p> : null}
               </div>
               <Tabs
@@ -4096,7 +4122,7 @@ export function PublicationsTopStrip({
                 onValueChange={(value) => setActiveDrilldownTab(value as DrilldownTab)}
                 className="w-full"
               >
-                <TabsList className="grid h-auto w-full grid-cols-5 gap-1 rounded-md bg-[hsl(var(--tone-neutral-50)/0.34)] p-1">
+                <TabsList className={cn(HOUSE_SURFACE_TOP_PANEL_CLASS, 'grid h-auto w-full grid-cols-5 gap-1 rounded-md p-1')}>
                   {DRILLDOWN_TABS.map((tab) => (
                     <TabsTrigger
                       key={tab.value}

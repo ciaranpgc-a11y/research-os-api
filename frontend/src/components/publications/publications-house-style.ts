@@ -1,20 +1,44 @@
+import { houseChartColors, houseMotion, houseSurfaces, houseTypography } from '@/lib/house-style'
+
 export const publicationsHouseHeadings = {
-  // Page-level heading (e.g., "Publications").
-  title: 'text-2xl font-semibold tracking-tight text-foreground',
-
-  // Primary section heading (e.g., "Publication insights").
-  h1: 'text-[0.76rem] font-semibold uppercase tracking-[0.09em] text-[hsl(var(--tone-neutral-800))]',
-
-  // Muted primary heading for adjacent sections (e.g., "Tools", drilldown blocks).
-  h1Soft: 'text-[0.76rem] font-semibold uppercase tracking-[0.09em] text-[hsl(var(--tone-neutral-700))]',
-
-  // Tile heading level (e.g., "TOTAL CITATIONS", "CITATION MOMENTUM").
-  h2: 'text-[0.64rem] font-semibold uppercase leading-[0.8rem] tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]',
-
-  // In-panel micro heading (e.g., "5-year rolling mean", "Career peak").
-  h3: 'text-[0.58rem] font-semibold uppercase tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]',
-
-  // Utility label heading (axis/toggle helper labels).
-  label: 'text-[0.56rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-600))]',
+  title: houseTypography.title,
+  h1: houseTypography.h1,
+  h1Soft: houseTypography.h1Soft,
+  h2: houseTypography.h2,
+  h3: houseTypography.h3,
+  label: houseTypography.label,
+  text: houseTypography.text,
+  textSoft: houseTypography.textSoft,
 } as const
 
+export const publicationsHouseSurfaces = {
+  topPanel: houseSurfaces.topPanel,
+  sectionPanel: houseSurfaces.sectionPanel,
+  softPanel: houseSurfaces.softPanel,
+  card: houseSurfaces.card,
+  leftBorder: houseSurfaces.leftBorder,
+  tableShell: houseSurfaces.tableShell,
+  tableHead: houseSurfaces.tableHead,
+  tableRow: houseSurfaces.tableRow,
+} as const
+
+export const publicationsHouseMotion = {
+  chartPanel: houseMotion.chartPanel,
+  chartEnter: houseMotion.chartEnter,
+  chartExit: houseMotion.chartExit,
+  toggleTrack: houseMotion.toggleTrack,
+  toggleThumb: houseMotion.toggleThumb,
+  toggleButton: houseMotion.toggleButton,
+  labelTransition: houseMotion.labelTransition,
+} as const
+
+export const publicationsHouseCharts = {
+  barAccent: houseChartColors.accentBar,
+  barPositive: houseChartColors.positiveBar,
+  barWarning: houseChartColors.warningBar,
+  barNeutral: houseChartColors.neutralBar,
+  barCurrent: houseChartColors.currentBar,
+  gridLine: houseChartColors.gridLine,
+  gridDashed: houseChartColors.gridLineDashed,
+  axisText: houseChartColors.axisText,
+} as const
