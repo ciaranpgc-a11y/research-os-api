@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
+import { publicationsHouseHeadings } from '@/components/publications/publications-house-style'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -1433,7 +1434,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     <section className="space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Publications</h1>
+          <h1 className={publicationsHouseHeadings.title}>Publications</h1>
         </div>
       </header>
 

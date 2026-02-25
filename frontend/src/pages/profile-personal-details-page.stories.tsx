@@ -118,7 +118,7 @@ const reviewOneFixture: ProfilePersonalDetailsPageFixture = {
   },
   orcidStatus: linkedOrcidStatus,
   personalDetails: {
-    salutation: '',
+    salutation: 'Associate Professor',
     firstName: '',
     lastName: '',
     jobRole: 'British Heart Foundation Fellow',

@@ -14,6 +14,7 @@ import type {
 } from '@/types/impact'
 
 import { dashboardTileStyles } from './dashboard-tile-styles'
+import { publicationsHouseHeadings } from './publications-house-style'
 
 type PublicationsTopStripProps = {
   metrics: PublicationsTopMetricsPayload | null
@@ -88,8 +89,11 @@ const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label:
   { value: '5y', label: '5y' },
   { value: 'all', label: 'All' },
 ]
-const HOUSE_SUBHEADING_CLASS = 'text-[0.76rem] font-semibold uppercase tracking-[0.09em] text-[hsl(var(--tone-neutral-800))]'
-const HOUSE_SUBHEADING_SOFT_CLASS = 'text-[0.76rem] font-semibold uppercase tracking-[0.09em] text-[hsl(var(--tone-neutral-700))]'
+const HOUSE_HEADING_H1_CLASS = publicationsHouseHeadings.h1
+const HOUSE_HEADING_H1_SOFT_CLASS = publicationsHouseHeadings.h1Soft
+const HOUSE_HEADING_H2_CLASS = publicationsHouseHeadings.h2
+const HOUSE_HEADING_H3_CLASS = publicationsHouseHeadings.h3
+const HOUSE_HEADING_LABEL_CLASS = publicationsHouseHeadings.label
 const HOUSE_CHART_TRANSITION_CLASS = 'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pt-4 transition-[opacity,transform,filter] duration-320 ease-out'
 const HOUSE_CHART_ENTERED_CLASS = 'opacity-100 translate-y-0 scale-100 blur-0'
 const HOUSE_CHART_EXITED_CLASS = 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]'
@@ -756,7 +760,7 @@ function TotalCitationsTile({
       <div className="grid h-full min-h-[9.5rem] grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)] gap-3">
         <div className="flex min-h-0 flex-col">
           <p
-            className="text-[0.64rem] font-semibold uppercase leading-[0.8rem] tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]"
+            className={HOUSE_HEADING_H2_CLASS}
             data-testid={`metric-label-${tile.key}`}
           >
             TOTAL CITATIONS
@@ -831,7 +835,7 @@ function StructuredMetricTile({
       <div className={cn('grid h-full min-h-[9.5rem] gap-3', contentGridClassName || 'grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)]')}>
         <div className="flex min-h-0 flex-col">
           <p
-            className="text-[0.64rem] font-semibold uppercase leading-[0.8rem] tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]"
+            className={HOUSE_HEADING_H2_CLASS}
             data-testid={`metric-label-${tile.key}`}
           >
             {String(tile.label || '').toUpperCase()}
@@ -1419,7 +1423,7 @@ function PublicationsPerYearChart({
                 </p>
               )
             })}
-            <p className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap text-[0.58rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-600))]">
+            <p className={cn(HOUSE_HEADING_LABEL_CLASS, 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}>
               {yAxisLabel}
             </p>
           </div>
@@ -1451,7 +1455,7 @@ function PublicationsPerYearChart({
         </div>
 
         {showAxes ? (
-          <p className="pointer-events-none absolute bottom-[0.2rem] text-center text-[0.58rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-600))]" style={{ left: chartLeftInset, right: '0.5rem' }}>
+          <p className={cn(HOUSE_HEADING_LABEL_CLASS, 'pointer-events-none absolute bottom-[0.2rem] text-center')} style={{ left: chartLeftInset, right: '0.5rem' }}>
             {resolvedXAxisLabel}
           </p>
         ) : null}
@@ -2502,8 +2506,8 @@ function TotalPublicationsDrilldownWorkspace({
   const workspaceSectionClass = 'rounded-md bg-[hsl(var(--tone-neutral-50)/0.34)] p-3'
   const workspacePanelClass = 'rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background px-3 py-2.5'
   const workspacePanelCompactClass = 'rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background p-2'
-  const workspaceHeadingClass = HOUSE_SUBHEADING_SOFT_CLASS
-  const workspaceSubheadingClass = HOUSE_SUBHEADING_SOFT_CLASS
+  const workspaceHeadingClass = HOUSE_HEADING_H1_SOFT_CLASS
+  const workspaceSubheadingClass = HOUSE_HEADING_H1_SOFT_CLASS
 
   const availableTypes = useMemo(
     () => Array.from(new Set(publications.map((record) => record.type))).sort((left, right) => left.localeCompare(right)),
@@ -2687,22 +2691,22 @@ function TotalPublicationsDrilldownWorkspace({
           <p className={workspaceSubheadingClass}>Headline results</p>
           <div className="mt-2 grid gap-2 lg:grid-cols-[9rem_minmax(0,1fr)]">
             <div className={cn(workspacePanelClass, 'flex min-h-[4.5rem] flex-col justify-center text-center')}>
-              <p className="text-[0.58rem] font-semibold uppercase tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">
+              <p className={HOUSE_HEADING_H3_CLASS}>
                 Total publications
               </p>
               <p className="mt-1 text-[1.7rem] font-semibold leading-none tracking-tight text-foreground">{headlineValue}</p>
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
               <div className={cn(workspacePanelClass, 'grid min-h-[4.5rem] grid-rows-[2rem_auto] py-2 text-center')}>
-                <p className="text-[0.58rem] font-semibold uppercase leading-[1.1] tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">Active years</p>
+                <p className={cn(HOUSE_HEADING_H3_CLASS, 'leading-[1.1]')}>Active years</p>
                 <p className={microValueClass}>{formatInt(activeYears)}</p>
               </div>
               <div className={cn(workspacePanelClass, 'grid min-h-[4.5rem] grid-rows-[2rem_auto] py-2 text-center')}>
-                <p className="text-[0.58rem] font-semibold uppercase leading-[1.1] tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">Median per year</p>
+                <p className={cn(HOUSE_HEADING_H3_CLASS, 'leading-[1.1]')}>Median per year</p>
                 <p className={microValueClass}>{formatInt(Math.round(medianPerActiveYear))}</p>
               </div>
               <div className={cn(workspacePanelClass, 'grid min-h-[4.5rem] grid-rows-[2rem_auto] py-2 text-center')}>
-                <p className="text-[0.58rem] font-semibold uppercase leading-[1.1] tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">Current year to date</p>
+                <p className={cn(HOUSE_HEADING_H3_CLASS, 'leading-[1.1]')}>Current year to date</p>
                 <p className={microValueClass}>{formatInt(ytdCount)}</p>
               </div>
             </div>
@@ -2710,11 +2714,11 @@ function TotalPublicationsDrilldownWorkspace({
 
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
             <div className={cn(workspacePanelClass, 'py-2')}>
-              <p className="text-[0.58rem] font-semibold uppercase tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">5-year rolling mean</p>
+              <p className={HOUSE_HEADING_H3_CLASS}>5-year rolling mean</p>
               <p className="mt-0.5 text-[0.88rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{rollingMean5yDisplay}</p>
             </div>
             <div className={cn(workspacePanelClass, 'py-2')}>
-              <p className="text-[0.58rem] font-semibold uppercase tracking-[0.07em] text-[hsl(var(--tone-neutral-500))]">Career peak</p>
+              <p className={HOUSE_HEADING_H3_CLASS}>Career peak</p>
               <p className="mt-0.5 text-[0.88rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{`${formatInt(peakYearData.count)} (${peakYearData.year})`}</p>
             </div>
           </div>
@@ -3717,7 +3721,7 @@ export function PublicationsTopStrip({
             </button>
           </div>
           <div className="rounded-sm bg-[hsl(var(--tone-neutral-50)/0.34)] px-2.5 py-1.5">
-            <p className={HOUSE_SUBHEADING_CLASS}>
+            <p className={HOUSE_HEADING_H1_CLASS}>
               Publication insights
             </p>
           </div>
@@ -4040,7 +4044,7 @@ export function PublicationsTopStrip({
           )}
           <div className="rounded-sm bg-[hsl(var(--tone-neutral-50)/0.34)] px-2 py-2">
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className={cn(HOUSE_SUBHEADING_SOFT_CLASS, 'pt-1')}>
+              <p className={cn(HOUSE_HEADING_H1_SOFT_CLASS, 'pt-1')}>
                 Tools
               </p>
               <div className="flex flex-wrap items-center gap-1.5">

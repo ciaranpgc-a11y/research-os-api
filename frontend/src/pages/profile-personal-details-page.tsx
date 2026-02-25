@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type PointerEvent } from 'react'
-import { GripVertical, Loader2, Plus, Trash2, Upload } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent } from 'react'
+import { ChevronRight, GripVertical, Loader2, Plus, Trash2, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
+import { cn } from '@/lib/utils'
 import {
   fetchAffiliationAddressForMe,
   fetchAffiliationSuggestionsForMe,
@@ -98,6 +99,7 @@ const PERSONAL_DETAILS_STORAGE_PREFIX = 'aawe_profile_personal_details:'
 
 const SALUTATION_OPTIONS = [
   'Dr',
+  'Associate Professor',
   'Professor',
   'Mr',
   'Ms',
@@ -117,6 +119,7 @@ const MAX_PROFILE_PHOTO_BYTES = 2 * 1024 * 1024
 const DEFAULT_PROFILE_PHOTO_POSITION_X = 50
 const DEFAULT_PROFILE_PHOTO_POSITION_Y = 50
 const LEGACY_TOP_PROFILE_PHOTO_POSITION_Y = 20
+const HOUSE_ACTION_BUTTON_CLASS = 'h-8 rounded-md px-3 text-xs font-semibold tracking-[0.02em] shadow-none'
 
 function formatTimestamp(value: string | null | undefined): string {
   if (!value) {
@@ -606,6 +609,50 @@ function normalizeJobRoles(values: unknown): string[] {
   return output
 }
 
+type AffiliationEditorSnapshot = {
+  jobRolesKey: string
+  primaryAffiliation: string
+  affiliationAddress: string
+  affiliationCity: string
+  affiliationRegion: string
+  affiliationPostalCode: string
+  country: string
+}
+
+function buildAffiliationEditorSnapshot(input: {
+  draft: PersonalDetailsDraft
+  primaryAffiliationInput: string
+}): AffiliationEditorSnapshot {
+  const normalizedRoles = normalizeJobRoles(input.draft.jobRoles)
+  const primaryAffiliation = sanitizeAffiliation(
+    input.primaryAffiliationInput || input.draft.organisation || input.draft.affiliations[0],
+  )
+  return {
+    jobRolesKey: normalizedRoles.map((item) => item.toLowerCase()).join('|'),
+    primaryAffiliation: primaryAffiliation.toLowerCase(),
+    affiliationAddress: sanitizeAffiliation(input.draft.affiliationAddress).toLowerCase(),
+    affiliationCity: sanitizeAffiliation(input.draft.affiliationCity).toLowerCase(),
+    affiliationRegion: sanitizeAffiliation(input.draft.affiliationRegion).toLowerCase(),
+    affiliationPostalCode: sanitizeAffiliation(input.draft.affiliationPostalCode).toLowerCase(),
+    country: sanitizeAffiliation(input.draft.country).toLowerCase(),
+  }
+}
+
+function areAffiliationEditorSnapshotsEqual(
+  left: AffiliationEditorSnapshot,
+  right: AffiliationEditorSnapshot,
+): boolean {
+  return (
+    left.jobRolesKey === right.jobRolesKey &&
+    left.primaryAffiliation === right.primaryAffiliation &&
+    left.affiliationAddress === right.affiliationAddress &&
+    left.affiliationCity === right.affiliationCity &&
+    left.affiliationRegion === right.affiliationRegion &&
+    left.affiliationPostalCode === right.affiliationPostalCode &&
+    left.country === right.country
+  )
+}
+
 function buildProfileInitials(input: {
   firstName?: string | null
   lastName?: string | null
@@ -674,6 +721,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [accountEmail, setAccountEmail] = useState(initialAccountEmail)
   const [jobRoleInput, setJobRoleInput] = useState('')
   const [primaryAffiliationInput, setPrimaryAffiliationInput] = useState(() => sanitizeAffiliation(initialDraft.organisation))
+  const [primaryAffiliationInputFocused, setPrimaryAffiliationInputFocused] = useState(false)
   const [primaryAffiliationSuggestions, setPrimaryAffiliationSuggestions] = useState<AffiliationSuggestionItem[]>([])
   const [primaryAffiliationSuggestionsLoading, setPrimaryAffiliationSuggestionsLoading] = useState(false)
   const [primaryAffiliationSuggestionsError, setPrimaryAffiliationSuggestionsError] = useState('')
@@ -688,8 +736,16 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [showJobRoleComposer, setShowJobRoleComposer] = useState(false)
   const [showAffiliationComposer, setShowAffiliationComposer] = useState(false)
   const [showPublicationAffiliationComposer, setShowPublicationAffiliationComposer] = useState(false)
+  const [affiliationEditorBaseline, setAffiliationEditorBaseline] = useState<AffiliationEditorSnapshot>(
+    () => buildAffiliationEditorSnapshot({
+      draft: initialDraft,
+      primaryAffiliationInput: sanitizeAffiliation(initialDraft.organisation),
+    }),
+  )
   const [draggingJobRoleIndex, setDraggingJobRoleIndex] = useState<number | null>(null)
+  const [jobRoleDropTargetIndex, setJobRoleDropTargetIndex] = useState<number | null>(null)
   const [draggingPublicationAffiliationIndex, setDraggingPublicationAffiliationIndex] = useState<number | null>(null)
+  const [publicationAffiliationDropTargetIndex, setPublicationAffiliationDropTargetIndex] = useState<number | null>(null)
   const [primaryAffiliationAddressResolving, setPrimaryAffiliationAddressResolving] = useState(false)
   const [primaryAffiliationAddressError, setPrimaryAffiliationAddressError] = useState('')
   const [loading, setLoading] = useState(Boolean(fixture?.loading ?? !fixture))
@@ -702,6 +758,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const primaryAddressLookupSequenceRef = useRef(0)
   const lastResolvedPrimaryAffiliationKeyRef = useRef('')
   const lastAutoPopulateAffiliationKeyRef = useRef('')
+  const wasAffiliationEditorOpenRef = useRef(affiliationEditorOpen)
   const profilePhotoInputRef = useRef<HTMLInputElement | null>(null)
   const profilePhotoFrameRef = useRef<HTMLButtonElement | null>(null)
   const profilePhotoDraggingRef = useRef(false)
@@ -722,6 +779,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setOrcidStatus(fixture?.orcidStatus ?? null)
     setDraft(fixtureDraft)
     setPrimaryAffiliationInput(sanitizeAffiliation(fixtureDraft.organisation))
+    setPrimaryAffiliationInputFocused(false)
     setJobRoleInput('')
     setAffiliationEditorOpen(!Boolean(fixtureDraft.jobRoles[0] || fixtureDraft.affiliations[0] || fixtureDraft.country))
     setAccountEmail(resolveEditableAccountEmail({
@@ -739,8 +797,14 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setShowJobRoleComposer(false)
     setShowAffiliationComposer(false)
     setShowPublicationAffiliationComposer(false)
+    setAffiliationEditorBaseline(buildAffiliationEditorSnapshot({
+      draft: fixtureDraft,
+      primaryAffiliationInput: sanitizeAffiliation(fixtureDraft.organisation),
+    }))
     setDraggingJobRoleIndex(null)
+    setJobRoleDropTargetIndex(null)
     setDraggingPublicationAffiliationIndex(null)
+    setPublicationAffiliationDropTargetIndex(null)
     setPrimaryAffiliationAddressResolving(false)
     setPrimaryAffiliationAddressError('')
     setLoading(Boolean(fixture?.loading))
@@ -752,6 +816,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     primaryAddressLookupSequenceRef.current = 0
     lastResolvedPrimaryAffiliationKeyRef.current = ''
     lastAutoPopulateAffiliationKeyRef.current = ''
+    wasAffiliationEditorOpenRef.current = !Boolean(
+      fixtureDraft.jobRoles[0] || fixtureDraft.affiliations[0] || fixtureDraft.country,
+    )
   }, [fixture, isFixtureMode])
 
   useEffect(() => {
@@ -812,7 +879,12 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         if (!draftEditedRef.current) {
           setDraft(resolvedDraft)
           setPrimaryAffiliationInput(sanitizeAffiliation(resolvedDraft.organisation))
+          setPrimaryAffiliationInputFocused(false)
           setAffiliationEditorOpen(!Boolean(resolvedDraft.jobRoles[0] || resolvedDraft.affiliations[0] || resolvedDraft.country))
+          setAffiliationEditorBaseline(buildAffiliationEditorSnapshot({
+            draft: resolvedDraft,
+            primaryAffiliationInput: sanitizeAffiliation(resolvedDraft.organisation),
+          }))
         }
 
         if (orcidResult.status === 'fulfilled') {
@@ -837,6 +909,12 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
   useEffect(() => {
     if (isFixtureMode) {
+      return
+    }
+    if (!primaryAffiliationInputFocused) {
+      setPrimaryAffiliationSuggestions([])
+      setPrimaryAffiliationSuggestionsLoading(false)
+      setPrimaryAffiliationSuggestionsError('')
       return
     }
     const query = sanitizeAffiliation(primaryAffiliationInput)
@@ -880,7 +958,26 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [isFixtureMode, primaryAffiliationInput, token])
+  }, [isFixtureMode, primaryAffiliationInput, primaryAffiliationInputFocused, token])
+
+  useEffect(() => {
+    if (isFixtureMode) {
+      return
+    }
+    if (affiliationEditorOpen && !wasAffiliationEditorOpenRef.current) {
+      setAffiliationEditorBaseline(buildAffiliationEditorSnapshot({
+        draft,
+        primaryAffiliationInput,
+      }))
+    }
+    if (!affiliationEditorOpen && wasAffiliationEditorOpenRef.current) {
+      setPrimaryAffiliationInputFocused(false)
+      setPrimaryAffiliationSuggestions([])
+      setPrimaryAffiliationSuggestionsLoading(false)
+      setPrimaryAffiliationSuggestionsError('')
+    }
+    wasAffiliationEditorOpenRef.current = affiliationEditorOpen
+  }, [affiliationEditorOpen, draft, isFixtureMode, primaryAffiliationInput])
 
   useEffect(() => {
     if (isFixtureMode) {
@@ -945,6 +1042,19 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     const country = trimValue(draft.country)
     return [role, affiliation, country].filter(Boolean).join(', ')
   }, [draft.affiliations, draft.country, draft.jobRole, draft.jobRoles, draft.organisation])
+  const affiliationEditorSnapshot = useMemo(
+    () =>
+      buildAffiliationEditorSnapshot({
+        draft,
+        primaryAffiliationInput,
+      }),
+    [draft, primaryAffiliationInput],
+  )
+  const affiliationEditorDirty = useMemo(
+    () => !areAffiliationEditorSnapshotsEqual(affiliationEditorBaseline, affiliationEditorSnapshot),
+    [affiliationEditorBaseline, affiliationEditorSnapshot],
+  )
+  const affiliationEditorActionLabel = affiliationEditorBaseline.primaryAffiliation ? 'Update' : 'Save'
 
   const badges = useMemo(
     () =>
@@ -1188,9 +1298,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         },
       }))
     }
-    setPrimaryAffiliationInput('')
+    setPrimaryAffiliationInput(clean)
     setPrimaryAffiliationSuggestions([])
     setPrimaryAffiliationSuggestionsError('')
+    setPrimaryAffiliationInputFocused(false)
     lastAutoPopulateAffiliationKeyRef.current = clean.toLowerCase()
     setShowAffiliationComposer(false)
   }
@@ -1221,6 +1332,52 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     } else {
       lastAutoPopulateAffiliationKeyRef.current = ''
     }
+  }
+
+  const onPrimaryAffiliationInputBlur = () => {
+    setPrimaryAffiliationInputFocused(false)
+    onPrimaryAffiliationEntryBlur()
+  }
+
+  const onApplyAffiliationEditorChanges = () => {
+    const cleanAffiliation = sanitizeAffiliation(primaryAffiliationInput)
+    const normalizedRoles = normalizeJobRoles(draft.jobRoles)
+    const normalizedAddress = sanitizeAffiliation(draft.affiliationAddress)
+    const normalizedCity = sanitizeAffiliation(draft.affiliationCity)
+    const normalizedRegion = sanitizeAffiliation(draft.affiliationRegion)
+    const normalizedPostalCode = sanitizeAffiliation(draft.affiliationPostalCode)
+    const normalizedCountry = sanitizeAffiliation(draft.country)
+    const nextDraft: PersonalDetailsDraft = {
+      ...draft,
+      jobRoles: normalizedRoles,
+      jobRole: normalizedRoles[0] || '',
+      organisation: cleanAffiliation,
+      affiliations: cleanAffiliation ? [cleanAffiliation] : [],
+      affiliationAddress: normalizedAddress,
+      affiliationCity: normalizedCity,
+      affiliationRegion: normalizedRegion,
+      affiliationPostalCode: normalizedPostalCode,
+      country: normalizedCountry,
+    }
+    draftEditedRef.current = true
+    setDraft(nextDraft)
+    setPrimaryAffiliationInput(cleanAffiliation)
+    if (cleanAffiliation.length >= 2) {
+      lastAutoPopulateAffiliationKeyRef.current = cleanAffiliation.toLowerCase()
+      void onResolvePrimaryAffiliationFromCurrent(cleanAffiliation)
+    } else {
+      lastAutoPopulateAffiliationKeyRef.current = ''
+    }
+    setAffiliationEditorBaseline(buildAffiliationEditorSnapshot({
+      draft: nextDraft,
+      primaryAffiliationInput: cleanAffiliation,
+    }))
+    setPrimaryAffiliationInputFocused(false)
+    setPrimaryAffiliationSuggestions([])
+    setPrimaryAffiliationSuggestionsError('')
+    setPrimaryAffiliationAddressError('')
+    setAffiliationEditorOpen(false)
+    setShowAffiliationComposer(false)
   }
 
   const onRemoveAffiliationEntry = (value: string) => {
@@ -1417,6 +1574,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setPrimaryAffiliationSuggestions([])
     setPrimaryAffiliationSuggestionsError('')
     setPrimaryAffiliationAddressError('')
+    setPrimaryAffiliationInputFocused(false)
     lastAutoPopulateAffiliationKeyRef.current = normalizedKey
     setShowAffiliationComposer(false)
     await resolvePrimaryAffiliationAddress({
@@ -1487,11 +1645,23 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
   const onDragStartJobRole = (index: number) => {
     setDraggingJobRoleIndex(index)
+    setJobRoleDropTargetIndex(index)
+  }
+
+  const onDragOverJobRole = (event: DragEvent<HTMLDivElement>, index: number) => {
+    event.preventDefault()
+    if (draggingJobRoleIndex === null) {
+      return
+    }
+    if (jobRoleDropTargetIndex !== index) {
+      setJobRoleDropTargetIndex(index)
+    }
   }
 
   const onDropJobRole = (targetIndex: number) => {
     if (draggingJobRoleIndex === null || draggingJobRoleIndex === targetIndex) {
       setDraggingJobRoleIndex(null)
+      setJobRoleDropTargetIndex(null)
       return
     }
     draftEditedRef.current = true
@@ -1518,15 +1688,28 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       }
     })
     setDraggingJobRoleIndex(null)
+    setJobRoleDropTargetIndex(null)
   }
 
   const onDragStartPublicationAffiliation = (index: number) => {
     setDraggingPublicationAffiliationIndex(index)
+    setPublicationAffiliationDropTargetIndex(index)
+  }
+
+  const onDragOverPublicationAffiliation = (event: DragEvent<HTMLDivElement>, index: number) => {
+    event.preventDefault()
+    if (draggingPublicationAffiliationIndex === null) {
+      return
+    }
+    if (publicationAffiliationDropTargetIndex !== index) {
+      setPublicationAffiliationDropTargetIndex(index)
+    }
   }
 
   const onDropPublicationAffiliation = (targetIndex: number) => {
     if (draggingPublicationAffiliationIndex === null || draggingPublicationAffiliationIndex === targetIndex) {
       setDraggingPublicationAffiliationIndex(null)
+      setPublicationAffiliationDropTargetIndex(null)
       return
     }
     draftEditedRef.current = true
@@ -1551,6 +1734,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       }
     })
     setDraggingPublicationAffiliationIndex(null)
+    setPublicationAffiliationDropTargetIndex(null)
   }
 
   const onRemovePublicationAffiliation = (value: string) => {
@@ -1907,7 +2091,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             <Button
               type="button"
               size="sm"
-              variant="outline"
+              variant="house"
+              className={HOUSE_ACTION_BUTTON_CLASS}
               onClick={() => {
                 setAffiliationEditorOpen(true)
                 setShowAffiliationComposer((current) => !current)
@@ -1921,14 +2106,35 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]">
             <button
               type="button"
-              className="w-full px-3 py-2.5 text-left transition-colors hover:bg-[hsl(var(--tone-neutral-100))]"
+              className={cn(
+                'w-full px-3 py-2.5 text-left transition-colors',
+                affiliationEditorOpen
+                  ? 'bg-[hsl(var(--tone-neutral-100))]'
+                  : 'hover:bg-[hsl(var(--tone-neutral-100))]',
+              )}
               onClick={() => setAffiliationEditorOpen((current) => !current)}
               aria-expanded={affiliationEditorOpen}
               aria-controls="affiliation-editor-panel"
             >
-              <p className="text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
-                {journalByline || 'No affiliations recorded.'}
-              </p>
+              <span className="flex items-center gap-2">
+                <ChevronRight
+                  className={cn(
+                    'h-4 w-4 text-[hsl(var(--tone-neutral-500))] transition-transform duration-200',
+                    affiliationEditorOpen
+                      ? 'translate-x-0.5 rotate-90 text-[hsl(var(--tone-neutral-700))]'
+                      : '',
+                  )}
+                  aria-hidden
+                />
+                <p
+                  className={cn(
+                    'text-sm font-medium text-[hsl(var(--tone-neutral-900))] transition-transform duration-200',
+                    affiliationEditorOpen ? 'translate-x-0.5' : '',
+                  )}
+                >
+                  {journalByline || 'No affiliations recorded.'}
+                </p>
+              </span>
             </button>
           </div>
 
@@ -1951,7 +2157,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 />
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="house"
+                  size="sm"
+                  className={HOUSE_ACTION_BUTTON_CLASS}
                   onClick={() => onAddAffiliation(primaryAffiliationInput)}
                   disabled={!sanitizeAffiliation(primaryAffiliationInput)}
                 >
@@ -1962,13 +2170,15 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           ) : null}
 
           {affiliationEditorOpen ? (
-            <div id="affiliation-editor-panel" className="space-y-3">
+            <div id="affiliation-editor-panel" className="ml-1 space-y-3 border-l border-[hsl(var(--tone-neutral-200))] pl-3">
               <div className="space-y-2 p-1">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Roles</p>
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="house"
+                    size="sm"
+                    className={HOUSE_ACTION_BUTTON_CLASS}
                     onClick={() => setShowJobRoleComposer((current) => !current)}
                   >
                     <Plus className="mr-1.5 h-4 w-4" />
@@ -1992,7 +2202,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       />
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="house"
+                        size="sm"
+                        className={HOUSE_ACTION_BUTTON_CLASS}
                         onClick={() => onAddJobRole(jobRoleInput)}
                         disabled={!normalizeRole(jobRoleInput)}
                       >
@@ -2009,16 +2221,29 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                         key={`role-${index}`}
                         draggable
                         onDragStart={() => onDragStartJobRole(index)}
-                        onDragOver={(event) => event.preventDefault()}
+                        onDragOver={(event) => onDragOverJobRole(event, index)}
                         onDrop={() => onDropJobRole(index)}
-                        onDragEnd={() => setDraggingJobRoleIndex(null)}
-                        className={`flex flex-wrap items-center gap-2 rounded-md px-2 py-1.5 ${
+                        onDragEnd={() => {
+                          setDraggingJobRoleIndex(null)
+                          setJobRoleDropTargetIndex(null)
+                        }}
+                        className={cn(
+                          'group flex flex-wrap items-center gap-2 rounded-md border border-transparent px-2 py-1.5 transition-all duration-200 ease-out',
                           draggingJobRoleIndex === index
-                            ? 'bg-[hsl(var(--tone-accent-50))]'
-                            : 'bg-background'
-                        }`}
+                            ? 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] shadow-sm scale-[1.01]'
+                            : 'bg-background',
+                          jobRoleDropTargetIndex === index && draggingJobRoleIndex !== index
+                            ? 'border-dashed border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50)/0.55)]'
+                            : '',
+                        )}
                       >
-                        <span className="inline-flex items-center text-[hsl(var(--tone-neutral-500))]" title="Drag to reorder">
+                        <span
+                          className={cn(
+                            'inline-flex cursor-grab items-center text-[hsl(var(--tone-neutral-500))] transition-transform duration-150 active:cursor-grabbing',
+                            draggingJobRoleIndex === index ? 'scale-110 text-[hsl(var(--tone-accent-700))]' : 'group-hover:scale-105',
+                          )}
+                          title="Drag to reorder"
+                        >
                           <GripVertical className="h-4 w-4" />
                         </span>
                         <span className="text-xs font-medium text-[hsl(var(--tone-neutral-700))]">{index + 1}.</span>
@@ -2064,7 +2289,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   <Input
                     value={primaryAffiliationInput}
                     onChange={(event) => onPrimaryAffiliationEntryChange(event.target.value)}
-                    onBlur={onPrimaryAffiliationEntryBlur}
+                    onFocus={() => setPrimaryAffiliationInputFocused(true)}
+                    onBlur={onPrimaryAffiliationInputBlur}
                     placeholder="Affiliation"
                     autoComplete="organization"
                     className="h-8 min-w-[14rem] flex-1 border-0 bg-transparent px-2 shadow-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--tone-accent-400))]"
@@ -2081,15 +2307,18 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     ) : null}
                 </div>
 
-                {primaryAffiliationSuggestionsLoading ? (
+                {primaryAffiliationInputFocused && primaryAffiliationSuggestionsLoading ? (
                   <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Looking up affiliations...</p>
                 ) : null}
-                {primaryAffiliationSuggestions.length > 0 ? (
+                {primaryAffiliationInputFocused && primaryAffiliationSuggestions.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2">
                     {primaryAffiliationSuggestions.map((suggestion) => (
                       <button
                         key={`primary:${suggestion.source}:${suggestion.name}:${suggestion.countryCode || ''}`}
                         type="button"
+                        onMouseDown={(event) => {
+                          event.preventDefault()
+                        }}
                         onClick={() => {
                           void onApplyPrimaryAffiliationSuggestion(suggestion)
                         }}
@@ -2163,6 +2392,20 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   </label>
 
                 </div>
+
+                {affiliationEditorDirty ? (
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="housePrimary"
+                      className={HOUSE_ACTION_BUTTON_CLASS}
+                      onClick={onApplyAffiliationEditorChanges}
+                    >
+                      {affiliationEditorActionLabel}
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : null}
@@ -2182,7 +2425,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
-              variant="outline"
+              variant="house"
+              size="sm"
+              className={HOUSE_ACTION_BUTTON_CLASS}
               onClick={() => setShowPublicationAffiliationComposer((current) => !current)}
             >
               <Plus className="mr-1.5 h-4 w-4" />
@@ -2208,7 +2453,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 />
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="house"
+                  size="sm"
+                  className={HOUSE_ACTION_BUTTON_CLASS}
                   onClick={() => onAddPublicationAffiliation(publicationAffiliationInput)}
                   disabled={
                     !sanitizeAffiliation(publicationAffiliationInput) ||
@@ -2254,16 +2501,29 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     key={item}
                     draggable
                     onDragStart={() => onDragStartPublicationAffiliation(index)}
-                    onDragOver={(event) => event.preventDefault()}
+                    onDragOver={(event) => onDragOverPublicationAffiliation(event, index)}
                     onDrop={() => onDropPublicationAffiliation(index)}
-                    onDragEnd={() => setDraggingPublicationAffiliationIndex(null)}
-                    className={`flex flex-wrap items-center gap-2 rounded-md border px-2 py-1.5 ${
+                    onDragEnd={() => {
+                      setDraggingPublicationAffiliationIndex(null)
+                      setPublicationAffiliationDropTargetIndex(null)
+                    }}
+                    className={cn(
+                      'group flex flex-wrap items-center gap-2 rounded-md border px-2 py-1.5 transition-all duration-200 ease-out',
                       draggingPublicationAffiliationIndex === index
-                        ? 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))]'
-                        : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]'
-                    }`}
+                        ? 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] shadow-sm scale-[1.01]'
+                        : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]',
+                      publicationAffiliationDropTargetIndex === index && draggingPublicationAffiliationIndex !== index
+                        ? 'border-dashed border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50)/0.55)]'
+                        : '',
+                    )}
                   >
-                    <span className="inline-flex items-center text-[hsl(var(--tone-neutral-500))]" title="Drag to reorder">
+                    <span
+                      className={cn(
+                        'inline-flex cursor-grab items-center text-[hsl(var(--tone-neutral-500))] transition-transform duration-150 active:cursor-grabbing',
+                        draggingPublicationAffiliationIndex === index ? 'scale-110 text-[hsl(var(--tone-accent-700))]' : 'group-hover:scale-105',
+                      )}
+                      title="Drag to reorder"
+                    >
                       <GripVertical className="h-4 w-4" />
                     </span>
                     <span className="text-xs font-medium text-[hsl(var(--tone-neutral-700))]">{index + 1}.</span>

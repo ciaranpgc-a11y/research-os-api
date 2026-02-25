@@ -12,6 +12,8 @@ const buttonVariants = cva(
         default: 'bg-primary text-primary-foreground hover:bg-primary/90',
         secondary: 'bg-muted text-foreground hover:bg-muted/80',
         outline: 'border border-border bg-background hover:bg-accent hover:text-accent-foreground',
+        house: 'border border-[hsl(var(--tone-neutral-300))] bg-background text-[hsl(var(--tone-neutral-800))] hover:border-[hsl(var(--tone-neutral-400))] hover:bg-[hsl(var(--tone-neutral-100))]',
+        housePrimary: 'bg-[hsl(var(--tone-neutral-900))] text-white hover:bg-[hsl(var(--tone-neutral-800))]',
         ghost: 'hover:bg-accent hover:text-accent-foreground',
         destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
       },
