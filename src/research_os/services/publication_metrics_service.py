@@ -2217,7 +2217,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                         exact_rank_budget_exhausted = True
                         logger.info(
                             "Field percentile exact rank budget reached for user %s after %s requests",
-                            user.user_id,
+                            user_id,
                             exact_rank_requests_made,
                         )
                     if (
@@ -2227,7 +2227,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                         exact_rank_runtime_exhausted = True
                         logger.info(
                             "Field percentile exact rank runtime reached for user %s after %.1fs",
-                            user.user_id,
+                            user_id,
                             elapsed,
                         )
                 if percentile_rank is None:
