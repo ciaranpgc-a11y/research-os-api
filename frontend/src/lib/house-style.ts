@@ -45,6 +45,8 @@ export const houseMotion = {
   toggleTrack: 'house-toggle-track',
   toggleThumb: 'house-toggle-thumb',
   toggleButton: 'house-toggle-button',
+  toggleChartBar: 'house-toggle-chart-bar',
+  toggleChartLabel: 'house-toggle-chart-label',
   labelTransition: 'house-label-transition',
 } as const
 
@@ -97,6 +99,8 @@ export const houseElements = {
   tableHead: houseSurfaces.tableHead,
   tableRow: houseSurfaces.tableRow,
   chartPanel: houseMotion.chartPanel,
+  toggleChartBar: houseMotion.toggleChartBar,
+  toggleChartLabel: houseMotion.toggleChartLabel,
   chartGrid: houseChartColors.gridLine,
   chartGridDashed: houseChartColors.gridLineDashed,
   chartAxisText: houseChartColors.axisText,

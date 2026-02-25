@@ -1,4 +1,4 @@
-# Story: Workspaces Hub v2 (Left Navigation + Faster Workspace Access)
+# Story: Workspaces Home v2 (Keep Home Left Side Blank)
 
 ## Status
 
@@ -6,22 +6,21 @@ Draft
 
 ## Problem
 
-The current Workspaces page is a flat list with good baseline controls, but it does not scale into a workspace hub model. Upcoming needs like collections, archived workspaces, and import flow require durable navigation, not only list filters.
+The current Workspaces page is a flat list with good baseline controls, but it needs faster list interactions and clearer structure as features expand. The workspace home page and the in-workspace page have different navigation needs, so they should not share the same left bar pattern yet.
 
 ## Outcome
 
-Ship a Workspaces Hub v2 that introduces a left navigation rail for persistent workspace buckets while keeping top controls focused on search/filter/sort/action within the selected bucket.
+Ship a Workspaces Home v2 that improves list speed and clarity while keeping the home page left area blank for now. Preserve the existing left navigator behavior for individual workspace pages.
 
 ## User Story
 
-As a researcher managing many workspaces, I want clear bucket-based navigation and faster list interactions so I can quickly find, open, and maintain active work without UI friction.
+As a researcher managing many workspaces, I want faster list interactions and clear workspace status cues so I can quickly find, open, and maintain active work.
 
 ## Scope
 
 In scope:
 
-- Add a left navigation rail on desktop, collapsible.
-- Add a mobile drawer version of the left navigation.
+- Keep workspace home left area intentionally blank for now.
 - Keep top controls for search, temporary filters, view mode, and actions.
 - Improve table/card interaction and information hierarchy.
 - Add import workspace action in header actions.
@@ -29,40 +28,18 @@ In scope:
 
 Out of scope (this story):
 
+- New home-page left navigation model (Collections/Shared rail).
 - Backend implementation for shared workspaces.
 - Backend implementation for collections CRUD.
 - Full import pipeline implementation (UI entry point only if backend is not ready).
 
 ## UX Specification
 
-### IA Split
+### Navigation Decision
 
-- Left rail = persistent navigation (bucket selection).
-- Top controls = temporary filtering and sorting within selected bucket.
-
-### Left Rail (Desktop)
-
-Sections:
-
-- All
-- Pinned
-- Shared
-- Collections (expandable list when data exists)
-- Archived
-
-Behavior:
-
-- Show count badges per bucket.
-- Show only data-backed collections.
-- If no collections exist, show a simple "No collections yet" helper row.
-- Collapsible rail with icon-only compact state.
-
-### Left Rail (Mobile)
-
-- Open as a sheet/drawer from a nav button.
-- Same bucket structure as desktop.
-- Active bucket is clearly indicated.
-- Drawer closes on bucket selection.
+- Workspace home: no left bar for now; keep the left side blank.
+- Individual workspace pages: keep existing left navigator unchanged.
+- Bucketing remains list-level via top controls/chips until a dedicated home-nav design is ready.
 
 ### Header Actions
 
@@ -91,33 +68,30 @@ Behavior:
 
 ## Acceptance Criteria
 
-1. A persistent left rail is visible on desktop workspaces page with buckets: All, Pinned, Shared, Collections, Archived.
-2. The left rail is collapsible and remains usable in collapsed mode.
-3. On mobile, the same navigation appears in a drawer and supports bucket switching.
-4. `Create workspace` remains the only primary action in the header; `Import workspace` is secondary.
-5. Workspace create flow no longer requires persistent inline name input in the header.
-6. Table rows and cards open workspace on click/tap, excluding explicit secondary action targets.
-7. Workspace context menu still supports rename, archive/restore, and delete.
-8. Quick chips for `Pinned`, `Active`, and `Needs review` apply in conjunction with active bucket.
-9. List view can render `Pinned` and `All workspaces` grouped sections when relevant.
-10. Empty and loading states are implemented for each major bucket/list mode.
-11. Keyboard and screen-reader support exists for left rail, drawer, chips, and row actions.
-12. Existing sorting and table/cards toggle continue to work within selected bucket.
+1. Workspace home page does not introduce the in-workspace left navigator pattern.
+2. Existing individual-workspace left navigator behavior is unchanged.
+3. `Create workspace` remains the only primary action in the header; `Import workspace` is secondary.
+4. Workspace create flow no longer requires persistent inline name input in the header.
+5. Table rows and cards open workspace on click/tap, excluding explicit secondary action targets.
+6. Workspace context menu still supports rename, archive/restore, and delete.
+7. Quick chips for `Pinned`, `Active`, and `Needs review` apply with existing filters.
+8. List view can render `Pinned` and `All workspaces` grouped sections when relevant.
+9. Empty and loading states are implemented for each major list mode.
+10. Keyboard and screen-reader support exists for chips and row actions.
+11. Existing sorting and table/cards toggle continue to work.
 
 ## Engineering Notes
 
 - Suggested component split:
-  - `workspaces-left-rail.tsx`
-  - `workspaces-mobile-drawer.tsx`
   - `workspace-list-toolbar.tsx`
   - `workspace-list-sections.tsx`
 - Keep current store shape; add derived selectors for bucket counts and grouped sections.
-- Gate unfinished buckets (Shared/Collections) behind data availability to avoid dead-end UI.
+- Keep room for future home-page navigation model, but do not reuse the in-workspace navigator now.
 - Reuse existing tokens/components to stay compliant with `docs/design-governance.md`.
 
 ## QA Checklist
 
-- Desktop: expanded/collapsed rail, all buckets, table/cards, sorting, menu actions.
-- Mobile: drawer open/close, bucket selection, list actions.
-- Accessibility: tab order, focus return on drawer close, ARIA labels on bucket buttons and menu actions.
+- Desktop: list controls, table/cards, sorting, menu actions.
+- Mobile: list controls and list actions.
+- Accessibility: tab order and ARIA labels on chips/menu actions.
 - Regression: workspace open, rename, pin/unpin, archive/restore, delete, and create.

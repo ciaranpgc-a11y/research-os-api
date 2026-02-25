@@ -29,6 +29,8 @@ export const publicationsHouseMotion = {
   toggleTrack: houseMotion.toggleTrack,
   toggleThumb: houseMotion.toggleThumb,
   toggleButton: houseMotion.toggleButton,
+  toggleChartBar: houseMotion.toggleChartBar,
+  toggleChartLabel: houseMotion.toggleChartLabel,
   labelTransition: houseMotion.labelTransition,
 } as const
 

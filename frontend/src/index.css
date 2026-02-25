@@ -585,6 +585,17 @@
     transform: scale(0.98);
   }
 
+  .house-toggle-chart-bar {
+    transition-property: transform, filter, box-shadow;
+    transition-duration: 320ms;
+    transition-timing-function: cubic-bezier(0.2, 0.68, 0.16, 1);
+    will-change: transform;
+  }
+
+  .house-toggle-chart-label {
+    transition: none;
+  }
+
   .house-label-transition {
     transition-property: opacity, transform;
     transition-duration: 220ms;

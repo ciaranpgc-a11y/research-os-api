@@ -6,7 +6,9 @@ import { TopBar } from '@/components/layout/top-bar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
+import { useAaweStore } from '@/store/use-aawe-store'
 import { useWorkspaceStore, type WorkspaceRecord } from '@/store/use-workspace-store'
 
 type ViewMode = 'table' | 'cards'
@@ -153,13 +155,112 @@ function WorkspaceMenuTrigger({
   )
 }
 
+function WorkspacesHomeSidebar({
+  filterKey,
+  counts,
+  onFilterChange,
+  onCreateWorkspace,
+  onClearSearch,
+  canClearSearch,
+  onNavigate,
+}: {
+  filterKey: FilterKey
+  counts: Record<FilterKey, number>
+  onFilterChange: (next: FilterKey) => void
+  onCreateWorkspace: () => void
+  onClearSearch: () => void
+  canClearSearch: boolean
+  onNavigate?: () => void
+}) {
+  return (
+    <aside className="flex h-full flex-col bg-card">
+      <div className="space-y-1 border-b border-border px-4 py-3.5">
+        <h1 className="text-sm font-semibold leading-tight text-foreground">Workspaces home</h1>
+        <p className="text-xs text-muted-foreground">
+          Library-level filters and actions for all workspaces.
+        </p>
+      </div>
+      <ScrollArea className="flex-1">
+        <div className="space-y-4 p-3">
+          <section className="space-y-1.5">
+            <p className="px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              States
+            </p>
+            <div className="space-y-1">
+              {FILTER_OPTIONS.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => {
+                    onFilterChange(option.key)
+                    onNavigate?.()
+                  }}
+                  className={cn(
+                    'flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-sm transition-colors',
+                    filterKey === option.key
+                      ? 'border-emerald-400 bg-emerald-50 text-emerald-900'
+                      : 'border-border bg-background text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <span className="truncate text-left">{option.label}</span>
+                  <span
+                    className={cn(
+                      'ml-2 rounded border px-1.5 py-0.5 text-micro',
+                      filterKey === option.key
+                        ? 'border-emerald-300 bg-emerald-100 text-emerald-800'
+                        : 'border-border bg-muted/50 text-muted-foreground',
+                    )}
+                  >
+                    {counts[option.key]}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="space-y-2">
+            <p className="px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Actions
+            </p>
+            <Button
+              type="button"
+              className="w-full justify-start"
+              onClick={() => {
+                onCreateWorkspace()
+                onNavigate?.()
+              }}
+            >
+              Create workspace
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => {
+                onClearSearch()
+                onNavigate?.()
+              }}
+              disabled={!canClearSearch}
+            >
+              Clear search
+            </Button>
+          </section>
+        </div>
+      </ScrollArea>
+    </aside>
+  )
+}
+
 export function WorkspacesPage() {
   const navigate = useNavigate()
   const workspaces = useWorkspaceStore((state) => state.workspaces)
+  const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId)
   const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId)
   const createWorkspace = useWorkspaceStore((state) => state.createWorkspace)
   const updateWorkspace = useWorkspaceStore((state) => state.updateWorkspace)
   const deleteWorkspace = useWorkspaceStore((state) => state.deleteWorkspace)
+  const leftPanelOpen = useAaweStore((state) => state.leftPanelOpen)
+  const setLeftPanelOpen = useAaweStore((state) => state.setLeftPanelOpen)
 
   const [query, setQuery] = useState('')
   const [viewMode, setViewMode] = useState<ViewMode>('table')
@@ -317,299 +418,345 @@ export function WorkspacesPage() {
 
   const menuWorkspace =
     menuState ? workspaces.find((workspace) => workspace.id === menuState.workspaceId) || null : null
+  const navigatorWorkspaceId = useMemo(() => {
+    const preferred = (activeWorkspaceId || '').trim()
+    if (preferred) {
+      return preferred
+    }
+    return workspaces[0]?.id || ''
+  }, [activeWorkspaceId, workspaces])
+
+  useEffect(() => {
+    if (activeWorkspaceId || !navigatorWorkspaceId) {
+      return
+    }
+    setActiveWorkspaceId(navigatorWorkspaceId)
+  }, [activeWorkspaceId, navigatorWorkspaceId, setActiveWorkspaceId])
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
-      <TopBar scope="workspace" onOpenLeftNav={() => undefined} showLeftNavButton={false} />
+      <TopBar scope="workspace" onOpenLeftNav={() => setLeftPanelOpen(true)} />
 
-      <main className="min-w-0 flex-1 overflow-hidden bg-background">
-        <ScrollArea className="h-full">
-          <div className="mx-auto w-full max-w-sz-1380 space-y-4 px-4 py-4 md:px-6">
-            <section className="rounded-lg border border-border bg-card p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h1 className="text-xl font-semibold tracking-tight">Workspaces</h1>
-                  <p className="text-sm text-muted-foreground">Manage, filter, and open your workspace list.</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Input
-                    value={newWorkspaceName}
-                    onChange={(event) => setNewWorkspaceName(event.target.value)}
-                    placeholder="New workspace name"
-                    className="w-sz-220"
-                  />
-                  <Button type="button" onClick={onCreateWorkspace}>
-                    Create workspace
-                  </Button>
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-lg border border-border bg-card">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Filter workspaces"
-                    className="w-sz-260"
-                  />
-                  <select
-                    value={filterKey}
-                    onChange={(event) => setFilterKey(event.target.value as FilterKey)}
-                    className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                  >
-                    {FILTER_OPTIONS.map((option) => (
-                      <option key={option.key} value={option.key}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  {viewMode === 'cards' ? (
-                    <select
-                      value={sortColumn}
-                      onChange={(event) => onSort(event.target.value as SortColumn)}
-                      className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                    >
-                      <option value="updatedAt">Sort: Updated</option>
-                      <option value="name">Sort: Name</option>
-                      <option value="stage">Sort: Stage</option>
-                      <option value="status">Sort: Status</option>
-                    </select>
-                  ) : null}
-                  {viewMode === 'cards' ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'))}
-                    >
-                      {sortDirection === 'desc' ? 'Descending' : 'Ascending'}
-                    </Button>
-                  ) : null}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('table')}
-                    className={cn(
-                      'rounded-md border px-2 py-1.5 text-sm',
-                      viewMode === 'table'
-                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
-                        : 'border-border bg-background text-muted-foreground',
-                    )}
-                  >
-                    Table
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('cards')}
-                    className={cn(
-                      'rounded-md border px-2 py-1.5 text-sm',
-                      viewMode === 'cards'
-                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
-                        : 'border-border bg-background text-muted-foreground',
-                    )}
-                  >
-                    Cards
-                  </button>
-                </div>
-              </div>
-
-              <div className="border-b border-border px-4 py-2">
-                <p className="text-xs text-muted-foreground">
-                  {filteredWorkspaces.length} workspace{filteredWorkspaces.length === 1 ? '' : 's'} shown. Click a workspace to open it.
+      <div className="grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[280px_minmax(0,1fr)]">
+        <aside className="hidden border-r border-border nav:block">
+          {navigatorWorkspaceId ? (
+            <WorkspaceNavigator workspaceId={navigatorWorkspaceId} />
+          ) : (
+            <div className="flex h-full items-start p-4">
+              <div className="w-full rounded-md border border-border bg-card p-3 text-sm">
+                <p className="font-medium text-foreground">Workspace navigation</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Create your first workspace to unlock the full left navigation.
                 </p>
               </div>
+            </div>
+          )}
+        </aside>
 
-              {filteredWorkspaces.length === 0 ? (
-                <div className="p-6 text-sm text-muted-foreground">No workspaces match the current filter.</div>
-              ) : viewMode === 'table' ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-sz-760 text-sm">
-                    <thead className="bg-muted/35 text-left text-xs uppercase tracking-wide">
-                      <tr>
-                        <th className="px-3 py-2">
-                          <SortableHeader
-                            label="Workspace"
-                            column="name"
-                            activeColumn={sortColumn}
-                            direction={sortDirection}
-                            onSort={onSort}
-                          />
-                        </th>
-                        <th className="px-3 py-2">
-                          <SortableHeader
-                            label="Stage"
-                            column="stage"
-                            activeColumn={sortColumn}
-                            direction={sortDirection}
-                            onSort={onSort}
-                          />
-                        </th>
-                        <th className="px-3 py-2">
-                          <SortableHeader
-                            label="Updated"
-                            column="updatedAt"
-                            activeColumn={sortColumn}
-                            direction={sortDirection}
-                            onSort={onSort}
-                          />
-                        </th>
-                        <th className="px-3 py-2">
-                          <SortableHeader
-                            label="Status"
-                            column="status"
-                            activeColumn={sortColumn}
-                            direction={sortDirection}
-                            onSort={onSort}
-                          />
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredWorkspaces.map((workspace) => (
-                        <tr
-                          key={workspace.id}
-                          className="cursor-pointer border-t border-border hover:bg-accent/30"
-                          onClick={() => onOpenWorkspace(workspace.id)}
-                        >
-                          <td className="px-3 py-2 font-medium">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                {renamingWorkspaceId === workspace.id ? (
-                                  <div className="space-y-2" onClick={(event) => event.stopPropagation()}>
-                                    <Input
-                                      value={renameDraft}
-                                      onChange={(event) => setRenameDraft(event.target.value)}
-                                      className="h-8"
-                                      autoFocus
-                                    />
-                                    <div className="flex items-center gap-2">
-                                      <Button type="button" size="sm" onClick={() => onSaveRenameWorkspace(workspace)}>
-                                        Save
-                                      </Button>
-                                      <Button type="button" size="sm" variant="outline" onClick={onCancelRenameWorkspace}>
-                                        Cancel
-                                      </Button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <>
-                                    <p className="truncate">{workspace.name}</p>
-                                    <div className="mt-1 flex flex-wrap gap-1">
-                                      {workspace.pinned ? (
-                                        <span className="rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-micro text-emerald-700">
-                                          Pinned
-                                        </span>
-                                      ) : null}
-                                    </div>
-                                  </>
-                                )}
-                              </div>
-
-                              <WorkspaceMenuTrigger
-                                menuOpen={menuState?.workspaceId === workspace.id}
-                                onToggleMenu={(event) => onToggleWorkspaceMenu(workspace.id, event)}
-                              />
-                            </div>
-                          </td>
-                          <td className="px-3 py-2">{workspaceStage(workspace)}</td>
-                          <td className="px-3 py-2">{formatTimestamp(workspace.updatedAt)}</td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={cn(
-                                  'inline-block h-2.5 w-2.5 rounded-full',
-                                  workspace.archived ? 'bg-amber-500' : 'bg-emerald-500',
-                                )}
-                              />
-                              <span>{workspaceStatus(workspace)}</span>
-                              <button
-                                type="button"
-                                className="ml-auto rounded border border-border bg-background px-2 py-0.5 text-micro text-muted-foreground hover:text-foreground"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  onTogglePinned(workspace)
-                                }}
-                              >
-                                {workspace.pinned ? 'Unpin' : 'Pin'}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+        <main className="min-w-0 flex-1 overflow-hidden bg-background">
+          <ScrollArea className="h-full">
+            <div className="mx-auto w-full max-w-sz-1380 space-y-4 px-4 py-4 md:px-6">
+              <section className="rounded-lg border border-border bg-card p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h1 className="text-xl font-semibold tracking-tight">Workspaces</h1>
+                    <p className="text-sm text-muted-foreground">Manage, filter, and open your workspace list.</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      value={newWorkspaceName}
+                      onChange={(event) => setNewWorkspaceName(event.target.value)}
+                      placeholder="New workspace name"
+                      className="w-sz-220"
+                    />
+                    <Button type="button" onClick={onCreateWorkspace}>
+                      Create workspace
+                    </Button>
+                  </div>
                 </div>
-              ) : (
-                <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
-                  {filteredWorkspaces.map((workspace) => (
-                    <button
-                      key={workspace.id}
-                      type="button"
-                      onClick={() => onOpenWorkspace(workspace.id)}
-                      className="rounded-lg border border-border bg-background p-3 text-left hover:bg-accent/30"
+              </section>
+
+              <section className="rounded-lg border border-border bg-card">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="Filter workspaces"
+                      className="w-sz-260"
+                    />
+                    <select
+                      value={filterKey}
+                      onChange={(event) => setFilterKey(event.target.value as FilterKey)}
+                      className="h-9 rounded-md border border-input bg-background px-2 text-sm"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          {renamingWorkspaceId === workspace.id ? (
-                            <div className="space-y-2" onClick={(event) => event.stopPropagation()}>
-                              <Input
-                                value={renameDraft}
-                                onChange={(event) => setRenameDraft(event.target.value)}
-                                className="h-8"
-                                autoFocus
-                              />
-                              <div className="flex items-center gap-2">
-                                <Button type="button" size="sm" onClick={() => onSaveRenameWorkspace(workspace)}>
-                                  Save
-                                </Button>
-                                <Button type="button" size="sm" variant="outline" onClick={onCancelRenameWorkspace}>
-                                  Cancel
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              <p className="font-medium">{workspace.name}</p>
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                Updated {formatTimestamp(workspace.updatedAt)}
-                              </p>
-                            </>
-                          )}
-                        </div>
-                        <WorkspaceMenuTrigger
-                          menuOpen={menuState?.workspaceId === workspace.id}
-                          onToggleMenu={(event) => onToggleWorkspaceMenu(workspace.id, event)}
-                        />
-                      </div>
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                        <span className="rounded border border-border bg-muted/40 px-1.5 py-0.5">
-                          {workspaceStage(workspace)}
-                        </span>
-                        <span className="rounded border border-border bg-muted/40 px-1.5 py-0.5">
-                          {workspaceStatus(workspace)}
-                        </span>
-                        <button
-                          type="button"
-                          className="rounded border border-border bg-background px-1.5 py-0.5 text-muted-foreground hover:text-foreground"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            onTogglePinned(workspace)
-                          }}
-                        >
-                          {workspace.pinned ? 'Unpin' : 'Pin'}
-                        </button>
-                      </div>
+                      {FILTER_OPTIONS.map((option) => (
+                        <option key={option.key} value={option.key}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    {viewMode === 'cards' ? (
+                      <select
+                        value={sortColumn}
+                        onChange={(event) => onSort(event.target.value as SortColumn)}
+                        className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                      >
+                        <option value="updatedAt">Sort: Updated</option>
+                        <option value="name">Sort: Name</option>
+                        <option value="stage">Sort: Stage</option>
+                        <option value="status">Sort: Status</option>
+                      </select>
+                    ) : null}
+                    {viewMode === 'cards' ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'))}
+                      >
+                        {sortDirection === 'desc' ? 'Descending' : 'Ascending'}
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('table')}
+                      className={cn(
+                        'rounded-md border px-2 py-1.5 text-sm',
+                        viewMode === 'table'
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                          : 'border-border bg-background text-muted-foreground',
+                      )}
+                    >
+                      Table
                     </button>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('cards')}
+                      className={cn(
+                        'rounded-md border px-2 py-1.5 text-sm',
+                        viewMode === 'cards'
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                          : 'border-border bg-background text-muted-foreground',
+                      )}
+                    >
+                      Cards
+                    </button>
+                  </div>
                 </div>
-              )}
-            </section>
-          </div>
-        </ScrollArea>
-      </main>
+
+                <div className="border-b border-border px-4 py-2">
+                  <p className="text-xs text-muted-foreground">
+                    {filteredWorkspaces.length} workspace{filteredWorkspaces.length === 1 ? '' : 's'} shown. Click a workspace to open it.
+                  </p>
+                </div>
+
+                {filteredWorkspaces.length === 0 ? (
+                  <div className="p-6 text-sm text-muted-foreground">No workspaces match the current filter.</div>
+                ) : viewMode === 'table' ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-sz-760 text-sm">
+                      <thead className="bg-muted/35 text-left text-xs uppercase tracking-wide">
+                        <tr>
+                          <th className="px-3 py-2">
+                            <SortableHeader
+                              label="Workspace"
+                              column="name"
+                              activeColumn={sortColumn}
+                              direction={sortDirection}
+                              onSort={onSort}
+                            />
+                          </th>
+                          <th className="px-3 py-2">
+                            <SortableHeader
+                              label="Stage"
+                              column="stage"
+                              activeColumn={sortColumn}
+                              direction={sortDirection}
+                              onSort={onSort}
+                            />
+                          </th>
+                          <th className="px-3 py-2">
+                            <SortableHeader
+                              label="Updated"
+                              column="updatedAt"
+                              activeColumn={sortColumn}
+                              direction={sortDirection}
+                              onSort={onSort}
+                            />
+                          </th>
+                          <th className="px-3 py-2">
+                            <SortableHeader
+                              label="Status"
+                              column="status"
+                              activeColumn={sortColumn}
+                              direction={sortDirection}
+                              onSort={onSort}
+                            />
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredWorkspaces.map((workspace) => (
+                          <tr
+                            key={workspace.id}
+                            className="cursor-pointer border-t border-border hover:bg-accent/30"
+                            onClick={() => onOpenWorkspace(workspace.id)}
+                          >
+                            <td className="px-3 py-2 font-medium">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  {renamingWorkspaceId === workspace.id ? (
+                                    <div className="space-y-2" onClick={(event) => event.stopPropagation()}>
+                                      <Input
+                                        value={renameDraft}
+                                        onChange={(event) => setRenameDraft(event.target.value)}
+                                        className="h-8"
+                                        autoFocus
+                                      />
+                                      <div className="flex items-center gap-2">
+                                        <Button type="button" size="sm" onClick={() => onSaveRenameWorkspace(workspace)}>
+                                          Save
+                                        </Button>
+                                        <Button type="button" size="sm" variant="outline" onClick={onCancelRenameWorkspace}>
+                                          Cancel
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <p className="truncate">{workspace.name}</p>
+                                      <div className="mt-1 flex flex-wrap gap-1">
+                                        {workspace.pinned ? (
+                                          <span className="rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-micro text-emerald-700">
+                                            Pinned
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+
+                                <WorkspaceMenuTrigger
+                                  menuOpen={menuState?.workspaceId === workspace.id}
+                                  onToggleMenu={(event) => onToggleWorkspaceMenu(workspace.id, event)}
+                                />
+                              </div>
+                            </td>
+                            <td className="px-3 py-2">{workspaceStage(workspace)}</td>
+                            <td className="px-3 py-2">{formatTimestamp(workspace.updatedAt)}</td>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={cn(
+                                    'inline-block h-2.5 w-2.5 rounded-full',
+                                    workspace.archived ? 'bg-amber-500' : 'bg-emerald-500',
+                                  )}
+                                />
+                                <span>{workspaceStatus(workspace)}</span>
+                                <button
+                                  type="button"
+                                  className="ml-auto rounded border border-border bg-background px-2 py-0.5 text-micro text-muted-foreground hover:text-foreground"
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    onTogglePinned(workspace)
+                                  }}
+                                >
+                                  {workspace.pinned ? 'Unpin' : 'Pin'}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+                    {filteredWorkspaces.map((workspace) => (
+                      <button
+                        key={workspace.id}
+                        type="button"
+                        onClick={() => onOpenWorkspace(workspace.id)}
+                        className="rounded-lg border border-border bg-background p-3 text-left hover:bg-accent/30"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            {renamingWorkspaceId === workspace.id ? (
+                              <div className="space-y-2" onClick={(event) => event.stopPropagation()}>
+                                <Input
+                                  value={renameDraft}
+                                  onChange={(event) => setRenameDraft(event.target.value)}
+                                  className="h-8"
+                                  autoFocus
+                                />
+                                <div className="flex items-center gap-2">
+                                  <Button type="button" size="sm" onClick={() => onSaveRenameWorkspace(workspace)}>
+                                    Save
+                                  </Button>
+                                  <Button type="button" size="sm" variant="outline" onClick={onCancelRenameWorkspace}>
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <p className="font-medium">{workspace.name}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Updated {formatTimestamp(workspace.updatedAt)}
+                                </p>
+                              </>
+                            )}
+                          </div>
+                          <WorkspaceMenuTrigger
+                            menuOpen={menuState?.workspaceId === workspace.id}
+                            onToggleMenu={(event) => onToggleWorkspaceMenu(workspace.id, event)}
+                          />
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                          <span className="rounded border border-border bg-muted/40 px-1.5 py-0.5">
+                            {workspaceStage(workspace)}
+                          </span>
+                          <span className="rounded border border-border bg-muted/40 px-1.5 py-0.5">
+                            {workspaceStatus(workspace)}
+                          </span>
+                          <button
+                            type="button"
+                            className="rounded border border-border bg-background px-1.5 py-0.5 text-muted-foreground hover:text-foreground"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onTogglePinned(workspace)
+                            }}
+                          >
+                            {workspace.pinned ? 'Unpin' : 'Pin'}
+                          </button>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
+          </ScrollArea>
+        </main>
+      </div>
+
+      <Sheet open={leftPanelOpen} onOpenChange={setLeftPanelOpen}>
+        <SheetContent side="left" className="w-sz-290 p-0 nav:hidden">
+          {navigatorWorkspaceId ? (
+            <WorkspaceNavigator workspaceId={navigatorWorkspaceId} onNavigate={() => setLeftPanelOpen(false)} />
+          ) : (
+            <div className="p-4 text-sm">
+              <p className="font-medium text-foreground">Workspace navigation</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Create your first workspace to unlock the full left navigation.
+              </p>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
 
       {menuState && menuWorkspace
         ? createPortal(

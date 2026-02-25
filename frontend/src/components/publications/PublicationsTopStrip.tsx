@@ -108,7 +108,8 @@ const HOUSE_CHART_EXITED_CLASS = publicationsHouseMotion.chartExit
 const HOUSE_TOGGLE_TRACK_CLASS = publicationsHouseMotion.toggleTrack
 const HOUSE_TOGGLE_THUMB_CLASS = publicationsHouseMotion.toggleThumb
 const HOUSE_TOGGLE_BUTTON_CLASS = publicationsHouseMotion.toggleButton
-const HOUSE_LABEL_TRANSITION_CLASS = publicationsHouseMotion.labelTransition
+const HOUSE_TOGGLE_CHART_BAR_CLASS = publicationsHouseMotion.toggleChartBar
+const HOUSE_TOGGLE_CHART_LABEL_CLASS = publicationsHouseMotion.toggleChartLabel
 const HOUSE_SURFACE_TOP_PANEL_CLASS = publicationsHouseSurfaces.topPanel
 const HOUSE_SURFACE_SECTION_PANEL_CLASS = publicationsHouseSurfaces.sectionPanel
 const HOUSE_SURFACE_SOFT_PANEL_CLASS = publicationsHouseSurfaces.softPanel
@@ -132,14 +133,33 @@ function prefersReducedMotion(): boolean {
   )
 }
 
-function directionalExitClass(direction: 1 | -1): string {
-  return direction > 0
-    ? 'opacity-0 translate-x-2 scale-[0.985] blur-[0.4px]'
-    : 'opacity-0 -translate-x-2 scale-[0.985] blur-[0.4px]'
-}
+function useUnifiedToggleBarAnimation(animationKey: string, enabled: boolean): boolean {
+  const [barsExpanded, setBarsExpanded] = useState(false)
 
-function directionalLabelExitClass(direction: 1 | -1): string {
-  return direction > 0 ? 'opacity-0 translate-x-2' : 'opacity-0 -translate-x-2'
+  useEffect(() => {
+    if (!enabled) {
+      setBarsExpanded(false)
+      return
+    }
+    if (prefersReducedMotion()) {
+      setBarsExpanded(true)
+      return
+    }
+    setBarsExpanded(false)
+    let rafOne = 0
+    let rafTwo = 0
+    rafOne = window.requestAnimationFrame(() => {
+      rafTwo = window.requestAnimationFrame(() => {
+        setBarsExpanded(true)
+      })
+    })
+    return () => {
+      window.cancelAnimationFrame(rafOne)
+      window.cancelAnimationFrame(rafTwo)
+    }
+  }, [animationKey, enabled])
+
+  return barsExpanded
 }
 
 type HIndexProgressMeta = {
@@ -902,8 +922,6 @@ function StructuredMetricTile({
 }
 
 function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetricTilePayload; showCaption?: boolean }) {
-  const [chartVisible, setChartVisible] = useState(true)
-  const [barsExpanded, setBarsExpanded] = useState(false)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
@@ -938,34 +956,13 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
       current: true,
     })
   }
-  const animationKey = useMemo(
-    () => bars.map((bar) => `${bar.year}-${bar.value}-${bar.current ? 1 : 0}`).join('|'),
-    [bars],
-  )
+  const animationKey = bars.map((bar) => `${bar.year}-${bar.value}-${bar.current ? 1 : 0}`).join('|')
   const hasBars = bars.length > 0
+  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars)
+
   useEffect(() => {
-    if (!hasBars) {
-      setChartVisible(true)
-      setBarsExpanded(false)
-      setHoveredIndex(null)
-      return
-    }
-    setChartVisible(false)
-    setBarsExpanded(false)
     setHoveredIndex(null)
-    let rafOne = 0
-    let rafTwo = 0
-    rafOne = window.requestAnimationFrame(() => {
-      setChartVisible(true)
-      rafTwo = window.requestAnimationFrame(() => {
-        setBarsExpanded(true)
-      })
-    })
-    return () => {
-      window.cancelAnimationFrame(rafOne)
-      window.cancelAnimationFrame(rafTwo)
-    }
-  }, [animationKey, hasBars])
+  }, [animationKey])
 
   if (!hasBars) {
     return <div className={dashboardTileStyles.emptyChart}>No h-index timeline</div>
@@ -980,7 +977,7 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
           'pb-7',
-          chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
+          HOUSE_CHART_ENTERED_CLASS,
         )}
       >
         <div className="absolute inset-x-2 bottom-7 top-4">
@@ -1018,7 +1015,8 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
                   </span>
                   <span
                     className={cn(
-                      'block w-full rounded transition-[transform,filter,box-shadow] duration-220 ease-out',
+                      'block w-full rounded',
+                      HOUSE_TOGGLE_CHART_BAR_CLASS,
                       toneClass,
                       isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
                     )}
@@ -1036,7 +1034,7 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
         </div>
         <div className="pointer-events-none absolute inset-x-2 bottom-1 grid grid-flow-col auto-cols-fr items-start gap-1">
           {bars.map((bar, index) => (
-            <div key={`${bar.year}-${index}-axis`} className="text-center leading-none">
+            <div key={`${bar.year}-${index}-axis`} className={cn('text-center leading-none', HOUSE_TOGGLE_CHART_LABEL_CLASS)}>
               <p className="text-[0.6rem] font-semibold text-[hsl(var(--tone-neutral-600))]">{String(bar.year).slice(-2)}</p>
               {bar.current ? (
                 <p className="mt-px text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-600))]">
@@ -1069,11 +1067,8 @@ function PublicationsPerYearChart({
   yAxisLabel?: string
   enableWindowToggle?: boolean
 }) {
-  const [chartVisible, setChartVisible] = useState(true)
-  const [barsExpanded, setBarsExpanded] = useState(false)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [windowMode, setWindowMode] = useState<PublicationsWindowMode>('5y')
-  const [transitionDirection, setTransitionDirection] = useState<1 | -1>(1)
   const nowUtc = useMemo(() => new Date(), [])
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
@@ -1252,25 +1247,14 @@ function PublicationsPerYearChart({
     () => `${effectiveWindowMode}|${activeBucketSize}|${activeBars.map((bar) => `${bar.key}-${bar.value}-${bar.current ? 1 : 0}`).join('|')}`,
     [activeBars, activeBucketSize, effectiveWindowMode],
   )
+  const hasBars = hasValidSeries && historyBars.length > 0 && activeBars.length > 0
+  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars)
+
   useEffect(() => {
-    setChartVisible(false)
-    setBarsExpanded(false)
     setHoveredIndex(null)
-    let rafOne = 0
-    let rafTwo = 0
-    rafOne = window.requestAnimationFrame(() => {
-      setChartVisible(true)
-      rafTwo = window.requestAnimationFrame(() => {
-        setBarsExpanded(true)
-      })
-    })
-    return () => {
-      window.cancelAnimationFrame(rafOne)
-      window.cancelAnimationFrame(rafTwo)
-    }
   }, [animationKey])
 
-  if (!hasValidSeries || !historyBars.length || !activeBars.length) {
+  if (!hasBars) {
     return <div className={dashboardTileStyles.emptyChart}>No publication timeline</div>
   }
 
@@ -1353,8 +1337,6 @@ function PublicationsPerYearChart({
                   if (windowMode === option.value) {
                     return
                   }
-                  const targetIndex = PUBLICATIONS_WINDOW_OPTIONS.findIndex((item) => item.value === option.value)
-                  setTransitionDirection(targetIndex > activeWindowIndex ? 1 : -1)
                   setWindowMode(option.value)
                 }}
                 onMouseDown={(event) => event.stopPropagation()}
@@ -1368,7 +1350,7 @@ function PublicationsPerYearChart({
               className={cn(
                 'min-h-[0.9rem]',
                 HOUSE_HEADING_LABEL_CLASS,
-                HOUSE_LABEL_TRANSITION_CLASS,
+                HOUSE_TOGGLE_CHART_LABEL_CLASS,
                 periodHintVisible ? 'opacity-100' : 'opacity-0',
               )}
               aria-live="polite"
@@ -1381,16 +1363,11 @@ function PublicationsPerYearChart({
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
           showAxes ? 'pb-12' : isCompactTileMode ? 'pb-7' : 'pb-8',
-          chartVisible ? 'opacity-100 translate-x-0 scale-100 blur-0' : directionalExitClass(transitionDirection),
+          HOUSE_CHART_ENTERED_CLASS,
         )}
       >
         {showAxes && enableWindowToggle ? (
-          <div
-            className={cn(
-              'pointer-events-none absolute right-2 top-1.5 z-[2] flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-1.5 py-0.5 text-[0.58rem] font-semibold text-[hsl(var(--tone-neutral-700))] transition-[opacity,transform] duration-320 ease-out',
-              chartVisible ? 'opacity-100 translate-x-0' : directionalLabelExitClass(transitionDirection),
-            )}
-          >
+          <div className="pointer-events-none absolute right-2 top-1.5 z-[2] flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-1.5 py-0.5 text-[0.58rem] font-semibold text-[hsl(var(--tone-neutral-700))]">
             <span className="w-4 border-t border-dashed border-[hsl(var(--tone-neutral-500))]" aria-hidden="true" />
             <span>{averageLegendText}</span>
           </div>
@@ -1440,13 +1417,14 @@ function PublicationsPerYearChart({
                   </span>
                   <span
                     className={cn(
-                      'block w-full rounded transition-[transform,filter,box-shadow] duration-220 ease-out',
+                      'block w-full rounded',
+                      HOUSE_TOGGLE_CHART_BAR_CLASS,
                       toneClass,
                       isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
                     )}
                     style={{
                       height: `${heightPct}%`,
-                      transform: `translateX(${chartVisible ? 0 : transitionDirection * 8}px) translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
                       transitionDelay: `${Math.min(220, index * 18)}ms`,
                     }}
@@ -1477,13 +1455,7 @@ function PublicationsPerYearChart({
           </div>
         ) : null}
 
-        <div
-          className={cn(
-            'pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1 transition-[opacity,transform] duration-320 ease-out',
-            chartVisible ? 'opacity-100 translate-x-0' : directionalLabelExitClass(transitionDirection),
-          )}
-          style={xAxisTicksStyle}
-        >
+        <div className={cn('pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1', HOUSE_TOGGLE_CHART_LABEL_CLASS)} style={xAxisTicksStyle}>
           {activeBars.map((bar, index) => (
             <div key={`${bar.key}-${index}-axis`} className="text-center leading-none">
               <p className="text-[0.62rem] font-semibold leading-[1.05] text-[hsl(var(--tone-neutral-600))]">
@@ -1698,17 +1670,12 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
 function MomentumTilePanel({
   tile,
   mode,
-  direction,
   yearBreakdown,
 }: {
   tile: PublicationMetricTilePayload
   mode: MomentumWindowMode
-  direction: 1 | -1
   yearBreakdown: MomentumYearBreakdown | null
 }) {
-  const [chartVisible, setChartVisible] = useState(true)
-  const [barsExpanded, setBarsExpanded] = useState(false)
-  const [labelsVisible, setLabelsVisible] = useState(true)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const monthlyBreakdown = buildMomentumBreakdown(tile)
   const useYearMode = mode === '5y' && Boolean(yearBreakdown?.bars.length)
@@ -1791,49 +1758,15 @@ function MomentumTilePanel({
     () => `${mode}|${comparisonBars.map((bar) => `${bar.key}-${bar.value.toFixed(3)}`).join('|')}`,
     [comparisonBars, mode],
   )
+  const hasComparisonBars = comparisonBars.length > 0
+  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasComparisonBars)
   const animatedStateRef = useRef(animatedState)
   useEffect(() => {
     animatedStateRef.current = animatedState
   }, [animatedState])
   useEffect(() => {
-    if (!comparisonBars.length) {
-      setChartVisible(true)
-      setBarsExpanded(false)
-      setLabelsVisible(true)
-      setHoveredIndex(null)
-      return
-    }
-    if (prefersReducedMotion()) {
-      setChartVisible(true)
-      setBarsExpanded(true)
-      setLabelsVisible(true)
-      setHoveredIndex(null)
-      return
-    }
-    setChartVisible(false)
-    setBarsExpanded(false)
-    setLabelsVisible(false)
     setHoveredIndex(null)
-    let rafOne = 0
-    let rafTwo = 0
-    let timeoutId: number | undefined
-    rafOne = window.requestAnimationFrame(() => {
-      setChartVisible(true)
-      rafTwo = window.requestAnimationFrame(() => {
-        setBarsExpanded(true)
-        timeoutId = window.setTimeout(() => {
-          setLabelsVisible(true)
-        }, 120)
-      })
-    })
-    return () => {
-      window.cancelAnimationFrame(rafOne)
-      window.cancelAnimationFrame(rafTwo)
-      if (timeoutId !== undefined) {
-        window.clearTimeout(timeoutId)
-      }
-    }
-  }, [animationKey, comparisonBars.length, direction])
+  }, [animationKey])
   useEffect(() => {
     const target = {
       baseline: baselineTarget,
@@ -1878,7 +1811,7 @@ function MomentumTilePanel({
     }
   }, [baselineTarget, recentTarget, scaledMaxTarget])
 
-  if (!comparisonBars.length) {
+  if (!hasComparisonBars) {
     return <div className={dashboardTileStyles.emptyChart}>{emptyLabel}</div>
   }
 
@@ -1890,7 +1823,7 @@ function MomentumTilePanel({
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
           'pb-7',
-          chartVisible ? HOUSE_CHART_ENTERED_CLASS : directionalExitClass(direction),
+          HOUSE_CHART_ENTERED_CLASS,
         )}
       >
         <div className="absolute inset-x-2 bottom-7 top-4">
@@ -1928,13 +1861,14 @@ function MomentumTilePanel({
                   </span>
                   <span
                     className={cn(
-                      'block w-full rounded transition-[transform,filter,box-shadow] duration-220 ease-out',
+                      'block w-full rounded',
+                      HOUSE_TOGGLE_CHART_BAR_CLASS,
                       toneClass,
                       isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
                     )}
                     style={{
                       height: `${heightPct}%`,
-                      transform: `translateX(${chartVisible ? 0 : direction * 8}px) translateY(${yOffset}px) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                      transform: `translateY(${yOffset}px) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       opacity: 1,
                       transformOrigin: 'bottom',
                       transitionDelay: barsExpanded ? '0ms' : `${Math.min(220, index * 18)}ms`,
@@ -1949,12 +1883,7 @@ function MomentumTilePanel({
           {comparisonBars.map((bar) => (
             <div
               key={`${bar.key}-axis`}
-              className={cn(
-                'leading-none text-center',
-                HOUSE_LABEL_TRANSITION_CLASS,
-                labelsVisible ? 'opacity-100 translate-x-0 translate-y-0' : directionalLabelExitClass(direction),
-                !labelsVisible && 'translate-y-0.5',
-              )}
+              className={cn('leading-none text-center', HOUSE_TOGGLE_CHART_LABEL_CLASS)}
             >
               <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'whitespace-nowrap text-center')}>
                 {bar.label}
@@ -1992,15 +1921,10 @@ function parseNumericKeyedMap(value: unknown): Record<number, number> {
 function FieldPercentilePanel({
   tile,
   threshold,
-  direction,
 }: {
   tile: PublicationMetricTilePayload
   threshold: FieldPercentileThreshold
-  direction: 1 | -1
 }) {
-  const [chartVisible, setChartVisible] = useState(true)
-  const [barsExpanded, setBarsExpanded] = useState(false)
-  const [labelsVisible, setLabelsVisible] = useState(true)
   const [hovered, setHovered] = useState(false)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const shareMap = parseNumericKeyedMap(chartData.share_by_threshold_pct)
@@ -2025,39 +1949,14 @@ function FieldPercentilePanel({
     () => `${threshold}-${shareAbove.toFixed(2)}-${evaluatedPapers}`,
     [evaluatedPapers, shareAbove, threshold],
   )
-  useEffect(() => {
-    if (prefersReducedMotion()) {
-      setChartVisible(true)
-      setBarsExpanded(true)
-      setLabelsVisible(true)
-      return
-    }
-    setChartVisible(false)
-    setBarsExpanded(false)
-    setLabelsVisible(false)
-    setHovered(false)
-    let rafOne = 0
-    let rafTwo = 0
-    let timeoutId: number | undefined
-    rafOne = window.requestAnimationFrame(() => {
-      setChartVisible(true)
-      rafTwo = window.requestAnimationFrame(() => {
-        setBarsExpanded(true)
-        timeoutId = window.setTimeout(() => {
-          setLabelsVisible(true)
-        }, 120)
-      })
-    })
-    return () => {
-      window.cancelAnimationFrame(rafOne)
-      window.cancelAnimationFrame(rafTwo)
-      if (timeoutId !== undefined) {
-        window.clearTimeout(timeoutId)
-      }
-    }
-  }, [animationKey, direction])
+  const hasPercentileData = evaluatedPapers > 0
+  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasPercentileData)
 
-  if (evaluatedPapers <= 0) {
+  useEffect(() => {
+    setHovered(false)
+  }, [animationKey])
+
+  if (!hasPercentileData) {
     return <div className={dashboardTileStyles.emptyChart}>No field percentile data</div>
   }
 
@@ -2067,7 +1966,7 @@ function FieldPercentilePanel({
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
           'pb-7',
-          chartVisible ? HOUSE_CHART_ENTERED_CLASS : directionalExitClass(direction),
+          HOUSE_CHART_ENTERED_CLASS,
         )}
       >
         <div className="absolute inset-x-2 bottom-7 top-4">
@@ -2097,13 +1996,14 @@ function FieldPercentilePanel({
               </span>
               <span
                 className={cn(
-                  'block w-full rounded transition-[transform,filter,box-shadow] duration-220 ease-out',
+                  'block w-full rounded',
+                  HOUSE_TOGGLE_CHART_BAR_CLASS,
                   HOUSE_CHART_BAR_POSITIVE_CLASS,
                   hovered && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
                 )}
                 style={{
                   height: `${heightPct}%`,
-                  transform: `translateX(${chartVisible ? 0 : direction * 8}px) translateY(${hovered ? '-1px' : '0px'}) scaleX(${hovered ? 1.03 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                  transform: `translateY(${hovered ? '-1px' : '0px'}) scaleX(${hovered ? 1.03 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                   transformOrigin: 'bottom',
                 }}
               />
@@ -2111,14 +2011,7 @@ function FieldPercentilePanel({
           </div>
         </div>
         <div className="pointer-events-none absolute inset-x-2 bottom-1 min-h-[1.22rem]">
-          <div
-            className={cn(
-              'leading-none text-center',
-              HOUSE_LABEL_TRANSITION_CLASS,
-              labelsVisible ? 'opacity-100 translate-x-0 translate-y-0' : directionalLabelExitClass(direction),
-              !labelsVisible && 'translate-y-0.5',
-            )}
-          >
+          <div className={cn('leading-none text-center', HOUSE_TOGGLE_CHART_LABEL_CLASS)}>
             <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'whitespace-nowrap text-center')}>
               {barLabel}
             </p>
@@ -3153,8 +3046,6 @@ function TotalPublicationsDrilldownWorkspace({
 }
 
 function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
-  const [chartVisible, setChartVisible] = useState(true)
-  const [barsExpanded, setBarsExpanded] = useState(false)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const candidateGaps = toNumberArray(chartData.candidate_gaps)
@@ -3195,21 +3086,10 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
     () => bars.map((bar) => `${bar.key}-${bar.count}`).join('|'),
     [bars],
   )
+  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, true)
+
   useEffect(() => {
-    setChartVisible(false)
-    setBarsExpanded(false)
-    let rafOne = 0
-    let rafTwo = 0
-    rafOne = window.requestAnimationFrame(() => {
-      setChartVisible(true)
-      rafTwo = window.requestAnimationFrame(() => {
-        setBarsExpanded(true)
-      })
-    })
-    return () => {
-      window.cancelAnimationFrame(rafOne)
-      window.cancelAnimationFrame(rafTwo)
-    }
+    setHoveredIndex(null)
   }, [animationKey])
 
   const maxCount = Math.max(1, ...bars.map((bar) => bar.count))
@@ -3221,7 +3101,7 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
           'pb-8',
-          chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
+          HOUSE_CHART_ENTERED_CLASS,
         )}
       >
         <div className="absolute inset-x-2 bottom-8 top-4">
@@ -3261,7 +3141,8 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
                   </span>
                   <span
                     className={cn(
-                      'block w-full rounded transition-[transform,filter,box-shadow] duration-220 ease-out',
+                      'block w-full rounded',
+                      HOUSE_TOGGLE_CHART_BAR_CLASS,
                       toneClass,
                       isActive && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
                     )}
@@ -3279,7 +3160,7 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
         </div>
         <div className="pointer-events-none absolute inset-x-2 bottom-2 grid grid-flow-col auto-cols-fr items-start gap-1">
           {bars.map((bar, index) => (
-            <div key={`${bar.key}-${index}-axis`} className="text-center leading-none">
+            <div key={`${bar.key}-${index}-axis`} className={cn('text-center leading-none', HOUSE_TOGGLE_CHART_LABEL_CLASS)}>
               <p className="text-[0.6rem] font-semibold text-[hsl(var(--tone-neutral-600))]">{bar.label}</p>
               <p
                 className="mt-px text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-transparent"
@@ -3303,49 +3184,13 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
 function HIndexTrajectoryPanel({
   tile,
   mode,
-  direction,
 }: {
   tile: PublicationMetricTilePayload
   mode: HIndexViewMode
-  direction: 1 | -1
 }) {
-  const [renderMode, setRenderMode] = useState<HIndexViewMode>(mode)
-  const [panelVisible, setPanelVisible] = useState(true)
-
-  useEffect(() => {
-    if (prefersReducedMotion()) {
-      setRenderMode(mode)
-      setPanelVisible(true)
-      return
-    }
-    if (mode === renderMode) {
-      setPanelVisible(true)
-      return
-    }
-    setPanelVisible(false)
-    let raf = 0
-    const timeoutId = window.setTimeout(() => {
-      setRenderMode(mode)
-      raf = window.requestAnimationFrame(() => {
-        setPanelVisible(true)
-      })
-    }, 140)
-    return () => {
-      window.clearTimeout(timeoutId)
-      window.cancelAnimationFrame(raf)
-    }
-  }, [mode, renderMode])
-
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div
-        className={cn(
-          'h-full w-full transition-[opacity,transform,filter] duration-320 ease-out',
-          panelVisible ? 'opacity-100 translate-x-0 scale-100 blur-0' : directionalExitClass(direction),
-        )}
-      >
-        {renderMode === 'needed' ? <HIndexNeedsChart tile={tile} /> : <HIndexYearChart tile={tile} showCaption={false} />}
-      </div>
+      {mode === 'needed' ? <HIndexNeedsChart tile={tile} /> : <HIndexYearChart tile={tile} showCaption={false} />}
     </div>
   )
 }
@@ -3710,11 +3555,8 @@ export function PublicationsTopStrip({
   const [detailError, setDetailError] = useState('')
   const [activeDrilldownTab, setActiveDrilldownTab] = useState<DrilldownTab>('summary')
   const [momentumWindowMode, setMomentumWindowMode] = useState<MomentumWindowMode>('12m')
-  const [momentumTransitionDirection, setMomentumTransitionDirection] = useState<1 | -1>(1)
   const [hIndexViewMode, setHIndexViewMode] = useState<HIndexViewMode>('trajectory')
-  const [hIndexTransitionDirection, setHIndexTransitionDirection] = useState<1 | -1>(1)
   const [fieldPercentileThreshold, setFieldPercentileThreshold] = useState<FieldPercentileThreshold>(75)
-  const [fieldPercentileTransitionDirection, setFieldPercentileTransitionDirection] = useState<1 | -1>(1)
   const [insightsVisible, setInsightsVisible] = useState(
     () => readAccountSettings().publicationInsightsDefaultVisibility !== 'hidden',
   )
@@ -3915,7 +3757,6 @@ export function PublicationsTopStrip({
                             if (momentumWindowMode === '12m') {
                               return
                             }
-                            setMomentumTransitionDirection(-1)
                             setMomentumWindowMode('12m')
                           }}
                           onMouseDown={(event) => event.stopPropagation()}
@@ -3937,7 +3778,6 @@ export function PublicationsTopStrip({
                             if (momentumWindowMode === '5y') {
                               return
                             }
-                            setMomentumTransitionDirection(1)
                             setMomentumWindowMode('5y')
                           }}
                           onMouseDown={(event) => event.stopPropagation()}
@@ -3956,7 +3796,6 @@ export function PublicationsTopStrip({
                     <MomentumTilePanel
                       tile={tile}
                       mode={momentumWindowMode}
-                      direction={momentumTransitionDirection}
                       yearBreakdown={momentumYearBreakdown}
                     />
                   )
@@ -3972,9 +3811,6 @@ export function PublicationsTopStrip({
                         if (nextMode === hIndexViewMode) {
                           return
                         }
-                        const currentIndex = hIndexViewMode === 'trajectory' ? 0 : 1
-                        const targetIndex = nextMode === 'trajectory' ? 0 : 1
-                        setHIndexTransitionDirection(targetIndex > currentIndex ? 1 : -1)
                         setHIndexViewMode(nextMode)
                       }}
                     />
@@ -3983,7 +3819,6 @@ export function PublicationsTopStrip({
                     <HIndexTrajectoryPanel
                       tile={tile}
                       mode={hIndexViewMode}
-                      direction={hIndexTransitionDirection}
                     />
                   )
                 } else if (tile.key === 'impact_concentration') {
@@ -4076,9 +3911,6 @@ export function PublicationsTopStrip({
                               if (activeThreshold === threshold) {
                                 return
                               }
-                              const targetIndex = Math.max(0, availableThresholds.indexOf(threshold))
-                              const currentIndex = Math.max(0, availableThresholds.indexOf(activeThreshold))
-                              setFieldPercentileTransitionDirection(targetIndex > currentIndex ? 1 : -1)
                               setFieldPercentileThreshold(threshold)
                             }}
                             onMouseDown={(event) => event.stopPropagation()}
@@ -4094,7 +3926,6 @@ export function PublicationsTopStrip({
                     <FieldPercentilePanel
                       tile={tile}
                       threshold={activeThreshold}
-                      direction={fieldPercentileTransitionDirection}
                     />
                   )
                 } else if (tile.key === 'authorship_composition') {

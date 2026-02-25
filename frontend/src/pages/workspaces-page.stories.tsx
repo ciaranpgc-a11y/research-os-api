@@ -153,12 +153,14 @@ function WorkspacesPagePreview({ fixture }: WorkspacesPagePreviewProps) {
   }
 
   return (
-    <MemoryRouter initialEntries={['/workspaces']}>
-      <Routes>
-        <Route path="/workspaces" element={<WorkspacesPage />} />
-        <Route path="/w/:workspaceId/overview" element={<RouteEcho />} />
-      </Routes>
-    </MemoryRouter>
+    <div className="min-h-screen min-w-[1200px] bg-background">
+      <MemoryRouter initialEntries={['/workspaces']}>
+        <Routes>
+          <Route path="/workspaces" element={<WorkspacesPage />} />
+          <Route path="/w/:workspaceId/overview" element={<RouteEcho />} />
+        </Routes>
+      </MemoryRouter>
+    </div>
   )
 }
 
@@ -168,6 +170,9 @@ const meta: Meta<typeof WorkspacesPagePreview> = {
   parameters: {
     layout: 'fullscreen',
     withRouter: false,
+    viewport: {
+      defaultViewport: 'desktop',
+    },
   },
   args: {
     fixture: defaultFixture,
