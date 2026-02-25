@@ -1503,6 +1503,9 @@ function MomentumTilePanel({
           ))}
         </div>
       </div>
+      <p className="mt-0.5 text-center text-[0.54rem] font-medium leading-none text-[hsl(var(--tone-neutral-500))]">
+        Citations needed
+      </p>
     </div>
   )
 }
