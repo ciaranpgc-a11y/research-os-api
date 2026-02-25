@@ -3008,7 +3008,8 @@ def get_publication_top_metrics(*, user_id: str) -> dict[str, Any]:
                 _safe_int(metadata.get("schema_version")) if isinstance(metadata, dict) else None
             )
             schema_outdated = (schema_version or 0) < TOP_METRICS_SCHEMA_VERSION
-            if (stale or schema_outdated) and status != RUNNING_STATUS:
+            should_retry_failed = status == FAILED_STATUS
+            if (stale or schema_outdated or should_retry_failed) and status != RUNNING_STATUS:
                 enqueue = True
                 status = RUNNING_STATUS
             response = _response_from_row(row, status_override=status)
