@@ -923,8 +923,9 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
     <div className="flex h-full min-h-0 w-full flex-col">
       <div
         className={cn(
-          'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-7 pt-4 transition-[opacity,transform,filter] duration-320 ease-out',
-          chartVisible ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]',
+          HOUSE_CHART_TRANSITION_CLASS,
+          'pb-7',
+          chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
         )}
       >
         <div className="absolute inset-x-2 bottom-7 top-4">
@@ -1318,7 +1319,7 @@ function PublicationsPerYearChart({
       ) : null}
       <div
         className={cn(
-          'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pt-4 transition-[opacity,transform,filter] duration-320 ease-out',
+          HOUSE_CHART_TRANSITION_CLASS,
           showAxes ? 'pb-12' : isCompactTileMode ? 'pb-7' : 'pb-8',
           chartVisible
             ? 'opacity-100 translate-x-0 scale-100 blur-0'
@@ -1553,8 +1554,9 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
     <div className="flex h-full min-h-0 w-full flex-col">
       <div
         className={cn(
-          'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-2 pt-2.5 transition-[opacity,transform,filter] duration-320 ease-out',
-          chartVisible ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]',
+          HOUSE_CHART_TRANSITION_CLASS,
+          'pb-2 pt-2.5',
+          chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
         )}
       >
         {total > 0 ? (
@@ -1850,8 +1852,9 @@ function MomentumTilePanel({
     <div className="flex h-full min-h-0 w-full flex-col">
       <div
         className={cn(
-          'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-7 pt-4 transition-[opacity,transform,filter] duration-320 ease-out',
-          chartVisible ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]',
+          HOUSE_CHART_TRANSITION_CLASS,
+          'pb-7',
+          chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
         )}
       >
         <div className="absolute inset-x-2 bottom-7 top-4">
@@ -2015,8 +2018,9 @@ function FieldPercentilePanel({
     <div className="flex h-full min-h-0 w-full flex-col">
       <div
         className={cn(
-          'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-7 pt-4 transition-[opacity,transform,filter] duration-320 ease-out',
-          chartVisible ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]',
+          HOUSE_CHART_TRANSITION_CLASS,
+          'pb-7',
+          chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
         )}
       >
         <div className="absolute inset-x-2 bottom-7 top-4">
@@ -2140,7 +2144,7 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
       <div
         className={cn(
           'flex flex-1 flex-col gap-2.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2.5 py-2.5 transition-[opacity,transform,filter] duration-320 ease-out',
-          panelVisible ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]',
+          panelVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
         )}
       >
         {rows.map((row, index) => (
@@ -2222,7 +2226,7 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
       <div
         className={cn(
           'flex flex-1 flex-col gap-2.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2.5 py-2.5 transition-[opacity,transform,filter] duration-320 ease-out',
-          panelVisible ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]',
+          panelVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
         )}
       >
         {rows.map((row, index) => {
@@ -3169,8 +3173,9 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
     <div className="flex h-full min-h-0 w-full flex-col">
       <div
         className={cn(
-          'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-8 pt-4 transition-[opacity,transform,filter] duration-320 ease-out',
-          chartVisible ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]',
+          HOUSE_CHART_TRANSITION_CLASS,
+          'pb-8',
+          chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
         )}
       >
         <div className="absolute inset-x-2 bottom-8 top-4">
