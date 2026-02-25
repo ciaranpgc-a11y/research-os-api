@@ -3374,7 +3374,6 @@ function HIndexTrajectoryPanel({
     }
 
     setOutgoingMode(renderMode)
-    setRenderMode(mode)
     setCrossfading(false)
     let raf = 0
     const timeoutId = window.setTimeout(() => {
@@ -3382,6 +3381,9 @@ function HIndexTrajectoryPanel({
       setCrossfading(false)
     }, transitionMs)
     raf = window.requestAnimationFrame(() => {
+      // Mount incoming view on the frame where fade begins so both directions
+      // follow the same lifecycle (out -> in) for mixed bar counts.
+      setRenderMode(mode)
       setCrossfading(true)
     })
 
@@ -3401,8 +3403,8 @@ function HIndexTrajectoryPanel({
       {outgoingMode ? (
         <div
           className={cn(
-            'pointer-events-none absolute inset-0 transition-opacity',
-            crossfading ? 'opacity-0' : 'opacity-100',
+            'pointer-events-none absolute inset-0 transition-[opacity,transform]',
+            crossfading ? 'opacity-0 scale-[0.986] translate-y-0.5' : 'opacity-100 scale-100 translate-y-0',
           )}
           style={transitionStyle}
         >
@@ -3414,8 +3416,10 @@ function HIndexTrajectoryPanel({
 
       <div
         className={cn(
-          outgoingMode ? 'h-full w-full transition-opacity' : 'h-full w-full',
-          outgoingMode ? (crossfading ? 'opacity-100' : 'opacity-0') : 'opacity-100',
+          outgoingMode ? 'h-full w-full transition-[opacity,transform]' : 'h-full w-full',
+          outgoingMode
+            ? (crossfading ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-[1.015] -translate-y-0.5')
+            : 'opacity-100',
         )}
         style={outgoingMode ? transitionStyle : undefined}
       >

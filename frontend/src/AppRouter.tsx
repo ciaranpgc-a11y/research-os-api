@@ -97,7 +97,6 @@ export function AppRouter() {
         <Route path="/w/:workspaceId" element={<WorkspaceLayout />}>
           <Route index element={<Navigate to="overview" replace />} />
           <Route path="overview" element={<OverviewPage />} />
-          <Route path="inbox" element={<WorkspaceInboxPage />} />
           <Route path="run-wizard" element={<StudyCorePage />} />
           <Route path="data" element={<ResultsPage />} />
           <Route path="results" element={<ResultsPage />} />
@@ -114,6 +113,8 @@ export function AppRouter() {
           <Route path="inference-rules" element={<InferenceRulesPage />} />
           <Route path="agent-logs" element={<AgentLogsPage />} />
         </Route>
+
+        <Route path="/w/:workspaceId/inbox" element={<WorkspaceInboxPage />} />
 
         <Route path="/overview" element={<WorkspaceRedirect suffix="overview" />} />
         <Route path="/inbox" element={<WorkspaceRedirect suffix="inbox" />} />

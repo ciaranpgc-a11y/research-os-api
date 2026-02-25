@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 
 import { AppRouter } from '@/AppRouter'
+import { installHouseElementTagging } from '@/lib/house-element-tagging'
 import { useAaweStore } from '@/store/use-aawe-store'
 
 function App() {
@@ -24,6 +25,8 @@ function App() {
     root.classList.toggle('dark', theme === 'dark')
     window.localStorage.setItem('aawe-theme', theme)
   }, [theme])
+
+  useEffect(() => installHouseElementTagging(), [])
 
   return <AppRouter />
 }

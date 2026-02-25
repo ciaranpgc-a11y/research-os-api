@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { decryptWorkspaceInboxText } from '@/lib/workspace-inbox-crypto'
-import { houseForms, houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseForms, houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { readWorkspaceOwnerNameFromProfile } from '@/lib/workspace-owner'
 import { cn } from '@/lib/utils'
 import {
@@ -164,6 +164,8 @@ export function WorkspaceInboxPage() {
   const navigate = useNavigate()
   const params = useParams<{ workspaceId: string }>()
   const workspaceId = (params.workspaceId || '').trim()
+  const ensureWorkspace = useWorkspaceStore((state) => state.ensureWorkspace)
+  const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId)
   const workspaces = useWorkspaceStore((state) => state.workspaces)
   const sendWorkspaceMessage = useWorkspaceInboxStore((state) => state.sendWorkspaceMessage)
   const refreshMessagesFromStorage = useWorkspaceInboxStore((state) => state.refreshMessagesFromStorage)
@@ -207,6 +209,14 @@ export function WorkspaceInboxPage() {
   const [error, setError] = useState('')
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const conversationRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!workspaceId) {
+      return
+    }
+    ensureWorkspace(workspaceId)
+    setActiveWorkspaceId(workspaceId)
+  }, [ensureWorkspace, setActiveWorkspaceId, workspaceId])
 
   const publishTypingState = useCallback((typing: boolean) => {
     if (!workspaceId || !currentUserName) {
@@ -496,166 +506,201 @@ export function WorkspaceInboxPage() {
   }, [messages])
 
   return (
-    <section className="space-y-4">
-      <header className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
-        <h1 data-house-role="page-title" className={houseTypography.title}>Inbox</h1>
-        <p data-house-role="page-subtitle" className={houseTypography.subtitle}>
-          Workspace messaging for contributors. Messages are encrypted at rest in this client.
-        </p>
-      </header>
-
-      <section className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className={cn('space-y-3 rounded-lg border border-border p-3', houseSurfaces.card)}>
-          <section className="space-y-2 rounded-md border border-border bg-background px-3 py-2">
-            <p className={houseTypography.fieldLabel}>Navigate</p>
-            <div className="space-y-2">
-              <Button
-                type="button"
-                onClick={onOpenWorkspacesHome}
-                className={cn('w-full justify-start', houseForms.actionButton, houseTypography.buttonText)}
-              >
-                Workspaces home
-              </Button>
-              <Button
-                type="button"
-                onClick={onOpenWorkspaceOverview}
-                className={cn('w-full justify-start', houseForms.actionButton, houseTypography.buttonText)}
-                disabled={!workspaceId}
-              >
-                Workspace overview
-              </Button>
+    <div data-house-scope="workspace-inbox" className="min-h-screen bg-background text-foreground">
+      <div className="mx-auto w-full max-w-sz-1380 px-4 py-4 md:px-6">
+        <section className="grid min-h-[calc(100vh-2rem)] gap-4 nav:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className={cn('flex min-h-0 flex-col', houseLayout.sidebar)} data-house-role="left-nav-shell">
+            <div className={houseLayout.sidebarHeader}>
+              <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder)}>
+                <h1 className={houseTypography.sectionTitle}>Inbox</h1>
+                <p className={houseTypography.fieldHelper}>
+                  {workspace?.name || workspaceId || 'Unknown workspace'}
+                </p>
+              </div>
             </div>
-          </section>
 
-          <section className="space-y-1 rounded-md border border-border bg-background px-3 py-2">
-            <p className={houseTypography.fieldLabel}>Workspace</p>
-            <p className={cn('truncate', houseTypography.text)}>
-              {workspace?.name || workspaceId || 'Unknown workspace'}
-            </p>
-          </section>
+            <div className="flex-1 space-y-4 overflow-y-auto p-3">
+              <section className={houseLayout.sidebarSection}>
+                <p className={houseNavigation.sectionLabel}>Views</p>
+                <div className="space-y-1">
+                  <div className={cn(houseNavigation.item, houseNavigation.itemActive)}>
+                    <span className="truncate pl-2">Inbox</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onOpenWorkspaceOverview}
+                    className={houseNavigation.item}
+                    disabled={!workspaceId}
+                  >
+                    <span className="truncate pl-2">Workspace overview</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onOpenWorkspacesHome}
+                    className={houseNavigation.item}
+                  >
+                    <span className="truncate pl-2">Workspaces home</span>
+                  </button>
+                </div>
+              </section>
 
-          <section className="space-y-1 rounded-md border border-border bg-background px-3 py-2">
-            <p className={houseTypography.fieldLabel}>Conversation</p>
-            <p className={houseTypography.text}>
-              {messages.length} {messages.length === 1 ? 'message' : 'messages'}
-            </p>
-            <p className={houseTypography.fieldHelper}>
-              Last message {conversationLastUpdated}
-            </p>
-          </section>
+              <section className={houseLayout.sidebarSection}>
+                <p className={houseNavigation.sectionLabel}>Mailbox</p>
+                <div className="space-y-1">
+                  <div className={houseNavigation.item}>
+                    <span className="truncate pl-2">Messages</span>
+                    <span className={houseNavigation.itemCount}>{messages.length}</span>
+                  </div>
+                  <div className={houseNavigation.item}>
+                    <span className="truncate pl-2">Participants</span>
+                    <span className={houseNavigation.itemCount}>{participants.length}</span>
+                  </div>
+                  <div className={houseNavigation.item}>
+                    <span className="truncate pl-2">Typing now</span>
+                    <span className={houseNavigation.itemCount}>{activeTypingNames.length}</span>
+                  </div>
+                  <div className={houseNavigation.item}>
+                    <span className="truncate pl-2">Last update</span>
+                    <span className={cn('max-w-sz-130 truncate', houseNavigation.itemMeta)}>
+                      {conversationLastUpdated}
+                    </span>
+                  </div>
+                </div>
+              </section>
 
-          <section className="space-y-2 rounded-md border border-border bg-background px-3 py-2">
-            <p className={houseTypography.fieldLabel}>Participants</p>
-            <div className="space-y-1.5">
-              {participants.length === 0 ? (
-                <p className={houseTypography.fieldHelper}>No participants</p>
+              <section className={houseLayout.sidebarSection}>
+                <p className={houseNavigation.sectionLabel}>Participants</p>
+                <div className="space-y-1">
+                  {participants.length === 0 ? (
+                    <p className={houseTypography.fieldHelper}>No participants</p>
+                  ) : (
+                    participants.map((participant) => {
+                      const tone = participantTone(participant, currentUserName)
+                      const isMe = isSamePerson(participant, currentUserName)
+                      const isTyping = activeTypingNames.some((name) => isSamePerson(name, participant))
+                      return (
+                        <div key={participant} className={houseNavigation.item}>
+                          <span className={cn('inline-block h-2 w-2 rounded-full', tone.dotClass)} />
+                          <p className={cn('truncate pl-2', houseTypography.text)}>
+                            {participant}
+                            {isMe ? ' (You)' : ''}
+                          </p>
+                          <div className={cn('ml-2 flex items-center gap-1.5', houseNavigation.itemMeta)}>
+                            {isTyping ? (
+                              <span className={houseNavigation.itemCount}>typing</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </section>
+
+              <section className={houseLayout.sidebarSection}>
+                <p className={houseNavigation.sectionLabel}>Live activity</p>
+                <div className="space-y-1">
+                  <div className={houseNavigation.item}>
+                    <span className="truncate pl-2">Realtime typing</span>
+                    <span className={houseNavigation.itemMeta}>
+                      {typingSummary || 'No one is typing'}
+                    </span>
+                  </div>
+                </div>
+              </section>
+
+              <section className={houseLayout.sidebarSection}>
+                <p className={houseNavigation.sectionLabel}>Security</p>
+                <div className="space-y-1">
+                  <div className={houseNavigation.item}>
+                    <span className="truncate pl-2">Encryption</span>
+                    <span className={houseNavigation.itemCount}>on</span>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </aside>
+
+          <section className={cn('flex min-h-0 flex-col rounded-lg border border-border', houseSurfaces.card)}>
+            <div className="border-b border-border px-4 py-3">
+              <h2 className={houseTypography.sectionTitle}>Conversation</h2>
+              <p className={houseTypography.sectionSubtitle}>Messages cannot be deleted. Newest messages appear at the bottom.</p>
+            </div>
+
+            <div ref={conversationRef} className="flex-1 space-y-2 overflow-y-auto p-3">
+              {loadingMessages ? (
+                <p className={houseTypography.fieldHelper}>Decrypting inbox messages...</p>
+              ) : messages.length === 0 ? (
+                <p className={houseTypography.fieldHelper}>No messages yet.</p>
               ) : (
-                participants.map((participant) => {
-                  const tone = participantTone(participant, currentUserName)
-                  const isMe = isSamePerson(participant, currentUserName)
+                messages.map((message) => {
+                  const isMine = isSamePerson(message.senderName, currentUserName)
+                  const tone = participantTone(message.senderName, currentUserName)
                   return (
-                    <div key={participant} className="flex items-center gap-2">
-                      <span className={cn('inline-block h-2 w-2 rounded-full', tone.dotClass)} />
-                      <p className={cn('truncate', houseTypography.text)}>
-                        {participant}
-                        {isMe ? ' (You)' : ''}
-                      </p>
-                    </div>
+                    <article
+                      key={message.id}
+                      className={cn(
+                        'max-w-[82%] rounded-md border px-3 py-2',
+                        tone.bubbleClass,
+                        isMine ? 'ml-auto' : 'mr-auto',
+                      )}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className={houseTypography.fieldLabel}>{isMine ? `${message.senderName} (You)` : message.senderName}</p>
+                        <p className={houseTypography.fieldHelper}>{formatTimestamp(message.createdAt)}</p>
+                      </div>
+                      <p className={cn('mt-1 whitespace-pre-wrap', houseTypography.text)}>{message.body}</p>
+                    </article>
                   )
                 })
               )}
             </div>
-          </section>
 
-          <section className="space-y-1 rounded-md border border-border bg-background px-3 py-2">
-            <p className={houseTypography.fieldLabel}>Live activity</p>
-            {typingSummary ? (
-              <p className={houseTypography.textSoft}>{typingSummary}</p>
-            ) : (
-              <p className={houseTypography.fieldHelper}>No one is typing.</p>
-            )}
-          </section>
-        </aside>
-
-        <section className={cn('flex min-h-[38rem] flex-col rounded-lg border border-border', houseSurfaces.card)}>
-          <div className="border-b border-border px-4 py-3">
-            <h2 className={houseTypography.sectionTitle}>Conversation</h2>
-            <p className={houseTypography.sectionSubtitle}>Messages cannot be deleted. Newest messages appear at the bottom.</p>
-          </div>
-
-          <div ref={conversationRef} className="flex-1 space-y-2 overflow-y-auto p-3">
-            {loadingMessages ? (
-              <p className={houseTypography.fieldHelper}>Decrypting inbox messages...</p>
-            ) : messages.length === 0 ? (
-              <p className={houseTypography.fieldHelper}>No messages yet.</p>
-            ) : (
-              messages.map((message) => {
-                const isMine = isSamePerson(message.senderName, currentUserName)
-                const tone = participantTone(message.senderName, currentUserName)
-                return (
-                  <article
-                    key={message.id}
-                    className={cn(
-                      'max-w-[82%] rounded-md border px-3 py-2',
-                      tone.bubbleClass,
-                      isMine ? 'ml-auto' : 'mr-auto',
-                    )}
+            <footer className="space-y-2 border-t border-border p-3">
+              <label htmlFor="workspace-inbox-message" className={houseTypography.fieldLabel}>Compose message</label>
+              <textarea
+                id="workspace-inbox-message"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Write an inbox message..."
+                className={cn('min-h-24 w-full rounded-md px-3 py-2 text-sm', houseForms.textarea)}
+                disabled={sending}
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    className={cn(houseForms.actionButton, houseTypography.buttonText)}
+                    onClick={onToggleDictation}
+                    disabled={!dictationSupported}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className={houseTypography.fieldLabel}>{isMine ? `${message.senderName} (You)` : message.senderName}</p>
-                      <p className={houseTypography.fieldHelper}>{formatTimestamp(message.createdAt)}</p>
-                    </div>
-                    <p className={cn('mt-1 whitespace-pre-wrap', houseTypography.text)}>{message.body}</p>
-                  </article>
-                )
-              })
-            )}
-          </div>
-
-          <footer className="space-y-2 border-t border-border p-3">
-            <label htmlFor="workspace-inbox-message" className={houseTypography.fieldLabel}>Compose message</label>
-            <textarea
-              id="workspace-inbox-message"
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Write an inbox message..."
-              className={cn('min-h-24 w-full rounded-md px-3 py-2 text-sm', houseForms.textarea)}
-              disabled={sending}
-            />
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-2">
+                    {dictating ? 'Stop dictation' : 'Voice compose'}
+                  </Button>
+                  <Button
+                    type="button"
+                    className={cn(houseForms.actionButton, houseTypography.buttonText)}
+                    onClick={onReadDraft}
+                    disabled={!canSpeakDraft}
+                  >
+                    Read draft
+                  </Button>
+                </div>
                 <Button
                   type="button"
-                  className={cn(houseForms.actionButton, houseTypography.buttonText)}
-                  onClick={onToggleDictation}
-                  disabled={!dictationSupported}
+                  onClick={() => void onSend()}
+                  className={cn(houseForms.actionButtonPrimary, houseTypography.buttonText)}
+                  disabled={sending}
                 >
-                  {dictating ? 'Stop dictation' : 'Voice compose'}
-                </Button>
-                <Button
-                  type="button"
-                  className={cn(houseForms.actionButton, houseTypography.buttonText)}
-                  onClick={onReadDraft}
-                  disabled={!canSpeakDraft}
-                >
-                  Read draft
+                  {sending ? 'Sending...' : 'Send encrypted'}
                 </Button>
               </div>
-              <Button
-                type="button"
-                onClick={() => void onSend()}
-                className={cn(houseForms.actionButtonPrimary, houseTypography.buttonText)}
-                disabled={sending}
-              >
-                {sending ? 'Sending...' : 'Send encrypted'}
-              </Button>
-            </div>
-            {typingSummary ? <p className={houseTypography.fieldHelper}>{typingSummary}</p> : null}
-            {status ? <p className={houseTypography.fieldHelper}>{status}</p> : null}
-            {error ? <p className="text-sm text-[hsl(var(--tone-danger-700))]">{error}</p> : null}
-          </footer>
+              {typingSummary ? <p className={houseTypography.fieldHelper}>{typingSummary}</p> : null}
+              {status ? <p className={houseTypography.fieldHelper}>{status}</p> : null}
+              {error ? <p className="text-sm text-[hsl(var(--tone-danger-700))]">{error}</p> : null}
+            </footer>
+          </section>
         </section>
-      </section>
-    </section>
+      </div>
+    </div>
   )
 }

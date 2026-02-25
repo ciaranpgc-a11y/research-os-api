@@ -74,6 +74,7 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
       name: 'HF Registry Manuscript',
       ownerName: 'Ciaran Clarke',
       collaborators: ['A. Patel'],
+      removedCollaborators: [],
       version: '0.4',
       health: 'amber',
       updatedAt: '2026-02-25T15:57:00Z',
@@ -85,6 +86,7 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
       name: 'AF Screening Cohort',
       ownerName: 'Ciaran Clarke',
       collaborators: ['S. Roy', 'L. Santos'],
+      removedCollaborators: ['L. Santos'],
       version: '0.9',
       health: 'green',
       updatedAt: '2026-02-24T09:18:00Z',
@@ -96,6 +98,7 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
       name: 'Renal Risk Model Validation',
       ownerName: 'Ciaran Clarke',
       collaborators: [],
+      removedCollaborators: [],
       version: '1.2',
       health: 'red',
       updatedAt: '2026-02-22T13:41:00Z',
@@ -107,6 +110,7 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
       name: 'Legacy Trial Data Archive',
       ownerName: 'Ciaran Clarke',
       collaborators: ['M. Evans'],
+      removedCollaborators: [],
       version: '2.7',
       health: 'green',
       updatedAt: '2026-01-06T08:12:00Z',
@@ -154,6 +158,46 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
 const emptyFixture: WorkspacesPageFixture = {
   workspaces: [],
   activeWorkspaceId: null,
+  authorRequests: [],
+  invitationsSent: [],
+}
+
+const collaboratorStateFixture: WorkspacesPageFixture = {
+  workspaces: [
+    {
+      id: 'hf-registry',
+      name: 'HF Registry Manuscript',
+      ownerName: 'Ciaran Clarke',
+      collaborators: ['A. Patel', 'M. Evans', 'L. Santos'],
+      removedCollaborators: ['M. Evans'],
+      version: '0.8',
+      health: 'amber',
+      updatedAt: '2026-02-25T18:20:00Z',
+      pinned: true,
+      archived: false,
+    },
+  ],
+  activeWorkspaceId: 'hf-registry',
+  authorRequests: [],
+  invitationsSent: [],
+}
+
+const collaboratorReadOnlyFixture: WorkspacesPageFixture = {
+  workspaces: [
+    {
+      id: 'external-study',
+      name: 'External Study Draft',
+      ownerName: 'Maya Singh',
+      collaborators: ['Ciaran Clarke', 'A. Patel'],
+      removedCollaborators: ['A. Patel'],
+      version: '0.6',
+      health: 'amber',
+      updatedAt: '2026-02-25T12:05:00Z',
+      pinned: false,
+      archived: false,
+    },
+  ],
+  activeWorkspaceId: 'external-study',
   authorRequests: [],
   invitationsSent: [],
 }
@@ -266,7 +310,7 @@ function WorkspacesPagePreview({ fixture }: WorkspacesPagePreviewProps) {
   }
 
   return (
-    <div className="min-h-screen min-w-[1200px] bg-background">
+    <div className="min-h-screen min-w-sz-760 bg-background">
       <MemoryRouter initialEntries={['/workspaces']}>
         <Routes>
           <Route path="/workspaces" element={<WorkspacesPage />} />
@@ -307,6 +351,18 @@ export const MixedPortfolio: Story = {
 export const EmptyState: Story = {
   args: {
     fixture: emptyFixture,
+  },
+}
+
+export const CollaboratorBanners: Story = {
+  args: {
+    fixture: collaboratorStateFixture,
+  },
+}
+
+export const CollaboratorBannersReadOnly: Story = {
+  args: {
+    fixture: collaboratorReadOnlyFixture,
   },
 }
 

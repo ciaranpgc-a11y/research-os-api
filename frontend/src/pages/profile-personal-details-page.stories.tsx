@@ -208,7 +208,7 @@ function ProfilePersonalDetailsStoryShell({
   fixture: ProfilePersonalDetailsPageFixture
 }) {
   return (
-    <div className="min-h-screen min-w-[1200px] bg-background">
+    <div className="min-h-screen min-w-sz-760 bg-background">
       <MemoryRouter initialEntries={['/profile/personal-details']}>
         <Routes>
           <Route path="/" element={<AccountLayout />}>

@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { getAuthSessionToken } from '@/lib/auth-session'
+import { listCollaborators } from '@/lib/impact-api'
 import {
   WORKSPACE_OWNER_REQUIRED_MESSAGE,
   readWorkspaceOwnerNameFromProfile,
@@ -14,6 +16,7 @@ import {
 import { houseForms, houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import { useAaweStore } from '@/store/use-aawe-store'
+import type { CollaboratorPayload } from '@/types/impact'
 import {
   useWorkspaceStore,
   type WorkspaceRecord,
@@ -24,6 +27,13 @@ type CenterView = 'workspaces' | 'invitations'
 type FilterKey = 'all' | 'active' | 'pinned' | 'archived' | 'recent'
 type SortColumn = 'name' | 'stage' | 'updatedAt' | 'status'
 type SortDirection = 'asc' | 'desc'
+
+type CollaboratorCandidate = {
+  key: string
+  name: string
+  subtitle: string
+  source: 'directory' | 'local'
+}
 
 const FILTER_OPTIONS: Array<{ key: FilterKey; label: string }> = [
   { key: 'all', label: 'All' },
@@ -100,11 +110,72 @@ function workspaceStatus(workspace: WorkspaceRecord): 'Active' | 'Archived' {
   return workspace.archived ? 'Archived' : 'Active'
 }
 
-function workspaceCollaborators(workspace: WorkspaceRecord): string {
-  if (workspace.collaborators.length === 0) {
-    return '-'
+function normalizeCollaboratorName(value: string | null | undefined): string {
+  return (value || '').trim().replace(/\s+/g, ' ')
+}
+
+function isWorkspaceOwner(workspace: WorkspaceRecord, currentUserName: string | null): boolean {
+  const cleanCurrentUser = normalizeCollaboratorName(currentUserName).toLowerCase()
+  if (!cleanCurrentUser) {
+    return false
   }
-  return workspace.collaborators.join(', ')
+  return normalizeCollaboratorName(workspace.ownerName).toLowerCase() === cleanCurrentUser
+}
+
+function collaboratorRemovedSet(workspace: WorkspaceRecord): Set<string> {
+  return new Set((workspace.removedCollaborators || []).map((value) => normalizeCollaboratorName(value).toLowerCase()))
+}
+
+function buildCollaboratorCandidates(input: {
+  query: string
+  localNames: string[]
+  directoryItems: CollaboratorPayload[]
+}): CollaboratorCandidate[] {
+  const query = normalizeCollaboratorName(input.query).toLowerCase()
+  const output: CollaboratorCandidate[] = []
+  const seen = new Set<string>()
+
+  for (const item of input.directoryItems) {
+    const name = normalizeCollaboratorName(item.full_name)
+    if (!name) {
+      continue
+    }
+    const key = name.toLowerCase()
+    if (seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    const subtitleParts = [item.email || '', item.primary_institution || ''].filter(Boolean)
+    output.push({
+      key: `directory-${item.id}`,
+      name,
+      subtitle: subtitleParts.join(' | ') || 'Directory match',
+      source: 'directory',
+    })
+  }
+
+  for (const rawName of input.localNames) {
+    const name = normalizeCollaboratorName(rawName)
+    if (!name) {
+      continue
+    }
+    const key = name.toLowerCase()
+    if (seen.has(key)) {
+      continue
+    }
+    if (query && !key.includes(query)) {
+      continue
+    }
+    seen.add(key)
+    output.push({
+      key: `local-${key}`,
+      name,
+      subtitle: 'Known in your workspace network',
+      source: 'local',
+    })
+  }
+
+  return output.slice(0, 40)
 }
 
 function stageRank(stage: string): number {
@@ -373,6 +444,79 @@ function WorkspacesHomeSidebar({
   )
 }
 
+function CollaboratorBanners({
+  workspace,
+  canManage,
+  onAddCollaborator,
+  onToggleRemoved,
+}: {
+  workspace: WorkspaceRecord
+  canManage: boolean
+  onAddCollaborator: (workspace: WorkspaceRecord) => void
+  onToggleRemoved: (workspace: WorkspaceRecord, collaboratorName: string) => void
+}) {
+  const removed = collaboratorRemovedSet(workspace)
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {workspace.collaborators.length === 0 ? (
+        <span className="text-xs text-muted-foreground">-</span>
+      ) : (
+        workspace.collaborators.map((collaborator) => {
+          const isRemoved = removed.has(normalizeCollaboratorName(collaborator).toLowerCase())
+          return (
+            <button
+              key={collaborator}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                if (!canManage) {
+                  return
+                }
+                onToggleRemoved(workspace, collaborator)
+              }}
+              disabled={!canManage}
+              title={
+                canManage
+                  ? isRemoved
+                    ? 'Click to restore collaborator'
+                    : 'Click to remove collaborator'
+                  : 'Only the workspace owner can manage collaborators'
+              }
+              className={cn(
+                'rounded border px-1.5 py-0.5 text-micro',
+                isRemoved
+                  ? 'border-red-300 bg-red-50 text-red-700'
+                  : 'border-emerald-300 bg-emerald-50 text-emerald-700',
+                canManage ? 'cursor-pointer' : 'cursor-not-allowed opacity-70',
+              )}
+            >
+              {collaborator}
+            </button>
+          )
+        })
+      )}
+      <button
+        type="button"
+        aria-label={`Add collaborator to ${workspace.name}`}
+        onClick={(event) => {
+          event.stopPropagation()
+          onAddCollaborator(workspace)
+        }}
+        disabled={!canManage}
+        title={canManage ? 'Add collaborator' : 'Only the workspace owner can add collaborators'}
+        className={cn(
+          'inline-flex h-5 w-5 items-center justify-center rounded border text-xs leading-none',
+          canManage
+            ? 'border-border bg-background text-foreground hover:bg-accent/50'
+            : 'cursor-not-allowed border-border bg-background text-muted-foreground opacity-70',
+        )}
+      >
+        +
+      </button>
+    </div>
+  )
+}
+
 export function WorkspacesPage() {
   const navigate = useNavigate()
   const workspaces = useWorkspaceStore((state) => state.workspaces)
@@ -403,6 +547,13 @@ export function WorkspacesPage() {
     x: number
     y: number
   } | null>(null)
+  const [addCollaboratorSheetOpen, setAddCollaboratorSheetOpen] = useState(false)
+  const [addCollaboratorWorkspaceId, setAddCollaboratorWorkspaceId] = useState<string | null>(null)
+  const [collaboratorQuery, setCollaboratorQuery] = useState('')
+  const [selectedCollaboratorName, setSelectedCollaboratorName] = useState('')
+  const [directoryCollaborators, setDirectoryCollaborators] = useState<CollaboratorPayload[]>([])
+  const [collaboratorLookupLoading, setCollaboratorLookupLoading] = useState(false)
+  const [collaboratorLookupError, setCollaboratorLookupError] = useState('')
   const [renamingWorkspaceId, setRenamingWorkspaceId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const [workspaceOwnerName, setWorkspaceOwnerName] = useState<string | null>(() =>
@@ -477,6 +628,50 @@ export function WorkspacesPage() {
     [activeWorkspaceId, workspaces],
   )
   const canOpenInbox = Boolean(inboxWorkspace)
+  const addCollaboratorWorkspace = useMemo(
+    () =>
+      addCollaboratorWorkspaceId
+        ? workspaces.find((workspace) => workspace.id === addCollaboratorWorkspaceId) || null
+        : null,
+    [addCollaboratorWorkspaceId, workspaces],
+  )
+  const localCandidateNames = useMemo(() => {
+    const seen = new Set<string>()
+    const output: string[] = []
+    const pushName = (value: string) => {
+      const clean = normalizeCollaboratorName(value)
+      if (!clean) {
+        return
+      }
+      const key = clean.toLowerCase()
+      if (seen.has(key)) {
+        return
+      }
+      seen.add(key)
+      output.push(clean)
+    }
+    for (const workspace of workspaces) {
+      pushName(workspace.ownerName)
+      workspace.collaborators.forEach(pushName)
+    }
+    authorRequests.forEach((request) => pushName(request.authorName))
+    invitationsSent.forEach((invitation) => pushName(invitation.inviteeName))
+    return output.sort((left, right) => left.localeCompare(right))
+  }, [authorRequests, invitationsSent, workspaces])
+  const collaboratorCandidates = useMemo(
+    () =>
+      buildCollaboratorCandidates({
+        query: collaboratorQuery,
+        localNames: localCandidateNames,
+        directoryItems: directoryCollaborators,
+      }),
+    [collaboratorQuery, directoryCollaborators, localCandidateNames],
+  )
+  const collaboratorTargetName = normalizeCollaboratorName(selectedCollaboratorName || collaboratorQuery)
+  const canManageAddCollaboratorWorkspace = Boolean(
+    addCollaboratorWorkspace && isWorkspaceOwner(addCollaboratorWorkspace, workspaceOwnerName),
+  )
+  const canConfirmAddCollaborator = Boolean(canManageAddCollaboratorWorkspace && collaboratorTargetName)
 
   useEffect(() => {
     if (!menuState) {
@@ -509,6 +704,22 @@ export function WorkspacesPage() {
   }, [menuState, workspaces])
 
   useEffect(() => {
+    if (!addCollaboratorWorkspaceId) {
+      return
+    }
+    const exists = workspaces.some((workspace) => workspace.id === addCollaboratorWorkspaceId)
+    if (!exists) {
+      setAddCollaboratorSheetOpen(false)
+      setAddCollaboratorWorkspaceId(null)
+      setCollaboratorQuery('')
+      setSelectedCollaboratorName('')
+      setDirectoryCollaborators([])
+      setCollaboratorLookupLoading(false)
+      setCollaboratorLookupError('')
+    }
+  }, [addCollaboratorWorkspaceId, workspaces])
+
+  useEffect(() => {
     const refreshOwner = () => {
       setWorkspaceOwnerName(readWorkspaceOwnerNameFromProfile())
     }
@@ -520,7 +731,76 @@ export function WorkspacesPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!addCollaboratorSheetOpen) {
+      setDirectoryCollaborators([])
+      setCollaboratorLookupLoading(false)
+      setCollaboratorLookupError('')
+      return
+    }
+
+    const cleanQuery = normalizeCollaboratorName(collaboratorQuery)
+    if (cleanQuery.length < 2) {
+      setDirectoryCollaborators([])
+      setCollaboratorLookupLoading(false)
+      setCollaboratorLookupError('')
+      return
+    }
+
+    const token = getAuthSessionToken()
+    if (!token) {
+      setDirectoryCollaborators([])
+      setCollaboratorLookupLoading(false)
+      setCollaboratorLookupError('Sign in to search the full collaborator directory. Showing local matches only.')
+      return
+    }
+
+    let cancelled = false
+    setCollaboratorLookupLoading(true)
+    const timer = window.setTimeout(() => {
+      void listCollaborators(token, {
+        query: cleanQuery,
+        page: 1,
+        pageSize: 30,
+      })
+        .then((payload) => {
+          if (cancelled) {
+            return
+          }
+          setDirectoryCollaborators(payload.items)
+          setCollaboratorLookupError('')
+        })
+        .catch(() => {
+          if (cancelled) {
+            return
+          }
+          setDirectoryCollaborators([])
+          setCollaboratorLookupError('Directory lookup unavailable. Showing local suggestions only.')
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setCollaboratorLookupLoading(false)
+          }
+        })
+    }, 250)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [addCollaboratorSheetOpen, collaboratorQuery])
+
   const canCreateWorkspace = Boolean(workspaceOwnerName)
+
+  const resetAddCollaboratorSheet = () => {
+    setAddCollaboratorSheetOpen(false)
+    setAddCollaboratorWorkspaceId(null)
+    setCollaboratorQuery('')
+    setSelectedCollaboratorName('')
+    setDirectoryCollaborators([])
+    setCollaboratorLookupLoading(false)
+    setCollaboratorLookupError('')
+  }
 
   const onCreateWorkspace = () => {
     if (!workspaceOwnerName) {
@@ -561,6 +841,117 @@ export function WorkspacesPage() {
     }
     setInvitationStatus(`Invitation sent to ${sent.inviteeName}.`)
     setMenuState(null)
+  }
+
+  const onAddCollaborator = (workspace: WorkspaceRecord) => {
+    if (!isWorkspaceOwner(workspace, workspaceOwnerName)) {
+      setInvitationStatus('Only the workspace author can add collaborators.')
+      return
+    }
+    setAddCollaboratorWorkspaceId(workspace.id)
+    setCollaboratorQuery('')
+    setSelectedCollaboratorName('')
+    setDirectoryCollaborators([])
+    setCollaboratorLookupError('')
+    setAddCollaboratorSheetOpen(true)
+  }
+
+  const onConfirmAddCollaborator = () => {
+    if (!addCollaboratorWorkspace) {
+      return
+    }
+    if (!isWorkspaceOwner(addCollaboratorWorkspace, workspaceOwnerName)) {
+      setInvitationStatus('Only the workspace author can add collaborators.')
+      resetAddCollaboratorSheet()
+      return
+    }
+    const clean = collaboratorTargetName
+    if (!clean) {
+      setInvitationStatus('Collaborator name is required.')
+      return
+    }
+    if (normalizeCollaboratorName(addCollaboratorWorkspace.ownerName).toLowerCase() === clean.toLowerCase()) {
+      setInvitationStatus('The workspace author is already included.')
+      return
+    }
+
+    const existing = addCollaboratorWorkspace.collaborators.find(
+      (collaborator) => normalizeCollaboratorName(collaborator).toLowerCase() === clean.toLowerCase(),
+    )
+    if (existing) {
+      const removed = collaboratorRemovedSet(addCollaboratorWorkspace)
+      if (removed.has(normalizeCollaboratorName(existing).toLowerCase())) {
+        updateWorkspace(addCollaboratorWorkspace.id, {
+          removedCollaborators: (addCollaboratorWorkspace.removedCollaborators || []).filter(
+            (value) => normalizeCollaboratorName(value).toLowerCase() !== normalizeCollaboratorName(existing).toLowerCase(),
+          ),
+          updatedAt: new Date().toISOString(),
+        })
+        setInvitationStatus(`${existing} restored as collaborator.`)
+        resetAddCollaboratorSheet()
+        return
+      }
+      setInvitationStatus(`${existing} is already a collaborator.`)
+      return
+    }
+
+    updateWorkspace(addCollaboratorWorkspace.id, {
+      collaborators: [...addCollaboratorWorkspace.collaborators, clean],
+      removedCollaborators: addCollaboratorWorkspace.removedCollaborators || [],
+      updatedAt: new Date().toISOString(),
+    })
+    setInvitationStatus(`${clean} added as collaborator.`)
+    resetAddCollaboratorSheet()
+  }
+
+  const onAddCollaboratorSheetOpenChange = (open: boolean) => {
+    if (open) {
+      setAddCollaboratorSheetOpen(true)
+      return
+    }
+    resetAddCollaboratorSheet()
+  }
+
+  const onToggleCollaboratorRemoved = (workspace: WorkspaceRecord, collaboratorName: string) => {
+    if (!isWorkspaceOwner(workspace, workspaceOwnerName)) {
+      setInvitationStatus('Only the workspace author can manage collaborators.')
+      return
+    }
+    const collaboratorKey = normalizeCollaboratorName(collaboratorName).toLowerCase()
+    if (!collaboratorKey) {
+      return
+    }
+    const removed = collaboratorRemovedSet(workspace)
+    const isRemoved = removed.has(collaboratorKey)
+
+    if (isRemoved) {
+      const restoreConfirmed = window.confirm(
+        `Restore collaborator "${collaboratorName}" in "${workspace.name}"?`,
+      )
+      if (!restoreConfirmed) {
+        return
+      }
+      updateWorkspace(workspace.id, {
+        removedCollaborators: (workspace.removedCollaborators || []).filter(
+          (value) => normalizeCollaboratorName(value).toLowerCase() !== collaboratorKey,
+        ),
+        updatedAt: new Date().toISOString(),
+      })
+      setInvitationStatus(`${collaboratorName} restored.`)
+      return
+    }
+
+    const removeConfirmed = window.confirm(
+      `Remove collaborator "${collaboratorName}" from "${workspace.name}"?`,
+    )
+    if (!removeConfirmed) {
+      return
+    }
+    updateWorkspace(workspace.id, {
+      removedCollaborators: [...(workspace.removedCollaborators || []), collaboratorName],
+      updatedAt: new Date().toISOString(),
+    })
+    setInvitationStatus(`${collaboratorName} removed. Name retained in red banner.`)
   }
 
   const onAcceptAuthorRequest = (requestId: string) => {
@@ -909,7 +1300,14 @@ export function WorkspacesPage() {
                               </div>
                             </td>
                             <td className={cn('px-3 py-2 text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>{workspace.ownerName}</td>
-                            <td className={cn('px-3 py-2 text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>{workspaceCollaborators(workspace)}</td>
+                            <td className={cn('px-3 py-2 text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                              <CollaboratorBanners
+                                workspace={workspace}
+                                canManage={isWorkspaceOwner(workspace, workspaceOwnerName)}
+                                onAddCollaborator={onAddCollaborator}
+                                onToggleRemoved={onToggleCollaboratorRemoved}
+                              />
+                            </td>
                             <td className={cn('px-3 py-2', HOUSE_TABLE_CELL_TEXT_CLASS)}>{workspaceStage(workspace)}</td>
                             <td className={cn('px-3 py-2', HOUSE_TABLE_CELL_TEXT_CLASS)}>{formatTimestamp(workspace.updatedAt)}</td>
                             <td className={cn('px-3 py-2', HOUSE_TABLE_CELL_TEXT_CLASS)}>
@@ -970,9 +1368,15 @@ export function WorkspacesPage() {
                               <>
                                 <p className="font-medium">{workspace.name}</p>
                                 <p className="mt-1 text-xs text-muted-foreground">Owner {workspace.ownerName}</p>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  Collaborators {workspaceCollaborators(workspace)}
-                                </p>
+                                <div className="mt-2 space-y-1" onClick={(event) => event.stopPropagation()}>
+                                  <p className="text-xs text-muted-foreground">Collaborators</p>
+                                  <CollaboratorBanners
+                                    workspace={workspace}
+                                    canManage={isWorkspaceOwner(workspace, workspaceOwnerName)}
+                                    onAddCollaborator={onAddCollaborator}
+                                    onToggleRemoved={onToggleCollaboratorRemoved}
+                                  />
+                                </div>
                                 <p className="mt-1 text-xs text-muted-foreground">
                                   Updated {formatTimestamp(workspace.updatedAt)}
                                 </p>
@@ -1105,6 +1509,120 @@ export function WorkspacesPage() {
         </main>
       </div>
 
+      <Sheet open={addCollaboratorSheetOpen} onOpenChange={onAddCollaboratorSheetOpenChange}>
+        <SheetContent side="right" className="w-full max-w-sz-480 p-0 sm:w-sz-480">
+          <div className="flex h-full flex-col">
+            <div className="border-b border-border p-4">
+              <div className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
+                <h2 className={HOUSE_SECTION_TITLE_CLASS}>Add collaborator</h2>
+                <p className={HOUSE_SECTION_SUBTITLE_CLASS}>
+                  {addCollaboratorWorkspace
+                    ? `Select a collaborator for ${addCollaboratorWorkspace.name}.`
+                    : 'Select a workspace first.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex-1 space-y-3 overflow-y-auto p-4">
+              <div className="space-y-1">
+                <label htmlFor="workspace-collaborator-search" className={houseTypography.fieldLabel}>
+                  Find person
+                </label>
+                <Input
+                  id="workspace-collaborator-search"
+                  value={collaboratorQuery}
+                  onChange={(event) => {
+                    setCollaboratorQuery(event.target.value)
+                    setSelectedCollaboratorName('')
+                    setCollaboratorLookupError('')
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && canConfirmAddCollaborator) {
+                      event.preventDefault()
+                      onConfirmAddCollaborator()
+                    }
+                  }}
+                  placeholder="Search by name or email"
+                  className={HOUSE_INPUT_CLASS}
+                />
+                <p className={HOUSE_FIELD_HELPER_CLASS}>
+                  Type at least 2 characters. Only top matches are loaded for speed at scale.
+                </p>
+              </div>
+
+              {collaboratorLookupLoading ? (
+                <p className={HOUSE_FIELD_HELPER_CLASS}>Searching collaborator directory...</p>
+              ) : null}
+              {collaboratorLookupError ? (
+                <p className="text-sm text-amber-700">{collaboratorLookupError}</p>
+              ) : null}
+
+              <div className={cn('rounded-md border border-border', HOUSE_TABLE_SHELL_CLASS)}>
+                <ScrollArea className="h-64">
+                  <div className="space-y-1 p-2">
+                    {collaboratorCandidates.length === 0 ? (
+                      <p className={cn('px-2 py-1', HOUSE_FIELD_HELPER_CLASS)}>No matches yet.</p>
+                    ) : (
+                      collaboratorCandidates.map((candidate) => {
+                        const isSelected =
+                          normalizeCollaboratorName(candidate.name).toLowerCase() ===
+                          normalizeCollaboratorName(selectedCollaboratorName || collaboratorQuery).toLowerCase()
+                        return (
+                          <button
+                            key={candidate.key}
+                            type="button"
+                            onClick={() => {
+                              setSelectedCollaboratorName(candidate.name)
+                              setCollaboratorQuery(candidate.name)
+                            }}
+                            className={cn(
+                              'w-full rounded border px-2 py-1.5 text-left',
+                              isSelected
+                                ? 'border-emerald-300 bg-emerald-50'
+                                : 'border-transparent bg-background hover:border-border hover:bg-accent/30',
+                            )}
+                          >
+                            <p className={houseTypography.text}>{candidate.name}</p>
+                            <div className="mt-0.5 flex items-center justify-between gap-2">
+                              <p className={houseTypography.fieldHelper}>{candidate.subtitle}</p>
+                              <span className="text-micro text-muted-foreground">
+                                {candidate.source === 'directory' ? 'Directory' : 'Local'}
+                              </span>
+                            </div>
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+
+              {collaboratorTargetName ? (
+                <p className={HOUSE_FIELD_HELPER_CLASS}>Selected: {collaboratorTargetName}</p>
+              ) : null}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-border p-3">
+              <Button
+                type="button"
+                className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
+                onClick={resetAddCollaboratorSheet}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className={cn(HOUSE_PRIMARY_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
+                onClick={onConfirmAddCollaborator}
+                disabled={!canConfirmAddCollaborator}
+              >
+                Add collaborator
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
       <Sheet open={leftPanelOpen} onOpenChange={setLeftPanelOpen}>
         <SheetContent side="left" className="w-sz-290 p-0 nav:hidden">
           <WorkspacesHomeSidebar
@@ -1139,6 +1657,7 @@ export function WorkspacesPage() {
               >
                 <button
                   type="button"
+                  data-house-role="workspace-menu-item-invite"
                   className={cn(
                     'block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50',
                     !canInviteFromMenu && 'cursor-not-allowed text-muted-foreground hover:bg-transparent',
@@ -1150,6 +1669,7 @@ export function WorkspacesPage() {
                 </button>
                 <button
                   type="button"
+                  data-house-role="workspace-menu-item-rename"
                   className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50"
                   onClick={() => onStartRenameWorkspace(menuWorkspace)}
                 >
@@ -1157,6 +1677,7 @@ export function WorkspacesPage() {
                 </button>
                 <button
                   type="button"
+                  data-house-role="workspace-menu-item-archive"
                   className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50"
                   onClick={() => onArchiveToggle(menuWorkspace)}
                 >
@@ -1164,6 +1685,7 @@ export function WorkspacesPage() {
                 </button>
                 <button
                   type="button"
+                  data-house-role="workspace-menu-item-delete"
                   className="block w-full rounded px-2 py-1.5 text-left text-sm text-red-700 hover:bg-red-50"
                   onClick={() => onDeleteWorkspace(menuWorkspace)}
                 >

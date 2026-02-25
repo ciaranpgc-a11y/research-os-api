@@ -2367,7 +2367,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                                 ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50))] shadow-[0_10px_24px_hsl(var(--tone-accent-300)/0.28)] scale-[1.015] -translate-y-0.5 opacity-95'
                                 : 'bg-background hover:bg-[hsl(var(--tone-neutral-50)/0.7)]',
                               jobRoleDropTargetIndex === index && draggingJobRoleIndex !== index
-                                ? 'border-dashed border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50)/0.8)] shadow-[inset_0_0_0_1px_hsl(var(--tone-accent-300)/0.45)] translate-x-[2px]'
+                                ? 'border-dashed border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50)/0.8)] shadow-[inset_0_0_0_1px_hsl(var(--tone-accent-300)/0.45)] translate-x-0.5'
                                 : '',
                               jobRoleDropFlashIndex === index
                                 ? 'ring-2 ring-[hsl(var(--tone-positive-300)/0.75)] ring-offset-1 ring-offset-transparent'
@@ -2678,7 +2678,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                         ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50))] shadow-[0_10px_24px_hsl(var(--tone-accent-300)/0.28)] scale-[1.015] -translate-y-0.5 opacity-95'
                         : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] hover:bg-[hsl(var(--tone-neutral-100)/0.55)]',
                       publicationAffiliationDropTargetIndex === index && draggingPublicationAffiliationIndex !== index
-                        ? 'border-dashed border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50)/0.8)] shadow-[inset_0_0_0_1px_hsl(var(--tone-accent-300)/0.45)] translate-x-[2px]'
+                        ? 'border-dashed border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50)/0.8)] shadow-[inset_0_0_0_1px_hsl(var(--tone-accent-300)/0.45)] translate-x-0.5'
                         : '',
                       publicationAffiliationDropFlashIndex === index
                         ? 'ring-2 ring-[hsl(var(--tone-positive-300)/0.75)] ring-offset-1 ring-offset-transparent'
