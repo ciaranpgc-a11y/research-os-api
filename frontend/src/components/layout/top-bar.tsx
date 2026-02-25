@@ -112,8 +112,8 @@ export function TopBar({
           </nav>
         </div>
 
-        <div className="mx-auto hidden w-full max-w-xl md:flex">
-          <div className="relative w-full">
+        <div className="mx-auto hidden w-full max-w-4xl items-center gap-2 md:flex">
+          <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--tone-neutral-500))]" />
             <Input
               placeholder={
@@ -126,6 +126,12 @@ export function TopBar({
               onChange={(event) => setSearchQuery(event.target.value)}
             />
           </div>
+          <button type="button" className={cn(topNavItemBase, topNavItemIdle)}>
+            Learning centre
+          </button>
+          <button type="button" className={cn(topNavItemBase, topNavItemIdle)}>
+            Opportunities
+          </button>
         </div>
 
         <div className="ml-auto flex items-center gap-2">

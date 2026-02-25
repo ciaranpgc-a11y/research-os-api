@@ -32,7 +32,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 13
+TOP_METRICS_SCHEMA_VERSION = 15
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 FIELD_PERCENTILE_THRESHOLDS = [50, 75, 90, 95, 99]
 
@@ -138,8 +138,8 @@ def _openalex_retry_count() -> int:
 
 
 def _openalex_field_cohort_max_pages() -> int:
-    value = _safe_int(os.getenv("PUB_METRICS_FIELD_PERCENTILE_MAX_PAGES", "5"))
-    return max(1, min(20, value if value is not None else 5))
+    value = _safe_int(os.getenv("PUB_METRICS_FIELD_PERCENTILE_MAX_PAGES", "3"))
+    return max(1, min(20, value if value is not None else 3))
 
 
 def _openalex_field_cohort_min_size() -> int:
@@ -456,15 +456,15 @@ def _openalex_field_year_citation_cohort(
         return {"citations": [], "total_results": 0}
 
     citations: list[int] = []
-    cursor = "*"
-    pages = 0
-    total_results = 0
-    while pages < max_pages and cursor:
+    seen_ids: set[str] = set()
+    for page_index in range(max_pages):
+        seed_value = abs(hash(f"{field_filter_id}:{int(year)}:{page_index}")) % 10_000_000
         params: dict[str, Any] = {
             "filter": f"primary_topic.field.id:{field_filter_id},publication_year:{int(year)}",
-            "select": "cited_by_count",
+            "select": "id,cited_by_count",
             "per-page": 200,
-            "cursor": cursor,
+            "sample": 200,
+            "seed": seed_value,
         }
         if mailto:
             params["mailto"] = mailto
@@ -473,28 +473,144 @@ def _openalex_field_year_citation_cohort(
             params=params,
         )
         if not payload:
-            break
+            continue
         results = payload.get("results")
         if not isinstance(results, list):
-            break
+            continue
         for item in results:
             if not isinstance(item, dict):
                 continue
+            work_id = str(item.get("id") or "").strip()
+            if work_id:
+                if work_id in seen_ids:
+                    continue
+                seen_ids.add(work_id)
             citations.append(max(0, int(_safe_int(item.get("cited_by_count")) or 0)))
-        meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
-        meta_count = _safe_int(meta.get("count"))
-        if meta_count is not None and meta_count >= 0:
-            total_results = int(meta_count)
-        next_cursor = str(meta.get("next_cursor") or "").strip()
-        if not next_cursor or next_cursor == cursor:
-            break
-        cursor = next_cursor
-        pages += 1
 
     citations.sort()
     return {
         "citations": citations,
-        "total_results": total_results,
+        "total_results": len(citations),
+    }
+
+
+def _openalex_field_year_total_count(
+    *,
+    field_id: str,
+    year: int,
+    mailto: str | None,
+) -> int | None:
+    field_filter_id = _openalex_field_filter_token(field_id)
+    if not field_filter_id:
+        return None
+    if year < 1900 or year > 2100:
+        return None
+
+    params: dict[str, Any] = {
+        "filter": f"primary_topic.field.id:{field_filter_id},publication_year:{int(year)}",
+        "select": "id",
+        "per-page": 1,
+    }
+    if mailto:
+        params["mailto"] = mailto
+    payload = _openalex_request_with_retry(
+        url="https://api.openalex.org/works",
+        params=params,
+    )
+    if not payload:
+        return None
+    meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+    total = _safe_int(meta.get("count"))
+    if total is None or total < 0:
+        return None
+    return int(total)
+
+
+def _openalex_field_year_count_below_or_equal(
+    *,
+    field_id: str,
+    year: int,
+    citations: int,
+    mode: str,
+    mailto: str | None,
+) -> int | None:
+    field_filter_id = _openalex_field_filter_token(field_id)
+    if not field_filter_id:
+        return None
+    if year < 1900 or year > 2100:
+        return None
+    citation_count = max(0, int(citations or 0))
+    if mode == "lt":
+        citation_filter = f"cited_by_count:<{citation_count}"
+    elif mode == "eq":
+        citation_filter = f"cited_by_count:{citation_count}"
+    else:
+        return None
+
+    params: dict[str, Any] = {
+        "filter": (
+            f"primary_topic.field.id:{field_filter_id},publication_year:{int(year)},{citation_filter}"
+        ),
+        "select": "id",
+        "per-page": 1,
+    }
+    if mailto:
+        params["mailto"] = mailto
+    payload = _openalex_request_with_retry(
+        url="https://api.openalex.org/works",
+        params=params,
+    )
+    if not payload:
+        return None
+    meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+    total = _safe_int(meta.get("count"))
+    if total is None or total < 0:
+        return None
+    return int(total)
+
+
+def _openalex_field_year_percentile_rank_exact(
+    *,
+    field_id: str,
+    year: int,
+    citations: int,
+    mailto: str | None,
+    total_count: int | None = None,
+) -> dict[str, Any]:
+    resolved_total = (
+        int(total_count)
+        if total_count is not None and int(total_count) >= 0
+        else _openalex_field_year_total_count(
+            field_id=field_id,
+            year=year,
+            mailto=mailto,
+        )
+    )
+    if resolved_total is None or resolved_total <= 0:
+        return {"percentile_rank": None, "total_results": max(0, int(resolved_total or 0))}
+
+    below_count = _openalex_field_year_count_below_or_equal(
+        field_id=field_id,
+        year=year,
+        citations=citations,
+        mode="lt",
+        mailto=mailto,
+    )
+    equal_count = _openalex_field_year_count_below_or_equal(
+        field_id=field_id,
+        year=year,
+        citations=citations,
+        mode="eq",
+        mailto=mailto,
+    )
+    if below_count is None or equal_count is None:
+        return {"percentile_rank": None, "total_results": int(resolved_total)}
+
+    percentile_rank = ((below_count + (equal_count / 2.0)) / float(max(1, resolved_total))) * 100.0
+    percentile_rank = max(0.0, min(100.0, percentile_rank))
+    return {
+        "percentile_rank": round(percentile_rank, 2),
+        "total_results": int(resolved_total),
     }
 
 
