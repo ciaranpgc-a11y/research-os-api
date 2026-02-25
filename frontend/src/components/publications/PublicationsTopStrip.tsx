@@ -732,7 +732,11 @@ function StructuredMetricTile({
             {primaryValue}
           </p>
           <p className="mt-1 text-[0.72rem] font-medium leading-4 text-[hsl(var(--tone-neutral-700))]">{subtitle}</p>
-          {detail ? <p className="text-[0.62rem] leading-4 text-[hsl(var(--tone-neutral-500))]">{detail}</p> : null}
+          {typeof detail === 'string'
+            ? <p className="text-[0.62rem] leading-4 text-[hsl(var(--tone-neutral-500))]">{detail}</p>
+            : detail
+              ? <div className="pt-0.5">{detail}</div>
+              : null}
           {badge ? <div className={cn(pinBadgeBottom ? 'mt-auto pt-1' : 'pt-1')}>{badge}</div> : null}
         </div>
         <div className="flex h-full min-h-0 items-center">
@@ -1669,18 +1673,10 @@ function HIndexTrajectoryPanel({
   return <HIndexYearChart tile={tile} showCaption={false} />
 }
 
-function HIndexProgressBadge({
-  tile,
-  mode,
-  onModeChange,
-}: {
-  tile: PublicationMetricTilePayload
-  mode: HIndexViewMode
-  onModeChange: (mode: HIndexViewMode) => void
-}) {
+function HIndexProgressInline({ tile }: { tile: PublicationMetricTilePayload }) {
   const progressMeta = buildHIndexProgressMeta(tile)
   return (
-    <div className="w-full max-w-[11.7rem] space-y-1.5">
+    <div className="w-full max-w-[11.7rem] space-y-1">
       <div className="flex items-center gap-2">
         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
           <div
@@ -1693,6 +1689,19 @@ function HIndexProgressBadge({
           {Math.round(progressMeta.progressPct)}%
         </span>
       </div>
+    </div>
+  )
+}
+
+function HIndexViewToggle({
+  mode,
+  onModeChange,
+}: {
+  mode: HIndexViewMode
+  onModeChange: (mode: HIndexViewMode) => void
+}) {
+  return (
+    <div className="flex items-center">
       <div
         className="relative inline-grid grid-cols-2 items-center rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5"
         data-stop-tile-open="true"
@@ -2294,15 +2303,13 @@ export function PublicationsTopStrip({
                   const hIndexMeta = buildHIndexProgressMeta(tile)
                   primaryValue = Number.isFinite(hIndexMeta.currentH) ? `h ${formatInt(hIndexMeta.currentH)}` : mainValueDisplay
                   secondaryText = `Progress to h ${formatInt(hIndexMeta.targetH)}`
-                  detailText = undefined
+                  detailText = <HIndexProgressInline tile={tile} />
                   badgeNode = (
-                    <HIndexProgressBadge
-                      tile={tile}
+                    <HIndexViewToggle
                       mode={hIndexViewMode}
                       onModeChange={setHIndexViewMode}
                     />
                   )
-                  pinBadgeBottom = false
                   visual = <HIndexTrajectoryPanel tile={tile} mode={hIndexViewMode} />
                 } else if (tile.key === 'impact_concentration') {
                   primaryValue = mainValueDisplay
