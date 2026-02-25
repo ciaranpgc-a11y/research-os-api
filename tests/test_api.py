@@ -1,3 +1,4 @@
+import base64
 import time
 
 from fastapi.testclient import TestClient
@@ -284,14 +285,385 @@ def test_v1_library_asset_upload_returns_400_when_multipart_parser_unavailable(
     monkeypatch.setattr(StarletteRequest, "form", _broken_form)
 
     with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "library-upload-user@example.com",
+                "password": "StrongPassword123",
+                "name": "Library Upload User",
+            },
+        )
+        assert register_response.status_code == 200
+        headers = _auth_headers(register_response.json()["session_token"])
         response = client.post(
             "/v1/library/assets/upload",
+            headers=headers,
             files={"files": ("sample.csv", b"a,b\n1,2\n", "text/csv")},
         )
 
     assert response.status_code == 400
     assert response.json()["error"]["type"] == "bad_request"
     assert "Multipart parsing is unavailable" in response.json()["error"]["detail"]
+
+
+def test_v1_library_asset_routes_require_session_token(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    encoded = base64.b64encode(b"a,b\n1,2\n").decode("ascii")
+
+    with TestClient(app) as client:
+        upload_response = client.post(
+            "/v1/library/assets/upload",
+            json={
+                "files": [
+                    {
+                        "filename": "sample.csv",
+                        "mime_type": "text/csv",
+                        "content_base64": encoded,
+                    }
+                ]
+            },
+        )
+        list_response = client.get("/v1/library/assets")
+        patch_response = client.patch(
+            "/v1/library/assets/asset-unknown/access",
+            json={"collaborator_user_ids": []},
+        )
+        download_response = client.get("/v1/library/assets/asset-unknown/download")
+
+    assert upload_response.status_code == 401
+    assert list_response.status_code == 401
+    assert patch_response.status_code == 401
+    assert download_response.status_code == 401
+
+
+def test_v1_library_asset_access_controls_and_download(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    file_bytes = b"patient_id,value\nP001,12\nP002,15\n"
+    encoded = base64.b64encode(file_bytes).decode("ascii")
+
+    with TestClient(app) as client:
+        owner_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "library-owner@example.com",
+                "password": "StrongPassword123",
+                "name": "Library Owner",
+            },
+        )
+        collaborator_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "library-collab@example.com",
+                "password": "StrongPassword123",
+                "name": "Library Collaborator",
+            },
+        )
+        outsider_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "library-outsider@example.com",
+                "password": "StrongPassword123",
+                "name": "Library Outsider",
+            },
+        )
+        assert owner_register.status_code == 200
+        assert collaborator_register.status_code == 200
+        assert outsider_register.status_code == 200
+
+        owner_headers = _auth_headers(owner_register.json()["session_token"])
+        collaborator_headers = _auth_headers(collaborator_register.json()["session_token"])
+        outsider_headers = _auth_headers(outsider_register.json()["session_token"])
+
+        owner_me = client.get("/v1/auth/me", headers=owner_headers)
+        collaborator_me = client.get("/v1/auth/me", headers=collaborator_headers)
+        assert owner_me.status_code == 200
+        assert collaborator_me.status_code == 200
+        owner_user_id = owner_me.json()["id"]
+        collaborator_user_id = collaborator_me.json()["id"]
+
+        create_project = client.post(
+            "/v1/projects",
+            headers=owner_headers,
+            json={
+                "title": "Library ACL Project",
+                "target_journal": "ehj",
+                "collaborator_user_ids": [collaborator_user_id],
+            },
+        )
+        assert create_project.status_code == 200
+        project_id = create_project.json()["id"]
+
+        upload_response = client.post(
+            "/v1/library/assets/upload",
+            headers=owner_headers,
+            json={
+                "project_id": project_id,
+                "files": [
+                    {
+                        "filename": "workspace-dataset.csv",
+                        "mime_type": "text/csv",
+                        "content_base64": encoded,
+                    }
+                ],
+            },
+        )
+        assert upload_response.status_code == 200
+        asset_id = upload_response.json()["asset_ids"][0]
+
+        owner_assets = client.get(
+            "/v1/library/assets",
+            headers=owner_headers,
+            params={"project_id": project_id},
+        )
+        collaborator_assets = client.get(
+            "/v1/library/assets",
+            headers=collaborator_headers,
+            params={"project_id": project_id},
+        )
+        assert owner_assets.status_code == 200
+        assert collaborator_assets.status_code == 200
+        assert owner_assets.json()["total"] == 1
+        assert collaborator_assets.json()["total"] == 1
+        owner_asset_payload = owner_assets.json()["items"][0]
+        collaborator_asset_payload = collaborator_assets.json()["items"][0]
+        assert owner_asset_payload["id"] == asset_id
+        assert owner_asset_payload["owner_user_id"] == owner_user_id
+        assert owner_asset_payload["owner_name"] == "Library Owner"
+        assert collaborator_user_id in owner_asset_payload["shared_with_user_ids"]
+        assert owner_asset_payload["can_manage_access"] is True
+        assert collaborator_asset_payload["can_manage_access"] is False
+
+        collaborator_patch_attempt = client.patch(
+            f"/v1/library/assets/{asset_id}/access",
+            headers=collaborator_headers,
+            json={"collaborator_user_ids": [collaborator_user_id]},
+        )
+        assert collaborator_patch_attempt.status_code == 400
+        assert (
+            "Only the asset owner can manage file access."
+            in collaborator_patch_attempt.json()["error"]["detail"]
+        )
+
+        collaborator_download_before = client.get(
+            f"/v1/library/assets/{asset_id}/download",
+            headers=collaborator_headers,
+        )
+        assert collaborator_download_before.status_code == 200
+        assert collaborator_download_before.content == file_bytes
+
+        remove_access = client.patch(
+            f"/v1/library/assets/{asset_id}/access",
+            headers=owner_headers,
+            json={"collaborator_user_ids": []},
+        )
+        assert remove_access.status_code == 200
+        assert remove_access.json()["shared_with_user_ids"] == []
+
+        collaborator_assets_after_removal = client.get(
+            "/v1/library/assets",
+            headers=collaborator_headers,
+            params={"project_id": project_id},
+        )
+        assert collaborator_assets_after_removal.status_code == 200
+        assert collaborator_assets_after_removal.json()["items"] == []
+        assert collaborator_assets_after_removal.json()["total"] == 0
+
+        collaborator_download_after = client.get(
+            f"/v1/library/assets/{asset_id}/download",
+            headers=collaborator_headers,
+        )
+        assert collaborator_download_after.status_code == 404
+
+        add_access_by_name = client.patch(
+            f"/v1/library/assets/{asset_id}/access",
+            headers=owner_headers,
+            json={
+                "collaborator_user_ids": [],
+                "collaborator_names": ["Library Collaborator"],
+            },
+        )
+        assert add_access_by_name.status_code == 200
+        assert collaborator_user_id in add_access_by_name.json()["shared_with_user_ids"]
+
+        collaborator_download_after_add = client.get(
+            f"/v1/library/assets/{asset_id}/download",
+            headers=collaborator_headers,
+        )
+        assert collaborator_download_after_add.status_code == 200
+        assert collaborator_download_after_add.content == file_bytes
+
+        owner_download = client.get(
+            f"/v1/library/assets/{asset_id}/download",
+            headers=owner_headers,
+        )
+        assert owner_download.status_code == 200
+        assert owner_download.content == file_bytes
+
+        outsider_assets = client.get("/v1/library/assets", headers=outsider_headers)
+        assert outsider_assets.status_code == 200
+        assert outsider_assets.json()["items"] == []
+        assert outsider_assets.json()["total"] == 0
+
+
+def test_v1_library_assets_support_server_pagination_sort_and_filters(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        owner_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "library-page-owner@example.com",
+                "password": "StrongPassword123",
+                "name": "Library Page Owner",
+            },
+        )
+        collaborator_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "library-page-collab@example.com",
+                "password": "StrongPassword123",
+                "name": "Library Page Collaborator",
+            },
+        )
+        assert owner_register.status_code == 200
+        assert collaborator_register.status_code == 200
+        owner_headers = _auth_headers(owner_register.json()["session_token"])
+        collaborator_headers = _auth_headers(collaborator_register.json()["session_token"])
+
+        collaborator_user_id = client.get("/v1/auth/me", headers=collaborator_headers).json()[
+            "id"
+        ]
+        project_response = client.post(
+            "/v1/projects",
+            headers=owner_headers,
+            json={
+                "title": "Library Paging Project",
+                "target_journal": "ehj",
+                "collaborator_user_ids": [collaborator_user_id],
+            },
+        )
+        assert project_response.status_code == 200
+        project_id = project_response.json()["id"]
+
+        uploads = [
+            ("zeta_notes.csv", b"col\n111\n"),
+            ("alpha_trial.csv", b"col\n1\n2\n3\n"),
+            ("beta_trial.csv", b"col\n9\n"),
+            ("gamma_dictionary.csv", b"field,value\nx,1\n"),
+        ]
+        for filename, content in uploads:
+            encoded = base64.b64encode(content).decode("ascii")
+            upload_response = client.post(
+                "/v1/library/assets/upload",
+                headers=owner_headers,
+                json={
+                    "project_id": project_id,
+                    "files": [
+                        {
+                            "filename": filename,
+                            "mime_type": "text/csv",
+                            "content_base64": encoded,
+                        }
+                    ],
+                },
+            )
+            assert upload_response.status_code == 200
+
+        owner_page_1 = client.get(
+            "/v1/library/assets",
+            headers=owner_headers,
+            params={
+                "project_id": project_id,
+                "ownership": "owned",
+                "sort_by": "filename",
+                "sort_direction": "asc",
+                "page": 1,
+                "page_size": 2,
+            },
+        )
+        assert owner_page_1.status_code == 200
+        owner_page_1_payload = owner_page_1.json()
+        assert owner_page_1_payload["total"] == 4
+        assert owner_page_1_payload["page"] == 1
+        assert owner_page_1_payload["page_size"] == 2
+        assert owner_page_1_payload["has_more"] is True
+        assert [item["filename"] for item in owner_page_1_payload["items"]] == [
+            "alpha_trial.csv",
+            "beta_trial.csv",
+        ]
+
+        owner_page_2 = client.get(
+            "/v1/library/assets",
+            headers=owner_headers,
+            params={
+                "project_id": project_id,
+                "ownership": "owned",
+                "sort_by": "filename",
+                "sort_direction": "asc",
+                "page": 2,
+                "page_size": 2,
+            },
+        )
+        assert owner_page_2.status_code == 200
+        owner_page_2_payload = owner_page_2.json()
+        assert owner_page_2_payload["has_more"] is False
+        assert [item["filename"] for item in owner_page_2_payload["items"]] == [
+            "gamma_dictionary.csv",
+            "zeta_notes.csv",
+        ]
+
+        owner_query = client.get(
+            "/v1/library/assets",
+            headers=owner_headers,
+            params={
+                "project_id": project_id,
+                "query": "trial",
+                "sort_by": "filename",
+                "sort_direction": "asc",
+                "page": 1,
+                "page_size": 10,
+            },
+        )
+        assert owner_query.status_code == 200
+        owner_query_payload = owner_query.json()
+        assert owner_query_payload["total"] == 2
+        assert [item["filename"] for item in owner_query_payload["items"]] == [
+            "alpha_trial.csv",
+            "beta_trial.csv",
+        ]
+
+        collaborator_shared = client.get(
+            "/v1/library/assets",
+            headers=collaborator_headers,
+            params={
+                "project_id": project_id,
+                "ownership": "shared",
+                "sort_by": "filename",
+                "sort_direction": "asc",
+                "page": 1,
+                "page_size": 10,
+            },
+        )
+        assert collaborator_shared.status_code == 200
+        collaborator_shared_payload = collaborator_shared.json()
+        assert collaborator_shared_payload["total"] == 4
+        assert all(item["can_manage_access"] is False for item in collaborator_shared_payload["items"])
+
+        collaborator_owned = client.get(
+            "/v1/library/assets",
+            headers=collaborator_headers,
+            params={
+                "project_id": project_id,
+                "ownership": "owned",
+            },
+        )
+        assert collaborator_owned.status_code == 200
+        assert collaborator_owned.json()["total"] == 0
+        assert collaborator_owned.json()["items"] == []
 
 
 def test_v1_aawe_selection_insight_returns_claim_payload(monkeypatch) -> None:

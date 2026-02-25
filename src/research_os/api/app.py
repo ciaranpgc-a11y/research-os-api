@@ -105,6 +105,8 @@ from research_os.api.schemas import (
     ImpactReportResponse,
     ImpactThemesResponse,
     JournalOptionResponse,
+    LibraryAssetAccessUpdateRequest,
+    LibraryAssetListResponse,
     LibraryAssetResponse,
     LibraryAssetUploadResponse,
     ManuscriptAttachAssetsRequest,
@@ -283,9 +285,11 @@ from research_os.services.data_planner_service import (
     create_data_profile,
     create_figures_scaffold,
     create_tables_scaffold,
+    download_library_asset,
     improve_plan_section,
     list_library_assets,
     save_manuscript_plan,
+    update_library_asset_access,
     upload_library_assets,
 )
 from research_os.services.auth_service import (
@@ -3640,7 +3644,7 @@ async def v1_upload_library_assets(
     request: Request,
     project_id: str | None = Query(default=None),
 ) -> LibraryAssetUploadResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    requesting_user_id, auth_error = _resolve_request_user_required(request)
     if auth_error is not None:
         return auth_error
     try:
@@ -3716,18 +3720,105 @@ async def v1_upload_library_assets(
 
 @app.get(
     "/v1/library/assets",
-    response_model=list[LibraryAssetResponse],
+    response_model=LibraryAssetListResponse,
     tags=["v1"],
 )
 def v1_list_library_assets(
     request: Request,
     project_id: str | None = Query(default=None),
-) -> list[LibraryAssetResponse] | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    query: str = Query(default=""),
+    ownership: Literal["all", "owned", "shared"] = Query(default="all"),
+    page: int = Query(default=1, ge=1, le=100000),
+    page_size: int = Query(default=50, ge=1, le=200),
+    sort_by: Literal[
+        "uploaded_at", "filename", "byte_size", "kind", "owner_name"
+    ] = Query(default="uploaded_at"),
+    sort_direction: Literal["asc", "desc"] = Query(default="desc"),
+) -> LibraryAssetListResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_required(request)
     if auth_error is not None:
         return auth_error
-    payload = list_library_assets(project_id=project_id, user_id=requesting_user_id)
-    return [LibraryAssetResponse(**item) for item in payload]
+    try:
+        payload = list_library_assets(
+            project_id=project_id,
+            user_id=requesting_user_id,
+            query=query,
+            ownership=ownership,
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
+        )
+        return LibraryAssetListResponse(
+            items=[LibraryAssetResponse(**item) for item in payload.get("items", [])],
+            page=int(payload.get("page") or page),
+            page_size=int(payload.get("page_size") or page_size),
+            total=int(payload.get("total") or 0),
+            has_more=bool(payload.get("has_more")),
+            sort_by=str(payload.get("sort_by") or sort_by),
+            sort_direction=str(payload.get("sort_direction") or sort_direction),
+            query=str(payload.get("query") or ""),
+            ownership=str(payload.get("ownership") or ownership),
+        )
+    except PlannerValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.patch(
+    "/v1/library/assets/{asset_id}/access",
+    response_model=LibraryAssetResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_update_library_asset_access(
+    request: Request,
+    asset_id: str,
+    payload: LibraryAssetAccessUpdateRequest,
+) -> LibraryAssetResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_required(request)
+    if auth_error is not None:
+        return auth_error
+    try:
+        updated = update_library_asset_access(
+            asset_id=asset_id,
+            user_id=requesting_user_id or "",
+            collaborator_user_ids=payload.collaborator_user_ids,
+            collaborator_names=payload.collaborator_names,
+        )
+        return LibraryAssetResponse(**updated)
+    except DataAssetNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PlannerValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/library/assets/{asset_id}/download",
+    response_model=None,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_download_library_asset(
+    request: Request,
+    asset_id: str,
+) -> Response | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_required(request)
+    if auth_error is not None:
+        return auth_error
+    try:
+        payload = download_library_asset(
+            asset_id=asset_id,
+            user_id=requesting_user_id or "",
+        )
+        file_name = str(payload.get("file_name") or "asset.bin")
+        media_type = str(payload.get("content_type") or "application/octet-stream")
+        content = payload.get("content") or b""
+        headers = {"Content-Disposition": f'attachment; filename="{file_name}"'}
+        return Response(content=content, media_type=media_type, headers=headers)
+    except DataAssetNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PlannerValidationError as exc:
+        return _build_bad_request_response(str(exc))
 
 
 @app.post(

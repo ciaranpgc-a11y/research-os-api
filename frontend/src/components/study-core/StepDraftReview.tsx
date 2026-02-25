@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getAuthSessionToken } from '@/lib/auth-session'
+import { houseForms } from '@/lib/house-style'
 import { fetchManuscript, generateGroundedDraft, updateManuscriptSections } from '@/lib/study-core-api'
 import { manuscriptParagraphs } from '@/mock/manuscript'
 import type { ClaimLinkSuggestion } from '@/types/study-core'
@@ -209,7 +210,7 @@ export function StepDraftReview({
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <label className="text-xs font-medium text-muted-foreground">Style profile</label>
           <select
-            className="h-9 rounded-md border border-border bg-background px-3 text-sm"
+            className={`h-9 rounded-md px-3 text-sm ${houseForms.select}`}
             value={styleProfile}
             onChange={(event) => onStyleProfileChange(event.target.value as 'technical' | 'concise' | 'narrative_review')}
           >

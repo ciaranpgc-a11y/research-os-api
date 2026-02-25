@@ -8,6 +8,10 @@ import type {
   TablesScaffoldPayload,
   FiguresScaffoldPayload,
   LibraryAssetRecord,
+  LibraryAssetListPayload,
+  LibraryAssetOwnership,
+  LibraryAssetSortBy,
+  LibraryAssetSortDirection,
   LibraryAssetUploadPayload,
   ManuscriptAttachAssetsPayload,
   PlannerConfirmedFields,
@@ -126,10 +130,34 @@ export async function uploadLibraryAssets(input: {
 export async function listLibraryAssets(input: {
   token?: string
   projectId?: string
-}): Promise<LibraryAssetRecord[]> {
+  query?: string
+  ownership?: LibraryAssetOwnership
+  page?: number
+  pageSize?: number
+  sortBy?: LibraryAssetSortBy
+  sortDirection?: LibraryAssetSortDirection
+}): Promise<LibraryAssetListPayload> {
   const search = new URLSearchParams()
   if ((input.projectId || '').trim()) {
     search.set('project_id', input.projectId!.trim())
+  }
+  if ((input.query || '').trim()) {
+    search.set('query', input.query!.trim())
+  }
+  if ((input.ownership || '').trim()) {
+    search.set('ownership', input.ownership!)
+  }
+  if (Number.isFinite(input.page)) {
+    search.set('page', String(Math.max(1, Number(input.page || 1))))
+  }
+  if (Number.isFinite(input.pageSize)) {
+    search.set('page_size', String(Math.max(1, Math.min(200, Number(input.pageSize || 50)))))
+  }
+  if ((input.sortBy || '').trim()) {
+    search.set('sort_by', input.sortBy!)
+  }
+  if ((input.sortDirection || '').trim()) {
+    search.set('sort_direction', input.sortDirection!)
   }
   const suffix = search.toString() ? `?${search.toString()}` : ''
   const response = await fetch(`${API_BASE_URL}/v1/library/assets${suffix}`, {
@@ -138,7 +166,56 @@ export async function listLibraryAssets(input: {
   if (!response.ok) {
     throw new Error(await parseApiError(response, `Asset list failed (${response.status})`))
   }
-  return (await response.json()) as LibraryAssetRecord[]
+  const payload = (await response.json()) as LibraryAssetListPayload
+  return {
+    items: Array.isArray(payload.items) ? (payload.items as LibraryAssetRecord[]) : [],
+    page: Number(payload.page || 1),
+    page_size: Number(payload.page_size || 50),
+    total: Number(payload.total || 0),
+    has_more: Boolean(payload.has_more),
+    sort_by: (payload.sort_by || 'uploaded_at') as LibraryAssetSortBy,
+    sort_direction: (payload.sort_direction || 'desc') as LibraryAssetSortDirection,
+    query: String(payload.query || ''),
+    ownership: (payload.ownership || 'all') as LibraryAssetOwnership,
+  }
+}
+
+export async function updateLibraryAssetAccess(input: {
+  token?: string
+  assetId: string
+  collaboratorUserIds?: string[]
+  collaboratorNames?: string[]
+}): Promise<LibraryAssetRecord> {
+  const response = await fetch(`${API_BASE_URL}/v1/library/assets/${encodeURIComponent(input.assetId)}/access`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      collaborator_user_ids: input.collaboratorUserIds || [],
+      collaborator_names: input.collaboratorNames || [],
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Asset access update failed (${response.status})`))
+  }
+  return (await response.json()) as LibraryAssetRecord
+}
+
+export async function downloadLibraryAsset(input: {
+  token?: string
+  assetId: string
+}): Promise<{ blob: Blob; fileName: string; contentType: string }> {
+  const response = await fetch(`${API_BASE_URL}/v1/library/assets/${encodeURIComponent(input.assetId)}/download`, {
+    headers: authHeaders(input.token || ''),
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Asset download failed (${response.status})`))
+  }
+  const blob = await response.blob()
+  const contentDisposition = response.headers.get('Content-Disposition') || ''
+  const fileNameMatch = contentDisposition.match(/filename="?([^";]+)"?/i)
+  const fileName = fileNameMatch?.[1]?.trim() || 'asset.bin'
+  const contentType = response.headers.get('Content-Type') || blob.type || 'application/octet-stream'
+  return { blob, fileName, contentType }
 }
 
 export async function attachAssetsToManuscript(input: {
@@ -824,7 +901,7 @@ function inferFilename(contentDisposition: string | null, fallback: string): str
   if (!contentDisposition) {
     return fallback
   }
-  const match = /filename=\"?([^\";]+)\"?/i.exec(contentDisposition)
+  const match = /filename="?([^";]+)"?/i.exec(contentDisposition)
   return match?.[1] || fallback
 }
 

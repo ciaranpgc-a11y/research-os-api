@@ -1,4 +1,4 @@
-import { houseChartColors, houseDividers, houseMotion, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseChartColors, houseDividers, houseDrilldown, houseMotion, houseSurfaces, houseTypography } from '@/lib/house-style'
 
 export const publicationsHouseHeadings = {
   title: houseTypography.title,
@@ -22,6 +22,8 @@ export const publicationsHouseSurfaces = {
   bannerSuccess: houseSurfaces.bannerSuccess,
   bannerWarning: houseSurfaces.bannerWarning,
   bannerDanger: houseSurfaces.bannerDanger,
+  metricPill: houseSurfaces.metricPill,
+  metricPillPublications: houseSurfaces.metricPillPublications,
   leftBorder: houseSurfaces.leftBorder,
   leftBorderPublications: houseSurfaces.leftBorderPublications,
   tableShell: houseSurfaces.tableShell,
@@ -57,4 +59,51 @@ export const publicationsHouseCharts = {
   gridLine: houseChartColors.gridLine,
   gridDashed: houseChartColors.gridLineDashed,
   axisText: houseChartColors.axisText,
+  axisSubtext: houseChartColors.axisSubtext,
+  axisWindowSubtext: houseChartColors.axisWindowSubtext,
+} as const
+
+export const publicationsHouseActions = {
+  sectionTools: 'house-section-tools',
+  sectionToolsPublications: 'house-section-tools-publications',
+  sectionToolButton: 'house-section-tool-button',
+  sectionToolDivider: 'house-section-tool-divider',
+} as const
+
+export const publicationsHouseDrilldown = {
+  sheet: houseDrilldown.sheet,
+  tabTrigger: houseDrilldown.tabTrigger,
+  placeholder: houseDrilldown.placeholder,
+  alert: houseDrilldown.alert,
+  microValue: houseDrilldown.microValue,
+  hint: houseDrilldown.hint,
+  caption: houseDrilldown.caption,
+  chip: houseDrilldown.chip,
+  chipActive: houseDrilldown.chipActive,
+  action: houseDrilldown.action,
+  row: houseDrilldown.row,
+  rowActive: houseDrilldown.rowActive,
+  progressTrack: houseDrilldown.progressTrack,
+  progressFill: houseDrilldown.progressFill,
+  statCard: houseDrilldown.statCard,
+  statTitle: houseDrilldown.statTitle,
+  statValue: houseDrilldown.statValue,
+  axis: houseDrilldown.axis,
+  range: houseDrilldown.range,
+  badge: houseDrilldown.badge,
+  badgePositive: houseDrilldown.badgePositive,
+  badgeWarning: houseDrilldown.badgeWarning,
+  badgeNeutral: houseDrilldown.badgeNeutral,
+  note: houseDrilldown.note,
+  noteSoft: houseDrilldown.noteSoft,
+  dividerTop: houseDrilldown.dividerTop,
+  chartGridSvg: houseDrilldown.chartGridSvg,
+  chartAreaSvg: houseDrilldown.chartAreaSvg,
+  chartMovingSvg: houseDrilldown.chartMovingSvg,
+  chartMainSvg: houseDrilldown.chartMainSvg,
+  barSelected: houseDrilldown.barSelected,
+  barSelectedOutline: houseDrilldown.barSelectedOutline,
+  tableRow: houseDrilldown.tableRow,
+  tableEmpty: houseDrilldown.tableEmpty,
+  toggleButtonMuted: houseDrilldown.toggleButtonMuted,
 } as const

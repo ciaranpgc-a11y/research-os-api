@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { getAuthSessionToken } from '@/lib/auth-session'
+import { houseForms } from '@/lib/house-style'
 import {
   cancelGeneration,
   enqueueGeneration,
@@ -716,7 +717,7 @@ export function StepRun({
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground">Reasoning effort</p>
               <select
-                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+                className={`h-9 w-full rounded-md px-3 text-sm ${houseForms.select}`}
                 value={reasoningEffort}
                 onChange={(event) => onReasoningEffortChange(event.target.value as 'low' | 'medium' | 'high')}
               >

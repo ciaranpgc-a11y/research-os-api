@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import csv
 import io
+import mimetypes
 import os
 import re
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from research_os.db import (
     DataLibraryAsset,
@@ -17,6 +19,7 @@ from research_os.db import (
     ManuscriptPlan,
     PlannerArtifact,
     Project,
+    User,
     create_all_tables,
     session_scope,
 )
@@ -58,6 +61,34 @@ def _normalize_user_ids(values: Any) -> list[str]:
     return deduped
 
 
+def _resolve_user_ids_by_names(
+    *, session, names: list[str], exclude_user_id: str | None = None
+) -> list[str]:
+    clean_names = [_trim(name) for name in names if _trim(name)]
+    if not clean_names:
+        return []
+
+    excluded = _trim(exclude_user_id)
+    deduped_ids: list[str] = []
+    seen_ids: set[str] = set()
+    unresolved: list[str] = []
+    for name in clean_names:
+        user = session.scalars(select(User).where(func.lower(User.name) == name.lower())).first()
+        if user is None:
+            unresolved.append(name)
+            continue
+        user_id = _trim(user.id)
+        if not user_id or user_id == excluded or user_id in seen_ids:
+            continue
+        seen_ids.add(user_id)
+        deduped_ids.append(user_id)
+    if unresolved:
+        raise PlannerValidationError(
+            "Could not resolve collaborator account(s): " + ", ".join(unresolved) + "."
+        )
+    return deduped_ids
+
+
 def _project_allows_user(project: Project, user_id: str | None) -> bool:
     clean_user_id = _trim(user_id)
     if not clean_user_id:
@@ -95,9 +126,12 @@ def _asset_accessible_for_user(
 ) -> bool:
     clean_user_id = _trim(user_id)
     if not clean_user_id:
-        return True
+        return False
     if _trim(asset.owner_user_id) == clean_user_id:
         return True
+    shared_ids_raw = asset.shared_with_user_ids
+    if shared_ids_raw is not None:
+        return clean_user_id in _normalize_user_ids(shared_ids_raw)
     project_id = _trim(asset.project_id)
     if not project_id:
         return False
@@ -105,6 +139,58 @@ def _asset_accessible_for_user(
     if project is None:
         return False
     return _project_allows_user(project, clean_user_id)
+
+
+def _asset_shared_user_ids(asset: DataLibraryAsset) -> list[str]:
+    return _normalize_user_ids(asset.shared_with_user_ids)
+
+
+def _display_name_for_user(*, user: User | None, fallback_user_id: str | None = None) -> str:
+    if user is not None:
+        name = _trim(user.name)
+        if name:
+            return name
+    clean_id = _trim(fallback_user_id)
+    return clean_id or "Unknown user"
+
+
+def _serialize_library_asset(
+    *,
+    session,
+    asset: DataLibraryAsset,
+    requesting_user_id: str | None = None,
+) -> dict[str, object]:
+    owner_id = _trim(asset.owner_user_id) or None
+    owner_user = session.get(User, owner_id) if owner_id else None
+    owner_name = _display_name_for_user(user=owner_user, fallback_user_id=owner_id)
+    shared_ids = _asset_shared_user_ids(asset)
+    shared_with: list[dict[str, str]] = []
+    for shared_id in shared_ids:
+        shared_user = session.get(User, shared_id)
+        shared_with.append(
+            {
+                "user_id": shared_id,
+                "name": _display_name_for_user(
+                    user=shared_user, fallback_user_id=shared_id
+                ),
+            }
+        )
+    return {
+        "id": asset.id,
+        "owner_user_id": asset.owner_user_id,
+        "owner_name": owner_name,
+        "project_id": asset.project_id,
+        "filename": asset.filename,
+        "kind": asset.kind,
+        "mime_type": asset.mime_type,
+        "byte_size": int(asset.byte_size or 0),
+        "uploaded_at": asset.uploaded_at,
+        "shared_with_user_ids": shared_ids,
+        "shared_with": shared_with,
+        "can_manage_access": bool(
+            _trim(requesting_user_id) and _trim(requesting_user_id) == _trim(asset.owner_user_id)
+        ),
+    }
 
 
 def _storage_root() -> Path:
@@ -146,15 +232,20 @@ def upload_library_assets(
     with session_scope() as session:
         clean_project_id = _trim(project_id) or None
         clean_user_id = _trim(user_id) or None
+        if not clean_user_id:
+            raise PlannerValidationError("Session token is required.")
+        default_shared_with_ids: list[str] | None = []
         if clean_project_id:
-            _resolve_project_for_user(
+            project = _resolve_project_for_user(
                 session=session, project_id=clean_project_id, user_id=clean_user_id
             )
+            default_shared_with_ids = _normalize_user_ids(project.collaborator_user_ids)
         for raw_filename, mime_type, content in files:
             filename = _slugify_filename(raw_filename)
             asset = DataLibraryAsset(
                 owner_user_id=clean_user_id,
                 project_id=clean_project_id,
+                shared_with_user_ids=list(default_shared_with_ids or []),
                 filename=filename,
                 kind=_guess_kind(filename),
                 mime_type=(mime_type or "").strip() or None,
@@ -173,11 +264,54 @@ def upload_library_assets(
 
 
 def list_library_assets(
-    *, project_id: str | None = None, user_id: str | None = None
-) -> list[dict[str, object]]:
+    *,
+    project_id: str | None = None,
+    user_id: str | None = None,
+    query: str | None = None,
+    ownership: Literal["all", "owned", "shared"] = "all",
+    page: int = 1,
+    page_size: int = 50,
+    sort_by: Literal[
+        "uploaded_at", "filename", "byte_size", "kind", "owner_name"
+    ] = "uploaded_at",
+    sort_direction: Literal["asc", "desc"] = "desc",
+) -> dict[str, object]:
     create_all_tables()
+    clean_ownership = _trim(ownership).lower() or "all"
+    if clean_ownership not in {"all", "owned", "shared"}:
+        raise PlannerValidationError("ownership must be all, owned, or shared.")
+    clean_sort_by = _trim(sort_by).lower() or "uploaded_at"
+    if clean_sort_by not in {
+        "uploaded_at",
+        "filename",
+        "byte_size",
+        "kind",
+        "owner_name",
+    }:
+        raise PlannerValidationError(
+            "sort_by must be uploaded_at, filename, byte_size, kind, or owner_name."
+        )
+    clean_sort_direction = _trim(sort_direction).lower() or "desc"
+    if clean_sort_direction not in {"asc", "desc"}:
+        raise PlannerValidationError("sort_direction must be asc or desc.")
+    clean_page = max(1, int(page or 1))
+    clean_page_size = max(1, min(int(page_size or 50), 200))
+    clean_query = _trim(query).lower()
+
     with session_scope() as session:
         clean_user_id = _trim(user_id) or None
+        if not clean_user_id:
+            return {
+                "items": [],
+                "page": clean_page,
+                "page_size": clean_page_size,
+                "total": 0,
+                "has_more": False,
+                "sort_by": clean_sort_by,
+                "sort_direction": clean_sort_direction,
+                "query": clean_query,
+                "ownership": clean_ownership,
+            }
         clean_project_id = _trim(project_id) or None
         query = select(DataLibraryAsset).order_by(DataLibraryAsset.uploaded_at.desc())
         if clean_project_id:
@@ -186,25 +320,184 @@ def list_library_assets(
             )
             query = query.where(DataLibraryAsset.project_id == clean_project_id)
         rows = session.scalars(query).all()
-        if clean_user_id:
-            rows = [
-                row
-                for row in rows
-                if _asset_accessible_for_user(session=session, asset=row, user_id=clean_user_id)
-            ]
-        return [
-            {
-                "id": row.id,
-                "owner_user_id": row.owner_user_id,
-                "project_id": row.project_id,
-                "filename": row.filename,
-                "kind": row.kind,
-                "mime_type": row.mime_type,
-                "byte_size": int(row.byte_size or 0),
-                "uploaded_at": row.uploaded_at,
-            }
+        accessible_rows = [
+            row
             for row in rows
+            if _asset_accessible_for_user(session=session, asset=row, user_id=clean_user_id)
         ]
+        payload_items = [
+            _serialize_library_asset(
+                session=session,
+                asset=row,
+                requesting_user_id=clean_user_id,
+            )
+            for row in accessible_rows
+        ]
+
+        if clean_ownership == "owned":
+            payload_items = [
+                item for item in payload_items if bool(item.get("can_manage_access"))
+            ]
+        elif clean_ownership == "shared":
+            payload_items = [
+                item for item in payload_items if not bool(item.get("can_manage_access"))
+            ]
+
+        if clean_query:
+            def _matches(item: dict[str, object]) -> bool:
+                shared_with = item.get("shared_with")
+                shared_names = ""
+                if isinstance(shared_with, list):
+                    shared_names = " ".join(
+                        _trim(entry.get("name")) if isinstance(entry, dict) else ""
+                        for entry in shared_with
+                    )
+                haystack = " ".join(
+                    [
+                        _trim(item.get("filename")),
+                        _trim(item.get("kind")),
+                        _trim(item.get("mime_type")),
+                        _trim(item.get("owner_name")),
+                        shared_names,
+                    ]
+                ).lower()
+                return clean_query in haystack
+
+            payload_items = [item for item in payload_items if _matches(item)]
+
+        reverse = clean_sort_direction == "desc"
+
+        def _sort_key(item: dict[str, object]):
+            if clean_sort_by == "filename":
+                return _trim(item.get("filename")).lower()
+            if clean_sort_by == "byte_size":
+                return int(item.get("byte_size") or 0)
+            if clean_sort_by == "kind":
+                return _trim(item.get("kind")).lower()
+            if clean_sort_by == "owner_name":
+                return _trim(item.get("owner_name")).lower()
+            uploaded_at = item.get("uploaded_at")
+            if isinstance(uploaded_at, datetime):
+                return uploaded_at
+            if isinstance(uploaded_at, str):
+                try:
+                    return datetime.fromisoformat(uploaded_at.replace("Z", "+00:00"))
+                except ValueError:
+                    return datetime.fromtimestamp(0)
+            return datetime.fromtimestamp(0)
+
+        payload_items = sorted(payload_items, key=_sort_key, reverse=reverse)
+        total = len(payload_items)
+        start_index = (clean_page - 1) * clean_page_size
+        end_index = start_index + clean_page_size
+        paged_items = payload_items[start_index:end_index]
+
+        return {
+            "items": paged_items,
+            "page": clean_page,
+            "page_size": clean_page_size,
+            "total": total,
+            "has_more": end_index < total,
+            "sort_by": clean_sort_by,
+            "sort_direction": clean_sort_direction,
+            "query": clean_query,
+            "ownership": clean_ownership,
+        }
+
+
+def update_library_asset_access(
+    *,
+    asset_id: str,
+    user_id: str,
+    collaborator_user_ids: list[str] | None = None,
+    collaborator_names: list[str] | None = None,
+) -> dict[str, object]:
+    create_all_tables()
+    clean_asset_id = _trim(asset_id)
+    clean_user_id = _trim(user_id)
+    if not clean_asset_id:
+        raise PlannerValidationError("asset_id is required.")
+    if not clean_user_id:
+        raise PlannerValidationError("Session token is required.")
+
+    with session_scope() as session:
+        asset = session.get(DataLibraryAsset, clean_asset_id)
+        if asset is None:
+            raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
+        if _trim(asset.owner_user_id) != clean_user_id:
+            raise PlannerValidationError("Only the asset owner can manage file access.")
+
+        requested_ids = _normalize_user_ids(collaborator_user_ids or [])
+        resolved_name_ids = _resolve_user_ids_by_names(
+            session=session,
+            names=collaborator_names or [],
+            exclude_user_id=clean_user_id,
+        )
+        merged_ids = _normalize_user_ids([*requested_ids, *resolved_name_ids])
+        merged_ids = [item for item in merged_ids if item != clean_user_id]
+
+        clean_project_id = _trim(asset.project_id)
+        if clean_project_id:
+            project = session.get(Project, clean_project_id)
+            if project is not None:
+                project_collaborator_ids = set(
+                    _normalize_user_ids(project.collaborator_user_ids)
+                )
+                disallowed = [
+                    collaborator_id
+                    for collaborator_id in merged_ids
+                    if collaborator_id not in project_collaborator_ids
+                ]
+                if disallowed:
+                    raise PlannerValidationError(
+                        "Access can only be granted to workspace collaborators."
+                    )
+
+        asset.shared_with_user_ids = merged_ids
+        session.flush()
+        return _serialize_library_asset(
+            session=session,
+            asset=asset,
+            requesting_user_id=clean_user_id,
+        )
+
+
+def download_library_asset(
+    *, asset_id: str, user_id: str
+) -> dict[str, object]:
+    create_all_tables()
+    clean_asset_id = _trim(asset_id)
+    clean_user_id = _trim(user_id)
+    if not clean_asset_id:
+        raise PlannerValidationError("asset_id is required.")
+    if not clean_user_id:
+        raise PlannerValidationError("Session token is required.")
+
+    with session_scope() as session:
+        asset = session.get(DataLibraryAsset, clean_asset_id)
+        if asset is None:
+            raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
+        if not _asset_accessible_for_user(
+            session=session, asset=asset, user_id=clean_user_id
+        ):
+            raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
+
+        storage_path = Path(_trim(asset.storage_path))
+        if not storage_path.exists() or not storage_path.is_file():
+            raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
+
+        file_name = _trim(asset.filename) or "asset.bin"
+        content = storage_path.read_bytes()
+        media_type = _trim(asset.mime_type)
+        if not media_type:
+            guessed, _ = mimetypes.guess_type(file_name)
+            media_type = guessed or "application/octet-stream"
+        return {
+            "id": asset.id,
+            "file_name": file_name,
+            "content_type": media_type,
+            "content": content,
+        }
 
 
 def attach_assets_to_manuscript(

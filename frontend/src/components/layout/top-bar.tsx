@@ -26,7 +26,7 @@ const topNavItemActive = 'house-top-nav-item-active'
 const topNavItemWorkspace = 'house-top-nav-item-workspace'
 const topNavItemProfile = 'house-top-nav-item-profile'
 const utilityButtonClass =
-  'house-top-utility-button !border-0 focus-visible:ring-[hsl(var(--tone-accent-500))]'
+  'house-top-utility-button focus-visible:ring-[hsl(var(--tone-accent-500))]'
 const searchInputClass =
   'h-9 bg-[hsl(var(--tone-neutral-100)/0.72)] pl-9 text-label text-[hsl(var(--tone-neutral-800))] placeholder:text-[hsl(var(--tone-neutral-500))] focus-visible:ring-[hsl(var(--tone-accent-500))]'
 
@@ -65,7 +65,7 @@ export function TopBar({
   }
 
   return (
-    <header className="border-b border-[hsl(var(--tone-neutral-200))] bg-card/95 backdrop-blur">
+    <header className="border-b border-[hsl(var(--stroke-soft)/0.82)] bg-card/95 backdrop-blur">
       <div className="flex h-14 items-center gap-3 px-3 nav:px-4">
         <div className="flex min-w-[12.5rem] shrink-0 items-center gap-2 xl:min-w-[15.5rem] 2xl:min-w-72">
           {showLeftNavButton ? (

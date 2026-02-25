@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 
 import { AppRouter } from '@/AppRouter'
 import { installHouseElementTagging } from '@/lib/house-element-tagging'
+import { installHouseTableResize } from '@/lib/house-table-resize'
 import { useAaweStore } from '@/store/use-aawe-store'
 
 function App() {
@@ -26,7 +27,14 @@ function App() {
     window.localStorage.setItem('aawe-theme', theme)
   }, [theme])
 
-  useEffect(() => installHouseElementTagging(), [])
+  useEffect(() => {
+    const disposeTagging = installHouseElementTagging()
+    const disposeTableResize = installHouseTableResize()
+    return () => {
+      disposeTagging()
+      disposeTableResize()
+    }
+  }, [])
 
   return <AppRouter />
 }

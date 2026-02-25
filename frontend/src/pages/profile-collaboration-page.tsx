@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { getAuthSessionToken } from '@/lib/auth-session'
-import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseForms, houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import {
   createCollaborator,
   deleteCollaborator,
@@ -587,9 +587,6 @@ export function ProfileCollaborationPage() {
     <section data-house-role="page" className="space-y-4">
       <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderResearch)}>
         <h1 data-house-role="page-title" className={houseTypography.title}>Collaboration</h1>
-        <p data-house-role="page-subtitle" className={houseTypography.subtitle}>
-          Structured collaborator records, co-authorship intelligence, and manuscript author suggestions.
-        </p>
       </header>
 
       <Card>
@@ -656,7 +653,7 @@ export function ProfileCollaborationPage() {
               <select
                 value={sort}
                 onChange={(event) => setSort(event.target.value)}
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm"
+                className={`h-9 rounded-md px-3 text-sm ${houseForms.select}`}
               >
                 <option value="name">Sort: Name</option>
                 <option value="works">Sort: Coauthored works</option>
@@ -770,9 +767,6 @@ export function ProfileCollaborationPage() {
             <CardTitle>
               {isCreating ? 'Add collaborator' : selectedCollaborator ? 'Collaborator details' : 'Select collaborator'}
             </CardTitle>
-            <CardDescription>
-              Click a collaborator to view and edit profile details used in manuscript author suggestions.
-            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-2 sm:grid-cols-2">

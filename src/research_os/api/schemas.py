@@ -417,15 +417,43 @@ class LibraryAssetUploadResponse(BaseModel):
     asset_ids: list[str] = Field(default_factory=list)
 
 
+class LibraryAssetAccessMemberResponse(BaseModel):
+    user_id: str
+    name: str
+
+
 class LibraryAssetResponse(BaseModel):
     id: str
     owner_user_id: str | None = None
+    owner_name: str | None = None
     project_id: str | None = None
     filename: str
     kind: str
     mime_type: str | None = None
     byte_size: int = 0
     uploaded_at: datetime
+    shared_with_user_ids: list[str] = Field(default_factory=list)
+    shared_with: list[LibraryAssetAccessMemberResponse] = Field(default_factory=list)
+    can_manage_access: bool = False
+
+
+class LibraryAssetListResponse(BaseModel):
+    items: list[LibraryAssetResponse] = Field(default_factory=list)
+    page: int = 1
+    page_size: int = 50
+    total: int = 0
+    has_more: bool = False
+    sort_by: Literal["uploaded_at", "filename", "byte_size", "kind", "owner_name"] = (
+        "uploaded_at"
+    )
+    sort_direction: Literal["asc", "desc"] = "desc"
+    query: str = ""
+    ownership: Literal["all", "owned", "shared"] = "all"
+
+
+class LibraryAssetAccessUpdateRequest(BaseModel):
+    collaborator_user_ids: list[str] = Field(default_factory=list)
+    collaborator_names: list[str] = Field(default_factory=list)
 
 
 class ManuscriptAttachAssetsRequest(BaseModel):

@@ -143,9 +143,9 @@ def test_open_access_discovery_uploads_pdf_and_reuses_existing_asset(
     assert first["records"][0]["status"] == "pdf_uploaded"
     assert first["records"][0]["pdf_asset_id"]
 
-    assets = list_library_assets(project_id=None)
-    assert len(assets) == 1
-    assert assets[0]["kind"] == "pdf"
+    assets = list_library_assets(project_id=None, user_id=user_id)
+    assert assets["total"] == 1
+    assert assets["items"][0]["kind"] == "pdf"
 
     second = discover_open_access_for_persona(
         user_id=user_id,

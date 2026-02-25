@@ -442,6 +442,9 @@ class DataLibraryAsset(Base):
     project_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
+    shared_with_user_ids: Mapped[list[str] | None] = mapped_column(
+        JSON, nullable=True
+    )
     filename: Mapped[str] = mapped_column(String(255))
     kind: Mapped[str] = mapped_column(String(32), default="unknown")
     mime_type: Mapped[str | None] = mapped_column(String(128), nullable=True)

@@ -112,12 +112,24 @@ Out of scope (this story):
 - Simplified the Data page to remove readiness/table-generation emphasis and focus on upload + personal library access.
 - Reworked Data page layout into a right utility panel (`Data upload`, `Personal library`) and left operational pane (`Files`, `Preview`).
 - Removed verbose narrative copy under the Data title and trimmed explanatory helper text to match a cleaner house-style section pattern.
+- Added file-level data-library access controls with owner-managed collaborator ACLs.
+- Added owner/access visibility in personal-library items and owner-only add/remove collaborator controls.
+- Added per-file `Download` and `Pull to workspace` actions so persisted assets can be reused directly in workspace data preview.
+- Added secured backend routes for library asset access updates and file downloads, and tightened library routes to require authenticated sessions.
 - Enforced owner-only invitation creation and collaborator-management updates at API level (not only in frontend controls).
 - Synced accepted author requests back into owner workspace collaborator state so collaborator banners stay accurate.
 - Synced owner collaborator state updates into collaborator workspace records to keep membership/removal state coherent across accounts.
 - Updated inbox message persistence to fan out encrypted message records to all workspace participants so messages survive sign-in/out for collaborators, not only senders.
 - Added workspace access checks to inbox websocket and inbox data endpoints to block non-participants.
 - Hardened generation-job-by-id endpoints so only project owner/collaborators can fetch/cancel/retry jobs for owned projects.
+- Added a dedicated Workspaces-home `Data library` center view and left-nav item (query-routed via `view=data-library`).
+- Implemented an owner/collaborator-focused library table in Workspaces home with file display, access visibility, owner-only grant/revoke controls, and download actions.
+- Scoped left-nav `States` controls to Workspaces-only view so Invitations/Data library surfaces stay clean and purpose-specific.
+- Added a populated Storybook `DataLibrary` permutation with mocked list/access/download library APIs to support deterministic UI validation without live backend.
+- Upgraded Workspaces-home Data Library to true server-backed query/sort/pagination controls (`query`, ownership scope, sort field/direction, page, page size).
+- Replaced local name-only permission add flow with directory-backed collaborator lookup and ID-resolved grant updates (`collaborator_user_ids`).
+- Updated data-library API contract and frontend consumers to use metadata-rich list responses (`items`, `total`, `has_more`, paging metadata) for scale-ready navigation.
+- Realigned the individual workspace `Data` page so Data actions are center-first: `Access from personal library` appears before `Upload`, with right-rail-only composition removed.
 
 ## QA Checklist
 

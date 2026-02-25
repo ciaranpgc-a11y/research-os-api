@@ -16,8 +16,9 @@ import type {
 
 import { dashboardTileStyles } from './dashboard-tile-styles'
 import {
+  publicationsHouseActions,
   publicationsHouseCharts,
-  publicationsHouseDividers,
+  publicationsHouseDrilldown,
   publicationsHouseHeadings,
   publicationsHouseMotion,
   publicationsHouseSurfaces,
@@ -293,8 +294,48 @@ const HOUSE_SURFACE_PANEL_BARE_CLASS = publicationsHouseSurfaces.panelBare
 const HOUSE_SURFACE_BANNER_CLASS = publicationsHouseSurfaces.banner
 const HOUSE_SURFACE_BANNER_INFO_CLASS = publicationsHouseSurfaces.bannerInfo
 const HOUSE_SURFACE_BANNER_WARNING_CLASS = publicationsHouseSurfaces.bannerWarning
+const HOUSE_SURFACE_METRIC_PILL_CLASS = publicationsHouseSurfaces.metricPill
+const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS = publicationsHouseSurfaces.metricPillPublications
 const HOUSE_SURFACE_LEFT_BORDER_CLASS = publicationsHouseSurfaces.leftBorder
-const HOUSE_DIVIDER_FILL_SOFT_CLASS = publicationsHouseDividers.fillSoft
+const HOUSE_ACTIONS_SECTION_TOOLS_CLASS = publicationsHouseActions.sectionTools
+const HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS = publicationsHouseActions.sectionToolsPublications
+const HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS = publicationsHouseActions.sectionToolButton
+const HOUSE_ACTIONS_SECTION_TOOL_DIVIDER_CLASS = publicationsHouseActions.sectionToolDivider
+const HOUSE_DRILLDOWN_SHEET_CLASS = publicationsHouseDrilldown.sheet
+const HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS = publicationsHouseDrilldown.tabTrigger
+const HOUSE_DRILLDOWN_PLACEHOLDER_CLASS = publicationsHouseDrilldown.placeholder
+const HOUSE_DRILLDOWN_ALERT_CLASS = publicationsHouseDrilldown.alert
+const HOUSE_DRILLDOWN_MICRO_VALUE_CLASS = publicationsHouseDrilldown.microValue
+const HOUSE_DRILLDOWN_HINT_CLASS = publicationsHouseDrilldown.hint
+const HOUSE_DRILLDOWN_CAPTION_CLASS = publicationsHouseDrilldown.caption
+const HOUSE_DRILLDOWN_CHIP_CLASS = publicationsHouseDrilldown.chip
+const HOUSE_DRILLDOWN_CHIP_ACTIVE_CLASS = publicationsHouseDrilldown.chipActive
+const HOUSE_DRILLDOWN_ACTION_CLASS = publicationsHouseDrilldown.action
+const HOUSE_DRILLDOWN_ROW_CLASS = publicationsHouseDrilldown.row
+const HOUSE_DRILLDOWN_ROW_ACTIVE_CLASS = publicationsHouseDrilldown.rowActive
+const HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS = publicationsHouseDrilldown.progressTrack
+const HOUSE_DRILLDOWN_PROGRESS_FILL_CLASS = publicationsHouseDrilldown.progressFill
+const HOUSE_DRILLDOWN_STAT_CARD_CLASS = publicationsHouseDrilldown.statCard
+const HOUSE_DRILLDOWN_STAT_TITLE_CLASS = publicationsHouseDrilldown.statTitle
+const HOUSE_DRILLDOWN_STAT_VALUE_CLASS = publicationsHouseDrilldown.statValue
+const HOUSE_DRILLDOWN_AXIS_CLASS = publicationsHouseDrilldown.axis
+const HOUSE_DRILLDOWN_RANGE_CLASS = publicationsHouseDrilldown.range
+const HOUSE_DRILLDOWN_BADGE_CLASS = publicationsHouseDrilldown.badge
+const HOUSE_DRILLDOWN_BADGE_POSITIVE_CLASS = publicationsHouseDrilldown.badgePositive
+const HOUSE_DRILLDOWN_BADGE_WARNING_CLASS = publicationsHouseDrilldown.badgeWarning
+const HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS = publicationsHouseDrilldown.badgeNeutral
+const HOUSE_DRILLDOWN_NOTE_CLASS = publicationsHouseDrilldown.note
+const HOUSE_DRILLDOWN_NOTE_SOFT_CLASS = publicationsHouseDrilldown.noteSoft
+const HOUSE_DRILLDOWN_DIVIDER_TOP_CLASS = publicationsHouseDrilldown.dividerTop
+const HOUSE_DRILLDOWN_CHART_GRID_SVG_CLASS = publicationsHouseDrilldown.chartGridSvg
+const HOUSE_DRILLDOWN_CHART_AREA_SVG_CLASS = publicationsHouseDrilldown.chartAreaSvg
+const HOUSE_DRILLDOWN_CHART_MOVING_SVG_CLASS = publicationsHouseDrilldown.chartMovingSvg
+const HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS = publicationsHouseDrilldown.chartMainSvg
+const HOUSE_DRILLDOWN_BAR_SELECTED_CLASS = publicationsHouseDrilldown.barSelected
+const HOUSE_DRILLDOWN_BAR_SELECTED_OUTLINE_CLASS = publicationsHouseDrilldown.barSelectedOutline
+const HOUSE_DRILLDOWN_TABLE_ROW_CLASS = publicationsHouseDrilldown.tableRow
+const HOUSE_DRILLDOWN_TABLE_EMPTY_CLASS = publicationsHouseDrilldown.tableEmpty
+const HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS = publicationsHouseDrilldown.toggleButtonMuted
 const HOUSE_CHART_BAR_ACCENT_CLASS = publicationsHouseCharts.barAccent
 const HOUSE_CHART_BAR_POSITIVE_CLASS = publicationsHouseCharts.barPositive
 const HOUSE_CHART_BAR_WARNING_CLASS = publicationsHouseCharts.barWarning
@@ -303,6 +344,8 @@ const HOUSE_CHART_BAR_CURRENT_CLASS = publicationsHouseCharts.barCurrent
 const HOUSE_CHART_GRID_LINE_CLASS = publicationsHouseCharts.gridLine
 const HOUSE_CHART_GRID_DASHED_CLASS = publicationsHouseCharts.gridDashed
 const HOUSE_CHART_AXIS_TEXT_CLASS = publicationsHouseCharts.axisText
+const HOUSE_CHART_AXIS_SUBTEXT_CLASS = publicationsHouseCharts.axisSubtext
+const HOUSE_CHART_AXIS_WINDOW_SUBTEXT_CLASS = publicationsHouseCharts.axisWindowSubtext
 const HOUSE_METRIC_PROGRESS_PANEL_CLASS =
   'flex flex-1 flex-col gap-2.5 rounded-sm border border-[hsl(var(--stroke-strong)/0.92)] bg-[hsl(var(--tone-neutral-50))] px-2 py-2 transition-[opacity,transform,filter] duration-320 ease-out'
 const HOUSE_LINE_CHART_SURFACE_CLASS =
@@ -1143,7 +1186,7 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
             <div key={`${bar.key}-axis`} className="text-center leading-none">
               <p className="break-words px-0.5 text-caption font-semibold leading-tight text-[hsl(var(--tone-neutral-600))]">{bar.axisLabel}</p>
               {bar.axisSubLabel ? (
-                <p className="house-chart-axis-subtext break-words px-0.5">
+                <p className={cn(HOUSE_CHART_AXIS_SUBTEXT_CLASS, 'break-words px-0.5')}>
                   {bar.axisSubLabel}
                 </p>
               ) : null}
@@ -1206,8 +1249,8 @@ function TotalCitationsTile({
           >
             {primaryValue}
           </p>
-          <p className={cn('mt-1', HOUSE_TEXT_CLASS)}>Lifetime citations</p>
-          <p className={HOUSE_TEXT_SOFT_CLASS}>Last 5 years shown</p>
+          <p className={cn('mt-0.5 min-h-[2.5rem] leading-snug', HOUSE_TEXT_CLASS)}>Lifetime citations</p>
+          <p className={cn('min-h-[2.3rem] leading-snug', HOUSE_TEXT_SOFT_CLASS)}>Last 5 years shown</p>
         </div>
 
         <div className="min-h-0 border-l border-[hsl(var(--stroke-strong)/0.92)] pl-3">
@@ -1448,7 +1491,7 @@ function HIndexYearChart({
             <div key={`${bar.year}-${index}-axis`} className={cn('text-center leading-none', HOUSE_TOGGLE_CHART_LABEL_CLASS)}>
               <p className="break-words px-0.5 text-caption font-semibold leading-tight text-[hsl(var(--tone-neutral-600))]">{String(bar.year).slice(-2)}</p>
               {bar.current ? (
-                <p className="house-chart-axis-subtext break-words px-0.5">
+                <p className={cn(HOUSE_CHART_AXIS_SUBTEXT_CLASS, 'break-words px-0.5')}>
                   YTD
                 </p>
               ) : null}
@@ -1747,14 +1790,6 @@ function PublicationsPerYearChart({
     : null
   const periodHintText = windowRangeLabel || allRangeLabel || '\u00A0'
   const periodHintVisible = Boolean(windowRangeLabel || allRangeLabel)
-  const averageLegendText = effectiveWindowMode === '1y'
-    ? `Average monthly publications over 12 months = ${formatInt(meanValue)}`
-    : effectiveWindowMode === '3y'
-      ? `Average yearly publications over 3 years = ${formatInt(meanValue)}`
-      : effectiveWindowMode === '5y'
-        ? `Average yearly publications over 5 years = ${formatInt(meanValue)}`
-        : `Average yearly publications over ${Math.max(1, historyBars.length)} years = ${formatInt(meanValue)}`
-
   return (
     <div
       className="flex h-full min-h-0 w-full flex-col"
@@ -1824,12 +1859,6 @@ function PublicationsPerYearChart({
         data-ui="publications-chart-frame"
         data-house-role="chart-frame"
       >
-        {showAxes && enableWindowToggle ? (
-          <div className="pointer-events-none absolute right-2 top-1.5 z-[2] flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-1.5 py-0.5 text-caption font-semibold text-[hsl(var(--tone-neutral-700))]">
-            <span className="w-4 border-t border-dashed border-[hsl(var(--tone-neutral-500))]" aria-hidden="true" />
-            <span>{averageLegendText}</span>
-          </div>
-        ) : null}
         <div className="absolute" style={plotAreaStyle}>
           {gridTickValues.map((tickValue) => (
             <div
@@ -1922,7 +1951,7 @@ function PublicationsPerYearChart({
                 {bar.axisLabel}
               </p>
               {bar.axisSubLabel ? (
-                <p className="house-chart-axis-subtext break-words px-0.5">
+                <p className={cn(HOUSE_CHART_AXIS_SUBTEXT_CLASS, 'break-words px-0.5')}>
                   {bar.axisSubLabel}
                 </p>
               ) : null}
@@ -2394,7 +2423,7 @@ function MomentumTilePanel({
                 {bar.label}
               </p>
               {bar.subLabel ? (
-                <p className="house-chart-axis-subtext mt-px break-words px-1">
+                <p className={cn(HOUSE_CHART_AXIS_WINDOW_SUBTEXT_CLASS, 'mt-px break-words px-1')}>
                   {bar.subLabel}
                 </p>
               ) : null}
@@ -3235,11 +3264,11 @@ function TotalPublicationsDrilldownWorkspace({
     ? `M ${rawPoints.map((point) => `${point.x} ${point.y}`).join(' L ')} L ${[...movingPoints].reverse().map((point) => `${point.x} ${point.y}`).join(' L ')} Z`
     : ''
 
-  const badgeTone = trajectoryPhase === 'Expanding'
-    ? 'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-100))] text-[hsl(var(--tone-positive-700))]'
+  const badgeToneClass = trajectoryPhase === 'Expanding'
+    ? HOUSE_DRILLDOWN_BADGE_POSITIVE_CLASS
     : trajectoryPhase === 'Contracting'
-      ? 'border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] text-[hsl(var(--tone-warning-700))]'
-      : 'border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
+      ? HOUSE_DRILLDOWN_BADGE_WARNING_CLASS
+      : HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS
 
   const contextClassLabel = volatilityIndex > 0.55
     ? 'High-variability portfolio'
@@ -3264,7 +3293,7 @@ function TotalPublicationsDrilldownWorkspace({
     const rollingMean5yDisplay = Number.isInteger(rollingMean5yRounded)
       ? String(Math.round(rollingMean5yRounded))
       : rollingMean5yRounded.toFixed(1)
-    const microValueClass = 'mt-0.5 text-micro font-semibold leading-none tabular-nums text-[hsl(var(--tone-neutral-800))]'
+    const microValueClass = HOUSE_DRILLDOWN_MICRO_VALUE_CLASS
     return (
       <div className="space-y-3">
         <div className={workspaceSectionClass}>
@@ -3295,11 +3324,11 @@ function TotalPublicationsDrilldownWorkspace({
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
             <div className={cn(workspacePanelClass, 'py-2')}>
               <p className={HOUSE_HEADING_H3_CLASS}>5-year rolling mean</p>
-              <p className="mt-0.5 text-micro font-semibold text-[hsl(var(--tone-neutral-800))]">{rollingMean5yDisplay}</p>
+              <p className={HOUSE_DRILLDOWN_MICRO_VALUE_CLASS}>{rollingMean5yDisplay}</p>
             </div>
             <div className={cn(workspacePanelClass, 'py-2')}>
               <p className={HOUSE_HEADING_H3_CLASS}>Career peak</p>
-              <p className="mt-0.5 text-micro font-semibold text-[hsl(var(--tone-neutral-800))]">{`${formatInt(peakYearData.count)} (${peakYearData.year})`}</p>
+              <p className={HOUSE_DRILLDOWN_MICRO_VALUE_CLASS}>{`${formatInt(peakYearData.count)} (${peakYearData.year})`}</p>
             </div>
           </div>
 
@@ -3346,7 +3375,7 @@ function TotalPublicationsDrilldownWorkspace({
                         type="button"
                         className={cn(
                           'relative flex min-w-[1.95rem] flex-1 items-end rounded border border-transparent transition-all duration-200',
-                          isSelected && 'border-[hsl(var(--tone-accent-500))]',
+                          isSelected && HOUSE_DRILLDOWN_BAR_SELECTED_OUTLINE_CLASS,
                         )}
                         onMouseEnter={() => setHoveredBreakdownYear(year)}
                         onMouseLeave={() => setHoveredBreakdownYear((current) => (current === year ? null : current))}
@@ -3356,7 +3385,7 @@ function TotalPublicationsDrilldownWorkspace({
                         <span
                           className={cn(
                             'block w-full rounded transition-[height,filter] duration-220 ease-out',
-                            isSelected ? 'bg-[hsl(var(--tone-accent-700))]' : HOUSE_CHART_BAR_ACCENT_CLASS,
+                            isSelected ? HOUSE_DRILLDOWN_BAR_SELECTED_CLASS : HOUSE_CHART_BAR_ACCENT_CLASS,
                           )}
                           style={{ height: `${heightPct}%` }}
                         />
@@ -3364,7 +3393,7 @@ function TotalPublicationsDrilldownWorkspace({
                     )
                   })}
                 </div>
-                <div className="mt-1 flex items-center gap-1 text-caption text-[hsl(var(--tone-neutral-600))]">
+                <div className={cn('mt-1 flex items-center gap-1', HOUSE_DRILLDOWN_CAPTION_CLASS)}>
                   {breakdownYears.map((year) => (
                     <span key={`breakdown-label-${year}`} className="min-w-[1.95rem] flex-1 text-center font-semibold">{String(year).slice(-2)}</span>
                   ))}
@@ -3372,7 +3401,7 @@ function TotalPublicationsDrilldownWorkspace({
               </div>
             </div>
             {hoveredYear !== null ? (
-              <div className="mt-2 rounded border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background px-2 py-1.5 text-caption text-[hsl(var(--tone-neutral-700))]">
+              <div className={cn('mt-2 px-2 py-1.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS, HOUSE_DRILLDOWN_NOTE_CLASS)}>
                 <span className="font-semibold">{hoveredYear}</span>
                 <span>{` | Count ${formatInt(hoveredYearCount)}`}</span>
                 <span>{` | YoY ${hoveredYearYoY === null ? 'n/a' : `${hoveredYearYoY >= 0 ? '+' : ''}${hoveredYearYoY.toFixed(0)}%`}`}</span>
@@ -3392,10 +3421,10 @@ function TotalPublicationsDrilldownWorkspace({
                   key={`type-filter-${type}`}
                   type="button"
                   className={cn(
-                    'rounded-full border px-2.5 py-[0.25rem] text-caption font-medium leading-none transition-colors',
+                    HOUSE_DRILLDOWN_CHIP_CLASS,
                     isActive
-                      ? 'border-[hsl(var(--tone-neutral-900))] bg-[hsl(var(--tone-neutral-900))] text-white'
-                      : 'border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] text-[hsl(var(--tone-neutral-700))]',
+                      ? HOUSE_DRILLDOWN_CHIP_ACTIVE_CLASS
+                      : null,
                   )}
                   onClick={() => toggleType(type)}
                 >
@@ -3404,7 +3433,7 @@ function TotalPublicationsDrilldownWorkspace({
               )
             })}
             {!availableTypes.length ? (
-              <span className="text-xs text-[hsl(var(--tone-neutral-500))]">No type data available</span>
+              <span className={HOUSE_DRILLDOWN_HINT_CLASS}>No type data available</span>
             ) : null}
           </div>
         </div>
@@ -3414,7 +3443,7 @@ function TotalPublicationsDrilldownWorkspace({
             <p className={workspaceHeadingClass}>Venue concentration</p>
             <button
               type="button"
-              className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-caption font-medium text-[hsl(var(--tone-neutral-700))]"
+              className={HOUSE_DRILLDOWN_ACTION_CLASS}
               onClick={() => setShowAllVenues((current) => !current)}
             >
               {showAllVenues ? 'View top' : 'View all'}
@@ -3428,25 +3457,25 @@ function TotalPublicationsDrilldownWorkspace({
                   key={`venue-row-${row.venue}`}
                   type="button"
                   className={cn(
-                    'w-full rounded-md border px-2 py-1.5 text-left transition-colors',
+                    HOUSE_DRILLDOWN_ROW_CLASS,
                     isSelected
-                      ? 'border-[hsl(var(--tone-accent-500))] bg-[hsl(var(--tone-accent-50))]'
-                      : 'border-[hsl(var(--tone-neutral-200)/0.72)] bg-background',
+                      ? HOUSE_DRILLDOWN_ROW_ACTIVE_CLASS
+                      : null,
                   )}
                   onClick={() => setSelectedVenue((current) => (current === row.venue ? null : row.venue))}
                   title={`Median citations ${row.medianCitations.toFixed(1)} | First ${row.roleMix.First} | Senior ${row.roleMix.Senior}`}
                 >
-                  <div className="flex items-center justify-between gap-2 text-caption text-[hsl(var(--tone-neutral-700))]">
+                  <div className={cn('flex items-center justify-between gap-2', HOUSE_DRILLDOWN_NOTE_CLASS)}>
                     <span className="block max-w-full break-words pr-2 font-medium leading-snug">{row.venue}</span>
                     <span>{`${formatInt(row.count)} (${row.sharePct.toFixed(0)}%)`}</span>
                   </div>
-                  <div className="mt-1 h-[0.33rem] overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
-                    <span className="block h-full rounded-full bg-[hsl(var(--tone-accent-600))]" style={{ width: `${Math.max(4, Math.min(100, row.sharePct))}%` }} />
+                  <div className={cn('mt-1', HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS)}>
+                    <span className={HOUSE_DRILLDOWN_PROGRESS_FILL_CLASS} style={{ width: `${Math.max(4, Math.min(100, row.sharePct))}%` }} />
                   </div>
                 </button>
               )
             })}
-            {!visibleVenueRows.length ? <p className="text-xs text-[hsl(var(--tone-neutral-500))]">No venue data</p> : null}
+            {!visibleVenueRows.length ? <p className={HOUSE_DRILLDOWN_HINT_CLASS}>No venue data</p> : null}
           </div>
         </div>
 
@@ -3457,11 +3486,11 @@ function TotalPublicationsDrilldownWorkspace({
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search title, venue, role"
-              className="house-input h-9 min-w-[12rem] rounded-md px-3 text-sm text-[hsl(var(--tone-neutral-700))] outline-none focus:border-[hsl(var(--tone-accent-500))]"
+              className={cn('house-input h-9 min-w-[12rem] rounded-md px-3 text-sm outline-none', HOUSE_TEXT_CLASS)}
             />
             <button
               type="button"
-              className="house-button-action house-button-text inline-flex h-9 items-center rounded-md px-3 text-[hsl(var(--tone-neutral-700))]"
+              className="house-button-action house-button-text inline-flex h-9 items-center rounded-md px-3"
               onClick={clearFilters}
             >
               Clear filters
@@ -3493,7 +3522,7 @@ function TotalPublicationsDrilldownWorkspace({
               </thead>
               <tbody>
                 {sortedPublications.slice(0, 120).map((record) => (
-                  <tr key={`paper-row-${record.workId}`} className={cn('house-table-row text-[hsl(var(--tone-neutral-700))]')}>
+                  <tr key={`paper-row-${record.workId}`} className={cn('house-table-row', HOUSE_DRILLDOWN_TABLE_ROW_CLASS)}>
                     <td className="house-table-cell-text px-3 py-2">{record.year || 'n/a'}</td>
                     <td className="house-table-cell-text px-3 py-2">
                       <span className="block max-w-[28rem] break-words leading-snug">{record.title}</span>
@@ -3508,7 +3537,7 @@ function TotalPublicationsDrilldownWorkspace({
                 ))}
                 {!sortedPublications.length ? (
                   <tr>
-                    <td className="house-table-cell-text px-3 py-4 text-center text-[hsl(var(--tone-neutral-500))]" colSpan={6}>
+                    <td className={cn('house-table-cell-text px-3 py-4 text-center', HOUSE_DRILLDOWN_TABLE_EMPTY_CLASS)} colSpan={6}>
                       No papers match the current filters.
                     </td>
                   </tr>
@@ -3551,7 +3580,7 @@ function TotalPublicationsDrilldownWorkspace({
                     HOUSE_TOGGLE_BUTTON_CLASS,
                     trajectoryMode === option.key
                       ? 'text-white'
-                      : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
+                      : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
                   )}
                   onClick={() => setTrajectoryMode(option.key)}
                 >
@@ -3570,21 +3599,20 @@ function TotalPublicationsDrilldownWorkspace({
                     x2={312}
                     y1={8 + ((122 * pct) / 100)}
                     y2={8 + ((122 * pct) / 100)}
-                    stroke="hsl(var(--tone-neutral-200))"
-                    strokeWidth={1}
+                    className={HOUSE_DRILLDOWN_CHART_GRID_SVG_CLASS}
                   />
                 ))}
                 {trajectoryMode === 'raw' && volatilityAreaPath ? (
-                  <path d={volatilityAreaPath} fill="hsl(var(--tone-accent-200)/0.45)" />
+                  <path d={volatilityAreaPath} className={HOUSE_DRILLDOWN_CHART_AREA_SVG_CLASS} />
                 ) : null}
                 {trajectoryMode === 'raw' && movingPath ? (
-                  <path d={movingPath} fill="none" stroke="hsl(var(--tone-neutral-500))" strokeWidth={1.8} strokeDasharray="3 3" />
+                  <path d={movingPath} className={HOUSE_DRILLDOWN_CHART_MOVING_SVG_CLASS} />
                 ) : null}
                 {trajectoryPath ? (
-                  <path d={trajectoryPath} fill="none" stroke="hsl(var(--tone-accent-700))" strokeWidth={2.8} strokeLinecap="round" />
+                  <path d={trajectoryPath} className={HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS} />
                 ) : null}
               </svg>
-              <div className="mt-1 flex items-center justify-between text-caption uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">
+              <div className={cn('mt-1 flex items-center justify-between', HOUSE_DRILLDOWN_AXIS_CLASS)}>
                 <span>{visibleYears[0] || 'n/a'}</span>
                 <span>{visibleYears[visibleYears.length - 1] || 'n/a'}</span>
               </div>
@@ -3595,22 +3623,22 @@ function TotalPublicationsDrilldownWorkspace({
                   max={trajectoryMaxWindow}
                   value={Math.min(trajectoryWindow, trajectoryMaxWindow)}
                   onChange={(event) => setTrajectoryWindow(Math.max(6, Number(event.target.value) || 6))}
-                  className="w-full accent-[hsl(var(--tone-accent-700))]"
+                  className={HOUSE_DRILLDOWN_RANGE_CLASS}
                 />
               </div>
             </div>
             <div className="space-y-1.5">
-              <div className="rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background px-2 py-1.5">
-                <p className="text-caption uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Volatility index</p>
-                <p className="mt-0.5 text-micro font-semibold text-[hsl(var(--tone-neutral-800))]">{volatilityIndex.toFixed(2)}</p>
+              <div className={cn('px-2 py-1.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
+                <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Volatility index</p>
+                <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{volatilityIndex.toFixed(2)}</p>
               </div>
-              <div className="rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background px-2 py-1.5">
-                <p className="text-caption uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Growth slope</p>
-                <p className="mt-0.5 text-micro font-semibold text-[hsl(var(--tone-neutral-800))]">{growthSlope >= 0 ? '+' : ''}{growthSlope.toFixed(2)}/year</p>
+              <div className={cn('px-2 py-1.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
+                <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Growth slope</p>
+                <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{growthSlope >= 0 ? '+' : ''}{growthSlope.toFixed(2)}/year</p>
               </div>
-              <div className="rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background px-2 py-1.5">
-                <p className="text-caption uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Phase marker</p>
-                <p className="mt-0.5 text-micro font-semibold text-[hsl(var(--tone-neutral-800))]">{trajectoryPhase}</p>
+              <div className={cn('px-2 py-1.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
+                <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Phase marker</p>
+                <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{trajectoryPhase}</p>
               </div>
             </div>
           </div>
@@ -3624,33 +3652,33 @@ function TotalPublicationsDrilldownWorkspace({
       <div className="space-y-3">
         <div className={workspaceSectionClass}>
           <div className="flex flex-wrap items-center gap-2">
-            <span className={cn('inline-flex items-center rounded-full border px-2.5 py-1 text-caption font-semibold', badgeTone)}>
+            <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, badgeToneClass)}>
               {contextClassLabel}
             </span>
-            <span className="text-caption text-[hsl(var(--tone-neutral-600))]">{trajectoryPhase} phase detected</span>
+            <span className={HOUSE_DRILLDOWN_CAPTION_CLASS}>{trajectoryPhase} phase detected</span>
           </div>
           <div className="mt-3 grid gap-2 md:grid-cols-2">
-            <div className="rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background p-2.5">
-              <p className="text-caption uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Portfolio structure</p>
-              <p className="mt-1 text-caption text-[hsl(var(--tone-neutral-700))]">{`Active years ${formatInt(activeYears)}`}</p>
-              <p className="text-caption text-[hsl(var(--tone-neutral-700))]">{`Median/year ${medianPerActiveYear.toFixed(1)}`}</p>
-              <p className="text-caption text-[hsl(var(--tone-neutral-700))]">{`Unknown year records ${formatInt(unknownYearCount)}`}</p>
+            <div className={cn('p-2.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
+              <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Portfolio structure</p>
+              <p className={cn('mt-1', HOUSE_DRILLDOWN_NOTE_CLASS)}>{`Active years ${formatInt(activeYears)}`}</p>
+              <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`Median/year ${medianPerActiveYear.toFixed(1)}`}</p>
+              <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`Unknown year records ${formatInt(unknownYearCount)}`}</p>
             </div>
-            <div className="rounded-md border border-[hsl(var(--tone-neutral-200)/0.72)] bg-background p-2.5">
-              <p className="text-caption uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">Distribution profile</p>
-              <p className="mt-1 text-caption text-[hsl(var(--tone-neutral-700))]">{`Peak year ${peakYearData.year} (${formatInt(peakYearData.count)})`}</p>
-              <p className="text-caption text-[hsl(var(--tone-neutral-700))]">{`Volatility ${volatilityIndex.toFixed(2)}`}</p>
-              <p className="text-caption text-[hsl(var(--tone-neutral-700))]">{`Slope ${growthSlope >= 0 ? '+' : ''}${growthSlope.toFixed(2)} / year`}</p>
+            <div className={cn('p-2.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
+              <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Distribution profile</p>
+              <p className={cn('mt-1', HOUSE_DRILLDOWN_NOTE_CLASS)}>{`Peak year ${peakYearData.year} (${formatInt(peakYearData.count)})`}</p>
+              <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`Volatility ${volatilityIndex.toFixed(2)}`}</p>
+              <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`Slope ${growthSlope >= 0 ? '+' : ''}${growthSlope.toFixed(2)} / year`}</p>
             </div>
           </div>
           <div className="mt-3 grid gap-1.5 sm:grid-cols-3">
-            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-caption font-medium text-[hsl(var(--tone-neutral-700))] text-left">
+            <button type="button" className={cn(HOUSE_DRILLDOWN_ACTION_CLASS, 'text-left')}>
               View authorship distribution
             </button>
-            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-caption font-medium text-[hsl(var(--tone-neutral-700))] text-left">
+            <button type="button" className={cn(HOUSE_DRILLDOWN_ACTION_CLASS, 'text-left')}>
               View collaboration structure
             </button>
-            <button type="button" className="rounded-md border border-[hsl(var(--tone-neutral-300)/0.8)] bg-background px-2 py-1 text-caption font-medium text-[hsl(var(--tone-neutral-700))] text-left">
+            <button type="button" className={cn(HOUSE_DRILLDOWN_ACTION_CLASS, 'text-left')}>
               View impact concentration
             </button>
           </div>
@@ -3666,13 +3694,13 @@ function TotalPublicationsDrilldownWorkspace({
           <summary className={cn(workspaceHeadingClass, 'cursor-pointer list-none px-3 py-2')}>
             Method details
           </summary>
-          <div className="space-y-1.5 border-t border-[hsl(var(--tone-neutral-200)/0.72)] px-3 py-2.5 text-caption text-[hsl(var(--tone-neutral-700))]">
+          <div className={cn('space-y-1.5 px-3 py-2.5', HOUSE_DRILLDOWN_DIVIDER_TOP_CLASS, HOUSE_DRILLDOWN_NOTE_CLASS)}>
             <p><span className="font-semibold">Formula:</span> {String(tile.drilldown?.formula || 'Not available')}</p>
             <p><span className="font-semibold">Filters:</span> Publication year when available; author-linked publication records.</p>
             <p><span className="font-semibold">Sources:</span> {(tile.data_source || []).join(', ') || 'Not available'}</p>
             <p><span className="font-semibold">Updated:</span> {String(tile.tooltip_details?.update_frequency || 'Not available')}</p>
             <p><span className="font-semibold">Confidence:</span> {(Number(tile.confidence_score || 0)).toFixed(2)}</p>
-            <p className="text-[hsl(var(--tone-neutral-500))]">{String(tile.drilldown?.confidence_note || '')}</p>
+            <p className={HOUSE_DRILLDOWN_NOTE_SOFT_CLASS}>{String(tile.drilldown?.confidence_note || '')}</p>
           </div>
         </details>
       </div>
@@ -3680,7 +3708,7 @@ function TotalPublicationsDrilldownWorkspace({
   }
 
   return (
-    <div className="rounded-md border border-dashed border-[hsl(var(--tone-neutral-300)/0.8)] bg-[hsl(var(--tone-neutral-50)/0.34)] px-3 py-4 text-xs text-[hsl(var(--tone-neutral-500))]">
+    <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>
       Select a tab to inspect this metric.
     </div>
   )
@@ -4324,14 +4352,21 @@ export function PublicationsTopStrip({
     <>
       <Card className={HOUSE_SURFACE_PANEL_BARE_CLASS}>
         <CardContent className="p-0">
-          <div className="flex flex-wrap items-start justify-between gap-2 px-3 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5">
             <div className="min-w-0">
               <p className={HOUSE_HEADING_H1_CLASS}>Publication insights</p>
               {metrics?.status === 'FAILED' ? (
                 <p className={cn('mt-1', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>Last update failed</p>
               ) : null}
             </div>
-            <div className="ml-auto flex flex-wrap items-center gap-1" data-stop-tile-open="true">
+            <div
+              className={cn(
+                'ml-auto flex flex-wrap items-center',
+                HOUSE_ACTIONS_SECTION_TOOLS_CLASS,
+                HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS,
+              )}
+              data-stop-tile-open="true"
+            >
               {insightsVisible ? (
                 <>
                   <Button
@@ -4339,19 +4374,19 @@ export function PublicationsTopStrip({
                     data-stop-tile-open="true"
                     variant="house"
                     size="sm"
-                    className="h-8 gap-1.5 px-3"
+                    className={cn('h-8 gap-1.5 px-3', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
                     aria-label="Generate publication insights report"
                   >
                     <FileText className="h-3.5 w-3.5" />
                     <span>Generate report</span>
                   </Button>
-                  <span className={cn('h-4 w-px', HOUSE_DIVIDER_FILL_SOFT_CLASS)} aria-hidden="true" />
+                  <span className={HOUSE_ACTIONS_SECTION_TOOL_DIVIDER_CLASS} aria-hidden="true" />
                   <Button
                     type="button"
                     data-stop-tile-open="true"
                     variant="house"
                     size="icon"
-                    className="h-8 w-8"
+                    className={cn('h-8 w-8', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
                     aria-label="Download"
                     title="Download"
                   >
@@ -4362,13 +4397,13 @@ export function PublicationsTopStrip({
                     data-stop-tile-open="true"
                     variant="house"
                     size="icon"
-                    className="h-8 w-8"
+                    className={cn('h-8 w-8', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
                     aria-label="Share"
                     title="Share"
                   >
                     <Share2 className="h-3.5 w-3.5" />
                   </Button>
-                  <span className={cn('h-4 w-px', HOUSE_DIVIDER_FILL_SOFT_CLASS)} aria-hidden="true" />
+                  <span className={HOUSE_ACTIONS_SECTION_TOOL_DIVIDER_CLASS} aria-hidden="true" />
                 </>
               ) : null}
               <Button
@@ -4378,8 +4413,9 @@ export function PublicationsTopStrip({
                 size="icon"
                 className={cn(
                   'h-8 w-8 rounded-full transition-colors',
+                  HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS,
                   insightsVisible
-                    ? 'bg-[hsl(var(--tone-neutral-100)/0.92)] text-[hsl(var(--tone-neutral-600))] hover:bg-[hsl(var(--tone-neutral-100))]'
+                    ? 'bg-[hsl(var(--tone-positive-100)/0.9)] text-[hsl(var(--tone-positive-700))] hover:bg-[hsl(var(--tone-positive-200)/0.88)]'
                     : 'bg-[hsl(var(--tone-neutral-100)/0.72)] text-[hsl(var(--tone-neutral-500))] hover:bg-[hsl(var(--tone-neutral-200)/0.72)]',
                 )}
                 onClick={() => setInsightsVisible((current) => !current)}
@@ -4527,11 +4563,7 @@ export function PublicationsTopStrip({
                     </div>
                   )
                   secondaryText = 'Citation pace'
-                  detailText = (
-                    <span className="block min-h-[2.3rem] leading-snug">
-                      Comparing recent vs prior citation pace
-                    </span>
-                  )
+                  detailText = 'Comparing recent vs prior citation pace'
                   visual = (
                     <MomentumTilePanel
                       tile={tile}
@@ -4579,7 +4611,7 @@ export function PublicationsTopStrip({
                   detailText = undefined
                   if (impactBadgeLabel) {
                     badgeNode = (
-                      <span className="inline-flex items-center rounded-full bg-[hsl(var(--tone-neutral-100)/0.92)] px-2.5 py-[0.2rem] text-caption font-medium leading-none text-[hsl(var(--tone-neutral-700))]">
+                      <span className={cn(HOUSE_SURFACE_METRIC_PILL_CLASS, HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS)}>
                         {impactBadgeLabel}
                       </span>
                     )
@@ -4685,7 +4717,7 @@ export function PublicationsTopStrip({
                   secondaryText = 'Leadership index'
                   detailText = undefined
                   badgeNode = (
-                    <span className="inline-flex items-center rounded-full bg-[hsl(var(--tone-neutral-100)/0.92)] px-2.5 py-[0.2rem] text-caption font-medium leading-none text-[hsl(var(--tone-neutral-700))]">
+                    <span className={cn(HOUSE_SURFACE_METRIC_PILL_CLASS, HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS)}>
                       Median author position {medianAuthorPositionDisplay}
                     </span>
                   )
@@ -4740,7 +4772,7 @@ export function PublicationsTopStrip({
       </Card>
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent side="right" className="w-full overflow-y-auto p-4 sm:max-w-sz-560">
+        <SheetContent side="right" className={HOUSE_DRILLDOWN_SHEET_CLASS}>
           {activeTile ? (
             <div className="space-y-4 pr-8">
               <div className={HOUSE_SURFACE_LEFT_BORDER_CLASS}>
@@ -4749,7 +4781,7 @@ export function PublicationsTopStrip({
                   <p className={cn(HOUSE_TEXT_CLASS, 'mt-1')}>{activeTileDefinition}</p>
                 ) : null}
                 {detailLoading ? <p className={cn('mt-2', HOUSE_TEXT_SOFT_CLASS)}>Loading metric detail...</p> : null}
-                {detailError ? <p className="mt-2 text-xs text-[hsl(var(--tone-warning-700))]">{detailError}</p> : null}
+                {detailError ? <p className={cn('mt-2', HOUSE_DRILLDOWN_ALERT_CLASS)}>{detailError}</p> : null}
               </div>
               <Tabs
                 value={activeDrilldownTab}
@@ -4761,7 +4793,7 @@ export function PublicationsTopStrip({
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className="!text-caption font-medium leading-none text-[hsl(var(--tone-neutral-700))] data-[state=active]:bg-background data-[state=active]:text-[hsl(var(--tone-neutral-900))]"
+                      className={HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS}
                     >
                       {tab.label}
                     </TabsTrigger>
@@ -4771,7 +4803,7 @@ export function PublicationsTopStrip({
                   {activeTile.key === 'this_year_vs_last' ? (
                     <TotalPublicationsDrilldownWorkspace tile={activeTile} activeTab={activeDrilldownTab} />
                   ) : (
-                    <div className="rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-3 py-4 text-xs text-[hsl(var(--tone-neutral-500))]">
+                    <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>
                       Tab scaffold ready.
                     </div>
                   )}

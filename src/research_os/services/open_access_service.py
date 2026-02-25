@@ -381,6 +381,7 @@ def discover_open_access_for_persona(
                         asset_ids = upload_library_assets(
                             files=[(filename, "application/pdf", pdf_content)],
                             project_id=project_id,
+                            user_id=user_id,
                         )
                         if asset_ids:
                             record["pdf_asset_id"] = asset_ids[0]

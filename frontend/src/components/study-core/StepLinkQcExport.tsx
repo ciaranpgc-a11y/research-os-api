@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { getAuthSessionToken } from '@/lib/auth-session'
+import { houseForms } from '@/lib/house-style'
 import {
   exportManuscriptMarkdownWithWarnings,
   exportQcGatedMarkdown,
@@ -249,7 +250,7 @@ export function StepLinkQcExport({
             <p className="text-sm font-medium">Linking diagnostics</p>
             <div className="flex flex-wrap items-center gap-2">
               <select
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm"
+                className={`h-9 rounded-md px-3 text-sm ${houseForms.select}`}
                 value={minConfidence}
                 onChange={(event) => setMinConfidence(event.target.value as 'high' | 'medium' | 'low')}
               >
@@ -267,7 +268,7 @@ export function StepLinkQcExport({
 
           <div className="flex flex-wrap items-center gap-2">
             <select
-              className="h-9 rounded-md border border-border bg-background px-3 text-sm"
+              className={`h-9 rounded-md px-3 text-sm ${houseForms.select}`}
               value={referenceStyle}
               onChange={(event) => setReferenceStyle(event.target.value as 'vancouver' | 'ama')}
             >

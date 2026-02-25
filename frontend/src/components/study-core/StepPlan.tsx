@@ -256,7 +256,7 @@ export function StepPlan(props: StepPlanProps) {
         token,
         projectId: runContext?.projectId,
       })
-      setAssets(data)
+      setAssets(data.items)
     } catch (error) {
       onError(error instanceof Error ? error.message : 'Could not load assets.')
     } finally {

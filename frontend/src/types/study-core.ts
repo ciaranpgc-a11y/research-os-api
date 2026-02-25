@@ -356,12 +356,32 @@ export type PlanSectionEditPayload = {
 export type LibraryAssetRecord = {
   id: string
   owner_user_id: string | null
+  owner_name?: string | null
   project_id: string | null
   filename: string
   kind: string
   mime_type: string | null
   byte_size: number
   uploaded_at: string
+  shared_with_user_ids?: string[]
+  shared_with?: Array<{ user_id: string; name: string }>
+  can_manage_access?: boolean
+}
+
+export type LibraryAssetSortBy = 'uploaded_at' | 'filename' | 'byte_size' | 'kind' | 'owner_name'
+export type LibraryAssetSortDirection = 'asc' | 'desc'
+export type LibraryAssetOwnership = 'all' | 'owned' | 'shared'
+
+export type LibraryAssetListPayload = {
+  items: LibraryAssetRecord[]
+  page: number
+  page_size: number
+  total: number
+  has_more: boolean
+  sort_by: LibraryAssetSortBy
+  sort_direction: LibraryAssetSortDirection
+  query: string
+  ownership: LibraryAssetOwnership
 }
 
 export type LibraryAssetUploadPayload = {

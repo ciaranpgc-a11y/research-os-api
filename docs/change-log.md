@@ -2,6 +2,24 @@
 
 ## 2026-02-25
 
+### Workspace Data Page Layout Realignment
+
+- **Area:** Individual workspace Data page information architecture.
+- **What changed:**
+- Removed the dedicated right-side Data panel layout and switched the page content to a single central flow.
+- Renamed the page heading to `Data`.
+- Reordered Data actions so `Access from personal library` appears first (for pulling files into the workbook), followed by `Upload`.
+- Preserved house-token styling patterns and existing workspace file/preview behavior.
+- **Why it changed:**
+- Align Data interactions with the main workspace reading flow and reduce split-attention between center and right rails.
+- **Key files touched:**
+- `frontend/src/pages/results-page.tsx`
+- **Verification performed:**
+- `npm --prefix frontend run --silent typecheck`
+- `npx eslint src/pages/results-page.tsx` (run from `frontend/`)
+- **Follow-up:**
+- Consider merging `Files` and `Preview` into a tabbed center canvas once workbook operations are expanded.
+
 ### Workspace Ownership + Shared Inbox Hardening
 
 - **Area:** Workspace ownership rules, collaborator propagation, inbox persistence, generation-job access control.
@@ -223,3 +241,124 @@
 - **Follow-up:**
 - Add explicit personal-library attach/import action from persisted assets into local preview without re-upload.
 - Add server-side pagination for personal-library lists at high asset counts.
+
+### Workspace Data Library Ownership + Access Controls
+
+- **Area:** Data library security model, collaborator access management, and workspace data import ergonomics.
+- **What changed:**
+- Added file-level collaborator ACL support for data library assets (`shared_with_user_ids`) with migration `20260225_0009`.
+- Extended library asset payloads with owner/access metadata (`owner_name`, `shared_with`, `can_manage_access`).
+- Added owner-only access management endpoint: `PATCH /v1/library/assets/{asset_id}/access`.
+- Added secured file download endpoint: `GET /v1/library/assets/{asset_id}/download`.
+- Tightened library routes to require authenticated sessions for upload/list/download/access operations.
+- Updated access checks so owner access is implicit and collaborator access is controlled by file ACL (with legacy project-collaborator fallback only for pre-ACL rows).
+- Updated workspace Data page personal library panel:
+  - Show owner and current collaborator access per file.
+  - Add/remove collaborator access (owner only).
+  - Download file.
+  - Pull file into workspace local file preview area.
+- Preserved and validated upload flow where workspace uploads are synced into personal library.
+- **Why it changed:**
+- Meet workspace collaboration requirements with explicit, auditable file access control while keeping data reusable across workspace sessions and sign-ins.
+- **Key files touched:**
+- `src/research_os/db.py`
+- `alembic/versions/20260225_0009_data_library_asset_access_controls.py`
+- `src/research_os/services/data_planner_service.py`
+- `src/research_os/api/schemas.py`
+- `src/research_os/api/app.py`
+- `tests/test_api.py`
+- `frontend/src/types/study-core.ts`
+- `frontend/src/lib/study-core-api.ts`
+- `frontend/src/pages/results-page.tsx`
+- `docs/change-log.md`
+- `docs/stories/workspaces-hub-v2.md`
+- **Verification performed:**
+- `python -m py_compile src/research_os/services/data_planner_service.py src/research_os/api/app.py src/research_os/api/schemas.py src/research_os/db.py alembic/versions/20260225_0009_data_library_asset_access_controls.py`
+- `pytest tests/test_api.py -q`
+- `pytest tests/test_migrations.py -q`
+- `npm --prefix frontend run --silent typecheck`
+- `npx eslint src/pages/results-page.tsx src/lib/study-core-api.ts src/types/study-core.ts`
+- `npm --prefix frontend run build`
+- `npm --prefix frontend run --silent build-storybook`
+- **Follow-up:**
+- Add server-side pagination and sort options for large personal-library inventories.
+- Add optional per-file "inherit all active workspace collaborators" shortcut in access management.
+
+### Workspaces Home Data Library View + Left Nav Integration
+
+- **Area:** Workspaces home information architecture, personal library visibility, and Storybook coverage.
+- **What changed:**
+- Added a dedicated `Data library` view in Workspaces home left navigation.
+- Extended Workspaces center-view routing (`view=data-library`) so the data library is first-class alongside Workspaces and Invitations.
+- Added a new Workspaces Data Library center panel that supports:
+  - file listing (owner, access members, upload time, size),
+  - owner-only permission management (grant/revoke collaborator access),
+  - secure file download actions.
+- Limited `States` left-nav section to the Workspaces view only, avoiding irrelevant filters in Invitations/Data library views.
+- Added a populated Storybook `DataLibrary` story (`/workspaces?view=data-library`) with mocked library API endpoints for list/access/download so the page is testable without backend dependency.
+- **Why it changed:**
+- Expose personal data-library management directly from Workspaces home with clear left-nav discoverability, while keeping permission and access controls auditable and owner-scoped.
+- **Key files touched:**
+- `frontend/src/pages/workspaces-page.tsx`
+- `frontend/src/pages/workspaces-data-library-view.tsx`
+- `frontend/src/pages/workspaces-page.stories.tsx`
+- `docs/change-log.md`
+- `docs/stories/workspaces-hub-v2.md`
+- **Verification performed:**
+- `npm --prefix frontend run --silent typecheck`
+- `npx eslint frontend/src/pages/workspaces-page.tsx frontend/src/pages/workspaces-data-library-view.tsx frontend/src/pages/workspaces-page.stories.tsx`
+- `npm --prefix frontend run build`
+- `npm --prefix frontend run --silent build-storybook`
+- **Follow-up:**
+- Replace name-based collaborator permission entry with directory-backed user search for very large user populations.
+- Add server-backed pagination and sort controls to the Workspaces home data library table.
+
+### Workspaces Data Library: Server Paging + Directory-ID Access Grants
+
+- **Area:** Workspaces home data-library scalability, collaborator access ergonomics, and API contract evolution.
+- **What changed:**
+- Upgraded `GET /v1/library/assets` from plain-array output to a metadata response with server-side controls:
+  - `query`, `ownership`, `sort_by`, `sort_direction`, `page`, `page_size`
+  - response payload: `items`, `total`, `has_more`, paging and sort metadata.
+- Added backend filtering/sorting/pagination support in data-planner service and wired schema/route updates.
+- Updated frontend Study Core API client/type contracts to consume paged library payloads.
+- Updated consumers (`ResultsPage`, `StepPlan`, and Workspaces home data-library view) to use `payload.items`.
+- Reworked Workspaces home Data Library UI to use true server-backed search/sort/pagination controls.
+- Replaced local-name access grant input with directory-backed collaborator search:
+  - users are looked up via collaboration directory endpoint at add-time,
+  - selected collaborator IDs are sent in access updates (`collaborator_user_ids`) for ID-resolved permissions.
+- Updated Workspaces Storybook API mocks for:
+  - paged/sorted library listing responses,
+  - collaborator directory search endpoint,
+  - access mutation and download flows.
+- Added/updated backend tests for list pagination/sort/filter semantics and updated existing ACL tests for new list response shape.
+- Fixed open-access PDF ingestion path to pass `user_id` to library uploads, restoring test-covered upload behavior under authenticated ownership constraints.
+- **Why it changed:**
+- Support large personal-library inventories with scalable server-driven retrieval and avoid fragile name-only permission assignment by resolving collaborators to account IDs.
+- **Key files touched:**
+- `src/research_os/services/data_planner_service.py`
+- `src/research_os/api/schemas.py`
+- `src/research_os/api/app.py`
+- `src/research_os/services/open_access_service.py`
+- `tests/test_api.py`
+- `tests/test_open_access_service.py`
+- `frontend/src/types/study-core.ts`
+- `frontend/src/lib/study-core-api.ts`
+- `frontend/src/pages/workspaces-data-library-view.tsx`
+- `frontend/src/pages/workspaces-page.tsx`
+- `frontend/src/pages/workspaces-page.stories.tsx`
+- `frontend/src/pages/results-page.tsx`
+- `frontend/src/components/study-core/StepPlan.tsx`
+- `docs/change-log.md`
+- `docs/stories/workspaces-hub-v2.md`
+- **Verification performed:**
+- `python -m py_compile src/research_os/services/data_planner_service.py src/research_os/api/app.py src/research_os/api/schemas.py`
+- `pytest tests/test_api.py -q`
+- `pytest tests/test_open_access_service.py -q`
+- `npm --prefix frontend run --silent typecheck`
+- `npx eslint frontend/src/pages/workspaces-data-library-view.tsx frontend/src/pages/workspaces-page.tsx frontend/src/pages/workspaces-page.stories.tsx frontend/src/pages/results-page.tsx frontend/src/components/study-core/StepPlan.tsx frontend/src/lib/study-core-api.ts frontend/src/types/study-core.ts`
+- `npm --prefix frontend run build`
+- `npm --prefix frontend run --silent build-storybook`
+- **Follow-up:**
+- Add backend index strategy and SQL-level access filtering optimizations for very large libraries.
+- Optionally add cursor-based paging if offset paging becomes expensive at high page numbers.

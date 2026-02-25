@@ -9,6 +9,8 @@ import {
   type WorkspaceInvitationSent,
   type WorkspaceRecord,
 } from '@/store/use-workspace-store'
+import type { CollaboratorPayload } from '@/types/impact'
+import type { LibraryAssetRecord } from '@/types/study-core'
 
 import { WorkspacesPage } from './workspaces-page'
 
@@ -42,11 +44,61 @@ type WorkspacesPageFixture = {
   invitationsSent: WorkspaceInvitationSent[]
   inboxMessages: WorkspacesInboxFixtureMessage[]
   inboxReads: WorkspacesInboxFixtureRead[]
+  libraryAssets: LibraryAssetRecord[]
+  initialRoute?: string
 }
 
 type WorkspacesPagePreviewProps = {
   fixture: WorkspacesPageFixture
 }
+
+const defaultLibraryAssets: LibraryAssetRecord[] = [
+  {
+    id: 'lib-asset-01',
+    owner_user_id: STORYBOOK_USER_ID,
+    owner_name: 'Ciaran Clarke',
+    project_id: 'project-4d-flow',
+    filename: '4d_flow_primary_dataset.xlsx',
+    kind: 'xlsx',
+    mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    byte_size: 845230,
+    uploaded_at: '2026-02-25T10:05:00Z',
+    shared_with_user_ids: ['user-j-meyer', 'user-n-brooks'],
+    shared_with: [
+      { user_id: 'user-j-meyer', name: 'J. Meyer' },
+      { user_id: 'user-n-brooks', name: 'N. Brooks' },
+    ],
+    can_manage_access: true,
+  },
+  {
+    id: 'lib-asset-02',
+    owner_user_id: 'user-maya-singh',
+    owner_name: 'Maya Singh',
+    project_id: 'project-device-review',
+    filename: 'device_adjudication_extract.csv',
+    kind: 'csv',
+    mime_type: 'text/csv',
+    byte_size: 184302,
+    uploaded_at: '2026-02-24T09:30:00Z',
+    shared_with_user_ids: [STORYBOOK_USER_ID],
+    shared_with: [{ user_id: STORYBOOK_USER_ID, name: 'Ciaran Clarke' }],
+    can_manage_access: false,
+  },
+  {
+    id: 'lib-asset-03',
+    owner_user_id: STORYBOOK_USER_ID,
+    owner_name: 'Ciaran Clarke',
+    project_id: 'project-af-screening',
+    filename: 'af_screening_data_dictionary.csv',
+    kind: 'csv',
+    mime_type: 'text/csv',
+    byte_size: 52212,
+    uploaded_at: '2026-02-23T08:14:00Z',
+    shared_with_user_ids: [],
+    shared_with: [],
+    can_manage_access: true,
+  },
+]
 
 const defaultFixture: WorkspacesPageFixture = {
   workspaces: [
@@ -102,6 +154,7 @@ const defaultFixture: WorkspacesPageFixture = {
       readAt: '2026-02-25T11:00:00Z',
     },
   ],
+  libraryAssets: defaultLibraryAssets,
 }
 
 const mixedPortfolioFixture: WorkspacesPageFixture = {
@@ -205,6 +258,7 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
     { workspaceId: 'af-screening', readerName: 'Ciaran Clarke', readAt: '2026-02-25T23:59:59Z' },
     { workspaceId: 'renal-risk-qc', readerName: 'Ciaran Clarke', readAt: '2026-02-20T08:00:00Z' },
   ],
+  libraryAssets: defaultLibraryAssets,
 }
 
 const dataRichFixture: WorkspacesPageFixture = {
@@ -305,6 +359,40 @@ const dataRichFixture: WorkspacesPageFixture = {
     { workspaceId: 'device-adjudication', readerName: 'Ciaran Clarke', readAt: '2026-02-22T10:00:00Z' },
     { workspaceId: 'registry-cleanup', readerName: 'Ciaran Clarke', readAt: '2026-02-19T06:00:00Z' },
   ],
+  libraryAssets: [
+    ...defaultLibraryAssets,
+    {
+      id: 'lib-asset-04',
+      owner_user_id: STORYBOOK_USER_ID,
+      owner_name: 'Ciaran Clarke',
+      project_id: 'project-hf-registry',
+      filename: 'hf_registry_outcomes.tsv',
+      kind: 'tsv',
+      mime_type: 'text/tab-separated-values',
+      byte_size: 302112,
+      uploaded_at: '2026-02-25T18:01:00Z',
+      shared_with_user_ids: ['user-a-patel'],
+      shared_with: [{ user_id: 'user-a-patel', name: 'A. Patel' }],
+      can_manage_access: true,
+    },
+    {
+      id: 'lib-asset-05',
+      owner_user_id: 'user-eleanor-hart',
+      owner_name: 'Eleanor Hart',
+      project_id: 'project-trial-followup',
+      filename: 'trial_followup_cleaned.xlsx',
+      kind: 'xlsx',
+      mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      byte_size: 910443,
+      uploaded_at: '2026-02-22T07:42:00Z',
+      shared_with_user_ids: [STORYBOOK_USER_ID, 'user-j-meyer'],
+      shared_with: [
+        { user_id: STORYBOOK_USER_ID, name: 'Ciaran Clarke' },
+        { user_id: 'user-j-meyer', name: 'J. Meyer' },
+      ],
+      can_manage_access: false,
+    },
+  ],
 }
 
 const emptyFixture: WorkspacesPageFixture = {
@@ -314,6 +402,7 @@ const emptyFixture: WorkspacesPageFixture = {
   invitationsSent: [],
   inboxMessages: [],
   inboxReads: [],
+  libraryAssets: [],
 }
 
 const collaboratorStateFixture: WorkspacesPageFixture = {
@@ -341,6 +430,7 @@ const collaboratorStateFixture: WorkspacesPageFixture = {
   inboxReads: [
     { workspaceId: 'hf-registry', readerName: 'Ciaran Clarke', readAt: '2026-02-24T18:00:00Z' },
   ],
+  libraryAssets: defaultLibraryAssets,
 }
 
 const collaboratorReadOnlyFixture: WorkspacesPageFixture = {
@@ -367,6 +457,29 @@ const collaboratorReadOnlyFixture: WorkspacesPageFixture = {
   inboxReads: [
     { workspaceId: 'external-study', readerName: 'Ciaran Clarke', readAt: '2026-02-01T08:00:00Z' },
   ],
+  libraryAssets: defaultLibraryAssets,
+}
+
+const dataLibraryFixture: WorkspacesPageFixture = {
+  ...dataRichFixture,
+  initialRoute: '/workspaces?view=data-library',
+}
+
+function cloneLibraryAsset(asset: LibraryAssetRecord): LibraryAssetRecord {
+  return {
+    ...asset,
+    shared_with_user_ids: [...(asset.shared_with_user_ids || [])],
+    shared_with: (asset.shared_with || []).map((member) => ({ ...member })),
+  }
+}
+
+function nameToMockUserId(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug ? `user-${slug}` : 'user-unknown'
 }
 
 function RouteEcho() {
@@ -398,6 +511,259 @@ function WorkspacesPagePreview({ fixture }: WorkspacesPagePreviewProps) {
     const previousPersonalDetails = window.localStorage.getItem(personalDetailsStorageKey)
     const previousState = useWorkspaceStore.getState()
     const previousInboxState = useWorkspaceInboxStore.getState()
+    const previousFetch = window.fetch.bind(window)
+    let storyLibraryAssets = (fixture.libraryAssets || []).map(cloneLibraryAsset)
+    const collaboratorDirectory = (() => {
+      const seen = new Set<string>()
+      const items: CollaboratorPayload[] = []
+      const addName = (name: string) => {
+        const clean = String(name || '').trim().replace(/\s+/g, ' ')
+        if (!clean) {
+          return
+        }
+        const id = nameToMockUserId(clean)
+        if (seen.has(id)) {
+          return
+        }
+        seen.add(id)
+        items.push({
+          id,
+          owner_user_id: STORYBOOK_USER_ID,
+          full_name: clean,
+          preferred_name: null,
+          email: `${id.replace(/^user-/, '')}@example.com`,
+          orcid_id: null,
+          openalex_author_id: null,
+          primary_institution: 'Research Collaboration Network',
+          department: null,
+          country: 'GB',
+          current_position: null,
+          research_domains: [],
+          notes: null,
+          created_at: '2026-02-20T00:00:00Z',
+          updated_at: '2026-02-25T00:00:00Z',
+          metrics: {
+            coauthored_works_count: 0,
+            shared_citations_total: 0,
+            first_collaboration_year: null,
+            last_collaboration_year: null,
+            citations_last_12m: 0,
+            collaboration_strength_score: 0,
+            classification: 'UNCLASSIFIED',
+            computed_at: null,
+            status: 'READY',
+          },
+          duplicate_warnings: [],
+        })
+      }
+      fixture.workspaces.forEach((workspace) => {
+        addName(workspace.ownerName)
+        workspace.collaborators.forEach(addName)
+      })
+      fixture.authorRequests.forEach((request) => addName(request.authorName))
+      fixture.invitationsSent.forEach((invitation) => addName(invitation.inviteeName))
+      return items
+    })()
+
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url
+      const requestMethod = (
+        init?.method ||
+        (typeof input !== 'string' && !(input instanceof URL) ? input.method : 'GET') ||
+        'GET'
+      ).toUpperCase()
+
+      let parsedUrl: URL
+      try {
+        parsedUrl = new URL(requestUrl, window.location.origin)
+      } catch {
+        return previousFetch(input, init)
+      }
+
+      const path = parsedUrl.pathname
+      if (path.endsWith('/v1/account/collaboration/collaborators') && requestMethod === 'GET') {
+        const queryValue = String(parsedUrl.searchParams.get('query') || '').trim().toLowerCase()
+        const pageValue = Math.max(1, Number(parsedUrl.searchParams.get('page') || '1'))
+        const pageSizeValue = Math.max(1, Math.min(200, Number(parsedUrl.searchParams.get('page_size') || '50')))
+        const filtered = queryValue
+          ? collaboratorDirectory.filter((candidate) => candidate.full_name.toLowerCase().includes(queryValue))
+          : collaboratorDirectory
+        const start = (pageValue - 1) * pageSizeValue
+        const end = start + pageSizeValue
+        const items = filtered.slice(start, end)
+        return new Response(
+          JSON.stringify({
+            items,
+            page: pageValue,
+            page_size: pageSizeValue,
+            total: filtered.length,
+            has_more: end < filtered.length,
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        )
+      }
+
+      if (path.endsWith('/v1/library/assets') && requestMethod === 'GET') {
+        const queryValue = String(parsedUrl.searchParams.get('query') || '').trim().toLowerCase()
+        const ownership = String(parsedUrl.searchParams.get('ownership') || 'all').trim().toLowerCase()
+        const sortBy = String(parsedUrl.searchParams.get('sort_by') || 'uploaded_at').trim().toLowerCase()
+        const sortDirection = String(parsedUrl.searchParams.get('sort_direction') || 'desc').trim().toLowerCase()
+        const pageValue = Math.max(1, Number(parsedUrl.searchParams.get('page') || '1'))
+        const pageSizeValue = Math.max(1, Math.min(200, Number(parsedUrl.searchParams.get('page_size') || '50')))
+
+        let filtered = [...storyLibraryAssets]
+        if (ownership === 'owned') {
+          filtered = filtered.filter((asset) => Boolean(asset.can_manage_access))
+        } else if (ownership === 'shared') {
+          filtered = filtered.filter((asset) => !asset.can_manage_access)
+        }
+
+        if (queryValue) {
+          filtered = filtered.filter((asset) => {
+            const sharedNames = (asset.shared_with || []).map((entry) => entry.name).join(' ')
+            const haystack = `${asset.filename} ${asset.kind} ${asset.mime_type || ''} ${asset.owner_name || ''} ${sharedNames}`.toLowerCase()
+            return haystack.includes(queryValue)
+          })
+        }
+
+        filtered.sort((left, right) => {
+          let comparison = 0
+          if (sortBy === 'filename') {
+            comparison = left.filename.localeCompare(right.filename)
+          } else if (sortBy === 'byte_size') {
+            comparison = Number(left.byte_size || 0) - Number(right.byte_size || 0)
+          } else if (sortBy === 'kind') {
+            comparison = String(left.kind || '').localeCompare(String(right.kind || ''))
+          } else if (sortBy === 'owner_name') {
+            comparison = String(left.owner_name || '').localeCompare(String(right.owner_name || ''))
+          } else {
+            comparison = Date.parse(String(left.uploaded_at || '')) - Date.parse(String(right.uploaded_at || ''))
+          }
+          return sortDirection === 'asc' ? comparison : -comparison
+        })
+
+        const total = filtered.length
+        const start = (pageValue - 1) * pageSizeValue
+        const end = start + pageSizeValue
+        const items = filtered.slice(start, end)
+
+        return new Response(
+          JSON.stringify({
+            items,
+            page: pageValue,
+            page_size: pageSizeValue,
+            total,
+            has_more: end < total,
+            sort_by: sortBy,
+            sort_direction: sortDirection === 'asc' ? 'asc' : 'desc',
+            query: queryValue,
+            ownership: ownership === 'owned' || ownership === 'shared' ? ownership : 'all',
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        )
+      }
+
+      const accessMatch = path.match(/\/v1\/library\/assets\/([^/]+)\/access$/)
+      if (accessMatch && requestMethod === 'PATCH') {
+        const assetId = decodeURIComponent(accessMatch[1])
+        const assetIndex = storyLibraryAssets.findIndex((asset) => asset.id === assetId)
+        if (assetIndex < 0) {
+          return new Response(JSON.stringify({ error: { detail: `Data asset '${assetId}' was not found.` } }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+
+        let payload: { collaborator_user_ids?: string[]; collaborator_names?: string[] } = {}
+        if (typeof init?.body === 'string' && init.body.trim()) {
+          try {
+            payload = JSON.parse(init.body) as { collaborator_user_ids?: string[]; collaborator_names?: string[] }
+          } catch {
+            payload = {}
+          }
+        }
+
+        const currentAsset = storyLibraryAssets[assetIndex]
+        const requestedIds = Array.isArray(payload.collaborator_user_ids)
+          ? payload.collaborator_user_ids.map((value) => String(value || '').trim()).filter(Boolean)
+          : []
+        const requestedNames = Array.isArray(payload.collaborator_names)
+          ? payload.collaborator_names.map((value) => String(value || '').trim()).filter(Boolean)
+          : []
+        const memberNameByUserId = new Map<string, string>()
+        for (const member of currentAsset.shared_with || []) {
+          const userId = String(member.user_id || '').trim()
+          const name = String(member.name || '').trim()
+          if (userId) {
+            memberNameByUserId.set(userId, name || userId)
+          }
+        }
+        for (const userId of currentAsset.shared_with_user_ids || []) {
+          const cleanUserId = String(userId || '').trim()
+          if (cleanUserId && !memberNameByUserId.has(cleanUserId)) {
+            memberNameByUserId.set(cleanUserId, cleanUserId)
+          }
+        }
+        const resolvedNameIds = requestedNames.map((name) => {
+          const userId = nameToMockUserId(name)
+          memberNameByUserId.set(userId, name)
+          return userId
+        })
+        const nextIds = Array.from(
+          new Set([
+            ...requestedIds,
+            ...resolvedNameIds,
+          ]),
+        ).filter((userId) => userId !== currentAsset.owner_user_id)
+        const updatedAsset: LibraryAssetRecord = {
+          ...currentAsset,
+          shared_with_user_ids: nextIds,
+          shared_with: nextIds.map((userId) => ({
+            user_id: userId,
+            name: memberNameByUserId.get(userId) || userId,
+          })),
+        }
+        storyLibraryAssets = storyLibraryAssets.map((asset, index) => (
+          index === assetIndex ? updatedAsset : asset
+        ))
+        return new Response(JSON.stringify(updatedAsset), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
+      const downloadMatch = path.match(/\/v1\/library\/assets\/([^/]+)\/download$/)
+      if (downloadMatch && requestMethod === 'GET') {
+        const assetId = decodeURIComponent(downloadMatch[1])
+        const asset = storyLibraryAssets.find((item) => item.id === assetId)
+        if (!asset) {
+          return new Response(JSON.stringify({ error: { detail: `Data asset '${assetId}' was not found.` } }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+        return new Response(`storybook-download-${asset.id}`, {
+          status: 200,
+          headers: {
+            'Content-Type': asset.mime_type || 'application/octet-stream',
+            'Content-Disposition': `attachment; filename="${asset.filename}"`,
+          },
+        })
+      }
+
+      return previousFetch(input, init)
+    }
 
     const bootstrap = async () => {
       window.sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'storybook-session-token')
@@ -448,6 +814,7 @@ function WorkspacesPagePreview({ fixture }: WorkspacesPagePreviewProps) {
 
     return () => {
       cancelled = true
+      window.fetch = previousFetch
       if (previousSessionToken === null) {
         window.sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
       } else {
@@ -521,7 +888,7 @@ function WorkspacesPagePreview({ fixture }: WorkspacesPagePreviewProps) {
 
   return (
     <div className="min-h-screen min-w-sz-760 bg-background">
-      <MemoryRouter initialEntries={['/workspaces']}>
+      <MemoryRouter initialEntries={[fixture.initialRoute || '/workspaces']}>
         <Routes>
           <Route path="/workspaces" element={<WorkspacesPage />} />
           <Route path="/w/:workspaceId/overview" element={<RouteEcho />} />
@@ -562,6 +929,12 @@ export const MixedPortfolio: Story = {
 export const DataRichPortfolio: Story = {
   args: {
     fixture: dataRichFixture,
+  },
+}
+
+export const DataLibrary: Story = {
+  args: {
+    fixture: dataLibraryFixture,
   },
 }
 

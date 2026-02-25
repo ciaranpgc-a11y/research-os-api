@@ -11,6 +11,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { listCollaborators } from '@/lib/impact-api'
+import { WorkspacesDataLibraryView } from '@/pages/workspaces-data-library-view'
 import {
   WORKSPACE_OWNER_REQUIRED_MESSAGE,
   readWorkspaceOwnerNameFromProfile,
@@ -32,7 +33,7 @@ import {
 } from '@/store/use-workspace-store'
 
 type ViewMode = 'table' | 'cards'
-type CenterView = 'workspaces' | 'invitations'
+type CenterView = 'workspaces' | 'invitations' | 'data-library'
 type FilterKey = 'all' | 'active' | 'pinned' | 'archived' | 'recent'
 type SortColumn = 'name' | 'stage' | 'updatedAt' | 'status'
 type SortDirection = 'asc' | 'desc'
@@ -131,7 +132,13 @@ function normalizePerson(value: string | null | undefined): string {
 }
 
 function parseCenterView(value: string | null): CenterView {
-  return value === 'invitations' ? 'invitations' : 'workspaces'
+  if (value === 'invitations') {
+    return 'invitations'
+  }
+  if (value === 'data-library') {
+    return 'data-library'
+  }
+  return 'workspaces'
 }
 
 function parseFilterKey(value: string | null): FilterKey {
@@ -403,6 +410,20 @@ function WorkspacesHomeSidebar({
               <button
                 type="button"
                 onClick={() => {
+                  onSelectCenterView('data-library')
+                  onNavigate?.()
+                }}
+                className={cn(
+                  HOUSE_NAV_ITEM_CLASS,
+                  HOUSE_NAV_ITEM_WORKSPACE_CLASS,
+                  centerView === 'data-library' && HOUSE_NAV_ITEM_ACTIVE_CLASS,
+                )}
+              >
+                <span className="truncate pl-2 text-left">Data library</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
                   onOpenInbox()
                   onNavigate?.()
                 }}
@@ -418,33 +439,35 @@ function WorkspacesHomeSidebar({
             </div>
           </section>
 
-          <section className={HOUSE_SIDEBAR_SECTION_CLASS}>
-            <p className={HOUSE_NAV_SECTION_LABEL_CLASS}>
-              States
-            </p>
-            <div className="space-y-1">
-              {FILTER_OPTIONS.map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => {
-                    onFilterChange(option.key)
-                    onNavigate?.()
-                  }}
-                  className={cn(
-                    HOUSE_NAV_ITEM_CLASS,
-                    HOUSE_NAV_ITEM_GOVERNANCE_CLASS,
-                    filterKey === option.key && HOUSE_NAV_ITEM_ACTIVE_CLASS,
-                  )}
-                >
-                  <span className="truncate pl-2 text-left">{option.label}</span>
-                  <span className={cn(HOUSE_NAV_ITEM_COUNT_CLASS, 'ml-2')}>
-                    {counts[option.key]}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
+          {centerView === 'workspaces' ? (
+            <section className={HOUSE_SIDEBAR_SECTION_CLASS}>
+              <p className={HOUSE_NAV_SECTION_LABEL_CLASS}>
+                States
+              </p>
+              <div className="space-y-1">
+                {FILTER_OPTIONS.map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => {
+                      onFilterChange(option.key)
+                      onNavigate?.()
+                    }}
+                    className={cn(
+                      HOUSE_NAV_ITEM_CLASS,
+                      HOUSE_NAV_ITEM_GOVERNANCE_CLASS,
+                      filterKey === option.key && HOUSE_NAV_ITEM_ACTIVE_CLASS,
+                    )}
+                  >
+                    <span className="truncate pl-2 text-left">{option.label}</span>
+                    <span className={cn(HOUSE_NAV_ITEM_COUNT_CLASS, 'ml-2')}>
+                      {counts[option.key]}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </div>
       </ScrollArea>
     </aside>
@@ -1556,7 +1579,7 @@ export function WorkspacesPage() {
                   </div>
                 )}
                   </>
-                ) : (
+                ) : centerView === 'invitations' ? (
                   <>
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
                       <div>
@@ -1647,6 +1670,8 @@ export function WorkspacesPage() {
                       </div>
                     )}
                   </>
+                ) : (
+                  <WorkspacesDataLibraryView />
                 )}
               </section>
             </div>

@@ -15,6 +15,7 @@ import {
   getStudyTypeDefaults,
   getStudyTypesForCategory,
 } from '@/lib/research-frame-options'
+import { houseForms } from '@/lib/house-style'
 import { bootstrapRunContext } from '@/lib/study-core-api'
 import type { JournalOption } from '@/types/study-core'
 
@@ -547,7 +548,7 @@ export function StepContext({
             </div>
             <select
               id="context-target-journal"
-              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+              className={`h-9 w-full rounded-md px-3 text-sm ${houseForms.select}`}
               value={targetJournal}
               onChange={(event) => onTargetJournalChange(event.target.value)}
             >
@@ -568,7 +569,7 @@ export function StepContext({
             />
             <select
               id="context-research-category"
-              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+              className={`h-9 w-full rounded-md px-3 text-sm ${houseForms.select}`}
               value={values.researchCategory}
               onChange={(event) => {
                 const nextCategory = event.target.value
@@ -598,7 +599,7 @@ export function StepContext({
             />
             <select
               id="context-study-architecture"
-              className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+              className={`h-9 w-full rounded-md px-3 text-sm ${houseForms.select}`}
               value={values.studyArchitecture}
               onChange={(event) => {
                 const nextStudyType = event.target.value
@@ -697,7 +698,7 @@ export function StepContext({
           </div>
           <select
             id="context-interpretation-mode"
-            className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+            className={`h-9 w-full rounded-md px-3 text-sm ${houseForms.select}`}
             value={values.interpretationMode}
             onChange={(event) => onValueChange('interpretationMode', event.target.value)}
           >
