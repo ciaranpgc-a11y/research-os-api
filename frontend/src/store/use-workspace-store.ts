@@ -13,6 +13,7 @@ export type WorkspaceRecord = {
   name: string
   ownerName: string
   collaborators: string[]
+  removedCollaborators?: string[]
   version: string
   health: WorkspaceHealth
   updatedAt: string
@@ -40,7 +41,15 @@ export type WorkspaceInvitationSent = {
 type WorkspacePatch = Partial<
   Pick<
     WorkspaceRecord,
-    'name' | 'ownerName' | 'collaborators' | 'health' | 'version' | 'updatedAt' | 'pinned' | 'archived'
+    | 'name'
+    | 'ownerName'
+    | 'collaborators'
+    | 'removedCollaborators'
+    | 'health'
+    | 'version'
+    | 'updatedAt'
+    | 'pinned'
+    | 'archived'
   >
 >
 
@@ -91,6 +100,11 @@ function normalizeCollaborators(values: unknown): string[] {
   return output
 }
 
+function normalizeRemovedCollaborators(values: unknown, collaborators: string[]): string[] {
+  const allowed = new Set(collaborators.map((value) => value.toLowerCase()))
+  return normalizeCollaborators(values).filter((value) => allowed.has(value.toLowerCase()))
+}
+
 function nowIso(): string {
   return new Date().toISOString()
 }
@@ -118,6 +132,7 @@ function defaultWorkspaces(): WorkspaceRecord[] {
       name: 'HF Registry Manuscript',
       ownerName: defaultOwnerName(),
       collaborators: [],
+      removedCollaborators: [],
       version: '0.1',
       health: 'amber',
       updatedAt: nowIso(),
@@ -149,20 +164,28 @@ function readStoredWorkspaces(): WorkspaceRecord[] {
     if (!Array.isArray(parsed) || parsed.length === 0) {
       return defaultWorkspaces()
     }
-    return parsed.map((workspace) => ({
-      id: trimValue(workspace.id) || `workspace-${Date.now().toString(36)}`,
-      name: normalizeName(workspace.name) || 'Workspace',
-      ownerName: normalizeName(workspace.ownerName) || fallbackOwnerName,
-      collaborators: normalizeCollaborators((workspace as { collaborators?: unknown }).collaborators),
-      version: trimValue(workspace.version) || '0.1',
-      health:
-        workspace.health === 'green' || workspace.health === 'amber' || workspace.health === 'red'
-          ? workspace.health
-          : 'amber',
-      updatedAt: trimValue(workspace.updatedAt) || nowIso(),
-      pinned: Boolean(workspace.pinned),
-      archived: Boolean(workspace.archived),
-    }))
+    return parsed.map((workspace) => {
+      const collaborators = normalizeCollaborators((workspace as { collaborators?: unknown }).collaborators)
+      const removedCollaborators = normalizeRemovedCollaborators(
+        (workspace as { removedCollaborators?: unknown }).removedCollaborators,
+        collaborators,
+      )
+      return {
+        id: trimValue(workspace.id) || `workspace-${Date.now().toString(36)}`,
+        name: normalizeName(workspace.name) || 'Workspace',
+        ownerName: normalizeName(workspace.ownerName) || fallbackOwnerName,
+        collaborators,
+        removedCollaborators,
+        version: trimValue(workspace.version) || '0.1',
+        health:
+          workspace.health === 'green' || workspace.health === 'amber' || workspace.health === 'red'
+            ? workspace.health
+            : 'amber',
+        updatedAt: trimValue(workspace.updatedAt) || nowIso(),
+        pinned: Boolean(workspace.pinned),
+        archived: Boolean(workspace.archived),
+      }
+    })
   } catch {
     return defaultWorkspaces()
   }
@@ -319,6 +342,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         .join(' '),
       ownerName: defaultOwnerName(),
       collaborators: [],
+      removedCollaborators: [],
       version: '0.1',
       health: 'amber',
       updatedAt: nowIso(),
@@ -349,6 +373,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       name: cleanName,
       ownerName,
       collaborators: [],
+      removedCollaborators: [],
       version: '0.1',
       health: 'amber',
       updatedAt: nowIso(),
@@ -374,11 +399,18 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       if (workspace.id !== cleanWorkspaceId) {
         return workspace
       }
+      const nextCollaborators = patch.collaborators
+        ? normalizeCollaborators(patch.collaborators)
+        : workspace.collaborators
+      const nextRemovedCollaborators = patch.removedCollaborators
+        ? normalizeRemovedCollaborators(patch.removedCollaborators, nextCollaborators)
+        : normalizeRemovedCollaborators(workspace.removedCollaborators, nextCollaborators)
       return {
         ...workspace,
         ...patch,
         ownerName: patch.ownerName ? normalizeName(patch.ownerName) : workspace.ownerName,
-        collaborators: patch.collaborators ? normalizeCollaborators(patch.collaborators) : workspace.collaborators,
+        collaborators: nextCollaborators,
+        removedCollaborators: nextRemovedCollaborators,
       }
     })
     persistWorkspaces(nextWorkspaces)
@@ -467,6 +499,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       name: request.workspaceName,
       ownerName: request.authorName,
       collaborators: [currentCollaboratorName()],
+      removedCollaborators: [],
       version: '0.1',
       health: 'amber',
       updatedAt: nowIso(),
