@@ -1680,10 +1680,14 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
   const [barsExpanded, setBarsExpanded] = useState(false)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const firstAuthorshipRaw = Number(chartData.first_authorship_pct)
+  const secondAuthorshipRaw = Number(chartData.second_authorship_pct)
   const seniorAuthorshipRaw = Number(chartData.senior_authorship_pct)
   const leadershipIndexRaw = Number(chartData.leadership_index_pct)
   const firstAuthorshipPct = Number.isFinite(firstAuthorshipRaw)
     ? Math.max(0, Math.min(100, firstAuthorshipRaw))
+    : 0
+  const secondAuthorshipPct = Number.isFinite(secondAuthorshipRaw)
+    ? Math.max(0, Math.min(100, secondAuthorshipRaw))
     : 0
   const seniorAuthorshipPct = Number.isFinite(seniorAuthorshipRaw)
     ? Math.max(0, Math.min(100, seniorAuthorshipRaw))
@@ -1691,15 +1695,11 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
   const leadershipIndexPct = Number.isFinite(leadershipIndexRaw)
     ? Math.max(0, Math.min(100, leadershipIndexRaw))
     : 0
-  const medianAuthorPositionDisplay = String(chartData.median_author_position_display || '').trim()
-  const medianAuthorPositionRaw = Number(chartData.median_author_position)
-  const medianAuthorPosition = medianAuthorPositionDisplay
-    || (Number.isFinite(medianAuthorPositionRaw) ? String(medianAuthorPositionRaw) : 'Not available')
   const totalPapersRaw = Number(chartData.total_papers)
   const totalPapers = Number.isFinite(totalPapersRaw) ? Math.max(0, Math.round(totalPapersRaw)) : 0
   const animationKey = useMemo(
-    () => `${Math.round(firstAuthorshipPct)}-${Math.round(seniorAuthorshipPct)}-${Math.round(leadershipIndexPct)}-${medianAuthorPosition}-${totalPapers}`,
-    [firstAuthorshipPct, leadershipIndexPct, medianAuthorPosition, seniorAuthorshipPct, totalPapers],
+    () => `${Math.round(firstAuthorshipPct)}-${Math.round(secondAuthorshipPct)}-${Math.round(seniorAuthorshipPct)}-${Math.round(leadershipIndexPct)}-${totalPapers}`,
+    [firstAuthorshipPct, leadershipIndexPct, secondAuthorshipPct, seniorAuthorshipPct, totalPapers],
   )
   useEffect(() => {
     setPanelVisible(false)
@@ -1724,6 +1724,7 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
 
   const rows = [
     { key: 'first', label: 'First authorship', value: Math.round(firstAuthorshipPct), tone: 'bg-[hsl(var(--tone-accent-500))]' },
+    { key: 'second', label: 'Second authorship', value: Math.round(secondAuthorshipPct), tone: 'bg-[hsl(var(--tone-neutral-500))]' },
     { key: 'senior', label: 'Senior authorship', value: Math.round(seniorAuthorshipPct), tone: 'bg-[hsl(var(--tone-warning-500))]' },
     { key: 'leadership', label: 'Leadership index', value: Math.round(leadershipIndexPct), tone: 'bg-[hsl(var(--tone-positive-600))]' },
   ]
@@ -1732,17 +1733,17 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
     <div className="flex h-full min-h-0 w-full flex-col">
       <div
         className={cn(
-          'flex flex-1 flex-col gap-2 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 py-2 transition-[opacity,transform,filter] duration-320 ease-out',
+          'flex flex-1 flex-col gap-2.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2.5 py-2.5 transition-[opacity,transform,filter] duration-320 ease-out',
           panelVisible ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]',
         )}
       >
         {rows.map((row, index) => (
-          <div key={row.key} className="space-y-1">
+          <div key={row.key} className="space-y-1.5">
             <div className="flex items-center justify-between gap-2 text-[0.61rem] leading-none">
               <span className="font-semibold text-[hsl(var(--tone-neutral-700))]">{row.label}</span>
               <span className="font-semibold text-[hsl(var(--tone-neutral-700))]">{row.value}%</span>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
+            <div className="h-[0.44rem] overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
               <div
                 className={cn(
                   'h-full rounded-full transition-[width] duration-420 ease-out',
@@ -1750,17 +1751,108 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
                 )}
                 style={{
                   width: `${barsExpanded ? row.value : 0}%`,
-                  transitionDelay: `${Math.min(180, index * 40)}ms`,
+                  transitionDelay: `${Math.min(220, index * 45)}ms`,
                 }}
                 aria-hidden="true"
               />
             </div>
           </div>
         ))}
-        <div className="mt-auto flex items-center justify-between rounded border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1">
-          <span className="text-[0.6rem] font-semibold text-[hsl(var(--tone-neutral-700))]">Median author position</span>
-          <span className="text-[0.66rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{medianAuthorPosition}</span>
-        </div>
+      </div>
+    </div>
+  )
+}
+
+function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayload }) {
+  const [panelVisible, setPanelVisible] = useState(true)
+  const [barsExpanded, setBarsExpanded] = useState(false)
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const uniqueCollaboratorsRaw = Number(chartData.unique_collaborators)
+  const repeatRateRaw = Number(chartData.repeat_collaborator_rate_pct)
+  const institutionsRaw = Number(chartData.institutions)
+  const countriesRaw = Number(chartData.countries)
+
+  const uniqueCollaborators = Number.isFinite(uniqueCollaboratorsRaw) ? Math.max(0, Math.round(uniqueCollaboratorsRaw)) : 0
+  const repeatRatePct = Number.isFinite(repeatRateRaw) ? Math.max(0, Math.min(100, repeatRateRaw)) : 0
+  const institutions = Number.isFinite(institutionsRaw) ? Math.max(0, Math.round(institutionsRaw)) : 0
+  const countries = Number.isFinite(countriesRaw) ? Math.max(0, Math.round(countriesRaw)) : 0
+
+  const animationKey = useMemo(
+    () => `${uniqueCollaborators}-${Math.round(repeatRatePct)}-${institutions}-${countries}`,
+    [countries, institutions, repeatRatePct, uniqueCollaborators],
+  )
+  useEffect(() => {
+    setPanelVisible(false)
+    setBarsExpanded(false)
+    let rafOne = 0
+    let rafTwo = 0
+    rafOne = window.requestAnimationFrame(() => {
+      setPanelVisible(true)
+      rafTwo = window.requestAnimationFrame(() => {
+        setBarsExpanded(true)
+      })
+    })
+    return () => {
+      window.cancelAnimationFrame(rafOne)
+      window.cancelAnimationFrame(rafTwo)
+    }
+  }, [animationKey])
+
+  const rows = [
+    { key: 'collaborators', label: 'Unique collaborators', value: uniqueCollaborators, unit: 'count', tone: 'bg-[hsl(var(--tone-accent-600))]' },
+    { key: 'repeat_rate', label: 'Repeat collaborator rate', value: repeatRatePct, unit: 'percent', tone: 'bg-[hsl(var(--tone-positive-600))]' },
+    { key: 'institutions', label: 'Institutions', value: institutions, unit: 'count', tone: 'bg-[hsl(var(--tone-warning-500))]' },
+    { key: 'countries', label: 'Countries', value: countries, unit: 'count', tone: 'bg-[hsl(var(--tone-neutral-500))]' },
+  ] as const
+
+  const maxCountMetric = Math.max(1, uniqueCollaborators, institutions, countries)
+  const totalSignal = uniqueCollaborators + institutions + countries + Math.round(repeatRatePct)
+  if (totalSignal <= 0) {
+    return <div className={dashboardTileStyles.emptyChart}>No collaboration data</div>
+  }
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div
+        className={cn(
+          'flex flex-1 flex-col gap-2.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2.5 py-2.5 transition-[opacity,transform,filter] duration-320 ease-out',
+          panelVisible ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]',
+        )}
+      >
+        {rows.map((row, index) => {
+          const isPercent = row.unit === 'percent'
+          const clamped = isPercent
+            ? Math.max(0, Math.min(100, Number(row.value)))
+            : Math.max(0, Number(row.value))
+          const widthPct = isPercent
+            ? clamped
+            : clamped <= 0
+              ? 0
+              : Math.max(10, Math.min(100, (clamped / maxCountMetric) * 100))
+          const valueLabel = isPercent ? `${Math.round(clamped)}%` : formatInt(clamped)
+
+          return (
+            <div key={row.key} className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2 text-[0.61rem] leading-none">
+                <span className="font-semibold text-[hsl(var(--tone-neutral-700))]">{row.label}</span>
+                <span className="font-semibold text-[hsl(var(--tone-neutral-700))]">{valueLabel}</span>
+              </div>
+              <div className="h-[0.44rem] overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
+                <div
+                  className={cn(
+                    'h-full rounded-full transition-[width] duration-420 ease-out',
+                    row.tone,
+                  )}
+                  style={{
+                    width: `${barsExpanded ? widthPct : 0}%`,
+                    transitionDelay: `${Math.min(220, index * 45)}ms`,
+                  }}
+                  aria-hidden="true"
+                />
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -2305,6 +2397,25 @@ function metricSummary(tile: PublicationMetricTilePayload, publication: Record<s
       : 'n/a'
     return `Role: ${role} | Position: ${positionText}/${authorCountText}`
   }
+  if (key === 'collaboration_structure') {
+    const collaboratorsInWorkRaw = Number(publication.collaborators_in_work)
+    const repeatCollaboratorsInWorkRaw = Number(publication.repeat_collaborators_in_work)
+    const institutionsInWorkRaw = Number(publication.institutions_in_work)
+    const countriesInWorkRaw = Number(publication.countries_in_work)
+    const collaboratorsInWork = Number.isFinite(collaboratorsInWorkRaw)
+      ? Math.max(0, Math.round(collaboratorsInWorkRaw))
+      : 0
+    const repeatCollaboratorsInWork = Number.isFinite(repeatCollaboratorsInWorkRaw)
+      ? Math.max(0, Math.round(repeatCollaboratorsInWorkRaw))
+      : 0
+    const institutionsInWork = Number.isFinite(institutionsInWorkRaw)
+      ? Math.max(0, Math.round(institutionsInWorkRaw))
+      : 0
+    const countriesInWork = Number.isFinite(countriesInWorkRaw)
+      ? Math.max(0, Math.round(countriesInWorkRaw))
+      : 0
+    return `Collaborators: ${collaboratorsInWork} | Repeat: ${repeatCollaboratorsInWork} | Institutions: ${institutionsInWork} | Countries: ${countriesInWork}`
+  }
   if (key === 'field_normalized_impact') {
     return `Field-normalized impact: ${Number(publication.field_normalized_impact || 0).toFixed(3)}`
   }
@@ -2621,12 +2732,12 @@ export function PublicationsTopStrip({
                   secondaryText = `Papers at or above ${activeThreshold}th percentile`
                   detailText = undefined
                   badgeNode = (
-                    <div className="flex flex-col items-center gap-0.5">
+                    <div className="flex w-full flex-col items-center gap-0.5">
                       <p className="text-center text-[0.56rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">
                         Percentile
                       </p>
                       <div
-                        className="relative isolate inline-grid items-center overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5"
+                        className="relative isolate mx-auto inline-grid items-center overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5"
                         style={{ gridTemplateColumns: `repeat(${availableThresholds.length}, minmax(0, 1fr))` }}
                         data-stop-tile-open="true"
                       >
@@ -2666,19 +2777,11 @@ export function PublicationsTopStrip({
                   visual = <FieldPercentilePanel tile={tile} threshold={activeThreshold} />
                 } else if (tile.key === 'authorship_composition') {
                   const authorshipChartData = (tile.chart_data || {}) as Record<string, unknown>
-                  const firstAuthorshipRaw = Number(authorshipChartData.first_authorship_pct)
-                  const seniorAuthorshipRaw = Number(authorshipChartData.senior_authorship_pct)
                   const leadershipRaw = Number(authorshipChartData.leadership_index_pct)
                   const totalPapersRaw = Number(authorshipChartData.total_papers)
                   const medianAuthorPositionDisplay = String(
                     authorshipChartData.median_author_position_display || authorshipChartData.median_author_position || 'Not available',
                   ).trim() || 'Not available'
-                  const firstAuthorshipPct = Number.isFinite(firstAuthorshipRaw)
-                    ? Math.max(0, Math.min(100, firstAuthorshipRaw))
-                    : 0
-                  const seniorAuthorshipPct = Number.isFinite(seniorAuthorshipRaw)
-                    ? Math.max(0, Math.min(100, seniorAuthorshipRaw))
-                    : 0
                   const leadershipPct = Number.isFinite(leadershipRaw)
                     ? Math.max(0, Math.min(100, leadershipRaw))
                     : Number.isFinite(tileValueNumberRaw)
@@ -2687,8 +2790,27 @@ export function PublicationsTopStrip({
                   const totalPapers = Number.isFinite(totalPapersRaw) ? Math.max(0, Math.round(totalPapersRaw)) : 0
                   primaryValue = totalPapers > 0 ? `${Math.round(leadershipPct)}%` : mainValueDisplay
                   secondaryText = 'Leadership index'
-                  detailText = `First ${Math.round(firstAuthorshipPct)}% | Senior ${Math.round(seniorAuthorshipPct)}% | Median position ${medianAuthorPositionDisplay}`
+                  detailText = undefined
+                  badgeNode = (
+                    <span className="inline-flex items-center rounded-full border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2.5 py-[0.2rem] text-[0.66rem] font-medium leading-none text-[hsl(var(--tone-neutral-700))]">
+                      Median author position {medianAuthorPositionDisplay}
+                    </span>
+                  )
                   visual = <AuthorshipStructurePanel tile={tile} />
+                } else if (tile.key === 'collaboration_structure') {
+                  const collaborationChartData = (tile.chart_data || {}) as Record<string, unknown>
+                  const uniqueCollaboratorsRaw = Number(collaborationChartData.unique_collaborators)
+
+                  const uniqueCollaborators = Number.isFinite(uniqueCollaboratorsRaw)
+                    ? Math.max(0, Math.round(uniqueCollaboratorsRaw))
+                    : Number.isFinite(tileValueNumberRaw)
+                      ? Math.max(0, Math.round(tileValueNumberRaw))
+                      : 0
+
+                  primaryValue = formatInt(uniqueCollaborators)
+                  secondaryText = 'Unique collaborators'
+                  detailText = undefined
+                  visual = <CollaborationStructurePanel tile={tile} />
                 } else if (tile.key === 'influential_citations') {
                   const influentialChartData = (tile.chart_data || {}) as Record<string, unknown>
                   const influentialRatioRaw = Number(influentialChartData.influential_ratio_pct)

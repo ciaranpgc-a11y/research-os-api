@@ -334,11 +334,13 @@ const authorshipCompositionTile = buildTile({
   chartType: 'authorship_structure',
   chartData: {
     first_authorship_pct: 34,
+    second_authorship_pct: 18,
     senior_authorship_pct: 28,
     leadership_index_pct: 62,
     median_author_position: 2,
     median_author_position_display: '2',
     first_authorship_count: 8,
+    second_authorship_count: 4,
     senior_authorship_count: 7,
     leadership_count: 15,
     known_role_count: 22,
@@ -346,7 +348,33 @@ const authorshipCompositionTile = buildTile({
     known_position_count: 22,
     total_papers: 24,
   },
-  sparkline: [34, 28, 62],
+  sparkline: [34, 18, 28, 62],
+})
+
+const collaborationStructureTile = buildTile({
+  id: 'tile-collaboration-structure',
+  key: 'collaboration_structure',
+  label: 'Collaboration structure',
+  value: 48,
+  valueDisplay: '48',
+  deltaValue: null,
+  deltaDisplay: null,
+  deltaDirection: 'na',
+  deltaTone: 'neutral',
+  deltaColorCode: 'hsl(var(--tone-neutral-600))',
+  subtext: 'Unique collaborators',
+  badgeLabel: '',
+  badgeSeverity: 'neutral',
+  chartType: 'collaboration_structure',
+  chartData: {
+    unique_collaborators: 48,
+    repeat_collaborator_rate_pct: 62,
+    repeat_collaborators: 30,
+    institutions: 14,
+    countries: 5,
+    collaborative_works: 31,
+  },
+  sparkline: [48, 62, 14, 5],
 })
 
 const totalCitationsEmptyTile = buildTile({
@@ -501,12 +529,39 @@ const authorshipCompositionEmptyTile = buildTile({
   chartType: 'authorship_structure',
   chartData: {
     first_authorship_pct: 0,
+    second_authorship_pct: 0,
     senior_authorship_pct: 0,
     leadership_index_pct: 0,
     median_author_position_display: 'Not available',
     total_papers: 0,
   },
   sparkline: [],
+})
+
+const collaborationStructureEmptyTile = buildTile({
+  id: 'tile-collaboration-structure-empty',
+  key: 'collaboration_structure',
+  label: 'Collaboration structure',
+  value: 0,
+  valueDisplay: '0',
+  deltaValue: null,
+  deltaDisplay: null,
+  deltaDirection: 'na',
+  deltaTone: 'neutral',
+  deltaColorCode: 'hsl(var(--tone-neutral-500))',
+  subtext: 'Unique collaborators',
+  badgeLabel: '',
+  badgeSeverity: 'neutral',
+  chartType: 'collaboration_structure',
+  chartData: {
+    unique_collaborators: 0,
+    repeat_collaborator_rate_pct: 0,
+    repeat_collaborators: 0,
+    institutions: 0,
+    countries: 0,
+    collaborative_works: 0,
+  },
+  sparkline: [0, 0, 0, 0],
 })
 
 const meta: Meta<typeof PublicationsTopStrip> = {
@@ -541,6 +596,7 @@ const overviewTiles = [
   influentialCitationsTile,
   fieldPercentileShareTile,
   authorshipCompositionTile,
+  collaborationStructureTile,
 ]
 
 export const TilesOverview: Story = {
@@ -595,3 +651,7 @@ export const FieldPercentileShareLoading: Story = { args: loadingArgs }
 export const AuthorshipCompositionDefault: Story = { args: singleTileArgs(authorshipCompositionTile) }
 export const AuthorshipCompositionNoData: Story = { args: singleTileArgs(authorshipCompositionEmptyTile) }
 export const AuthorshipCompositionLoading: Story = { args: loadingArgs }
+
+export const CollaborationStructureDefault: Story = { args: singleTileArgs(collaborationStructureTile) }
+export const CollaborationStructureNoData: Story = { args: singleTileArgs(collaborationStructureEmptyTile) }
+export const CollaborationStructureLoading: Story = { args: loadingArgs }

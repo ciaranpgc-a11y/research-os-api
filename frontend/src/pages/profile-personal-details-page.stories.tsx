@@ -52,7 +52,9 @@ const connectedFixture: ProfilePersonalDetailsPageFixture = {
     firstName: 'Ciaran',
     lastName: 'Clarke',
     jobRole: 'Professor of Medical Education',
+    jobRoles: ['Professor of Medical Education', 'British Heart Foundation Fellow'],
     organisation: 'Axiomos Labs',
+    affiliations: ['Axiomos Labs', "King's College London"],
     affiliationAddress: 'Department of Research Operations, Strand Campus',
     affiliationCity: 'London',
     affiliationRegion: 'England',
@@ -62,6 +64,7 @@ const connectedFixture: ProfilePersonalDetailsPageFixture = {
     website: 'https://app.axiomos.studio',
     researchGateUrl: 'https://www.researchgate.net/profile/Ciaran-Clarke',
     xHandle: '@axiomos_lab',
+    profilePhotoDataUrl: '',
     publicationAffiliations: ['Axiomos Labs, London (GB)', "King's College London (GB)"],
   },
 }
@@ -80,7 +83,9 @@ const unlinkedFixture: ProfilePersonalDetailsPageFixture = {
     firstName: 'New',
     lastName: 'Researcher',
     jobRole: '',
+    jobRoles: [],
     organisation: '',
+    affiliations: [],
     affiliationAddress: '',
     affiliationCity: '',
     affiliationRegion: '',
@@ -90,6 +95,7 @@ const unlinkedFixture: ProfilePersonalDetailsPageFixture = {
     website: '',
     researchGateUrl: '',
     xHandle: '',
+    profilePhotoDataUrl: '',
     publicationAffiliations: [],
   },
 }
@@ -97,6 +103,36 @@ const unlinkedFixture: ProfilePersonalDetailsPageFixture = {
 const savedFixture: ProfilePersonalDetailsPageFixture = {
   ...connectedFixture,
   status: 'Personal details saved.',
+}
+
+const reviewOneFixture: ProfilePersonalDetailsPageFixture = {
+  token: 'storybook-session-token',
+  user: {
+    ...fixtureUser,
+    email: 'orcid-0000000285370806@orcid.local',
+    name: 'ORCID 0000-0002-8537-0806',
+  },
+  orcidStatus: linkedOrcidStatus,
+  personalDetails: {
+    salutation: '',
+    firstName: '',
+    lastName: '',
+    jobRole: 'British Heart Foundation Fellow',
+    jobRoles: ['British Heart Foundation Fellow', 'Cardiology Research Fellow'],
+    organisation: 'University of East Anglia',
+    affiliations: ['University of East Anglia', 'Norfolk and Norwich University Hospital'],
+    affiliationAddress: '',
+    affiliationCity: 'Norwich',
+    affiliationRegion: 'England',
+    affiliationPostalCode: '',
+    department: 'Cardiovascular Research Unit',
+    country: 'United Kingdom',
+    website: '',
+    researchGateUrl: '',
+    xHandle: '',
+    profilePhotoDataUrl: '',
+    publicationAffiliations: ['University of East Anglia (GB)'],
+  },
 }
 
 function ProfilePersonalDetailsStoryShell({
@@ -157,5 +193,11 @@ export const DarkMode: Story = {
   },
   globals: {
     theme: 'dark',
+  },
+}
+
+export const ReviewOne: Story = {
+  args: {
+    fixture: reviewOneFixture,
   },
 }

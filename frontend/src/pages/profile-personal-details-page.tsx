@@ -1,5 +1,5 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { GripVertical, Loader2, Plus, Sparkles } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { GripVertical, Loader2, Plus, Trash2, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -25,7 +25,9 @@ type PersonalDetailsDraft = {
   firstName: string
   lastName: string
   jobRole: string
+  jobRoles: string[]
   organisation: string
+  affiliations: string[]
   affiliationAddress: string
   affiliationCity: string
   affiliationRegion: string
@@ -35,6 +37,7 @@ type PersonalDetailsDraft = {
   website: string
   researchGateUrl: string
   xHandle: string
+  profilePhotoDataUrl: string
   publicationAffiliations: string[]
 }
 
@@ -74,7 +77,10 @@ export type ProfilePersonalDetailsPageFixture = {
 type ProfilePersonalDetailsPageProps = {
   fixture?: ProfilePersonalDetailsPageFixture
 }
-type PersonalDetailsStringField = Exclude<keyof PersonalDetailsDraft, 'publicationAffiliations'>
+type PersonalDetailsStringField = Exclude<
+  keyof PersonalDetailsDraft,
+  'jobRoles' | 'affiliations' | 'publicationAffiliations'
+>
 
 type AffiliationMetadataItem = {
   address: string
@@ -91,8 +97,24 @@ const PERSONAL_DETAILS_STORAGE_PREFIX = 'aawe_profile_personal_details:'
 const FOUNDING_MEMBER_USER_IDS = new Set<string>([])
 const FOUNDING_MEMBER_EMAILS = new Set<string>(['researcher@axiomos.studio'])
 const FOUNDING_MEMBER_ORCID_IDS = new Set<string>(['0000-0002-8537-0806'])
-const SALUTATION_OPTIONS = ['Dr', 'Prof', 'Mr', 'Ms', 'Mrs', 'Mx'] as const
+const SALUTATION_OPTIONS = [
+  'Dr',
+  'Professor',
+  'Mr',
+  'Ms',
+  'Mrs',
+  'Miss',
+  'Mx',
+  'Sir',
+  'Dame',
+  'Lord',
+  'Lady',
+  'Rev',
+  'Hon',
+] as const
+const MAX_JOB_ROLES = 8
 const MAX_PUBLICATION_AFFILIATIONS = 12
+const MAX_PROFILE_PHOTO_BYTES = 2 * 1024 * 1024
 
 function formatTimestamp(value: string | null | undefined): string {
   if (!value) {
@@ -131,6 +153,10 @@ function trimValue(value: string | null | undefined): string {
 }
 
 function sanitizeAffiliation(value: string | null | undefined): string {
+  return trimValue(value).replace(/\s+/g, ' ')
+}
+
+function normalizeRole(value: string | null | undefined): string {
   return trimValue(value).replace(/\s+/g, ' ')
 }
 
@@ -271,12 +297,28 @@ function splitName(value: string | null | undefined): { firstName: string; lastN
 }
 
 function sanitizeDraft(value: Partial<PersonalDetailsDraft> | null | undefined): PersonalDetailsDraft {
+  const rawJobRole = normalizeRole(value?.jobRole)
+  const rawOrganisation = sanitizeAffiliation(value?.organisation)
+  const jobRoles = normalizeJobRoles((value as { jobRoles?: unknown } | null | undefined)?.jobRoles)
+  const affiliations = normalizeAffiliations((value as { affiliations?: unknown } | null | undefined)?.affiliations)
+  const effectiveJobRoles = jobRoles.length > 0
+    ? jobRoles
+    : rawJobRole
+      ? [rawJobRole]
+      : []
+  const effectiveAffiliations = affiliations.length > 0
+    ? affiliations
+    : rawOrganisation
+      ? [rawOrganisation]
+      : []
   return {
     salutation: trimValue(value?.salutation),
     firstName: trimValue(value?.firstName),
     lastName: trimValue(value?.lastName),
-    jobRole: trimValue(value?.jobRole),
-    organisation: trimValue(value?.organisation),
+    jobRole: rawJobRole || effectiveJobRoles[0] || '',
+    jobRoles: effectiveJobRoles,
+    organisation: rawOrganisation || effectiveAffiliations[0] || '',
+    affiliations: effectiveAffiliations,
     affiliationAddress: trimValue(value?.affiliationAddress),
     affiliationCity: trimValue(value?.affiliationCity),
     affiliationRegion: trimValue(value?.affiliationRegion),
@@ -286,6 +328,7 @@ function sanitizeDraft(value: Partial<PersonalDetailsDraft> | null | undefined):
     website: trimValue(value?.website),
     researchGateUrl: trimValue(value?.researchGateUrl),
     xHandle: trimValue(value?.xHandle),
+    profilePhotoDataUrl: trimValue((value as { profilePhotoDataUrl?: string } | null | undefined)?.profilePhotoDataUrl),
     publicationAffiliations: normalizeAffiliations(value?.publicationAffiliations),
   }
 }
@@ -369,21 +412,25 @@ function draftFromSources(
   stored: StoredPersonalDetails | null,
   orcidLinked: boolean,
 ): PersonalDetailsDraft {
-  const split = splitName(user?.name)
+  const split = looksLikeOrcidPlaceholderName(user?.name) ? { firstName: '', lastName: '' } : splitName(user?.name)
+  const storedFirstName = looksLikeOrcidPlaceholderName(stored?.firstName) ? '' : trimValue(stored?.firstName)
+  const storedLastName = looksLikeOrcidPlaceholderName(stored?.lastName) ? '' : trimValue(stored?.lastName)
   const seededFirstName =
-    orcidLinked && !trimValue(stored?.firstName)
-      ? split.firstName
-      : stored?.firstName || split.firstName
+    orcidLinked
+      ? storedFirstName
+      : storedFirstName || split.firstName
   const seededLastName =
-    orcidLinked && !trimValue(stored?.lastName)
-      ? split.lastName
-      : stored?.lastName || split.lastName
+    orcidLinked
+      ? storedLastName
+      : storedLastName || split.lastName
   return sanitizeDraft({
     salutation: stored?.salutation || '',
     firstName: seededFirstName,
     lastName: seededLastName,
     jobRole: stored?.jobRole || '',
+    jobRoles: stored?.jobRoles || [],
     organisation: stored?.organisation || '',
+    affiliations: stored?.affiliations || [],
     affiliationAddress: stored?.affiliationAddress || '',
     affiliationCity: stored?.affiliationCity || '',
     affiliationRegion: stored?.affiliationRegion || '',
@@ -393,6 +440,7 @@ function draftFromSources(
     website: stored?.website || '',
     researchGateUrl: stored?.researchGateUrl || '',
     xHandle: stored?.xHandle || '',
+    profilePhotoDataUrl: stored?.profilePhotoDataUrl || '',
     publicationAffiliations: stored?.publicationAffiliations || [],
   })
 }
@@ -455,7 +503,7 @@ function buildProfileBadges(input: {
     })
   }
 
-  if (input.draft.organisation && input.draft.firstName && input.draft.lastName) {
+  if ((input.draft.organisation || input.draft.affiliations[0]) && input.draft.firstName && input.draft.lastName) {
     badges.push({
       id: 'profile-complete',
       label: 'Profile complete',
@@ -532,6 +580,71 @@ async function fetchAffiliationSuggestions(input: {
   return output
 }
 
+function normalizeJobRoles(values: unknown): string[] {
+  const source = Array.isArray(values) ? values : []
+  const seen = new Set<string>()
+  const output: string[] = []
+  for (const raw of source) {
+    const clean = normalizeRole(String(raw || ''))
+    if (!clean) {
+      continue
+    }
+    const key = clean.toLowerCase()
+    if (seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    output.push(clean)
+    if (output.length >= MAX_JOB_ROLES) {
+      break
+    }
+  }
+  return output
+}
+
+function buildProfileInitials(input: {
+  firstName?: string | null
+  lastName?: string | null
+  fallbackName?: string | null
+}): string {
+  const first = trimValue(input.firstName)
+  const last = trimValue(input.lastName)
+  if (first || last) {
+    const initials = `${first ? first[0] : ''}${last ? last[0] : ''}`.trim()
+    return initials ? initials.toUpperCase() : 'U'
+  }
+  const fallbackParts = trimValue(input.fallbackName).split(/\s+/).filter(Boolean)
+  if (fallbackParts.length >= 2) {
+    return `${fallbackParts[0][0] || ''}${fallbackParts[1][0] || ''}`.toUpperCase() || 'U'
+  }
+  if (fallbackParts.length === 1) {
+    return (fallbackParts[0][0] || 'U').toUpperCase()
+  }
+  return 'U'
+}
+
+function looksLikeOrcidPlaceholderName(value: string | null | undefined): boolean {
+  const clean = trimValue(value)
+  if (!clean) {
+    return false
+  }
+  return /^orcid\b/i.test(clean) || /\b\d{4}-\d{4}-\d{4}-[\dX]{4}\b/i.test(clean)
+}
+
+function resolveEditableAccountEmail(input: {
+  email: string | null | undefined
+  orcidLinked: boolean
+}): string {
+  const clean = trimValue(input.email)
+  if (!clean) {
+    return ''
+  }
+  if (input.orcidLinked && isGeneratedOAuthEmail(clean)) {
+    return ''
+  }
+  return clean
+}
+
 export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPageProps = {}) {
   const navigate = useNavigate()
   const isFixtureMode = Boolean(fixture)
@@ -545,13 +658,17 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     ...draftFromSources(initialCachedUser, initialStoredDetails, initialOrcidLinked),
     ...(fixture?.personalDetails || {}),
   })
-  const initialAccountEmail = trimValue(initialCachedUser?.email)
+  const initialAccountEmail = resolveEditableAccountEmail({
+    email: initialCachedUser?.email,
+    orcidLinked: initialOrcidLinked,
+  })
 
   const [token, setToken] = useState(() => fixture?.token ?? getAuthSessionToken())
   const [user, setUser] = useState<AuthUser | null>(initialCachedUser)
   const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(initialCachedOrcidStatus)
   const [draft, setDraft] = useState<PersonalDetailsDraft>(initialDraft)
   const [accountEmail, setAccountEmail] = useState(initialAccountEmail)
+  const [jobRoleInput, setJobRoleInput] = useState('')
   const [primaryAffiliationInput, setPrimaryAffiliationInput] = useState(() => sanitizeAffiliation(initialDraft.organisation))
   const [primaryAffiliationSuggestions, setPrimaryAffiliationSuggestions] = useState<AffiliationSuggestionItem[]>([])
   const [primaryAffiliationSuggestionsLoading, setPrimaryAffiliationSuggestionsLoading] = useState(false)
@@ -561,9 +678,11 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [publicationAffiliationSuggestionsLoading, setPublicationAffiliationSuggestionsLoading] = useState(false)
   const [publicationAffiliationSuggestionsError, setPublicationAffiliationSuggestionsError] = useState('')
   const [affiliationMetadataByName, setAffiliationMetadataByName] = useState<Record<string, AffiliationMetadataItem>>({})
+  const [affiliationEditorOpen, setAffiliationEditorOpen] = useState(
+    () => !Boolean(initialDraft.jobRoles[0] || initialDraft.affiliations[0] || initialDraft.country),
+  )
   const [showPublicationAffiliationComposer, setShowPublicationAffiliationComposer] = useState(false)
   const [draggingPublicationAffiliationIndex, setDraggingPublicationAffiliationIndex] = useState<number | null>(null)
-  const [aiPublicationBusy, setAiPublicationBusy] = useState(false)
   const [primaryAffiliationAddressResolving, setPrimaryAffiliationAddressResolving] = useState(false)
   const [primaryAffiliationAddressError, setPrimaryAffiliationAddressError] = useState('')
   const [loading, setLoading] = useState(Boolean(fixture?.loading ?? !fixture))
@@ -575,6 +694,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const emailEditedRef = useRef(false)
   const primaryAddressLookupSequenceRef = useRef(0)
   const lastResolvedPrimaryAffiliationKeyRef = useRef('')
+  const profilePhotoInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (!isFixtureMode) {
@@ -592,7 +712,12 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setOrcidStatus(fixture?.orcidStatus ?? null)
     setDraft(fixtureDraft)
     setPrimaryAffiliationInput(sanitizeAffiliation(fixtureDraft.organisation))
-    setAccountEmail(trimValue(fixtureUser?.email))
+    setJobRoleInput('')
+    setAffiliationEditorOpen(!Boolean(fixtureDraft.jobRoles[0] || fixtureDraft.affiliations[0] || fixtureDraft.country))
+    setAccountEmail(resolveEditableAccountEmail({
+      email: fixtureUser?.email,
+      orcidLinked: fixtureOrcidLinked,
+    }))
     setPrimaryAffiliationSuggestions([])
     setPrimaryAffiliationSuggestionsLoading(false)
     setPrimaryAffiliationSuggestionsError('')
@@ -603,7 +728,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setAffiliationMetadataByName({})
     setShowPublicationAffiliationComposer(false)
     setDraggingPublicationAffiliationIndex(null)
-    setAiPublicationBusy(false)
     setPrimaryAffiliationAddressResolving(false)
     setPrimaryAffiliationAddressError('')
     setLoading(Boolean(fixture?.loading))
@@ -642,13 +766,15 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         const nextUser = meResult.value
         setUser(nextUser)
         saveCachedUser(nextUser)
-        if (!emailEditedRef.current) {
-          setAccountEmail(trimValue(nextUser.email))
-        }
-
         const linkedFromSource =
           (orcidResult.status === 'fulfilled' && Boolean(orcidResult.value.linked)) ||
           Boolean(nextUser.orcid_id)
+        if (!emailEditedRef.current) {
+          setAccountEmail(resolveEditableAccountEmail({
+            email: nextUser.email,
+            orcidLinked: linkedFromSource,
+          }))
+        }
         const stored = loadStoredPersonalDetails(nextUser.id)
         const resolvedDraft = draftFromSources(nextUser, stored, linkedFromSource)
         const shouldPersistOrcidSeed =
@@ -672,6 +798,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         if (!draftEditedRef.current) {
           setDraft(resolvedDraft)
           setPrimaryAffiliationInput(sanitizeAffiliation(resolvedDraft.organisation))
+          setAffiliationEditorOpen(!Boolean(resolvedDraft.jobRoles[0] || resolvedDraft.affiliations[0] || resolvedDraft.country))
         }
 
         if (orcidResult.status === 'fulfilled') {
@@ -793,8 +920,22 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const orcidId = trimValue(orcidStatus?.orcid_id || user?.orcid_id)
   const orcidLinked = Boolean(orcidStatus?.linked || user?.orcid_id)
   const foundingMemberProfile = isFoundingMemberProfile({ user, orcidId })
-  const usesGeneratedOAuthEmail = isGeneratedOAuthEmail(accountEmail || user?.email)
-  const primaryAffiliationKey = sanitizeAffiliation(draft.organisation).toLowerCase()
+  const primaryAffiliationKey = sanitizeAffiliation(draft.organisation || draft.affiliations[0] || '').toLowerCase()
+  const accountSummaryEmail = resolveEditableAccountEmail({
+    email: user?.email,
+    orcidLinked,
+  })
+  const profileInitials = buildProfileInitials({
+    firstName: draft.firstName,
+    lastName: draft.lastName,
+    fallbackName: user?.name,
+  })
+  const journalByline = useMemo(() => {
+    const role = normalizeRole(draft.jobRoles[0] || draft.jobRole)
+    const affiliation = sanitizeAffiliation(draft.affiliations[0] || draft.organisation)
+    const country = trimValue(draft.country)
+    return [role, affiliation, country].filter(Boolean).join(', ')
+  }, [draft.affiliations, draft.country, draft.jobRole, draft.jobRoles, draft.organisation])
 
   const badges = useMemo(
     () =>
@@ -817,6 +958,148 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const onAccountEmailChange = (value: string) => {
     emailEditedRef.current = true
     setAccountEmail(value)
+  }
+
+  const onProfilePhotoSelected = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      return
+    }
+    if (!file.type.startsWith('image/')) {
+      setError('Choose an image file for profile photo.')
+      return
+    }
+    if (file.size > MAX_PROFILE_PHOTO_BYTES) {
+      setError('Choose an image under 2MB for profile photo.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result !== 'string' || !reader.result) {
+        return
+      }
+      draftEditedRef.current = true
+      setDraft((current) => ({
+        ...current,
+        profilePhotoDataUrl: reader.result as string,
+      }))
+      setError('')
+      setStatus('Profile photo updated. Save details to keep it.')
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const onRemoveProfilePhoto = () => {
+    draftEditedRef.current = true
+    setDraft((current) => ({
+      ...current,
+      profilePhotoDataUrl: '',
+    }))
+  }
+
+  const onAddJobRole = (value: string) => {
+    const clean = normalizeRole(value)
+    if (!clean) {
+      return
+    }
+    draftEditedRef.current = true
+    setDraft((current) => {
+      const nextRoles = normalizeJobRoles([clean, ...current.jobRoles])
+      return {
+        ...current,
+        jobRoles: nextRoles,
+        jobRole: nextRoles[0] || clean,
+      }
+    })
+    setJobRoleInput('')
+  }
+
+  const onRemoveJobRole = (value: string) => {
+    draftEditedRef.current = true
+    setDraft((current) => {
+      const nextRoles = normalizeJobRoles(current.jobRoles.filter((item) => item.toLowerCase() !== value.toLowerCase()))
+      return {
+        ...current,
+        jobRoles: nextRoles,
+        jobRole: nextRoles[0] || '',
+      }
+    })
+  }
+
+  const onAddAffiliation = (value: string, metadata?: AffiliationMetadataItem) => {
+    const clean = sanitizeAffiliation(value)
+    if (!clean) {
+      return
+    }
+    const metadataPayload = {
+      address: sanitizeAffiliation(metadata?.address),
+      city: sanitizeAffiliation(metadata?.city),
+      region: sanitizeAffiliation(metadata?.region),
+      postalCode: sanitizeAffiliation(metadata?.postalCode),
+      country: sanitizeAffiliation(metadata?.country),
+    }
+    const metadataAvailable = Boolean(
+      metadataPayload.address
+      || metadataPayload.city
+      || metadataPayload.region
+      || metadataPayload.postalCode
+      || metadataPayload.country,
+    )
+    const cacheKey = clean.toLowerCase()
+    draftEditedRef.current = true
+    setDraft((current) => {
+      const nextAffiliations = normalizeAffiliations([clean, ...current.affiliations])
+      return {
+        ...current,
+        affiliations: nextAffiliations,
+        organisation: nextAffiliations[0] || clean,
+        affiliationAddress: metadataAvailable ? (metadataPayload.address || current.affiliationAddress) : current.affiliationAddress,
+        affiliationCity: metadataAvailable ? (metadataPayload.city || current.affiliationCity) : current.affiliationCity,
+        affiliationRegion: metadataAvailable ? (metadataPayload.region || current.affiliationRegion) : current.affiliationRegion,
+        affiliationPostalCode: metadataAvailable ? (metadataPayload.postalCode || current.affiliationPostalCode) : current.affiliationPostalCode,
+        country: metadataAvailable ? (metadataPayload.country || current.country) : current.country,
+      }
+    })
+    if (metadataAvailable) {
+      setAffiliationMetadataByName((current) => ({
+        ...current,
+        [cacheKey]: {
+          address: metadataPayload.address,
+          city: metadataPayload.city,
+          region: metadataPayload.region,
+          postalCode: metadataPayload.postalCode,
+          country: metadataPayload.country,
+        },
+      }))
+    }
+    setPrimaryAffiliationInput('')
+    setPrimaryAffiliationSuggestions([])
+    setPrimaryAffiliationSuggestionsError('')
+  }
+
+  const onRemoveAffiliationEntry = (value: string) => {
+    const clean = sanitizeAffiliation(value)
+    if (!clean) {
+      return
+    }
+    draftEditedRef.current = true
+    setDraft((current) => {
+      const nextAffiliations = normalizeAffiliations(current.affiliations.filter((item) => item.toLowerCase() !== clean.toLowerCase()))
+      const nextPrimary = nextAffiliations[0] || ''
+      return {
+        ...current,
+        affiliations: nextAffiliations,
+        organisation: nextPrimary,
+      }
+    })
+    setAffiliationMetadataByName((current) => {
+      const next = { ...current }
+      delete next[clean.toLowerCase()]
+      return next
+    })
+    if (sanitizeAffiliation(primaryAffiliationInput).toLowerCase() === clean.toLowerCase()) {
+      setPrimaryAffiliationInput('')
+    }
   }
 
   const onAddPublicationAffiliation = (value: string, metadata?: AffiliationMetadataItem) => {
@@ -843,6 +1126,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setDraft((current) => ({
       ...current,
       publicationAffiliations: normalizeAffiliations([...current.publicationAffiliations, clean]),
+      affiliations: current.affiliations.length > 0 ? current.affiliations : [clean],
       organisation: sanitizeAffiliation(current.organisation) || clean,
       affiliationAddress: sanitizeAffiliation(current.affiliationAddress) || metadataPayload.address,
       affiliationCity: sanitizeAffiliation(current.affiliationCity) || metadataPayload.city,
@@ -967,15 +1251,15 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setDraft((current) => ({
       ...current,
       organisation: clean,
+      affiliations: normalizeAffiliations([
+        clean,
+        ...current.affiliations,
+      ]),
       affiliationAddress: metadata.address,
       affiliationCity: metadata.city,
       affiliationRegion: metadata.region,
       affiliationPostalCode: metadata.postalCode,
       country: metadata.country,
-      publicationAffiliations: normalizeAffiliations([
-        clean,
-        ...current.publicationAffiliations,
-      ]),
     }))
     setAffiliationMetadataByName((current) => ({
       ...current,
@@ -1002,6 +1286,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setDraft((current) => ({
       ...current,
       organisation: clean,
+      affiliations: normalizeAffiliations([
+        clean,
+        ...current.affiliations.filter((item) => item.toLowerCase() !== clean.toLowerCase()),
+      ]),
       affiliationAddress: metadata ? sanitizeAffiliation(metadata.address) : current.affiliationAddress,
       affiliationCity: metadata ? sanitizeAffiliation(metadata.city) : current.affiliationCity,
       affiliationRegion: metadata ? sanitizeAffiliation(metadata.region) : current.affiliationRegion,
@@ -1049,46 +1337,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     })
   }
 
-  const onAiSuggestPublicationAffiliations = async () => {
-    const seed = sanitizeAffiliation(
-      publicationAffiliationInput
-      || draft.organisation
-      || primaryAffiliationInput
-      || '',
-    )
-    if (!seed) {
-      setError('Type an affiliation first to generate publication affiliation suggestions.')
-      return
-    }
-    setError('')
-    setAiPublicationBusy(true)
-    try {
-      const ranked = (await fetchAffiliationSuggestions({ token, query: seed, limit: 8 })).slice(0, 3)
-      if (ranked.length === 0) {
-        setStatus('No publication affiliation suggestions found.')
-        return
-      }
-      for (const suggestion of ranked) {
-        onAddPublicationAffiliation(suggestion.name, {
-          address: suggestion.address || '',
-          city: suggestion.city || '',
-          region: suggestion.region || '',
-          postalCode: suggestion.postalCode || '',
-          country: suggestion.countryName || '',
-        })
-      }
-      setStatus(`AI assist added ${ranked.length} publication affiliation suggestion${ranked.length === 1 ? '' : 's'}.`)
-    } catch (lookupError) {
-      setError(
-        lookupError instanceof Error
-          ? lookupError.message
-          : 'AI assist could not suggest publication affiliations.',
-      )
-    } finally {
-      setAiPublicationBusy(false)
-    }
-  }
-
   const onDragStartPublicationAffiliation = (index: number) => {
     setDraggingPublicationAffiliationIndex(index)
   }
@@ -1122,22 +1370,27 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setDraggingPublicationAffiliationIndex(null)
   }
 
-  const onRemoveAffiliation = (value: string) => {
-    const wasPrimary = sanitizeAffiliation(draft.organisation).toLowerCase() === value.toLowerCase()
+  const onRemovePublicationAffiliation = (value: string) => {
+    const targetKey = sanitizeAffiliation(value).toLowerCase()
+    const wasPrimary = sanitizeAffiliation(draft.organisation).toLowerCase() === targetKey
     draftEditedRef.current = true
-    setDraft((current) => ({
-      ...current,
-      publicationAffiliations: current.publicationAffiliations.filter(
-        (item) => item.toLowerCase() !== value.toLowerCase(),
-      ),
-      organisation:
-        sanitizeAffiliation(current.organisation).toLowerCase() === value.toLowerCase()
-          ? ''
-          : current.organisation,
-    }))
+    setDraft((current) => {
+      const nextAffiliations = normalizeAffiliations(current.affiliations.filter((item) => item.toLowerCase() !== targetKey))
+      return {
+        ...current,
+        publicationAffiliations: current.publicationAffiliations.filter(
+          (item) => item.toLowerCase() !== targetKey,
+        ),
+        affiliations: nextAffiliations,
+        organisation:
+          sanitizeAffiliation(current.organisation).toLowerCase() === targetKey
+            ? (nextAffiliations[0] || '')
+            : current.organisation,
+      }
+    })
     setAffiliationMetadataByName((current) => {
       const next = { ...current }
-      delete next[value.toLowerCase()]
+      delete next[targetKey]
       return next
     })
     if (wasPrimary) {
@@ -1152,8 +1405,13 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     const stored = loadStoredPersonalDetails(user.id)
     const resetDraft = draftFromSources(user, stored, orcidLinked)
     setDraft(resetDraft)
+    setJobRoleInput('')
+    setAffiliationEditorOpen(!Boolean(resetDraft.jobRoles[0] || resetDraft.affiliations[0] || resetDraft.country))
     setPrimaryAffiliationInput(sanitizeAffiliation(resetDraft.organisation))
-    setAccountEmail(trimValue(user.email))
+    setAccountEmail(resolveEditableAccountEmail({
+      email: user.email,
+      orcidLinked,
+    }))
     setPrimaryAffiliationSuggestions([])
     setPrimaryAffiliationSuggestionsLoading(false)
     setPrimaryAffiliationSuggestionsError('')
@@ -1164,7 +1422,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setAffiliationMetadataByName({})
     setShowPublicationAffiliationComposer(false)
     setDraggingPublicationAffiliationIndex(null)
-    setAiPublicationBusy(false)
     setPrimaryAffiliationAddressResolving(false)
     setPrimaryAffiliationAddressError('')
     setLastSavedAt(stored?.updatedAt ?? null)
@@ -1189,7 +1446,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     const cleanDraft = sanitizeDraft(draft)
     const fullName = [cleanDraft.firstName, cleanDraft.lastName].filter(Boolean).join(' ').trim()
     const cleanEmail = trimValue(accountEmail).toLowerCase()
-    if (!cleanEmail) {
+    const existingAccountEmail = trimValue(user.email).toLowerCase()
+    if (!cleanEmail && !isGeneratedOAuthEmail(existingAccountEmail)) {
       setError('Account email is required.')
       return
     }
@@ -1204,7 +1462,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       if (fullName && fullName !== trimValue(user.name)) {
         updatePayload.name = fullName
       }
-      if (cleanEmail && cleanEmail !== trimValue(user.email).toLowerCase()) {
+      if (cleanEmail && cleanEmail !== existingAccountEmail) {
         updatePayload.email = cleanEmail
       }
       if (Object.keys(updatePayload).length > 0) {
@@ -1219,7 +1477,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         updatedAt: savedAt,
       })
       setDraft(cleanDraft)
-      setAccountEmail(trimValue(nextUser.email))
+      setAccountEmail(resolveEditableAccountEmail({
+        email: nextUser.email,
+        orcidLinked: Boolean(orcidStatus?.linked || nextUser.orcid_id),
+      }))
       setLastSavedAt(savedAt)
       setStatus(
         updatePayload.email
@@ -1271,6 +1532,47 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
             <div className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2 flex items-start gap-3 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2.5">
+                  {draft.profilePhotoDataUrl ? (
+                    <img
+                      src={draft.profilePhotoDataUrl}
+                      alt="Profile photo"
+                      className="h-16 w-16 rounded-full border border-[hsl(var(--tone-neutral-300))] object-cover"
+                    />
+                  ) : (
+                    <div className="inline-flex h-16 w-16 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-lg font-semibold text-[hsl(var(--tone-neutral-700))]">
+                      {profileInitials}
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Profile photo</p>
+                    <input
+                      ref={profilePhotoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={onProfilePhotoSelected}
+                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => profilePhotoInputRef.current?.click()}
+                      >
+                        <Upload className="mr-1.5 h-4 w-4" />
+                        Upload photo
+                      </Button>
+                      {draft.profilePhotoDataUrl ? (
+                        <Button type="button" size="sm" variant="outline" onClick={onRemoveProfilePhoto}>
+                          <Trash2 className="mr-1.5 h-4 w-4" />
+                          Remove
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
                 <label className="space-y-1 sm:col-span-2">
                   <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Account email</span>
                   <Input
@@ -1280,11 +1582,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     autoComplete="email"
                     disabled={saving}
                   />
-                  {usesGeneratedOAuthEmail ? (
-                    <p className="text-micro text-[hsl(var(--tone-warning-700))]">
-                      Replace the temporary ORCID sign-in email with your real email account.
-                    </p>
-                  ) : null}
                 </label>
 
                 <div className="grid gap-3 sm:col-span-2 sm:grid-cols-[140px_minmax(0,1fr)_minmax(0,1fr)]">
@@ -1327,7 +1624,15 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 </div>
 
                 <label className="space-y-1 sm:col-span-2">
-                  <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Website</span>
+                  <span className="inline-flex items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                    <span
+                      aria-hidden
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-caption font-semibold text-[hsl(var(--tone-neutral-700))]"
+                    >
+                      W
+                    </span>
+                    Website
+                  </span>
                   <Input
                     value={draft.website}
                     onChange={(event) => onFieldChange('website', event.target.value)}
@@ -1337,7 +1642,15 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 </label>
 
                 <label className="space-y-1 sm:col-span-2">
-                  <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">ResearchGate page</span>
+                  <span className="inline-flex items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                    <span
+                      aria-hidden
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-[0.58rem] font-semibold text-[hsl(var(--tone-neutral-700))]"
+                    >
+                      RG
+                    </span>
+                    ResearchGate page
+                  </span>
                   <Input
                     value={draft.researchGateUrl}
                     onChange={(event) => onFieldChange('researchGateUrl', event.target.value)}
@@ -1347,7 +1660,15 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 </label>
 
                 <label className="space-y-1 sm:col-span-2">
-                  <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Twitter/X handle</span>
+                  <span className="inline-flex items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
+                    <span
+                      aria-hidden
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-caption font-semibold text-[hsl(var(--tone-neutral-700))]"
+                    >
+                      X
+                    </span>
+                    Twitter/X handle
+                  </span>
                   <Input
                     value={draft.xHandle}
                     onChange={(event) => onFieldChange('xHandle', event.target.value)}
@@ -1363,7 +1684,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Account</p>
                 <div className="mt-2 space-y-1.5 text-sm">
                   <p className="text-[hsl(var(--tone-neutral-700))]">
-                    Email: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{renderValue(user?.email)}</span>
+                    Email: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{renderValue(accountSummaryEmail)}</span>
                   </p>
                   <p className="text-[hsl(var(--tone-neutral-700))]">
                     Member since: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{formatDate(user?.created_at)}</span>
@@ -1410,9 +1731,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     </span>
                   ))}
                 </div>
-                <p className="mt-2 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">
-                  Badge rules are plumbed and ready for status policy.
-                </p>
               </div>
             </aside>
           </div>
@@ -1425,134 +1743,224 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           <CardTitle className="text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
             Affiliation
           </CardTitle>
-          <p className="text-xs text-[hsl(var(--tone-neutral-600))]">
-            Capture your role and affiliation details used across outputs.
-          </p>
         </CardHeader>
         <CardContent className="space-y-3 pt-3 text-sm">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1 sm:col-span-2">
-              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Job role</span>
-              <Input
-                value={draft.jobRole}
-                onChange={(event) => onFieldChange('jobRole', event.target.value)}
-                placeholder="e.g., Professor, Consultant, Postdoctoral researcher"
-                autoComplete="organization-title"
-              />
-            </label>
+          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2.5">
+            <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Journal style line</p>
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium text-[hsl(var(--tone-neutral-900))]">
+                {journalByline || 'Add job roles and affiliations to build your author line.'}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setAffiliationEditorOpen((current) => !current)}
+              >
+                {affiliationEditorOpen ? 'Hide editor' : 'Edit'}
+              </Button>
+            </div>
+          </div>
 
-            <label className="space-y-1 sm:col-span-2">
-              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Affiliation</span>
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  value={primaryAffiliationInput}
-                  onChange={(event) => {
-                    const next = event.target.value
-                    setPrimaryAffiliationInput(next)
-                    onFieldChange('organisation', next)
-                  }}
-                  onBlur={() => {
-                    void onResolvePrimaryAffiliationFromCurrent()
-                  }}
-                  placeholder="Type institution name for suggestions"
-                  autoComplete="organization"
-                />
+          {affiliationEditorOpen ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1 sm:col-span-2">
+                <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Add job role</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    value={jobRoleInput}
+                    onChange={(event) => setJobRoleInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        onAddJobRole(jobRoleInput)
+                      }
+                    }}
+                    placeholder="e.g., British Heart Foundation Fellow"
+                    autoComplete="organization-title"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => onAddJobRole(jobRoleInput)}
+                    disabled={!normalizeRole(jobRoleInput)}
+                  >
+                    Add role
+                  </Button>
+                </div>
               </div>
-              {primaryAffiliationSuggestionsLoading ? (
-                <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Looking up affiliation suggestions...</p>
-              ) : null}
-              {primaryAffiliationSuggestions.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2">
-                  {primaryAffiliationSuggestions.map((suggestion) => (
-                    <button
-                      key={`primary:${suggestion.source}:${suggestion.name}:${suggestion.countryCode || ''}`}
-                      type="button"
-                      onClick={() => {
-                        void onApplyPrimaryAffiliationSuggestion(suggestion)
-                      }}
-                      className="rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-800))]"
-                      title={suggestion.label}
-                    >
-                      {suggestion.label}
-                    </button>
+
+              {draft.jobRoles.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2 sm:col-span-2">
+                  {draft.jobRoles.map((role, index) => (
+                    <div key={role} className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))]">
+                      <span>{role}</span>
+                      {index === 0 ? (
+                        <span className="rounded-full border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-1.5 py-0.5 text-[0.58rem] uppercase tracking-[0.06em] text-[hsl(var(--tone-positive-700))]">
+                          Lead
+                        </span>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="text-[hsl(var(--tone-neutral-500))] transition-colors hover:text-[hsl(var(--tone-danger-700))]"
+                        onClick={() => onRemoveJobRole(role)}
+                        aria-label={`Remove role ${role}`}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   ))}
                 </div>
               ) : null}
-              {primaryAffiliationSuggestionsError ? (
-                <p className="text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationSuggestionsError}</p>
-              ) : (
-                <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
-                  Lookup ranks OpenAlex and ROR institution matches, then resolves fuller address details using OpenStreetMap.
-                </p>
-              )}
-              {primaryAffiliationAddressResolving ? (
-                <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Resolving full address details...</p>
+
+              <label className="space-y-1 sm:col-span-2">
+                <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Affiliation lookup</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    value={primaryAffiliationInput}
+                    onChange={(event) => {
+                      const next = event.target.value
+                      setPrimaryAffiliationInput(next)
+                      onFieldChange('organisation', next)
+                    }}
+                    onBlur={() => {
+                      void onResolvePrimaryAffiliationFromCurrent()
+                    }}
+                    placeholder="Type institution name for suggestions"
+                    autoComplete="organization"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => onAddAffiliation(primaryAffiliationInput)}
+                    disabled={!sanitizeAffiliation(primaryAffiliationInput)}
+                  >
+                    Add affiliation
+                  </Button>
+                </div>
+                {primaryAffiliationSuggestionsLoading ? (
+                  <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Looking up affiliation suggestions...</p>
+                ) : null}
+                {primaryAffiliationSuggestions.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2">
+                    {primaryAffiliationSuggestions.map((suggestion) => (
+                      <button
+                        key={`primary:${suggestion.source}:${suggestion.name}:${suggestion.countryCode || ''}`}
+                        type="button"
+                        onClick={() => {
+                          void onApplyPrimaryAffiliationSuggestion(suggestion)
+                        }}
+                        className="rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-800))]"
+                        title={suggestion.label}
+                      >
+                        {suggestion.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {primaryAffiliationSuggestionsError ? (
+                  <p className="text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationSuggestionsError}</p>
+                ) : null}
+                {primaryAffiliationAddressResolving ? (
+                  <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Resolving full address details...</p>
+                ) : null}
+                {primaryAffiliationAddressError ? (
+                  <p className="text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationAddressError}</p>
+                ) : null}
+              </label>
+
+              {draft.affiliations.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2 sm:col-span-2">
+                  {draft.affiliations.map((item, index) => (
+                    <div key={`aff-${item}`} className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))]">
+                      <span>{item}</span>
+                      {index === 0 ? (
+                        <span className="rounded-full border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-1.5 py-0.5 text-[0.58rem] uppercase tracking-[0.06em] text-[hsl(var(--tone-positive-700))]">
+                          Primary
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="text-[hsl(var(--tone-neutral-600))] transition-colors hover:text-[hsl(var(--tone-accent-700))]"
+                          onClick={() => onSetPrimaryAffiliation(item)}
+                        >
+                          Set primary
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="text-[hsl(var(--tone-neutral-500))] transition-colors hover:text-[hsl(var(--tone-danger-700))]"
+                        onClick={() => onRemoveAffiliationEntry(item)}
+                        aria-label={`Remove affiliation ${item}`}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
               ) : null}
-              {primaryAffiliationAddressError ? (
-                <p className="text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationAddressError}</p>
-              ) : null}
-            </label>
 
-            <label className="space-y-1 sm:col-span-2">
-              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Address line 1</span>
-              <Input
-                value={draft.affiliationAddress}
-                onChange={(event) => onFieldChange('affiliationAddress', event.target.value)}
-                placeholder="Building, street, or campus"
-                autoComplete="street-address"
-              />
-            </label>
+              <label className="space-y-1 sm:col-span-2">
+                <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Address line 1</span>
+                <Input
+                  value={draft.affiliationAddress}
+                  onChange={(event) => onFieldChange('affiliationAddress', event.target.value)}
+                  placeholder="Building, street, or campus"
+                  autoComplete="street-address"
+                />
+              </label>
 
-            <label className="space-y-1">
-              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">City</span>
-              <Input
-                value={draft.affiliationCity}
-                onChange={(event) => onFieldChange('affiliationCity', event.target.value)}
-                placeholder="City"
-                autoComplete="address-level2"
-              />
-            </label>
+              <label className="space-y-1">
+                <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">City</span>
+                <Input
+                  value={draft.affiliationCity}
+                  onChange={(event) => onFieldChange('affiliationCity', event.target.value)}
+                  placeholder="City"
+                  autoComplete="address-level2"
+                />
+              </label>
 
-            <label className="space-y-1">
-              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Region / state</span>
-              <Input
-                value={draft.affiliationRegion}
-                onChange={(event) => onFieldChange('affiliationRegion', event.target.value)}
-                placeholder="Region or state"
-                autoComplete="address-level1"
-              />
-            </label>
+              <label className="space-y-1">
+                <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Region / state</span>
+                <Input
+                  value={draft.affiliationRegion}
+                  onChange={(event) => onFieldChange('affiliationRegion', event.target.value)}
+                  placeholder="Region or state"
+                  autoComplete="address-level1"
+                />
+              </label>
 
-            <label className="space-y-1">
-              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Postal code</span>
-              <Input
-                value={draft.affiliationPostalCode}
-                onChange={(event) => onFieldChange('affiliationPostalCode', event.target.value)}
-                placeholder="Postal code"
-                autoComplete="postal-code"
-              />
-            </label>
+              <label className="space-y-1">
+                <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Postal code</span>
+                <Input
+                  value={draft.affiliationPostalCode}
+                  onChange={(event) => onFieldChange('affiliationPostalCode', event.target.value)}
+                  placeholder="Postal code"
+                  autoComplete="postal-code"
+                />
+              </label>
 
-            <label className="space-y-1">
-              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Country</span>
-              <Input
-                value={draft.country}
-                onChange={(event) => onFieldChange('country', event.target.value)}
-                placeholder="Country"
-                autoComplete="country-name"
-              />
-            </label>
+              <label className="space-y-1">
+                <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Country</span>
+                <Input
+                  value={draft.country}
+                  onChange={(event) => onFieldChange('country', event.target.value)}
+                  placeholder="Country"
+                  autoComplete="country-name"
+                />
+              </label>
 
-            <label className="space-y-1 sm:col-span-2">
-              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Department</span>
-              <Input
-                value={draft.department}
-                onChange={(event) => onFieldChange('department', event.target.value)}
-                placeholder="Department"
-                autoComplete="organization-title"
-              />
-            </label>
-          </div>
+              <label className="space-y-1 sm:col-span-2">
+                <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Department</span>
+                <Input
+                  value={draft.department}
+                  onChange={(event) => onFieldChange('department', event.target.value)}
+                  placeholder="Department"
+                  autoComplete="organization-title"
+                />
+              </label>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -1574,17 +1982,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             >
               <Plus className="mr-1.5 h-4 w-4" />
               {showPublicationAffiliationComposer ? 'Hide add form' : 'Add new'}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                void onAiSuggestPublicationAffiliations()
-              }}
-              disabled={aiPublicationBusy}
-            >
-              {aiPublicationBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1.5 h-4 w-4" />}
-              AI suggest
             </Button>
           </div>
 
@@ -1681,7 +2078,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     )}
                     <button
                       type="button"
-                      onClick={() => onRemoveAffiliation(item)}
+                      onClick={() => onRemovePublicationAffiliation(item)}
                       className="ml-auto text-[hsl(var(--tone-neutral-500))] transition-colors hover:text-[hsl(var(--tone-danger-700))]"
                       aria-label={`Remove ${item}`}
                     >
@@ -1699,11 +2096,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
           {publicationAffiliationSuggestionsError ? (
             <p className="text-micro text-[hsl(var(--tone-warning-700))]">{publicationAffiliationSuggestionsError}</p>
-          ) : (
-            <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
-              AI suggestions use OpenAlex and ROR institution lookup, with OpenStreetMap fallback for richer address details.
-            </p>
-          )}
+          ) : null}
         </CardContent>
       </Card>
 
@@ -1738,3 +2131,4 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     </section>
   )
 }
+

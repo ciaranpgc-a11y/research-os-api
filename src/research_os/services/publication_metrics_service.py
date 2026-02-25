@@ -32,7 +32,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 17
+TOP_METRICS_SCHEMA_VERSION = 19
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 FIELD_PERCENTILE_THRESHOLDS = [50, 75, 90, 95, 99]
 
@@ -1292,6 +1292,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     ).all()
     author_count_by_work: dict[str, int] = defaultdict(int)
     user_author_position_by_work: dict[str, int] = {}
+    collaborator_keys_by_work: dict[str, set[str]] = defaultdict(set)
+    collaborator_work_count_by_key: dict[str, int] = defaultdict(int)
     for link in authorship_rows:
         work_id = str(link.work_id)
         author_count_by_work[work_id] = author_count_by_work.get(work_id, 0) + 1
@@ -1299,6 +1301,11 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             parsed_order = _safe_int(link.author_order)
             if parsed_order is not None and parsed_order > 0:
                 user_author_position_by_work[work_id] = int(parsed_order)
+        if not bool(link.is_user):
+            collaborator_key = f"author:{str(link.author_id)}"
+            if collaborator_key not in collaborator_keys_by_work[work_id]:
+                collaborator_keys_by_work[work_id].add(collaborator_key)
+                collaborator_work_count_by_key[collaborator_key] += 1
 
     def _authorship_role_for_work(*, work_id: str) -> str | None:
         position = user_author_position_by_work.get(work_id)
@@ -2024,6 +2031,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     authorship_total_papers = max(0, int(total_publications))
     authorship_known_papers = max(0, authorship_total_papers - int(author_role_unknown))
     first_authorship_count = int(author_role_counts.get("first", 0) or 0)
+    second_authorship_count = int(author_role_counts.get("second", 0) or 0)
     senior_authorship_count = int(author_role_counts.get("last", 0) or 0)
     leadership_count = max(0, first_authorship_count + senior_authorship_count)
 
@@ -2033,6 +2041,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         return round((float(max(0, int(count))) / float(authorship_total_papers)) * 100.0, 1)
 
     first_authorship_pct = _pct_of_total_publications(first_authorship_count)
+    second_authorship_pct = _pct_of_total_publications(second_authorship_count)
     senior_authorship_pct = _pct_of_total_publications(senior_authorship_count)
     leadership_index_pct = _pct_of_total_publications(leadership_count)
     author_positions_known = sorted(
@@ -2095,6 +2104,151 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         )
     )
     authorship_structure_publications = authorship_structure_publications[:100]
+    work_by_id: dict[str, Work] = {str(work.id): work for work in works}
+
+    def _clean_text(value: Any) -> str:
+        return " ".join(str(value or "").strip().split())
+
+    def _normalize_country_token(value: Any) -> str | None:
+        clean = _clean_text(value)
+        if not clean:
+            return None
+        if len(clean) <= 3 and clean.isalpha():
+            return clean.upper()
+        return clean
+
+    if not collaborator_work_count_by_key:
+        normalized_user_name = _clean_text(str(user.name or "")).casefold()
+        for work in works:
+            authors_json = work.authors_json if isinstance(work.authors_json, list) else []
+            if len(authors_json) <= 1:
+                continue
+            work_id = str(work.id)
+            for author in authors_json:
+                if not isinstance(author, dict):
+                    continue
+                author_name = _clean_text(author.get("name"))
+                if not author_name:
+                    continue
+                if normalized_user_name and author_name.casefold() == normalized_user_name:
+                    continue
+                collaborator_key = f"name:{author_name.casefold()}"
+                if collaborator_key in collaborator_keys_by_work[work_id]:
+                    continue
+                collaborator_keys_by_work[work_id].add(collaborator_key)
+                collaborator_work_count_by_key[collaborator_key] += 1
+
+    collaborative_work_ids: set[str] = {
+        work_id for work_id, keys in collaborator_keys_by_work.items() if keys
+    }
+    if not collaborative_work_ids:
+        for work in works:
+            authors_json = work.authors_json if isinstance(work.authors_json, list) else []
+            if len(authors_json) > 1:
+                collaborative_work_ids.add(str(work.id))
+
+    institution_keys_global: set[str] = set()
+    country_keys_global: set[str] = set()
+    institution_count_by_work: dict[str, int] = {}
+    country_count_by_work: dict[str, int] = {}
+    for work_id in collaborative_work_ids:
+        work = work_by_id.get(work_id)
+        if work is None:
+            continue
+        work_institutions: set[str] = set()
+        work_countries: set[str] = set()
+
+        affiliations_json = work.affiliations_json if isinstance(work.affiliations_json, list) else []
+        for affiliation in affiliations_json:
+            if not isinstance(affiliation, dict):
+                continue
+            institution_name = _clean_text(
+                affiliation.get("name")
+                or affiliation.get("display_name")
+                or affiliation.get("institution_name")
+                or affiliation.get("institution")
+            )
+            if institution_name:
+                work_institutions.add(institution_name.casefold())
+            country_token = _normalize_country_token(
+                affiliation.get("country_code")
+                or affiliation.get("country_name")
+                or affiliation.get("country")
+            )
+            if country_token:
+                work_countries.add(country_token.casefold())
+
+        if not work_institutions:
+            authors_json = work.authors_json if isinstance(work.authors_json, list) else []
+            for author in authors_json:
+                if not isinstance(author, dict):
+                    continue
+                affiliations = author.get("affiliations")
+                if not isinstance(affiliations, list):
+                    continue
+                for affiliation_name in affiliations:
+                    institution_name = _clean_text(affiliation_name)
+                    if institution_name:
+                        work_institutions.add(institution_name.casefold())
+
+        institution_count_by_work[work_id] = len(work_institutions)
+        country_count_by_work[work_id] = len(work_countries)
+        institution_keys_global.update(work_institutions)
+        country_keys_global.update(work_countries)
+
+    unique_collaborators_count = len(collaborator_work_count_by_key)
+    repeat_collaborator_keys = {
+        collaborator_key
+        for collaborator_key, shared_count in collaborator_work_count_by_key.items()
+        if int(shared_count or 0) >= 2
+    }
+    repeat_collaborators_count = len(repeat_collaborator_keys)
+    repeat_collaborator_rate_pct = (
+        round((repeat_collaborators_count / float(unique_collaborators_count)) * 100.0, 1)
+        if unique_collaborators_count > 0
+        else 0.0
+    )
+    unique_institutions_count = len(institution_keys_global)
+    unique_countries_count = len(country_keys_global)
+    collaborative_works_count = len(collaborative_work_ids)
+
+    collaboration_structure_publications = []
+    for row in per_work_rows:
+        work_id = str(row.get("work_id") or "")
+        collaborator_keys = collaborator_keys_by_work.get(work_id, set())
+        collaborator_count = len(collaborator_keys)
+        if collaborator_count <= 0:
+            continue
+        repeat_in_work = sum(1 for collaborator_key in collaborator_keys if collaborator_key in repeat_collaborator_keys)
+        collaboration_structure_publications.append(
+            _publication_item_with_links(
+                {
+                    "work_id": row.get("work_id"),
+                    "title": row.get("title"),
+                    "doi": row.get("doi"),
+                    "year": row.get("year"),
+                    "journal": row.get("journal"),
+                    "citations_lifetime": int(row.get("citations_lifetime") or 0),
+                    "collaborators_in_work": collaborator_count,
+                    "repeat_collaborators_in_work": repeat_in_work,
+                    "institutions_in_work": int(institution_count_by_work.get(work_id, 0)),
+                    "countries_in_work": int(country_count_by_work.get(work_id, 0)),
+                    "confidence_score": row.get("confidence_score"),
+                    "confidence_label": row.get("confidence_label"),
+                    "match_source": row.get("match_source"),
+                    "match_method": row.get("match_method"),
+                }
+            )
+        )
+    collaboration_structure_publications.sort(
+        key=lambda item: (
+            -max(0, int(_safe_int(item.get("collaborators_in_work")) or 0)),
+            -max(0, int(_safe_int(item.get("repeat_collaborators_in_work")) or 0)),
+            -max(0, int(_safe_int(item.get("citations_lifetime")) or 0)),
+            str(item.get("title") or "").lower(),
+        )
+    )
+    collaboration_structure_publications = collaboration_structure_publications[:100]
     last5_publication_values = [
         max(0, int(publication_counts_by_year.get(year, 0))) for year in last5_complete_years
     ]
@@ -2444,9 +2598,21 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         data_sources=["OpenAlex"] if "OpenAlex" in data_sources else data_sources,
         computation=(
             "FirstAuthorship% = first-authored papers / total papers * 100; "
+            "SecondAuthorship% = second-authored papers / total papers * 100; "
             "SeniorAuthorship% = last-authored papers / total papers * 100; "
             "LeadershipIndex% = (first + last authored papers) / total papers * 100; "
             "MedianAuthorPosition = median(user author_order where available)"
+        ),
+    )
+    collaboration_tooltip, collaboration_tooltip_details = _build_tooltip(
+        definition=(
+            "What is this: collaboration network breadth and repeat-collaboration structure."
+        ),
+        data_sources=["OpenAlex", "ORCID"] if "OpenAlex" in data_sources else data_sources,
+        computation=(
+            "UniqueCollaborators = distinct non-user coauthors across works; "
+            "RepeatCollaboratorRate% = collaborators with >=2 shared works / unique collaborators * 100; "
+            "Institutions and Countries = distinct affiliation entities across collaborative works."
         ),
     )
 
@@ -2857,11 +3023,13 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             chart_type="authorship_structure",
             chart_data={
                 "first_authorship_pct": first_authorship_pct,
+                "second_authorship_pct": second_authorship_pct,
                 "senior_authorship_pct": senior_authorship_pct,
                 "leadership_index_pct": leadership_index_pct,
                 "median_author_position": median_author_position,
                 "median_author_position_display": median_author_position_display,
                 "first_authorship_count": first_authorship_count,
+                "second_authorship_count": second_authorship_count,
                 "senior_authorship_count": senior_authorship_count,
                 "leadership_count": leadership_count,
                 "known_role_count": authorship_known_papers,
@@ -2874,6 +3042,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             unit="percent",
             sparkline=[
                 first_authorship_pct,
+                second_authorship_pct,
                 senior_authorship_pct,
                 leadership_index_pct,
             ],
@@ -2896,16 +3065,71 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "metadata": {
                     "intermediate_values": {
                         "first_authorship_pct": first_authorship_pct,
+                        "second_authorship_pct": second_authorship_pct,
                         "senior_authorship_pct": senior_authorship_pct,
                         "leadership_index_pct": leadership_index_pct,
                         "median_author_position": median_author_position,
                         "first_authorship_count": first_authorship_count,
+                        "second_authorship_count": second_authorship_count,
                         "senior_authorship_count": senior_authorship_count,
                         "leadership_count": leadership_count,
                         "known_role_count": authorship_known_papers,
                         "unknown_role_count": int(author_role_unknown),
                         "known_position_count": len(author_positions_known),
                         "total_papers": authorship_total_papers,
+                    }
+                },
+            },
+        ),
+        _metric_tile(
+            key="collaboration_structure",
+            label="Collaboration structure",
+            value=float(unique_collaborators_count),
+            value_display=_format_int(unique_collaborators_count),
+            subtext="Unique collaborators",
+            badge={"label": "", "severity": "neutral"},
+            chart_type="collaboration_structure",
+            chart_data={
+                "unique_collaborators": int(unique_collaborators_count),
+                "repeat_collaborator_rate_pct": float(repeat_collaborator_rate_pct),
+                "repeat_collaborators": int(repeat_collaborators_count),
+                "institutions": int(unique_institutions_count),
+                "countries": int(unique_countries_count),
+                "collaborative_works": int(collaborative_works_count),
+            },
+            delta_value=None,
+            delta_display=None,
+            unit="count",
+            sparkline=[
+                float(unique_collaborators_count),
+                float(repeat_collaborator_rate_pct),
+                float(unique_institutions_count),
+                float(unique_countries_count),
+            ],
+            tooltip=collaboration_tooltip,
+            tooltip_details=collaboration_tooltip_details,
+            data_source=["OpenAlex", "ORCID"] if "OpenAlex" in data_sources else data_sources,
+            confidence_score=_confidence_score_from_publications(collaboration_structure_publications),
+            stability="stable" if unique_collaborators_count > 0 else "unstable",
+            drilldown={
+                "title": "Collaboration structure",
+                "definition": (
+                    "Breadth and recurrence of your collaborator network, plus affiliation diversity."
+                ),
+                "formula": (
+                    "RepeatCollaboratorRate = collaborators with >=2 shared works / "
+                    "unique collaborators * 100"
+                ),
+                "confidence_note": _confidence_note(),
+                "publications": collaboration_structure_publications,
+                "metadata": {
+                    "intermediate_values": {
+                        "unique_collaborators": int(unique_collaborators_count),
+                        "repeat_collaborator_rate_pct": float(repeat_collaborator_rate_pct),
+                        "repeat_collaborators": int(repeat_collaborators_count),
+                        "institutions": int(unique_institutions_count),
+                        "countries": int(unique_countries_count),
+                        "collaborative_works": int(collaborative_works_count),
                     }
                 },
             },
@@ -2932,7 +3156,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         )
 
     return {
-        "tiles": tiles[:8],
+        "tiles": tiles[:10],
         "data_sources": data_sources,
         "data_last_refreshed": now.isoformat(),
         "metadata": {
@@ -2958,8 +3182,17 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "authorship_composition_pct": _series_to_sparkline(
                     [
                         first_authorship_pct,
+                        second_authorship_pct,
                         senior_authorship_pct,
                         leadership_index_pct,
+                    ]
+                ),
+                "collaboration_structure": _series_to_sparkline(
+                    [
+                        float(unique_collaborators_count),
+                        float(repeat_collaborator_rate_pct),
+                        float(unique_institutions_count),
+                        float(unique_countries_count),
                     ]
                 ),
                 "concentration_risk_12m": _series_to_sparkline(concentration_series),
