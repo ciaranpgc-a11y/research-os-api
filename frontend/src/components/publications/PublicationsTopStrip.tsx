@@ -1571,7 +1571,7 @@ function FieldPercentilePanel({
     ? Math.max(0, Math.round(Number(countAboveRaw)))
     : Math.round((shareAbove / 100) * evaluatedPapers)
   const barLabel = `>= ${threshold}th`
-  const heightPct = shareAbove <= 0 ? 3 : Math.max(6, shareAbove)
+  const heightPct = Math.max(0, Math.min(100, shareAbove))
   const animationKey = useMemo(
     () => `${threshold}-${shareAbove.toFixed(2)}-${evaluatedPapers}`,
     [evaluatedPapers, shareAbove, threshold],

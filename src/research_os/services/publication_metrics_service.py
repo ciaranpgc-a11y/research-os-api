@@ -1861,18 +1861,19 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     influential_history_values: list[int] = []
     if publication_counts_by_year:
         start_year = int(min(publication_counts_by_year.keys()))
-        end_year = int(max(max(publication_counts_by_year.keys()), now.year))
+        end_year = int(max(publication_counts_by_year.keys()))
         influential_history_years = list(range(start_year, end_year + 1))
-        influential_history_values = [
-            max(0, int(influence_by_publication_year.get(year, 0)))
-            for year in influential_history_years
-        ]
     elif influence_by_publication_year:
         influential_history_years = sorted(int(year) for year in influence_by_publication_year.keys())
-        influential_history_values = [
-            max(0, int(influence_by_publication_year.get(year, 0)))
-            for year in influential_history_years
-        ]
+    if influential_history_years:
+        running_total = 0
+        influential_history_values = []
+        for index, year in enumerate(influential_history_years):
+            additions = max(0, int(influence_by_publication_year.get(year, 0)))
+            if index == 0 and unknown_year_influential_citations > 0:
+                additions += int(unknown_year_influential_citations)
+            running_total += additions
+            influential_history_values.append(running_total)
     uncited_publications_count = int(
         sum(1 for row in per_work_rows if int(row.get("citations_lifetime") or 0) <= 0)
     )
