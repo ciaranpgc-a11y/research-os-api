@@ -738,8 +738,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [affiliationSaveFlashActive, setAffiliationSaveFlashActive] = useState(false)
   const [draggingJobRoleIndex, setDraggingJobRoleIndex] = useState<number | null>(null)
   const [jobRoleDropTargetIndex, setJobRoleDropTargetIndex] = useState<number | null>(null)
+  const [jobRoleDropFlashIndex, setJobRoleDropFlashIndex] = useState<number | null>(null)
   const [draggingPublicationAffiliationIndex, setDraggingPublicationAffiliationIndex] = useState<number | null>(null)
   const [publicationAffiliationDropTargetIndex, setPublicationAffiliationDropTargetIndex] = useState<number | null>(null)
+  const [publicationAffiliationDropFlashIndex, setPublicationAffiliationDropFlashIndex] = useState<number | null>(null)
   const [primaryAffiliationAddressResolving, setPrimaryAffiliationAddressResolving] = useState(false)
   const [primaryAffiliationAddressError, setPrimaryAffiliationAddressError] = useState('')
   const [loading, setLoading] = useState(Boolean(fixture?.loading ?? !fixture))
@@ -758,6 +760,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const jobRoleInputRefs = useRef<Array<HTMLInputElement | null>>([])
   const affiliationSummaryToggleRef = useRef<HTMLButtonElement | null>(null)
   const affiliationSaveFlashTimerRef = useRef<number | null>(null)
+  const jobRoleDropFlashTimerRef = useRef<number | null>(null)
+  const publicationAffiliationDropFlashTimerRef = useRef<number | null>(null)
   const profilePhotoInputRef = useRef<HTMLInputElement | null>(null)
   const profilePhotoFrameRef = useRef<HTMLButtonElement | null>(null)
   const profilePhotoDraggingRef = useRef(false)
@@ -776,6 +780,30 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       setAffiliationSaveFlashActive(false)
       affiliationSaveFlashTimerRef.current = null
     }, 1400)
+  }
+
+  const triggerJobRoleDropFlash = (index: number) => {
+    if (jobRoleDropFlashTimerRef.current !== null) {
+      window.clearTimeout(jobRoleDropFlashTimerRef.current)
+      jobRoleDropFlashTimerRef.current = null
+    }
+    setJobRoleDropFlashIndex(index)
+    jobRoleDropFlashTimerRef.current = window.setTimeout(() => {
+      setJobRoleDropFlashIndex(null)
+      jobRoleDropFlashTimerRef.current = null
+    }, 850)
+  }
+
+  const triggerPublicationAffiliationDropFlash = (index: number) => {
+    if (publicationAffiliationDropFlashTimerRef.current !== null) {
+      window.clearTimeout(publicationAffiliationDropFlashTimerRef.current)
+      publicationAffiliationDropFlashTimerRef.current = null
+    }
+    setPublicationAffiliationDropFlashIndex(index)
+    publicationAffiliationDropFlashTimerRef.current = window.setTimeout(() => {
+      setPublicationAffiliationDropFlashIndex(null)
+      publicationAffiliationDropFlashTimerRef.current = null
+    }, 850)
   }
 
   const runAffiliationActionPreservingPagePosition = (action: () => void | Promise<unknown>) => {
@@ -857,8 +885,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     }))
     setDraggingJobRoleIndex(null)
     setJobRoleDropTargetIndex(null)
+    setJobRoleDropFlashIndex(null)
     setDraggingPublicationAffiliationIndex(null)
     setPublicationAffiliationDropTargetIndex(null)
+    setPublicationAffiliationDropFlashIndex(null)
     setPrimaryAffiliationAddressResolving(false)
     setPrimaryAffiliationAddressError('')
     setLoading(Boolean(fixture?.loading))
@@ -877,6 +907,14 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       window.clearTimeout(affiliationSaveFlashTimerRef.current)
       affiliationSaveFlashTimerRef.current = null
     }
+    if (jobRoleDropFlashTimerRef.current !== null) {
+      window.clearTimeout(jobRoleDropFlashTimerRef.current)
+      jobRoleDropFlashTimerRef.current = null
+    }
+    if (publicationAffiliationDropFlashTimerRef.current !== null) {
+      window.clearTimeout(publicationAffiliationDropFlashTimerRef.current)
+      publicationAffiliationDropFlashTimerRef.current = null
+    }
     setAffiliationSaveFlashActive(false)
   }, [fixture, isFixtureMode])
 
@@ -889,6 +927,14 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       if (affiliationSaveFlashTimerRef.current !== null) {
         window.clearTimeout(affiliationSaveFlashTimerRef.current)
         affiliationSaveFlashTimerRef.current = null
+      }
+      if (jobRoleDropFlashTimerRef.current !== null) {
+        window.clearTimeout(jobRoleDropFlashTimerRef.current)
+        jobRoleDropFlashTimerRef.current = null
+      }
+      if (publicationAffiliationDropFlashTimerRef.current !== null) {
+        window.clearTimeout(publicationAffiliationDropFlashTimerRef.current)
+        publicationAffiliationDropFlashTimerRef.current = null
       }
     },
     [],
@@ -1743,13 +1789,16 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     })
   }
 
-  const onDragStartJobRole = (index: number) => {
+  const onDragStartJobRole = (event: DragEvent<HTMLDivElement>, index: number) => {
+    event.dataTransfer.effectAllowed = 'move'
+    setJobRoleDropFlashIndex(null)
     setDraggingJobRoleIndex(index)
     setJobRoleDropTargetIndex(index)
   }
 
   const onDragOverJobRole = (event: DragEvent<HTMLDivElement>, index: number) => {
     event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
     if (draggingJobRoleIndex === null) {
       return
     }
@@ -1764,6 +1813,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       setJobRoleDropTargetIndex(null)
       return
     }
+    let didReorder = false
     draftEditedRef.current = true
     setDraft((current) => {
       const items = [...current.jobRoles]
@@ -1781,6 +1831,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       }
       items.splice(targetIndex, 0, moved)
       const nextRoles = normalizeJobRoles(items)
+      didReorder = true
       return {
         ...current,
         jobRoles: nextRoles,
@@ -1789,15 +1840,21 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     })
     setDraggingJobRoleIndex(null)
     setJobRoleDropTargetIndex(null)
+    if (didReorder) {
+      triggerJobRoleDropFlash(targetIndex)
+    }
   }
 
-  const onDragStartPublicationAffiliation = (index: number) => {
+  const onDragStartPublicationAffiliation = (event: DragEvent<HTMLDivElement>, index: number) => {
+    event.dataTransfer.effectAllowed = 'move'
+    setPublicationAffiliationDropFlashIndex(null)
     setDraggingPublicationAffiliationIndex(index)
     setPublicationAffiliationDropTargetIndex(index)
   }
 
   const onDragOverPublicationAffiliation = (event: DragEvent<HTMLDivElement>, index: number) => {
     event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
     if (draggingPublicationAffiliationIndex === null) {
       return
     }
@@ -1812,6 +1869,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       setPublicationAffiliationDropTargetIndex(null)
       return
     }
+    let didReorder = false
     draftEditedRef.current = true
     setDraft((current) => {
       const items = [...current.publicationAffiliations]
@@ -1828,6 +1886,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         return current
       }
       items.splice(targetIndex, 0, moved)
+      didReorder = true
       return {
         ...current,
         publicationAffiliations: items,
@@ -1835,6 +1894,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     })
     setDraggingPublicationAffiliationIndex(null)
     setPublicationAffiliationDropTargetIndex(null)
+    if (didReorder) {
+      triggerPublicationAffiliationDropFlash(targetIndex)
+    }
   }
 
   const onRemovePublicationAffiliation = (value: string) => {
@@ -2274,11 +2336,11 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                           <div
                             key={`role-${index}`}
                             draggable={hasRoleRows}
-                            onDragStart={() => {
+                            onDragStart={(event) => {
                               if (!hasRoleRows) {
                                 return
                               }
-                              onDragStartJobRole(index)
+                              onDragStartJobRole(event, index)
                             }}
                             onDragOver={(event) => {
                               if (!hasRoleRows) {
@@ -2297,12 +2359,15 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                               setJobRoleDropTargetIndex(null)
                             }}
                             className={cn(
-                              'group w-full flex flex-wrap items-center gap-2 rounded-md border border-transparent px-2 py-1.5 transition-all duration-200 ease-out',
+                              'group w-full flex flex-wrap items-center gap-2 rounded-md border border-transparent px-2 py-1.5 transition-all duration-200 ease-out will-change-transform',
                               draggingJobRoleIndex === index
-                                ? 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] shadow-sm scale-[1.01]'
-                                : 'bg-background',
+                                ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50))] shadow-[0_10px_24px_hsl(var(--tone-accent-300)/0.28)] scale-[1.015] -translate-y-0.5 opacity-95'
+                                : 'bg-background hover:bg-[hsl(var(--tone-neutral-50)/0.7)]',
                               jobRoleDropTargetIndex === index && draggingJobRoleIndex !== index
-                                ? 'border-dashed border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50)/0.55)]'
+                                ? 'border-dashed border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50)/0.8)] shadow-[inset_0_0_0_1px_hsl(var(--tone-accent-300)/0.45)] translate-x-[2px]'
+                                : '',
+                              jobRoleDropFlashIndex === index
+                                ? 'ring-2 ring-[hsl(var(--tone-positive-300)/0.75)] ring-offset-1 ring-offset-transparent'
                                 : '',
                             )}
                           >
@@ -2328,7 +2393,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                               onBlur={() => onJobRoleEntryBlur(index)}
                               placeholder="Role"
                               autoComplete="organization-title"
-                              className="h-8 min-w-[12rem] flex-1 border-0 bg-transparent px-2 shadow-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--tone-accent-400))]"
+                              className={cn(
+                                'h-8 min-w-[12rem] flex-1 border-0 bg-transparent px-2 shadow-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--tone-accent-400))]',
+                                index === 0 && normalizeRole(role) ? 'font-semibold text-[hsl(var(--tone-neutral-900))]' : '',
+                              )}
                             />
                             {hasRoleRows && index === 0 ? (
                               <span className="inline-flex w-[6.75rem] justify-center rounded-full border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-1.5 py-0.5 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-positive-700))]">
@@ -2387,7 +2455,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     onBlur={onPrimaryAffiliationInputBlur}
                     placeholder="Affiliation"
                     autoComplete="organization"
-                    className="h-8 min-w-[14rem] flex-1 border-0 bg-transparent px-2 shadow-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--tone-accent-400))]"
+                    className={cn(
+                      'h-8 min-w-[14rem] flex-1 border-0 bg-transparent px-2 shadow-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--tone-accent-400))]',
+                      sanitizeAffiliation(primaryAffiliationInput) ? 'font-semibold text-[hsl(var(--tone-neutral-900))]' : '',
+                    )}
                   />
                   {primaryAffiliationLabel ? (
                     <button
@@ -2591,7 +2662,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   <div
                     key={item}
                     draggable
-                    onDragStart={() => onDragStartPublicationAffiliation(index)}
+                    onDragStart={(event) => onDragStartPublicationAffiliation(event, index)}
                     onDragOver={(event) => onDragOverPublicationAffiliation(event, index)}
                     onDrop={() => onDropPublicationAffiliation(index)}
                     onDragEnd={() => {
@@ -2599,12 +2670,15 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       setPublicationAffiliationDropTargetIndex(null)
                     }}
                     className={cn(
-                      'group flex flex-wrap items-center gap-2 rounded-md border px-2 py-1.5 transition-all duration-200 ease-out',
+                      'group flex flex-wrap items-center gap-2 rounded-md border px-2 py-1.5 transition-all duration-200 ease-out will-change-transform',
                       draggingPublicationAffiliationIndex === index
-                        ? 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] shadow-sm scale-[1.01]'
-                        : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]',
+                        ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50))] shadow-[0_10px_24px_hsl(var(--tone-accent-300)/0.28)] scale-[1.015] -translate-y-0.5 opacity-95'
+                        : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] hover:bg-[hsl(var(--tone-neutral-100)/0.55)]',
                       publicationAffiliationDropTargetIndex === index && draggingPublicationAffiliationIndex !== index
-                        ? 'border-dashed border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50)/0.55)]'
+                        ? 'border-dashed border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50)/0.8)] shadow-[inset_0_0_0_1px_hsl(var(--tone-accent-300)/0.45)] translate-x-[2px]'
+                        : '',
+                      publicationAffiliationDropFlashIndex === index
+                        ? 'ring-2 ring-[hsl(var(--tone-positive-300)/0.75)] ring-offset-1 ring-offset-transparent'
                         : '',
                     )}
                   >

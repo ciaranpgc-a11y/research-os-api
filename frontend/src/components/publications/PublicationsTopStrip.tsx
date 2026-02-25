@@ -911,16 +911,14 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
   const projectedYearRaw = Number(chartData.projected_year)
   const currentHIndexRaw = Number(chartData.current_h_index)
   const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
-
-  if (!years.length || !values.length || years.length !== values.length) {
-    return <div className={dashboardTileStyles.emptyChart}>No h-index timeline</div>
-  }
-
-  const baseBars: Array<{ year: number; value: number; current: boolean }> = years.map((year, index) => ({
-    year,
-    value: values[index],
-    current: false,
-  }))
+  const hasValidSeries = years.length > 0 && values.length > 0 && years.length === values.length
+  const baseBars: Array<{ year: number; value: number; current: boolean }> = hasValidSeries
+    ? years.map((year, index) => ({
+        year,
+        value: values[index],
+        current: false,
+      }))
+    : []
   const existingCurrentBar = baseBars.find((item) => item.year === projectedYear)
   const bars = baseBars.filter((item) => item.year !== projectedYear)
   const currentValue = Math.max(
@@ -933,18 +931,28 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
           ? bars[bars.length - 1].value
           : 0,
   )
-  bars.push({
-    year: projectedYear,
-    value: currentValue,
-    current: true,
-  })
+  if (hasValidSeries) {
+    bars.push({
+      year: projectedYear,
+      value: currentValue,
+      current: true,
+    })
+  }
   const animationKey = useMemo(
     () => bars.map((bar) => `${bar.year}-${bar.value}-${bar.current ? 1 : 0}`).join('|'),
     [bars],
   )
+  const hasBars = bars.length > 0
   useEffect(() => {
+    if (!hasBars) {
+      setChartVisible(true)
+      setBarsExpanded(false)
+      setHoveredIndex(null)
+      return
+    }
     setChartVisible(false)
     setBarsExpanded(false)
+    setHoveredIndex(null)
     let rafOne = 0
     let rafTwo = 0
     rafOne = window.requestAnimationFrame(() => {
@@ -957,7 +965,11 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
       window.cancelAnimationFrame(rafOne)
       window.cancelAnimationFrame(rafTwo)
     }
-  }, [animationKey])
+  }, [animationKey, hasBars])
+
+  if (!hasBars) {
+    return <div className={dashboardTileStyles.emptyChart}>No h-index timeline</div>
+  }
 
   const maxValue = Math.max(1, ...bars.map((bar) => Math.max(0, bar.value)))
   const scaledMax = maxValue * 1.18
@@ -1338,8 +1350,11 @@ function PublicationsPerYearChart({
                 )}
                 onClick={(event) => {
                   event.stopPropagation()
+                  if (windowMode === option.value) {
+                    return
+                  }
                   const targetIndex = PUBLICATIONS_WINDOW_OPTIONS.findIndex((item) => item.value === option.value)
-                  setTransitionDirection(targetIndex >= activeWindowIndex ? 1 : -1)
+                  setTransitionDirection(targetIndex > activeWindowIndex ? 1 : -1)
                   setWindowMode(option.value)
                 }}
                 onMouseDown={(event) => event.stopPropagation()}
@@ -3302,11 +3317,12 @@ function HIndexTrajectoryPanel({
   const [panelVisible, setPanelVisible] = useState(true)
 
   useEffect(() => {
-    if (mode === renderMode) {
-      return
-    }
     if (prefersReducedMotion()) {
       setRenderMode(mode)
+      setPanelVisible(true)
+      return
+    }
+    if (mode === renderMode) {
       setPanelVisible(true)
       return
     }
@@ -3389,6 +3405,9 @@ function HIndexViewToggle({
           )}
           onClick={(event) => {
             event.stopPropagation()
+            if (mode === 'trajectory') {
+              return
+            }
             onModeChange('trajectory')
           }}
           onMouseDown={(event) => event.stopPropagation()}
@@ -3405,6 +3424,9 @@ function HIndexViewToggle({
           )}
           onClick={(event) => {
             event.stopPropagation()
+            if (mode === 'needed') {
+              return
+            }
             onModeChange('needed')
           }}
           onMouseDown={(event) => event.stopPropagation()}
@@ -3894,9 +3916,10 @@ export function PublicationsTopStrip({
                           )}
                           onClick={(event) => {
                             event.stopPropagation()
-                            const currentIndex = momentumWindowMode === '12m' ? 0 : 1
-                            const targetIndex = 0
-                            setMomentumTransitionDirection(targetIndex >= currentIndex ? 1 : -1)
+                            if (momentumWindowMode === '12m') {
+                              return
+                            }
+                            setMomentumTransitionDirection(-1)
                             setMomentumWindowMode('12m')
                           }}
                           onMouseDown={(event) => event.stopPropagation()}
@@ -3915,9 +3938,10 @@ export function PublicationsTopStrip({
                           )}
                           onClick={(event) => {
                             event.stopPropagation()
-                            const currentIndex = momentumWindowMode === '12m' ? 0 : 1
-                            const targetIndex = 1
-                            setMomentumTransitionDirection(targetIndex >= currentIndex ? 1 : -1)
+                            if (momentumWindowMode === '5y') {
+                              return
+                            }
+                            setMomentumTransitionDirection(1)
                             setMomentumWindowMode('5y')
                           }}
                           onMouseDown={(event) => event.stopPropagation()}
@@ -3949,9 +3973,12 @@ export function PublicationsTopStrip({
                     <HIndexViewToggle
                       mode={hIndexViewMode}
                       onModeChange={(nextMode) => {
+                        if (nextMode === hIndexViewMode) {
+                          return
+                        }
                         const currentIndex = hIndexViewMode === 'trajectory' ? 0 : 1
                         const targetIndex = nextMode === 'trajectory' ? 0 : 1
-                        setHIndexTransitionDirection(targetIndex >= currentIndex ? 1 : -1)
+                        setHIndexTransitionDirection(targetIndex > currentIndex ? 1 : -1)
                         setHIndexViewMode(nextMode)
                       }}
                     />
@@ -4050,9 +4077,12 @@ export function PublicationsTopStrip({
                             )}
                             onClick={(event) => {
                               event.stopPropagation()
+                              if (activeThreshold === threshold) {
+                                return
+                              }
                               const targetIndex = Math.max(0, availableThresholds.indexOf(threshold))
                               const currentIndex = Math.max(0, availableThresholds.indexOf(activeThreshold))
-                              setFieldPercentileTransitionDirection(targetIndex >= currentIndex ? 1 : -1)
+                              setFieldPercentileTransitionDirection(targetIndex > currentIndex ? 1 : -1)
                               setFieldPercentileThreshold(threshold)
                             }}
                             onMouseDown={(event) => event.stopPropagation()}
