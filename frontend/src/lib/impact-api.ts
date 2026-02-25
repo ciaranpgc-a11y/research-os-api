@@ -38,6 +38,7 @@ import type {
   PublicationFilePayload,
   PublicationFilesListPayload,
   PublicationImpactResponsePayload,
+  PublicationsInsightsBootstrapPayload,
   PersonaStatePayload,
   PersonaContextPayload,
   PersonaEmbeddingsGeneratePayload,
@@ -622,6 +623,40 @@ export async function triggerPublicationsTopMetricsRefresh(
     },
     'Publications top metrics refresh failed',
     { timeoutMs: 60_000, retryCount: 1 },
+  )
+}
+
+export async function bootstrapPublicationsInsightsFromOrcid(
+  token: string,
+  input: {
+    orcidId: string
+    fullName: string
+    providers?: Array<'openalex' | 'semantic_scholar' | 'manual'>
+    refreshAnalytics?: boolean
+    refreshMetrics?: boolean
+    maxWorks?: number
+  },
+): Promise<PublicationsInsightsBootstrapPayload> {
+  const maxWorksRaw = Number(input.maxWorks || 500)
+  const maxWorks = Number.isFinite(maxWorksRaw)
+    ? Math.max(1, Math.min(2000, Math.round(maxWorksRaw)))
+    : 500
+  return requestJson<PublicationsInsightsBootstrapPayload>(
+    `${API_BASE_URL}/v1/publications/insights/bootstrap`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orcid_id: input.orcidId,
+        full_name: input.fullName,
+        providers: input.providers || ['openalex', 'semantic_scholar'],
+        refresh_analytics: input.refreshAnalytics ?? true,
+        refresh_metrics: input.refreshMetrics ?? true,
+        max_works: maxWorks,
+      }),
+    },
+    'Could not bootstrap publication insights from ORCID',
+    { timeoutMs: 180_000, retryCount: 1 },
   )
 }
 

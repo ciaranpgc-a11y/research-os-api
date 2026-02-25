@@ -183,6 +183,17 @@ def _run_persona_sync_job(job_id: str) -> None:
             )
             result_payload["analytics_summary"] = _json_safe(summary_payload)
 
+        try:
+            from research_os.services.publication_metrics_service import (
+                trigger_publication_top_metrics_refresh,
+            )
+
+            top_metrics_payload = trigger_publication_top_metrics_refresh(user_id=user_id)
+            result_payload["top_metrics_refresh"] = _json_safe(top_metrics_payload)
+        except Exception:
+            # Keep sync jobs resilient even if top metrics refresh enqueue fails.
+            pass
+
         job.status = "completed"
         job.error_detail = None
         job.current_stage = None
