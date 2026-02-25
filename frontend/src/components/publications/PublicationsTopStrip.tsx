@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ExternalLink, Eye, EyeOff } from 'lucide-react'
+import { Download, ExternalLink, Eye, EyeOff, FileText, Share2 } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui/card'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
@@ -2316,6 +2316,42 @@ export function PublicationsTopStrip({
               Publication insights
             </p>
           </div>
+          <div className="rounded-sm border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-2">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <p className="pt-1 text-[0.7rem] font-semibold uppercase tracking-[0.09em] text-[hsl(var(--tone-neutral-700))]">
+                Tools
+              </p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  data-stop-tile-open="true"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
+                  aria-label="Generate publication insights report"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>Generate publication insights report</span>
+                </button>
+                <button
+                  type="button"
+                  data-stop-tile-open="true"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
+                  aria-label="Download"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Download</span>
+                </button>
+                <button
+                  type="button"
+                  data-stop-tile-open="true"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
+                  aria-label="Share"
+                >
+                  <Share2 className="h-3.5 w-3.5" />
+                  <span>Share</span>
+                </button>
+              </div>
+            </div>
+          </div>
 
           {!insightsVisible ? (
             <div className="rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2 text-xs text-[hsl(var(--tone-neutral-600))]">
@@ -2355,7 +2391,7 @@ export function PublicationsTopStrip({
                 const momentumBreakdown = tile.key === 'momentum' ? buildMomentumBreakdown(tile) : null
                 let primaryValue: ReactNode = mainValueDisplay
                 let badgeNode: ReactNode | undefined
-                let pinBadgeBottom = true
+                const pinBadgeBottom = true
                 let secondaryText: ReactNode = subtitle || '\u2014'
                 let detailText: ReactNode | undefined = effectiveDeltaDisplay || undefined
                 let visual: ReactNode = (

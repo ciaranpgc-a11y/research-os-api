@@ -82,12 +82,6 @@ def _nullable_part(value: Any) -> str | None:
     return clean or None
 
 
-def _build_address(*, city: str | None, region: str | None, country_name: str | None) -> str | None:
-    parts = [_sanitize_text(city), _sanitize_text(region), _sanitize_text(country_name)]
-    output = ", ".join(part for part in parts if part)
-    return output or None
-
-
 def _build_label(
     *,
     name: str,
@@ -257,7 +251,7 @@ def _fetch_openalex(
             "country_name": country_name,
             "city": city,
             "region": region,
-            "address": _build_address(city=city, region=region, country_name=country_name),
+            "address": None,
             "postal_code": None,
             "source": "openalex",
         }
@@ -344,7 +338,7 @@ def _fetch_ror(
             "country_name": country_name,
             "city": city,
             "region": region,
-            "address": _build_address(city=city, region=region, country_name=country_name),
+            "address": None,
             "postal_code": None,
             "source": "ror",
         }
@@ -444,14 +438,19 @@ def _resolve_location_from_nominatim_item(
 ) -> tuple[float, dict[str, Any]]:
     address = item.get("address") if isinstance(item.get("address"), dict) else {}
     display_name = _sanitize_text(item.get("display_name"))
+    category = _sanitize_text(item.get("category")).lower()
+    location_type = _sanitize_text(item.get("type")).lower()
+    display_head = _sanitize_text(display_name.split(",", maxsplit=1)[0] if display_name else "")
     candidate_name = " ".join(
         part
         for part in [
             _nullable_part(address.get("university")),
             _nullable_part(address.get("hospital")),
+            _nullable_part(address.get("college")),
+            _nullable_part(address.get("school")),
             _nullable_part(address.get("building")),
             _nullable_part(address.get("amenity")),
-            display_name,
+            display_head,
         ]
         if part
     )
@@ -486,15 +485,45 @@ def _resolve_location_from_nominatim_item(
     region_clean = _sanitize_text(region).lower() if region else ""
     country_name_clean = _sanitize_text(country_name).lower() if country_name else ""
     location_match_bonus = 0.0
-    if expected_city_clean and city_clean:
-        if expected_city_clean in city_clean or city_clean in expected_city_clean:
-            location_match_bonus += 2.0
-    if expected_region_clean and region_clean:
-        if expected_region_clean in region_clean or region_clean in expected_region_clean:
-            location_match_bonus += 1.5
-    if expected_country_clean and country_name_clean:
-        if expected_country_clean in country_name_clean or country_name_clean in expected_country_clean:
-            location_match_bonus += 2.0
+    if expected_city_clean:
+        if city_clean and (expected_city_clean in city_clean or city_clean in expected_city_clean):
+            location_match_bonus += 6.0
+        elif city_clean:
+            location_match_bonus -= 3.0
+        else:
+            location_match_bonus -= 1.0
+    if expected_region_clean:
+        if region_clean and (
+            expected_region_clean in region_clean or region_clean in expected_region_clean
+        ):
+            location_match_bonus += 4.0
+        elif region_clean:
+            location_match_bonus -= 2.0
+        else:
+            location_match_bonus -= 1.0
+    if expected_country_clean:
+        if country_name_clean and (
+            expected_country_clean in country_name_clean
+            or country_name_clean in expected_country_clean
+        ):
+            location_match_bonus += 3.0
+        elif country_name_clean:
+            location_match_bonus -= 8.0
+        else:
+            location_match_bonus -= 2.0
+
+    category_boost = 0.0
+    if category in {"amenity", "building", "office"}:
+        category_boost += 2.0
+    if location_type in {"university", "college", "school", "hospital", "research_institute"}:
+        category_boost += 4.0
+    if location_type in {"administrative", "water", "river", "lake", "bay", "sea", "ocean", "city", "town"}:
+        category_boost -= 8.0
+    if category in {"natural", "waterway", "boundary", "highway", "landuse"}:
+        category_boost -= 4.0
+    if relevance < 0.2:
+        category_boost -= 3.0
+
     importance = 0.0
     raw_importance = item.get("importance")
     if isinstance(raw_importance, (int, float)):
@@ -504,7 +533,7 @@ def _resolve_location_from_nominatim_item(
             importance = float(raw_importance)
         except Exception:
             importance = 0.0
-    composite = (relevance * 10.0) + metadata_score + location_match_bonus + importance
+    composite = (relevance * 12.0) + metadata_score + location_match_bonus + category_boost + (importance * 0.5)
     payload = {
         "line_1": line_1,
         "city": city,
@@ -533,35 +562,47 @@ def resolve_affiliation_address(
     clean_city = _nullable_part(city)
     clean_region = _nullable_part(region)
     clean_country = _nullable_part(country)
-    query_parts = [clean_name]
-    for part in [clean_city, clean_region, clean_country]:
-        if not part:
-            continue
-        if part.lower() in {item.lower() for item in query_parts}:
-            continue
-        query_parts.append(part)
     timeout = httpx.Timeout(_timeout_seconds())
-    params: dict[str, Any] = {
-        "q": ", ".join(query_parts),
-        "format": "jsonv2",
-        "addressdetails": 1,
-        "limit": 5,
-    }
+    query_variants = [clean_name]
+    location_hint = ", ".join(
+        part for part in [clean_city, clean_region, clean_country] if part
+    )
+    if location_hint:
+        query_variants.append(f"{clean_name}, {location_hint}")
     email = _nominatim_email()
-    if email:
-        params["email"] = email
     headers = {
         "User-Agent": _nominatim_user_agent(),
     }
+    all_items: list[dict[str, Any]] = []
     with httpx.Client(timeout=timeout) as client:
-        items = _request_json_list(
-            client=client,
-            url="https://nominatim.openstreetmap.org/search",
-            params=params,
-            headers=headers,
-        )
-    if not items:
+        for variant in query_variants:
+            params: dict[str, Any] = {
+                "q": variant,
+                "format": "jsonv2",
+                "addressdetails": 1,
+                "limit": 8,
+            }
+            if email:
+                params["email"] = email
+            items = _request_json_list(
+                client=client,
+                url="https://nominatim.openstreetmap.org/search",
+                params=params,
+                headers=headers,
+            )
+            if items:
+                all_items.extend(items)
+    if not all_items:
         return None
+    unique_items: list[dict[str, Any]] = []
+    seen_place_ids: set[str] = set()
+    for item in all_items:
+        place_id = _sanitize_text(item.get("place_id"))
+        if place_id and place_id in seen_place_ids:
+            continue
+        if place_id:
+            seen_place_ids.add(place_id)
+        unique_items.append(item)
     resolved_candidates = [
         _resolve_location_from_nominatim_item(
             item=item,
@@ -570,7 +611,7 @@ def resolve_affiliation_address(
             expected_region=clean_region,
             expected_country=clean_country,
         )
-        for item in items
+        for item in unique_items
     ]
     resolved_candidates.sort(key=lambda value: value[0], reverse=True)
     best = resolved_candidates[0][1] if resolved_candidates else None

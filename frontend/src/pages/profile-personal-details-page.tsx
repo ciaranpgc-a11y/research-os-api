@@ -139,20 +139,6 @@ function toNullableAffiliationPart(value: unknown): string | null {
   return clean || null
 }
 
-function buildAffiliationAddress(input: {
-  city?: string | null
-  region?: string | null
-  countryName?: string | null
-}): string {
-  return [
-    sanitizeAffiliation(input.city),
-    sanitizeAffiliation(input.region),
-    sanitizeAffiliation(input.countryName),
-  ]
-    .filter(Boolean)
-    .join(', ')
-}
-
 function buildAffiliationSuggestionLabel(input: {
   name: string
   city?: string | null
@@ -183,10 +169,7 @@ function mapAffiliationSuggestionItem(
   const countryName = toNullableAffiliationPart(raw.country_name)
   const city = toNullableAffiliationPart(raw.city)
   const region = toNullableAffiliationPart(raw.region)
-  const address =
-    toNullableAffiliationPart(raw.address)
-    || buildAffiliationAddress({ city, region, countryName })
-    || null
+  const address = toNullableAffiliationPart(raw.address)
   const postalCode = toNullableAffiliationPart(raw.postal_code)
   const label = sanitizeAffiliation(raw.label) || buildAffiliationSuggestionLabel({
     name,
@@ -218,11 +201,7 @@ function mapAffiliationAddressResolution(
   const region = sanitizeAffiliation(raw.region)
   const postalCode = sanitizeAffiliation(raw.postal_code)
   const country = sanitizeAffiliation(raw.country_name)
-  const address = line1 || buildAffiliationAddress({
-    city: toNullableAffiliationPart(city),
-    region: toNullableAffiliationPart(region),
-    countryName: toNullableAffiliationPart(country),
-  })
+  const address = line1
   if (!address && !city && !region && !postalCode && !country) {
     return null
   }
@@ -596,6 +575,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const draftEditedRef = useRef(false)
   const emailEditedRef = useRef(false)
   const primaryAddressLookupSequenceRef = useRef(0)
+  const lastResolvedPrimaryAffiliationKeyRef = useRef('')
 
   useEffect(() => {
     if (!isFixtureMode) {
@@ -636,6 +616,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     draftEditedRef.current = false
     emailEditedRef.current = false
     primaryAddressLookupSequenceRef.current = 0
+    lastResolvedPrimaryAffiliationKeyRef.current = ''
   }, [fixture, isFixtureMode])
 
   useEffect(() => {
@@ -891,6 +872,86 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setShowPublicationAffiliationComposer(false)
   }
 
+  const resolvePrimaryAffiliationAddress = async (input: {
+    organisation: string
+    seedMetadata?: AffiliationMetadataItem
+    replaceExisting: boolean
+  }) => {
+    const clean = sanitizeAffiliation(input.organisation)
+    if (!clean) {
+      return
+    }
+    const cleanToken = trimValue(token)
+    if (!cleanToken) {
+      return
+    }
+    const normalizedKey = clean.toLowerCase()
+    const requestId = primaryAddressLookupSequenceRef.current + 1
+    primaryAddressLookupSequenceRef.current = requestId
+    setPrimaryAffiliationAddressResolving(true)
+    setPrimaryAffiliationAddressError('')
+    try {
+      const resolved = await fetchAffiliationAddressForMe(cleanToken, {
+        name: clean,
+        city: sanitizeAffiliation(input.seedMetadata?.city),
+        region: sanitizeAffiliation(input.seedMetadata?.region),
+        country: sanitizeAffiliation(input.seedMetadata?.country),
+      })
+      if (primaryAddressLookupSequenceRef.current !== requestId) {
+        return
+      }
+      const resolvedMetadata = mapAffiliationAddressResolution(resolved)
+      if (!resolvedMetadata) {
+        return
+      }
+      setAffiliationMetadataByName((current) => ({
+        ...current,
+        [normalizedKey]: {
+          ...current[normalizedKey],
+          ...resolvedMetadata,
+        },
+      }))
+      setDraft((current) => {
+        if (sanitizeAffiliation(current.organisation).toLowerCase() !== normalizedKey) {
+          return current
+        }
+        if (input.replaceExisting) {
+          return {
+            ...current,
+            affiliationAddress: resolvedMetadata.address || current.affiliationAddress,
+            affiliationCity: resolvedMetadata.city || current.affiliationCity,
+            affiliationRegion: resolvedMetadata.region || current.affiliationRegion,
+            affiliationPostalCode: resolvedMetadata.postalCode || current.affiliationPostalCode,
+            country: resolvedMetadata.country || current.country,
+          }
+        }
+        return {
+          ...current,
+          affiliationAddress: current.affiliationAddress || resolvedMetadata.address,
+          affiliationCity: current.affiliationCity || resolvedMetadata.city,
+          affiliationRegion: current.affiliationRegion || resolvedMetadata.region,
+          affiliationPostalCode: current.affiliationPostalCode || resolvedMetadata.postalCode,
+          country: current.country || resolvedMetadata.country,
+        }
+      })
+      lastResolvedPrimaryAffiliationKeyRef.current = normalizedKey
+      setPrimaryAffiliationAddressError('')
+    } catch (lookupError) {
+      if (primaryAddressLookupSequenceRef.current !== requestId) {
+        return
+      }
+      const message =
+        lookupError instanceof Error
+          ? lookupError.message
+          : 'Address lookup could not resolve more detail.'
+      setPrimaryAffiliationAddressError(message)
+    } finally {
+      if (primaryAddressLookupSequenceRef.current === requestId) {
+        setPrimaryAffiliationAddressResolving(false)
+      }
+    }
+  }
+
   const onApplyPrimaryAffiliationSuggestion = async (suggestion: AffiliationSuggestionItem) => {
     const clean = sanitizeAffiliation(suggestion.name)
     if (!clean) {
@@ -926,63 +987,11 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setPrimaryAffiliationSuggestions([])
     setPrimaryAffiliationSuggestionsError('')
     setPrimaryAffiliationAddressError('')
-
-    const cleanToken = trimValue(token)
-    if (!cleanToken) {
-      return
-    }
-    const requestId = primaryAddressLookupSequenceRef.current + 1
-    primaryAddressLookupSequenceRef.current = requestId
-    setPrimaryAffiliationAddressResolving(true)
-    try {
-      const resolved = await fetchAffiliationAddressForMe(cleanToken, {
-        name: clean,
-        city: metadata.city,
-        region: metadata.region,
-        country: metadata.country,
-      })
-      if (primaryAddressLookupSequenceRef.current !== requestId) {
-        return
-      }
-      const resolvedMetadata = mapAffiliationAddressResolution(resolved)
-      if (!resolvedMetadata) {
-        return
-      }
-      setAffiliationMetadataByName((current) => ({
-        ...current,
-        [normalizedKey]: {
-          ...current[normalizedKey],
-          ...resolvedMetadata,
-        },
-      }))
-      setDraft((current) => {
-        if (sanitizeAffiliation(current.organisation).toLowerCase() !== normalizedKey) {
-          return current
-        }
-        return {
-          ...current,
-          affiliationAddress: resolvedMetadata.address || current.affiliationAddress,
-          affiliationCity: resolvedMetadata.city || current.affiliationCity,
-          affiliationRegion: resolvedMetadata.region || current.affiliationRegion,
-          affiliationPostalCode: resolvedMetadata.postalCode || current.affiliationPostalCode,
-          country: resolvedMetadata.country || current.country,
-        }
-      })
-      setPrimaryAffiliationAddressError('')
-    } catch (lookupError) {
-      if (primaryAddressLookupSequenceRef.current !== requestId) {
-        return
-      }
-      const message =
-        lookupError instanceof Error
-          ? lookupError.message
-          : 'Address lookup could not resolve more detail.'
-      setPrimaryAffiliationAddressError(message)
-    } finally {
-      if (primaryAddressLookupSequenceRef.current === requestId) {
-        setPrimaryAffiliationAddressResolving(false)
-      }
-    }
+    await resolvePrimaryAffiliationAddress({
+      organisation: clean,
+      seedMetadata: metadata,
+      replaceExisting: true,
+    })
   }
 
   const onSetPrimaryAffiliation = (value: string) => {
@@ -1001,6 +1010,44 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       affiliationPostalCode: metadata ? sanitizeAffiliation(metadata.postalCode) : current.affiliationPostalCode,
       country: metadata ? sanitizeAffiliation(metadata.country) : current.country,
     }))
+  }
+
+  const onResolvePrimaryAffiliationFromCurrent = async () => {
+    const organisation = sanitizeAffiliation(draft.organisation)
+    if (organisation.length < 2) {
+      return
+    }
+    const normalizedKey = organisation.toLowerCase()
+    const replaceExisting = lastResolvedPrimaryAffiliationKeyRef.current !== normalizedKey
+    let seedMetadata: AffiliationMetadataItem = {
+      address: sanitizeAffiliation(draft.affiliationAddress),
+      city: sanitizeAffiliation(draft.affiliationCity),
+      region: sanitizeAffiliation(draft.affiliationRegion),
+      postalCode: sanitizeAffiliation(draft.affiliationPostalCode),
+      country: sanitizeAffiliation(draft.country),
+    }
+    const hasLocationHint = Boolean(seedMetadata.city || seedMetadata.region || seedMetadata.country)
+    if (!hasLocationHint) {
+      try {
+        const topSuggestion = (await fetchAffiliationSuggestions({ token, query: organisation, limit: 1 }))[0]
+        if (topSuggestion) {
+          seedMetadata = {
+            address: sanitizeAffiliation(topSuggestion.address),
+            city: sanitizeAffiliation(topSuggestion.city),
+            region: sanitizeAffiliation(topSuggestion.region),
+            postalCode: sanitizeAffiliation(topSuggestion.postalCode),
+            country: sanitizeAffiliation(topSuggestion.countryName),
+          }
+        }
+      } catch {
+        // Keep best-effort flow even when suggestion prefetch fails.
+      }
+    }
+    await resolvePrimaryAffiliationAddress({
+      organisation,
+      seedMetadata,
+      replaceExisting,
+    })
   }
 
   const onAiSuggestPrimaryAffiliation = async () => {
@@ -1156,6 +1203,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     draftEditedRef.current = false
     emailEditedRef.current = false
     primaryAddressLookupSequenceRef.current += 1
+    lastResolvedPrimaryAffiliationKeyRef.current = ''
   }
 
   const onSave = async () => {
@@ -1428,6 +1476,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               <Input
                 value={draft.organisation}
                 onChange={(event) => onFieldChange('organisation', event.target.value)}
+                onBlur={() => {
+                  void onResolvePrimaryAffiliationFromCurrent()
+                }}
                 placeholder="Primary institution used for publications"
                 autoComplete="organization"
               />
