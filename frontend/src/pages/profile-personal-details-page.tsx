@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { GripVertical, Loader2, Plus, Sparkles } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -13,8 +13,12 @@ type PersonalDetailsDraft = {
   salutation: string
   firstName: string
   lastName: string
+  jobRole: string
   organisation: string
   affiliationAddress: string
+  affiliationCity: string
+  affiliationRegion: string
+  affiliationPostalCode: string
   department: string
   country: string
   website: string
@@ -62,6 +66,8 @@ type PersonalDetailsStringField = Exclude<keyof PersonalDetailsDraft, 'publicati
 
 type AffiliationMetadataItem = {
   address: string
+  city: string
+  region: string
   country: string
 }
 
@@ -134,6 +140,44 @@ function buildAffiliationAddress(input: {
     .join(', ')
 }
 
+function tokenizeAffiliation(value: string): Set<string> {
+  return new Set(
+    sanitizeAffiliation(value)
+      .toLowerCase()
+      .split(/[^a-z0-9]+/g)
+      .filter((token) => token.length >= 2),
+  )
+}
+
+function jaccardSimilarity(left: Set<string>, right: Set<string>): number {
+  if (left.size === 0 || right.size === 0) {
+    return 0
+  }
+  let overlap = 0
+  for (const token of left) {
+    if (right.has(token)) {
+      overlap += 1
+    }
+  }
+  const unionSize = left.size + right.size - overlap
+  return unionSize > 0 ? overlap / unionSize : 0
+}
+
+function rankAffiliationSuggestions(
+  suggestions: AffiliationSuggestionItem[],
+  query: string,
+): AffiliationSuggestionItem[] {
+  const queryTokens = tokenizeAffiliation(query)
+  if (!queryTokens.size) {
+    return suggestions
+  }
+  return [...suggestions].sort((left, right) => {
+    const leftScore = jaccardSimilarity(queryTokens, tokenizeAffiliation(left.name))
+    const rightScore = jaccardSimilarity(queryTokens, tokenizeAffiliation(right.name))
+    return rightScore - leftScore
+  })
+}
+
 function normalizeAffiliations(values: unknown): string[] {
   const source = Array.isArray(values) ? values : []
   const seen = new Set<string>()
@@ -195,8 +239,12 @@ function sanitizeDraft(value: Partial<PersonalDetailsDraft> | null | undefined):
     salutation: trimValue(value?.salutation),
     firstName: trimValue(value?.firstName),
     lastName: trimValue(value?.lastName),
+    jobRole: trimValue(value?.jobRole),
     organisation: trimValue(value?.organisation),
     affiliationAddress: trimValue(value?.affiliationAddress),
+    affiliationCity: trimValue(value?.affiliationCity),
+    affiliationRegion: trimValue(value?.affiliationRegion),
+    affiliationPostalCode: trimValue(value?.affiliationPostalCode),
     department: trimValue(value?.department),
     country: trimValue(value?.country),
     website: trimValue(value?.website),
@@ -298,8 +346,12 @@ function draftFromSources(
     salutation: stored?.salutation || '',
     firstName: seededFirstName,
     lastName: seededLastName,
+    jobRole: stored?.jobRole || '',
     organisation: stored?.organisation || '',
     affiliationAddress: stored?.affiliationAddress || '',
+    affiliationCity: stored?.affiliationCity || '',
+    affiliationRegion: stored?.affiliationRegion || '',
+    affiliationPostalCode: stored?.affiliationPostalCode || '',
     department: stored?.department || '',
     country: stored?.country || '',
     website: stored?.website || '',
@@ -482,11 +534,19 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(initialCachedOrcidStatus)
   const [draft, setDraft] = useState<PersonalDetailsDraft>(initialDraft)
   const [accountEmail, setAccountEmail] = useState(initialAccountEmail)
-  const [affiliationInput, setAffiliationInput] = useState('')
-  const [affiliationSuggestions, setAffiliationSuggestions] = useState<AffiliationSuggestionItem[]>([])
+  const [primaryAffiliationInput, setPrimaryAffiliationInput] = useState('')
+  const [primaryAffiliationSuggestions, setPrimaryAffiliationSuggestions] = useState<AffiliationSuggestionItem[]>([])
+  const [primaryAffiliationSuggestionsLoading, setPrimaryAffiliationSuggestionsLoading] = useState(false)
+  const [primaryAffiliationSuggestionsError, setPrimaryAffiliationSuggestionsError] = useState('')
+  const [publicationAffiliationInput, setPublicationAffiliationInput] = useState('')
+  const [publicationAffiliationSuggestions, setPublicationAffiliationSuggestions] = useState<AffiliationSuggestionItem[]>([])
+  const [publicationAffiliationSuggestionsLoading, setPublicationAffiliationSuggestionsLoading] = useState(false)
+  const [publicationAffiliationSuggestionsError, setPublicationAffiliationSuggestionsError] = useState('')
   const [affiliationMetadataByName, setAffiliationMetadataByName] = useState<Record<string, AffiliationMetadataItem>>({})
-  const [affiliationSuggestionsLoading, setAffiliationSuggestionsLoading] = useState(false)
-  const [affiliationSuggestionsError, setAffiliationSuggestionsError] = useState('')
+  const [showPublicationAffiliationComposer, setShowPublicationAffiliationComposer] = useState(false)
+  const [draggingPublicationAffiliationIndex, setDraggingPublicationAffiliationIndex] = useState<number | null>(null)
+  const [aiPrimaryBusy, setAiPrimaryBusy] = useState(false)
+  const [aiPublicationBusy, setAiPublicationBusy] = useState(false)
   const [loading, setLoading] = useState(Boolean(fixture?.loading ?? !fixture))
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState(fixture?.status ?? '')
@@ -512,11 +572,19 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       }),
     )
     setAccountEmail(trimValue(fixtureUser?.email))
-    setAffiliationInput('')
-    setAffiliationSuggestions([])
+    setPrimaryAffiliationInput('')
+    setPrimaryAffiliationSuggestions([])
+    setPrimaryAffiliationSuggestionsLoading(false)
+    setPrimaryAffiliationSuggestionsError('')
+    setPublicationAffiliationInput('')
+    setPublicationAffiliationSuggestions([])
+    setPublicationAffiliationSuggestionsLoading(false)
+    setPublicationAffiliationSuggestionsError('')
     setAffiliationMetadataByName({})
-    setAffiliationSuggestionsLoading(false)
-    setAffiliationSuggestionsError('')
+    setShowPublicationAffiliationComposer(false)
+    setDraggingPublicationAffiliationIndex(null)
+    setAiPrimaryBusy(false)
+    setAiPublicationBusy(false)
     setLoading(Boolean(fixture?.loading))
     setStatus(fixture?.status ?? '')
     setError(fixture?.error ?? '')
@@ -606,27 +674,24 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     if (isFixtureMode) {
       return
     }
-    const query = sanitizeAffiliation(affiliationInput)
+    const query = sanitizeAffiliation(primaryAffiliationInput)
     if (query.length < 2) {
-      setAffiliationSuggestions([])
-      setAffiliationSuggestionsLoading(false)
-      setAffiliationSuggestionsError('')
+      setPrimaryAffiliationSuggestions([])
+      setPrimaryAffiliationSuggestionsLoading(false)
+      setPrimaryAffiliationSuggestionsError('')
       return
     }
 
     let cancelled = false
-    setAffiliationSuggestionsLoading(true)
-    setAffiliationSuggestionsError('')
+    setPrimaryAffiliationSuggestionsLoading(true)
+    setPrimaryAffiliationSuggestionsError('')
     const timer = window.setTimeout(() => {
       void fetchAffiliationSuggestionsOpenAlex({ query, limit: 8 })
         .then((items) => {
           if (cancelled) {
             return
           }
-          const existing = new Set(draft.publicationAffiliations.map((item) => item.toLowerCase()))
-          setAffiliationSuggestions(
-            items.filter((item) => !existing.has(item.name.toLowerCase())),
-          )
+          setPrimaryAffiliationSuggestions(rankAffiliationSuggestions(items, query))
         })
         .catch((lookupError) => {
           if (cancelled) {
@@ -636,21 +701,70 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             lookupError instanceof Error
               ? lookupError.message
               : 'Could not load affiliation suggestions.'
-          setAffiliationSuggestions([])
-          setAffiliationSuggestionsError(message)
+          setPrimaryAffiliationSuggestions([])
+          setPrimaryAffiliationSuggestionsError(message)
         })
         .finally(() => {
           if (!cancelled) {
-            setAffiliationSuggestionsLoading(false)
+            setPrimaryAffiliationSuggestionsLoading(false)
           }
         })
-    }, 280)
+    }, 260)
 
     return () => {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [affiliationInput, draft.publicationAffiliations, isFixtureMode])
+  }, [isFixtureMode, primaryAffiliationInput])
+
+  useEffect(() => {
+    if (isFixtureMode) {
+      return
+    }
+    const query = sanitizeAffiliation(publicationAffiliationInput)
+    if (query.length < 2) {
+      setPublicationAffiliationSuggestions([])
+      setPublicationAffiliationSuggestionsLoading(false)
+      setPublicationAffiliationSuggestionsError('')
+      return
+    }
+
+    let cancelled = false
+    setPublicationAffiliationSuggestionsLoading(true)
+    setPublicationAffiliationSuggestionsError('')
+    const timer = window.setTimeout(() => {
+      void fetchAffiliationSuggestionsOpenAlex({ query, limit: 8 })
+        .then((items) => {
+          if (cancelled) {
+            return
+          }
+          const existing = new Set(draft.publicationAffiliations.map((item) => item.toLowerCase()))
+          const filtered = items.filter((item) => !existing.has(item.name.toLowerCase()))
+          setPublicationAffiliationSuggestions(rankAffiliationSuggestions(filtered, query))
+        })
+        .catch((lookupError) => {
+          if (cancelled) {
+            return
+          }
+          const message =
+            lookupError instanceof Error
+              ? lookupError.message
+              : 'Could not load affiliation suggestions.'
+          setPublicationAffiliationSuggestions([])
+          setPublicationAffiliationSuggestionsError(message)
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setPublicationAffiliationSuggestionsLoading(false)
+          }
+        })
+    }, 260)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [draft.publicationAffiliations, isFixtureMode, publicationAffiliationInput])
 
   const orcidId = trimValue(orcidStatus?.orcid_id || user?.orcid_id)
   const orcidLinked = Boolean(orcidStatus?.linked || user?.orcid_id)
@@ -681,25 +795,29 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setAccountEmail(value)
   }
 
-  const onAddAffiliation = (value: string, metadata?: AffiliationMetadataItem) => {
+  const onAddPublicationAffiliation = (value: string, metadata?: AffiliationMetadataItem) => {
     const clean = sanitizeAffiliation(value)
     if (!clean) {
       return
     }
     const metadataPayload = {
       address: sanitizeAffiliation(metadata?.address),
+      city: sanitizeAffiliation(metadata?.city),
+      region: sanitizeAffiliation(metadata?.region),
       country: sanitizeAffiliation(metadata?.country),
     }
-    const metadataAvailable = Boolean(metadataPayload.address || metadataPayload.country)
+    const metadataAvailable = Boolean(
+      metadataPayload.address || metadataPayload.city || metadataPayload.region || metadataPayload.country,
+    )
     const cacheKey = clean.toLowerCase()
     draftEditedRef.current = true
     setDraft((current) => ({
       ...current,
       publicationAffiliations: normalizeAffiliations([...current.publicationAffiliations, clean]),
       organisation: sanitizeAffiliation(current.organisation) || clean,
-      affiliationAddress:
-        sanitizeAffiliation(current.affiliationAddress) ||
-        (metadataAvailable ? metadataPayload.address : ''),
+      affiliationAddress: sanitizeAffiliation(current.affiliationAddress) || metadataPayload.address,
+      affiliationCity: sanitizeAffiliation(current.affiliationCity) || metadataPayload.city,
+      affiliationRegion: sanitizeAffiliation(current.affiliationRegion) || metadataPayload.region,
       country:
         sanitizeAffiliation(current.country) ||
         (metadataAvailable ? metadataPayload.country : ''),
@@ -709,20 +827,49 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         ...current,
         [cacheKey]: {
           address: metadataPayload.address,
+          city: metadataPayload.city,
+          region: metadataPayload.region,
           country: metadataPayload.country,
         },
       }))
     }
-    setAffiliationInput('')
-    setAffiliationSuggestions([])
-    setAffiliationSuggestionsError('')
+    setPublicationAffiliationInput('')
+    setPublicationAffiliationSuggestions([])
+    setPublicationAffiliationSuggestionsError('')
+    setShowPublicationAffiliationComposer(false)
   }
 
-  const onSelectAffiliationSuggestion = (suggestion: AffiliationSuggestionItem) => {
-    onAddAffiliation(suggestion.name, {
-      address: suggestion.address || '',
-      country: suggestion.countryName || '',
-    })
+  const onApplyPrimaryAffiliationSuggestion = (suggestion: AffiliationSuggestionItem) => {
+    const clean = sanitizeAffiliation(suggestion.name)
+    if (!clean) {
+      return
+    }
+    const metadata: AffiliationMetadataItem = {
+      address: sanitizeAffiliation(suggestion.address),
+      city: sanitizeAffiliation(suggestion.city),
+      region: sanitizeAffiliation(suggestion.region),
+      country: sanitizeAffiliation(suggestion.countryName),
+    }
+    draftEditedRef.current = true
+    setDraft((current) => ({
+      ...current,
+      organisation: clean,
+      affiliationAddress: sanitizeAffiliation(current.affiliationAddress) || metadata.address,
+      affiliationCity: sanitizeAffiliation(current.affiliationCity) || metadata.city,
+      affiliationRegion: sanitizeAffiliation(current.affiliationRegion) || metadata.region,
+      country: sanitizeAffiliation(current.country) || metadata.country,
+      publicationAffiliations: normalizeAffiliations([
+        clean,
+        ...current.publicationAffiliations,
+      ]),
+    }))
+    setAffiliationMetadataByName((current) => ({
+      ...current,
+      [clean.toLowerCase()]: metadata,
+    }))
+    setPrimaryAffiliationInput('')
+    setPrimaryAffiliationSuggestions([])
+    setPrimaryAffiliationSuggestionsError('')
   }
 
   const onSetPrimaryAffiliation = (value: string) => {
@@ -736,8 +883,117 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       ...current,
       organisation: clean,
       affiliationAddress: sanitizeAffiliation(metadata?.address) || current.affiliationAddress,
+      affiliationCity: sanitizeAffiliation(metadata?.city) || current.affiliationCity,
+      affiliationRegion: sanitizeAffiliation(metadata?.region) || current.affiliationRegion,
       country: sanitizeAffiliation(metadata?.country) || current.country,
     }))
+  }
+
+  const onAiSuggestPrimaryAffiliation = async () => {
+    const seed = sanitizeAffiliation(
+      primaryAffiliationInput
+      || draft.organisation
+      || draft.publicationAffiliations[0]
+      || '',
+    )
+    if (!seed) {
+      setError('Type an affiliation or add one publication affiliation first.')
+      return
+    }
+    setError('')
+    setAiPrimaryBusy(true)
+    try {
+      const suggestions = await fetchAffiliationSuggestionsOpenAlex({ query: seed, limit: 8 })
+      const ranked = rankAffiliationSuggestions(suggestions, seed)
+      const best = ranked[0]
+      if (!best) {
+        setStatus('No affiliation suggestions found for AI assist.')
+        return
+      }
+      onApplyPrimaryAffiliationSuggestion(best)
+      setStatus(`AI assist set primary affiliation to ${best.name}.`)
+    } catch (lookupError) {
+      setError(
+        lookupError instanceof Error
+          ? lookupError.message
+          : 'AI assist could not suggest a primary affiliation.',
+      )
+    } finally {
+      setAiPrimaryBusy(false)
+    }
+  }
+
+  const onAiSuggestPublicationAffiliations = async () => {
+    const seed = sanitizeAffiliation(
+      publicationAffiliationInput
+      || draft.organisation
+      || primaryAffiliationInput
+      || '',
+    )
+    if (!seed) {
+      setError('Type an affiliation first to generate publication affiliation suggestions.')
+      return
+    }
+    setError('')
+    setAiPublicationBusy(true)
+    try {
+      const suggestions = await fetchAffiliationSuggestionsOpenAlex({ query: seed, limit: 8 })
+      const ranked = rankAffiliationSuggestions(suggestions, seed).slice(0, 3)
+      if (ranked.length === 0) {
+        setStatus('No publication affiliation suggestions found.')
+        return
+      }
+      for (const suggestion of ranked) {
+        onAddPublicationAffiliation(suggestion.name, {
+          address: suggestion.address || '',
+          city: suggestion.city || '',
+          region: suggestion.region || '',
+          country: suggestion.countryName || '',
+        })
+      }
+      setStatus(`AI assist added ${ranked.length} publication affiliation suggestion${ranked.length === 1 ? '' : 's'}.`)
+    } catch (lookupError) {
+      setError(
+        lookupError instanceof Error
+          ? lookupError.message
+          : 'AI assist could not suggest publication affiliations.',
+      )
+    } finally {
+      setAiPublicationBusy(false)
+    }
+  }
+
+  const onDragStartPublicationAffiliation = (index: number) => {
+    setDraggingPublicationAffiliationIndex(index)
+  }
+
+  const onDropPublicationAffiliation = (targetIndex: number) => {
+    if (draggingPublicationAffiliationIndex === null || draggingPublicationAffiliationIndex === targetIndex) {
+      setDraggingPublicationAffiliationIndex(null)
+      return
+    }
+    draftEditedRef.current = true
+    setDraft((current) => {
+      const items = [...current.publicationAffiliations]
+      if (
+        draggingPublicationAffiliationIndex < 0
+        || draggingPublicationAffiliationIndex >= items.length
+        || targetIndex < 0
+        || targetIndex >= items.length
+      ) {
+        return current
+      }
+      const [moved] = items.splice(draggingPublicationAffiliationIndex, 1)
+      if (!moved) {
+        return current
+      }
+      items.splice(targetIndex, 0, moved)
+      return {
+        ...current,
+        publicationAffiliations: items,
+      }
+    })
+    setDraggingPublicationAffiliationIndex(null)
   }
 
   const onRemoveAffiliation = (value: string) => {
@@ -752,6 +1008,11 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           ? ''
           : current.organisation,
     }))
+    setAffiliationMetadataByName((current) => {
+      const next = { ...current }
+      delete next[value.toLowerCase()]
+      return next
+    })
   }
 
   const onResetFromProfile = () => {
@@ -761,11 +1022,19 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     const stored = loadStoredPersonalDetails(user.id)
     setDraft(draftFromSources(user, stored, orcidLinked))
     setAccountEmail(trimValue(user.email))
-    setAffiliationInput('')
-    setAffiliationSuggestions([])
+    setPrimaryAffiliationInput('')
+    setPrimaryAffiliationSuggestions([])
+    setPrimaryAffiliationSuggestionsLoading(false)
+    setPrimaryAffiliationSuggestionsError('')
+    setPublicationAffiliationInput('')
+    setPublicationAffiliationSuggestions([])
+    setPublicationAffiliationSuggestionsLoading(false)
+    setPublicationAffiliationSuggestionsError('')
     setAffiliationMetadataByName({})
-    setAffiliationSuggestionsLoading(false)
-    setAffiliationSuggestionsError('')
+    setShowPublicationAffiliationComposer(false)
+    setDraggingPublicationAffiliationIndex(null)
+    setAiPrimaryBusy(false)
+    setAiPublicationBusy(false)
     setLastSavedAt(stored?.updatedAt ?? null)
     setStatus('')
     setError('')
@@ -851,7 +1120,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         <CardHeader className="space-y-2 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
-              Profile identity
+              Profile
             </CardTitle>
             <span
               className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${
@@ -1020,14 +1289,24 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       <Card className="border-[hsl(var(--tone-neutral-200))]">
         <CardHeader className="space-y-1 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
           <CardTitle className="text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
-            Publication affiliation details
+            Affiliation
           </CardTitle>
           <p className="text-xs text-[hsl(var(--tone-neutral-600))]">
-            Set a primary affiliation and auto-fill its address from institution suggestions.
+            Capture your role and primary institution details used across outputs.
           </p>
         </CardHeader>
         <CardContent className="space-y-3 pt-3 text-sm">
           <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1 sm:col-span-2">
+              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Job role</span>
+              <Input
+                value={draft.jobRole}
+                onChange={(event) => onFieldChange('jobRole', event.target.value)}
+                placeholder="e.g., Professor, Consultant, Postdoctoral researcher"
+                autoComplete="organization-title"
+              />
+            </label>
+
             <label className="space-y-1 sm:col-span-2">
               <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Primary affiliation</span>
               <Input
@@ -1038,26 +1317,91 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               />
             </label>
 
+            <div className="space-y-1 sm:col-span-2">
+              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">AI-assisted lookup</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  value={primaryAffiliationInput}
+                  onChange={(event) => setPrimaryAffiliationInput(event.target.value)}
+                  placeholder="Type institution name for suggestions"
+                  autoComplete="organization"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    void onAiSuggestPrimaryAffiliation()
+                  }}
+                  disabled={aiPrimaryBusy}
+                >
+                  {aiPrimaryBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1.5 h-4 w-4" />}
+                  AI assist
+                </Button>
+              </div>
+              {primaryAffiliationSuggestionsLoading ? (
+                <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Looking up primary affiliation suggestions...</p>
+              ) : null}
+              {primaryAffiliationSuggestions.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2">
+                  {primaryAffiliationSuggestions.map((suggestion) => (
+                    <button
+                      key={`primary:${suggestion.source}:${suggestion.name}:${suggestion.countryCode || ''}`}
+                      type="button"
+                      onClick={() => onApplyPrimaryAffiliationSuggestion(suggestion)}
+                      className="rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-800))]"
+                      title={suggestion.label}
+                    >
+                      {suggestion.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {primaryAffiliationSuggestionsError ? (
+                <p className="text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationSuggestionsError}</p>
+              ) : (
+                <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
+                  AI assist ranks OpenAlex institution matches and can auto-fill city, region, and country.
+                </p>
+              )}
+            </div>
+
             <label className="space-y-1 sm:col-span-2">
-              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Affiliation address</span>
+              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Address line 1</span>
               <Input
                 value={draft.affiliationAddress}
                 onChange={(event) => onFieldChange('affiliationAddress', event.target.value)}
-                placeholder="City, region, country"
+                placeholder="Building, street, or campus"
                 autoComplete="street-address"
               />
-              <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
-                Auto-filled when you pick a suggested institution and set it as primary.
-              </p>
             </label>
 
             <label className="space-y-1">
-              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Department</span>
+              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">City</span>
               <Input
-                value={draft.department}
-                onChange={(event) => onFieldChange('department', event.target.value)}
-                placeholder="Department"
-                autoComplete="organization-title"
+                value={draft.affiliationCity}
+                onChange={(event) => onFieldChange('affiliationCity', event.target.value)}
+                placeholder="City"
+                autoComplete="address-level2"
+              />
+            </label>
+
+            <label className="space-y-1">
+              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Region / state</span>
+              <Input
+                value={draft.affiliationRegion}
+                onChange={(event) => onFieldChange('affiliationRegion', event.target.value)}
+                placeholder="Region or state"
+                autoComplete="address-level1"
+              />
+            </label>
+
+            <label className="space-y-1">
+              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Postal code</span>
+              <Input
+                value={draft.affiliationPostalCode}
+                onChange={(event) => onFieldChange('affiliationPostalCode', event.target.value)}
+                placeholder="Postal code"
+                autoComplete="postal-code"
               />
             </label>
 
@@ -1071,16 +1415,62 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               />
             </label>
 
+            <label className="space-y-1 sm:col-span-2">
+              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Department</span>
+              <Input
+                value={draft.department}
+                onChange={(event) => onFieldChange('department', event.target.value)}
+                placeholder="Department"
+                autoComplete="organization-title"
+              />
+            </label>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-[hsl(var(--tone-neutral-200))]">
+        <CardHeader className="space-y-1 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
+          <CardTitle className="text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
+            Publication affiliation
+          </CardTitle>
+          <p className="text-xs text-[hsl(var(--tone-neutral-600))]">
+            Keep an ordered list of affiliations used for manuscript author lines. Drag to reorder.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-3 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowPublicationAffiliationComposer((current) => !current)}
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              {showPublicationAffiliationComposer ? 'Hide add form' : 'Add new'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                void onAiSuggestPublicationAffiliations()
+              }}
+              disabled={aiPublicationBusy}
+            >
+              {aiPublicationBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1.5 h-4 w-4" />}
+              AI suggest
+            </Button>
+          </div>
+
+          {showPublicationAffiliationComposer ? (
             <div className="space-y-1 sm:col-span-2">
-              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Publication affiliations</span>
+              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Add publication affiliation</span>
               <div className="flex flex-wrap items-center gap-2">
                 <Input
-                  value={affiliationInput}
-                  onChange={(event) => setAffiliationInput(event.target.value)}
+                  value={publicationAffiliationInput}
+                  onChange={(event) => setPublicationAffiliationInput(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter') {
                       event.preventDefault()
-                      onAddAffiliation(affiliationInput)
+                      onAddPublicationAffiliation(publicationAffiliationInput)
                     }
                   }}
                   placeholder="Start typing an institution"
@@ -1089,25 +1479,30 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => onAddAffiliation(affiliationInput)}
+                  onClick={() => onAddPublicationAffiliation(publicationAffiliationInput)}
                   disabled={
-                    !sanitizeAffiliation(affiliationInput) ||
+                    !sanitizeAffiliation(publicationAffiliationInput) ||
                     draft.publicationAffiliations.length >= MAX_PUBLICATION_AFFILIATIONS
                   }
                 >
-                  Add
+                  Add new
                 </Button>
               </div>
-              {affiliationSuggestionsLoading ? (
+              {publicationAffiliationSuggestionsLoading ? (
                 <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Looking up affiliations...</p>
               ) : null}
-              {affiliationSuggestions.length > 0 ? (
+              {publicationAffiliationSuggestions.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2">
-                  {affiliationSuggestions.map((suggestion) => (
+                  {publicationAffiliationSuggestions.map((suggestion) => (
                     <button
-                      key={`${suggestion.source}:${suggestion.name}:${suggestion.countryCode || ''}`}
+                      key={`publication:${suggestion.source}:${suggestion.name}:${suggestion.countryCode || ''}`}
                       type="button"
-                      onClick={() => onSelectAffiliationSuggestion(suggestion)}
+                      onClick={() => onAddPublicationAffiliation(suggestion.name, {
+                        address: suggestion.address || '',
+                        city: suggestion.city || '',
+                        region: suggestion.region || '',
+                        country: suggestion.countryName || '',
+                      })}
                       className="rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-800))]"
                       title={suggestion.label}
                     >
@@ -1116,55 +1511,70 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   ))}
                 </div>
               ) : null}
-              {draft.publicationAffiliations.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {draft.publicationAffiliations.map((item) => {
-                    const isPrimary = item.toLowerCase() === primaryAffiliationKey
-                    return (
-                      <span
-                        key={item}
-                        className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))]"
-                      >
-                        {item}
-                        {isPrimary ? (
-                          <span className="rounded-full border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-1.5 py-0.5 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-positive-700))]">
-                            Primary
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => onSetPrimaryAffiliation(item)}
-                            className="rounded-full border border-[hsl(var(--tone-neutral-300))] px-1.5 py-0.5 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-700))]"
-                          >
-                            Set primary
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => onRemoveAffiliation(item)}
-                          className="text-[hsl(var(--tone-neutral-500))] transition-colors hover:text-[hsl(var(--tone-danger-700))]"
-                          aria-label={`Remove ${item}`}
-                        >
-                          x
-                        </button>
-                      </span>
-                    )
-                  })}
-                </div>
-              ) : (
-                <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
-                  No affiliations saved yet.
-                </p>
-              )}
-              {affiliationSuggestionsError ? (
-                <p className="text-micro text-[hsl(var(--tone-warning-700))]">{affiliationSuggestionsError}</p>
-              ) : (
-                <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
-                  Uses OpenAlex institution suggestions. Selecting one can auto-fill country and address.
-                </p>
-              )}
             </div>
-          </div>
+          ) : null}
+
+          {draft.publicationAffiliations.length > 0 ? (
+            <div className="space-y-2">
+              {draft.publicationAffiliations.map((item, index) => {
+                const isPrimary = item.toLowerCase() === primaryAffiliationKey
+                return (
+                  <div
+                    key={item}
+                    draggable
+                    onDragStart={() => onDragStartPublicationAffiliation(index)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={() => onDropPublicationAffiliation(index)}
+                    onDragEnd={() => setDraggingPublicationAffiliationIndex(null)}
+                    className={`flex flex-wrap items-center gap-2 rounded-md border px-2 py-1.5 ${
+                      draggingPublicationAffiliationIndex === index
+                        ? 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))]'
+                        : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]'
+                    }`}
+                  >
+                    <span className="inline-flex items-center text-[hsl(var(--tone-neutral-500))]" title="Drag to reorder">
+                      <GripVertical className="h-4 w-4" />
+                    </span>
+                    <span className="text-xs font-medium text-[hsl(var(--tone-neutral-700))]">{index + 1}.</span>
+                    <span className="text-xs text-[hsl(var(--tone-neutral-800))]">{item}</span>
+                    {isPrimary ? (
+                      <span className="rounded-full border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-1.5 py-0.5 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-positive-700))]">
+                        Primary
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onSetPrimaryAffiliation(item)}
+                        className="rounded-full border border-[hsl(var(--tone-neutral-300))] px-1.5 py-0.5 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-700))]"
+                      >
+                        Set primary
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onRemoveAffiliation(item)}
+                      className="ml-auto text-[hsl(var(--tone-neutral-500))] transition-colors hover:text-[hsl(var(--tone-danger-700))]"
+                      aria-label={`Remove ${item}`}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
+              No publication affiliations saved yet.
+            </p>
+          )}
+
+          {publicationAffiliationSuggestionsError ? (
+            <p className="text-micro text-[hsl(var(--tone-warning-700))]">{publicationAffiliationSuggestionsError}</p>
+          ) : (
+            <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
+              AI suggestions and OpenAlex lookup are used to reduce manual typing and keep affiliation ordering publication-ready.
+            </p>
+          )}
         </CardContent>
       </Card>
 
