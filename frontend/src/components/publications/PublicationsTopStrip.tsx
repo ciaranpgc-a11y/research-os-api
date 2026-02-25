@@ -1653,7 +1653,7 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
           ))}
         </div>
         <div className="pointer-events-none absolute inset-x-2 bottom-0.5 text-center">
-          <p className="text-[0.54rem] font-medium leading-none text-[hsl(var(--tone-neutral-500))]">
+          <p className="text-[0.6rem] font-semibold leading-none text-[hsl(var(--tone-neutral-600))]">
             Citations needed
           </p>
         </div>
