@@ -656,6 +656,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const orcidLinked = Boolean(orcidStatus?.linked || user?.orcid_id)
   const foundingMemberProfile = isFoundingMemberProfile({ user, orcidId })
   const usesGeneratedOAuthEmail = isGeneratedOAuthEmail(accountEmail || user?.email)
+  const primaryAffiliationKey = sanitizeAffiliation(draft.organisation).toLowerCase()
 
   const badges = useMemo(
     () =>
@@ -923,114 +924,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 </div>
 
                 <label className="space-y-1 sm:col-span-2">
-                  <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Organisation</span>
-                  <Input
-                    value={draft.organisation}
-                    onChange={(event) => onFieldChange('organisation', event.target.value)}
-                    placeholder="Organisation"
-                    autoComplete="organization"
-                  />
-                </label>
-
-                <label className="space-y-1">
-                  <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Department</span>
-                  <Input
-                    value={draft.department}
-                    onChange={(event) => onFieldChange('department', event.target.value)}
-                    placeholder="Department"
-                    autoComplete="organization-title"
-                  />
-                </label>
-
-                <label className="space-y-1">
-                  <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Country</span>
-                  <Input
-                    value={draft.country}
-                    onChange={(event) => onFieldChange('country', event.target.value)}
-                    placeholder="Country"
-                    autoComplete="country-name"
-                  />
-                </label>
-
-                <div className="space-y-1 sm:col-span-2">
-                  <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Publication affiliations</span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Input
-                      value={affiliationInput}
-                      onChange={(event) => setAffiliationInput(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault()
-                          onAddAffiliation(affiliationInput)
-                        }
-                      }}
-                      placeholder="Start typing an institution"
-                      autoComplete="organization"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => onAddAffiliation(affiliationInput)}
-                      disabled={
-                        !sanitizeAffiliation(affiliationInput) ||
-                        draft.publicationAffiliations.length >= MAX_PUBLICATION_AFFILIATIONS
-                      }
-                    >
-                      Add
-                    </Button>
-                  </div>
-                  {affiliationSuggestionsLoading ? (
-                    <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Looking up affiliations...</p>
-                  ) : null}
-                  {affiliationSuggestions.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2">
-                      {affiliationSuggestions.map((suggestion) => (
-                        <button
-                          key={`${suggestion.source}:${suggestion.name}:${suggestion.countryCode || ''}`}
-                          type="button"
-                          onClick={() => onAddAffiliation(suggestion.name)}
-                          className="rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-800))]"
-                          title={suggestion.label}
-                        >
-                          {suggestion.label}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                  {draft.publicationAffiliations.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {draft.publicationAffiliations.map((item) => (
-                        <span
-                          key={item}
-                          className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))]"
-                        >
-                          {item}
-                          <button
-                            type="button"
-                            onClick={() => onRemoveAffiliation(item)}
-                            className="text-[hsl(var(--tone-neutral-500))] transition-colors hover:text-[hsl(var(--tone-danger-700))]"
-                            aria-label={`Remove ${item}`}
-                          >
-                            x
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
-                      No affiliations saved yet.
-                    </p>
-                  )}
-                  {affiliationSuggestionsError ? (
-                    <p className="text-micro text-[hsl(var(--tone-warning-700))]">{affiliationSuggestionsError}</p>
-                  ) : (
-                    <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
-                      Uses OpenAlex institution suggestions while you type.
-                    </p>
-                  )}
-                </div>
-
-                <label className="space-y-1 sm:col-span-2">
                   <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Website</span>
                   <Input
                     value={draft.website}
@@ -1121,34 +1014,188 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             </aside>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 border-t border-[hsl(var(--tone-neutral-200))] pt-3">
-            <Button type="button" onClick={() => void onSave()} disabled={!user || saving || loading}>
-              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {saving ? 'Saving...' : 'Save details'}
-            </Button>
-            <Button type="button" variant="outline" onClick={onResetFromProfile} disabled={!user || saving}>
-              Reset fields
-            </Button>
-            {lastSavedAt ? (
-              <p className="text-xs text-[hsl(var(--tone-neutral-500))]">Last saved {formatTimestamp(lastSavedAt)}</p>
-            ) : null}
-          </div>
-
-          {status ? (
-            <div className="rounded-md border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-3 py-2 text-sm text-[hsl(var(--tone-positive-700))]">
-              {status}
-            </div>
-          ) : null}
-
-          {error ? (
-            <div className="rounded-md border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-3 py-2 text-sm text-[hsl(var(--tone-danger-700))]">
-              {error}
-            </div>
-          ) : null}
-
-          {loading ? <p className="text-xs text-[hsl(var(--tone-neutral-500))]">Loading personal details...</p> : null}
         </CardContent>
       </Card>
+
+      <Card className="border-[hsl(var(--tone-neutral-200))]">
+        <CardHeader className="space-y-1 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
+          <CardTitle className="text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
+            Publication affiliation details
+          </CardTitle>
+          <p className="text-xs text-[hsl(var(--tone-neutral-600))]">
+            Set a primary affiliation and auto-fill its address from institution suggestions.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-3 text-sm">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1 sm:col-span-2">
+              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Primary affiliation</span>
+              <Input
+                value={draft.organisation}
+                onChange={(event) => onFieldChange('organisation', event.target.value)}
+                placeholder="Primary institution used for publications"
+                autoComplete="organization"
+              />
+            </label>
+
+            <label className="space-y-1 sm:col-span-2">
+              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Affiliation address</span>
+              <Input
+                value={draft.affiliationAddress}
+                onChange={(event) => onFieldChange('affiliationAddress', event.target.value)}
+                placeholder="City, region, country"
+                autoComplete="street-address"
+              />
+              <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
+                Auto-filled when you pick a suggested institution and set it as primary.
+              </p>
+            </label>
+
+            <label className="space-y-1">
+              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Department</span>
+              <Input
+                value={draft.department}
+                onChange={(event) => onFieldChange('department', event.target.value)}
+                placeholder="Department"
+                autoComplete="organization-title"
+              />
+            </label>
+
+            <label className="space-y-1">
+              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Country</span>
+              <Input
+                value={draft.country}
+                onChange={(event) => onFieldChange('country', event.target.value)}
+                placeholder="Country"
+                autoComplete="country-name"
+              />
+            </label>
+
+            <div className="space-y-1 sm:col-span-2">
+              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Publication affiliations</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  value={affiliationInput}
+                  onChange={(event) => setAffiliationInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      onAddAffiliation(affiliationInput)
+                    }
+                  }}
+                  placeholder="Start typing an institution"
+                  autoComplete="organization"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onAddAffiliation(affiliationInput)}
+                  disabled={
+                    !sanitizeAffiliation(affiliationInput) ||
+                    draft.publicationAffiliations.length >= MAX_PUBLICATION_AFFILIATIONS
+                  }
+                >
+                  Add
+                </Button>
+              </div>
+              {affiliationSuggestionsLoading ? (
+                <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Looking up affiliations...</p>
+              ) : null}
+              {affiliationSuggestions.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2">
+                  {affiliationSuggestions.map((suggestion) => (
+                    <button
+                      key={`${suggestion.source}:${suggestion.name}:${suggestion.countryCode || ''}`}
+                      type="button"
+                      onClick={() => onSelectAffiliationSuggestion(suggestion)}
+                      className="rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-800))]"
+                      title={suggestion.label}
+                    >
+                      {suggestion.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {draft.publicationAffiliations.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {draft.publicationAffiliations.map((item) => {
+                    const isPrimary = item.toLowerCase() === primaryAffiliationKey
+                    return (
+                      <span
+                        key={item}
+                        className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-xs text-[hsl(var(--tone-neutral-700))]"
+                      >
+                        {item}
+                        {isPrimary ? (
+                          <span className="rounded-full border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-1.5 py-0.5 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-positive-700))]">
+                            Primary
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => onSetPrimaryAffiliation(item)}
+                            className="rounded-full border border-[hsl(var(--tone-neutral-300))] px-1.5 py-0.5 text-micro uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:text-[hsl(var(--tone-accent-700))]"
+                          >
+                            Set primary
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => onRemoveAffiliation(item)}
+                          className="text-[hsl(var(--tone-neutral-500))] transition-colors hover:text-[hsl(var(--tone-danger-700))]"
+                          aria-label={`Remove ${item}`}
+                        >
+                          x
+                        </button>
+                      </span>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
+                  No affiliations saved yet.
+                </p>
+              )}
+              {affiliationSuggestionsError ? (
+                <p className="text-micro text-[hsl(var(--tone-warning-700))]">{affiliationSuggestionsError}</p>
+              ) : (
+                <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
+                  Uses OpenAlex institution suggestions. Selecting one can auto-fill country and address.
+                </p>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" onClick={() => void onSave()} disabled={!user || saving || loading}>
+            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {saving ? 'Saving...' : 'Save details'}
+          </Button>
+          <Button type="button" variant="outline" onClick={onResetFromProfile} disabled={!user || saving}>
+            Reset fields
+          </Button>
+          {lastSavedAt ? (
+            <p className="text-xs text-[hsl(var(--tone-neutral-500))]">Last saved {formatTimestamp(lastSavedAt)}</p>
+          ) : null}
+        </div>
+
+        {status ? (
+          <div className="rounded-md border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-3 py-2 text-sm text-[hsl(var(--tone-positive-700))]">
+            {status}
+          </div>
+        ) : null}
+
+        {error ? (
+          <div className="rounded-md border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-3 py-2 text-sm text-[hsl(var(--tone-danger-700))]">
+            {error}
+          </div>
+        ) : null}
+
+        {loading ? <p className="text-xs text-[hsl(var(--tone-neutral-500))]">Loading personal details...</p> : null}
+      </div>
     </section>
   )
 }
