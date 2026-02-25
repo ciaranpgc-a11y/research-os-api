@@ -1748,9 +1748,9 @@ function HIndexViewToggle({
       >
         <span
           className={cn(
-            'pointer-events-none absolute inset-y-0.5 left-0.5 z-0 w-[calc(50%-0.125rem)] rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-transform duration-350 ease-out will-change-transform',
-            mode === 'needed' ? 'translate-x-[calc(100%+0.125rem)]' : 'translate-x-0',
+            'pointer-events-none absolute inset-y-0.5 z-0 w-[calc(50%-0.125rem)] rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-[left] duration-320 ease-out',
           )}
+          style={{ left: mode === 'needed' ? 'calc(50% + 1px)' : '2px', willChange: 'left' }}
           aria-hidden="true"
         />
         <button
@@ -2284,9 +2284,9 @@ export function PublicationsTopStrip({
                       >
                         <span
                           className={cn(
-                            'pointer-events-none absolute inset-y-0.5 left-0.5 z-0 w-[calc(50%-0.125rem)] rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-transform duration-350 ease-out will-change-transform',
-                            momentumWindowMode === '5y' ? 'translate-x-[calc(100%+0.125rem)]' : 'translate-x-0',
+                            'pointer-events-none absolute inset-y-0.5 z-0 w-[calc(50%-0.125rem)] rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-[left] duration-320 ease-out',
                           )}
+                          style={{ left: momentumWindowMode === '5y' ? 'calc(50% + 1px)' : '2px', willChange: 'left' }}
                           aria-hidden="true"
                         />
                         <button
