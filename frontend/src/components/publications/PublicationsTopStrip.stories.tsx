@@ -238,13 +238,16 @@ const impactConcentrationTile = buildTile({
   deltaTone: 'neutral',
   deltaColorCode: 'hsl(var(--tone-neutral-600))',
   subtext: 'Share of citations in top papers',
-  badgeLabel: 'Watch',
+  badgeLabel: 'Balanced',
   badgeSeverity: 'neutral',
   chartType: 'donut',
   chartData: {
     values: [330, 153],
-    uncited_publications_count: 1,
-    uncited_publications_pct: 20,
+    gini_coefficient: 0.51,
+    gini_profile_label: 'Balanced',
+    total_publications: 24,
+    top_papers_count: 3,
+    remaining_papers_count: 21,
     top_3_paper_shares_pct: [42, 17, 9],
   },
   sparkline: [62, 64, 65, 66, 68],
@@ -268,9 +271,50 @@ const influentialCitationsTile = buildTile({
   chartData: {
     values: [24, 27, 30, 33, 37, 42],
     window_labels: ['Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb'],
+    influential_ratio_pct: 9,
   },
   sparkline: [24, 27, 30, 33, 37, 42],
   sparklineOverlay: [22, 24, 26, 28, 31, 34],
+})
+
+const fieldPercentileShareTile = buildTile({
+  id: 'tile-field-percentile-share',
+  key: 'field_percentile_share',
+  label: 'Field percentile share',
+  value: 42,
+  valueDisplay: '42%',
+  deltaValue: null,
+  deltaDisplay: null,
+  deltaDirection: 'na',
+  deltaTone: 'neutral',
+  deltaColorCode: 'hsl(var(--tone-neutral-600))',
+  subtext: 'Papers benchmarked against field-year cohorts',
+  badgeLabel: '',
+  badgeSeverity: 'neutral',
+  chartType: 'percentile_toggle',
+  chartData: {
+    thresholds: [50, 75, 90, 95, 99],
+    default_threshold: 75,
+    share_by_threshold_pct: {
+      '50': 62.5,
+      '75': 42.0,
+      '90': 21.0,
+      '95': 12.5,
+      '99': 4.2,
+    },
+    count_by_threshold: {
+      '50': 15,
+      '75': 10,
+      '90': 5,
+      '95': 3,
+      '99': 1,
+    },
+    evaluated_papers: 24,
+    total_papers: 27,
+    coverage_pct: 88.9,
+    median_percentile_rank: 73.4,
+  },
+  sparkline: [62.5, 42, 21, 12.5, 4.2],
 })
 
 const totalCitationsEmptyTile = buildTile({
@@ -355,7 +399,7 @@ const impactConcentrationEmptyTile = buildTile({
   deltaTone: 'neutral',
   deltaColorCode: 'hsl(var(--tone-neutral-500))',
   subtext: 'No distribution data yet',
-  badgeLabel: 'Watch',
+  badgeLabel: '',
   badgeSeverity: 'neutral',
   chartType: 'donut',
   chartData: { values: [] },
@@ -378,6 +422,33 @@ const influentialCitationsEmptyTile = buildTile({
   badgeSeverity: 'positive',
   chartType: 'line',
   chartData: { values: [] },
+  sparkline: [],
+})
+
+const fieldPercentileShareEmptyTile = buildTile({
+  id: 'tile-field-percentile-share-empty',
+  key: 'field_percentile_share',
+  label: 'Field percentile share',
+  value: null,
+  valueDisplay: '\u2014',
+  deltaValue: null,
+  deltaDisplay: null,
+  deltaDirection: 'na',
+  deltaTone: 'neutral',
+  deltaColorCode: 'hsl(var(--tone-neutral-500))',
+  subtext: 'No field percentile benchmark data yet',
+  badgeLabel: '',
+  badgeSeverity: 'neutral',
+  chartType: 'percentile_toggle',
+  chartData: {
+    thresholds: [50, 75, 90, 95, 99],
+    default_threshold: 75,
+    share_by_threshold_pct: {},
+    count_by_threshold: {},
+    evaluated_papers: 0,
+    total_papers: 0,
+    coverage_pct: 0,
+  },
   sparkline: [],
 })
 
@@ -411,6 +482,7 @@ const overviewTiles = [
   hIndexTile,
   impactConcentrationTile,
   influentialCitationsTile,
+  fieldPercentileShareTile,
 ]
 
 export const TilesOverview: Story = {
@@ -457,3 +529,7 @@ export const ImpactConcentrationLoading: Story = { args: loadingArgs }
 export const InfluentialCitationsDefault: Story = { args: singleTileArgs(influentialCitationsTile) }
 export const InfluentialCitationsNoData: Story = { args: singleTileArgs(influentialCitationsEmptyTile) }
 export const InfluentialCitationsLoading: Story = { args: loadingArgs }
+
+export const FieldPercentileShareDefault: Story = { args: singleTileArgs(fieldPercentileShareTile) }
+export const FieldPercentileShareNoData: Story = { args: singleTileArgs(fieldPercentileShareEmptyTile) }
+export const FieldPercentileShareLoading: Story = { args: loadingArgs }

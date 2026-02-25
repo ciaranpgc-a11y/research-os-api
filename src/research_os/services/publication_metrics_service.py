@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
 import logging
 import math
 import os
 import threading
+import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
+import httpx
 from sqlalchemy import select
 
 from research_os.db import (
@@ -29,7 +32,9 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 11
+TOP_METRICS_SCHEMA_VERSION = 12
+RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
+FIELD_PERCENTILE_THRESHOLDS = [50, 75, 90, 95, 99]
 
 DELTA_COLOR_BY_TONE = {
     "positive": "#166534",
@@ -120,6 +125,39 @@ def _ttl_seconds() -> int:
 def _max_workers() -> int:
     value = _safe_int(os.getenv("PUB_ANALYTICS_MAX_CONCURRENT_JOBS", "2"))
     return max(1, value if value is not None else 2)
+
+
+def _openalex_timeout_seconds() -> float:
+    value = _safe_float(os.getenv("PUB_ANALYTICS_OPENALEX_TIMEOUT_SECONDS", "12"))
+    return max(5.0, value if value is not None else 12.0)
+
+
+def _openalex_retry_count() -> int:
+    value = _safe_int(os.getenv("PUB_ANALYTICS_OPENALEX_RETRY_COUNT", "2"))
+    return max(0, min(6, value if value is not None else 2))
+
+
+def _openalex_field_cohort_max_pages() -> int:
+    value = _safe_int(os.getenv("PUB_METRICS_FIELD_PERCENTILE_MAX_PAGES", "5"))
+    return max(1, min(20, value if value is not None else 5))
+
+
+def _openalex_field_cohort_min_size() -> int:
+    value = _safe_int(os.getenv("PUB_METRICS_FIELD_PERCENTILE_MIN_COHORT", "100"))
+    return max(20, value if value is not None else 100)
+
+
+def _openalex_mailto(*, fallback_email: str | None = None) -> str | None:
+    explicit = str(os.getenv("OPENALEX_MAILTO", "")).strip()
+    if explicit and "@" in explicit:
+        return explicit
+    clean_fallback = str(fallback_email or "").strip()
+    if clean_fallback and "@" in clean_fallback:
+        return clean_fallback
+    bootstrap = str(os.getenv("AAWE_BOOTSTRAP_EMAIL", "")).strip()
+    if bootstrap and "@" in bootstrap:
+        return bootstrap
+    return None
 
 
 def _is_stale(*, computed_at: datetime | None, now: datetime) -> bool:
@@ -280,12 +318,214 @@ def _publication_item_with_links(item: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-def _concentration_risk_label(value: float) -> str:
-    if value < 30.0:
-        return "Low"
-    if value <= 50.0:
-        return "Moderate"
-    return "High"
+def _openalex_request_with_retry(*, url: str, params: dict[str, Any]) -> dict[str, Any]:
+    timeout = httpx.Timeout(_openalex_timeout_seconds())
+    retries = _openalex_retry_count()
+    last_exception: Exception | None = None
+    with httpx.Client(timeout=timeout) as client:
+        for attempt in range(retries + 1):
+            try:
+                response = client.get(url, params=params)
+            except Exception as exc:
+                last_exception = exc
+                if attempt < retries:
+                    time.sleep(0.35 * (attempt + 1))
+                    continue
+                break
+            if response.status_code < 400:
+                payload = response.json()
+                return payload if isinstance(payload, dict) else {}
+            if response.status_code not in RETRYABLE_STATUS_CODES or attempt >= retries:
+                return {}
+            time.sleep(0.35 * (attempt + 1))
+    if last_exception:
+        logger.warning("publication_metrics_openalex_lookup_failed", extra={"detail": str(last_exception)})
+    return {}
+
+
+def _extract_openalex_work_id(value: str | None) -> str | None:
+    clean = str(value or "").strip()
+    if not clean:
+        return None
+    clean = clean.rstrip("/")
+    if clean.startswith("https://api.openalex.org/works/"):
+        clean = clean.removeprefix("https://api.openalex.org/works/")
+    elif clean.startswith("http://api.openalex.org/works/"):
+        clean = clean.removeprefix("http://api.openalex.org/works/")
+    elif clean.startswith("https://openalex.org/"):
+        clean = clean.removeprefix("https://openalex.org/")
+    elif clean.startswith("http://openalex.org/"):
+        clean = clean.removeprefix("http://openalex.org/")
+    clean = clean.strip().strip("/")
+    if not clean:
+        return None
+    token = clean.split("/")[-1].strip()
+    if not token:
+        return None
+    if token[0].lower() == "w":
+        return token.upper()
+    return None
+
+
+def _normalize_openalex_field_id(value: Any) -> str | None:
+    clean = str(value or "").strip()
+    if not clean:
+        return None
+    clean = clean.rstrip("/")
+    if clean.startswith("https://api.openalex.org/fields/"):
+        suffix = clean.removeprefix("https://api.openalex.org/fields/").strip("/")
+        return f"https://openalex.org/fields/{suffix}" if suffix else None
+    if clean.startswith("http://api.openalex.org/fields/"):
+        suffix = clean.removeprefix("http://api.openalex.org/fields/").strip("/")
+        return f"https://openalex.org/fields/{suffix}" if suffix else None
+    if clean.startswith("https://openalex.org/fields/"):
+        suffix = clean.removeprefix("https://openalex.org/fields/").strip("/")
+        return f"https://openalex.org/fields/{suffix}" if suffix else None
+    if clean.startswith("http://openalex.org/fields/"):
+        suffix = clean.removeprefix("http://openalex.org/fields/").strip("/")
+        return f"https://openalex.org/fields/{suffix}" if suffix else None
+    if clean.startswith("https://openalex.org/"):
+        suffix = clean.removeprefix("https://openalex.org/").strip("/")
+        return f"https://openalex.org/{suffix}" if suffix else None
+    if clean.startswith("http://openalex.org/"):
+        suffix = clean.removeprefix("http://openalex.org/").strip("/")
+        return f"https://openalex.org/{suffix}" if suffix else None
+    if clean.isdigit():
+        return f"https://openalex.org/fields/{clean}"
+    if clean[0].lower() == "f":
+        return f"https://openalex.org/{clean.upper()}"
+    return None
+
+
+def _openalex_field_filter_token(value: Any) -> str | None:
+    normalized = _normalize_openalex_field_id(value)
+    if not normalized:
+        return None
+    if "/fields/" in normalized:
+        suffix = normalized.rsplit("/fields/", 1)[-1].strip().strip("/")
+        return suffix or None
+    token = normalized.removeprefix("https://openalex.org/").strip().strip("/")
+    return token or None
+
+
+def _openalex_primary_field_and_year_for_work(
+    *,
+    openalex_work_id: str,
+    mailto: str | None,
+) -> dict[str, Any]:
+    work_id = _extract_openalex_work_id(openalex_work_id)
+    if not work_id:
+        return {}
+    params: dict[str, Any] = {
+        "select": "id,publication_year,cited_by_count,primary_topic",
+    }
+    if mailto:
+        params["mailto"] = mailto
+    payload = _openalex_request_with_retry(
+        url=f"https://api.openalex.org/works/{work_id}",
+        params=params,
+    )
+    if not payload:
+        return {}
+    primary_topic = payload.get("primary_topic") if isinstance(payload.get("primary_topic"), dict) else {}
+    field = primary_topic.get("field") if isinstance(primary_topic.get("field"), dict) else {}
+    field_id = _normalize_openalex_field_id(field.get("id"))
+    field_name = str(field.get("display_name") or "").strip() or None
+    publication_year = _safe_int(payload.get("publication_year"))
+    cited_by_count = _safe_int(payload.get("cited_by_count"))
+    return {
+        "field_id": field_id,
+        "field_name": field_name,
+        "publication_year": publication_year,
+        "cited_by_count": max(0, int(cited_by_count or 0)),
+    }
+
+
+def _openalex_field_year_citation_cohort(
+    *,
+    field_id: str,
+    year: int,
+    mailto: str | None,
+    max_pages: int,
+) -> dict[str, Any]:
+    clean_field_id = _normalize_openalex_field_id(field_id)
+    field_filter_id = _openalex_field_filter_token(field_id)
+    if not clean_field_id or not field_filter_id:
+        return {"citations": [], "total_results": 0}
+    if year < 1900 or year > 2100:
+        return {"citations": [], "total_results": 0}
+
+    citations: list[int] = []
+    cursor = "*"
+    pages = 0
+    total_results = 0
+    while pages < max_pages and cursor:
+        params: dict[str, Any] = {
+            "filter": f"primary_topic.field.id:{field_filter_id},publication_year:{int(year)}",
+            "select": "cited_by_count",
+            "per-page": 200,
+            "cursor": cursor,
+        }
+        if mailto:
+            params["mailto"] = mailto
+        payload = _openalex_request_with_retry(
+            url="https://api.openalex.org/works",
+            params=params,
+        )
+        if not payload:
+            break
+        results = payload.get("results")
+        if not isinstance(results, list):
+            break
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            citations.append(max(0, int(_safe_int(item.get("cited_by_count")) or 0)))
+        meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+        meta_count = _safe_int(meta.get("count"))
+        if meta_count is not None and meta_count >= 0:
+            total_results = int(meta_count)
+        next_cursor = str(meta.get("next_cursor") or "").strip()
+        if not next_cursor or next_cursor == cursor:
+            break
+        cursor = next_cursor
+        pages += 1
+
+    citations.sort()
+    return {
+        "citations": citations,
+        "total_results": total_results,
+    }
+
+
+def _empirical_percentile_rank(sorted_values: list[int], value: int | float) -> float | None:
+    if not sorted_values:
+        return None
+    n = len(sorted_values)
+    sample_value = max(0.0, float(value or 0.0))
+    left = bisect_left(sorted_values, sample_value)
+    right = bisect_right(sorted_values, sample_value)
+    rank = ((left + right) / 2.0) / float(n)
+    return round(max(0.0, min(1.0, rank)) * 100.0, 2)
+
+
+def _percentile_cutoff(sorted_values: list[int], percentile: float) -> int | None:
+    if not sorted_values:
+        return None
+    n = len(sorted_values)
+    p = max(0.0, min(100.0, float(percentile)))
+    if n == 1:
+        return int(sorted_values[0])
+    position = (p / 100.0) * (n - 1)
+    lower = int(math.floor(position))
+    upper = int(math.ceil(position))
+    if lower == upper:
+        return int(sorted_values[lower])
+    fraction = position - lower
+    low = float(sorted_values[lower])
+    high = float(sorted_values[upper])
+    interpolated = low + ((high - low) * fraction)
+    return int(round(interpolated))
 
 
 def _month_start(value: datetime) -> datetime:
@@ -590,6 +830,38 @@ def compute_concentration_risk_percent(*, total_citations: int, top3_citations: 
     if total <= 0:
         return 0.0
     return round((head / total) * 100.0, 2)
+
+
+def compute_gini_coefficient(values: list[int | float]) -> float:
+    clean: list[float] = []
+    for item in values:
+        parsed = _safe_float(item)
+        if parsed is None:
+            continue
+        clean.append(max(0.0, float(parsed)))
+    n = len(clean)
+    if n <= 0:
+        return 0.0
+    total = float(sum(clean))
+    if total <= 0.0:
+        return 0.0
+    sorted_values = sorted(clean)
+    weighted_sum = 0.0
+    for index, value in enumerate(sorted_values, start=1):
+        weighted_sum += ((2 * index) - n - 1) * value
+    gini = weighted_sum / (float(n) * total)
+    return round(max(0.0, min(1.0, gini)), 4)
+
+
+def _concentration_profile_from_gini(value: float) -> str:
+    if value < 0.40:
+        return "Strongly diversified"
+    if value < 0.55:
+        return "Balanced"
+    # Keep continuity for the unspecified 0.70-0.90 interval.
+    if value < 0.90:
+        return "Breakthrough-skewed"
+    return "Landmark-dominant"
 
 
 def project_h_index(
@@ -946,6 +1218,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         rows = snapshots_by_work.get(work_id, [])
         semantic_rows = semantic_by_work.get(work_id, [])
         latest = _best_snapshot(rows)
+        latest_openalex = _best_snapshot(
+            [item for item in rows if str(item.provider or "").strip().lower() == "openalex"]
+        )
         latest_semantic = _best_snapshot(semantic_rows)
         latest_citations = (
             max(0, int(latest.citations_count or 0))
@@ -960,6 +1235,13 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         latest_provider = str(latest.provider or "manual").strip().lower() if latest is not None else "manual"
         provider_counts_latest[latest_provider] = provider_counts_latest.get(latest_provider, 0) + 1
         fallback_year_for_row: int | None = None
+        openalex_work_id = _extract_openalex_work_id(str(work.openalex_work_id or "").strip() or None)
+        if latest_openalex is not None and isinstance(latest_openalex.metric_payload, dict):
+            snapshot_openalex_id = _extract_openalex_work_id(
+                str(latest_openalex.metric_payload.get("id") or "").strip() or None
+            )
+            if snapshot_openalex_id:
+                openalex_work_id = snapshot_openalex_id
 
         yearly_counts = _extract_counts_by_year(rows, now_year=now.year)
         if yearly_counts:
@@ -1109,6 +1391,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "journal": str(work.venue_name or "").strip() or str(work.journal or "").strip() or "Not available",
                 "doi": str(work.doi or "").strip() or None,
                 "pmid": str(work.pmid or "").strip() or None,
+                "openalex_work_id": openalex_work_id,
                 "citations_lifetime": latest_citations,
                 "citations_last_12m": last_12,
                 "citations_prev_12m": prev_12,
@@ -1156,6 +1439,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     )
 
     citation_values = [int(row["citations_lifetime"]) for row in per_work_rows]
+    concentration_gini = compute_gini_coefficient(citation_values)
+    concentration_classification = _concentration_profile_from_gini(concentration_gini)
     h_index = compute_h_index(citation_values)
     first_publication_year: int | None = None
     for row in per_work_rows:
@@ -1563,6 +1848,31 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             continue
         publication_counts_by_year[int(parsed_year)] += 1
     total_publications = len(per_work_rows)
+    influence_by_publication_year: dict[int, int] = defaultdict(int)
+    unknown_year_influential_citations = 0
+    for row in influence_candidates:
+        influential_value = max(0, int(row.get("influential_citations") or 0))
+        parsed_year = _safe_int(row.get("year"))
+        if parsed_year is None:
+            unknown_year_influential_citations += influential_value
+            continue
+        influence_by_publication_year[int(parsed_year)] += influential_value
+    influential_history_years: list[int] = []
+    influential_history_values: list[int] = []
+    if publication_counts_by_year:
+        start_year = int(min(publication_counts_by_year.keys()))
+        end_year = int(max(max(publication_counts_by_year.keys()), now.year))
+        influential_history_years = list(range(start_year, end_year + 1))
+        influential_history_values = [
+            max(0, int(influence_by_publication_year.get(year, 0)))
+            for year in influential_history_years
+        ]
+    elif influence_by_publication_year:
+        influential_history_years = sorted(int(year) for year in influence_by_publication_year.keys())
+        influential_history_values = [
+            max(0, int(influence_by_publication_year.get(year, 0)))
+            for year in influential_history_years
+        ]
     uncited_publications_count = int(
         sum(1 for row in per_work_rows if int(row.get("citations_lifetime") or 0) <= 0)
     )
@@ -1609,19 +1919,185 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             continue
         for idx in range(min(24, len(additions))):
             influence_monthly_added_totals[idx] += max(0, int(additions[idx] or 0))
-    concentration_classification = (
-        "Diversified" if concentration_risk < 30.0 else "Moderate" if concentration_risk <= 50.0 else "Concentrated"
-    )
     influence_prev_12m = max(0, int(sum(influence_monthly_added_totals[:12])))
     influence_delta = influence_last_12m - influence_prev_12m
     influential_ratio = round((influence_total / total_citations) * 100.0, 1) if total_citations > 0 else 0.0
-    influential_subtext = (
-        f"{influential_ratio:.1f}% of total citations | Updated monthly"
-        if abs(influence_delta) <= 1
-        else f"{influential_ratio:.1f}% of total citations | {influence_delta:+,} vs previous 12m"
-    )
+    influential_subtext = f"{influential_ratio:.1f}% of total citations"
     if not influence_available:
         influential_subtext = "Semantic Scholar influential signal unavailable"
+    influential_chart_values = (
+        influential_history_values
+        if influential_history_values
+        else influence_monthly_added_totals[-12:]
+    )
+    influential_chart_labels = (
+        [int(year) for year in influential_history_years]
+        if influential_history_values
+        else list(range(1, len(influential_chart_values) + 1))
+    )
+
+    field_percentile_default_threshold = 75
+    field_percentile_counts: dict[int, int] = {
+        threshold: 0 for threshold in FIELD_PERCENTILE_THRESHOLDS
+    }
+    field_percentile_shares: dict[str, float] = {
+        str(threshold): 0.0 for threshold in FIELD_PERCENTILE_THRESHOLDS
+    }
+    field_percentile_publications: list[dict[str, Any]] = []
+    field_percentile_evaluated = 0
+    field_percentile_coverage_pct = 0.0
+    field_percentile_median_rank = 0.0
+    field_percentile_available = False
+    field_percentile_used_cohort_sizes: list[int] = []
+    field_percentile_cohort_count = 0
+
+    if "OpenAlex" in data_sources:
+        openalex_mailto = _openalex_mailto(fallback_email=str(user.email or "").strip() or None)
+        field_cohort_max_pages = _openalex_field_cohort_max_pages()
+        field_cohort_min_size = _openalex_field_cohort_min_size()
+        work_field_cache: dict[str, dict[str, Any]] = {}
+        cohort_cache: dict[tuple[str, int], dict[str, Any]] = {}
+        percentile_ranks: list[float] = []
+        used_cohort_keys: set[tuple[str, int]] = set()
+
+        for row in per_work_rows:
+            openalex_work_id = _extract_openalex_work_id(
+                str(row.get("openalex_work_id") or "").strip() or None
+            )
+            if not openalex_work_id:
+                continue
+            work_field = work_field_cache.get(openalex_work_id)
+            if work_field is None:
+                work_field = _openalex_primary_field_and_year_for_work(
+                    openalex_work_id=openalex_work_id,
+                    mailto=openalex_mailto,
+                )
+                work_field_cache[openalex_work_id] = work_field
+            field_id = _normalize_openalex_field_id(work_field.get("field_id"))
+            if not field_id:
+                continue
+            paper_year = _safe_int(row.get("year"))
+            resolved_year = (
+                int(paper_year)
+                if paper_year is not None and 1900 <= paper_year <= now.year
+                else _safe_int(work_field.get("publication_year"))
+            )
+            if resolved_year is None or resolved_year < 1900 or resolved_year > now.year:
+                continue
+
+            cohort_key = (field_id, int(resolved_year))
+            cohort_entry = cohort_cache.get(cohort_key)
+            if cohort_entry is None:
+                cohort_payload = _openalex_field_year_citation_cohort(
+                    field_id=field_id,
+                    year=int(resolved_year),
+                    mailto=openalex_mailto,
+                    max_pages=field_cohort_max_pages,
+                )
+                cohort_values = [
+                    max(0, int(_safe_int(value) or 0))
+                    for value in (cohort_payload.get("citations") if isinstance(cohort_payload, dict) else [])
+                ]
+                cohort_values.sort()
+                cohort_entry = {
+                    "citations": cohort_values,
+                    "sample_size": len(cohort_values),
+                    "total_results": max(
+                        0,
+                        int(_safe_int((cohort_payload or {}).get("total_results")) or 0),
+                    ),
+                    "cutoffs": {
+                        str(threshold): _percentile_cutoff(cohort_values, float(threshold))
+                        for threshold in FIELD_PERCENTILE_THRESHOLDS
+                    },
+                }
+                cohort_cache[cohort_key] = cohort_entry
+            cohort_values = (
+                cohort_entry.get("citations")
+                if isinstance(cohort_entry.get("citations"), list)
+                else []
+            )
+            cohort_size = len(cohort_values)
+            if cohort_size < field_cohort_min_size:
+                continue
+
+            paper_citations = max(0, int(row.get("citations_lifetime") or 0))
+            percentile_rank = _empirical_percentile_rank(cohort_values, paper_citations)
+            if percentile_rank is None:
+                continue
+
+            percentile_ranks.append(percentile_rank)
+            field_percentile_evaluated += 1
+            for threshold in FIELD_PERCENTILE_THRESHOLDS:
+                if percentile_rank >= float(threshold):
+                    field_percentile_counts[threshold] += 1
+
+            if cohort_key not in used_cohort_keys:
+                used_cohort_keys.add(cohort_key)
+                field_percentile_used_cohort_sizes.append(cohort_size)
+
+            field_percentile_publications.append(
+                _publication_item_with_links(
+                    {
+                        "work_id": row.get("work_id"),
+                        "title": row.get("title"),
+                        "doi": row.get("doi"),
+                        "year": row.get("year"),
+                        "journal": row.get("journal"),
+                        "citations_lifetime": paper_citations,
+                        "field_percentile_rank": round(percentile_rank, 2),
+                        "field_name": str(work_field.get("field_name") or "").strip() or "Unknown field",
+                        "field_id": field_id,
+                        "cohort_year": int(resolved_year),
+                        "cohort_sample_size": cohort_size,
+                        "cohort_total_results": max(
+                            0,
+                            int(_safe_int(cohort_entry.get("total_results")) or 0),
+                        ),
+                        "cohort_percentile_cutoffs": cohort_entry.get("cutoffs"),
+                        "confidence_score": row.get("confidence_score"),
+                        "confidence_label": row.get("confidence_label"),
+                        "match_source": row.get("match_source"),
+                        "match_method": row.get("match_method"),
+                    }
+                )
+            )
+
+        if field_percentile_evaluated > 0:
+            field_percentile_available = True
+            for threshold in FIELD_PERCENTILE_THRESHOLDS:
+                share = (field_percentile_counts[threshold] / float(field_percentile_evaluated)) * 100.0
+                field_percentile_shares[str(threshold)] = round(share, 2)
+            field_percentile_coverage_pct = round(
+                (field_percentile_evaluated / float(max(1, len(per_work_rows)))) * 100.0,
+                1,
+            )
+            sorted_ranks = sorted(percentile_ranks)
+            middle = len(sorted_ranks) // 2
+            if len(sorted_ranks) % 2 == 1:
+                field_percentile_median_rank = round(sorted_ranks[middle], 2)
+            else:
+                field_percentile_median_rank = round(
+                    (sorted_ranks[middle - 1] + sorted_ranks[middle]) / 2.0,
+                    2,
+                )
+            field_percentile_cohort_count = len(used_cohort_keys)
+
+    field_percentile_publications = sorted(
+        field_percentile_publications,
+        key=lambda item: float(item.get("field_percentile_rank") or 0.0),
+        reverse=True,
+    )[:100]
+    field_percentile_default_share = (
+        float(field_percentile_shares.get(str(field_percentile_default_threshold)) or 0.0)
+        if field_percentile_available
+        else 0.0
+    )
+    field_percentile_cohort_size_median = (
+        float(sorted(field_percentile_used_cohort_sizes)[len(field_percentile_used_cohort_sizes) // 2])
+        if field_percentile_used_cohort_sizes
+        else 0.0
+    )
 
     h_projection_publications = [
         _publication_item_with_links(dict(item))
@@ -1658,12 +2134,27 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     concentration_tooltip, concentration_tooltip_details = _build_tooltip(
         definition="What is this: percentage of lifetime citations coming from your top 3 papers.",
         data_sources=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
-        computation="(sum(top3 citations)/total citations)*100",
+        computation="Top3Share=(sum(top3 citations)/total citations)*100; profile band from Gini(citations across papers)",
     )
     influence_tooltip, influence_tooltip_details = _build_tooltip(
         definition="What is this: influential citations from Semantic Scholar.",
         data_sources=["Semantic Scholar"] if influence_available else ["OpenAlex"],
-        computation="sum(influentialCitationCount) when available",
+        computation=(
+            "sum(influentialCitationCount) when available; line chart shows totals by publication year "
+            "across full publication history"
+        ),
+    )
+    field_percentile_tooltip, field_percentile_tooltip_details = _build_tooltip(
+        definition=(
+            "What is this: share of your papers at or above citation percentile thresholds "
+            "within same-field, same-year OpenAlex cohorts."
+        ),
+        data_sources=["OpenAlex"] if "OpenAlex" in data_sources else data_sources,
+        computation=(
+            "For each paper: percentile_rank = empirical percentile of cited_by_count in OpenAlex works "
+            "filtered by primary field and publication year; portfolio metric is % of papers >= selected threshold "
+            "(50/75/90/95/99)"
+        ),
     )
 
     tiles = [
@@ -1893,16 +2384,17 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             subtext=concentration_classification,
             badge={
                 "label": concentration_classification,
-                "severity": "positive"
-                if concentration_classification == "Diversified"
-                else "caution"
-                if concentration_classification == "Moderate"
-                else "negative",
+                "severity": "neutral",
             },
             chart_type="donut",
             chart_data={
                 "labels": ["Top 3 papers", "All other papers"],
                 "values": [top3_citations, max(0, total_citations - top3_citations)],
+                "gini_coefficient": concentration_gini,
+                "gini_profile_label": concentration_classification,
+                "top_papers_count": min(3, total_publications),
+                "remaining_papers_count": max(0, total_publications - min(3, total_publications)),
+                "total_publications": total_publications,
                 "uncited_publications_count": uncited_publications_count,
                 "uncited_publications_pct": round(uncited_publications_pct, 2),
             },
@@ -1914,7 +2406,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             tooltip_details=concentration_tooltip_details,
             data_source=[src for src in data_sources if src in {"OpenAlex", "Semantic Scholar"}],
             confidence_score=_confidence_score_from_publications(concentration_publications),
-            stability="unstable" if concentration_classification == "Concentrated" else "stable",
+            stability="stable",
             drilldown={
                 "title": "Impact concentration",
                 "definition": "Share of lifetime citations attributable to the top 3 papers.",
@@ -1925,8 +2417,13 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                     "intermediate_values": {
                         "top3_citations": top3_citations,
                         "total_citations": total_citations,
+                        "top_papers_count": min(3, total_publications),
+                        "remaining_papers_count": max(0, total_publications - min(3, total_publications)),
+                        "total_publications": total_publications,
                         "concentration_pct": concentration_risk,
                         "classification": concentration_classification,
+                        "gini_coefficient": concentration_gini,
+                        "gini_profile_label": concentration_classification,
                         "uncited_publications_count": uncited_publications_count,
                         "uncited_publications_pct": round(uncited_publications_pct, 2),
                     }
@@ -1945,13 +2442,16 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             },
             chart_type="bar_month_12",
             chart_data={
-                "months": list(range(1, 13)),
-                "values": influence_monthly_added_totals[-12:],
+                "years": influential_history_years,
+                "labels": influential_chart_labels,
+                "values": influential_chart_values,
+                "monthly_values_12m": influence_monthly_added_totals[-12:],
+                "influential_ratio_pct": influential_ratio,
             },
-            delta_value=float(influence_delta) if influence_available else None,
-            delta_display=f"{influence_delta:+,} vs previous 12m" if influence_available else None,
+            delta_value=None,
+            delta_display=None,
             unit="influential citations",
-            sparkline=influence_monthly_added_totals[-12:],
+            sparkline=influential_chart_values,
             tooltip=influence_tooltip,
             tooltip_details=influence_tooltip_details,
             data_source=["Semantic Scholar"] if influence_available else ["OpenAlex"],
@@ -1970,8 +2470,85 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                         "influence_prev_12m": influence_prev_12m,
                         "influence_delta": influence_delta,
                         "influential_ratio_pct": influential_ratio,
+                        "unknown_year_influential_citations": unknown_year_influential_citations,
                     },
                     "influential_monthly_counts_24m": influence_monthly_added_totals,
+                    "influential_yearly_values": {
+                        "years": influential_history_years,
+                        "values": influential_history_values,
+                    },
+                },
+            },
+        ),
+        _metric_tile(
+            key="field_percentile_share",
+            label="Field percentile share",
+            value=field_percentile_default_share if field_percentile_available else None,
+            value_display=f"{int(round(field_percentile_default_share))}%"
+            if field_percentile_available
+            else "Not available",
+            subtext=(
+                f"{field_percentile_evaluated} papers benchmarked"
+                if field_percentile_available
+                else "OpenAlex cohort data unavailable"
+            ),
+            badge={"label": "", "severity": "neutral"},
+            chart_type="percentile_toggle",
+            chart_data={
+                "thresholds": FIELD_PERCENTILE_THRESHOLDS,
+                "default_threshold": field_percentile_default_threshold,
+                "share_by_threshold_pct": field_percentile_shares,
+                "count_by_threshold": {
+                    str(threshold): int(field_percentile_counts.get(threshold, 0))
+                    for threshold in FIELD_PERCENTILE_THRESHOLDS
+                },
+                "evaluated_papers": field_percentile_evaluated,
+                "total_papers": len(per_work_rows),
+                "coverage_pct": field_percentile_coverage_pct,
+                "median_percentile_rank": field_percentile_median_rank,
+                "cohort_count": field_percentile_cohort_count,
+                "cohort_median_sample_size": field_percentile_cohort_size_median,
+            },
+            delta_value=None,
+            delta_display=None,
+            unit="percent",
+            sparkline=[
+                float(field_percentile_shares.get(str(threshold)) or 0.0)
+                for threshold in FIELD_PERCENTILE_THRESHOLDS
+            ],
+            tooltip=field_percentile_tooltip,
+            tooltip_details=field_percentile_tooltip_details,
+            data_source=["OpenAlex"] if "OpenAlex" in data_sources else data_sources,
+            confidence_score=_confidence_score_from_publications(field_percentile_publications),
+            stability="stable" if field_percentile_available else "unstable",
+            drilldown={
+                "title": "Field percentile share",
+                "definition": (
+                    "Share of papers meeting citation percentile thresholds in OpenAlex "
+                    "cohorts matched by primary field and publication year."
+                ),
+                "formula": (
+                    "% at threshold T = count(papers with percentile_rank >= T) / "
+                    "count(papers with cohort match)"
+                ),
+                "confidence_note": _confidence_note(),
+                "publications": field_percentile_publications,
+                "metadata": {
+                    "intermediate_values": {
+                        "thresholds": FIELD_PERCENTILE_THRESHOLDS,
+                        "default_threshold": field_percentile_default_threshold,
+                        "share_by_threshold_pct": field_percentile_shares,
+                        "count_by_threshold": {
+                            str(threshold): int(field_percentile_counts.get(threshold, 0))
+                            for threshold in FIELD_PERCENTILE_THRESHOLDS
+                        },
+                        "evaluated_papers": field_percentile_evaluated,
+                        "total_papers": len(per_work_rows),
+                        "coverage_pct": field_percentile_coverage_pct,
+                        "median_percentile_rank": field_percentile_median_rank,
+                        "cohort_count": field_percentile_cohort_count,
+                        "cohort_median_sample_size": field_percentile_cohort_size_median,
+                    }
                 },
             },
         ),
@@ -2013,6 +2590,13 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "rolling_citations_12m": _series_to_sparkline(rolling_last_12_series_24),
                 "momentum_weighted_monthly_12m": _series_to_sparkline(momentum_weighted_monthly),
                 "influential_monthly_citations_24m": _series_to_sparkline(influence_monthly_added_totals),
+                "influential_yearly_citations_lifespan": _series_to_sparkline(influential_history_values),
+                "field_percentile_share_by_threshold": _series_to_sparkline(
+                    [
+                        float(field_percentile_shares.get(str(threshold)) or 0.0)
+                        for threshold in FIELD_PERCENTILE_THRESHOLDS
+                    ]
+                ),
                 "concentration_risk_12m": _series_to_sparkline(concentration_series),
             },
         },
@@ -2273,6 +2857,3 @@ def trigger_publication_top_metrics_refresh(*, user_id: str) -> dict[str, Any]:
         "status": status,
         "metric_key": TOP_METRICS_KEY,
     }
-
-
-

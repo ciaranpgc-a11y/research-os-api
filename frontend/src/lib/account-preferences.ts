@@ -21,6 +21,7 @@ export type AccountSettings = {
   affiliation: string
   defaultLanguage: 'en-GB' | 'en-US'
   notificationsEmail: string
+  publicationInsightsDefaultVisibility: 'visible' | 'hidden'
   researchKeywords: string[]
   defaultStudyTypes: string[]
   preferredJournals: string[]
@@ -32,6 +33,7 @@ const DEFAULT_ACCOUNT_SETTINGS: AccountSettings = {
   affiliation: '',
   defaultLanguage: 'en-GB',
   notificationsEmail: '',
+  publicationInsightsDefaultVisibility: 'hidden',
   researchKeywords: [],
   defaultStudyTypes: [],
   preferredJournals: [],
@@ -84,6 +86,8 @@ export function readAccountSettings(): AccountSettings {
       affiliation: parsed.affiliation || '',
       defaultLanguage: parsed.defaultLanguage === 'en-US' ? 'en-US' : 'en-GB',
       notificationsEmail: parsed.notificationsEmail || '',
+      publicationInsightsDefaultVisibility:
+        parsed.publicationInsightsDefaultVisibility === 'visible' ? 'visible' : 'hidden',
       researchKeywords: clampUnique(Array.isArray(parsed.researchKeywords) ? parsed.researchKeywords : [], 8),
       defaultStudyTypes: clampUnique(Array.isArray(parsed.defaultStudyTypes) ? parsed.defaultStudyTypes : [], 12),
       preferredJournals: clampUnique(Array.isArray(parsed.preferredJournals) ? parsed.preferredJournals : [], 20),
@@ -106,6 +110,8 @@ export function writeAccountSettings(settings: AccountSettings): void {
     affiliation: settings.affiliation.trim(),
     defaultLanguage: settings.defaultLanguage === 'en-US' ? 'en-US' : 'en-GB',
     notificationsEmail: settings.notificationsEmail.trim(),
+    publicationInsightsDefaultVisibility:
+      settings.publicationInsightsDefaultVisibility === 'visible' ? 'visible' : 'hidden',
     researchKeywords: clampUnique(settings.researchKeywords, 8),
     defaultStudyTypes: clampUnique(settings.defaultStudyTypes, 12),
     preferredJournals: clampUnique(settings.preferredJournals, 20),

@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Eye, EyeOff } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui/card'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { readAccountSettings } from '@/lib/account-preferences'
 import { fetchPublicationMetricDetail } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
 import type {
@@ -12,30 +12,13 @@ import type {
   PublicationsTopMetricsPayload,
 } from '@/types/impact'
 
-import { dashboardTileBarTabIndex, dashboardTileStyles } from './dashboard-tile-styles'
+import { dashboardTileStyles } from './dashboard-tile-styles'
 
 type PublicationsTopStripProps = {
   metrics: PublicationsTopMetricsPayload | null
   loading?: boolean
   token?: string | null
   fetchMetricDetail?: (token: string, metricId: string) => Promise<PublicationMetricDetailPayload>
-}
-
-function formatRefreshedAt(value: string | null | undefined): string {
-  if (!value) {
-    return 'Not available'
-  }
-  const parsed = Date.parse(value)
-  if (Number.isNaN(parsed)) {
-    return 'Not available'
-  }
-  return new Date(parsed).toLocaleString('en-GB', {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 }
 
 function toNumberArray(value: unknown): number[] {
@@ -52,11 +35,6 @@ function toNumberArray(value: unknown): number[] {
 
 function formatInt(value: number): string {
   return Math.round(Number.isFinite(value) ? value : 0).toLocaleString('en-GB')
-}
-
-function formatSignedInt(value: number): string {
-  const safe = Math.round(Number.isFinite(value) ? value : 0)
-  return `${safe >= 0 ? '+' : ''}${safe.toLocaleString('en-GB')}`
 }
 
 function formatSignedPercentCompact(value: number): string {
@@ -91,6 +69,7 @@ type MomentumYearBreakdown = {
 
 type MomentumWindowMode = '12m' | '5y'
 type HIndexViewMode = 'trajectory' | 'needed'
+type FieldPercentileThreshold = 50 | 75 | 90 | 95 | 99
 
 type HIndexProgressMeta = {
   currentH: number
@@ -360,7 +339,7 @@ function buildLinePoints(
   }))
 }
 
-function smoothPathFromPoints(points: Array<{ x: number; y: number }>): string {
+function monotonePathFromPoints(points: Array<{ x: number; y: number }>): string {
   if (points.length === 0) {
     return ''
   }
@@ -368,25 +347,55 @@ function smoothPathFromPoints(points: Array<{ x: number; y: number }>): string {
     const p = points[0]
     return `M ${p.x} ${p.y}`
   }
+  if (points.length === 2) {
+    return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`
+  }
+
+  const n = points.length
+  const slopes: number[] = []
+  for (let index = 0; index < n - 1; index += 1) {
+    const dx = points[index + 1].x - points[index].x
+    slopes.push(dx === 0 ? 0 : (points[index + 1].y - points[index].y) / dx)
+  }
+
+  const tangents = new Array<number>(n).fill(0)
+  tangents[0] = slopes[0]
+  tangents[n - 1] = slopes[n - 2]
+  for (let index = 1; index < n - 1; index += 1) {
+    const left = slopes[index - 1]
+    const right = slopes[index]
+    tangents[index] = left * right <= 0 ? 0 : (left + right) / 2
+  }
+
+  for (let index = 0; index < n - 1; index += 1) {
+    const slope = slopes[index]
+    if (Math.abs(slope) < 1e-9) {
+      tangents[index] = 0
+      tangents[index + 1] = 0
+      continue
+    }
+    const a = tangents[index] / slope
+    const b = tangents[index + 1] / slope
+    const magnitude = (a * a) + (b * b)
+    if (magnitude > 9) {
+      const scale = 3 / Math.sqrt(magnitude)
+      tangents[index] = scale * a * slope
+      tangents[index + 1] = scale * b * slope
+    }
+  }
+
   let d = `M ${points[0].x} ${points[0].y}`
-  for (let index = 0; index < points.length - 1; index += 1) {
+  for (let index = 0; index < n - 1; index += 1) {
     const current = points[index]
     const next = points[index + 1]
-    const cx = (current.x + next.x) / 2
-    d += ` Q ${cx} ${current.y}, ${next.x} ${next.y}`
+    const dx = next.x - current.x
+    const cp1x = current.x + (dx / 3)
+    const cp1y = current.y + ((tangents[index] * dx) / 3)
+    const cp2x = next.x - (dx / 3)
+    const cp2y = next.y - ((tangents[index + 1] * dx) / 3)
+    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${next.x} ${next.y}`
   }
   return d
-}
-
-function areaPathFromPoints(points: Array<{ x: number; y: number }>, height: number, padding = 6): string {
-  if (!points.length) {
-    return ''
-  }
-  const topPath = smoothPathFromPoints(points)
-  const first = points[0]
-  const last = points[points.length - 1]
-  const baselineY = height - padding
-  return `${topPath} L ${last.x} ${baselineY} L ${first.x} ${baselineY} Z`
 }
 
 type TotalCitationsMeanRelation = 'above' | 'below' | 'at'
@@ -1049,128 +1058,83 @@ function PublicationsPerYearChart({ tile, showCaption = false }: { tile: Publica
   )
 }
 
-type ImpactStackedSegment = {
-  key: string
-  widthPct: number
-  label: string
-  valueText: string
-  toneClass: string
-  tooltip: ReactNode
-}
-
-function ImpactStackedRow({
-  rowLabel,
-  segments,
-  expanded,
-}: {
-  rowLabel: string
-  segments: ImpactStackedSegment[]
-  expanded: boolean
-}) {
-  const [hoveredSegment, setHoveredSegment] = useState<string | null>(null)
-  const hasSegments = segments.some((segment) => segment.widthPct > 0)
-  if (!hasSegments) {
-    return (
-      <div className="space-y-1">
-        <p className="text-[0.58rem] font-semibold leading-none text-[hsl(var(--tone-neutral-600))]">{rowLabel}</p>
-        <div className="h-6 rounded-md border border-dashed border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]" />
-      </div>
-    )
-  }
-  return (
-    <div className="space-y-1">
-      <p className="text-[0.58rem] font-semibold leading-none text-[hsl(var(--tone-neutral-600))]">{rowLabel}</p>
-      <div className="flex h-6 overflow-hidden rounded-[4px] border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]">
-        {segments
-          .filter((segment) => segment.widthPct > 0)
-          .map((segment, index) => {
-            const isActive = hoveredSegment === segment.key
-            const targetWidth = `${Math.max(0, Math.min(100, segment.widthPct))}%`
-            return (
-              <Tooltip key={segment.key}>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    data-stop-tile-open="true"
-                    tabIndex={dashboardTileBarTabIndex}
-                    onMouseEnter={() => setHoveredSegment(segment.key)}
-                    onMouseLeave={() => setHoveredSegment((current) => (current === segment.key ? null : current))}
-                    onFocus={() => setHoveredSegment(segment.key)}
-                    onBlur={() => setHoveredSegment((current) => (current === segment.key ? null : current))}
-                    onClick={(event) => event.stopPropagation()}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    style={{
-                      width: expanded ? targetWidth : '0%',
-                      transitionDelay: `${Math.min(180, index * 26)}ms`,
-                    }}
-                    className={cn(
-                      'relative h-full min-w-0 transition-[width] duration-420 ease-out',
-                      dashboardTileStyles.barFocusRing,
-                    )}
-                    aria-label={`${segment.label} ${segment.valueText}`}
-                  >
-                    {isActive ? (
-                      <div className={dashboardTileStyles.valuePill}>{segment.valueText}</div>
-                    ) : null}
-                    <span
-                      className={cn(
-                        'block h-full w-full origin-bottom transition-[transform,filter,box-shadow] duration-220 ease-out',
-                        segment.toneClass,
-                        isActive && 'brightness-[1.08] saturate-[1.12] shadow-[inset_0_0_0_1px_hsl(var(--tone-neutral-300))]',
-                      )}
-                      style={{
-                        transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.03 : 1})`,
-                      }}
-                    />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="px-2 py-1 text-caption leading-snug">
-                  {segment.tooltip}
-                </TooltipContent>
-              </Tooltip>
-            )
-          })}
-      </div>
-    </div>
-  )
-}
-
 function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload }) {
   const [chartVisible, setChartVisible] = useState(true)
-  const [rowsExpanded, setRowsExpanded] = useState(false)
+  const [ringExpanded, setRingExpanded] = useState(false)
+  const [hoveredSegment, setHoveredSegment] = useState<'top3' | 'rest' | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const top3 = values[0] || 0
   const rest = values[1] || 0
   const total = Math.max(0, top3 + rest)
+  const ringRadius = 38
+  const ringCircumference = 2 * Math.PI * ringRadius
   const top3Pct = total > 0 ? (top3 / total) * 100 : 0
   const top3PctRounded = Math.max(0, Math.min(100, Math.round(top3Pct)))
   const restPctRounded = Math.max(0, 100 - top3PctRounded)
+  const top3Dash = ((ringExpanded ? top3PctRounded : 0) / 100) * ringCircumference
+  const restDash = ((ringExpanded ? restPctRounded : 100) / 100) * ringCircumference
+  const restOffset = -top3Dash
+  const explicitRemainingRaw = Number(chartData.remaining_papers_count)
+  const explicitTotalPublicationsCandidates = [
+    Number(chartData.total_publications),
+    Number(chartData.total_publications_count),
+    Number(chartData.total_papers),
+    Number(chartData.paper_count),
+  ]
+  const explicitTotalPublications = explicitTotalPublicationsCandidates.find(
+    (item) => Number.isFinite(item) && item >= 0,
+  )
   const uncitedCountRaw = Number(chartData.uncited_publications_count)
   const uncitedPctRaw = Number(chartData.uncited_publications_pct)
-  const uncitedCount = Number.isFinite(uncitedCountRaw) ? Math.max(0, Math.round(uncitedCountRaw)) : 0
-  const uncitedPct = Number.isFinite(uncitedPctRaw) ? Math.max(0, Math.min(100, Math.round(uncitedPctRaw))) : 0
-  const citedPct = Math.max(0, 100 - uncitedPct)
-  const rawTopShares = toNumberArray(
-    chartData.top_3_paper_shares_pct || chartData.top3_paper_shares_pct || chartData.top_3_paper_shares,
-  )
-  const topShares = rawTopShares
-    .slice(0, 3)
-    .map((item) => (item <= 1 ? item * 100 : item))
-    .map((item) => `${Math.max(0, item).toFixed(1)}%`)
+  const inferredTotalPublications = Number.isFinite(uncitedCountRaw) && Number.isFinite(uncitedPctRaw) && uncitedPctRaw > 0
+    ? Math.max(0, Math.round(uncitedCountRaw / (uncitedPctRaw / 100)))
+    : null
+  const totalPublications = explicitTotalPublications !== undefined
+    ? Math.max(0, Math.round(explicitTotalPublications))
+    : inferredTotalPublications
+  const topPapersCountRaw = Number(chartData.top_papers_count ?? chartData.top_paper_count ?? 3)
+  const topPapersCount = Math.max(0, Math.round(Number.isFinite(topPapersCountRaw) ? topPapersCountRaw : 3))
+  const effectiveTopPapersCount = totalPublications === null
+    ? topPapersCount
+    : Math.max(0, Math.min(topPapersCount, totalPublications))
+  const remainingPapersCount = Number.isFinite(explicitRemainingRaw) && explicitRemainingRaw >= 0
+    ? Math.max(0, Math.round(explicitRemainingRaw))
+    : totalPublications === null
+      ? null
+      : Math.max(0, totalPublications - effectiveTopPapersCount)
+  const ringStrokeWidth = 14
+  const ringHitHalfWidth = (ringStrokeWidth / 2) + 3
+  const top3ArcSpan = (top3PctRounded / 100) * 360
+  const top3ArcStart = 270 - (top3ArcSpan / 2)
+  const isAngleInArc = (angle: number, start: number, span: number): boolean => {
+    if (span <= 0) {
+      return false
+    }
+    if (span >= 360) {
+      return true
+    }
+    const normalizedAngle = ((angle % 360) + 360) % 360
+    const normalizedStart = ((start % 360) + 360) % 360
+    const end = (normalizedStart + span) % 360
+    if (normalizedStart <= end) {
+      return normalizedAngle >= normalizedStart && normalizedAngle <= end
+    }
+    return normalizedAngle >= normalizedStart || normalizedAngle <= end
+  }
   const animationKey = useMemo(
-    () => `${top3PctRounded}-${restPctRounded}-${uncitedPct}-${citedPct}`,
-    [citedPct, restPctRounded, top3PctRounded, uncitedPct],
+    () => `${top3PctRounded}-${restPctRounded}-${totalPublications ?? 'na'}-${effectiveTopPapersCount}`,
+    [effectiveTopPapersCount, restPctRounded, top3PctRounded, totalPublications],
   )
   useEffect(() => {
     setChartVisible(false)
-    setRowsExpanded(false)
+    setRingExpanded(false)
     let rafOne = 0
     let rafTwo = 0
     rafOne = window.requestAnimationFrame(() => {
       setChartVisible(true)
       rafTwo = window.requestAnimationFrame(() => {
-        setRowsExpanded(true)
+        setRingExpanded(true)
       })
     })
     return () => {
@@ -1180,85 +1144,98 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   }, [animationKey])
 
   return (
-    <TooltipProvider delayDuration={90}>
-      <div className="flex h-full min-h-0 w-full flex-col">
-        <div
-          className={cn(
-            'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-2 pt-2.5 transition-[opacity,transform,filter] duration-320 ease-out',
-            chartVisible ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]',
-          )}
-        >
-          <div className="flex h-full flex-col justify-center gap-2">
-            <ImpactStackedRow
-              rowLabel="Top 3 vs rest"
-              expanded={rowsExpanded}
-              segments={[
-                {
-                  key: 'top3',
-                  widthPct: top3PctRounded,
-                  label: 'Top 3 papers',
-                  valueText: `${top3PctRounded}%`,
-                  toneClass: 'bg-[hsl(var(--tone-accent-700))]',
-                  tooltip: (
-                    <div className="space-y-0.5">
-                      <p>Top 3 papers: {top3PctRounded}% ({formatInt(top3)} citations)</p>
-                      <p>
-                        {topShares.length
-                          ? `Top paper shares: ${topShares.join(', ')}`
-                          : 'Top-paper share details not available'}
-                      </p>
-                    </div>
-                  ),
-                },
-                {
-                  key: 'rest',
-                  widthPct: restPctRounded,
-                  label: 'Rest of portfolio',
-                  valueText: `${restPctRounded}%`,
-                  toneClass: 'bg-[hsl(var(--tone-accent-300))]',
-                  tooltip: (
-                    <div className="space-y-0.5">
-                      <p>Rest of portfolio: {restPctRounded}% ({formatInt(rest)} citations)</p>
-                      <p>Total lifetime citations: {formatInt(total)}</p>
-                    </div>
-                  ),
-                },
-              ]}
-            />
-            <ImpactStackedRow
-              rowLabel="Cited vs uncited"
-              expanded={rowsExpanded}
-              segments={[
-                {
-                  key: 'uncited',
-                  widthPct: uncitedPct,
-                  label: 'Uncited publications',
-                  valueText: `${uncitedPct}%`,
-                  toneClass: 'bg-[hsl(var(--tone-warning-400))]',
-                  tooltip: (
-                    <div className="space-y-0.5">
-                      <p>Uncited: {uncitedPct}% ({formatInt(uncitedCount)} works)</p>
-                    </div>
-                  ),
-                },
-                {
-                  key: 'cited',
-                  widthPct: citedPct,
-                  label: 'Cited publications',
-                  valueText: `${citedPct}%`,
-                  toneClass: 'bg-[hsl(var(--tone-positive-500))]',
-                  tooltip: (
-                    <div className="space-y-0.5">
-                      <p>Cited: {citedPct}% of portfolio</p>
-                    </div>
-                  ),
-                },
-              ]}
-            />
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div
+        className={cn(
+          'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-2 pt-2.5 transition-[opacity,transform,filter] duration-320 ease-out',
+          chartVisible ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]',
+        )}
+      >
+        {total > 0 ? (
+          <div className="relative flex h-full items-center justify-center">
+            {hoveredSegment ? (
+              <div
+                className={cn(
+                  'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-[0.6rem] leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
+                  hoveredSegment === 'top3' ? '-top-0.5' : '-bottom-0.5',
+                )}
+              >
+                {hoveredSegment === 'top3'
+                  ? `Top 3 papers: ${top3PctRounded}% (${formatInt(top3)} citations)`
+                  : remainingPapersCount === null
+                    ? `Remaining papers: ${restPctRounded}% (${formatInt(rest)} citations)`
+                    : `Remaining ${formatInt(remainingPapersCount)} papers: ${restPctRounded}% (${formatInt(rest)} citations)`}
+              </div>
+            ) : null}
+            <svg
+              viewBox="0 0 100 100"
+              className="h-[7rem] w-[7rem]"
+              data-stop-tile-open="true"
+              onMouseMove={(event) => {
+                const bounds = event.currentTarget.getBoundingClientRect()
+                const x = ((event.clientX - bounds.left) / Math.max(1, bounds.width)) * 100
+                const y = ((event.clientY - bounds.top) / Math.max(1, bounds.height)) * 100
+                const dx = x - 50
+                const dy = y - 50
+                const distance = Math.sqrt((dx * dx) + (dy * dy))
+                if (Math.abs(distance - ringRadius) > ringHitHalfWidth) {
+                  setHoveredSegment(null)
+                  return
+                }
+                const angleDeg = ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360
+                if (isAngleInArc(angleDeg, top3ArcStart, top3ArcSpan)) {
+                  setHoveredSegment('top3')
+                  return
+                }
+                setHoveredSegment('rest')
+              }}
+              onMouseLeave={() => setHoveredSegment(null)}
+            >
+              <circle
+                cx="50"
+                cy="50"
+                r={ringRadius}
+                fill="none"
+                stroke="hsl(var(--tone-neutral-200))"
+                strokeWidth={ringStrokeWidth}
+              />
+              <circle
+                cx="50"
+                cy="50"
+                r={ringRadius}
+                fill="none"
+                stroke="hsl(var(--tone-accent-700))"
+                strokeWidth={ringStrokeWidth}
+                strokeLinecap="round"
+                transform={`rotate(${top3ArcStart} 50 50)`}
+                style={{
+                  strokeDasharray: `${top3Dash} ${ringCircumference}`,
+                  strokeDashoffset: 0,
+                  transition: 'stroke-dasharray 560ms cubic-bezier(0.2, 0.68, 0.16, 1)',
+                }}
+              />
+              <circle
+                cx="50"
+                cy="50"
+                r={ringRadius}
+                fill="none"
+                stroke="hsl(var(--tone-accent-300))"
+                strokeWidth={ringStrokeWidth}
+                strokeLinecap="round"
+                transform={`rotate(${top3ArcStart} 50 50)`}
+                style={{
+                  strokeDasharray: `${restDash} ${ringCircumference}`,
+                  strokeDashoffset: restOffset,
+                  transition: 'stroke-dasharray 560ms cubic-bezier(0.2, 0.68, 0.16, 1), stroke-dashoffset 560ms cubic-bezier(0.2, 0.68, 0.16, 1)',
+                }}
+              />
+            </svg>
           </div>
-        </div>
+        ) : (
+          <div className={dashboardTileStyles.emptyChart}>No concentration data</div>
+        )}
       </div>
-    </TooltipProvider>
+    </div>
   )
 }
 
@@ -1549,6 +1526,155 @@ function MomentumTilePanel({
   )
 }
 
+function parseNumericKeyedMap(value: unknown): Record<number, number> {
+  if (!value || typeof value !== 'object') {
+    return {}
+  }
+  const output: Record<number, number> = {}
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    const numericKey = Number(key)
+    const numericValue = Number(raw)
+    if (!Number.isFinite(numericKey) || !Number.isFinite(numericValue)) {
+      continue
+    }
+    output[Math.round(numericKey)] = numericValue
+  }
+  return output
+}
+
+function FieldPercentilePanel({
+  tile,
+  threshold,
+}: {
+  tile: PublicationMetricTilePayload
+  threshold: FieldPercentileThreshold
+}) {
+  const [chartVisible, setChartVisible] = useState(true)
+  const [barsExpanded, setBarsExpanded] = useState(false)
+  const [labelsVisible, setLabelsVisible] = useState(true)
+  const [hovered, setHovered] = useState(false)
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const shareMap = parseNumericKeyedMap(chartData.share_by_threshold_pct)
+  const countMap = parseNumericKeyedMap(chartData.count_by_threshold)
+  const evaluatedPapersRaw = Number(chartData.evaluated_papers)
+  const evaluatedPapers = Number.isFinite(evaluatedPapersRaw)
+    ? Math.max(0, Math.round(evaluatedPapersRaw))
+    : 0
+  const shareAboveRaw = shareMap[threshold]
+  const shareAbove = Number.isFinite(shareAboveRaw)
+    ? Math.max(0, Math.min(100, Number(shareAboveRaw)))
+    : evaluatedPapers > 0
+      ? (Math.max(0, Number(countMap[threshold] || 0)) / evaluatedPapers) * 100
+      : 0
+  const countAboveRaw = countMap[threshold]
+  const countAbove = Number.isFinite(countAboveRaw)
+    ? Math.max(0, Math.round(Number(countAboveRaw)))
+    : Math.round((shareAbove / 100) * evaluatedPapers)
+  const barLabel = `>= ${threshold}th`
+  const heightPct = shareAbove <= 0 ? 3 : Math.max(6, shareAbove)
+  const animationKey = useMemo(
+    () => `${threshold}-${shareAbove.toFixed(2)}-${evaluatedPapers}`,
+    [evaluatedPapers, shareAbove, threshold],
+  )
+  useEffect(() => {
+    setChartVisible(false)
+    setBarsExpanded(false)
+    setLabelsVisible(false)
+    let rafOne = 0
+    let rafTwo = 0
+    let timeoutId: number | undefined
+    rafOne = window.requestAnimationFrame(() => {
+      setChartVisible(true)
+      rafTwo = window.requestAnimationFrame(() => {
+        setBarsExpanded(true)
+        timeoutId = window.setTimeout(() => {
+          setLabelsVisible(true)
+        }, 120)
+      })
+    })
+    return () => {
+      window.cancelAnimationFrame(rafOne)
+      window.cancelAnimationFrame(rafTwo)
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [animationKey])
+
+  if (evaluatedPapers <= 0) {
+    return <div className={dashboardTileStyles.emptyChart}>No field percentile data</div>
+  }
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div
+        className={cn(
+          'relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-7 pt-4 transition-[opacity,transform,filter] duration-320 ease-out',
+          chartVisible ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]',
+        )}
+      >
+        <div className="absolute inset-x-2 bottom-7 top-4">
+          {[25, 50, 75].map((pct) => (
+            <div
+              key={`field-percentile-grid-${pct}`}
+              className="pointer-events-none absolute inset-x-0 border-t border-[hsl(var(--tone-neutral-200))]"
+              style={{ bottom: `${pct}%` }}
+              aria-hidden="true"
+            />
+          ))}
+          <div className="absolute inset-0 flex items-end justify-center">
+            <div
+              className="relative flex h-full min-h-0 w-[44%] items-end"
+              onMouseEnter={() => setHovered(true)}
+              onMouseLeave={() => setHovered(false)}
+            >
+              <span
+                className={cn(
+                  'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-[0.6rem] leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
+                  hovered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
+                )}
+                style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
+                aria-hidden="true"
+              >
+                {Math.round(shareAbove)}% ({formatInt(countAbove)} papers)
+              </span>
+              <span
+                className={cn(
+                  'block w-full rounded-[4px] bg-[hsl(var(--tone-positive-600))] transition-[transform,filter,box-shadow] duration-220 ease-out',
+                  hovered && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
+                )}
+                style={{
+                  height: `${heightPct}%`,
+                  transform: `translateY(${hovered ? '-1px' : '0px'}) scaleX(${hovered ? 1.03 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                  transformOrigin: 'bottom',
+                }}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="pointer-events-none absolute inset-x-2 bottom-1 min-h-[1.22rem]">
+          <div
+            className={cn(
+              'leading-none text-center transition-[opacity,transform] duration-220 ease-out',
+              labelsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-0.5',
+            )}
+          >
+            <p className="whitespace-nowrap text-center text-[0.6rem] font-semibold text-[hsl(var(--tone-neutral-600))]">
+              {barLabel}
+            </p>
+            <p
+              className="mt-[1px] text-[0.54rem] font-semibold uppercase tracking-[0.05em] text-transparent"
+              aria-hidden="true"
+            >
+              ytd
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
   const [chartVisible, setChartVisible] = useState(true)
   const [barsExpanded, setBarsExpanded] = useState(false)
@@ -1791,12 +1917,10 @@ function HIndexViewToggle({
 }
 
 function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload }) {
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const primarySeries = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const fallbackSeries = toNumberArray(tile.sparkline || []).map((item) => Math.max(0, item))
   const values = primarySeries.length ? primarySeries : fallbackSeries
-  const overlaySeries = toNumberArray(tile.sparkline_overlay || []).map((item) => Math.max(0, item))
   const labels = normalizeSeriesLabels(
     chartData.window_labels || chartData.labels || chartData.years,
     values.length,
@@ -1808,92 +1932,36 @@ function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload })
   const width = 220
   const height = 92
   const points = buildLinePoints(values, width, height, labels, 8)
-  const overlayPoints = overlaySeries.length
-    ? buildLinePoints(overlaySeries, width, height, normalizeSeriesLabels([], overlaySeries.length, 'W'), 8)
-    : []
-  const path = smoothPathFromPoints(points)
-  const areaPath = areaPathFromPoints(points, height, 8)
-  const overlayPath = overlayPoints.length ? smoothPathFromPoints(overlayPoints) : ''
+  const baselineY = height - 8
+  const areaOffsetY = 0.7
+  const areaPoints = points.map((point) => ({
+    x: point.x,
+    y: Math.min(baselineY, point.y + areaOffsetY),
+  }))
+  const path = monotonePathFromPoints(points)
+  const areaCurve = monotonePathFromPoints(areaPoints)
+  const areaPath = areaPoints.length
+    ? `${areaCurve} L ${areaPoints[areaPoints.length - 1].x} ${baselineY} L ${areaPoints[0].x} ${baselineY} Z`
+    : ''
 
   return (
-    <div className="relative h-24 rounded-md border border-[hsl(var(--tone-accent-200))] bg-background p-2">
-      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-full w-full">
-        <path d={areaPath} className="fill-[hsl(var(--tone-accent-100))]" />
-        {overlayPath ? (
-          <path
-            d={overlayPath}
-            fill="none"
-            className="stroke-[hsl(var(--tone-accent-400))]"
-            strokeWidth="2.25"
-            strokeDasharray="4 3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ) : null}
-        <path
-          d={path}
-          fill="none"
-          className="stroke-[hsl(var(--tone-accent-700))]"
-          strokeWidth="3.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <TooltipProvider delayDuration={90}>
-        {points.map((point, index) => {
-          const previous = index > 0 ? values[index - 1] : null
-          const delta = previous === null ? null : point.value - previous
-          const isActive = hoveredIndex === index
-          return (
-            <Tooltip key={`${point.label}-${index}`}>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  data-stop-tile-open="true"
-                  tabIndex={dashboardTileBarTabIndex}
-                  onMouseEnter={() => setHoveredIndex(index)}
-                  onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
-                  onFocus={() => setHoveredIndex(index)}
-                  onBlur={() => setHoveredIndex((current) => (current === index ? null : current))}
-                  onClick={(event) => event.stopPropagation()}
-                  onMouseDown={(event) => event.stopPropagation()}
-                  className={cn(
-                    'absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full transition-transform duration-200 ease-out',
-                    dashboardTileStyles.barFocusRing,
-                  )}
-                  style={{
-                    left: `${(point.x / width) * 100}%`,
-                    top: `${(point.y / height) * 100}%`,
-                    transform: `translate(-50%, -50%) scale(${isActive ? 1.06 : 1})`,
-                  }}
-                  aria-label={`${point.label}: ${formatInt(point.value)} influential citations`}
-                >
-                  <span
-                    className={cn(
-                      dashboardTileStyles.valuePill,
-                      'transition-all duration-150 ease-out',
-                      isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
-                    )}
-                    aria-hidden={!isActive}
-                  >
-                    {formatInt(point.value)}
-                  </span>
-                  <span
-                    className={cn(
-                      'pointer-events-none absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background bg-[hsl(var(--tone-accent-700))] transition-[transform,filter,box-shadow] duration-200 ease-out',
-                      isActive && 'scale-[1.16] brightness-[1.08] saturate-[1.15] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
-                    )}
-                  />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="px-2 py-1 text-caption leading-snug">
-                <p>{point.label}: {formatInt(point.value)} influential citations</p>
-                <p>Delta vs prior window: {delta === null ? 'n/a' : formatSignedInt(delta)}</p>
-              </TooltipContent>
-            </Tooltip>
-          )
-        })}
-      </TooltipProvider>
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div className="relative flex-1 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 pb-2 pt-2.5">
+        <div className="relative h-full w-full">
+          <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-full w-full">
+            <path d={areaPath} className="fill-[hsl(var(--tone-accent-100))]" fillOpacity={0.68} />
+            <path
+              d={path}
+              fill="none"
+              className="stroke-[hsl(var(--tone-accent-700))]"
+              strokeWidth="3.25"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              shapeRendering="geometricPrecision"
+            />
+          </svg>
+        </div>
+      </div>
     </div>
   )
 }
@@ -2117,6 +2185,11 @@ function metricSummary(tile: PublicationMetricTilePayload, publication: Record<s
   if (key === 'influential_citations') {
     return `Influential citations: ${Number(publication.influential_citations || 0)}`
   }
+  if (key === 'field_percentile_share') {
+    const rank = Number(publication.field_percentile_rank || 0)
+    const fieldName = String(publication.field_name || 'Unknown field')
+    return `Percentile rank: ${rank.toFixed(1)}th (${fieldName})`
+  }
   if (key === 'field_normalized_impact') {
     return `Field-normalized impact: ${Number(publication.field_normalized_impact || 0).toFixed(3)}`
   }
@@ -2136,6 +2209,10 @@ export function PublicationsTopStrip({
   const [detailError, setDetailError] = useState('')
   const [momentumWindowMode, setMomentumWindowMode] = useState<MomentumWindowMode>('12m')
   const [hIndexViewMode, setHIndexViewMode] = useState<HIndexViewMode>('trajectory')
+  const [fieldPercentileThreshold, setFieldPercentileThreshold] = useState<FieldPercentileThreshold>(75)
+  const [insightsVisible, setInsightsVisible] = useState(
+    () => readAccountSettings().publicationInsightsDefaultVisibility !== 'hidden',
+  )
 
   const tiles = useMemo(() => {
     const source = metrics?.tiles ?? []
@@ -2202,14 +2279,37 @@ export function PublicationsTopStrip({
         <CardContent className="space-y-2 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
             <div className="flex flex-wrap items-center gap-2">
-              <span>Data last refreshed: {formatRefreshedAt(metrics?.data_last_refreshed || metrics?.computed_at)}</span>
               {metrics?.is_updating ? <span className="text-amber-700">Updating...</span> : null}
               {metrics?.status === 'FAILED' ? <span className="text-amber-700">Last update failed</span> : null}
             </div>
-            <span>Data sources: {(metrics?.data_sources || []).join(', ') || 'Not available'}</span>
+            <button
+              type="button"
+              data-stop-tile-open="true"
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[0.68rem] font-semibold leading-none transition-colors',
+                insightsVisible
+                  ? 'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-100))] text-[hsl(var(--tone-positive-700))]'
+                  : 'border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] text-[hsl(var(--tone-warning-700))]',
+              )}
+              onClick={() => setInsightsVisible((current) => !current)}
+              aria-pressed={insightsVisible}
+              aria-label={insightsVisible ? 'Set publication insights not visible' : 'Set publication insights visible'}
+            >
+              {insightsVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+              <span>{insightsVisible ? 'Visible' : 'Not visible'}</span>
+            </button>
+          </div>
+          <div className="rounded-sm border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2.5 py-1.5">
+            <p className="text-[0.76rem] font-semibold uppercase tracking-[0.09em] text-[hsl(var(--tone-neutral-800))]">
+              Publication insights
+            </p>
           </div>
 
-          {loading && tiles.length === 0 ? (
+          {!insightsVisible ? (
+            <div className="rounded-md border border-dashed border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2 text-xs text-[hsl(var(--tone-neutral-600))]">
+              Publication insights are hidden.
+            </div>
+          ) : loading && tiles.length === 0 ? (
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 lg:gap-3">
               {Array.from({ length: 6 }).map((_, index) => (
                 <div key={index} className="h-32 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))]" />
@@ -2352,14 +2452,112 @@ export function PublicationsTopStrip({
                   )
                   visual = <HIndexTrajectoryPanel tile={tile} mode={hIndexViewMode} />
                 } else if (tile.key === 'impact_concentration') {
+                  const impactChartData = (tile.chart_data || {}) as Record<string, unknown>
+                  const impactValues = toNumberArray(impactChartData.values).map((item) => Math.max(0, item))
+                  const impactTop3 = impactValues[0] || 0
+                  const impactRest = impactValues[1] || 0
+                  const impactTotal = Math.max(0, impactTop3 + impactRest)
+                  const impactTop3PctRounded = impactTotal > 0
+                    ? Math.max(0, Math.min(100, Math.round((impactTop3 / impactTotal) * 100)))
+                    : 0
+                  const impactBadgeData = (tile.badge || {}) as Record<string, unknown>
+                  const impactBadgeLabel = String(
+                    impactBadgeData.label ?? impactChartData.gini_profile_label ?? '',
+                  ).trim()
                   primaryValue = mainValueDisplay
-                  secondaryText = subtitle || 'Lifetime citation distribution'
-                  detailText = effectiveDeltaDisplay || undefined
+                  secondaryText = `Top 3 cited papers account for ${impactTop3PctRounded}% of total citations`
+                  detailText = undefined
+                  if (impactBadgeLabel) {
+                    badgeNode = (
+                      <span className="inline-flex items-center rounded-full border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2.5 py-[0.2rem] text-[0.66rem] font-medium leading-none text-[hsl(var(--tone-neutral-700))]">
+                        {impactBadgeLabel}
+                      </span>
+                    )
+                  }
                   visual = <ImpactConcentrationPanel tile={tile} />
+                } else if (tile.key === 'field_percentile_share') {
+                  const fieldPercentileData = (tile.chart_data || {}) as Record<string, unknown>
+                  const rawThresholds = toNumberArray(fieldPercentileData.thresholds)
+                    .map((item) => Math.round(item))
+                    .filter((item) => [50, 75, 90, 95, 99].includes(item))
+                  const availableThresholds = (rawThresholds.length ? rawThresholds : [50, 75, 90, 95, 99])
+                    .map((item) => item as FieldPercentileThreshold)
+                  const defaultThresholdRaw = Math.round(Number(fieldPercentileData.default_threshold || 75))
+                  const defaultThreshold = availableThresholds.includes(defaultThresholdRaw as FieldPercentileThreshold)
+                    ? defaultThresholdRaw as FieldPercentileThreshold
+                    : availableThresholds[0]
+                  const activeThreshold = availableThresholds.includes(fieldPercentileThreshold)
+                    ? fieldPercentileThreshold
+                    : defaultThreshold
+                  const activeThresholdIndex = Math.max(0, availableThresholds.indexOf(activeThreshold))
+                  const shareMap = parseNumericKeyedMap(fieldPercentileData.share_by_threshold_pct)
+                  const countMap = parseNumericKeyedMap(fieldPercentileData.count_by_threshold)
+                  const evaluatedRaw = Number(fieldPercentileData.evaluated_papers)
+                  const evaluated = Number.isFinite(evaluatedRaw) ? Math.max(0, Math.round(evaluatedRaw)) : 0
+                  const shareAtThresholdRaw = shareMap[activeThreshold]
+                  const shareAtThreshold = Number.isFinite(shareAtThresholdRaw)
+                    ? Math.max(0, Math.min(100, Number(shareAtThresholdRaw)))
+                    : evaluated > 0
+                      ? (Math.max(0, Number(countMap[activeThreshold] || 0)) / evaluated) * 100
+                      : 0
+                  primaryValue = evaluated > 0
+                    ? `${Math.round(shareAtThreshold)}%`
+                    : mainValueDisplay
+                  secondaryText = `Papers at or above ${activeThreshold}th percentile`
+                  detailText = undefined
+                  badgeNode = (
+                    <div className="flex flex-col items-start gap-0.5">
+                      <div
+                        className="relative isolate inline-grid items-center overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5"
+                        style={{ gridTemplateColumns: `repeat(${availableThresholds.length}, minmax(0, 1fr))` }}
+                        data-stop-tile-open="true"
+                      >
+                        <span
+                          className="pointer-events-none absolute inset-y-0.5 z-0 rounded-full bg-[hsl(var(--tone-neutral-900))] shadow-[0_1px_2px_hsl(var(--tone-neutral-900)/0.28)] transition-[left,width] duration-320 ease-out"
+                          style={{
+                            width: `calc(${100 / availableThresholds.length}% - 0.125rem)`,
+                            left: `calc(${(100 / availableThresholds.length) * activeThresholdIndex}% + 2px)`,
+                            willChange: 'left,width',
+                          }}
+                          aria-hidden="true"
+                        />
+                        {availableThresholds.map((threshold) => (
+                          <button
+                            key={`field-threshold-${threshold}`}
+                            type="button"
+                            data-stop-tile-open="true"
+                            className={cn(
+                              'relative z-[1] rounded-full px-2 py-[0.38rem] text-[0.62rem] font-medium leading-none transition-[color,transform] duration-250 ease-out active:scale-[0.98]',
+                              activeThreshold === threshold
+                                ? 'text-white'
+                                : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
+                            )}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setFieldPercentileThreshold(threshold)
+                            }}
+                            onMouseDown={(event) => event.stopPropagation()}
+                            aria-pressed={activeThreshold === threshold}
+                          >
+                            {threshold}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="pl-1 text-[0.56rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">
+                        Percentile
+                      </p>
+                    </div>
+                  )
+                  visual = <FieldPercentilePanel tile={tile} threshold={activeThreshold} />
                 } else if (tile.key === 'influential_citations') {
+                  const influentialChartData = (tile.chart_data || {}) as Record<string, unknown>
+                  const influentialRatioRaw = Number(influentialChartData.influential_ratio_pct)
+                  const influentialRatioWhole = Number.isFinite(influentialRatioRaw)
+                    ? Math.max(0, Math.round(influentialRatioRaw))
+                    : null
                   primaryValue = mainValueDisplay
-                  secondaryText = subtitle || 'Influential citation trend'
-                  detailText = effectiveDeltaDisplay || undefined
+                  secondaryText = 'Influential citations over lifetime publications'
+                  detailText = influentialRatioWhole === null ? undefined : `${influentialRatioWhole}% of total citations`
                   visual = <InfluentialTrendPanel tile={tile} />
                 }
 
