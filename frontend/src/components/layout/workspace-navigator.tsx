@@ -1,6 +1,11 @@
+import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
+import {
+  WORKSPACE_OWNER_REQUIRED_MESSAGE,
+  readWorkspaceOwnerNameFromProfile,
+} from '@/lib/workspace-owner'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
@@ -21,6 +26,7 @@ const WORKSPACE_NAV_GROUPS: WorkspaceNavGroup[] = [
     title: 'Workspace',
     items: [
       { label: 'Overview', slug: 'overview' },
+      { label: 'Inbox', slug: 'inbox' },
       { label: 'Data', slug: 'data' },
       { label: 'Results', slug: 'results' },
       { label: 'Run Wizard', slug: 'run-wizard' },
@@ -66,6 +72,22 @@ export function WorkspaceNavigator({ workspaceId, onNavigate }: WorkspaceNavigat
   const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId)
   const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId)
   const createWorkspace = useWorkspaceStore((state) => state.createWorkspace)
+  const [workspaceOwnerName, setWorkspaceOwnerName] = useState<string | null>(() =>
+    readWorkspaceOwnerNameFromProfile(),
+  )
+  const [createError, setCreateError] = useState('')
+
+  useEffect(() => {
+    const refreshOwner = () => {
+      setWorkspaceOwnerName(readWorkspaceOwnerNameFromProfile())
+    }
+    window.addEventListener('storage', refreshOwner)
+    window.addEventListener('focus', refreshOwner)
+    return () => {
+      window.removeEventListener('storage', refreshOwner)
+      window.removeEventListener('focus', refreshOwner)
+    }
+  }, [])
 
   const activeWorkspace =
     workspaces.find((workspace) => workspace.id === workspaceId) ??
@@ -82,9 +104,22 @@ export function WorkspaceNavigator({ workspaceId, onNavigate }: WorkspaceNavigat
   }
 
   const onCreateWorkspace = () => {
-    const workspace = createWorkspace('New Workspace')
-    navigate(`/w/${workspace.id}/overview`)
-    onNavigate?.()
+    if (!workspaceOwnerName) {
+      setCreateError(WORKSPACE_OWNER_REQUIRED_MESSAGE)
+      return
+    }
+    try {
+      const workspace = createWorkspace('New Workspace')
+      setCreateError('')
+      navigate(`/w/${workspace.id}/overview`)
+      onNavigate?.()
+    } catch (createWorkspaceError) {
+      setCreateError(
+        createWorkspaceError instanceof Error
+          ? createWorkspaceError.message
+          : WORKSPACE_OWNER_REQUIRED_MESSAGE,
+      )
+    }
   }
 
   return (
@@ -115,9 +150,22 @@ export function WorkspaceNavigator({ workspaceId, onNavigate }: WorkspaceNavigat
               </option>
             ))}
           </select>
-          <Button type="button" size="sm" variant="outline" className="w-full" onClick={onCreateWorkspace}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="w-full"
+            onClick={onCreateWorkspace}
+            disabled={!workspaceOwnerName}
+          >
             Create new workspace
           </Button>
+          {!workspaceOwnerName ? (
+            <p className="text-xs text-muted-foreground">{WORKSPACE_OWNER_REQUIRED_MESSAGE}</p>
+          ) : null}
+          {createError ? (
+            <p className="text-xs text-red-700">{createError}</p>
+          ) : null}
         </div>
       </div>
       <ScrollArea className="flex-1">

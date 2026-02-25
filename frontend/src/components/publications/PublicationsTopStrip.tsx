@@ -162,6 +162,118 @@ function useUnifiedToggleBarAnimation(animationKey: string, enabled: boolean): b
   return barsExpanded
 }
 
+function useEasedValue(target: number, animationKey: string, enabled: boolean, durationMs = 420): number {
+  const [value, setValue] = useState<number>(() => (enabled ? 0 : target))
+  const valueRef = useRef(value)
+
+  useEffect(() => {
+    valueRef.current = value
+  }, [value])
+
+  useEffect(() => {
+    if (!Number.isFinite(target)) {
+      setValue(0)
+      valueRef.current = 0
+      return
+    }
+    if (!enabled) {
+      setValue(target)
+      valueRef.current = target
+      return
+    }
+    if (prefersReducedMotion()) {
+      setValue(target)
+      valueRef.current = target
+      return
+    }
+    const from = Number.isFinite(valueRef.current) ? valueRef.current : 0
+    const to = target
+    if (Math.abs(from - to) < 0.0001) {
+      return
+    }
+    let raf = 0
+    const startedAt = performance.now()
+    const easeOutCubic = (progress: number) => 1 - ((1 - progress) ** 3)
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / Math.max(1, durationMs))
+      const eased = easeOutCubic(progress)
+      const next = from + ((to - from) * eased)
+      valueRef.current = next
+      setValue(next)
+      if (progress < 1) {
+        raf = window.requestAnimationFrame(step)
+      }
+    }
+    raf = window.requestAnimationFrame(step)
+    return () => {
+      window.cancelAnimationFrame(raf)
+    }
+  }, [animationKey, durationMs, enabled, target])
+
+  return value
+}
+
+function useEasedSeries(target: number[], animationKey: string, enabled: boolean, durationMs = 420): number[] {
+  const [values, setValues] = useState<number[]>(() => (enabled ? target.map(() => 0) : target))
+  const valuesRef = useRef(values)
+
+  useEffect(() => {
+    valuesRef.current = values
+  }, [values])
+
+  useEffect(() => {
+    if (!target.length) {
+      setValues([])
+      valuesRef.current = []
+      return
+    }
+    const to = target.map((value) => (Number.isFinite(value) ? value : 0))
+    if (!enabled) {
+      setValues(to)
+      valuesRef.current = to
+      return
+    }
+    const from = to.map((_, index) => {
+      const current = valuesRef.current[index]
+      return Number.isFinite(current) ? current : 0
+    })
+
+    const unchanged = from.length === to.length && from.every((value, index) => Math.abs(value - to[index]) < 0.0001)
+    if (unchanged) {
+      return
+    }
+
+    if (prefersReducedMotion()) {
+      setValues(to)
+      valuesRef.current = to
+      return
+    }
+
+    let raf = 0
+    const startedAt = performance.now()
+    const easeOutCubic = (progress: number) => 1 - ((1 - progress) ** 3)
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / Math.max(1, durationMs))
+      const eased = easeOutCubic(progress)
+      const next = to.map((targetValue, index) => from[index] + ((targetValue - from[index]) * eased))
+      valuesRef.current = next
+      setValues(next)
+      if (progress < 1) {
+        raf = window.requestAnimationFrame(step)
+      }
+    }
+    raf = window.requestAnimationFrame(step)
+    return () => {
+      window.cancelAnimationFrame(raf)
+    }
+  }, [animationKey, durationMs, enabled, target])
+
+  if (values.length === target.length) {
+    return values
+  }
+  return target.map((_, index) => values[index] ?? 0)
+}
+
 type HIndexProgressMeta = {
   currentH: number
   targetH: number
@@ -238,6 +350,24 @@ function buildRollingWindowLabel(monthLabels: string[], endYear: number): string
   const wrapsYearBoundary = startMonthIndex > endMonthIndex
   const startYear = wrapsYearBoundary ? endYear - 1 : endYear
   return `${MONTH_SHORT[startMonthIndex]} ${String(startYear).slice(-2)}-${MONTH_SHORT[endMonthIndex]} ${String(endYear).slice(-2)}`
+}
+
+function getHIndexTrajectoryBarCount(tile: PublicationMetricTilePayload): number {
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const years = toNumberArray(chartData.years).map((item) => Math.round(item))
+  const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
+  if (!years.length || !values.length || years.length !== values.length) {
+    return 0
+  }
+  const projectedYearRaw = Number(chartData.projected_year)
+  const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
+  const uniqueYears = new Set<number>(years.filter((year) => year !== projectedYear))
+  uniqueYears.add(projectedYear)
+  return uniqueYears.size
+}
+
+function getHIndexNeedsBarCount(): number {
+  return 5
 }
 
 function selectPublicationBucketSize(count: number): number {
@@ -921,7 +1051,15 @@ function StructuredMetricTile({
   )
 }
 
-function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetricTilePayload; showCaption?: boolean }) {
+function HIndexYearChart({
+  tile,
+  showCaption = false,
+  animate = true,
+}: {
+  tile: PublicationMetricTilePayload
+  showCaption?: boolean
+  animate?: boolean
+}) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
@@ -958,7 +1096,13 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
   }
   const animationKey = bars.map((bar) => `${bar.year}-${bar.value}-${bar.current ? 1 : 0}`).join('|')
   const hasBars = bars.length > 0
-  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars)
+  const targetValues = useMemo(
+    () => bars.map((bar) => Math.max(0, bar.value)),
+    [bars],
+  )
+  const animatedValues = useEasedSeries(targetValues, `${animationKey}|values`, animate && hasBars)
+  const targetMax = Math.max(1, ...targetValues) * 1.18
+  const animatedMax = useEasedValue(targetMax, `${animationKey}|max`, animate && hasBars)
 
   useEffect(() => {
     setHoveredIndex(null)
@@ -968,8 +1112,7 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
     return <div className={dashboardTileStyles.emptyChart}>No h-index timeline</div>
   }
 
-  const maxValue = Math.max(1, ...bars.map((bar) => Math.max(0, bar.value)))
-  const scaledMax = maxValue * 1.18
+  const scaledMax = Math.max(1, animatedMax)
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -991,7 +1134,8 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
           ))}
           <div className="absolute inset-0 flex items-end gap-1">
             {bars.map((bar, index) => {
-              const heightPct = bar.value <= 0 ? 3 : Math.max(6, (Math.max(0, bar.value) / scaledMax) * 100)
+              const animatedValue = Math.max(0, animatedValues[index] ?? 0)
+              const heightPct = animatedValue <= 0 ? 3 : Math.max(6, (animatedValue / scaledMax) * 100)
               const isActive = hoveredIndex === index
               const toneClass = bar.current
                 ? HOUSE_CHART_BAR_CURRENT_CLASS
@@ -1011,7 +1155,7 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
                     style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
                     aria-hidden="true"
                   >
-                    h {formatInt(bar.value)}
+                    h {formatInt(animatedValue)}
                   </span>
                   <span
                     className={cn(
@@ -1022,7 +1166,7 @@ function HIndexYearChart({ tile, showCaption = false }: { tile: PublicationMetri
                     )}
                     style={{
                       height: `${heightPct}%`,
-                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1})`,
                       transformOrigin: 'bottom',
                       transitionDelay: `${Math.min(220, index * 18)}ms`,
                     }}
@@ -1944,13 +2088,13 @@ function FieldPercentilePanel({
     ? Math.max(0, Math.round(Number(countAboveRaw)))
     : Math.round((shareAbove / 100) * evaluatedPapers)
   const barLabel = `>= ${threshold}th`
-  const heightPct = Math.max(0, Math.min(100, shareAbove))
   const animationKey = useMemo(
     () => `${threshold}-${shareAbove.toFixed(2)}-${evaluatedPapers}`,
     [evaluatedPapers, shareAbove, threshold],
   )
   const hasPercentileData = evaluatedPapers > 0
-  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasPercentileData)
+  const animatedShareAbove = useEasedValue(shareAbove, `${animationKey}|share`, hasPercentileData)
+  const animatedHeightPct = Math.max(0, Math.min(100, animatedShareAbove))
 
   useEffect(() => {
     setHovered(false)
@@ -1989,10 +2133,10 @@ function FieldPercentilePanel({
                   'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-[0.6rem] leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
                   hovered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
                 )}
-                style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
+                style={{ bottom: `calc(${animatedHeightPct}% + 0.35rem)` }}
                 aria-hidden="true"
               >
-                {Math.round(shareAbove)}% ({formatInt(countAbove)} papers)
+                {Math.round(animatedShareAbove)}% ({formatInt(countAbove)} papers)
               </span>
               <span
                 className={cn(
@@ -2002,8 +2146,8 @@ function FieldPercentilePanel({
                   hovered && 'brightness-[1.08] saturate-[1.14] shadow-[0_0_0_1px_hsl(var(--tone-neutral-300))]',
                 )}
                 style={{
-                  height: `${heightPct}%`,
-                  transform: `translateY(${hovered ? '-1px' : '0px'}) scaleX(${hovered ? 1.03 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                  height: `${animatedHeightPct}%`,
+                  transform: `translateY(${hovered ? '-1px' : '0px'}) scaleX(${hovered ? 1.03 : 1})`,
                   transformOrigin: 'bottom',
                 }}
               />
@@ -3045,7 +3189,13 @@ function TotalPublicationsDrilldownWorkspace({
   )
 }
 
-function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
+function HIndexNeedsChart({
+  tile,
+  animate = true,
+}: {
+  tile: PublicationMetricTilePayload
+  animate?: boolean
+}) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const candidateGaps = toNumberArray(chartData.candidate_gaps)
@@ -3086,14 +3236,19 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
     () => bars.map((bar) => `${bar.key}-${bar.count}`).join('|'),
     [bars],
   )
-  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, true)
+  const targetCounts = useMemo(
+    () => bars.map((bar) => Math.max(0, bar.count)),
+    [bars],
+  )
+  const animatedCounts = useEasedSeries(targetCounts, `${animationKey}|counts`, animate)
+  const targetMax = Math.max(1, ...targetCounts) * 1.18
+  const animatedMax = useEasedValue(targetMax, `${animationKey}|max`, animate)
 
   useEffect(() => {
     setHoveredIndex(null)
   }, [animationKey])
 
-  const maxCount = Math.max(1, ...bars.map((bar) => bar.count))
-  const scaledMax = maxCount * 1.18
+  const scaledMax = Math.max(1, animatedMax)
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -3115,7 +3270,8 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
           ))}
           <div className="absolute inset-0 flex items-end gap-1">
             {bars.map((bar, index) => {
-              const heightPct = bar.count <= 0 ? 3 : Math.max(6, (Math.max(0, bar.count) / scaledMax) * 100)
+              const animatedCount = Math.max(0, animatedCounts[index] ?? 0)
+              const heightPct = animatedCount <= 0 ? 3 : Math.max(6, (animatedCount / scaledMax) * 100)
               const isActive = hoveredIndex === index
               const toneClass = bar.needed <= 1
                 ? HOUSE_CHART_BAR_POSITIVE_CLASS
@@ -3137,7 +3293,7 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
                     style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
                     aria-hidden="true"
                   >
-                    {formatInt(bar.count)} {bar.count === 1 ? 'paper' : 'papers'}
+                    {formatInt(animatedCount)} {Math.round(animatedCount) === 1 ? 'paper' : 'papers'}
                   </span>
                   <span
                     className={cn(
@@ -3148,7 +3304,7 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
                     )}
                     style={{
                       height: `${heightPct}%`,
-                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1})`,
                       transformOrigin: 'bottom',
                       transitionDelay: `${Math.min(220, index * 18)}ms`,
                     }}
@@ -3188,9 +3344,85 @@ function HIndexTrajectoryPanel({
   tile: PublicationMetricTilePayload
   mode: HIndexViewMode
 }) {
+  const [renderMode, setRenderMode] = useState<HIndexViewMode>(mode)
+  const [outgoingMode, setOutgoingMode] = useState<HIndexViewMode | null>(null)
+  const [crossfading, setCrossfading] = useState(false)
+  const transitionMs = 420
+
+  useEffect(() => {
+    if (mode === renderMode) {
+      return
+    }
+    if (prefersReducedMotion()) {
+      setOutgoingMode(null)
+      setCrossfading(false)
+      setRenderMode(mode)
+      return
+    }
+    const currentCount = renderMode === 'trajectory'
+      ? getHIndexTrajectoryBarCount(tile)
+      : getHIndexNeedsBarCount()
+    const nextCount = mode === 'trajectory'
+      ? getHIndexTrajectoryBarCount(tile)
+      : getHIndexNeedsBarCount()
+    const requiresCrossfadeCycle = currentCount > 0 && nextCount > 0 && currentCount !== nextCount
+    if (!requiresCrossfadeCycle) {
+      setOutgoingMode(null)
+      setCrossfading(false)
+      setRenderMode(mode)
+      return
+    }
+
+    setOutgoingMode(renderMode)
+    setRenderMode(mode)
+    setCrossfading(false)
+    let raf = 0
+    const timeoutId = window.setTimeout(() => {
+      setOutgoingMode(null)
+      setCrossfading(false)
+    }, transitionMs)
+    raf = window.requestAnimationFrame(() => {
+      setCrossfading(true)
+    })
+
+    return () => {
+      window.cancelAnimationFrame(raf)
+      window.clearTimeout(timeoutId)
+    }
+  }, [mode, renderMode, tile])
+
+  const transitionStyle = {
+    transitionDuration: `${transitionMs}ms`,
+    transitionTimingFunction: 'cubic-bezier(0.2, 0.68, 0.16, 1)',
+  }
+
   return (
-    <div className="flex h-full min-h-0 w-full flex-col">
-      {mode === 'needed' ? <HIndexNeedsChart tile={tile} /> : <HIndexYearChart tile={tile} showCaption={false} />}
+    <div className="relative flex h-full min-h-0 w-full flex-col">
+      {outgoingMode ? (
+        <div
+          className={cn(
+            'pointer-events-none absolute inset-0 transition-opacity',
+            crossfading ? 'opacity-0' : 'opacity-100',
+          )}
+          style={transitionStyle}
+        >
+          {outgoingMode === 'needed'
+            ? <HIndexNeedsChart tile={tile} animate={false} />
+            : <HIndexYearChart tile={tile} showCaption={false} animate={false} />}
+        </div>
+      ) : null}
+
+      <div
+        className={cn(
+          outgoingMode ? 'h-full w-full transition-opacity' : 'h-full w-full',
+          outgoingMode ? (crossfading ? 'opacity-100' : 'opacity-0') : 'opacity-100',
+        )}
+        style={outgoingMode ? transitionStyle : undefined}
+      >
+        {renderMode === 'needed'
+          ? <HIndexNeedsChart tile={tile} animate />
+          : <HIndexYearChart tile={tile} showCaption={false} animate />}
+      </div>
     </div>
   )
 }

@@ -29,6 +29,7 @@ import { SettingsPage } from '@/pages/settings-page'
 import { StudyCorePage } from '@/pages/study-core-page'
 import { VersionHistoryPage } from '@/pages/version-history-page'
 import { WorkspacesPage } from '@/pages/workspaces-page'
+import { WorkspaceInboxPage } from '@/pages/workspace-inbox-page'
 import { WorkspaceExportsPage } from '@/pages/workspace-exports-page'
 import { useWorkspaceStore } from '@/store/use-workspace-store'
 
@@ -96,6 +97,7 @@ export function AppRouter() {
         <Route path="/w/:workspaceId" element={<WorkspaceLayout />}>
           <Route index element={<Navigate to="overview" replace />} />
           <Route path="overview" element={<OverviewPage />} />
+          <Route path="inbox" element={<WorkspaceInboxPage />} />
           <Route path="run-wizard" element={<StudyCorePage />} />
           <Route path="data" element={<ResultsPage />} />
           <Route path="results" element={<ResultsPage />} />
@@ -114,6 +116,7 @@ export function AppRouter() {
         </Route>
 
         <Route path="/overview" element={<WorkspaceRedirect suffix="overview" />} />
+        <Route path="/inbox" element={<WorkspaceRedirect suffix="inbox" />} />
         <Route path="/study-core" element={<WorkspaceRedirect suffix="run-wizard" />} />
         <Route path="/results" element={<WorkspaceRedirect suffix="results" />} />
         <Route path="/manuscript" element={<WorkspaceRedirect suffix="manuscript/introduction" />} />

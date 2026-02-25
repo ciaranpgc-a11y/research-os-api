@@ -2,17 +2,29 @@ import { useEffect, useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
-import { useWorkspaceStore, type WorkspaceRecord } from '@/store/use-workspace-store'
+import {
+  useWorkspaceStore,
+  type WorkspaceAuthorRequest,
+  type WorkspaceInvitationSent,
+  type WorkspaceRecord,
+} from '@/store/use-workspace-store'
 
 import { WorkspacesPage } from './workspaces-page'
 
 const AUTH_TOKEN_STORAGE_KEY = 'aawe-impact-session-token'
 const WORKSPACES_STORAGE_KEY = 'aawe-workspaces'
 const ACTIVE_WORKSPACE_STORAGE_KEY = 'aawe-active-workspace-id'
+const AUTHOR_REQUESTS_STORAGE_KEY = 'aawe-workspace-author-requests'
+const INVITATIONS_SENT_STORAGE_KEY = 'aawe-workspace-invitations-sent'
+const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
+const PERSONAL_DETAILS_STORAGE_PREFIX = 'aawe_profile_personal_details:'
+const STORYBOOK_USER_ID = 'storybook-user-1'
 
 type WorkspacesPageFixture = {
   workspaces: WorkspaceRecord[]
   activeWorkspaceId: string | null
+  authorRequests: WorkspaceAuthorRequest[]
+  invitationsSent: WorkspaceInvitationSent[]
 }
 
 type WorkspacesPagePreviewProps = {
@@ -24,6 +36,8 @@ const defaultFixture: WorkspacesPageFixture = {
     {
       id: 'hf-registry',
       name: 'HF Registry Manuscript',
+      ownerName: 'Ciaran Clarke',
+      collaborators: ['A. Patel'],
       version: '0.4',
       health: 'amber',
       updatedAt: '2026-02-25T15:57:00Z',
@@ -32,6 +46,25 @@ const defaultFixture: WorkspacesPageFixture = {
     },
   ],
   activeWorkspaceId: 'hf-registry',
+  authorRequests: [
+    {
+      id: 'author-req-01',
+      workspaceId: 'peds-echo-study',
+      workspaceName: 'Pediatric Echo Outcomes',
+      authorName: 'Maya Singh',
+      invitedAt: '2026-02-24T10:10:00Z',
+    },
+  ],
+  invitationsSent: [
+    {
+      id: 'invite-sent-01',
+      workspaceId: 'hf-registry',
+      workspaceName: 'HF Registry Manuscript',
+      inviteeName: 'Devon Li',
+      invitedAt: '2026-02-25T11:25:00Z',
+      status: 'pending',
+    },
+  ],
 }
 
 const mixedPortfolioFixture: WorkspacesPageFixture = {
@@ -39,6 +72,8 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
     {
       id: 'hf-registry',
       name: 'HF Registry Manuscript',
+      ownerName: 'Ciaran Clarke',
+      collaborators: ['A. Patel'],
       version: '0.4',
       health: 'amber',
       updatedAt: '2026-02-25T15:57:00Z',
@@ -48,6 +83,8 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
     {
       id: 'af-screening',
       name: 'AF Screening Cohort',
+      ownerName: 'Ciaran Clarke',
+      collaborators: ['S. Roy', 'L. Santos'],
       version: '0.9',
       health: 'green',
       updatedAt: '2026-02-24T09:18:00Z',
@@ -57,6 +94,8 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
     {
       id: 'renal-risk-qc',
       name: 'Renal Risk Model Validation',
+      ownerName: 'Ciaran Clarke',
+      collaborators: [],
       version: '1.2',
       health: 'red',
       updatedAt: '2026-02-22T13:41:00Z',
@@ -66,6 +105,8 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
     {
       id: 'legacy-trial-archive',
       name: 'Legacy Trial Data Archive',
+      ownerName: 'Ciaran Clarke',
+      collaborators: ['M. Evans'],
       version: '2.7',
       health: 'green',
       updatedAt: '2026-01-06T08:12:00Z',
@@ -74,11 +115,47 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
     },
   ],
   activeWorkspaceId: 'hf-registry',
+  authorRequests: [
+    {
+      id: 'author-req-02',
+      workspaceId: 'stroke-ct-outcomes',
+      workspaceName: 'Stroke CT Outcomes',
+      authorName: 'Aisha Rahman',
+      invitedAt: '2026-02-23T09:05:00Z',
+    },
+    {
+      id: 'author-req-03',
+      workspaceId: 'oncology-cardiac-risk',
+      workspaceName: 'Oncology Cardiac Risk Registry',
+      authorName: 'Tom Price',
+      invitedAt: '2026-02-22T16:42:00Z',
+    },
+  ],
+  invitationsSent: [
+    {
+      id: 'invite-sent-02',
+      workspaceId: 'af-screening',
+      workspaceName: 'AF Screening Cohort',
+      inviteeName: 'Nina Brooks',
+      invitedAt: '2026-02-25T08:14:00Z',
+      status: 'pending',
+    },
+    {
+      id: 'invite-sent-03',
+      workspaceId: 'hf-registry',
+      workspaceName: 'HF Registry Manuscript',
+      inviteeName: 'Devon Li',
+      invitedAt: '2026-02-24T14:40:00Z',
+      status: 'accepted',
+    },
+  ],
 }
 
 const emptyFixture: WorkspacesPageFixture = {
   workspaces: [],
   activeWorkspaceId: null,
+  authorRequests: [],
+  invitationsSent: [],
 }
 
 function RouteEcho() {
@@ -99,11 +176,23 @@ function WorkspacesPagePreview({ fixture }: WorkspacesPagePreviewProps) {
     const previousLocalToken = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
     const previousWorkspaces = window.localStorage.getItem(WORKSPACES_STORAGE_KEY)
     const previousActiveWorkspaceId = window.localStorage.getItem(ACTIVE_WORKSPACE_STORAGE_KEY)
+    const previousAuthorRequests = window.localStorage.getItem(AUTHOR_REQUESTS_STORAGE_KEY)
+    const previousInvitationsSent = window.localStorage.getItem(INVITATIONS_SENT_STORAGE_KEY)
+    const previousCachedUser = window.localStorage.getItem(INTEGRATIONS_USER_CACHE_KEY)
+    const personalDetailsStorageKey = `${PERSONAL_DETAILS_STORAGE_PREFIX}${STORYBOOK_USER_ID}`
+    const previousPersonalDetails = window.localStorage.getItem(personalDetailsStorageKey)
     const previousState = useWorkspaceStore.getState()
 
     window.sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'storybook-session-token')
     window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'storybook-session-token')
     window.localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(fixture.workspaces))
+    window.localStorage.setItem(AUTHOR_REQUESTS_STORAGE_KEY, JSON.stringify(fixture.authorRequests))
+    window.localStorage.setItem(INVITATIONS_SENT_STORAGE_KEY, JSON.stringify(fixture.invitationsSent))
+    window.localStorage.setItem(INTEGRATIONS_USER_CACHE_KEY, JSON.stringify({ id: STORYBOOK_USER_ID }))
+    window.localStorage.setItem(
+      personalDetailsStorageKey,
+      JSON.stringify({ firstName: 'Ciaran', lastName: 'Clarke' }),
+    )
     if (fixture.activeWorkspaceId) {
       window.localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, fixture.activeWorkspaceId)
     } else {
@@ -113,6 +202,8 @@ function WorkspacesPagePreview({ fixture }: WorkspacesPagePreviewProps) {
     useWorkspaceStore.setState({
       workspaces: fixture.workspaces,
       activeWorkspaceId: fixture.activeWorkspaceId,
+      authorRequests: fixture.authorRequests,
+      invitationsSent: fixture.invitationsSent,
     })
     setReady(true)
 
@@ -140,10 +231,32 @@ function WorkspacesPagePreview({ fixture }: WorkspacesPagePreviewProps) {
       } else {
         window.localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, previousActiveWorkspaceId)
       }
+      if (previousAuthorRequests === null) {
+        window.localStorage.removeItem(AUTHOR_REQUESTS_STORAGE_KEY)
+      } else {
+        window.localStorage.setItem(AUTHOR_REQUESTS_STORAGE_KEY, previousAuthorRequests)
+      }
+      if (previousInvitationsSent === null) {
+        window.localStorage.removeItem(INVITATIONS_SENT_STORAGE_KEY)
+      } else {
+        window.localStorage.setItem(INVITATIONS_SENT_STORAGE_KEY, previousInvitationsSent)
+      }
+      if (previousCachedUser === null) {
+        window.localStorage.removeItem(INTEGRATIONS_USER_CACHE_KEY)
+      } else {
+        window.localStorage.setItem(INTEGRATIONS_USER_CACHE_KEY, previousCachedUser)
+      }
+      if (previousPersonalDetails === null) {
+        window.localStorage.removeItem(personalDetailsStorageKey)
+      } else {
+        window.localStorage.setItem(personalDetailsStorageKey, previousPersonalDetails)
+      }
 
       useWorkspaceStore.setState({
         workspaces: previousState.workspaces,
         activeWorkspaceId: previousState.activeWorkspaceId,
+        authorRequests: previousState.authorRequests,
+        invitationsSent: previousState.invitationsSent,
       })
     }
   }, [fixture])

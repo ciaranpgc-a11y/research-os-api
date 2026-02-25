@@ -587,7 +587,7 @@
 
   .house-toggle-chart-bar {
     transition-property: transform, filter, box-shadow;
-    transition-duration: 320ms;
+    transition-duration: 420ms;
     transition-timing-function: cubic-bezier(0.2, 0.68, 0.16, 1);
     will-change: transform;
   }
