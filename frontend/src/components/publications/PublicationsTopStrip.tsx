@@ -1514,15 +1514,40 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const candidateGaps = toNumberArray(chartData.candidate_gaps)
     .map((item) => Math.max(0, Math.round(item)))
-    .sort((left, right) => left - right)
-  const displayedGaps = candidateGaps.slice(0, 5)
-  const bars = displayedGaps.map((gap, index) => ({
-    key: `gap-${index}`,
-    label: `P${index + 1}`,
-    gap,
-  }))
+  const bars = [
+    {
+      key: 'need-1',
+      label: '1',
+      needed: 1,
+      count: candidateGaps.filter((gap) => gap === 1).length,
+    },
+    {
+      key: 'need-2',
+      label: '2',
+      needed: 2,
+      count: candidateGaps.filter((gap) => gap === 2).length,
+    },
+    {
+      key: 'need-3',
+      label: '3',
+      needed: 3,
+      count: candidateGaps.filter((gap) => gap === 3).length,
+    },
+    {
+      key: 'need-4',
+      label: '4',
+      needed: 4,
+      count: candidateGaps.filter((gap) => gap === 4).length,
+    },
+    {
+      key: 'need-5-plus',
+      label: '5+',
+      needed: 5,
+      count: candidateGaps.filter((gap) => gap >= 5).length,
+    },
+  ].filter((bar) => bar.count > 0)
   const animationKey = useMemo(
-    () => bars.map((bar) => `${bar.key}-${bar.gap}`).join('|'),
+    () => bars.map((bar) => `${bar.key}-${bar.count}`).join('|'),
     [bars],
   )
   useEffect(() => {
@@ -1543,11 +1568,11 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
   }, [animationKey])
 
   if (!bars.length) {
-    return <div className={dashboardTileStyles.emptyChart}>No elevation candidates</div>
+    return <div className={dashboardTileStyles.emptyChart}>No citations-needed data</div>
   }
 
-  const maxGap = Math.max(1, ...bars.map((bar) => bar.gap))
-  const scaledMax = maxGap * 1.18
+  const maxCount = Math.max(1, ...bars.map((bar) => bar.count))
+  const scaledMax = maxCount * 1.18
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -1568,11 +1593,11 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
           ))}
           <div className="absolute inset-0 flex items-end gap-1">
             {bars.map((bar, index) => {
-              const heightPct = bar.gap <= 0 ? 3 : Math.max(6, (Math.max(0, bar.gap) / scaledMax) * 100)
+              const heightPct = bar.count <= 0 ? 3 : Math.max(6, (Math.max(0, bar.count) / scaledMax) * 100)
               const isActive = hoveredIndex === index
-              const toneClass = bar.gap <= 1
+              const toneClass = bar.needed <= 1
                 ? 'bg-[hsl(var(--tone-positive-600))]'
-                : bar.gap <= 3
+                : bar.needed <= 3
                   ? 'bg-[hsl(var(--tone-accent-500))]'
                   : 'bg-[hsl(var(--tone-warning-500))]'
               return (
@@ -1590,7 +1615,7 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
                     style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
                     aria-hidden="true"
                   >
-                    +{formatInt(bar.gap)}
+                    {formatInt(bar.count)} {bar.count === 1 ? 'paper' : 'papers'}
                   </span>
                   <span
                     className={cn(
@@ -1710,7 +1735,7 @@ function HIndexProgressBadge({
         </button>
       </div>
       <p className="text-[0.54rem] leading-[0.7rem] text-[hsl(var(--tone-neutral-500))]">
-        Needs elevating (&lt;=1 / 2-3 / &gt;=4):
+        Citations needed (&lt;=1 / 2-3 / &gt;=4):
         {' '}
         {progressMeta.hasGapData
           ? `${progressMeta.immediateCount} / ${progressMeta.nearCount} / ${progressMeta.longerCount}`
@@ -2273,9 +2298,11 @@ export function PublicationsTopStrip({
                   const hIndexMeta = buildHIndexProgressMeta(tile)
                   primaryValue = Number.isFinite(hIndexMeta.currentH) ? `h ${formatInt(hIndexMeta.currentH)}` : mainValueDisplay
                   secondaryText = `Progress to h ${formatInt(hIndexMeta.targetH)}`
-                  detailText = hIndexMeta.hasGapData
-                    ? `Needs elevating (<=1 / 2-3 / >=4): ${hIndexMeta.immediateCount} / ${hIndexMeta.nearCount} / ${hIndexMeta.longerCount}`
-                    : 'Needs elevating data not available'
+                  detailText = hIndexViewMode === 'needed'
+                    ? 'Citations needed (x-axis), number of papers (y-axis)'
+                    : hIndexMeta.hasGapData
+                      ? `Citations needed (<=1 / 2-3 / >=4): ${hIndexMeta.immediateCount} / ${hIndexMeta.nearCount} / ${hIndexMeta.longerCount}`
+                      : 'Citations-needed data not available'
                   badgeNode = (
                     <HIndexProgressBadge
                       tile={tile}
