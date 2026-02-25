@@ -3159,7 +3159,7 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const candidateGaps = toNumberArray(chartData.candidate_gaps)
     .map((item) => Math.max(0, Math.round(item)))
-  const bars = [
+  const bars = useMemo(() => ([
     {
       key: 'need-1',
       label: '+1',
@@ -3190,7 +3190,7 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
       needed: 5,
       count: candidateGaps.filter((gap) => gap >= 5).length,
     },
-  ].filter((bar) => bar.count > 0)
+  ]), [candidateGaps])
   const animationKey = useMemo(
     () => bars.map((bar) => `${bar.key}-${bar.count}`).join('|'),
     [bars],
@@ -3211,10 +3211,6 @@ function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
       window.cancelAnimationFrame(rafTwo)
     }
   }, [animationKey])
-
-  if (!bars.length) {
-    return <div className={dashboardTileStyles.emptyChart}>No citations-needed data</div>
-  }
 
   const maxCount = Math.max(1, ...bars.map((bar) => bar.count))
   const scaledMax = maxCount * 1.18

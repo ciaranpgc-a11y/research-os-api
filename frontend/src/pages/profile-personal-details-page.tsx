@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
-import { houseForms, houseTypography } from '@/lib/house-style'
+import { houseForms, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import {
   fetchAffiliationAddressForMe,
@@ -124,6 +124,7 @@ const HOUSE_ACTION_BUTTON_CLASS = `h-9 rounded-md px-3.5 ${houseTypography.butto
 const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
 const HOUSE_PAGE_SUBTITLE_CLASS = houseTypography.subtitle
 const HOUSE_CARD_TITLE_CLASS = houseTypography.sectionTitle
+const HOUSE_LEFT_BORDER_CLASS = houseSurfaces.leftBorder
 const HOUSE_SELECT_CLASS = `h-9 w-full rounded-md px-3 py-1 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${houseForms.select}`
 
 function formatDate(value: string | null | undefined): string {
@@ -2000,11 +2001,13 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
   return (
     <section className="space-y-4">
-      <header className="space-y-1">
-        <h1 className={HOUSE_PAGE_TITLE_CLASS}>Personal details</h1>
-        <p className={HOUSE_PAGE_SUBTITLE_CLASS}>
-          Editable account identity fields used across profile workflows.
-        </p>
+      <header>
+        <div className={cn(HOUSE_LEFT_BORDER_CLASS, 'space-y-1')}>
+          <h1 className={HOUSE_PAGE_TITLE_CLASS}>Personal details</h1>
+          <p className={HOUSE_PAGE_SUBTITLE_CLASS}>
+            Editable account identity fields used across profile workflows.
+          </p>
+        </div>
       </header>
 
       <Card className="border-[hsl(var(--tone-neutral-200))]">

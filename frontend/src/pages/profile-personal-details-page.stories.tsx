@@ -208,16 +208,18 @@ function ProfilePersonalDetailsStoryShell({
   fixture: ProfilePersonalDetailsPageFixture
 }) {
   return (
-    <MemoryRouter initialEntries={['/profile/personal-details']}>
-      <Routes>
-        <Route path="/" element={<AccountLayout />}>
-          <Route
-            path="profile/personal-details"
-            element={<ProfilePersonalDetailsPage fixture={fixture} />}
-          />
-        </Route>
-      </Routes>
-    </MemoryRouter>
+    <div className="min-h-screen min-w-[1200px] bg-background">
+      <MemoryRouter initialEntries={['/profile/personal-details']}>
+        <Routes>
+          <Route path="/" element={<AccountLayout />}>
+            <Route
+              path="profile/personal-details"
+              element={<ProfilePersonalDetailsPage fixture={fixture} />}
+            />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </div>
   )
 }
 
@@ -227,6 +229,9 @@ const meta: Meta<typeof ProfilePersonalDetailsPage> = {
   parameters: {
     layout: 'fullscreen',
     withRouter: false,
+    viewport: {
+      defaultViewport: 'desktop',
+    },
   },
   args: {
     fixture: connectedFixture,
