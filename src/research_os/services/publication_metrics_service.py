@@ -32,7 +32,7 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 16
+TOP_METRICS_SCHEMA_VERSION = 17
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 FIELD_PERCENTILE_THRESHOLDS = [50, 75, 90, 95, 99]
 
@@ -2021,6 +2021,80 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             author_role_counts[role] += 1
         else:
             author_role_unknown += 1
+    authorship_total_papers = max(0, int(total_publications))
+    authorship_known_papers = max(0, authorship_total_papers - int(author_role_unknown))
+    first_authorship_count = int(author_role_counts.get("first", 0) or 0)
+    senior_authorship_count = int(author_role_counts.get("last", 0) or 0)
+    leadership_count = max(0, first_authorship_count + senior_authorship_count)
+
+    def _pct_of_total_publications(count: int) -> float:
+        if authorship_total_papers <= 0:
+            return 0.0
+        return round((float(max(0, int(count))) / float(authorship_total_papers)) * 100.0, 1)
+
+    first_authorship_pct = _pct_of_total_publications(first_authorship_count)
+    senior_authorship_pct = _pct_of_total_publications(senior_authorship_count)
+    leadership_index_pct = _pct_of_total_publications(leadership_count)
+    author_positions_known = sorted(
+        [
+            int(parsed_position)
+            for parsed_position in (
+                _safe_int(row.get("user_author_position")) for row in per_work_rows
+            )
+            if parsed_position is not None and parsed_position > 0
+        ]
+    )
+    median_author_position: float | None = None
+    if author_positions_known:
+        middle = len(author_positions_known) // 2
+        if len(author_positions_known) % 2 == 1:
+            median_author_position = float(author_positions_known[middle])
+        else:
+            median_author_position = round(
+                (author_positions_known[middle - 1] + author_positions_known[middle]) / 2.0,
+                1,
+            )
+    median_author_position_display = (
+        f"{int(round(median_author_position))}"
+        if median_author_position is not None
+        and abs(median_author_position - round(median_author_position)) < 1e-6
+        else f"{median_author_position:.1f}"
+        if median_author_position is not None
+        else "Not available"
+    )
+    authorship_structure_publications = [
+        _publication_item_with_links(
+            {
+                "work_id": row.get("work_id"),
+                "title": row.get("title"),
+                "doi": row.get("doi"),
+                "year": row.get("year"),
+                "journal": row.get("journal"),
+                "citations_lifetime": int(row.get("citations_lifetime") or 0),
+                "user_author_role": str(row.get("user_author_role") or "").strip().lower() or "unknown",
+                "user_author_position": _safe_int(row.get("user_author_position")),
+                "author_count": _safe_int(row.get("author_count")),
+                "confidence_score": row.get("confidence_score"),
+                "confidence_label": row.get("confidence_label"),
+                "match_source": row.get("match_source"),
+                "match_method": row.get("match_method"),
+            }
+        )
+        for row in per_work_rows
+    ]
+    authorship_structure_publications.sort(
+        key=lambda item: (
+            {
+                "first": 0,
+                "last": 1,
+                "second": 2,
+                "other": 3,
+            }.get(str(item.get("user_author_role") or "").strip().lower(), 4),
+            -max(0, int(_safe_int(item.get("citations_lifetime")) or 0)),
+            str(item.get("title") or "").lower(),
+        )
+    )
+    authorship_structure_publications = authorship_structure_publications[:100]
     last5_publication_values = [
         max(0, int(publication_counts_by_year.get(year, 0))) for year in last5_complete_years
     ]
@@ -2361,6 +2435,18 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             "For each paper: percentile_rank = empirical percentile of cited_by_count in OpenAlex works "
             "filtered by primary field and publication year; portfolio metric is % of papers >= selected threshold "
             "(50/75/90/95/99)"
+        ),
+    )
+    authorship_tooltip, authorship_tooltip_details = _build_tooltip(
+        definition=(
+            "What is this: authorship role composition and leadership share across your publication portfolio."
+        ),
+        data_sources=["OpenAlex"] if "OpenAlex" in data_sources else data_sources,
+        computation=(
+            "FirstAuthorship% = first-authored papers / total papers * 100; "
+            "SeniorAuthorship% = last-authored papers / total papers * 100; "
+            "LeadershipIndex% = (first + last authored papers) / total papers * 100; "
+            "MedianAuthorPosition = median(user author_order where available)"
         ),
     )
 
@@ -2759,6 +2845,71 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 },
             },
         ),
+        _metric_tile(
+            key="authorship_composition",
+            label="Authorship composition",
+            value=leadership_index_pct if authorship_total_papers > 0 else None,
+            value_display=f"{int(round(leadership_index_pct))}%"
+            if authorship_total_papers > 0
+            else "Not available",
+            subtext="Leadership index",
+            badge={"label": "", "severity": "neutral"},
+            chart_type="authorship_structure",
+            chart_data={
+                "first_authorship_pct": first_authorship_pct,
+                "senior_authorship_pct": senior_authorship_pct,
+                "leadership_index_pct": leadership_index_pct,
+                "median_author_position": median_author_position,
+                "median_author_position_display": median_author_position_display,
+                "first_authorship_count": first_authorship_count,
+                "senior_authorship_count": senior_authorship_count,
+                "leadership_count": leadership_count,
+                "known_role_count": authorship_known_papers,
+                "unknown_role_count": int(author_role_unknown),
+                "known_position_count": len(author_positions_known),
+                "total_papers": authorship_total_papers,
+            },
+            delta_value=None,
+            delta_display=None,
+            unit="percent",
+            sparkline=[
+                first_authorship_pct,
+                senior_authorship_pct,
+                leadership_index_pct,
+            ],
+            tooltip=authorship_tooltip,
+            tooltip_details=authorship_tooltip_details,
+            data_source=["OpenAlex"] if "OpenAlex" in data_sources else data_sources,
+            confidence_score=_confidence_score_from_publications(authorship_structure_publications),
+            stability="stable" if authorship_known_papers > 0 else "unstable",
+            drilldown={
+                "title": "Authorship composition",
+                "definition": (
+                    "Role distribution across your publications with leadership share and median author position."
+                ),
+                "formula": (
+                    "LeadershipIndex = (First + Last authored papers) / Total papers; "
+                    "Median position computed from known author_order values."
+                ),
+                "confidence_note": _confidence_note(),
+                "publications": authorship_structure_publications,
+                "metadata": {
+                    "intermediate_values": {
+                        "first_authorship_pct": first_authorship_pct,
+                        "senior_authorship_pct": senior_authorship_pct,
+                        "leadership_index_pct": leadership_index_pct,
+                        "median_author_position": median_author_position,
+                        "first_authorship_count": first_authorship_count,
+                        "senior_authorship_count": senior_authorship_count,
+                        "leadership_count": leadership_count,
+                        "known_role_count": authorship_known_papers,
+                        "unknown_role_count": int(author_role_unknown),
+                        "known_position_count": len(author_positions_known),
+                        "total_papers": authorship_total_papers,
+                    }
+                },
+            },
+        ),
     ]
 
     if dimensions_tile is not None:
@@ -2781,7 +2932,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         )
 
     return {
-        "tiles": tiles[:7],
+        "tiles": tiles[:8],
         "data_sources": data_sources,
         "data_last_refreshed": now.isoformat(),
         "metadata": {
@@ -2802,6 +2953,13 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                     [
                         float(field_percentile_shares.get(str(threshold)) or 0.0)
                         for threshold in FIELD_PERCENTILE_THRESHOLDS
+                    ]
+                ),
+                "authorship_composition_pct": _series_to_sparkline(
+                    [
+                        first_authorship_pct,
+                        senior_authorship_pct,
+                        leadership_index_pct,
                     ]
                 ),
                 "concentration_risk_12m": _series_to_sparkline(concentration_series),

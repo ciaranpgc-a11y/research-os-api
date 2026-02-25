@@ -317,6 +317,38 @@ const fieldPercentileShareTile = buildTile({
   sparkline: [62.5, 42, 21, 12.5, 4.2],
 })
 
+const authorshipCompositionTile = buildTile({
+  id: 'tile-authorship-composition',
+  key: 'authorship_composition',
+  label: 'Authorship composition',
+  value: 62,
+  valueDisplay: '62%',
+  deltaValue: null,
+  deltaDisplay: null,
+  deltaDirection: 'na',
+  deltaTone: 'neutral',
+  deltaColorCode: 'hsl(var(--tone-neutral-600))',
+  subtext: 'Leadership index',
+  badgeLabel: '',
+  badgeSeverity: 'neutral',
+  chartType: 'authorship_structure',
+  chartData: {
+    first_authorship_pct: 34,
+    senior_authorship_pct: 28,
+    leadership_index_pct: 62,
+    median_author_position: 2,
+    median_author_position_display: '2',
+    first_authorship_count: 8,
+    senior_authorship_count: 7,
+    leadership_count: 15,
+    known_role_count: 22,
+    unknown_role_count: 2,
+    known_position_count: 22,
+    total_papers: 24,
+  },
+  sparkline: [34, 28, 62],
+})
+
 const totalCitationsEmptyTile = buildTile({
   id: 'tile-total-citations-empty',
   key: 'total_citations',
@@ -452,6 +484,31 @@ const fieldPercentileShareEmptyTile = buildTile({
   sparkline: [],
 })
 
+const authorshipCompositionEmptyTile = buildTile({
+  id: 'tile-authorship-composition-empty',
+  key: 'authorship_composition',
+  label: 'Authorship composition',
+  value: null,
+  valueDisplay: '\u2014',
+  deltaValue: null,
+  deltaDisplay: null,
+  deltaDirection: 'na',
+  deltaTone: 'neutral',
+  deltaColorCode: 'hsl(var(--tone-neutral-500))',
+  subtext: 'Leadership index',
+  badgeLabel: '',
+  badgeSeverity: 'neutral',
+  chartType: 'authorship_structure',
+  chartData: {
+    first_authorship_pct: 0,
+    senior_authorship_pct: 0,
+    leadership_index_pct: 0,
+    median_author_position_display: 'Not available',
+    total_papers: 0,
+  },
+  sparkline: [],
+})
+
 const meta: Meta<typeof PublicationsTopStrip> = {
   title: 'Publications/Tiles',
   component: PublicationsTopStrip,
@@ -483,6 +540,7 @@ const overviewTiles = [
   impactConcentrationTile,
   influentialCitationsTile,
   fieldPercentileShareTile,
+  authorshipCompositionTile,
 ]
 
 export const TilesOverview: Story = {
@@ -533,3 +591,7 @@ export const InfluentialCitationsLoading: Story = { args: loadingArgs }
 export const FieldPercentileShareDefault: Story = { args: singleTileArgs(fieldPercentileShareTile) }
 export const FieldPercentileShareNoData: Story = { args: singleTileArgs(fieldPercentileShareEmptyTile) }
 export const FieldPercentileShareLoading: Story = { args: loadingArgs }
+
+export const AuthorshipCompositionDefault: Story = { args: singleTileArgs(authorshipCompositionTile) }
+export const AuthorshipCompositionNoData: Story = { args: singleTileArgs(authorshipCompositionEmptyTile) }
+export const AuthorshipCompositionLoading: Story = { args: loadingArgs }

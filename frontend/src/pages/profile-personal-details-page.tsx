@@ -552,7 +552,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [orcidStatus, setOrcidStatus] = useState<OrcidStatusPayload | null>(initialCachedOrcidStatus)
   const [draft, setDraft] = useState<PersonalDetailsDraft>(initialDraft)
   const [accountEmail, setAccountEmail] = useState(initialAccountEmail)
-  const [primaryAffiliationInput, setPrimaryAffiliationInput] = useState('')
+  const [primaryAffiliationInput, setPrimaryAffiliationInput] = useState(() => sanitizeAffiliation(initialDraft.organisation))
   const [primaryAffiliationSuggestions, setPrimaryAffiliationSuggestions] = useState<AffiliationSuggestionItem[]>([])
   const [primaryAffiliationSuggestionsLoading, setPrimaryAffiliationSuggestionsLoading] = useState(false)
   const [primaryAffiliationSuggestionsError, setPrimaryAffiliationSuggestionsError] = useState('')
@@ -563,7 +563,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [affiliationMetadataByName, setAffiliationMetadataByName] = useState<Record<string, AffiliationMetadataItem>>({})
   const [showPublicationAffiliationComposer, setShowPublicationAffiliationComposer] = useState(false)
   const [draggingPublicationAffiliationIndex, setDraggingPublicationAffiliationIndex] = useState<number | null>(null)
-  const [aiPrimaryBusy, setAiPrimaryBusy] = useState(false)
   const [aiPublicationBusy, setAiPublicationBusy] = useState(false)
   const [primaryAffiliationAddressResolving, setPrimaryAffiliationAddressResolving] = useState(false)
   const [primaryAffiliationAddressError, setPrimaryAffiliationAddressError] = useState('')
@@ -584,17 +583,16 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     const fixtureUser = fixture?.user ?? null
     const stored = fixtureUser?.id ? loadStoredPersonalDetails(fixtureUser.id) : null
     const fixtureOrcidLinked = Boolean(fixture?.orcidStatus?.linked || fixtureUser?.orcid_id)
+    const fixtureDraft = sanitizeDraft({
+      ...draftFromSources(fixtureUser, stored, fixtureOrcidLinked),
+      ...(fixture?.personalDetails || {}),
+    })
     setToken(fixture?.token ?? 'storybook-session-token')
     setUser(fixtureUser)
     setOrcidStatus(fixture?.orcidStatus ?? null)
-    setDraft(
-      sanitizeDraft({
-        ...draftFromSources(fixtureUser, stored, fixtureOrcidLinked),
-        ...(fixture?.personalDetails || {}),
-      }),
-    )
+    setDraft(fixtureDraft)
+    setPrimaryAffiliationInput(sanitizeAffiliation(fixtureDraft.organisation))
     setAccountEmail(trimValue(fixtureUser?.email))
-    setPrimaryAffiliationInput('')
     setPrimaryAffiliationSuggestions([])
     setPrimaryAffiliationSuggestionsLoading(false)
     setPrimaryAffiliationSuggestionsError('')
@@ -605,7 +603,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setAffiliationMetadataByName({})
     setShowPublicationAffiliationComposer(false)
     setDraggingPublicationAffiliationIndex(null)
-    setAiPrimaryBusy(false)
     setAiPublicationBusy(false)
     setPrimaryAffiliationAddressResolving(false)
     setPrimaryAffiliationAddressError('')
@@ -674,6 +671,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
         if (!draftEditedRef.current) {
           setDraft(resolvedDraft)
+          setPrimaryAffiliationInput(sanitizeAffiliation(resolvedDraft.organisation))
         }
 
         if (orcidResult.status === 'fulfilled') {
@@ -983,7 +981,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       ...current,
       [normalizedKey]: metadata,
     }))
-    setPrimaryAffiliationInput('')
+    setPrimaryAffiliationInput(clean)
     setPrimaryAffiliationSuggestions([])
     setPrimaryAffiliationSuggestionsError('')
     setPrimaryAffiliationAddressError('')
@@ -1010,6 +1008,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       affiliationPostalCode: metadata ? sanitizeAffiliation(metadata.postalCode) : current.affiliationPostalCode,
       country: metadata ? sanitizeAffiliation(metadata.country) : current.country,
     }))
+    setPrimaryAffiliationInput(clean)
   }
 
   const onResolvePrimaryAffiliationFromCurrent = async () => {
@@ -1048,39 +1047,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       seedMetadata,
       replaceExisting,
     })
-  }
-
-  const onAiSuggestPrimaryAffiliation = async () => {
-    const seed = sanitizeAffiliation(
-      primaryAffiliationInput
-      || draft.organisation
-      || draft.publicationAffiliations[0]
-      || '',
-    )
-    if (!seed) {
-      setError('Type an affiliation or add one publication affiliation first.')
-      return
-    }
-    setError('')
-    setAiPrimaryBusy(true)
-    try {
-      const suggestions = await fetchAffiliationSuggestions({ token, query: seed, limit: 8 })
-      const best = suggestions[0]
-      if (!best) {
-        setStatus('No affiliation suggestions found for AI assist.')
-        return
-      }
-      await onApplyPrimaryAffiliationSuggestion(best)
-      setStatus(`AI assist set primary affiliation to ${best.name}.`)
-    } catch (lookupError) {
-      setError(
-        lookupError instanceof Error
-          ? lookupError.message
-          : 'AI assist could not suggest a primary affiliation.',
-      )
-    } finally {
-      setAiPrimaryBusy(false)
-    }
   }
 
   const onAiSuggestPublicationAffiliations = async () => {
@@ -1157,6 +1123,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   }
 
   const onRemoveAffiliation = (value: string) => {
+    const wasPrimary = sanitizeAffiliation(draft.organisation).toLowerCase() === value.toLowerCase()
     draftEditedRef.current = true
     setDraft((current) => ({
       ...current,
@@ -1173,6 +1140,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       delete next[value.toLowerCase()]
       return next
     })
+    if (wasPrimary) {
+      setPrimaryAffiliationInput('')
+    }
   }
 
   const onResetFromProfile = () => {
@@ -1180,9 +1150,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       return
     }
     const stored = loadStoredPersonalDetails(user.id)
-    setDraft(draftFromSources(user, stored, orcidLinked))
+    const resetDraft = draftFromSources(user, stored, orcidLinked)
+    setDraft(resetDraft)
+    setPrimaryAffiliationInput(sanitizeAffiliation(resetDraft.organisation))
     setAccountEmail(trimValue(user.email))
-    setPrimaryAffiliationInput('')
     setPrimaryAffiliationSuggestions([])
     setPrimaryAffiliationSuggestionsLoading(false)
     setPrimaryAffiliationSuggestionsError('')
@@ -1193,7 +1164,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setAffiliationMetadataByName({})
     setShowPublicationAffiliationComposer(false)
     setDraggingPublicationAffiliationIndex(null)
-    setAiPrimaryBusy(false)
     setAiPublicationBusy(false)
     setPrimaryAffiliationAddressResolving(false)
     setPrimaryAffiliationAddressError('')
@@ -1456,7 +1426,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             Affiliation
           </CardTitle>
           <p className="text-xs text-[hsl(var(--tone-neutral-600))]">
-            Capture your role and primary institution details used across outputs.
+            Capture your role and affiliation details used across outputs.
           </p>
         </CardHeader>
         <CardContent className="space-y-3 pt-3 text-sm">
@@ -1472,41 +1442,24 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             </label>
 
             <label className="space-y-1 sm:col-span-2">
-              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Primary affiliation</span>
-              <Input
-                value={draft.organisation}
-                onChange={(event) => onFieldChange('organisation', event.target.value)}
-                onBlur={() => {
-                  void onResolvePrimaryAffiliationFromCurrent()
-                }}
-                placeholder="Primary institution used for publications"
-                autoComplete="organization"
-              />
-            </label>
-
-            <div className="space-y-1 sm:col-span-2">
-              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">AI-assisted lookup</span>
+              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Affiliation</span>
               <div className="flex flex-wrap items-center gap-2">
                 <Input
                   value={primaryAffiliationInput}
-                  onChange={(event) => setPrimaryAffiliationInput(event.target.value)}
+                  onChange={(event) => {
+                    const next = event.target.value
+                    setPrimaryAffiliationInput(next)
+                    onFieldChange('organisation', next)
+                  }}
+                  onBlur={() => {
+                    void onResolvePrimaryAffiliationFromCurrent()
+                  }}
                   placeholder="Type institution name for suggestions"
                   autoComplete="organization"
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    void onAiSuggestPrimaryAffiliation()
-                  }}
-                  disabled={aiPrimaryBusy}
-                >
-                  {aiPrimaryBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1.5 h-4 w-4" />}
-                  AI assist
-                </Button>
               </div>
               {primaryAffiliationSuggestionsLoading ? (
-                <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Looking up primary affiliation suggestions...</p>
+                <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Looking up affiliation suggestions...</p>
               ) : null}
               {primaryAffiliationSuggestions.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2">
@@ -1529,7 +1482,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 <p className="text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationSuggestionsError}</p>
               ) : (
                 <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
-                  AI assist ranks OpenAlex and ROR institution matches, then resolves fuller address details using OpenStreetMap.
+                  Lookup ranks OpenAlex and ROR institution matches, then resolves fuller address details using OpenStreetMap.
                 </p>
               )}
               {primaryAffiliationAddressResolving ? (
@@ -1538,7 +1491,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               {primaryAffiliationAddressError ? (
                 <p className="text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationAddressError}</p>
               ) : null}
-            </div>
+            </label>
 
             <label className="space-y-1 sm:col-span-2">
               <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Address line 1</span>

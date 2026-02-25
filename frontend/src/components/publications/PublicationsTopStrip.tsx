@@ -1675,6 +1675,97 @@ function FieldPercentilePanel({
   )
 }
 
+function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload }) {
+  const [panelVisible, setPanelVisible] = useState(true)
+  const [barsExpanded, setBarsExpanded] = useState(false)
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const firstAuthorshipRaw = Number(chartData.first_authorship_pct)
+  const seniorAuthorshipRaw = Number(chartData.senior_authorship_pct)
+  const leadershipIndexRaw = Number(chartData.leadership_index_pct)
+  const firstAuthorshipPct = Number.isFinite(firstAuthorshipRaw)
+    ? Math.max(0, Math.min(100, firstAuthorshipRaw))
+    : 0
+  const seniorAuthorshipPct = Number.isFinite(seniorAuthorshipRaw)
+    ? Math.max(0, Math.min(100, seniorAuthorshipRaw))
+    : 0
+  const leadershipIndexPct = Number.isFinite(leadershipIndexRaw)
+    ? Math.max(0, Math.min(100, leadershipIndexRaw))
+    : 0
+  const medianAuthorPositionDisplay = String(chartData.median_author_position_display || '').trim()
+  const medianAuthorPositionRaw = Number(chartData.median_author_position)
+  const medianAuthorPosition = medianAuthorPositionDisplay
+    || (Number.isFinite(medianAuthorPositionRaw) ? String(medianAuthorPositionRaw) : 'Not available')
+  const totalPapersRaw = Number(chartData.total_papers)
+  const totalPapers = Number.isFinite(totalPapersRaw) ? Math.max(0, Math.round(totalPapersRaw)) : 0
+  const animationKey = useMemo(
+    () => `${Math.round(firstAuthorshipPct)}-${Math.round(seniorAuthorshipPct)}-${Math.round(leadershipIndexPct)}-${medianAuthorPosition}-${totalPapers}`,
+    [firstAuthorshipPct, leadershipIndexPct, medianAuthorPosition, seniorAuthorshipPct, totalPapers],
+  )
+  useEffect(() => {
+    setPanelVisible(false)
+    setBarsExpanded(false)
+    let rafOne = 0
+    let rafTwo = 0
+    rafOne = window.requestAnimationFrame(() => {
+      setPanelVisible(true)
+      rafTwo = window.requestAnimationFrame(() => {
+        setBarsExpanded(true)
+      })
+    })
+    return () => {
+      window.cancelAnimationFrame(rafOne)
+      window.cancelAnimationFrame(rafTwo)
+    }
+  }, [animationKey])
+
+  if (totalPapers <= 0) {
+    return <div className={dashboardTileStyles.emptyChart}>No authorship data</div>
+  }
+
+  const rows = [
+    { key: 'first', label: 'First authorship', value: Math.round(firstAuthorshipPct), tone: 'bg-[hsl(var(--tone-accent-500))]' },
+    { key: 'senior', label: 'Senior authorship', value: Math.round(seniorAuthorshipPct), tone: 'bg-[hsl(var(--tone-warning-500))]' },
+    { key: 'leadership', label: 'Leadership index', value: Math.round(leadershipIndexPct), tone: 'bg-[hsl(var(--tone-positive-600))]' },
+  ]
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div
+        className={cn(
+          'flex flex-1 flex-col gap-2 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-background px-2 py-2 transition-[opacity,transform,filter] duration-320 ease-out',
+          panelVisible ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-1 scale-[0.985] blur-[0.4px]',
+        )}
+      >
+        {rows.map((row, index) => (
+          <div key={row.key} className="space-y-1">
+            <div className="flex items-center justify-between gap-2 text-[0.61rem] leading-none">
+              <span className="font-semibold text-[hsl(var(--tone-neutral-700))]">{row.label}</span>
+              <span className="font-semibold text-[hsl(var(--tone-neutral-700))]">{row.value}%</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
+              <div
+                className={cn(
+                  'h-full rounded-full transition-[width] duration-420 ease-out',
+                  row.tone,
+                )}
+                style={{
+                  width: `${barsExpanded ? row.value : 0}%`,
+                  transitionDelay: `${Math.min(180, index * 40)}ms`,
+                }}
+                aria-hidden="true"
+              />
+            </div>
+          </div>
+        ))}
+        <div className="mt-auto flex items-center justify-between rounded border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-1">
+          <span className="text-[0.6rem] font-semibold text-[hsl(var(--tone-neutral-700))]">Median author position</span>
+          <span className="text-[0.66rem] font-semibold text-[hsl(var(--tone-neutral-800))]">{medianAuthorPosition}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function HIndexNeedsChart({ tile }: { tile: PublicationMetricTilePayload }) {
   const [chartVisible, setChartVisible] = useState(true)
   const [barsExpanded, setBarsExpanded] = useState(false)
@@ -2202,6 +2293,18 @@ function metricSummary(tile: PublicationMetricTilePayload, publication: Record<s
     const fieldName = String(publication.field_name || 'Unknown field')
     return `Percentile rank: ${rank.toFixed(1)}th (${fieldName})`
   }
+  if (key === 'authorship_composition') {
+    const role = String(publication.user_author_role || 'unknown')
+    const positionRaw = Number(publication.user_author_position)
+    const authorCountRaw = Number(publication.author_count)
+    const positionText = Number.isFinite(positionRaw) && positionRaw > 0
+      ? `${Math.round(positionRaw)}`
+      : 'n/a'
+    const authorCountText = Number.isFinite(authorCountRaw) && authorCountRaw > 0
+      ? `${Math.round(authorCountRaw)}`
+      : 'n/a'
+    return `Role: ${role} | Position: ${positionText}/${authorCountText}`
+  }
   if (key === 'field_normalized_impact') {
     return `Field-normalized impact: ${Number(publication.field_normalized_impact || 0).toFixed(3)}`
   }
@@ -2315,42 +2418,6 @@ export function PublicationsTopStrip({
             <p className="text-[0.76rem] font-semibold uppercase tracking-[0.09em] text-[hsl(var(--tone-neutral-800))]">
               Publication insights
             </p>
-          </div>
-          <div className="rounded-sm border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-2">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="pt-1 text-[0.7rem] font-semibold uppercase tracking-[0.09em] text-[hsl(var(--tone-neutral-700))]">
-                Tools
-              </p>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button
-                  type="button"
-                  data-stop-tile-open="true"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
-                  aria-label="Generate publication insights report"
-                >
-                  <FileText className="h-3.5 w-3.5" />
-                  <span>Generate publication insights report</span>
-                </button>
-                <button
-                  type="button"
-                  data-stop-tile-open="true"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
-                  aria-label="Download"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  <span>Download</span>
-                </button>
-                <button
-                  type="button"
-                  data-stop-tile-open="true"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
-                  aria-label="Share"
-                >
-                  <Share2 className="h-3.5 w-3.5" />
-                  <span>Share</span>
-                </button>
-              </div>
-            </div>
           </div>
 
           {!insightsVisible ? (
@@ -2554,7 +2621,10 @@ export function PublicationsTopStrip({
                   secondaryText = `Papers at or above ${activeThreshold}th percentile`
                   detailText = undefined
                   badgeNode = (
-                    <div className="flex flex-col items-start gap-0.5">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <p className="text-center text-[0.56rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">
+                        Percentile
+                      </p>
                       <div
                         className="relative isolate inline-grid items-center overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] p-0.5"
                         style={{ gridTemplateColumns: `repeat(${availableThresholds.length}, minmax(0, 1fr))` }}
@@ -2591,12 +2661,34 @@ export function PublicationsTopStrip({
                           </button>
                         ))}
                       </div>
-                      <p className="pl-1 text-[0.56rem] font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">
-                        Percentile
-                      </p>
                     </div>
                   )
                   visual = <FieldPercentilePanel tile={tile} threshold={activeThreshold} />
+                } else if (tile.key === 'authorship_composition') {
+                  const authorshipChartData = (tile.chart_data || {}) as Record<string, unknown>
+                  const firstAuthorshipRaw = Number(authorshipChartData.first_authorship_pct)
+                  const seniorAuthorshipRaw = Number(authorshipChartData.senior_authorship_pct)
+                  const leadershipRaw = Number(authorshipChartData.leadership_index_pct)
+                  const totalPapersRaw = Number(authorshipChartData.total_papers)
+                  const medianAuthorPositionDisplay = String(
+                    authorshipChartData.median_author_position_display || authorshipChartData.median_author_position || 'Not available',
+                  ).trim() || 'Not available'
+                  const firstAuthorshipPct = Number.isFinite(firstAuthorshipRaw)
+                    ? Math.max(0, Math.min(100, firstAuthorshipRaw))
+                    : 0
+                  const seniorAuthorshipPct = Number.isFinite(seniorAuthorshipRaw)
+                    ? Math.max(0, Math.min(100, seniorAuthorshipRaw))
+                    : 0
+                  const leadershipPct = Number.isFinite(leadershipRaw)
+                    ? Math.max(0, Math.min(100, leadershipRaw))
+                    : Number.isFinite(tileValueNumberRaw)
+                      ? Math.max(0, Math.min(100, tileValueNumberRaw))
+                      : 0
+                  const totalPapers = Number.isFinite(totalPapersRaw) ? Math.max(0, Math.round(totalPapersRaw)) : 0
+                  primaryValue = totalPapers > 0 ? `${Math.round(leadershipPct)}%` : mainValueDisplay
+                  secondaryText = 'Leadership index'
+                  detailText = `First ${Math.round(firstAuthorshipPct)}% | Senior ${Math.round(seniorAuthorshipPct)}% | Median position ${medianAuthorPositionDisplay}`
+                  visual = <AuthorshipStructurePanel tile={tile} />
                 } else if (tile.key === 'influential_citations') {
                   const influentialChartData = (tile.chart_data || {}) as Record<string, unknown>
                   const influentialRatioRaw = Number(influentialChartData.influential_ratio_pct)
@@ -2628,6 +2720,42 @@ export function PublicationsTopStrip({
               })}
             </div>
           )}
+          <div className="rounded-sm border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2 py-2">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <p className="pt-1 text-[0.7rem] font-semibold uppercase tracking-[0.09em] text-[hsl(var(--tone-neutral-700))]">
+                Tools
+              </p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  data-stop-tile-open="true"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
+                  aria-label="Generate publication insights report"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>Generate publication insights report</span>
+                </button>
+                <button
+                  type="button"
+                  data-stop-tile-open="true"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
+                  aria-label="Download"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Download</span>
+                </button>
+                <button
+                  type="button"
+                  data-stop-tile-open="true"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-background px-2 py-1 text-[0.68rem] font-medium text-[hsl(var(--tone-neutral-700))] transition-colors hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]"
+                  aria-label="Share"
+                >
+                  <Share2 className="h-3.5 w-3.5" />
+                  <span>Share</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
