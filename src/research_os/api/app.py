@@ -24,6 +24,8 @@ from research_os.db import session_scope
 from research_os.api.schemas import (
     AnalysisScaffoldRequest,
     AnalysisScaffoldResponse,
+    AffiliationSuggestionItemResponse,
+    AffiliationSuggestionsResponse,
     AuthLoginRequest,
     AuthLoginChallengeRequest,
     AuthLoginChallengeResponse,
@@ -176,6 +178,10 @@ from research_os.api.schemas import (
     WizardBootstrapResponse,
     WizardInferRequest,
     WizardInferResponse,
+)
+from research_os.services.affiliation_suggestion_service import (
+    AffiliationSuggestionValidationError,
+    fetch_affiliation_suggestions,
 )
 from research_os.services.citation_service import (
     CitationRecordNotFoundError,
@@ -1123,6 +1129,34 @@ def v1_auth_me(request: Request) -> AuthUserResponse | JSONResponse:
         return AuthUserResponse(**payload)
     except (AuthValidationError, AuthNotFoundError) as exc:
         return _build_unauthorized_response(str(exc))
+
+
+@app.get(
+    "/v1/auth/me/affiliation-suggestions",
+    response_model=AffiliationSuggestionsResponse,
+    responses=UNAUTHORIZED_RESPONSES | BAD_REQUEST_RESPONSES,
+    tags=["v1"],
+)
+def v1_auth_me_affiliation_suggestions(
+    request: Request,
+    query: str = Query(min_length=2),
+    limit: int = Query(default=8, ge=1, le=8),
+) -> AffiliationSuggestionsResponse | JSONResponse:
+    token = _extract_session_token(request)
+    if not token:
+        return _build_unauthorized_response("Session token is required.")
+    try:
+        get_user_by_session_token(token)
+        items = fetch_affiliation_suggestions(query=query, limit=limit)
+        return AffiliationSuggestionsResponse(
+            query=str(query).strip(),
+            limit=max(1, min(8, int(limit))),
+            items=[AffiliationSuggestionItemResponse(**item) for item in items],
+        )
+    except (AuthValidationError, AuthNotFoundError) as exc:
+        return _build_unauthorized_response(str(exc))
+    except AffiliationSuggestionValidationError as exc:
+        return _build_bad_request_response(str(exc))
 
 
 @app.patch(

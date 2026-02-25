@@ -18,6 +18,23 @@ export type AuthSessionPayload = {
   session_expires_at: string
 }
 
+export type AffiliationSuggestionItemPayload = {
+  name: string
+  label: string
+  country_code: string | null
+  country_name: string | null
+  city: string | null
+  region: string | null
+  address: string | null
+  source: 'openalex' | 'ror'
+}
+
+export type AffiliationSuggestionsPayload = {
+  query: string
+  limit: number
+  items: AffiliationSuggestionItemPayload[]
+}
+
 export type AuthLoginChallengePayload = {
   status: 'authenticated' | 'two_factor_required'
   session: AuthSessionPayload | null

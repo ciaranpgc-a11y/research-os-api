@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
-import { fetchMe, fetchOrcidStatus, updateMe } from '@/lib/impact-api'
-import type { AuthUser, OrcidStatusPayload } from '@/types/impact'
+import { fetchAffiliationSuggestionsForMe, fetchMe, fetchOrcidStatus, updateMe } from '@/lib/impact-api'
+import type { AffiliationSuggestionItemPayload, AuthUser, OrcidStatusPayload } from '@/types/impact'
 
 type PersonalDetailsDraft = {
   salutation: string
@@ -46,7 +46,7 @@ type AffiliationSuggestionItem = {
   city: string | null
   region: string | null
   address: string | null
-  source: 'openalex'
+  source: 'openalex' | 'ror'
 }
 
 export type ProfilePersonalDetailsPageFixture = {
@@ -140,42 +140,56 @@ function buildAffiliationAddress(input: {
     .join(', ')
 }
 
-function tokenizeAffiliation(value: string): Set<string> {
-  return new Set(
-    sanitizeAffiliation(value)
-      .toLowerCase()
-      .split(/[^a-z0-9]+/g)
-      .filter((token) => token.length >= 2),
-  )
+function buildAffiliationSuggestionLabel(input: {
+  name: string
+  city?: string | null
+  countryName?: string | null
+  countryCode?: string | null
+}): string {
+  const city = toNullableAffiliationPart(input.city)
+  const countryName = toNullableAffiliationPart(input.countryName)
+  const countryCode = toNullableAffiliationPart(input.countryCode)
+  const location = [city, countryName].filter(Boolean).join(', ')
+  if (location) {
+    return `${input.name} (${location})`
+  }
+  if (countryCode) {
+    return `${input.name} (${countryCode.toUpperCase()})`
+  }
+  return input.name
 }
 
-function jaccardSimilarity(left: Set<string>, right: Set<string>): number {
-  if (left.size === 0 || right.size === 0) {
-    return 0
+function mapAffiliationSuggestionItem(
+  raw: AffiliationSuggestionItemPayload,
+): AffiliationSuggestionItem | null {
+  const name = sanitizeAffiliation(raw.name)
+  if (!name) {
+    return null
   }
-  let overlap = 0
-  for (const token of left) {
-    if (right.has(token)) {
-      overlap += 1
-    }
-  }
-  const unionSize = left.size + right.size - overlap
-  return unionSize > 0 ? overlap / unionSize : 0
-}
-
-function rankAffiliationSuggestions(
-  suggestions: AffiliationSuggestionItem[],
-  query: string,
-): AffiliationSuggestionItem[] {
-  const queryTokens = tokenizeAffiliation(query)
-  if (!queryTokens.size) {
-    return suggestions
-  }
-  return [...suggestions].sort((left, right) => {
-    const leftScore = jaccardSimilarity(queryTokens, tokenizeAffiliation(left.name))
-    const rightScore = jaccardSimilarity(queryTokens, tokenizeAffiliation(right.name))
-    return rightScore - leftScore
+  const countryCode = sanitizeAffiliation(raw.country_code).toUpperCase() || null
+  const countryName = toNullableAffiliationPart(raw.country_name)
+  const city = toNullableAffiliationPart(raw.city)
+  const region = toNullableAffiliationPart(raw.region)
+  const address =
+    toNullableAffiliationPart(raw.address)
+    || buildAffiliationAddress({ city, region, countryName })
+    || null
+  const label = sanitizeAffiliation(raw.label) || buildAffiliationSuggestionLabel({
+    name,
+    city,
+    countryName,
+    countryCode,
   })
+  return {
+    name,
+    label,
+    countryCode,
+    countryName,
+    city,
+    region,
+    address,
+    source: raw.source === 'ror' ? 'ror' : 'openalex',
+  }
 }
 
 function normalizeAffiliations(values: unknown): string[] {
@@ -458,7 +472,8 @@ function renderValue(value: string | null | undefined): string {
   return clean || 'Not available'
 }
 
-async function fetchAffiliationSuggestionsOpenAlex(input: {
+async function fetchAffiliationSuggestions(input: {
+  token: string
   query: string
   limit?: number
 }): Promise<AffiliationSuggestionItem[]> {
@@ -466,47 +481,28 @@ async function fetchAffiliationSuggestionsOpenAlex(input: {
   if (cleanQuery.length < 2) {
     return []
   }
-  const cleanLimit = Math.max(1, Math.min(8, Number(input.limit || 8)))
-  const params = new URLSearchParams({
-    search: cleanQuery,
-    'per-page': String(cleanLimit),
-  })
-  const response = await fetch(`https://api.openalex.org/institutions?${params.toString()}`)
-  if (!response.ok) {
-    throw new Error(`Affiliation suggestions failed (${response.status})`)
+  const cleanToken = trimValue(input.token)
+  if (!cleanToken) {
+    return []
   }
-  const payload = (await response.json()) as { results?: Array<Record<string, unknown>> }
+  const cleanLimit = Math.max(1, Math.min(8, Number(input.limit || 8)))
+  const payload = await fetchAffiliationSuggestionsForMe(cleanToken, {
+    query: cleanQuery,
+    limit: cleanLimit,
+  })
   const seen = new Set<string>()
   const output: AffiliationSuggestionItem[] = []
-  for (const raw of payload.results || []) {
-    const name = sanitizeAffiliation(String(raw.display_name || ''))
-    if (!name) {
+  for (const raw of payload.items || []) {
+    const mapped = mapAffiliationSuggestionItem(raw)
+    if (!mapped) {
       continue
     }
-    const geo = (raw.geo && typeof raw.geo === 'object')
-      ? (raw.geo as Record<string, unknown>)
-      : null
-    const countryCode = sanitizeAffiliation(String(raw.country_code || '')).toUpperCase() || null
-    const countryName = toNullableAffiliationPart(geo?.country || raw.country)
-    const city = toNullableAffiliationPart(geo?.city)
-    const region = toNullableAffiliationPart(geo?.region)
-    const address = buildAffiliationAddress({ city, region, countryName }) || null
-    const dedupeKey = `${name.toLowerCase()}|${countryCode || ''}`
-    if (seen.has(dedupeKey)) {
+    const key = `${mapped.name.toLowerCase()}|${sanitizeAffiliation(mapped.countryCode || mapped.countryName || '').toLowerCase()}`
+    if (seen.has(key)) {
       continue
     }
-    seen.add(dedupeKey)
-    const labelLocation = [city, countryName].filter(Boolean).join(', ')
-    output.push({
-      name,
-      label: labelLocation ? `${name} (${labelLocation})` : (countryCode ? `${name} (${countryCode})` : name),
-      countryCode,
-      countryName,
-      city,
-      region,
-      address,
-      source: 'openalex',
-    })
+    seen.add(key)
+    output.push(mapped)
     if (output.length >= cleanLimit) {
       break
     }
@@ -686,12 +682,12 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setPrimaryAffiliationSuggestionsLoading(true)
     setPrimaryAffiliationSuggestionsError('')
     const timer = window.setTimeout(() => {
-      void fetchAffiliationSuggestionsOpenAlex({ query, limit: 8 })
+      void fetchAffiliationSuggestions({ token, query, limit: 8 })
         .then((items) => {
           if (cancelled) {
             return
           }
-          setPrimaryAffiliationSuggestions(rankAffiliationSuggestions(items, query))
+          setPrimaryAffiliationSuggestions(items)
         })
         .catch((lookupError) => {
           if (cancelled) {
@@ -715,7 +711,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [isFixtureMode, primaryAffiliationInput])
+  }, [isFixtureMode, primaryAffiliationInput, token])
 
   useEffect(() => {
     if (isFixtureMode) {
@@ -733,14 +729,14 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setPublicationAffiliationSuggestionsLoading(true)
     setPublicationAffiliationSuggestionsError('')
     const timer = window.setTimeout(() => {
-      void fetchAffiliationSuggestionsOpenAlex({ query, limit: 8 })
+      void fetchAffiliationSuggestions({ token, query, limit: 8 })
         .then((items) => {
           if (cancelled) {
             return
           }
           const existing = new Set(draft.publicationAffiliations.map((item) => item.toLowerCase()))
           const filtered = items.filter((item) => !existing.has(item.name.toLowerCase()))
-          setPublicationAffiliationSuggestions(rankAffiliationSuggestions(filtered, query))
+          setPublicationAffiliationSuggestions(filtered)
         })
         .catch((lookupError) => {
           if (cancelled) {
@@ -764,7 +760,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [draft.publicationAffiliations, isFixtureMode, publicationAffiliationInput])
+  }, [draft.publicationAffiliations, isFixtureMode, publicationAffiliationInput, token])
 
   const orcidId = trimValue(orcidStatus?.orcid_id || user?.orcid_id)
   const orcidLinked = Boolean(orcidStatus?.linked || user?.orcid_id)
@@ -903,9 +899,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setError('')
     setAiPrimaryBusy(true)
     try {
-      const suggestions = await fetchAffiliationSuggestionsOpenAlex({ query: seed, limit: 8 })
-      const ranked = rankAffiliationSuggestions(suggestions, seed)
-      const best = ranked[0]
+      const suggestions = await fetchAffiliationSuggestions({ token, query: seed, limit: 8 })
+      const best = suggestions[0]
       if (!best) {
         setStatus('No affiliation suggestions found for AI assist.')
         return
@@ -937,8 +932,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setError('')
     setAiPublicationBusy(true)
     try {
-      const suggestions = await fetchAffiliationSuggestionsOpenAlex({ query: seed, limit: 8 })
-      const ranked = rankAffiliationSuggestions(suggestions, seed).slice(0, 3)
+      const ranked = (await fetchAffiliationSuggestions({ token, query: seed, limit: 8 })).slice(0, 3)
       if (ranked.length === 0) {
         setStatus('No publication affiliation suggestions found.')
         return
@@ -1360,7 +1354,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 <p className="text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationSuggestionsError}</p>
               ) : (
                 <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
-                  AI assist ranks OpenAlex institution matches and can auto-fill city, region, and country.
+                  AI assist ranks OpenAlex and ROR institution matches and can auto-fill city, region, and country.
                 </p>
               )}
             </div>
@@ -1572,7 +1566,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             <p className="text-micro text-[hsl(var(--tone-warning-700))]">{publicationAffiliationSuggestionsError}</p>
           ) : (
             <p className="text-micro text-[hsl(var(--tone-neutral-500))]">
-              AI suggestions and OpenAlex lookup are used to reduce manual typing and keep affiliation ordering publication-ready.
+              AI suggestions and OpenAlex plus ROR lookup are used to reduce manual typing and keep affiliation ordering publication-ready.
             </p>
           )}
         </CardContent>

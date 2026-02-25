@@ -768,6 +768,23 @@ class AuthUserResponse(BaseModel):
     updated_at: datetime
 
 
+class AffiliationSuggestionItemResponse(BaseModel):
+    name: str
+    label: str
+    country_code: str | None = None
+    country_name: str | None = None
+    city: str | None = None
+    region: str | None = None
+    address: str | None = None
+    source: Literal["openalex", "ror"]
+
+
+class AffiliationSuggestionsResponse(BaseModel):
+    query: str
+    limit: int
+    items: list[AffiliationSuggestionItemResponse] = Field(default_factory=list)
+
+
 class AuthRegisterRequest(BaseModel):
     email: str
     password: str

@@ -1,6 +1,7 @@
 import { API_BASE_URL } from '@/lib/api'
 import type { ApiErrorPayload } from '@/types/insight'
 import type {
+  AffiliationSuggestionsPayload,
   AuthEmailVerificationRequestPayload,
   AuthLoginChallengePayload,
   AuthOAuthProviderStatusesPayload,
@@ -218,6 +219,27 @@ export async function fetchMe(token: string): Promise<AuthUser> {
       headers: authHeaders(token),
     },
     'User lookup failed',
+  )
+}
+
+export async function fetchAffiliationSuggestionsForMe(
+  token: string,
+  input: { query: string; limit?: number },
+): Promise<AffiliationSuggestionsPayload> {
+  const query = String(input.query || '').trim()
+  const limit = Math.max(1, Math.min(8, Number(input.limit || 8)))
+  const params = new URLSearchParams({
+    query,
+    limit: String(limit),
+  })
+  return requestJson<AffiliationSuggestionsPayload>(
+    `${API_BASE_URL}/v1/auth/me/affiliation-suggestions?${params.toString()}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Affiliation suggestions lookup failed',
+    { timeoutMs: 45_000, retryCount: 1 },
   )
 }
 
