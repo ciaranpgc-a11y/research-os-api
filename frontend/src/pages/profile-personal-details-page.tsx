@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
+import { houseForms, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import {
   fetchAffiliationAddressForMe,
@@ -119,24 +120,11 @@ const MAX_PROFILE_PHOTO_BYTES = 2 * 1024 * 1024
 const DEFAULT_PROFILE_PHOTO_POSITION_X = 50
 const DEFAULT_PROFILE_PHOTO_POSITION_Y = 50
 const LEGACY_TOP_PROFILE_PHOTO_POSITION_Y = 20
-const HOUSE_ACTION_BUTTON_CLASS = 'h-8 rounded-md px-3 text-xs font-semibold tracking-[0.02em] shadow-none'
-
-function formatTimestamp(value: string | null | undefined): string {
-  if (!value) {
-    return 'Not available'
-  }
-  const parsed = Date.parse(value)
-  if (Number.isNaN(parsed)) {
-    return 'Not available'
-  }
-  return new Date(parsed).toLocaleString('en-GB', {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+const HOUSE_ACTION_BUTTON_CLASS = `h-9 rounded-md px-3.5 ${houseTypography.buttonText} shadow-none`
+const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
+const HOUSE_PAGE_SUBTITLE_CLASS = houseTypography.subtitle
+const HOUSE_CARD_TITLE_CLASS = houseTypography.sectionTitle
+const HOUSE_SELECT_CLASS = `h-9 w-full rounded-md px-3 py-1 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${houseForms.select}`
 
 function formatDate(value: string | null | undefined): string {
   if (!value) {
@@ -750,7 +738,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState(fixture?.status ?? '')
   const [error, setError] = useState(fixture?.error ?? '')
-  const [lastSavedAt, setLastSavedAt] = useState<string | null>(initialStoredDetails?.updatedAt ?? null)
+  const [, setLastSavedAt] = useState<string | null>(initialStoredDetails?.updatedAt ?? null)
   const draftEditedRef = useRef(false)
   const emailEditedRef = useRef(false)
   const primaryAddressLookupSequenceRef = useRef(0)
@@ -1852,8 +1840,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   return (
     <section className="space-y-4">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Personal details</h1>
-        <p className="text-sm text-[hsl(var(--tone-neutral-600))]">
+        <h1 className={HOUSE_PAGE_TITLE_CLASS}>Personal details</h1>
+        <p className={HOUSE_PAGE_SUBTITLE_CLASS}>
           Editable account identity fields used across profile workflows.
         </p>
       </header>
@@ -1862,7 +1850,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         <CardHeader className="space-y-2 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex flex-wrap items-center gap-2">
-              <CardTitle className="text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
+              <CardTitle className={HOUSE_CARD_TITLE_CLASS}>
                 Profile
               </CardTitle>
               {badges.map((badge) => (
@@ -1913,7 +1901,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     </div>
                   )}
                   <div className="space-y-2">
-                    <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Profile photo</p>
+                    <p className="house-field-label">Profile photo</p>
                     <input
                       ref={profilePhotoInputRef}
                       type="file"
@@ -1941,13 +1929,13 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       ) : null}
                     </div>
                     {draft.profilePhotoDataUrl ? (
-                      <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Click and drag photo to position.</p>
+                      <p className="house-field-helper">Click and drag photo to position.</p>
                     ) : null}
                   </div>
                 </div>
 
                 <label className="space-y-1 sm:col-span-2">
-                  <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Account email</span>
+                  <span className="house-field-label">Account email</span>
                   <Input
                     value={accountEmail}
                     onChange={(event) => onAccountEmailChange(event.target.value)}
@@ -1959,11 +1947,11 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
                 <div className="grid gap-3 sm:col-span-2 sm:grid-cols-[180px_minmax(0,1fr)_minmax(0,1fr)]">
                   <label className="space-y-1">
-                    <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Salutation</span>
+                    <span className="house-field-label">Salutation</span>
                     <select
                       value={draft.salutation}
                       onChange={(event) => onFieldChange('salutation', event.target.value)}
-                      className="h-9 w-full rounded-md border border-border bg-background px-3 py-1 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      className={HOUSE_SELECT_CLASS}
                       autoComplete="honorific-prefix"
                     >
                       <option value="">Select</option>
@@ -1976,7 +1964,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   </label>
 
                   <label className="space-y-1">
-                    <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">First name</span>
+                    <span className="house-field-label">First name</span>
                     <Input
                       value={draft.firstName}
                       onChange={(event) => onFieldChange('firstName', event.target.value)}
@@ -1986,7 +1974,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   </label>
 
                   <label className="space-y-1">
-                    <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Last name</span>
+                    <span className="house-field-label">Last name</span>
                     <Input
                       value={draft.lastName}
                       onChange={(event) => onFieldChange('lastName', event.target.value)}
@@ -1999,7 +1987,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 <div className="sm:col-span-2 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
                   <label
                     htmlFor="personal-website"
-                    className="inline-flex w-full shrink-0 items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))] sm:w-[11.25rem]"
+                    className="inline-flex w-full shrink-0 items-center gap-1.5 house-field-label sm:w-[11.25rem]"
                   >
                     <span
                       aria-hidden
@@ -2022,7 +2010,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 <div className="sm:col-span-2 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
                   <label
                     htmlFor="personal-researchgate"
-                    className="inline-flex w-full shrink-0 items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))] sm:w-[11.25rem]"
+                    className="inline-flex w-full shrink-0 items-center gap-1.5 house-field-label sm:w-[11.25rem]"
                   >
                     <span
                       aria-hidden
@@ -2045,7 +2033,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 <div className="sm:col-span-2 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
                   <label
                     htmlFor="personal-x-handle"
-                    className="inline-flex w-full shrink-0 items-center gap-1.5 text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))] sm:w-[11.25rem]"
+                    className="inline-flex w-full shrink-0 items-center gap-1.5 house-field-label sm:w-[11.25rem]"
                   >
                     <span
                       aria-hidden
@@ -2069,7 +2057,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
             <aside className="space-y-2">
               <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
-                <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Account</p>
+                <p className="house-field-label">Account</p>
                 <div className="mt-2 space-y-1.5 text-sm">
                   <p className="text-[hsl(var(--tone-neutral-700))]">
                     Member since: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{formatDate(user?.created_at)}</span>
@@ -2097,7 +2085,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
       <Card className="border-[hsl(var(--tone-neutral-200))]">
         <CardHeader className="space-y-1 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
-          <CardTitle className="text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
+          <CardTitle className={HOUSE_CARD_TITLE_CLASS}>
             Affiliation
           </CardTitle>
         </CardHeader>
@@ -2155,7 +2143,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
           {showAffiliationComposer ? (
             <div className="space-y-2 rounded-md bg-background p-2">
-              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Add affiliation</span>
+              <span className="house-field-label">Add affiliation</span>
               <div className="flex flex-wrap items-center gap-2">
                 <Input
                   value={primaryAffiliationInput}
@@ -2188,7 +2176,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             <div id="affiliation-editor-panel" className="ml-1 space-y-3 border-l border-[hsl(var(--tone-neutral-200))] pl-3">
               <div className="space-y-2 p-1">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Roles</p>
+                  <p className="house-field-label">Roles</p>
                   <Button
                     type="button"
                     variant="house"
@@ -2225,10 +2213,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                         )}
                       >
                         <span
-                          className={cn(
-                            'inline-flex cursor-grab items-center text-[hsl(var(--tone-neutral-500))] transition-transform duration-150 active:cursor-grabbing',
-                            draggingJobRoleIndex === index ? 'scale-110 text-[hsl(var(--tone-accent-700))]' : 'group-hover:scale-105',
-                          )}
+                        className={cn(
+                          'inline-flex cursor-grab items-center text-[hsl(var(--tone-neutral-500))] transition-transform duration-150 active:cursor-grabbing',
+                          draggingJobRoleIndex === index ? 'scale-110 text-[hsl(var(--tone-accent-700))]' : 'group-hover:scale-105',
+                        )}
                           title="Drag to reorder"
                         >
                           <GripVertical className="h-4 w-4" />
@@ -2273,7 +2261,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               </div>
 
               <div className="space-y-2 p-1">
-                <p className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Affiliation</p>
+                <p className="house-field-label">Affiliation</p>
 
                 <div className="flex flex-wrap items-center gap-2 rounded-md bg-background px-2 py-1.5">
                   <Input
@@ -2298,7 +2286,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 </div>
 
                 {primaryAffiliationInputFocused && primaryAffiliationSuggestionsLoading ? (
-                  <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Looking up affiliations...</p>
+                  <p className="house-field-helper">Looking up affiliations...</p>
                 ) : null}
                 {primaryAffiliationInputFocused && primaryAffiliationSuggestions.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2">
@@ -2324,7 +2312,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   <p className="text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationSuggestionsError}</p>
                 ) : null}
                 {primaryAffiliationAddressResolving ? (
-                  <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Resolving full address details...</p>
+                  <p className="house-field-helper">Resolving full address details...</p>
                 ) : null}
                 {primaryAffiliationAddressError ? (
                   <p className="text-micro text-[hsl(var(--tone-warning-700))]">{primaryAffiliationAddressError}</p>
@@ -2332,7 +2320,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="space-y-1 sm:col-span-2">
-                    <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Address line 1</span>
+                    <span className="house-field-label">Address line 1</span>
                     <Input
                       value={draft.affiliationAddress}
                       onChange={(event) => onFieldChange('affiliationAddress', event.target.value)}
@@ -2342,7 +2330,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   </label>
 
                   <label className="space-y-1">
-                    <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">City</span>
+                    <span className="house-field-label">City</span>
                     <Input
                       value={draft.affiliationCity}
                       onChange={(event) => onFieldChange('affiliationCity', event.target.value)}
@@ -2352,7 +2340,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   </label>
 
                   <label className="space-y-1">
-                    <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Region / state</span>
+                    <span className="house-field-label">Region / state</span>
                     <Input
                       value={draft.affiliationRegion}
                       onChange={(event) => onFieldChange('affiliationRegion', event.target.value)}
@@ -2362,7 +2350,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   </label>
 
                   <label className="space-y-1">
-                    <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Postal code</span>
+                    <span className="house-field-label">Postal code</span>
                     <Input
                       value={draft.affiliationPostalCode}
                       onChange={(event) => onFieldChange('affiliationPostalCode', event.target.value)}
@@ -2372,7 +2360,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   </label>
 
                   <label className="space-y-1">
-                    <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Country</span>
+                    <span className="house-field-label">Country</span>
                     <Input
                       value={draft.country}
                       onChange={(event) => onFieldChange('country', event.target.value)}
@@ -2403,16 +2391,11 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       </Card>
 
       <Card className="border-[hsl(var(--tone-neutral-200))]">
-        <CardHeader className="space-y-1 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
-          <CardTitle className="text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
-            Publication affiliation
-          </CardTitle>
-          <p className="text-xs text-[hsl(var(--tone-neutral-600))]">
-            Keep an ordered list of affiliations used for manuscript author lines. Drag to reorder.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-3 pt-3 text-sm">
-          <div className="flex flex-wrap items-center gap-2">
+        <CardHeader className="border-b border-[hsl(var(--tone-neutral-200))] pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle className={HOUSE_CARD_TITLE_CLASS}>
+              Publication affiliation
+            </CardTitle>
             <Button
               type="button"
               variant="house"
@@ -2424,10 +2407,12 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               {showPublicationAffiliationComposer ? 'Hide add form' : 'Add new'}
             </Button>
           </div>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-3 text-sm">
 
           {showPublicationAffiliationComposer ? (
             <div className="space-y-1 sm:col-span-2">
-              <span className="text-caption uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-500))]">Add publication affiliation</span>
+              <span className="house-field-label">Add publication affiliation</span>
               <div className="flex flex-wrap items-center gap-2">
                 <Input
                   value={publicationAffiliationInput}
@@ -2456,7 +2441,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 </Button>
               </div>
               {publicationAffiliationSuggestionsLoading ? (
-                <p className="text-micro text-[hsl(var(--tone-neutral-500))]">Looking up affiliations...</p>
+                <p className="house-field-helper">Looking up affiliations...</p>
               ) : null}
               {publicationAffiliationSuggestions.length > 0 ? (
                 <div className="flex flex-wrap gap-1.5 rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card p-2">
@@ -2557,9 +2542,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             {saving ? 'Saving...' : 'Save details'}
           </Button>
-          {lastSavedAt ? (
-            <p className="text-xs text-[hsl(var(--tone-neutral-500))]">Last saved {formatTimestamp(lastSavedAt)}</p>
-          ) : null}
         </div>
 
         {status ? (

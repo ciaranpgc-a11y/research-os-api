@@ -2,7 +2,7 @@ import * as React from 'react'
 import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
 
-import { houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseForms, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
@@ -12,15 +12,15 @@ const buttonVariants = cva(
       variant: {
         default: 'bg-primary text-primary-foreground hover:bg-primary/90',
         secondary: 'bg-muted text-foreground hover:bg-muted/80',
-        outline: 'border border-border bg-background hover:bg-accent hover:text-accent-foreground',
-        house: `${houseSurfaces.softPanel} ${houseTypography.text} border-[hsl(var(--tone-neutral-300))] hover:border-[hsl(var(--tone-neutral-400))] hover:bg-[hsl(var(--tone-neutral-100))]`,
-        housePrimary: 'bg-[hsl(var(--tone-neutral-900))] text-white hover:bg-[hsl(var(--tone-neutral-800))]',
+        outline: 'border border-[hsl(var(--tone-neutral-300))] bg-background text-[hsl(var(--tone-neutral-800))] hover:border-[hsl(var(--tone-accent-300))] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]',
+        house: `${houseForms.actionButton} ${houseTypography.buttonText}`,
+        housePrimary: `${houseForms.actionButtonPrimary} ${houseTypography.buttonText}`,
         ghost: 'hover:bg-accent hover:text-accent-foreground',
         destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
       },
       size: {
         default: 'h-9 px-4 py-2',
-        sm: `h-8 rounded-md px-3 ${houseTypography.textSoft}`,
+        sm: `h-9 rounded-md px-3 ${houseTypography.buttonText}`,
         lg: 'h-10 rounded-md px-8',
         icon: 'h-9 w-9',
       },

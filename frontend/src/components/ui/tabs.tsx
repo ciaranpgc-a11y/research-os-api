@@ -1,7 +1,7 @@
 import * as React from 'react'
 import * as TabsPrimitive from '@radix-ui/react-tabs'
 
-import { houseMotion, houseSurfaces } from '@/lib/house-style'
+import { houseMotion, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 
 const Tabs = TabsPrimitive.Root
@@ -12,7 +12,7 @@ const TabsList = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.List
     ref={ref}
-    className={cn(houseSurfaces.topPanel, 'inline-flex h-9 items-center justify-center rounded-md p-1 text-[hsl(var(--tone-neutral-600))]', className)}
+    className={cn(houseSurfaces.topPanel, 'inline-flex h-9 items-center justify-center rounded-md p-1 text-[hsl(var(--tone-neutral-700))]', className)}
     {...props}
   />
 ))
@@ -26,7 +26,8 @@ const TabsTrigger = React.forwardRef<
     ref={ref}
     className={cn(
       houseMotion.toggleButton,
-      'inline-flex items-center justify-center whitespace-nowrap rounded-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm',
+      houseTypography.buttonText,
+      'inline-flex items-center justify-center whitespace-nowrap rounded-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-card data-[state=active]:text-[hsl(var(--tone-neutral-900))] data-[state=active]:shadow-sm',
       className,
     )}
     {...props}
