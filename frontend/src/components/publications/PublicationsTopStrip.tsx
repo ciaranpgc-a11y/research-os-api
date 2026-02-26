@@ -2096,6 +2096,13 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
     ? topPapersCount
     : Math.max(0, Math.min(topPapersCount, totalPublications))
   const ringStrokeWidth = HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH
+  const ringHitHalfWidth = (ringStrokeWidth / 2) + 3
+  const top3ArcSpan = (top3PctRounded / 100) * 360
+  const top3ArcStart = 270 - (top3ArcSpan / 2)
+  const isAngleInArc = (angle: number, start: number, span: number): boolean => {
+    if (span <= 0) {
+      return false
+    }
     if (span >= 360) {
       return true
     }
