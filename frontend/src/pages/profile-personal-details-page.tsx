@@ -120,15 +120,16 @@ const MAX_PROFILE_PHOTO_BYTES = 2 * 1024 * 1024
 const DEFAULT_PROFILE_PHOTO_POSITION_X = 50
 const DEFAULT_PROFILE_PHOTO_POSITION_Y = 50
 const LEGACY_TOP_PROFILE_PHOTO_POSITION_Y = 20
-const HOUSE_ACTION_BUTTON_CLASS = `h-9 rounded-md px-3.5 ${houseTypography.buttonText} shadow-none`
+const HOUSE_ACTION_BUTTON_CLASS = `h-9 rounded-md border border-[hsl(var(--tone-accent-300)/0.92)] bg-[hsl(var(--tone-accent-50))] px-3.5 text-[hsl(var(--tone-accent-800))] ${houseTypography.buttonText} shadow-none hover:border-[hsl(var(--tone-accent-400)/0.94)] hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]`
+const HOUSE_ACTION_BUTTON_PRIMARY_CLASS = `h-9 rounded-md border border-[hsl(var(--tone-accent-700))] bg-[hsl(var(--tone-accent-700))] px-3.5 text-[hsl(var(--tone-neutral-50))] ${houseTypography.buttonText} shadow-none hover:border-[hsl(var(--tone-accent-800))] hover:bg-[hsl(var(--tone-accent-800))] hover:text-[hsl(var(--tone-neutral-50))]`
 const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
-const HOUSE_PAGE_SUBTITLE_CLASS = houseTypography.subtitle
 const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
 const HOUSE_LEFT_BORDER_CLASS = `${houseSurfaces.leftBorder} ${houseSurfaces.leftBorderAccount}`
 const HOUSE_SELECT_CLASS = `h-9 w-full rounded-md px-3 py-1 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${houseForms.select}`
-const HOUSE_SOCIAL_LINK_ROW_CLASS = 'sm:col-span-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3'
-const HOUSE_SOCIAL_LINK_LABEL_CLASS = 'inline-flex w-full shrink-0 items-center gap-2 px-1 py-1 house-field-label sm:w-[11.25rem]'
-const HOUSE_SOCIAL_LINK_ICON_CLASS = 'inline-flex h-6 w-6 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-caption font-semibold text-[hsl(var(--tone-neutral-700))]'
+const HOUSE_PROFILE_PHOTO_PANEL_CLASS = `sm:col-span-2 flex items-start gap-3 px-3 py-2.5 ${houseSurfaces.softPanel}`
+const HOUSE_SOCIAL_LINK_ROW_CLASS = 'sm:col-span-2 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3.5'
+const HOUSE_SOCIAL_LINK_LABEL_CLASS = 'inline-flex w-full shrink-0 items-center gap-2.5 px-2 py-1.5 house-field-label sm:w-[12rem]'
+const HOUSE_SOCIAL_LINK_ICON_CLASS = 'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-caption font-semibold leading-none tracking-tight text-[hsl(var(--tone-neutral-700))]'
 
 function formatDate(value: string | null | undefined): string {
   if (!value) {
@@ -2007,9 +2008,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       <header>
         <div className={cn(houseLayout.pageHeader, HOUSE_LEFT_BORDER_CLASS)}>
           <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Personal details</h1>
-          <p data-house-role="page-subtitle" className={HOUSE_PAGE_SUBTITLE_CLASS}>
-            Editable account identity fields used across profile workflows.
-          </p>
         </div>
       </header>
 
@@ -2036,7 +2034,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
             <div className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-2 flex items-start gap-3 rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2.5">
+                <div className={HOUSE_PROFILE_PHOTO_PANEL_CLASS}>
                   {draft.profilePhotoDataUrl ? (
                     <button
                       ref={profilePhotoFrameRef}
@@ -2080,7 +2078,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       <Button
                         type="button"
                         size="sm"
-                        variant="outline"
+                        variant="house"
+                        className={HOUSE_ACTION_BUTTON_CLASS}
                         onClick={() => profilePhotoInputRef.current?.click()}
                       >
                         <Upload className="mr-1.5 h-4 w-4" />
@@ -2088,7 +2087,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       </Button>
                       {draft.profilePhotoDataUrl ? (
                         <>
-                          <Button type="button" size="sm" variant="outline" onClick={onRemoveProfilePhoto}>
+                          <Button type="button" size="sm" variant="house" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onRemoveProfilePhoto}>
                             <Trash2 className="mr-1.5 h-4 w-4" />
                             Remove
                           </Button>
@@ -2237,7 +2236,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   <Button
                     type="button"
                     size="sm"
-                    variant="outline"
+                    variant="house"
+                    className={HOUSE_ACTION_BUTTON_CLASS}
                     onClick={() => navigate('/profile/manage-account')}
                   >
                     Manage account
@@ -2571,7 +2571,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       type="button"
                       size="sm"
                       variant="housePrimary"
-                      className={HOUSE_ACTION_BUTTON_CLASS}
+                      className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS}
                       onClick={onApplyAffiliationEditorChanges}
                     >
                       {affiliationEditorActionLabel}
@@ -2736,7 +2736,13 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" onClick={() => void onSave()} disabled={!user || saving || loading}>
+          <Button
+            type="button"
+            variant="housePrimary"
+            className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS}
+            onClick={() => void onSave()}
+            disabled={!user || saving || loading}
+          >
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             {saving ? 'Saving...' : 'Save details'}
           </Button>
