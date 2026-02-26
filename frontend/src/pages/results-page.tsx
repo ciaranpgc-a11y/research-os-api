@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
-import { Download, Loader2, UploadCloud, UserPlus, X } from 'lucide-react'
+import { Download, Loader2, UploadCloud } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,19 +9,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { getAuthSessionToken } from '@/lib/auth-session'
-import { houseForms, houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { getHouseLeftBorderToneClass } from '@/lib/section-tone'
 import {
   downloadLibraryAsset as downloadPersistedLibraryAsset,
   fetchWorkspaceRunContext,
   listLibraryAssets as listPersistedLibraryAssets,
-  updateLibraryAssetAccess as updatePersistedLibraryAssetAccess,
   uploadLibraryAssets as uploadPersistedLibraryAssets,
 } from '@/lib/study-core-api'
 import { cn } from '@/lib/utils'
 import { PageFrame } from '@/pages/page-frame'
 import { useDataWorkspaceStore } from '@/store/use-data-workspace-store'
-import { useWorkspaceStore } from '@/store/use-workspace-store'
 import type { LibraryAssetRecord } from '@/types/study-core'
 import type { DataAsset, SheetData } from '@/types/data-workspace'
 const HOUSE_LEFT_BORDER_DATA_CLASS = getHouseLeftBorderToneClass('data')
@@ -152,30 +150,9 @@ function normalizeName(value: string): string {
   return value.trim().replace(/\s+/g, ' ')
 }
 
-function normalizeNameKey(value: string): string {
-  return normalizeName(value).toLowerCase()
-}
-
-function libraryAssetAccessMembers(asset: LibraryAssetRecord): Array<{ user_id: string; name: string }> {
-  if (Array.isArray(asset.shared_with) && asset.shared_with.length > 0) {
-    return asset.shared_with.map((item) => ({
-      user_id: String(item.user_id || '').trim(),
-      name: normalizeName(String(item.name || '')) || 'Unknown user',
-    }))
-  }
-  if (Array.isArray(asset.shared_with_user_ids) && asset.shared_with_user_ids.length > 0) {
-    return asset.shared_with_user_ids.map((userId) => ({
-      user_id: String(userId || '').trim(),
-      name: String(userId || '').trim() || 'Unknown user',
-    }))
-  }
-  return []
-}
-
 export function ResultsPage() {
   const params = useParams<{ workspaceId: string }>()
   const workspaceId = (params.workspaceId || '').trim()
-  const workspaces = useWorkspaceStore((state) => state.workspaces)
   const addDataAsset = useDataWorkspaceStore((state) => state.addDataAsset)
 
   const [persistSyncError, setPersistSyncError] = useState('')
@@ -190,7 +167,6 @@ export function ResultsPage() {
   const [libraryActionError, setLibraryActionError] = useState('')
   const [libraryActionStatus, setLibraryActionStatus] = useState('')
   const [libraryActionBusyAssetId, setLibraryActionBusyAssetId] = useState<string | null>(null)
-  const [accessDraftByAssetId, setAccessDraftByAssetId] = useState<Record<string, string>>({})
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false)
   const [libraryPickerSelection, setLibraryPickerSelection] = useState<string[]>([])
   const [libraryPickerPulling, setLibraryPickerPulling] = useState(false)
@@ -198,19 +174,6 @@ export function ResultsPage() {
   const uploadInputRef = useRef<HTMLInputElement | null>(null)
 
   const hasSessionToken = Boolean(getAuthSessionToken())
-  const activeWorkspace = useMemo(
-    () => workspaces.find((workspace) => workspace.id === workspaceId) ?? null,
-    [workspaceId, workspaces],
-  )
-  const workspaceCollaboratorNames = useMemo(() => {
-    if (!activeWorkspace) {
-      return [] as string[]
-    }
-    const removed = new Set((activeWorkspace.removedCollaborators || []).map((name) => normalizeNameKey(name)))
-    return (activeWorkspace.collaborators || [])
-      .map((name) => normalizeName(name))
-      .filter((name) => name.length > 0 && !removed.has(normalizeNameKey(name)))
-  }, [activeWorkspace])
 
   const refreshPersistedAssets = useCallback(async () => {
     const token = getAuthSessionToken()
@@ -344,10 +307,6 @@ export function ResultsPage() {
     [persistedProjectId, refreshPersistedAssets],
   )
 
-  const updatePersistedAssetInState = useCallback((nextAsset: LibraryAssetRecord) => {
-    setPersistedAssets((current) => current.map((item) => (item.id === nextAsset.id ? nextAsset : item)))
-  }, [])
-
   const onDownloadLibraryAsset = useCallback(
     async (asset: LibraryAssetRecord) => {
       const token = getAuthSessionToken()
@@ -410,70 +369,6 @@ export function ResultsPage() {
       }
     },
     [addDataAsset],
-  )
-
-  const onAddLibraryAccess = useCallback(
-    async (asset: LibraryAssetRecord) => {
-      const token = getAuthSessionToken()
-      if (!token) {
-        setLibraryActionError('Sign in to manage file access.')
-        return
-      }
-      const pendingCollaboratorName = normalizeName(accessDraftByAssetId[asset.id] || '')
-      if (!pendingCollaboratorName) {
-        setLibraryActionError('Select a collaborator to grant access.')
-        return
-      }
-      setLibraryActionError('')
-      setLibraryActionStatus('')
-      setLibraryActionBusyAssetId(asset.id)
-      try {
-        const updated = await updatePersistedLibraryAssetAccess({
-          token,
-          assetId: asset.id,
-          collaboratorUserIds: Array.isArray(asset.shared_with_user_ids) ? asset.shared_with_user_ids : [],
-          collaboratorNames: [pendingCollaboratorName],
-        })
-        updatePersistedAssetInState(updated)
-        setAccessDraftByAssetId((current) => ({ ...current, [asset.id]: '' }))
-        setLibraryActionStatus(`Granted access to ${pendingCollaboratorName}.`)
-      } catch (error) {
-        setLibraryActionError(error instanceof Error ? error.message : 'Could not update file access.')
-      } finally {
-        setLibraryActionBusyAssetId((current) => (current === asset.id ? null : current))
-      }
-    },
-    [accessDraftByAssetId, updatePersistedAssetInState],
-  )
-
-  const onRemoveLibraryAccess = useCallback(
-    async (asset: LibraryAssetRecord, collaboratorUserId: string) => {
-      const token = getAuthSessionToken()
-      if (!token) {
-        setLibraryActionError('Sign in to manage file access.')
-        return
-      }
-      const currentIds = Array.isArray(asset.shared_with_user_ids) ? asset.shared_with_user_ids : []
-      const nextIds = currentIds.filter((userId) => String(userId || '').trim() !== String(collaboratorUserId || '').trim())
-      setLibraryActionError('')
-      setLibraryActionStatus('')
-      setLibraryActionBusyAssetId(asset.id)
-      try {
-        const updated = await updatePersistedLibraryAssetAccess({
-          token,
-          assetId: asset.id,
-          collaboratorUserIds: nextIds,
-          collaboratorNames: [],
-        })
-        updatePersistedAssetInState(updated)
-        setLibraryActionStatus('Access updated.')
-      } catch (error) {
-        setLibraryActionError(error instanceof Error ? error.message : 'Could not update file access.')
-      } finally {
-        setLibraryActionBusyAssetId((current) => (current === asset.id ? null : current))
-      }
-    },
-    [updatePersistedAssetInState],
   )
 
   const onLibraryPickerOpenChange = useCallback((nextOpen: boolean) => {
@@ -652,121 +547,16 @@ export function ResultsPage() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-2">
-                    {!hasSessionToken ? (
-                      <p data-house-role="library-empty-state" className="text-xs text-muted-foreground">Sign in to access your personal library.</p>
-                    ) : persistSyncBusy ? (
-                      <p data-house-role="library-loading-state" className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        Loading...
-                      </p>
-                    ) : persistedAssets.length === 0 ? (
-                      <p data-house-role="library-empty-state" className="text-xs text-muted-foreground">No assets.</p>
-                    ) : (
-                      <ScrollArea className="h-sz-280 rounded-md border border-border/70 p-2">
-                        <div data-house-role="library-list" className="space-y-2">
-                          {persistedAssets.map((asset) => {
-                            const accessMembers = libraryAssetAccessMembers(asset)
-                            const canManageAccess = Boolean(asset.can_manage_access)
-                            const accessMemberIds = new Set(accessMembers.map((item) => String(item.user_id || '').trim()))
-                            const collaboratorAccessCandidates = workspaceCollaboratorNames.filter((name) => {
-                              const normalizedCandidate = normalizeNameKey(name)
-                              return !accessMembers.some((member) => normalizeNameKey(member.name) === normalizedCandidate)
-                            })
-                            const selectedDraftCollaborator = accessDraftByAssetId[asset.id] || ''
-                            const isBusy = libraryActionBusyAssetId === asset.id
-                            const isInWorkspace = isAssetInCurrentWorkspace(asset)
-
-                            return (
-                              <div data-house-role="library-list-item" key={asset.id} className="rounded-md border border-border/70 px-2 py-2 text-xs">
-                                <div data-house-role="library-list-item-row" className="flex items-center justify-between gap-2">
-                                  <p data-house-role="library-list-item-title" className="font-medium">{asset.filename}</p>
-                                  <Badge variant="outline">{asset.kind}</Badge>
-                                </div>
-                                <p data-house-role="library-list-item-meta" className="pt-1 text-muted-foreground">{formatBytes(asset.byte_size)}</p>
-                                <p data-house-role="library-list-item-meta" className="text-muted-foreground">{new Date(asset.uploaded_at).toLocaleString()}</p>
-                                <p data-house-role="library-list-item-meta" className="pt-1 text-muted-foreground">
-                                  Owner: {normalizeName(String(asset.owner_name || '')) || 'Unknown'}
-                                </p>
-                                <div data-house-role="library-access-row" className="flex flex-wrap items-center gap-1 pt-1">
-                                  {accessMembers.length === 0 ? (
-                                    <Badge variant="outline">Owner only</Badge>
-                                  ) : (
-                                    accessMembers.map((member) => (
-                                      <span
-                                        key={`${asset.id}-${member.user_id}`}
-                                        className="inline-flex items-center gap-1 rounded border border-border/70 bg-muted/30 px-1.5 py-0.5"
-                                      >
-                                        <span>{member.name}</span>
-                                        {canManageAccess ? (
-                                          <button
-                                            type="button"
-                                            className="inline-flex h-4 w-4 items-center justify-center rounded hover:bg-muted"
-                                            aria-label={`Remove access for ${member.name}`}
-                                            onClick={() => void onRemoveLibraryAccess(asset, member.user_id)}
-                                            disabled={isBusy || !accessMemberIds.has(member.user_id)}
-                                          >
-                                            <X className="h-3 w-3" />
-                                          </button>
-                                        ) : null}
-                                      </span>
-                                    ))
-                                  )}
-                                </div>
-                                <div data-house-role="library-item-actions" className="flex flex-wrap items-center gap-2 pt-2">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => void onDownloadLibraryAsset(asset)}
-                                    disabled={isBusy}
-                                  >
-                                    <Download className="mr-1 h-3.5 w-3.5" />
-                                    Download
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => void onPullLibraryAssetIntoWorkspace(asset)}
-                                    disabled={isBusy || isInWorkspace}
-                                  >
-                                    {isInWorkspace ? 'In current workspace' : 'Bring into current workspace'}
-                                  </Button>
-                                </div>
-                                {canManageAccess ? (
-                                  <div data-house-role="library-access-controls" className="flex items-center gap-2 pt-2">
-                                    <select
-                                      value={selectedDraftCollaborator}
-                                      onChange={(event) => {
-                                        const nextValue = event.target.value
-                                        setAccessDraftByAssetId((current) => ({ ...current, [asset.id]: nextValue }))
-                                      }}
-                                      className={`h-8 flex-1 rounded-md px-2 text-xs ${houseForms.select}`}
-                                      disabled={isBusy || collaboratorAccessCandidates.length === 0}
-                                    >
-                                      <option value="">Add collaborator</option>
-                                      {collaboratorAccessCandidates.map((candidateName) => (
-                                        <option key={`${asset.id}-${candidateName}`} value={candidateName}>
-                                          {candidateName}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => void onAddLibraryAccess(asset)}
-                                      disabled={isBusy || !selectedDraftCollaborator}
-                                    >
-                                      <UserPlus className="mr-1 h-3.5 w-3.5" />
-                                      Add
-                                    </Button>
-                                  </div>
-                                ) : null}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </ScrollArea>
-                    )}
-
+                      {!hasSessionToken ? (
+                        <p data-house-role="library-empty-state" className="text-xs text-muted-foreground">
+                          Sign in to access your personal library.
+                        </p>
+                      ) : persistSyncBusy ? (
+                        <p data-house-role="library-loading-state" className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Loading...
+                        </p>
+                      ) : null}
                     {persistSyncError ? (
                       <p data-house-role="sync-error" className="text-xs text-destructive">
                         {persistSyncError}
@@ -782,7 +572,6 @@ export function ResultsPage() {
                         {libraryActionStatus}
                       </p>
                     ) : null}
-
                     </CardContent>
                   </Card>
 

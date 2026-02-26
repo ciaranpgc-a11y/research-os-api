@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type PointerEvent } from 'react'
-import { ChevronRight, GripVertical, Loader2, Plus, Trash2, Upload } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
+import { ChevronRight, GripVertical, Loader2, Plus, SlidersHorizontal, Trash2, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -116,7 +116,7 @@ const SALUTATION_OPTIONS = [
 ] as const
 const MAX_JOB_ROLES = 8
 const MAX_PUBLICATION_AFFILIATIONS = 12
-const MAX_PROFILE_PHOTO_BYTES = 2 * 1024 * 1024
+const MAX_PROFILE_PHOTO_BYTES = 5 * 1024 * 1024
 const DEFAULT_PROFILE_PHOTO_POSITION_X = 50
 const DEFAULT_PROFILE_PHOTO_POSITION_Y = 50
 const LEGACY_TOP_PROFILE_PHOTO_POSITION_Y = 20
@@ -127,6 +127,8 @@ const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
 const HOUSE_LEFT_BORDER_CLASS = `${houseSurfaces.leftBorder} ${houseSurfaces.leftBorderAccount}`
 const HOUSE_SELECT_CLASS = `h-9 w-full rounded-md px-3 py-1 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${houseForms.select}`
 const HOUSE_PROFILE_PHOTO_PANEL_CLASS = `sm:col-span-2 flex items-start gap-3 px-3 py-2.5 ${houseSurfaces.softPanel}`
+const HOUSE_PROFILE_PHOTO_EDITOR_CLASS = 'space-y-2 rounded-md border border-[hsl(var(--stroke-strong)/0.92)] bg-[hsl(var(--tone-neutral-50))] p-2.5'
+const HOUSE_ACCOUNT_PANEL_CLASS = 'rounded-md border border-[hsl(var(--stroke-strong)/0.98)] bg-card px-3 py-2.5'
 const HOUSE_SOCIAL_LINK_ROW_CLASS = 'sm:col-span-2 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3.5'
 const HOUSE_SOCIAL_LINK_LABEL_CLASS = 'inline-flex w-full shrink-0 items-center gap-2.5 px-2 py-1.5 house-field-label sm:w-[12rem]'
 const HOUSE_SOCIAL_LINK_ICON_CLASS = 'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-caption font-semibold leading-none tracking-tight text-[hsl(var(--tone-neutral-700))]'
@@ -728,6 +730,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const [publicationAffiliationSuggestions, setPublicationAffiliationSuggestions] = useState<AffiliationSuggestionItem[]>([])
   const [publicationAffiliationSuggestionsLoading, setPublicationAffiliationSuggestionsLoading] = useState(false)
   const [publicationAffiliationSuggestionsError, setPublicationAffiliationSuggestionsError] = useState('')
+  const [profilePhotoEditorOpen, setProfilePhotoEditorOpen] = useState(false)
   const [affiliationMetadataByName, setAffiliationMetadataByName] = useState<Record<string, AffiliationMetadataItem>>({})
   const [affiliationEditorOpen, setAffiliationEditorOpen] = useState(
     () => !Boolean(initialDraft.jobRoles[0] || initialDraft.affiliations[0] || initialDraft.country),
@@ -768,8 +771,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   const jobRoleDropFlashTimerRef = useRef<number | null>(null)
   const publicationAffiliationDropFlashTimerRef = useRef<number | null>(null)
   const profilePhotoInputRef = useRef<HTMLInputElement | null>(null)
-  const profilePhotoFrameRef = useRef<HTMLButtonElement | null>(null)
-  const profilePhotoDraggingRef = useRef(false)
 
   const clearAffiliationSaveFeedbackTimers = () => {
     if (affiliationSaveFlashTimerRef.current !== null) {
@@ -882,6 +883,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setPublicationAffiliationSuggestions([])
     setPublicationAffiliationSuggestionsLoading(false)
     setPublicationAffiliationSuggestionsError('')
+    setProfilePhotoEditorOpen(false)
     setAffiliationMetadataByName({})
     setShowPublicationAffiliationComposer(false)
     setAffiliationEditorBaseline(buildAffiliationEditorSnapshot({
@@ -1002,6 +1004,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
         if (!draftEditedRef.current) {
           setDraft(resolvedDraft)
+          setProfilePhotoEditorOpen(false)
           setCommittedJournalByline(buildJournalBylineFromDraft(resolvedDraft))
           setPrimaryAffiliationInput(sanitizeAffiliation(resolvedDraft.organisation))
           setPrimaryAffiliationInputFocused(false)
@@ -1204,17 +1207,15 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     setAccountEmail(value)
   }
 
-  const updateProfilePhotoPositionFromClient = (clientX: number, clientY: number) => {
-    const frame = profilePhotoFrameRef.current
-    if (!frame) {
+  const onProfilePhotoPositionSliderChange = (axis: 'x' | 'y', value: string) => {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) {
       return
     }
-    const rect = frame.getBoundingClientRect()
-    if (rect.width <= 0 || rect.height <= 0) {
-      return
-    }
-    const nextX = clampProfilePhotoPosition(((clientX - rect.left) / rect.width) * 100, DEFAULT_PROFILE_PHOTO_POSITION_X)
-    const nextY = clampProfilePhotoPosition(((clientY - rect.top) / rect.height) * 100, DEFAULT_PROFILE_PHOTO_POSITION_Y)
+    const clamped = clampProfilePhotoPosition(
+      parsed,
+      axis === 'x' ? DEFAULT_PROFILE_PHOTO_POSITION_X : DEFAULT_PROFILE_PHOTO_POSITION_Y,
+    )
     draftEditedRef.current = true
     setDraft((current) => {
       if (!current.profilePhotoDataUrl) {
@@ -1222,35 +1223,26 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       }
       return {
         ...current,
-        profilePhotoPositionX: Math.round(nextX * 10) / 10,
-        profilePhotoPositionY: Math.round(nextY * 10) / 10,
+        profilePhotoPositionX: axis === 'x' ? clamped : current.profilePhotoPositionX,
+        profilePhotoPositionY: axis === 'y' ? clamped : current.profilePhotoPositionY,
       }
     })
     setStatus('')
   }
 
-  const onProfilePhotoPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
-    if (!draft.profilePhotoDataUrl) {
-      return
-    }
-    event.preventDefault()
-    profilePhotoDraggingRef.current = true
-    event.currentTarget.setPointerCapture(event.pointerId)
-    updateProfilePhotoPositionFromClient(event.clientX, event.clientY)
-  }
-
-  const onProfilePhotoPointerMove = (event: PointerEvent<HTMLButtonElement>) => {
-    if (!profilePhotoDraggingRef.current) {
-      return
-    }
-    updateProfilePhotoPositionFromClient(event.clientX, event.clientY)
-  }
-
-  const onProfilePhotoPointerUp = (event: PointerEvent<HTMLButtonElement>) => {
-    profilePhotoDraggingRef.current = false
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
+  const onResetProfilePhotoPosition = () => {
+    draftEditedRef.current = true
+    setDraft((current) => {
+      if (!current.profilePhotoDataUrl) {
+        return current
+      }
+      return {
+        ...current,
+        profilePhotoPositionX: DEFAULT_PROFILE_PHOTO_POSITION_X,
+        profilePhotoPositionY: DEFAULT_PROFILE_PHOTO_POSITION_Y,
+      }
+    })
+    setStatus('')
   }
 
   const onProfilePhotoSelected = (event: ChangeEvent<HTMLInputElement>) => {
@@ -1263,7 +1255,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       return
     }
     if (file.size > MAX_PROFILE_PHOTO_BYTES) {
-      setError('Choose an image under 2MB for profile photo.')
+      setError('Choose an image under 5MB for profile photo.')
       return
     }
     const reader = new FileReader()
@@ -1278,6 +1270,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         profilePhotoPositionX: DEFAULT_PROFILE_PHOTO_POSITION_X,
         profilePhotoPositionY: DEFAULT_PROFILE_PHOTO_POSITION_Y,
       }))
+      setProfilePhotoEditorOpen(true)
       setError('')
       setStatus('')
     }
@@ -1292,6 +1285,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       profilePhotoPositionX: DEFAULT_PROFILE_PHOTO_POSITION_X,
       profilePhotoPositionY: DEFAULT_PROFILE_PHOTO_POSITION_Y,
     }))
+    setProfilePhotoEditorOpen(false)
     setStatus('')
   }
 
@@ -2012,7 +2006,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
       </header>
 
       <Card className="border-[hsl(var(--tone-neutral-200))]">
-        <CardHeader className="space-y-2 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
+        <CardHeader className="space-y-2 pb-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <CardTitle className={HOUSE_SECTION_TITLE_CLASS}>
@@ -2031,198 +2025,242 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           </div>
         </CardHeader>
         <CardContent className="space-y-3 pt-3 text-sm">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <div className="space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className={HOUSE_PROFILE_PHOTO_PANEL_CLASS}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className={HOUSE_PROFILE_PHOTO_PANEL_CLASS}>
+              {draft.profilePhotoDataUrl ? (
+                <div
+                  className="relative h-20 w-20 shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))] shadow-[0_0_0_1px_hsl(var(--tone-neutral-400))]"
+                >
+                  <img
+                    src={draft.profilePhotoDataUrl}
+                    alt="Profile photo"
+                    decoding="async"
+                    className="h-full w-full object-cover"
+                    style={{
+                      objectPosition: `${draft.profilePhotoPositionX}% ${draft.profilePhotoPositionY}%`,
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="inline-flex h-20 w-20 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] text-xl font-semibold text-[hsl(var(--tone-neutral-700))] shadow-[0_0_0_1px_hsl(var(--tone-neutral-400))]">
+                  {profileInitials}
+                </div>
+              )}
+              <div className="space-y-2">
+                <p className="house-field-label">Profile photo</p>
+                <input
+                  ref={profilePhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={onProfilePhotoSelected}
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="house"
+                    className={HOUSE_ACTION_BUTTON_CLASS}
+                    onClick={() => profilePhotoInputRef.current?.click()}
+                  >
+                    <Upload className="mr-1.5 h-4 w-4" />
+                    Upload photo
+                  </Button>
                   {draft.profilePhotoDataUrl ? (
-                    <button
-                      ref={profilePhotoFrameRef}
-                      type="button"
-                      aria-label="Adjust profile photo position"
-                      title="Click and drag to position your photo"
-                      onPointerDown={onProfilePhotoPointerDown}
-                      onPointerMove={onProfilePhotoPointerMove}
-                      onPointerUp={onProfilePhotoPointerUp}
-                      onPointerCancel={onProfilePhotoPointerUp}
-                      onPointerLeave={() => {
-                        profilePhotoDraggingRef.current = false
-                      }}
-                      className="relative h-20 w-20 shrink-0 cursor-move touch-none overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))] shadow-[0_0_0_1px_hsl(var(--tone-neutral-400))]"
-                    >
-                      <img
-                        src={draft.profilePhotoDataUrl}
-                        alt="Profile photo"
-                        decoding="async"
-                        className="h-full w-full scale-[1.2] object-cover"
-                        style={{
-                          objectPosition: `${draft.profilePhotoPositionX}% ${draft.profilePhotoPositionY}%`,
-                        }}
-                      />
-                    </button>
-                  ) : (
-                    <div className="inline-flex h-20 w-20 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] text-xl font-semibold text-[hsl(var(--tone-neutral-700))] shadow-[0_0_0_1px_hsl(var(--tone-neutral-400))]">
-                      {profileInitials}
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    <p className="house-field-label">Profile photo</p>
-                    <input
-                      ref={profilePhotoInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={onProfilePhotoSelected}
-                    />
-                    <div className="flex flex-wrap items-center gap-2">
+                    <>
                       <Button
                         type="button"
                         size="sm"
                         variant="house"
                         className={HOUSE_ACTION_BUTTON_CLASS}
-                        onClick={() => profilePhotoInputRef.current?.click()}
+                        onClick={() => setProfilePhotoEditorOpen((current) => !current)}
                       >
-                        <Upload className="mr-1.5 h-4 w-4" />
-                        Upload photo
+                        <SlidersHorizontal className="mr-1.5 h-4 w-4" />
+                        {profilePhotoEditorOpen ? 'Close editor' : 'Adjust framing'}
                       </Button>
-                      {draft.profilePhotoDataUrl ? (
-                        <>
-                          <Button type="button" size="sm" variant="house" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onRemoveProfilePhoto}>
-                            <Trash2 className="mr-1.5 h-4 w-4" />
-                            Remove
+                      <Button type="button" size="sm" variant="house" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onRemoveProfilePhoto}>
+                        <Trash2 className="mr-1.5 h-4 w-4" />
+                        Remove
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
+                {draft.profilePhotoDataUrl && profilePhotoEditorOpen ? (
+                  <div className={HOUSE_PROFILE_PHOTO_EDITOR_CLASS}>
+                    <p className="house-field-label">Mini photo editor</p>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                      <div className="mx-auto h-24 w-24 shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] shadow-[0_0_0_1px_hsl(var(--tone-neutral-400))] sm:mx-0">
+                        <img
+                          src={draft.profilePhotoDataUrl}
+                          alt="Profile photo editor preview"
+                          decoding="async"
+                          className="h-full w-full object-cover"
+                          style={{
+                            objectPosition: `${draft.profilePhotoPositionX}% ${draft.profilePhotoPositionY}%`,
+                          }}
+                        />
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <label className="space-y-1">
+                          <span className="house-field-label">Horizontal framing</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={0.5}
+                            value={draft.profilePhotoPositionX}
+                            onChange={(event) => onProfilePhotoPositionSliderChange('x', event.target.value)}
+                            className="h-2 w-full cursor-pointer accent-[hsl(var(--tone-accent-700))]"
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="house-field-label">Vertical framing</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={0.5}
+                            value={draft.profilePhotoPositionY}
+                            onChange={(event) => onProfilePhotoPositionSliderChange('y', event.target.value)}
+                            className="h-2 w-full cursor-pointer accent-[hsl(var(--tone-accent-700))]"
+                          />
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" size="sm" variant="house" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onResetProfilePhotoPosition}>
+                            Reset
                           </Button>
-                        </>
-                      ) : null}
+                          <Button type="button" size="sm" variant="housePrimary" className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS} onClick={() => setProfilePhotoEditorOpen(false)}>
+                            Done
+                          </Button>
+                        </div>
+                      </div>
                     </div>
-                    {draft.profilePhotoDataUrl ? (
-                      <p className="house-field-helper">Click and drag photo to position.</p>
-                    ) : null}
                   </div>
-                </div>
-
-                <label className="space-y-1 sm:col-span-2">
-                  <span className="house-field-label">Account email</span>
-                  <Input
-                    value={accountEmail}
-                    onChange={(event) => onAccountEmailChange(event.target.value)}
-                    placeholder="you@institution.edu"
-                    autoComplete="email"
-                    disabled={saving}
-                  />
-                </label>
-
-                <div className="grid gap-3 sm:col-span-2 sm:grid-cols-[180px_minmax(0,1fr)_minmax(0,1fr)]">
-                  <label className="space-y-1">
-                    <span className="house-field-label">Salutation</span>
-                    <select
-                      value={draft.salutation}
-                      onChange={(event) => onFieldChange('salutation', event.target.value)}
-                      className={HOUSE_SELECT_CLASS}
-                      autoComplete="honorific-prefix"
-                    >
-                      <option value="">Select</option>
-                      {SALUTATION_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="space-y-1">
-                    <span className="house-field-label">First name</span>
-                    <Input
-                      value={draft.firstName}
-                      onChange={(event) => onFieldChange('firstName', event.target.value)}
-                      placeholder="First name"
-                      autoComplete="given-name"
-                    />
-                  </label>
-
-                  <label className="space-y-1">
-                    <span className="house-field-label">Last name</span>
-                    <Input
-                      value={draft.lastName}
-                      onChange={(event) => onFieldChange('lastName', event.target.value)}
-                      placeholder="Last name"
-                      autoComplete="family-name"
-                    />
-                  </label>
-                </div>
-
-                <div className={HOUSE_SOCIAL_LINK_ROW_CLASS}>
-                  <label
-                    htmlFor="personal-website"
-                    className={HOUSE_SOCIAL_LINK_LABEL_CLASS}
-                  >
-                    <span
-                      aria-hidden
-                      className={HOUSE_SOCIAL_LINK_ICON_CLASS}
-                    >
-                      W
-                    </span>
-                    Website
-                  </label>
-                  <Input
-                    id="personal-website"
-                    value={draft.website}
-                    onChange={(event) => onFieldChange('website', event.target.value)}
-                    placeholder="https://"
-                    autoComplete="url"
-                    className="w-full"
-                  />
-                </div>
-
-                <div className={HOUSE_SOCIAL_LINK_ROW_CLASS}>
-                  <label
-                    htmlFor="personal-researchgate"
-                    className={HOUSE_SOCIAL_LINK_LABEL_CLASS}
-                  >
-                    <span
-                      aria-hidden
-                      className={HOUSE_SOCIAL_LINK_ICON_CLASS}
-                    >
-                      RG
-                    </span>
-                    ResearchGate page
-                  </label>
-                  <Input
-                    id="personal-researchgate"
-                    value={draft.researchGateUrl}
-                    onChange={(event) => onFieldChange('researchGateUrl', event.target.value)}
-                    placeholder="https://www.researchgate.net/profile/..."
-                    autoComplete="url"
-                    className="w-full"
-                  />
-                </div>
-
-                <div className={HOUSE_SOCIAL_LINK_ROW_CLASS}>
-                  <label
-                    htmlFor="personal-x-handle"
-                    className={HOUSE_SOCIAL_LINK_LABEL_CLASS}
-                  >
-                    <span
-                      aria-hidden
-                      className={HOUSE_SOCIAL_LINK_ICON_CLASS}
-                    >
-                      X
-                    </span>
-                    Twitter/X handle
-                  </label>
-                  <Input
-                    id="personal-x-handle"
-                    value={draft.xHandle}
-                    onChange={(event) => onFieldChange('xHandle', event.target.value)}
-                    placeholder="@yourhandle"
-                    autoComplete="nickname"
-                    className="w-full"
-                  />
-                </div>
+                ) : null}
               </div>
             </div>
 
-            <aside className="space-y-2">
-              <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card px-3 py-2.5">
+            <label className="space-y-1 sm:col-span-2">
+              <span className="house-field-label">Account email</span>
+              <Input
+                value={accountEmail}
+                onChange={(event) => onAccountEmailChange(event.target.value)}
+                placeholder="you@institution.edu"
+                autoComplete="email"
+                disabled={saving}
+              />
+            </label>
+
+            <div className="grid gap-3 sm:col-span-2 sm:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1fr)]">
+              <label className="space-y-1">
+                <span className="house-field-label">Salutation</span>
+                <select
+                  value={draft.salutation}
+                  onChange={(event) => onFieldChange('salutation', event.target.value)}
+                  className={HOUSE_SELECT_CLASS}
+                  autoComplete="honorific-prefix"
+                >
+                  <option value="">Select</option>
+                  {SALUTATION_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1">
+                <span className="house-field-label">First name</span>
+                <Input
+                  value={draft.firstName}
+                  onChange={(event) => onFieldChange('firstName', event.target.value)}
+                  placeholder="First name"
+                  autoComplete="given-name"
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="house-field-label">Last name</span>
+                <Input
+                  value={draft.lastName}
+                  onChange={(event) => onFieldChange('lastName', event.target.value)}
+                  placeholder="Last name"
+                  autoComplete="family-name"
+                />
+              </label>
+            </div>
+
+            <div className={HOUSE_SOCIAL_LINK_ROW_CLASS}>
+              <label
+                htmlFor="personal-website"
+                className={HOUSE_SOCIAL_LINK_LABEL_CLASS}
+              >
+                <span
+                  aria-hidden
+                  className={HOUSE_SOCIAL_LINK_ICON_CLASS}
+                >
+                  W
+                </span>
+                Website
+              </label>
+              <Input
+                id="personal-website"
+                value={draft.website}
+                onChange={(event) => onFieldChange('website', event.target.value)}
+                placeholder="https://"
+                autoComplete="url"
+                className="w-full"
+              />
+            </div>
+
+            <div className={HOUSE_SOCIAL_LINK_ROW_CLASS}>
+              <label
+                htmlFor="personal-researchgate"
+                className={HOUSE_SOCIAL_LINK_LABEL_CLASS}
+              >
+                <span
+                  aria-hidden
+                  className={HOUSE_SOCIAL_LINK_ICON_CLASS}
+                >
+                  RG
+                </span>
+                ResearchGate page
+              </label>
+              <Input
+                id="personal-researchgate"
+                value={draft.researchGateUrl}
+                onChange={(event) => onFieldChange('researchGateUrl', event.target.value)}
+                placeholder="https://www.researchgate.net/profile/..."
+                autoComplete="url"
+                className="w-full"
+              />
+            </div>
+
+            <div className={HOUSE_SOCIAL_LINK_ROW_CLASS}>
+              <label
+                htmlFor="personal-x-handle"
+                className={HOUSE_SOCIAL_LINK_LABEL_CLASS}
+              >
+                <span
+                  aria-hidden
+                  className={HOUSE_SOCIAL_LINK_ICON_CLASS}
+                >
+                  X
+                </span>
+                Twitter/X handle
+              </label>
+              <Input
+                id="personal-x-handle"
+                value={draft.xHandle}
+                onChange={(event) => onFieldChange('xHandle', event.target.value)}
+                placeholder="@yourhandle"
+                autoComplete="nickname"
+                className="w-full"
+              />
+            </div>
+
+            <aside className="sm:col-span-2 sm:ml-auto sm:w-full lg:max-w-sm">
+              <div className={HOUSE_ACCOUNT_PANEL_CLASS}>
                 <p className="house-field-label">Account</p>
                 <div className="mt-2 space-y-1.5 text-sm">
                   <p className="text-[hsl(var(--tone-neutral-700))]">
@@ -2246,7 +2284,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               </div>
             </aside>
           </div>
-
         </CardContent>
       </Card>
       <div data-house-role="section-divider" className={houseDividers.strong} />
