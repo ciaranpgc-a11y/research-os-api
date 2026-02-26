@@ -307,6 +307,10 @@ const HOUSE_DIVIDER_BORDER_SOFT_CLASS = publicationsHouseDividers.borderSoft
 const HOUSE_ACTIONS_SECTION_TOOLS_CLASS = publicationsHouseActions.sectionTools
 const HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS = publicationsHouseActions.sectionToolsPublications
 const HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS = publicationsHouseActions.sectionToolButton
+const HOUSE_ACTIONS_PILL_CLASS = publicationsHouseActions.actionPill
+const HOUSE_ACTIONS_PILL_PRIMARY_CLASS = publicationsHouseActions.actionPillPrimary
+const HOUSE_ACTIONS_PILL_ICON_GROUP_CLASS = publicationsHouseActions.actionPillIconGroup
+const HOUSE_ACTIONS_PILL_ICON_CLASS = publicationsHouseActions.actionPillIcon
 const HOUSE_DRILLDOWN_SHEET_CLASS = publicationsHouseDrilldown.sheet
 const HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS = publicationsHouseDrilldown.tabTrigger
 const HOUSE_DRILLDOWN_TAB_LIST_CLASS = publicationsHouseDrilldown.tabList
@@ -1655,17 +1659,6 @@ function PublicationsPerYearChart({
 
   const isCompactTileMode = !showAxes && !enableWindowToggle
   const effectiveWindowMode: PublicationsWindowMode = enableWindowToggle ? windowMode : 'all'
-  const yearlyWindowYears = effectiveWindowMode === '1y'
-    ? 1
-    : effectiveWindowMode === '3y'
-      ? 3
-      : effectiveWindowMode === '5y'
-        ? 5
-        : null
-  const windowedHistoryBars = yearlyWindowYears === null
-    ? historyBars
-    : historyBars.slice(-yearlyWindowYears)
-  const useCompactAllRangeLabels = enableWindowToggle && effectiveWindowMode === 'all' && windowedHistoryBars.length > MAX_PUBLICATION_CHART_BARS
 
   type PublicationChartBar = {
     key: string
@@ -1673,6 +1666,12 @@ function PublicationsPerYearChart({
     current: boolean
     axisLabel: string
     axisSubLabel?: string
+  }
+
+  type PublicationYearWindowBars = {
+    bars: PublicationChartBar[]
+    bucketSize: number
+    rangeLabel: string | null
   }
 
   const compactTileBars = useMemo(() => (
@@ -1687,43 +1686,67 @@ function PublicationsPerYearChart({
       }))
   ), [historyBars])
 
-  const groupedYearBars = useMemo(() => {
-    if (!windowedHistoryBars.length) {
-      return { bars: [] as PublicationChartBar[], bucketSize: 1 }
-    }
-    const bucketSize = selectPublicationBucketSize(windowedHistoryBars.length)
-    const grouped: PublicationChartBar[] = []
-    for (let index = 0; index < windowedHistoryBars.length; index += bucketSize) {
-      const chunk = windowedHistoryBars.slice(index, index + bucketSize)
-      if (!chunk.length) {
-        continue
+  const groupedYearBarsByWindow = useMemo(() => {
+    const build = (windowYears: number | null, useCompactRangeLabels: boolean): PublicationYearWindowBars => {
+      const sourceBars = windowYears === null
+        ? historyBars
+        : historyBars.slice(-windowYears)
+      if (!sourceBars.length) {
+        return { bars: [], bucketSize: 1, rangeLabel: null }
       }
-      const startYear = chunk[0].year
-      const endYear = chunk[chunk.length - 1].year
-      const isSingleCurrentYear = chunk.some((item) => item.current) && startYear === endYear
-      grouped.push({
-        key: `${startYear}-${endYear}`,
-        value: chunk.reduce((sum, item) => sum + Math.max(0, item.value), 0),
-        current: isSingleCurrentYear,
-        axisLabel: useCompactAllRangeLabels
-          ? startYear === endYear
-            ? shortYearLabel(startYear)
-            : `${shortYearLabel(startYear)}-${shortYearLabel(endYear)}`
-          : formatPublicationYearLabel(startYear, endYear, fullYearLabels),
-        axisSubLabel: isSingleCurrentYear ? 'YTD' : undefined,
-      })
+      const bucketSize = selectPublicationBucketSize(sourceBars.length)
+      const grouped: PublicationChartBar[] = []
+      for (let index = 0; index < sourceBars.length; index += bucketSize) {
+        const chunk = sourceBars.slice(index, index + bucketSize)
+        if (!chunk.length) {
+          continue
+        }
+        const startYear = chunk[0].year
+        const endYear = chunk[chunk.length - 1].year
+        const isSingleCurrentYear = chunk.some((item) => item.current) && startYear === endYear
+        grouped.push({
+          key: `${startYear}-${endYear}`,
+          value: chunk.reduce((sum, item) => sum + Math.max(0, item.value), 0),
+          current: isSingleCurrentYear,
+          axisLabel: useCompactRangeLabels
+            ? startYear === endYear
+              ? shortYearLabel(startYear)
+              : `${shortYearLabel(startYear)}-${shortYearLabel(endYear)}`
+            : formatPublicationYearLabel(startYear, endYear, fullYearLabels),
+          axisSubLabel: isSingleCurrentYear ? 'YTD' : undefined,
+        })
+      }
+      const visibleBars = grouped.slice(-MAX_PUBLICATION_CHART_BARS)
+      const firstBar = visibleBars[0] || null
+      const lastBar = visibleBars[visibleBars.length - 1] || null
+      const rangeLabel = firstBar && lastBar
+        ? (() => {
+          const startYear = Number(firstBar.key.split('-')[0] || firstBar.axisLabel)
+          const endYear = Number(lastBar.key.split('-').slice(-1)[0] || lastBar.axisLabel)
+          const suffix = lastBar.current ? ' YTD' : ''
+          if (Number.isFinite(startYear) && Number.isFinite(endYear)) {
+            if (startYear === endYear) {
+              return `${startYear}${suffix}`
+            }
+            return `${startYear}-${endYear}${suffix}`
+          }
+          return null
+        })()
+        : null
+      return { bars: visibleBars, bucketSize, rangeLabel }
     }
-    return { bars: grouped.slice(-MAX_PUBLICATION_CHART_BARS), bucketSize }
-  }, [fullYearLabels, useCompactAllRangeLabels, windowedHistoryBars])
+    return {
+      '3y': build(3, false),
+      '5y': build(5, false),
+      all: build(null, historyBars.length > MAX_PUBLICATION_CHART_BARS),
+    } as const
+  }, [fullYearLabels, historyBars])
 
   const usingMonthlyBars = effectiveWindowMode === '1y'
   const groupedMonthBars = useMemo(() => {
-    if (!usingMonthlyBars) {
-      return { bars: [] as PublicationChartBar[], bucketSize: 1, rangeLabel: null as string | null }
-    }
     const sourceValues = toNumberArray(chartData.monthly_values_12m).map((item) => Math.max(0, item))
     const sourceLabels = toStringArray(chartData.month_labels_12m)
-    const annualFallback = Math.max(0, windowedHistoryBars[windowedHistoryBars.length - 1]?.value || 0)
+    const annualFallback = Math.max(0, historyBars[historyBars.length - 1]?.value || 0)
     const values12 = sourceValues.length >= 12
       ? sourceValues.slice(-12)
       : sourceValues.length > 0
@@ -1744,18 +1767,25 @@ function PublicationsPerYearChart({
       bucketSize: 1,
       rangeLabel: `${labels12[0] || 'Start'}-${labels12[labels12.length - 1] || 'End'}`,
     }
-  }, [chartData.month_labels_12m, chartData.monthly_values_12m, usingMonthlyBars, windowedHistoryBars])
+  }, [chartData.month_labels_12m, chartData.monthly_values_12m, historyBars])
 
-  const activeBars = isCompactTileMode
-    ? compactTileBars
-    : usingMonthlyBars
-      ? groupedMonthBars.bars
-      : groupedYearBars.bars
-  const activeBucketSize = isCompactTileMode
-    ? 1
-    : usingMonthlyBars
-      ? groupedMonthBars.bucketSize
-      : groupedYearBars.bucketSize
+  const resolveBarsForWindowMode = (mode: PublicationsWindowMode): PublicationYearWindowBars => {
+    if (mode === '1y') {
+      return {
+        bars: groupedMonthBars.bars,
+        bucketSize: groupedMonthBars.bucketSize,
+        rangeLabel: groupedMonthBars.rangeLabel,
+      }
+    }
+    return groupedYearBarsByWindow[mode]
+  }
+
+  const activeWindowBars = isCompactTileMode
+    ? { bars: compactTileBars, bucketSize: 1, rangeLabel: null as string | null }
+    : resolveBarsForWindowMode(effectiveWindowMode)
+
+  const activeBars = activeWindowBars.bars
+  const activeBucketSize = activeWindowBars.bucketSize
   const meanValue = isCompactTileMode && Number.isFinite(meanValueRaw) && meanValueRaw >= 0
     ? meanValueRaw
     : activeBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0) / Math.max(1, activeBars.length)
@@ -1777,10 +1807,25 @@ function PublicationsPerYearChart({
     () => renderBars.map((bar) => Math.max(0, bar.value)),
     [renderBars],
   )
+  const [allowInitialValueEasing, setAllowInitialValueEasing] = useState(false)
+  useEffect(() => {
+    if (!enableWindowToggle) {
+      setAllowInitialValueEasing(true)
+      return
+    }
+    setAllowInitialValueEasing(false)
+    let raf = 0
+    raf = window.requestAnimationFrame(() => {
+      setAllowInitialValueEasing(true)
+    })
+    return () => {
+      window.cancelAnimationFrame(raf)
+    }
+  }, [enableWindowToggle, tile.key])
   const renderedValuesAnimated = useEasedSeries(
     renderedValuesTarget,
     `${animationKey}|rendered|${renderBars.map((bar) => bar.key).join('|')}`,
-    hasBars && barsExpanded,
+    hasBars && barsExpanded && allowInitialValueEasing,
   )
 
   useEffect(() => {
@@ -1792,8 +1837,12 @@ function PublicationsPerYearChart({
   }
 
   const maxValue = Math.max(1, ...renderedValuesTarget)
+  const maxYearlyValue = Math.max(1, ...historyBars.map((bar) => Math.max(0, bar.value)))
+  const maxMonthlyValue = Math.max(0, ...groupedMonthBars.bars.map((bar) => Math.max(0, bar.value)))
+  const maxWindowValue = Math.max(maxYearlyValue, maxMonthlyValue)
+  const stableAxisScale = enableWindowToggle ? buildNiceAxis(maxWindowValue) : null
   const axisScale = showAxes
-    ? buildNiceAxis(maxValue)
+    ? stableAxisScale || buildNiceAxis(maxValue)
     : null
   const axisMax = axisScale
     ? axisScale.axisMax
@@ -1801,22 +1850,37 @@ function PublicationsPerYearChart({
   const yAxisTickValues = axisScale
     ? axisScale.ticks
     : [0, axisMax * 0.25, axisMax * 0.5, axisMax * 0.75, axisMax]
-  const maxYearlyValue = Math.max(1, ...historyBars.map((bar) => Math.max(0, bar.value)))
-  const maxMonthlyValue = Math.max(0, ...groupedMonthBars.bars.map((bar) => Math.max(0, bar.value)))
-  const maxWindowValue = Math.max(maxYearlyValue, maxMonthlyValue)
-  const stableToggleTickValues = enableWindowToggle ? buildNiceAxis(maxWindowValue).ticks : yAxisTickValues
+  const stableToggleTickValues = enableWindowToggle && stableAxisScale ? stableAxisScale.ticks : yAxisTickValues
   const gridTickValues = yAxisTickValues.slice(1, -1)
   const resolvedXAxisLabel = usingMonthlyBars ? 'Publication month' : xAxisLabel
-  const xAxisLabelLayout = buildChartAxisLayout({
-    axisLabels: renderBars.map((bar) => bar.axisLabel),
-    axisSubLabels: renderBars.map((bar) => bar.axisSubLabel || null),
-    showXAxisName: showAxes,
-    xAxisName: showAxes ? resolvedXAxisLabel : null,
-    dense: renderBars.length >= 7 || usingMonthlyBars,
-    maxLabelLines: 2,
-    maxSubLabelLines: 2,
-    maxAxisNameLines: 2,
-  })
+  const xAxisLabelLayout = enableWindowToggle
+    ? mergeChartAxisLayouts(
+      PUBLICATIONS_WINDOW_OPTIONS.map((option) => {
+        const optionWindowBars = resolveBarsForWindowMode(option.value)
+        const optionBars = optionWindowBars.bars
+        const optionUsesMonthlyBars = option.value === '1y'
+        return buildChartAxisLayout({
+          axisLabels: optionBars.map((bar) => bar.axisLabel),
+          axisSubLabels: optionBars.map((bar) => bar.axisSubLabel || null),
+          showXAxisName: showAxes,
+          xAxisName: showAxes ? (optionUsesMonthlyBars ? 'Publication month' : xAxisLabel) : null,
+          dense: optionBars.length >= 7 || optionUsesMonthlyBars,
+          maxLabelLines: 2,
+          maxSubLabelLines: 2,
+          maxAxisNameLines: 2,
+        })
+      }),
+    )
+    : buildChartAxisLayout({
+      axisLabels: renderBars.map((bar) => bar.axisLabel),
+      axisSubLabels: renderBars.map((bar) => bar.axisSubLabel || null),
+      showXAxisName: showAxes,
+      xAxisName: showAxes ? resolvedXAxisLabel : null,
+      dense: renderBars.length >= 7 || usingMonthlyBars,
+      maxLabelLines: 2,
+      maxSubLabelLines: 2,
+      maxAxisNameLines: 2,
+    })
   const yAxisPanelWidthRem = showAxes
     ? buildYAxisPanelWidthRem(stableToggleTickValues, Boolean(yAxisLabel))
     : 0
@@ -1846,17 +1910,7 @@ function PublicationsPerYearChart({
   const yAxisTickOffsetRem = 0.4
   const activeWindowIndex = PUBLICATIONS_WINDOW_OPTIONS.findIndex((option) => option.value === windowMode)
   const monthRangeLabel = usingMonthlyBars ? groupedMonthBars.rangeLabel : null
-  const yearRangeLabel = windowedHistoryBars.length
-    ? (() => {
-      const startYear = windowedHistoryBars[0].year
-      const endBar = windowedHistoryBars[windowedHistoryBars.length - 1]
-      const suffix = endBar.current ? ' YTD' : ''
-      if (startYear === endBar.year) {
-        return `${startYear}${suffix}`
-      }
-      return `${startYear}-${endBar.year}${suffix}`
-    })()
-    : null
+  const yearRangeLabel = usingMonthlyBars ? null : activeWindowBars.rangeLabel
   const periodHintText = monthRangeLabel || yearRangeLabel || '\u00A0'
   const periodHintVisible = Boolean(monthRangeLabel || yearRangeLabel)
   return (
@@ -2885,6 +2939,8 @@ type PublicationDrilldownRecord = {
   title: string
   role: string
   type: string
+  publicationType: string
+  articleType: string
   venue: string
   citations: number
 }
@@ -2918,6 +2974,375 @@ function median(values: number[]): number {
   return (sorted[middle - 1] + sorted[middle]) / 2
 }
 
+type PublicationCategoryDimension = 'publication' | 'article'
+
+type PublicationCategoryWindowBars = {
+  bars: Array<{ key: string; label: string; value: number }>
+  rangeLabel: string | null
+}
+
+function categoryLabelFromPublication(
+  record: PublicationDrilldownRecord,
+  dimension: PublicationCategoryDimension,
+): string {
+  if (dimension === 'article') {
+    return String(record.articleType || record.type || '').trim() || 'Unspecified'
+  }
+  return String(record.publicationType || record.type || '').trim() || 'Unspecified'
+}
+
+function PublicationCategoryDistributionChart({
+  publications,
+  dimension,
+  xAxisLabel,
+  emptyLabel,
+}: {
+  publications: PublicationDrilldownRecord[]
+  dimension: PublicationCategoryDimension
+  xAxisLabel: string
+  emptyLabel: string
+}) {
+  const [windowMode, setWindowMode] = useState<PublicationsWindowMode>('5y')
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  useEffect(() => {
+    setWindowMode('5y')
+  }, [dimension, publications.length])
+
+  const yearsWithData = useMemo(() => {
+    const values = publications
+      .map((record) => record.year)
+      .filter((value): value is number => Number.isFinite(value) && value !== null)
+    return Array.from(new Set(values)).sort((left, right) => left - right)
+  }, [publications])
+  const minYear = yearsWithData.length ? yearsWithData[0] : new Date().getUTCFullYear()
+  const maxYear = yearsWithData.length ? yearsWithData[yearsWithData.length - 1] : minYear
+  const fullYears = useMemo(() => {
+    const output: number[] = []
+    for (let year = minYear; year <= maxYear; year += 1) {
+      output.push(year)
+    }
+    return output
+  }, [maxYear, minYear])
+
+  const categoryConfig = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const record of publications) {
+      if (record.year === null) {
+        continue
+      }
+      const label = categoryLabelFromPublication(record, dimension)
+      totals.set(label, (totals.get(label) || 0) + 1)
+    }
+    const sortedLabels = Array.from(totals.entries())
+      .sort((left, right) => {
+        if (right[1] !== left[1]) {
+          return right[1] - left[1]
+        }
+        return left[0].localeCompare(right[0])
+      })
+      .map(([label]) => label)
+    const maxPrimaryCategories = 7
+    return {
+      primaryLabels: sortedLabels.slice(0, maxPrimaryCategories),
+      hasOtherBucket: sortedLabels.length > maxPrimaryCategories,
+    }
+  }, [dimension, publications])
+
+  const barsByWindowMode = useMemo(() => {
+    const primaryLabelSet = new Set(categoryConfig.primaryLabels)
+    const build = (mode: PublicationsWindowMode): PublicationCategoryWindowBars => {
+      const windowSize = mode === '1y'
+        ? 1
+        : mode === '3y'
+          ? 3
+          : mode === '5y'
+            ? 5
+            : null
+      const windowYears = windowSize === null
+        ? fullYears
+        : fullYears.slice(-windowSize)
+      const yearSet = new Set(windowYears)
+      const counts = new Map<string, number>()
+      let otherCount = 0
+      for (const record of publications) {
+        if (record.year === null || !yearSet.has(record.year)) {
+          continue
+        }
+        const label = categoryLabelFromPublication(record, dimension)
+        if (primaryLabelSet.has(label)) {
+          counts.set(label, (counts.get(label) || 0) + 1)
+          continue
+        }
+        if (categoryConfig.hasOtherBucket) {
+          otherCount += 1
+        }
+      }
+      const bars = categoryConfig.primaryLabels.map((label) => ({
+        key: `${mode}-${label}`,
+        label,
+        value: Math.max(0, counts.get(label) || 0),
+      }))
+      if (categoryConfig.hasOtherBucket) {
+        bars.push({
+          key: `${mode}-other`,
+          label: 'Other',
+          value: Math.max(0, otherCount),
+        })
+      }
+      const rangeLabel = windowYears.length
+        ? windowYears[0] === windowYears[windowYears.length - 1]
+          ? String(windowYears[0])
+          : `${windowYears[0]}-${windowYears[windowYears.length - 1]}`
+        : null
+      return { bars, rangeLabel }
+    }
+    return {
+      '1y': build('1y'),
+      '3y': build('3y'),
+      '5y': build('5y'),
+      all: build('all'),
+    } as const
+  }, [categoryConfig.hasOtherBucket, categoryConfig.primaryLabels, dimension, fullYears, publications])
+
+  const activeWindowBars = barsByWindowMode[windowMode]
+  const activeBars = activeWindowBars.bars
+  const hasBars = activeBars.length > 0
+  const animationKey = useMemo(
+    () => `${dimension}|${windowMode}|${activeBars.map((bar) => `${bar.label}-${bar.value}`).join('|')}`,
+    [activeBars, dimension, windowMode],
+  )
+  const swapTransition = useHouseBarSetTransition({
+    bars: activeBars,
+    animationKey,
+    enabled: hasBars,
+  })
+  const renderBars = swapTransition.renderBars
+  const barsExpanded = swapTransition.barsExpanded
+  const renderedValuesTarget = useMemo(
+    () => renderBars.map((bar) => Math.max(0, bar.value)),
+    [renderBars],
+  )
+  const renderedValuesAnimated = useEasedSeries(
+    renderedValuesTarget,
+    `${animationKey}|category|${renderBars.map((bar) => bar.key).join('|')}`,
+    hasBars && barsExpanded,
+  )
+
+  useEffect(() => {
+    setHoveredIndex(null)
+  }, [animationKey])
+
+  if (!hasBars) {
+    return <div className={dashboardTileStyles.emptyChart}>{emptyLabel}</div>
+  }
+
+  const maxWindowValue = Math.max(
+    1,
+    ...PUBLICATIONS_WINDOW_OPTIONS.flatMap((option) =>
+      barsByWindowMode[option.value].bars.map((bar) => Math.max(0, bar.value))),
+  )
+  const axisScale = buildNiceAxis(maxWindowValue)
+  const axisMax = axisScale.axisMax
+  const yAxisTickValues = axisScale.ticks
+  const gridTickValues = yAxisTickValues.slice(1, -1)
+  const xAxisLabelLayout = mergeChartAxisLayouts(
+    PUBLICATIONS_WINDOW_OPTIONS.map((option) =>
+      buildChartAxisLayout({
+        axisLabels: barsByWindowMode[option.value].bars.map((bar) => bar.label),
+        showXAxisName: true,
+        xAxisName: xAxisLabel,
+        dense: barsByWindowMode[option.value].bars.length >= 6,
+        maxLabelLines: 2,
+        maxSubLabelLines: 1,
+        maxAxisNameLines: 2,
+      })),
+  )
+  const yAxisPanelWidthRem = buildYAxisPanelWidthRem(yAxisTickValues, true)
+  const chartLeftInset = `${yAxisPanelWidthRem + 0.55}rem`
+  const plotAreaStyle = {
+    left: chartLeftInset,
+    right: '0.5rem',
+    top: '1rem',
+    bottom: `${xAxisLabelLayout.plotBottomRem}rem`,
+  }
+  const xAxisTicksStyle = {
+    left: chartLeftInset,
+    right: '0.5rem',
+    bottom: `${xAxisLabelLayout.axisBottomRem}rem`,
+    minHeight: `${xAxisLabelLayout.axisMinHeightRem}rem`,
+  }
+  const yAxisPanelStyle = {
+    left: '0.25rem',
+    top: '1rem',
+    bottom: `${xAxisLabelLayout.plotBottomRem}rem`,
+    width: `${yAxisPanelWidthRem}rem`,
+  }
+  const chartFrameStyle = {
+    paddingBottom: `${xAxisLabelLayout.framePaddingBottomRem}rem`,
+  }
+  const yAxisTickOffsetRem = 0.4
+  const activeWindowIndex = PUBLICATIONS_WINDOW_OPTIONS.findIndex((option) => option.value === windowMode)
+  const periodHintText = activeWindowBars.rangeLabel || '\u00A0'
+  const periodHintVisible = Boolean(activeWindowBars.rangeLabel)
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div
+          className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
+          data-stop-tile-open="true"
+          data-ui="publications-window-toggle"
+          data-house-role="chart-toggle"
+        >
+          <span
+            className={HOUSE_TOGGLE_THUMB_CLASS}
+            style={{
+              width: 'calc(25% - 0.2rem)',
+              left: `calc(${Math.max(0, activeWindowIndex) * 25}% + 2px)`,
+            }}
+            aria-hidden="true"
+          />
+          {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
+            <button
+              key={`${dimension}-window-${option.value}`}
+              type="button"
+              data-stop-tile-open="true"
+              className={cn(
+                HOUSE_TOGGLE_BUTTON_CLASS,
+                windowMode === option.value
+                  ? 'text-white'
+                  : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+              )}
+              onClick={(event) => {
+                event.stopPropagation()
+                if (windowMode === option.value) {
+                  return
+                }
+                setWindowMode(option.value)
+              }}
+              onMouseDown={(event) => event.stopPropagation()}
+              aria-pressed={windowMode === option.value}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <p
+          className={cn(
+            'min-h-[0.9rem]',
+            HOUSE_HEADING_LABEL_CLASS,
+            HOUSE_TOGGLE_CHART_LABEL_CLASS,
+            periodHintVisible ? 'opacity-100' : 'opacity-0',
+          )}
+          aria-live="polite"
+        >
+          {periodHintText}
+        </p>
+      </div>
+      <div
+        className={cn(
+          HOUSE_CHART_TRANSITION_CLASS,
+          HOUSE_CHART_ENTERED_CLASS,
+        )}
+        style={chartFrameStyle}
+        data-ui={`${dimension}-distribution-chart-frame`}
+        data-house-role="chart-frame"
+      >
+        <div className="absolute" style={plotAreaStyle}>
+          {gridTickValues.map((tickValue) => (
+            <div
+              key={`${dimension}-grid-${tickValue}`}
+              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
+              style={{ bottom: `${(tickValue / axisMax) * 100}%` }}
+              aria-hidden="true"
+            />
+          ))}
+          <div className="absolute inset-0 flex items-end gap-1">
+            {renderBars.map((bar, index) => {
+              const animatedValue = Math.max(0, renderedValuesAnimated[index] ?? bar.value)
+              const heightPct = animatedValue <= 0 ? 3 : Math.max(6, (animatedValue / axisMax) * 100)
+              const isActive = hoveredIndex === index
+              return (
+                <div
+                  key={`${bar.key}-${index}`}
+                  className="relative flex h-full min-h-0 flex-1 items-end"
+                  onMouseEnter={() => setHoveredIndex(index)}
+                  onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                >
+                  <span
+                    className={cn(
+                      HOUSE_DRILLDOWN_TOOLTIP_CLASS,
+                      isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
+                    )}
+                    style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
+                    aria-hidden="true"
+                  >
+                    {formatInt(animatedValue)}
+                  </span>
+                  <span
+                    className={cn(
+                      'block w-full rounded',
+                      HOUSE_TOGGLE_CHART_BAR_CLASS,
+                      HOUSE_TOGGLE_CHART_SWAP_CLASS,
+                      HOUSE_CHART_BAR_ACCENT_CLASS,
+                      isActive && 'brightness-[1.08] saturate-[1.14]',
+                    )}
+                    style={{
+                      height: `${heightPct}%`,
+                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                      transformOrigin: 'bottom',
+                      transitionDelay: barsExpanded ? `${Math.min(220, index * 18)}ms` : '0ms',
+                    }}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        </div>
+        <div className="pointer-events-none absolute" style={yAxisPanelStyle} aria-hidden="true">
+          {yAxisTickValues.map((tickValue) => {
+            const pct = axisMax <= 0 ? 0 : (tickValue / axisMax) * 100
+            return (
+              <p
+                key={`${dimension}-y-axis-${tickValue}`}
+                className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_CLASS)}
+                style={{ bottom: `calc(${pct}% - ${yAxisTickOffsetRem}rem)` }}
+              >
+                {formatInt(tickValue)}
+              </p>
+            )
+          })}
+          <p className={cn(HOUSE_HEADING_LABEL_CLASS, 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}>
+            Publications
+          </p>
+        </div>
+        <div className={cn('pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1', HOUSE_TOGGLE_CHART_LABEL_CLASS)} style={xAxisTicksStyle}>
+          {renderBars.map((bar, index) => (
+            <div key={`${bar.key}-${index}-axis`} className="text-center leading-none">
+              <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-0.5 leading-[1.05]')}>
+                {bar.label}
+              </p>
+            </div>
+          ))}
+        </div>
+        <div
+          className="pointer-events-none absolute"
+          style={{
+            left: chartLeftInset,
+            right: '0.5rem',
+            bottom: `${xAxisLabelLayout.xAxisNameBottomRem}rem`,
+            minHeight: `${xAxisLabelLayout.xAxisNameMinHeightRem}rem`,
+          }}
+        >
+          <p className={cn(HOUSE_HEADING_LABEL_CLASS, 'break-words text-center leading-tight')}>
+            {xAxisLabel}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function TotalPublicationsDrilldownWorkspace({
   tile,
   activeTab,
@@ -2936,13 +3361,17 @@ function TotalPublicationsDrilldownWorkspace({
       const yearRaw = Number(row.year)
       const year = Number.isFinite(yearRaw) && yearRaw > 0 ? Math.round(yearRaw) : null
       const citationsRaw = Number(row.citations_lifetime)
-      const typeFromData = String(row.publication_type || row.work_type || '').trim()
+      const publicationTypeFromData = String(row.work_type || row.publication_type || '').trim()
+      const articleTypeFromData = String(row.article_type || row.publication_type || '').trim()
+      const typeFromData = publicationTypeFromData || articleTypeFromData
       return {
         workId: String(row.work_id || `row-${index}`),
         year,
         title: String(row.title || 'Untitled').trim() || 'Untitled',
         role: normalizeRoleLabel(String(row.user_author_role || 'Unknown')),
         type: typeFromData || 'Unspecified',
+        publicationType: publicationTypeFromData || 'Unspecified',
+        articleType: articleTypeFromData || 'Unspecified',
         venue: String(row.journal || 'Unknown venue').trim() || 'Unknown venue',
         citations: Number.isFinite(citationsRaw) ? Math.max(0, Math.round(citationsRaw)) : 0,
       }
@@ -3376,6 +3805,30 @@ function TotalPublicationsDrilldownWorkspace({
                 xAxisLabel="Publication year"
                 yAxisLabel="Publications"
                 enableWindowToggle
+              />
+            </div>
+          </div>
+
+          <div className={HOUSE_DRILLDOWN_SECTION_SEPARATOR_CLASS}>
+            <p className={cn(workspaceSubheadingClass, HOUSE_DRILLDOWN_SECTION_TITLE_SPACER_CLASS)}>Publication type</p>
+            <div className={HOUSE_DRILLDOWN_SUMMARY_TREND_CHART_CLASS}>
+              <PublicationCategoryDistributionChart
+                publications={publications}
+                dimension="publication"
+                xAxisLabel="Publication type"
+                emptyLabel="No publication type data"
+              />
+            </div>
+          </div>
+
+          <div className={HOUSE_DRILLDOWN_SECTION_SEPARATOR_CLASS}>
+            <p className={cn(workspaceSubheadingClass, HOUSE_DRILLDOWN_SECTION_TITLE_SPACER_CLASS)}>Article type</p>
+            <div className={HOUSE_DRILLDOWN_SUMMARY_TREND_CHART_CLASS}>
+              <PublicationCategoryDistributionChart
+                publications={publications}
+                dimension="article"
+                xAxisLabel="Article type"
+                emptyLabel="No article type data"
               />
             </div>
           </div>
@@ -4472,7 +4925,8 @@ export function PublicationsTopStrip({
             <div className="ml-auto min-h-8 min-w-[16.5rem]">
               <div
                 className={cn(
-                  'flex flex-wrap items-center house-publications-actions',
+                  'flex flex-wrap items-center',
+                  HOUSE_ACTIONS_PILL_CLASS,
                   HOUSE_ACTIONS_SECTION_TOOLS_CLASS,
                   HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS,
                   !insightsVisible && 'invisible pointer-events-none',
@@ -4485,19 +4939,19 @@ export function PublicationsTopStrip({
                   data-stop-tile-open="true"
                   variant="house"
                   size="sm"
-                  className={cn('h-8 gap-1.5 px-3 house-publications-action-primary', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
+                  className={cn('h-8 gap-1.5 px-3', HOUSE_ACTIONS_PILL_PRIMARY_CLASS, HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
                   aria-label="Generate publication insights report"
                 >
                   <FileText className="h-3.5 w-3.5" />
                   <span>Generate report</span>
                 </Button>
-                <div className="house-publications-action-icons">
+                <div className={HOUSE_ACTIONS_PILL_ICON_GROUP_CLASS}>
                   <Button
                     type="button"
                     data-stop-tile-open="true"
                     variant="house"
                     size="icon"
-                    className={cn('h-8 w-8 house-publications-action-icon', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
+                    className={cn('h-8 w-8', HOUSE_ACTIONS_PILL_ICON_CLASS, HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
                     aria-label="Download"
                   >
                     <Download className="h-3.5 w-3.5" />
@@ -4507,7 +4961,7 @@ export function PublicationsTopStrip({
                     data-stop-tile-open="true"
                     variant="house"
                     size="icon"
-                    className={cn('h-8 w-8 house-publications-action-icon', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
+                    className={cn('h-8 w-8', HOUSE_ACTIONS_PILL_ICON_CLASS, HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
                     aria-label="Share"
                   >
                     <Share2 className="h-3.5 w-3.5" />

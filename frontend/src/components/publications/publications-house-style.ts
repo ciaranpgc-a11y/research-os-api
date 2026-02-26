@@ -1,4 +1,4 @@
-import { houseChartColors, houseDividers, houseDrilldown, houseMotion, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseActions, houseChartColors, houseDividers, houseDrilldown, houseMotion, houseSurfaces, houseTypography } from '@/lib/house-style'
 
 export const publicationsHouseHeadings = {
   title: houseTypography.title,
@@ -89,13 +89,17 @@ export const publicationsHouseCharts = {
 } as const
 
 export const publicationsHouseActions = {
-  sectionTools: 'house-section-tools',
-  sectionToolsPublications: 'house-section-tools-publications',
-  sectionToolButton: 'house-section-tool-button',
-  sectionToolToggle: 'house-section-tool-toggle',
-  sectionToolToggleOn: 'house-section-tool-toggle-on',
-  sectionToolToggleOff: 'house-section-tool-toggle-off',
-  sectionToolDivider: 'house-section-tool-divider',
+  sectionTools: houseActions.sectionTools,
+  sectionToolsPublications: houseActions.sectionToolsPublications,
+  sectionToolButton: houseActions.sectionToolButton,
+  sectionToolToggle: houseActions.sectionToolToggle,
+  sectionToolToggleOn: houseActions.sectionToolToggleOn,
+  sectionToolToggleOff: houseActions.sectionToolToggleOff,
+  sectionToolDivider: houseActions.sectionToolDivider,
+  actionPill: houseActions.actionPill,
+  actionPillPrimary: houseActions.actionPillPrimary,
+  actionPillIconGroup: houseActions.actionPillIconGroup,
+  actionPillIcon: houseActions.actionPillIcon,
 } as const
 
 export const publicationsHouseDetail = {

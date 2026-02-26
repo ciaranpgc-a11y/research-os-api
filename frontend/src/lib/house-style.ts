@@ -115,6 +115,21 @@ export const houseForms = {
   actionButtonDanger: 'house-button-action-danger',
 } as const
 
+export const houseActions = {
+  sectionTools: 'house-section-tools',
+  sectionToolsPublications: 'house-section-tools-publications',
+  sectionToolsWorkspace: 'house-section-tools-workspace',
+  sectionToolButton: 'house-section-tool-button',
+  sectionToolToggle: 'house-section-tool-toggle',
+  sectionToolToggleOn: 'house-section-tool-toggle-on',
+  sectionToolToggleOff: 'house-section-tool-toggle-off',
+  sectionToolDivider: 'house-section-tool-divider',
+  actionPill: 'house-publications-actions',
+  actionPillPrimary: 'house-publications-action-primary',
+  actionPillIconGroup: 'house-publications-action-icons',
+  actionPillIcon: 'house-publications-action-icon',
+} as const
+
 export const houseTables = {
   filterInput: 'house-table-filter-input',
   filterSelect: 'house-table-filter-select',
@@ -247,6 +262,18 @@ export const houseElements = {
   actionButtonGhost: houseForms.actionButtonGhost,
   actionButtonSuccess: houseForms.actionButtonSuccess,
   actionButtonDanger: houseForms.actionButtonDanger,
+  sectionTools: houseActions.sectionTools,
+  sectionToolsPublications: houseActions.sectionToolsPublications,
+  sectionToolsWorkspace: houseActions.sectionToolsWorkspace,
+  sectionToolButton: houseActions.sectionToolButton,
+  sectionToolToggle: houseActions.sectionToolToggle,
+  sectionToolToggleOn: houseActions.sectionToolToggleOn,
+  sectionToolToggleOff: houseActions.sectionToolToggleOff,
+  sectionToolDivider: houseActions.sectionToolDivider,
+  actionPill: houseActions.actionPill,
+  actionPillPrimary: houseActions.actionPillPrimary,
+  actionPillIconGroup: houseActions.actionPillIconGroup,
+  actionPillIcon: houseActions.actionPillIcon,
   tableFilterInput: houseTables.filterInput,
   tableFilterSelect: houseTables.filterSelect,
   tableSortTrigger: houseTables.sortTrigger,

@@ -16,7 +16,7 @@ import {
   WORKSPACE_OWNER_REQUIRED_MESSAGE,
   readWorkspaceOwnerNameFromProfile,
 } from '@/lib/workspace-owner'
-import { houseCollaborators, houseDrilldown, houseForms, houseLayout, houseNavigation, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
+import { houseActions, houseCollaborators, houseDrilldown, houseForms, houseLayout, houseNavigation, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import { getHouseLeftBorderToneClass, getHouseNavToneClass } from '@/lib/section-tone'
 import { matchesScopedStorageEventKey } from '@/lib/user-scoped-storage'
 import { cn } from '@/lib/utils'
@@ -121,12 +121,17 @@ const HOUSE_DRILLDOWN_SECTION_SEPARATOR_CLASS = houseDrilldown.sectionSeparator
 const HOUSE_DRILLDOWN_TABLE_ROW_CLASS = houseDrilldown.tableRow
 const HOUSE_DRILLDOWN_TABLE_EMPTY_CLASS = houseDrilldown.tableEmpty
 const WORKSPACE_ICON_BUTTON_DIMENSION_CLASS = 'h-8 w-8 p-0'
-const HOUSE_SECTION_TOOLS_CLASS = 'house-section-tools'
-const HOUSE_SECTION_TOOLS_WORKSPACE_CLASS = 'house-section-tools-workspace'
-const HOUSE_SECTION_TOOL_BUTTON_CLASS = 'house-section-tool-button'
-const HOUSE_SECTION_TOOL_TOGGLE_CLASS = 'house-section-tool-toggle'
-const HOUSE_SECTION_TOOL_TOGGLE_ON_CLASS = 'house-section-tool-toggle-on'
-const HOUSE_SECTION_TOOL_TOGGLE_OFF_CLASS = 'house-section-tool-toggle-off'
+const HOUSE_SECTION_TOOLS_CLASS = houseActions.sectionTools
+const HOUSE_SECTION_TOOLS_WORKSPACE_CLASS = houseActions.sectionToolsWorkspace
+const HOUSE_SECTION_TOOL_BUTTON_CLASS = houseActions.sectionToolButton
+const HOUSE_SECTION_TOOL_TOGGLE_CLASS = houseActions.sectionToolToggle
+const HOUSE_SECTION_TOOL_TOGGLE_ON_CLASS = houseActions.sectionToolToggleOn
+const HOUSE_SECTION_TOOL_TOGGLE_OFF_CLASS = houseActions.sectionToolToggleOff
+const HOUSE_ACTIONS_PILL_CLASS = houseActions.actionPill
+const HOUSE_ACTIONS_PILL_PRIMARY_CLASS = houseActions.actionPillPrimary
+const HOUSE_ACTIONS_PILL_ICON_GROUP_CLASS = houseActions.actionPillIconGroup
+const HOUSE_ACTIONS_PILL_ICON_CLASS = houseActions.actionPillIcon
+const HOUSE_WORKSPACE_TABLE_SHELL_CLASS = 'house-workspaces-table-shell'
 const HOUSE_WORKSPACE_FILTER_SELECT_CLASS = cn(
   'h-9 rounded-md px-2',
   HOUSE_SELECT_CLASS,
@@ -470,20 +475,28 @@ function SortableHeader({
   column,
   activeColumn,
   direction,
+  align = 'left',
   onSort,
 }: {
   label: string
   column: SortColumn
   activeColumn: SortColumn
   direction: SortDirection
+  align?: 'left' | 'center' | 'right'
   onSort: (column: SortColumn) => void
 }) {
   const isActive = column === activeColumn
+  const alignClass =
+    align === 'right'
+      ? 'w-full justify-end text-right'
+      : align === 'center'
+        ? 'w-full justify-center text-center'
+        : 'w-full justify-start text-left'
   return (
     <button
       type="button"
       onClick={() => onSort(column)}
-      className={cn('inline-flex items-center gap-1 transition-colors hover:text-foreground', HOUSE_TABLE_SORT_TRIGGER_CLASS)}
+      className={cn('inline-flex items-center gap-1 transition-colors hover:text-foreground', HOUSE_TABLE_SORT_TRIGGER_CLASS, alignClass)}
     >
       <span>{label}</span>
       {isActive ? (
@@ -792,7 +805,7 @@ export function WorkspacesPage() {
   const [filterKey, setFilterKey] = useState<FilterKey>(() => parseFilterKey(searchParams.get('filter')))
   const [sortColumn, setSortColumn] = useState<SortColumn>(() => parseSortColumn(searchParams.get('sort')))
   const [sortDirection, setSortDirection] = useState<SortDirection>(() => parseSortDirection(searchParams.get('dir')))
-  const [workspaceDrilldownDesktopOpen, setWorkspaceDrilldownDesktopOpen] = useState(true)
+  const [workspaceDrilldownDesktopOpen, setWorkspaceDrilldownDesktopOpen] = useState(false)
   const [workspaceDrilldownMobileOpen, setWorkspaceDrilldownMobileOpen] = useState(false)
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
   const [createError, setCreateError] = useState('')
@@ -1303,6 +1316,15 @@ export function WorkspacesPage() {
     navigate(`/w/${workspaceId}/overview`)
   }
 
+  const onSelectWorkspace = (workspaceId: string) => {
+    setActiveWorkspaceId(workspaceId)
+    if (window.matchMedia('(min-width: 1280px)').matches) {
+      setWorkspaceDrilldownDesktopOpen(true)
+      return
+    }
+    navigate(`/w/${workspaceId}/overview`)
+  }
+
   const buildWorkspacesReturnPath = () => {
     const params = new URLSearchParams()
     params.set('view', centerView)
@@ -1400,7 +1422,7 @@ export function WorkspacesPage() {
     event.stopPropagation()
     const rect = event.currentTarget.getBoundingClientRect()
     const menuWidth = 160
-    const menuHeight = 168
+    const menuHeight = 204
     const gap = 6
     const rightAlignedX = rect.right - menuWidth
     const x = Math.max(8, Math.min(rightAlignedX, window.innerWidth - menuWidth - 8))
@@ -1527,14 +1549,15 @@ export function WorkspacesPage() {
                       </Button>
                     ) : null}
                   </div>
-                  <div className={cn(HOUSE_SECTION_TOOLS_CLASS, HOUSE_SECTION_TOOLS_WORKSPACE_CLASS)}>
+                  <div className={cn(HOUSE_SECTION_TOOLS_CLASS, HOUSE_SECTION_TOOLS_WORKSPACE_CLASS, HOUSE_ACTIONS_PILL_CLASS)}>
                     <Button
                       type="button"
                       size="sm"
                       className={cn(
-                        HOUSE_ACTION_BUTTON_CLASS,
+                        HOUSE_ACTIONS_PILL_PRIMARY_CLASS,
                         HOUSE_BUTTON_TEXT_CLASS,
                         HOUSE_SECTION_TOOL_BUTTON_CLASS,
+                        'h-8 gap-1.5 px-3',
                         'xl:hidden',
                       )}
                       onClick={() => setWorkspaceDrilldownMobileOpen(true)}
@@ -1542,59 +1565,45 @@ export function WorkspacesPage() {
                       <PanelRightOpen className="mr-1 h-3.5 w-3.5" />
                       Drilldown
                     </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className={cn(
-                        HOUSE_ACTION_BUTTON_CLASS,
-                        HOUSE_BUTTON_TEXT_CLASS,
-                        HOUSE_SECTION_TOOL_BUTTON_CLASS,
-                        'hidden xl:inline-flex',
-                      )}
-                      onClick={() => setWorkspaceDrilldownDesktopOpen((current) => !current)}
-                    >
-                      {workspaceDrilldownDesktopOpen ? (
-                        <PanelRightClose className="mr-1 h-3.5 w-3.5" />
-                      ) : (
-                        <PanelRightOpen className="mr-1 h-3.5 w-3.5" />
-                      )}
-                      {workspaceDrilldownDesktopOpen ? 'Collapse chart' : 'Expand chart'}
-                    </Button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('table')}
-                      className={cn(
-                        'h-8 rounded-full px-3 text-sm',
-                        HOUSE_BUTTON_TEXT_CLASS,
-                        HOUSE_SECTION_TOOL_BUTTON_CLASS,
-                        HOUSE_SECTION_TOOL_TOGGLE_CLASS,
-                        viewMode === 'table' ? HOUSE_SECTION_TOOL_TOGGLE_ON_CLASS : HOUSE_SECTION_TOOL_TOGGLE_OFF_CLASS,
-                      )}
-                    >
-                      Table
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('cards')}
-                      className={cn(
-                        'h-8 rounded-full px-3 text-sm',
-                        HOUSE_BUTTON_TEXT_CLASS,
-                        HOUSE_SECTION_TOOL_BUTTON_CLASS,
-                        HOUSE_SECTION_TOOL_TOGGLE_CLASS,
-                        viewMode === 'cards' ? HOUSE_SECTION_TOOL_TOGGLE_ON_CLASS : HOUSE_SECTION_TOOL_TOGGLE_OFF_CLASS,
-                      )}
-                    >
-                      Cards
-                    </button>
+                    <div className={HOUSE_ACTIONS_PILL_ICON_GROUP_CLASS}>
+                      <button
+                        type="button"
+                        onClick={() => setViewMode('table')}
+                        className={cn(
+                          'h-8 px-3 text-sm',
+                          HOUSE_ACTIONS_PILL_ICON_CLASS,
+                          HOUSE_BUTTON_TEXT_CLASS,
+                          HOUSE_SECTION_TOOL_BUTTON_CLASS,
+                          HOUSE_SECTION_TOOL_TOGGLE_CLASS,
+                          viewMode === 'table' ? HOUSE_SECTION_TOOL_TOGGLE_ON_CLASS : HOUSE_SECTION_TOOL_TOGGLE_OFF_CLASS,
+                        )}
+                      >
+                        Table
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setViewMode('cards')}
+                        className={cn(
+                          'h-8 px-3 text-sm',
+                          HOUSE_ACTIONS_PILL_ICON_CLASS,
+                          HOUSE_BUTTON_TEXT_CLASS,
+                          HOUSE_SECTION_TOOL_BUTTON_CLASS,
+                          HOUSE_SECTION_TOOL_TOGGLE_CLASS,
+                          viewMode === 'cards' ? HOUSE_SECTION_TOOL_TOGGLE_ON_CLASS : HOUSE_SECTION_TOOL_TOGGLE_OFF_CLASS,
+                        )}
+                      >
+                        Cards
+                      </button>
+                    </div>
                   </div>
                 </div>
 
                 {filteredWorkspaces.length === 0 ? (
                   <div className="p-6 text-sm text-muted-foreground">No workspaces match the current filter.</div>
                 ) : viewMode === 'table' ? (
-                  <div className={HOUSE_TABLE_SHELL_CLASS}>
+                  <div className={cn(HOUSE_TABLE_SHELL_CLASS, HOUSE_WORKSPACE_TABLE_SHELL_CLASS)}>
                     <table className="w-full min-w-sz-980 text-sm">
-                      <thead className={cn('text-left', HOUSE_TABLE_HEAD_CLASS)}>
+                      <thead className={HOUSE_TABLE_HEAD_CLASS}>
                         <tr>
                           <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>
                             <SortableHeader
@@ -1605,27 +1614,29 @@ export function WorkspacesPage() {
                               onSort={onSort}
                             />
                           </th>
-                          <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Owner</th>
-                          <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Collaborators</th>
-                          <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>
+                          <th className={cn('px-3 py-2 text-center', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Owner</th>
+                          <th className={cn('px-3 py-2 text-center', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Collaborators</th>
+                          <th className={cn('px-3 py-2 text-center', HOUSE_TABLE_HEAD_TEXT_CLASS)}>
                             <SortableHeader
                               label="Stage"
                               column="stage"
                               activeColumn={sortColumn}
                               direction={sortDirection}
+                              align="center"
                               onSort={onSort}
                             />
                           </th>
-                          <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>
+                          <th className={cn('px-3 py-2 text-center', HOUSE_TABLE_HEAD_TEXT_CLASS)}>
                             <SortableHeader
                               label="Status"
                               column="status"
                               activeColumn={sortColumn}
                               direction={sortDirection}
+                              align="center"
                               onSort={onSort}
                             />
                           </th>
-                          <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Unread</th>
+                          <th className={cn('px-3 py-2 text-center', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Unread</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1640,7 +1651,8 @@ export function WorkspacesPage() {
                             <tr
                               key={workspace.id}
                               className={cn('cursor-pointer', HOUSE_TABLE_ROW_CLASS)}
-                              onClick={() => onOpenWorkspace(workspace.id)}
+                              onClick={() => onSelectWorkspace(workspace.id)}
+                              onDoubleClick={() => onOpenWorkspace(workspace.id)}
                             >
                               <td className={cn('px-3 py-2 align-middle font-medium', HOUSE_TABLE_CELL_TEXT_CLASS)}>
                                 <div className="flex items-center justify-between gap-2">
@@ -1700,18 +1712,20 @@ export function WorkspacesPage() {
                                   />
                                 </div>
                               </td>
-                              <td className={cn('px-3 py-2 align-middle text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>{ownerLabel}</td>
-                              <td className={cn('px-3 py-2 align-middle text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                                <CollaboratorBanners
-                                  workspace={workspace}
-                                  canManage={isWorkspaceOwner(workspace, workspaceOwnerName)}
-                                  onAddCollaborator={onAddCollaborator}
-                                  onToggleRemoved={onToggleCollaboratorRemoved}
-                                />
+                              <td className={cn('px-3 py-2 align-middle text-center text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>{ownerLabel}</td>
+                              <td className={cn('px-3 py-2 align-middle text-center text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                                <div className="flex justify-center">
+                                  <CollaboratorBanners
+                                    workspace={workspace}
+                                    canManage={isWorkspaceOwner(workspace, workspaceOwnerName)}
+                                    onAddCollaborator={onAddCollaborator}
+                                    onToggleRemoved={onToggleCollaboratorRemoved}
+                                  />
+                                </div>
                               </td>
-                              <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>{workspaceStage(workspace)}</td>
-                              <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                                <div className="flex items-center gap-2">
+                              <td className={cn('px-3 py-2 align-middle text-center', HOUSE_TABLE_CELL_TEXT_CLASS)}>{workspaceStage(workspace)}</td>
+                              <td className={cn('px-3 py-2 align-middle text-center', HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                                <div className="flex items-center justify-center gap-2">
                                   <span
                                     className={cn(
                                       'inline-block h-2.5 w-2.5 rounded-full',
@@ -1721,7 +1735,7 @@ export function WorkspacesPage() {
                                   <span>{workspaceStatus(workspace)}</span>
                                 </div>
                               </td>
-                              <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                              <td className={cn('px-3 py-2 align-middle text-center', HOUSE_TABLE_CELL_TEXT_CLASS)}>
                                 <button
                                   type="button"
                                   className={cn(
@@ -1756,7 +1770,8 @@ export function WorkspacesPage() {
                         <button
                           key={workspace.id}
                           type="button"
-                          onClick={() => onOpenWorkspace(workspace.id)}
+                          onClick={() => onSelectWorkspace(workspace.id)}
+                          onDoubleClick={() => onOpenWorkspace(workspace.id)}
                           className="rounded-lg border border-border bg-background p-3 text-left hover:bg-accent/30"
                         >
                         <div className="flex items-start justify-between gap-2">
@@ -1968,6 +1983,17 @@ export function WorkspacesPage() {
             {workspaceDrilldownDesktopOpen ? (
               <ScrollArea className="h-full">
                 <div className="space-y-3 p-3">
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setWorkspaceDrilldownDesktopOpen(false)}
+                      className={cn(HOUSE_DRILLDOWN_ACTION_CLASS, 'inline-flex h-8 w-8 items-center justify-center p-0')}
+                      aria-label="Collapse workspace drilldown panel"
+                      title="Collapse workspace drilldown panel"
+                    >
+                      <PanelRightClose className="h-4 w-4" />
+                    </button>
+                  </div>
                   <WorkspacesDrilldownPanel
                     filteredWorkspaces={filteredWorkspaces}
                     filterCounts={filterCounts}
@@ -1978,15 +2004,21 @@ export function WorkspacesPage() {
               </ScrollArea>
             ) : (
               <div className="flex h-full items-start justify-center pt-3">
-                <button
-                  type="button"
-                  onClick={() => setWorkspaceDrilldownDesktopOpen(true)}
-                  className={cn(HOUSE_DRILLDOWN_ACTION_CLASS, 'inline-flex h-8 w-8 items-center justify-center p-0')}
-                  aria-label="Expand workspace drilldown panel"
-                  title="Expand workspace drilldown panel"
-                >
-                  <PanelRightOpen className="h-4 w-4" />
-                </button>
+                <div className={cn(HOUSE_SECTION_TOOLS_CLASS, HOUSE_SECTION_TOOLS_WORKSPACE_CLASS, HOUSE_ACTIONS_PILL_CLASS)}>
+                  <button
+                    type="button"
+                    onClick={() => setWorkspaceDrilldownDesktopOpen(true)}
+                    className={cn(
+                      HOUSE_ACTIONS_PILL_ICON_CLASS,
+                      HOUSE_SECTION_TOOL_BUTTON_CLASS,
+                      'inline-flex h-8 w-8 items-center justify-center p-0',
+                    )}
+                    aria-label="Expand workspace drilldown panel"
+                    title="Expand workspace drilldown panel"
+                  >
+                    <PanelRightOpen className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             )}
           </aside>
@@ -2143,6 +2175,17 @@ export function WorkspacesPage() {
                 style={{ left: menuState.x, top: menuState.y }}
                 onClick={(event) => event.stopPropagation()}
               >
+                <button
+                  type="button"
+                  data-house-role="workspace-menu-item-open"
+                  className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50"
+                  onClick={() => {
+                    onOpenWorkspace(menuWorkspace.id)
+                    setMenuState(null)
+                  }}
+                >
+                  Open workspace
+                </button>
                 <button
                   type="button"
                   data-house-role="workspace-menu-item-invite"
