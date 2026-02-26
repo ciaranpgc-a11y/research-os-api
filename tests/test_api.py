@@ -342,11 +342,16 @@ def test_v1_library_asset_routes_require_session_token(monkeypatch, tmp_path) ->
             "/v1/library/assets/asset-unknown/access",
             json={"collaborator_user_ids": []},
         )
+        rename_response = client.patch(
+            "/v1/library/assets/asset-unknown",
+            json={"filename": "renamed.csv"},
+        )
         download_response = client.get("/v1/library/assets/asset-unknown/download")
 
     assert upload_response.status_code == 401
     assert list_response.status_code == 401
     assert patch_response.status_code == 401
+    assert rename_response.status_code == 401
     assert download_response.status_code == 401
 
 
@@ -526,6 +531,26 @@ def test_v1_library_asset_access_controls_and_download(monkeypatch, tmp_path) ->
             "Only the asset owner can manage file access."
             in collaborator_patch_attempt.json()["error"]["detail"]
         )
+
+        collaborator_rename_attempt = client.patch(
+            f"/v1/library/assets/{asset_id}",
+            headers=collaborator_headers,
+            json={"filename": "collaborator-rename.csv"},
+        )
+        assert collaborator_rename_attempt.status_code == 400
+        assert (
+            "Only the asset owner can rename files."
+            in collaborator_rename_attempt.json()["error"]["detail"]
+        )
+
+        owner_rename = client.patch(
+            f"/v1/library/assets/{asset_id}",
+            headers=owner_headers,
+            json={"filename": "workspace-dataset-v2.csv"},
+        )
+        assert owner_rename.status_code == 200
+        assert owner_rename.json()["filename"] == "workspace-dataset-v2.csv"
+        assert owner_rename.json()["kind"] == "csv"
 
         owner_patch_outsider_attempt = client.patch(
             f"/v1/library/assets/{asset_id}/access",
@@ -3273,6 +3298,16 @@ def test_v1_workspace_state_round_trip_persists_for_authenticated_user(
                         "name": "HF Registry Manuscript",
                         "owner_name": "Workspace User",
                         "collaborators": ["Aisha Rahman", "Aisha Rahman"],
+                        "pending_collaborators": [
+                            "Tom Price",
+                            "Aisha Rahman",
+                            "Tom Price",
+                        ],
+                        "collaborator_roles": {"Aisha Rahman": "reviewer"},
+                        "pending_collaborator_roles": {
+                            "Tom Price": "viewer",
+                            "Aisha Rahman": "editor",
+                        },
                         "removed_collaborators": ["Aisha Rahman", "Unknown Person"],
                         "version": "0.2",
                         "health": "amber",
@@ -3288,6 +3323,7 @@ def test_v1_workspace_state_round_trip_persists_for_authenticated_user(
                         "workspace_id": "hf-registry",
                         "workspace_name": "HF Registry Manuscript",
                         "author_name": "Eleanor Hart",
+                        "collaborator_role": "reviewer",
                         "invited_at": "2026-02-25T09:30:00Z",
                     }
                 ],
@@ -3297,6 +3333,7 @@ def test_v1_workspace_state_round_trip_persists_for_authenticated_user(
                         "workspace_id": "hf-registry",
                         "workspace_name": "HF Registry Manuscript",
                         "invitee_name": "Tom Price",
+                        "role": "viewer",
                         "invited_at": "2026-02-25T09:45:00Z",
                         "status": "pending",
                     }
@@ -3307,13 +3344,29 @@ def test_v1_workspace_state_round_trip_persists_for_authenticated_user(
         saved_state = put_workspace_state.json()
         assert saved_state["active_workspace_id"] == "hf-registry"
         assert saved_state["workspaces"][0]["collaborators"] == ["Aisha Rahman"]
+        assert saved_state["workspaces"][0]["pending_collaborators"] == [
+            "Tom Price",
+            "Aisha Rahman",
+        ]
+        assert saved_state["workspaces"][0]["collaborator_roles"] == {
+            "Aisha Rahman": "reviewer"
+        }
+        assert saved_state["workspaces"][0]["pending_collaborator_roles"] == {
+            "Tom Price": "viewer",
+            "Aisha Rahman": "editor",
+        }
         assert saved_state["workspaces"][0]["removed_collaborators"] == ["Aisha Rahman"]
 
         get_workspace_state = client.get("/v1/workspaces/state", headers=headers)
         assert get_workspace_state.status_code == 200
         assert get_workspace_state.json()["workspaces"][0]["id"] == "hf-registry"
         assert get_workspace_state.json()["author_requests"][0]["id"] == "author-01"
+        assert (
+            get_workspace_state.json()["author_requests"][0]["collaborator_role"]
+            == "reviewer"
+        )
         assert get_workspace_state.json()["invitations_sent"][0]["id"] == "invite-01"
+        assert get_workspace_state.json()["invitations_sent"][0]["role"] == "viewer"
 
         put_inbox_state = client.put(
             "/v1/workspaces/inbox/state",
@@ -3399,11 +3452,13 @@ def test_v1_workspace_granular_endpoints_round_trip(monkeypatch, tmp_path) -> No
             headers=headers,
             json={
                 "collaborators": ["Aisha Rahman", "Aisha Rahman"],
+                "collaborator_roles": {"Aisha Rahman": "reviewer"},
                 "removed_collaborators": ["Aisha Rahman", "Ghost User"],
             },
         )
         assert patch_workspace.status_code == 200
         assert patch_workspace.json()["collaborators"] == ["Aisha Rahman"]
+        assert patch_workspace.json()["collaborator_roles"] == {"Aisha Rahman": "reviewer"}
         assert patch_workspace.json()["removed_collaborators"] == ["Aisha Rahman"]
 
         create_invitation = client.post(
@@ -3412,16 +3467,28 @@ def test_v1_workspace_granular_endpoints_round_trip(monkeypatch, tmp_path) -> No
             json={
                 "workspace_id": "hf-registry",
                 "invitee_name": "Tom Price",
+                "role": "viewer",
                 "status": "pending",
             },
         )
         assert create_invitation.status_code == 200
         invitation_id = create_invitation.json()["id"]
+        assert create_invitation.json()["role"] == "viewer"
         assert create_invitation.json()["status"] == "pending"
+        workspace_after_invite = client.get("/v1/workspaces", headers=headers)
+        assert workspace_after_invite.status_code == 200
+        workspace_record = next(
+            item
+            for item in workspace_after_invite.json()["items"]
+            if item["id"] == "hf-registry"
+        )
+        assert workspace_record["pending_collaborators"] == ["Tom Price"]
+        assert workspace_record["pending_collaborator_roles"] == {"Tom Price": "viewer"}
 
         list_invitations = client.get("/v1/workspaces/invitations/sent", headers=headers)
         assert list_invitations.status_code == 200
         assert list_invitations.json()["items"][0]["id"] == invitation_id
+        assert list_invitations.json()["items"][0]["role"] == "viewer"
 
         list_author_requests = client.get("/v1/workspaces/author-requests", headers=headers)
         assert list_author_requests.status_code == 200
@@ -3527,15 +3594,29 @@ def test_v1_workspace_author_request_accept_updates_invitation_status(
             json={
                 "workspace_id": "4d-flow-rhc-paper",
                 "invitee_name": "Invitee User",
+                "role": "reviewer",
                 "status": "pending",
             },
         )
         assert create_invitation.status_code == 200
+        assert create_invitation.json()["role"] == "reviewer"
         invitation_id = create_invitation.json()["id"]
+        owner_workspaces_after_invite = client.get("/v1/workspaces", headers=owner_headers)
+        assert owner_workspaces_after_invite.status_code == 200
+        owner_workspace_after_invite = next(
+            item
+            for item in owner_workspaces_after_invite.json()["items"]
+            if item["id"] == "4d-flow-rhc-paper"
+        )
+        assert "Invitee User" in owner_workspace_after_invite["pending_collaborators"]
+        assert owner_workspace_after_invite["pending_collaborator_roles"] == {
+            "Invitee User": "reviewer"
+        }
 
         invitee_requests = client.get("/v1/workspaces/author-requests", headers=invitee_headers)
         assert invitee_requests.status_code == 200
         assert len(invitee_requests.json()["items"]) == 1
+        assert invitee_requests.json()["items"][0]["collaborator_role"] == "reviewer"
         request_id = invitee_requests.json()["items"][0]["id"]
 
         accept_request = client.post(
@@ -3547,6 +3628,9 @@ def test_v1_workspace_author_request_accept_updates_invitation_status(
         assert accept_request.json()["workspace"]["name"] == "4D flow RHC paper"
         assert accept_request.json()["workspace"]["owner_name"] == "Owner User"
         assert accept_request.json()["workspace"]["collaborators"] == ["Invitee User"]
+        assert accept_request.json()["workspace"]["collaborator_roles"] == {
+            "Invitee User": "reviewer"
+        }
 
         owner_invitations = client.get("/v1/workspaces/invitations/sent", headers=owner_headers)
         assert owner_invitations.status_code == 200
@@ -3555,6 +3639,7 @@ def test_v1_workspace_author_request_accept_updates_invitation_status(
             for item in owner_invitations.json()["items"]
             if item["id"] == invitation_id
         )
+        assert matched["role"] == "reviewer"
         assert matched["status"] == "accepted"
 
         owner_workspaces = client.get("/v1/workspaces", headers=owner_headers)
@@ -3565,6 +3650,9 @@ def test_v1_workspace_author_request_accept_updates_invitation_status(
             if item["id"] == "4d-flow-rhc-paper"
         )
         assert "Invitee User" in owner_workspace["collaborators"]
+        assert owner_workspace["collaborator_roles"] == {"Invitee User": "reviewer"}
+        assert "Invitee User" not in owner_workspace["pending_collaborators"]
+        assert owner_workspace["pending_collaborator_roles"] == {}
         assert "Invitee User" not in owner_workspace["removed_collaborators"]
 
 
@@ -3627,15 +3715,18 @@ def test_v1_workspace_invitation_requires_workspace_owner(
             json={
                 "workspace_id": "owner-only-invites",
                 "invitee_name": "Collaborator User",
+                "role": "viewer",
                 "status": "pending",
             },
         )
         assert invite_collaborator.status_code == 200
+        assert invite_collaborator.json()["role"] == "viewer"
 
         collaborator_requests = client.get(
             "/v1/workspaces/author-requests", headers=collaborator_headers
         )
         assert collaborator_requests.status_code == 200
+        assert collaborator_requests.json()["items"][0]["collaborator_role"] == "viewer"
         request_id = collaborator_requests.json()["items"][0]["id"]
 
         accept_request = client.post(
@@ -3644,6 +3735,9 @@ def test_v1_workspace_invitation_requires_workspace_owner(
             json={"collaborator_name": "Collaborator User"},
         )
         assert accept_request.status_code == 200
+        assert accept_request.json()["workspace"]["collaborator_roles"] == {
+            "Collaborator User": "viewer"
+        }
 
         collaborator_invite_attempt = client.post(
             "/v1/workspaces/invitations/sent",
@@ -3651,6 +3745,7 @@ def test_v1_workspace_invitation_requires_workspace_owner(
             json={
                 "workspace_id": "owner-only-invites",
                 "invitee_name": "Target User",
+                "role": "viewer",
                 "status": "pending",
             },
         )
@@ -3659,6 +3754,157 @@ def test_v1_workspace_invitation_requires_workspace_owner(
             "Only the workspace owner can invite collaborators."
             in collaborator_invite_attempt.json()["error"]["detail"]
         )
+
+        collaborator_role_patch_attempt = client.patch(
+            "/v1/workspaces/owner-only-invites",
+            headers=collaborator_headers,
+            json={
+                "collaborator_roles": {"Collaborator User": "viewer"},
+            },
+        )
+        assert collaborator_role_patch_attempt.status_code == 400
+        assert (
+            "Only the workspace owner can manage collaborators."
+            in collaborator_role_patch_attempt.json()["error"]["detail"]
+        )
+
+
+def test_v1_workspace_owner_transfer_promotes_new_owner_and_enforces_owner_controls(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        owner_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-transfer-owner@example.com",
+                "password": "StrongPassword123",
+                "name": "Owner User",
+            },
+        )
+        collaborator_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-transfer-collab@example.com",
+                "password": "StrongPassword123",
+                "name": "Collaborator User",
+            },
+        )
+        target_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-transfer-target@example.com",
+                "password": "StrongPassword123",
+                "name": "Target User",
+            },
+        )
+        assert owner_register.status_code == 200
+        assert collaborator_register.status_code == 200
+        assert target_register.status_code == 200
+        owner_headers = _auth_headers(owner_register.json()["session_token"])
+        collaborator_headers = _auth_headers(collaborator_register.json()["session_token"])
+
+        create_workspace = client.post(
+            "/v1/workspaces",
+            headers=owner_headers,
+            json={
+                "id": "transfer-ownership-workspace",
+                "name": "Transfer Ownership Workspace",
+                "owner_name": "Owner User",
+                "collaborators": ["Collaborator User"],
+                "collaborator_roles": {"Collaborator User": "reviewer"},
+                "removed_collaborators": [],
+                "version": "0.1",
+                "health": "amber",
+                "pinned": False,
+                "archived": False,
+            },
+        )
+        assert create_workspace.status_code == 200
+
+        invalid_transfer = client.patch(
+            "/v1/workspaces/transfer-ownership-workspace",
+            headers=owner_headers,
+            json={"owner_name": "Target User"},
+        )
+        assert invalid_transfer.status_code == 400
+        assert (
+            "New workspace owner must be an active collaborator."
+            in invalid_transfer.json()["error"]["detail"]
+        )
+
+        transfer_workspace = client.patch(
+            "/v1/workspaces/transfer-ownership-workspace",
+            headers=owner_headers,
+            json={"owner_name": "Collaborator User"},
+        )
+        assert transfer_workspace.status_code == 200
+        transferred_payload = transfer_workspace.json()
+        assert transferred_payload["owner_name"] == "Collaborator User"
+        assert transferred_payload["collaborators"] == ["Owner User"]
+        assert transferred_payload["collaborator_roles"] == {"Owner User": "editor"}
+
+        owner_workspaces = client.get("/v1/workspaces", headers=owner_headers)
+        assert owner_workspaces.status_code == 200
+        owner_workspace = next(
+            item
+            for item in owner_workspaces.json()["items"]
+            if item["id"] == "transfer-ownership-workspace"
+        )
+        assert owner_workspace["owner_name"] == "Collaborator User"
+        assert owner_workspace["collaborators"] == ["Owner User"]
+
+        collaborator_workspaces = client.get("/v1/workspaces", headers=collaborator_headers)
+        assert collaborator_workspaces.status_code == 200
+        collaborator_workspace = next(
+            item
+            for item in collaborator_workspaces.json()["items"]
+            if item["id"] == "transfer-ownership-workspace"
+        )
+        assert collaborator_workspace["owner_name"] == "Collaborator User"
+        assert "Owner User" in collaborator_workspace["collaborators"]
+        assert "Collaborator User" not in collaborator_workspace["collaborators"]
+
+        former_owner_invite_attempt = client.post(
+            "/v1/workspaces/invitations/sent",
+            headers=owner_headers,
+            json={
+                "workspace_id": "transfer-ownership-workspace",
+                "invitee_name": "Target User",
+                "role": "viewer",
+                "status": "pending",
+            },
+        )
+        assert former_owner_invite_attempt.status_code == 400
+        assert (
+            "Only the workspace owner can invite collaborators."
+            in former_owner_invite_attempt.json()["error"]["detail"]
+        )
+
+        former_owner_role_patch_attempt = client.patch(
+            "/v1/workspaces/transfer-ownership-workspace",
+            headers=owner_headers,
+            json={"collaborator_roles": {"Owner User": "reviewer"}},
+        )
+        assert former_owner_role_patch_attempt.status_code == 400
+        assert (
+            "Only the workspace owner can manage collaborators."
+            in former_owner_role_patch_attempt.json()["error"]["detail"]
+        )
+
+        new_owner_invite_attempt = client.post(
+            "/v1/workspaces/invitations/sent",
+            headers=collaborator_headers,
+            json={
+                "workspace_id": "transfer-ownership-workspace",
+                "invitee_name": "Target User",
+                "role": "viewer",
+                "status": "pending",
+            },
+        )
+        assert new_owner_invite_attempt.status_code == 200
+        assert new_owner_invite_attempt.json()["role"] == "viewer"
 
 
 def test_v1_workspace_inbox_messages_are_shared_with_workspace_collaborators(
@@ -3711,6 +3957,7 @@ def test_v1_workspace_inbox_messages_are_shared_with_workspace_collaborators(
             json={
                 "workspace_id": "shared-inbox-workspace",
                 "invitee_name": "Collaborator User",
+                "role": "editor",
                 "status": "pending",
             },
         )
@@ -3940,6 +4187,7 @@ def test_v1_workspace_author_request_decline_updates_invitation_status(
             json={
                 "workspace_id": "decline-rhc-paper",
                 "invitee_name": "Invitee User",
+                "role": "editor",
                 "status": "pending",
             },
         )
@@ -4025,6 +4273,7 @@ def test_v1_workspace_inbox_websocket_relays_typing_events(
             json={
                 "workspace_id": "hf-registry",
                 "invitee_name": "Realtime User B",
+                "role": "editor",
                 "status": "pending",
             },
         )

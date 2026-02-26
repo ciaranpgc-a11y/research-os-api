@@ -108,6 +108,9 @@ const defaultFixture: WorkspacesPageFixture = {
       ownerName: 'Ciaran Clarke',
       collaborators: ['A. Patel'],
       removedCollaborators: [],
+      pendingCollaborators: [],
+      collaboratorRoles: {},
+      pendingCollaboratorRoles: {},
       version: '0.4',
       health: 'amber',
       updatedAt: '2026-02-25T15:57:00Z',
@@ -122,6 +125,7 @@ const defaultFixture: WorkspacesPageFixture = {
       workspaceId: 'peds-echo-study',
       workspaceName: 'Pediatric Echo Outcomes',
       authorName: 'Maya Singh',
+      collaboratorRole: 'editor',
       invitedAt: '2026-02-24T10:10:00Z',
     },
   ],
@@ -131,6 +135,7 @@ const defaultFixture: WorkspacesPageFixture = {
       workspaceId: 'hf-registry',
       workspaceName: 'HF Registry Manuscript',
       inviteeName: 'Devon Li',
+      role: 'editor',
       invitedAt: '2026-02-25T11:25:00Z',
       status: 'pending',
     },
@@ -165,6 +170,9 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
       ownerName: 'Ciaran Clarke',
       collaborators: ['A. Patel'],
       removedCollaborators: [],
+      pendingCollaborators: [],
+      collaboratorRoles: {},
+      pendingCollaboratorRoles: {},
       version: '0.4',
       health: 'amber',
       updatedAt: '2026-02-25T15:57:00Z',
@@ -177,6 +185,9 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
       ownerName: 'Ciaran Clarke',
       collaborators: ['S. Roy', 'L. Santos'],
       removedCollaborators: ['L. Santos'],
+      pendingCollaborators: [],
+      collaboratorRoles: {},
+      pendingCollaboratorRoles: {},
       version: '0.9',
       health: 'green',
       updatedAt: '2026-02-24T09:18:00Z',
@@ -189,6 +200,9 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
       ownerName: 'Ciaran Clarke',
       collaborators: [],
       removedCollaborators: [],
+      pendingCollaborators: [],
+      collaboratorRoles: {},
+      pendingCollaboratorRoles: {},
       version: '1.2',
       health: 'red',
       updatedAt: '2026-02-22T13:41:00Z',
@@ -201,6 +215,9 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
       ownerName: 'Ciaran Clarke',
       collaborators: ['M. Evans'],
       removedCollaborators: [],
+      pendingCollaborators: [],
+      collaboratorRoles: {},
+      pendingCollaboratorRoles: {},
       version: '2.7',
       health: 'green',
       updatedAt: '2026-01-06T08:12:00Z',
@@ -215,6 +232,7 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
       workspaceId: 'stroke-ct-outcomes',
       workspaceName: 'Stroke CT Outcomes',
       authorName: 'Aisha Rahman',
+      collaboratorRole: 'editor',
       invitedAt: '2026-02-23T09:05:00Z',
     },
     {
@@ -222,6 +240,7 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
       workspaceId: 'oncology-cardiac-risk',
       workspaceName: 'Oncology Cardiac Risk Registry',
       authorName: 'Tom Price',
+      collaboratorRole: 'editor',
       invitedAt: '2026-02-22T16:42:00Z',
     },
   ],
@@ -231,6 +250,7 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
       workspaceId: 'af-screening',
       workspaceName: 'AF Screening Cohort',
       inviteeName: 'Nina Brooks',
+      role: 'editor',
       invitedAt: '2026-02-25T08:14:00Z',
       status: 'pending',
     },
@@ -239,6 +259,7 @@ const mixedPortfolioFixture: WorkspacesPageFixture = {
       workspaceId: 'hf-registry',
       workspaceName: 'HF Registry Manuscript',
       inviteeName: 'Devon Li',
+      role: 'editor',
       invitedAt: '2026-02-24T14:40:00Z',
       status: 'accepted',
     },
@@ -270,6 +291,9 @@ const dataRichFixture: WorkspacesPageFixture = {
       ownerName: 'Ciaran Clarke',
       collaborators: ['J. Meyer', 'S. Wong', 'N. Brooks'],
       removedCollaborators: ['S. Wong'],
+      pendingCollaborators: [],
+      collaboratorRoles: {},
+      pendingCollaboratorRoles: {},
       version: '0.7',
       health: 'amber',
       updatedAt: '2026-02-25T19:10:00Z',
@@ -282,6 +306,9 @@ const dataRichFixture: WorkspacesPageFixture = {
       ownerName: 'Ciaran Clarke',
       collaborators: ['P. Green', 'K. Allen'],
       removedCollaborators: [],
+      pendingCollaborators: [],
+      collaboratorRoles: {},
+      pendingCollaboratorRoles: {},
       version: '1.0',
       health: 'green',
       updatedAt: '2026-02-25T09:34:00Z',
@@ -294,6 +321,9 @@ const dataRichFixture: WorkspacesPageFixture = {
       ownerName: 'Maya Singh',
       collaborators: ['Ciaran Clarke', 'R. Kim'],
       removedCollaborators: [],
+      pendingCollaborators: [],
+      collaboratorRoles: {},
+      pendingCollaboratorRoles: {},
       version: '0.3',
       health: 'amber',
       updatedAt: '2026-02-23T15:11:00Z',
@@ -306,6 +336,9 @@ const dataRichFixture: WorkspacesPageFixture = {
       ownerName: 'Ciaran Clarke',
       collaborators: ['I. Ahmed', 'D. Wu', 'O. Tan'],
       removedCollaborators: ['O. Tan'],
+      pendingCollaborators: [],
+      collaboratorRoles: {},
+      pendingCollaboratorRoles: {},
       version: '1.8',
       health: 'red',
       updatedAt: '2026-02-21T07:27:00Z',
@@ -321,6 +354,7 @@ const dataRichFixture: WorkspacesPageFixture = {
       workspaceId: 'trial-followup',
       workspaceName: 'Trial Follow-Up Meta Analysis',
       authorName: 'Eleanor Hart',
+      collaboratorRole: 'editor',
       invitedAt: '2026-02-25T08:31:00Z',
     },
   ],
@@ -331,6 +365,7 @@ const dataRichFixture: WorkspacesPageFixture = {
       workspaceId: '4d-flow-rhc-paper',
       workspaceName: '4D flow RHC paper',
       inviteeName: 'Sofia Green',
+      role: 'editor',
       invitedAt: '2026-02-25T20:40:00Z',
       status: 'pending',
     },
@@ -339,6 +374,7 @@ const dataRichFixture: WorkspacesPageFixture = {
       workspaceId: 'echo-ai-validation',
       workspaceName: 'Echo AI Validation',
       inviteeName: 'Raj Kumar',
+      role: 'editor',
       invitedAt: '2026-02-24T13:09:00Z',
       status: 'accepted',
     },
@@ -413,6 +449,15 @@ const collaboratorStateFixture: WorkspacesPageFixture = {
       ownerName: 'Ciaran Clarke',
       collaborators: ['A. Patel', 'M. Evans', 'L. Santos'],
       removedCollaborators: ['M. Evans'],
+      pendingCollaborators: ['R. Khan'],
+      collaboratorRoles: {
+        'A. Patel': 'editor',
+        'M. Evans': 'reviewer',
+        'L. Santos': 'viewer',
+      },
+      pendingCollaboratorRoles: {
+        'R. Khan': 'reviewer',
+      },
       version: '0.8',
       health: 'amber',
       updatedAt: '2026-02-25T18:20:00Z',
@@ -441,6 +486,14 @@ const collaboratorReadOnlyFixture: WorkspacesPageFixture = {
       ownerName: 'Maya Singh',
       collaborators: ['Ciaran Clarke', 'A. Patel'],
       removedCollaborators: ['A. Patel'],
+      pendingCollaborators: ['J. Harper'],
+      collaboratorRoles: {
+        'Ciaran Clarke': 'editor',
+        'A. Patel': 'viewer',
+      },
+      pendingCollaboratorRoles: {
+        'J. Harper': 'reviewer',
+      },
       version: '0.6',
       health: 'amber',
       updatedAt: '2026-02-25T12:05:00Z',
@@ -458,6 +511,56 @@ const collaboratorReadOnlyFixture: WorkspacesPageFixture = {
     { workspaceId: 'external-study', readerName: 'Ciaran Clarke', readAt: '2026-02-01T08:00:00Z' },
   ],
   libraryAssets: defaultLibraryAssets,
+}
+
+const collaboratorPendingOnlyFixture: WorkspacesPageFixture = {
+  workspaces: [
+    {
+      id: 'pending-demo',
+      name: 'Pending Collaborator Demo',
+      ownerName: 'Ciaran Clarke',
+      collaborators: [],
+      removedCollaborators: [],
+      pendingCollaborators: ['N. Brooks', 'E. Hart'],
+      collaboratorRoles: {},
+      pendingCollaboratorRoles: {
+        'N. Brooks': 'reviewer',
+        'E. Hart': 'viewer',
+      },
+      version: '0.2',
+      health: 'amber',
+      updatedAt: '2026-02-25T20:20:00Z',
+      pinned: false,
+      archived: false,
+    },
+  ],
+  activeWorkspaceId: 'pending-demo',
+  authorRequests: [],
+  invitationsSent: [],
+  inboxMessages: [],
+  inboxReads: [],
+  libraryAssets: defaultLibraryAssets,
+}
+
+const collaboratorMixedStatesFixture: WorkspacesPageFixture = {
+  ...mixedPortfolioFixture,
+  workspaces: mixedPortfolioFixture.workspaces.map((workspace) => {
+    if (workspace.id === 'hf-registry') {
+      return {
+        ...workspace,
+        pendingCollaborators: ['M. Evans'],
+        pendingCollaboratorRoles: { 'M. Evans': 'reviewer' },
+      }
+    }
+    if (workspace.id === 'af-screening') {
+      return {
+        ...workspace,
+        pendingCollaborators: ['N. Brooks'],
+        pendingCollaboratorRoles: { 'N. Brooks': 'viewer' },
+      }
+    }
+    return workspace
+  }),
 }
 
 const dataLibraryFixture: WorkspacesPageFixture = {
@@ -525,6 +628,26 @@ function nameToMockUserId(name: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
   return slug ? `user-${slug}` : 'user-unknown'
+}
+
+function guessLibraryAssetKind(filename: string): string {
+  const lowered = String(filename || '').trim().toLowerCase()
+  if (lowered.endsWith('.pdf')) {
+    return 'pdf'
+  }
+  if (lowered.endsWith('.csv')) {
+    return 'csv'
+  }
+  if (lowered.endsWith('.tsv')) {
+    return 'tsv'
+  }
+  if (lowered.endsWith('.xlsx')) {
+    return 'xlsx'
+  }
+  if (lowered.endsWith('.txt')) {
+    return 'txt'
+  }
+  return 'unknown'
 }
 
 function RouteEcho() {
@@ -604,6 +727,9 @@ function WorkspacesPagePreview({ fixture }: WorkspacesPagePreviewProps) {
       fixture.workspaces.forEach((workspace) => {
         addName(workspace.ownerName)
         workspace.collaborators.forEach(addName)
+        for (const pendingCollaborator of workspace.pendingCollaborators || []) {
+          addName(pendingCollaborator)
+        }
       })
       fixture.authorRequests.forEach((request) => addName(request.authorName))
       fixture.invitationsSent.forEach((invitation) => addName(invitation.inviteeName))
@@ -717,6 +843,48 @@ function WorkspacesPagePreview({ fixture }: WorkspacesPagePreviewProps) {
             headers: { 'Content-Type': 'application/json' },
           },
         )
+      }
+
+      const metadataMatch = path.match(/\/v1\/library\/assets\/([^/]+)$/)
+      if (metadataMatch && requestMethod === 'PATCH') {
+        const assetId = decodeURIComponent(metadataMatch[1])
+        const assetIndex = storyLibraryAssets.findIndex((asset) => asset.id === assetId)
+        if (assetIndex < 0) {
+          return new Response(JSON.stringify({ error: { detail: `Data asset '${assetId}' was not found.` } }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+
+        let payload: { filename?: string } = {}
+        if (typeof init?.body === 'string' && init.body.trim()) {
+          try {
+            payload = JSON.parse(init.body) as { filename?: string }
+          } catch {
+            payload = {}
+          }
+        }
+        const nextFilename = String(payload.filename || '').trim()
+        if (!nextFilename) {
+          return new Response(JSON.stringify({ error: { detail: 'filename is required.' } }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+
+        const currentAsset = storyLibraryAssets[assetIndex]
+        const updatedAsset: LibraryAssetRecord = {
+          ...currentAsset,
+          filename: nextFilename,
+          kind: guessLibraryAssetKind(nextFilename),
+        }
+        storyLibraryAssets = storyLibraryAssets.map((asset, index) => (
+          index === assetIndex ? updatedAsset : asset
+        ))
+        return new Response(JSON.stringify(updatedAsset), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
       }
 
       const accessMatch = path.match(/\/v1\/library\/assets\/([^/]+)\/access$/)
@@ -998,6 +1166,18 @@ export const EmptyState: Story = {
 export const CollaboratorBanners: Story = {
   args: {
     fixture: collaboratorStateFixture,
+  },
+}
+
+export const CollaboratorBannersPending: Story = {
+  args: {
+    fixture: collaboratorPendingOnlyFixture,
+  },
+}
+
+export const CollaboratorBannersMixedStates: Story = {
+  args: {
+    fixture: collaboratorMixedStatesFixture,
   },
 }
 

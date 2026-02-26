@@ -1380,12 +1380,26 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       setStatus('')
     }
     try {
+      const personaPromise = fetchPersonaState(sessionToken)
+      const userPromise = fetchMe(sessionToken)
+      const jobsPromise = listPersonaSyncJobs(sessionToken, 5)
+      const analyticsPromise = fetchPublicationsAnalytics(sessionToken)
+      const topMetricsPromise = fetchPublicationsTopMetrics(sessionToken)
+
+      // Prioritize top metrics hydration so the top strip can render while other calls continue.
+      void topMetricsPromise
+        .then((value) => {
+          setTopMetricsResponse(value)
+          saveCachedTopMetricsResponse(value)
+        })
+        .catch(() => {})
+
       const settled = await Promise.allSettled([
-        fetchPersonaState(sessionToken),
-        fetchMe(sessionToken),
-        listPersonaSyncJobs(sessionToken, 5),
-        fetchPublicationsAnalytics(sessionToken),
-        fetchPublicationsTopMetrics(sessionToken),
+        personaPromise,
+        userPromise,
+        jobsPromise,
+        analyticsPromise,
+        topMetricsPromise,
       ])
       const [stateResult, userResult, jobsResult, analyticsResult, topMetricsResult] = settled
       if (stateResult.status === 'fulfilled') {
@@ -2505,7 +2519,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
       <PublicationsTopStrip
         metrics={topMetricsResponse}
-        loading={loading || !topMetricsResponse}
+        loading={
+          !topMetricsResponse
+          || (topMetricsResponse.status === 'RUNNING' && (topMetricsResponse.tiles || []).length === 0)
+        }
         token={token || null}
         onOpenPublication={(workId) => {
           openPublicationInDetailPanel(workId, 'files')

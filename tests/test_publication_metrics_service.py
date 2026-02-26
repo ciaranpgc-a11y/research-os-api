@@ -350,6 +350,22 @@ def test_single_snapshot_without_history_is_conservative(monkeypatch, tmp_path) 
     assert last12_tile["delta_display"] in {None, ""}
 
 
+def test_total_publications_sources_do_not_include_orcid_when_not_available(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user_with_metrics(email="sources-publications@example.com")
+
+    payload = compute_publication_top_metrics(user_id=user_id)
+    last12_tile = _tile(payload, "this_year_vs_last")
+    sources = last12_tile.get("data_source")
+
+    assert isinstance(sources, list)
+    assert "OpenAlex" in sources
+    assert "ORCID" not in sources
+
+
 def test_collaboration_structure_uses_collaborator_affiliations_when_work_data_is_sparse(
     monkeypatch, tmp_path
 ) -> None:

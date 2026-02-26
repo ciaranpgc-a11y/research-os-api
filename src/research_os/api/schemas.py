@@ -457,6 +457,10 @@ class LibraryAssetAccessUpdateRequest(BaseModel):
     collaborator_names: list[str] = Field(default_factory=list)
 
 
+class LibraryAssetMetadataUpdateRequest(BaseModel):
+    filename: str
+
+
 class ManuscriptAttachAssetsRequest(BaseModel):
     asset_ids: list[str] = Field(default_factory=list)
     section_context: Literal["RESULTS", "TABLES", "FIGURES", "PLANNER"] = "PLANNER"
@@ -2148,6 +2152,13 @@ class WorkspaceRecordResponse(BaseModel):
     name: str
     owner_name: str
     collaborators: list[str] = Field(default_factory=list)
+    pending_collaborators: list[str] = Field(default_factory=list)
+    collaborator_roles: dict[str, Literal["editor", "reviewer", "viewer"]] = Field(
+        default_factory=dict
+    )
+    pending_collaborator_roles: dict[
+        str, Literal["editor", "reviewer", "viewer"]
+    ] = Field(default_factory=dict)
     removed_collaborators: list[str] = Field(default_factory=list)
     version: str = "0.1"
     health: Literal["green", "amber", "red"] = "amber"
@@ -2166,6 +2177,13 @@ class WorkspaceCreateRequest(BaseModel):
     name: str
     owner_name: str
     collaborators: list[str] = Field(default_factory=list)
+    pending_collaborators: list[str] = Field(default_factory=list)
+    collaborator_roles: dict[str, Literal["editor", "reviewer", "viewer"]] = Field(
+        default_factory=dict
+    )
+    pending_collaborator_roles: dict[
+        str, Literal["editor", "reviewer", "viewer"]
+    ] = Field(default_factory=dict)
     removed_collaborators: list[str] = Field(default_factory=list)
     version: str = "0.1"
     health: Literal["green", "amber", "red"] = "amber"
@@ -2178,6 +2196,11 @@ class WorkspaceUpdateRequest(BaseModel):
     name: str | None = None
     owner_name: str | None = None
     collaborators: list[str] | None = None
+    pending_collaborators: list[str] | None = None
+    collaborator_roles: dict[str, Literal["editor", "reviewer", "viewer"]] | None = None
+    pending_collaborator_roles: (
+        dict[str, Literal["editor", "reviewer", "viewer"]] | None
+    ) = None
     removed_collaborators: list[str] | None = None
     version: str | None = None
     health: Literal["green", "amber", "red"] | None = None
@@ -2204,6 +2227,7 @@ class WorkspaceAuthorRequestResponse(BaseModel):
     workspace_id: str
     workspace_name: str
     author_name: str
+    collaborator_role: Literal["editor", "reviewer", "viewer"] = "editor"
     invited_at: str
     source_inviter_user_id: str | None = None
     source_invitation_id: str | None = None
@@ -2232,6 +2256,7 @@ class WorkspaceInvitationSentResponse(BaseModel):
     workspace_id: str
     workspace_name: str
     invitee_name: str
+    role: Literal["editor", "reviewer", "viewer"] = "editor"
     invited_at: str
     status: Literal["pending", "accepted", "declined"] = "pending"
     invitee_user_id: str | None = None
@@ -2246,6 +2271,7 @@ class WorkspaceInvitationCreateRequest(BaseModel):
     id: str | None = None
     workspace_id: str
     invitee_name: str
+    role: Literal["editor", "reviewer", "viewer"]
     invited_at: str | None = None
     status: Literal["pending", "accepted", "declined"] = "pending"
 

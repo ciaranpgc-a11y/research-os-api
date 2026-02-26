@@ -8,6 +8,7 @@ from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from threading import Lock
 from typing import Any, Literal
+from urllib.parse import quote
 from urllib.parse import urlparse
 from uuid import uuid4
 
@@ -124,6 +125,7 @@ from research_os.api.schemas import (
     ImpactThemesResponse,
     JournalOptionResponse,
     LibraryAssetAccessUpdateRequest,
+    LibraryAssetMetadataUpdateRequest,
     LibraryAssetListResponse,
     LibraryAssetResponse,
     LibraryAssetUploadResponse,
@@ -326,6 +328,7 @@ from research_os.services.data_planner_service import (
     list_library_assets,
     save_manuscript_plan,
     update_library_asset_access,
+    update_library_asset_metadata,
     upload_library_assets,
 )
 from research_os.services.auth_service import (
@@ -868,6 +871,17 @@ def _build_unauthorized_response(detail: str) -> JSONResponse:
             }
         },
     )
+
+
+def _build_attachment_content_disposition(filename: str) -> str:
+    raw = str(filename or "").strip().replace("\r", " ").replace("\n", " ")
+    if not raw:
+        raw = "file.bin"
+    fallback = re.sub(r'[^A-Za-z0-9._ -]+', "_", raw).strip(" .")
+    if not fallback:
+        fallback = "file.bin"
+    encoded = quote(raw, safe="")
+    return f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{encoded}'
 
 
 def _build_forbidden_response(detail: str) -> JSONResponse:
@@ -2780,7 +2794,9 @@ def v1_publication_files_download(
         file_name = str(payload.get("file_name") or "file.bin")
         media_type = str(payload.get("content_type") or "application/octet-stream")
         content = payload.get("content") or b""
-        headers = {"Content-Disposition": f'attachment; filename="{file_name}"'}
+        headers = {
+            "Content-Disposition": _build_attachment_content_disposition(file_name)
+        }
         return Response(content=content, media_type=media_type, headers=headers)
     except AuthNotFoundError as exc:
         return _build_unauthorized_response(str(exc))
@@ -4221,6 +4237,35 @@ def v1_list_library_assets(
             query=str(payload.get("query") or ""),
             ownership=str(payload.get("ownership") or ownership),
         )
+    except PlannerValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.patch(
+    "/v1/library/assets/{asset_id}",
+    response_model=LibraryAssetResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_update_library_asset_metadata(
+    request: Request,
+    asset_id: str,
+    payload: LibraryAssetMetadataUpdateRequest,
+) -> LibraryAssetResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_required(request)
+    if auth_error is not None:
+        return auth_error
+    try:
+        account_key_hint = _extract_account_key_hint(request)
+        updated = update_library_asset_metadata(
+            asset_id=asset_id,
+            user_id=requesting_user_id or "",
+            account_key_hint=account_key_hint,
+            filename=payload.filename,
+        )
+        return LibraryAssetResponse(**updated)
+    except DataAssetNotFoundError as exc:
+        return _build_not_found_response(str(exc))
     except PlannerValidationError as exc:
         return _build_bad_request_response(str(exc))
 

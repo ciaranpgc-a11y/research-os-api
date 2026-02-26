@@ -501,8 +501,41 @@ def _infer_file_type(*, filename: str, content_type: str | None = None) -> str:
 
 
 def _slugify_filename(value: str) -> str:
-    clean = re.sub(r"[^a-zA-Z0-9._-]+", "-", str(value or "").strip()).strip(".-")
-    return clean or "publication-file"
+    raw = str(value or "").strip()
+    if not raw:
+        return "publication-file"
+
+    # Keep only the basename in case a client submits a full path.
+    clean = raw.replace("\\", "/").split("/")[-1]
+    clean = clean.replace("\x00", "").replace("\r", " ").replace("\n", " ")
+    clean = re.sub(r"\s+", " ", clean).strip()
+    clean = clean.strip()
+    if not clean or clean in {".", ".."}:
+        return "publication-file"
+
+    max_len = 240
+    if len(clean) > max_len:
+        suffix = Path(clean).suffix
+        if suffix and len(suffix) < max_len:
+            stem_len = max_len - len(suffix)
+            clean = f"{clean[:stem_len]}{suffix}"
+        else:
+            clean = clean[:max_len]
+    return clean
+
+
+def _coerce_download_filename(*, file_name: str | None, path: Path | None = None) -> str:
+    clean = str(file_name or "").strip().replace("\r", " ").replace("\n", " ")
+    if not clean:
+        clean = "file.bin"
+    clean = clean.replace("\\", "/").split("/")[-1].strip(" .")
+    if not clean or clean in {".", ".."}:
+        clean = "file.bin"
+    if not Path(clean).suffix and isinstance(path, Path):
+        inferred_suffix = path.suffix.strip()
+        if inferred_suffix:
+            clean = f"{clean}{inferred_suffix}"
+    return clean
 
 
 def _file_storage_root() -> Path:
@@ -2168,10 +2201,13 @@ def get_publication_file_download(
 
         source = str(row.source or "").upper()
         if source == FILE_SOURCE_OA_LINK and row.oa_url:
+            oa_name = _coerce_download_filename(
+                file_name=str(row.file_name or "open-access.pdf")
+            )
             return {
                 "mode": "redirect",
                 "url": str(row.oa_url),
-                "file_name": str(row.file_name or "open-access.pdf"),
+                "file_name": oa_name,
                 "content_type": "application/pdf",
                 "content": b"",
             }
@@ -2183,7 +2219,7 @@ def get_publication_file_download(
             )
 
         content = path.read_bytes()
-        file_name = str(row.file_name or path.name)
+        file_name = _coerce_download_filename(file_name=row.file_name, path=path)
         lower = file_name.lower()
         if lower.endswith(".pdf"):
             content_type = "application/pdf"

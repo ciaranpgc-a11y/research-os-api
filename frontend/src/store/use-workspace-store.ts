@@ -25,12 +25,16 @@ import {
 
 export type WorkspaceHealth = 'green' | 'amber' | 'red'
 export type WorkspaceInvitationStatus = 'pending' | 'accepted' | 'declined'
+export type WorkspaceCollaboratorRole = 'editor' | 'reviewer' | 'viewer'
 
 export type WorkspaceRecord = {
   id: string
   name: string
   ownerName: string
   collaborators: string[]
+  pendingCollaborators: string[]
+  collaboratorRoles: Record<string, WorkspaceCollaboratorRole>
+  pendingCollaboratorRoles: Record<string, WorkspaceCollaboratorRole>
   removedCollaborators: string[]
   version: string
   health: WorkspaceHealth
@@ -44,6 +48,7 @@ export type WorkspaceAuthorRequest = {
   workspaceId: string
   workspaceName: string
   authorName: string
+  collaboratorRole: WorkspaceCollaboratorRole
   invitedAt: string
 }
 
@@ -52,6 +57,7 @@ export type WorkspaceInvitationSent = {
   workspaceId: string
   workspaceName: string
   inviteeName: string
+  role: WorkspaceCollaboratorRole
   invitedAt: string
   status: WorkspaceInvitationStatus
 }
@@ -62,6 +68,9 @@ type WorkspacePatch = Partial<
     | 'name'
     | 'ownerName'
     | 'collaborators'
+    | 'pendingCollaborators'
+    | 'collaboratorRoles'
+    | 'pendingCollaboratorRoles'
     | 'removedCollaborators'
     | 'health'
     | 'version'
@@ -82,7 +91,11 @@ type WorkspaceStore = {
   createWorkspace: (name?: string) => WorkspaceRecord
   updateWorkspace: (workspaceId: string, patch: WorkspacePatch) => void
   deleteWorkspace: (workspaceId: string) => void
-  sendWorkspaceInvitation: (workspaceId: string, inviteeName: string) => WorkspaceInvitationSent | null
+  sendWorkspaceInvitation: (
+    workspaceId: string,
+    inviteeName: string,
+    role: WorkspaceCollaboratorRole,
+  ) => WorkspaceInvitationSent | null
   acceptAuthorRequest: (requestId: string) => WorkspaceRecord | null
   declineAuthorRequest: (requestId: string) => void
 }
@@ -124,6 +137,67 @@ function normalizeRemovedCollaborators(values: unknown, collaborators: string[])
   return normalizeCollaborators(values).filter((value) => allowed.has(value.toLowerCase()))
 }
 
+function normalizeCollaboratorRole(value: unknown): WorkspaceCollaboratorRole {
+  const clean = trimValue(String(value || '')).toLowerCase()
+  if (clean === 'reviewer' || clean === 'viewer') {
+    return clean
+  }
+  return 'editor'
+}
+
+function normalizeCollaboratorRoles(
+  values: unknown,
+  collaborators: string[],
+): Record<string, WorkspaceCollaboratorRole> {
+  const source =
+    values && typeof values === 'object' && !Array.isArray(values)
+      ? (values as Record<string, unknown>)
+      : {}
+  const canonicalNameByKey = new Map<string, string>()
+  for (const collaborator of collaborators) {
+    const clean = normalizeName(collaborator)
+    if (!clean) {
+      continue
+    }
+    canonicalNameByKey.set(clean.toLowerCase(), clean)
+  }
+
+  const output: Record<string, WorkspaceCollaboratorRole> = {}
+  for (const [name, value] of Object.entries(source)) {
+    const clean = normalizeName(name)
+    if (!clean) {
+      continue
+    }
+    const canonical = canonicalNameByKey.get(clean.toLowerCase())
+    if (!canonical) {
+      continue
+    }
+    output[canonical] = normalizeCollaboratorRole(value)
+  }
+
+  for (const canonical of canonicalNameByKey.values()) {
+    if (!output[canonical]) {
+      output[canonical] = 'editor'
+    }
+  }
+
+  return output
+}
+
+function normalizePendingCollaborators(
+  values: unknown,
+  collaborators: string[],
+  removedCollaborators: string[],
+): string[] {
+  const removedKeys = new Set(removedCollaborators.map((value) => value.toLowerCase()))
+  const activeKeys = new Set(
+    collaborators
+      .filter((value) => !removedKeys.has(value.toLowerCase()))
+      .map((value) => value.toLowerCase()),
+  )
+  return normalizeCollaborators(values).filter((value) => !activeKeys.has(value.toLowerCase()))
+}
+
 function nowIso(): string {
   return new Date().toISOString()
 }
@@ -151,6 +225,9 @@ function defaultWorkspaces(): WorkspaceRecord[] {
       name: 'HF Registry Manuscript',
       ownerName: defaultOwnerName(),
       collaborators: [],
+      pendingCollaborators: [],
+      collaboratorRoles: {},
+      pendingCollaboratorRoles: {},
       removedCollaborators: [],
       version: '0.1',
       health: 'amber',
@@ -179,11 +256,27 @@ function normalizeWorkspaceRecords(
       (workspace as { removedCollaborators?: unknown }).removedCollaborators,
       collaborators,
     )
+    const pendingCollaborators = normalizePendingCollaborators(
+      (workspace as { pendingCollaborators?: unknown }).pendingCollaborators,
+      collaborators,
+      removedCollaborators,
+    )
+    const collaboratorRoles = normalizeCollaboratorRoles(
+      (workspace as { collaboratorRoles?: unknown }).collaboratorRoles,
+      collaborators,
+    )
+    const pendingCollaboratorRoles = normalizeCollaboratorRoles(
+      (workspace as { pendingCollaboratorRoles?: unknown }).pendingCollaboratorRoles,
+      pendingCollaborators,
+    )
     return {
       id: trimValue(workspace.id) || `workspace-${Date.now().toString(36)}`,
       name: normalizeName(workspace.name) || 'Workspace',
       ownerName: normalizeName(workspace.ownerName) || fallbackOwnerName,
       collaborators,
+      pendingCollaborators,
+      collaboratorRoles,
+      pendingCollaboratorRoles,
       removedCollaborators,
       version: trimValue(workspace.version) || '0.1',
       health:
@@ -204,6 +297,7 @@ function normalizeAuthorRequestRecords(values: Array<Partial<WorkspaceAuthorRequ
       workspaceId: trimValue(request.workspaceId) || buildId('workspace'),
       workspaceName: normalizeName(request.workspaceName) || 'Untitled workspace',
       authorName: normalizeName(request.authorName) || 'Unknown author',
+      collaboratorRole: normalizeCollaboratorRole(request.collaboratorRole),
       invitedAt: trimValue(request.invitedAt) || nowIso(),
     }))
     .filter((request) => request.workspaceId && request.workspaceName)
@@ -221,6 +315,7 @@ function normalizeInvitationSentRecords(values: Array<Partial<WorkspaceInvitatio
         workspaceId: trimValue(invitation.workspaceId) || buildId('workspace'),
         workspaceName: normalizeName(invitation.workspaceName) || 'Untitled workspace',
         inviteeName: normalizeName(invitation.inviteeName) || 'Unknown collaborator',
+        role: normalizeCollaboratorRole(invitation.role),
         invitedAt: trimValue(invitation.invitedAt) || nowIso(),
         status,
       }
@@ -452,6 +547,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         .join(' '),
       ownerName: defaultOwnerName(),
       collaborators: [],
+      pendingCollaborators: [],
+      collaboratorRoles: {},
+      pendingCollaboratorRoles: {},
       removedCollaborators: [],
       version: '0.1',
       health: 'amber',
@@ -487,6 +585,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       name: cleanName,
       ownerName,
       collaborators: [],
+      pendingCollaborators: [],
+      collaboratorRoles: {},
+      pendingCollaboratorRoles: {},
       removedCollaborators: [],
       version: '0.1',
       health: 'amber',
@@ -523,11 +624,30 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       const nextRemovedCollaborators = patch.removedCollaborators
         ? normalizeRemovedCollaborators(patch.removedCollaborators, nextCollaborators)
         : normalizeRemovedCollaborators(workspace.removedCollaborators, nextCollaborators)
+      const nextPendingCollaborators = patch.pendingCollaborators
+        ? normalizePendingCollaborators(patch.pendingCollaborators, nextCollaborators, nextRemovedCollaborators)
+        : normalizePendingCollaborators(
+            workspace.pendingCollaborators,
+            nextCollaborators,
+            nextRemovedCollaborators,
+          )
+      const nextCollaboratorRoles = patch.collaboratorRoles
+        ? normalizeCollaboratorRoles(patch.collaboratorRoles, nextCollaborators)
+        : normalizeCollaboratorRoles(workspace.collaboratorRoles, nextCollaborators)
+      const nextPendingCollaboratorRoles = patch.pendingCollaboratorRoles
+        ? normalizeCollaboratorRoles(patch.pendingCollaboratorRoles, nextPendingCollaborators)
+        : normalizeCollaboratorRoles(
+            workspace.pendingCollaboratorRoles,
+            nextPendingCollaborators,
+          )
       return {
         ...workspace,
         ...patch,
         ownerName: patch.ownerName ? normalizeName(patch.ownerName) : workspace.ownerName,
         collaborators: nextCollaborators,
+        pendingCollaborators: nextPendingCollaborators,
+        collaboratorRoles: nextCollaboratorRoles,
+        pendingCollaboratorRoles: nextPendingCollaboratorRoles,
         removedCollaborators: nextRemovedCollaborators,
       }
     })
@@ -563,9 +683,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     })
     runRemoteWorkspaceAction((token) => deleteWorkspaceRecordApi(token, cleanWorkspaceId))
   },
-  sendWorkspaceInvitation: (workspaceId, inviteeName) => {
+  sendWorkspaceInvitation: (workspaceId, inviteeName, role) => {
     const cleanWorkspaceId = trimValue(workspaceId)
     const cleanInviteeName = normalizeName(inviteeName)
+    const cleanRole = normalizeCollaboratorRole(role)
     if (!cleanWorkspaceId || !cleanInviteeName) {
       return null
     }
@@ -584,6 +705,19 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     if (workspace.ownerName.toLowerCase() === cleanInviteeName.toLowerCase()) {
       return null
     }
+    const removedSet = new Set(workspace.removedCollaborators.map((name) => name.toLowerCase()))
+    const activeSet = new Set(
+      workspace.collaborators
+        .filter((name) => !removedSet.has(name.toLowerCase()))
+        .map((name) => name.toLowerCase()),
+    )
+    if (activeSet.has(cleanInviteeName.toLowerCase())) {
+      return null
+    }
+    const pendingSet = new Set((workspace.pendingCollaborators || []).map((name) => name.toLowerCase()))
+    if (pendingSet.has(cleanInviteeName.toLowerCase())) {
+      return null
+    }
     const hasPendingDuplicate = state.invitationsSent.some(
       (invitation) =>
         invitation.workspaceId === cleanWorkspaceId &&
@@ -599,21 +733,51 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       workspaceId: workspace.id,
       workspaceName: workspace.name,
       inviteeName: cleanInviteeName,
+      role: cleanRole,
       invitedAt: nowIso(),
       status: 'pending',
     }
     const nextInvitationsSent = [nextInvitation, ...state.invitationsSent]
+    const nextWorkspaces = state.workspaces.map((item) => {
+      if (item.id !== cleanWorkspaceId) {
+        return item
+      }
+      return {
+        ...item,
+        pendingCollaborators: normalizePendingCollaborators(
+          [...(item.pendingCollaborators || []), cleanInviteeName],
+          item.collaborators,
+          item.removedCollaborators,
+        ),
+        pendingCollaboratorRoles: normalizeCollaboratorRoles(
+          {
+            ...(item.pendingCollaboratorRoles || {}),
+            [cleanInviteeName]: cleanRole,
+          },
+          normalizePendingCollaborators(
+            [...(item.pendingCollaborators || []), cleanInviteeName],
+            item.collaborators,
+            item.removedCollaborators,
+          ),
+        ),
+        updatedAt: nextInvitation.invitedAt,
+      }
+    })
     persistSnapshotLocal({
-      workspaces: state.workspaces,
+      workspaces: nextWorkspaces,
       activeWorkspaceId: state.activeWorkspaceId,
       authorRequests: state.authorRequests,
       invitationsSent: nextInvitationsSent,
     })
-    set({ invitationsSent: nextInvitationsSent })
+    set({
+      workspaces: nextWorkspaces,
+      invitationsSent: nextInvitationsSent,
+    })
     runRemoteWorkspaceAction((token) =>
       createWorkspaceInvitationApi(token, {
         workspaceId: cleanWorkspaceId,
         inviteeName: cleanInviteeName,
+        role: cleanRole,
         invitedAt: nextInvitation.invitedAt,
         status: nextInvitation.status,
       }),
@@ -641,6 +805,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       name: request.workspaceName,
       ownerName: request.authorName,
       collaborators: [currentCollaboratorName()],
+      pendingCollaborators: [],
+      collaboratorRoles: {
+        [currentCollaboratorName()]: normalizeCollaboratorRole(request.collaboratorRole),
+      },
+      pendingCollaboratorRoles: {},
       removedCollaborators: [],
       version: '0.1',
       health: 'amber',

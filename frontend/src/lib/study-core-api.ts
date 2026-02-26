@@ -220,6 +220,24 @@ export async function updateLibraryAssetAccess(input: {
   return (await response.json()) as LibraryAssetRecord
 }
 
+export async function updateLibraryAssetMetadata(input: {
+  token?: string
+  assetId: string
+  filename: string
+}): Promise<LibraryAssetRecord> {
+  const response = await fetch(`${API_BASE_URL}/v1/library/assets/${encodeURIComponent(input.assetId)}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      filename: input.filename,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Asset metadata update failed (${response.status})`))
+  }
+  return (await response.json()) as LibraryAssetRecord
+}
+
 export async function downloadLibraryAsset(input: {
   token?: string
   assetId: string

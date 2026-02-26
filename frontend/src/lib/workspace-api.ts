@@ -7,6 +7,9 @@ export type WorkspaceStatePayload = {
     name: string
     ownerName: string
     collaborators: string[]
+    pendingCollaborators: string[]
+    collaboratorRoles: Record<string, 'editor' | 'reviewer' | 'viewer'>
+    pendingCollaboratorRoles: Record<string, 'editor' | 'reviewer' | 'viewer'>
     removedCollaborators: string[]
     version: string
     health: 'green' | 'amber' | 'red'
@@ -20,6 +23,7 @@ export type WorkspaceStatePayload = {
     workspaceId: string
     workspaceName: string
     authorName: string
+    collaboratorRole: 'editor' | 'reviewer' | 'viewer'
     invitedAt: string
   }>
   invitationsSent: Array<{
@@ -27,6 +31,7 @@ export type WorkspaceStatePayload = {
     workspaceId: string
     workspaceName: string
     inviteeName: string
+    role: 'editor' | 'reviewer' | 'viewer'
     invitedAt: string
     status: 'pending' | 'accepted' | 'declined'
   }>
@@ -75,6 +80,9 @@ type WorkspaceStateApiPayload = {
     name: string
     owner_name: string
     collaborators: string[]
+    pending_collaborators: string[]
+    collaborator_roles: Record<string, 'editor' | 'reviewer' | 'viewer'>
+    pending_collaborator_roles: Record<string, 'editor' | 'reviewer' | 'viewer'>
     removed_collaborators: string[]
     version: string
     health: 'green' | 'amber' | 'red'
@@ -88,6 +96,7 @@ type WorkspaceStateApiPayload = {
     workspace_id: string
     workspace_name: string
     author_name: string
+    collaborator_role: 'editor' | 'reviewer' | 'viewer'
     invited_at: string
   }>
   invitations_sent: Array<{
@@ -95,6 +104,7 @@ type WorkspaceStateApiPayload = {
     workspace_id: string
     workspace_name: string
     invitee_name: string
+    role: 'editor' | 'reviewer' | 'viewer'
     invited_at: string
     status: 'pending' | 'accepted' | 'declined'
   }>
@@ -169,6 +179,9 @@ function workspaceRecordFromApi(item: WorkspaceRecordApiPayload): WorkspaceState
     name: item.name,
     ownerName: item.owner_name,
     collaborators: item.collaborators || [],
+    pendingCollaborators: item.pending_collaborators || [],
+    collaboratorRoles: item.collaborator_roles || {},
+    pendingCollaboratorRoles: item.pending_collaborator_roles || {},
     removedCollaborators: item.removed_collaborators || [],
     version: item.version,
     health: item.health,
@@ -186,6 +199,7 @@ function workspaceAuthorRequestFromApi(
     workspaceId: item.workspace_id,
     workspaceName: item.workspace_name,
     authorName: item.author_name,
+    collaboratorRole: item.collaborator_role || 'editor',
     invitedAt: item.invited_at,
   }
 }
@@ -198,6 +212,7 @@ function workspaceInvitationFromApi(
     workspaceId: item.workspace_id,
     workspaceName: item.workspace_name,
     inviteeName: item.invitee_name,
+    role: item.role || 'editor',
     invitedAt: item.invited_at,
     status: item.status,
   }
@@ -232,6 +247,9 @@ function workspaceStateToApi(payload: WorkspaceStatePayload): WorkspaceStateApiP
       name: item.name,
       owner_name: item.ownerName,
       collaborators: item.collaborators || [],
+      pending_collaborators: item.pendingCollaborators || [],
+      collaborator_roles: item.collaboratorRoles || {},
+      pending_collaborator_roles: item.pendingCollaboratorRoles || {},
       removed_collaborators: item.removedCollaborators || [],
       version: item.version,
       health: item.health,
@@ -245,6 +263,7 @@ function workspaceStateToApi(payload: WorkspaceStatePayload): WorkspaceStateApiP
       workspace_id: item.workspaceId,
       workspace_name: item.workspaceName,
       author_name: item.authorName,
+      collaborator_role: item.collaboratorRole || 'editor',
       invited_at: item.invitedAt,
     })),
     invitations_sent: payload.invitationsSent.map((item) => ({
@@ -252,6 +271,7 @@ function workspaceStateToApi(payload: WorkspaceStatePayload): WorkspaceStateApiP
       workspace_id: item.workspaceId,
       workspace_name: item.workspaceName,
       invitee_name: item.inviteeName,
+      role: item.role || 'editor',
       invited_at: item.invitedAt,
       status: item.status,
     })),
@@ -367,6 +387,9 @@ export async function createWorkspaceRecordApi(
         name: payload.name,
         owner_name: payload.ownerName,
         collaborators: payload.collaborators || [],
+        pending_collaborators: payload.pendingCollaborators || [],
+        collaborator_roles: payload.collaboratorRoles || {},
+        pending_collaborator_roles: payload.pendingCollaboratorRoles || {},
         removed_collaborators: payload.removedCollaborators || [],
         version: payload.version,
         health: payload.health,
@@ -394,6 +417,15 @@ export async function updateWorkspaceRecordApi(
         ...(patch.name !== undefined ? { name: patch.name } : {}),
         ...(patch.ownerName !== undefined ? { owner_name: patch.ownerName } : {}),
         ...(patch.collaborators !== undefined ? { collaborators: patch.collaborators } : {}),
+        ...(patch.pendingCollaborators !== undefined
+          ? { pending_collaborators: patch.pendingCollaborators }
+          : {}),
+        ...(patch.collaboratorRoles !== undefined
+          ? { collaborator_roles: patch.collaboratorRoles }
+          : {}),
+        ...(patch.pendingCollaboratorRoles !== undefined
+          ? { pending_collaborator_roles: patch.pendingCollaboratorRoles }
+          : {}),
         ...(patch.removedCollaborators !== undefined
           ? { removed_collaborators: patch.removedCollaborators }
           : {}),
@@ -519,6 +551,7 @@ export async function createWorkspaceInvitationApi(
   input: {
     workspaceId: string
     inviteeName: string
+    role: 'editor' | 'reviewer' | 'viewer'
     invitedAt?: string
     status?: 'pending' | 'accepted' | 'declined'
   },
@@ -531,6 +564,7 @@ export async function createWorkspaceInvitationApi(
       body: JSON.stringify({
         workspace_id: input.workspaceId,
         invitee_name: input.inviteeName,
+        role: input.role,
         invited_at: input.invitedAt || null,
         status: input.status || 'pending',
       }),

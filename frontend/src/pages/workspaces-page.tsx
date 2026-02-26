@@ -29,6 +29,7 @@ import {
 import type { CollaboratorPayload } from '@/types/impact'
 import {
   useWorkspaceStore,
+  type WorkspaceCollaboratorRole,
   type WorkspaceRecord,
 } from '@/store/use-workspace-store'
 
@@ -44,6 +45,24 @@ type CollaboratorCandidate = {
   subtitle: string
   source: 'directory' | 'local'
 }
+
+type CollaboratorChipState = 'active' | 'removed' | 'pending'
+
+type CollaboratorChipEntry = {
+  key: string
+  name: string
+  state: CollaboratorChipState
+  role: WorkspaceCollaboratorRole
+}
+
+const COLLABORATOR_ROLE_OPTIONS: Array<{
+  value: WorkspaceCollaboratorRole
+  label: string
+}> = [
+  { value: 'editor', label: 'Editor' },
+  { value: 'reviewer', label: 'Reviewer' },
+  { value: 'viewer', label: 'Viewer' },
+]
 
 const FILTER_OPTIONS: Array<{ key: FilterKey; label: string }> = [
   { key: 'all', label: 'All' },
@@ -66,6 +85,7 @@ const HOUSE_SIDEBAR_SECTION_CLASS = houseLayout.sidebarSection
 const HOUSE_FIELD_HELPER_CLASS = houseTypography.fieldHelper
 const HOUSE_BUTTON_TEXT_CLASS = houseTypography.buttonText
 const HOUSE_LEFT_BORDER_CLASS = cn(houseSurfaces.leftBorder, getHouseLeftBorderToneClass('workspace'))
+const HOUSE_DATA_LEFT_BORDER_CLASS = cn(houseSurfaces.leftBorder, getHouseLeftBorderToneClass('data'))
 const HOUSE_CARD_CLASS = houseSurfaces.card
 const HOUSE_TABLE_SHELL_CLASS = houseSurfaces.tableShell
 const HOUSE_TABLE_HEAD_CLASS = houseSurfaces.tableHead
@@ -91,6 +111,7 @@ const HOUSE_COLLABORATOR_CANDIDATE_META_CLASS = houseCollaborators.candidateMeta
 const HOUSE_COLLABORATOR_CANDIDATE_SOURCE_CLASS = houseCollaborators.candidateSource
 const HOUSE_COLLABORATOR_CHIP_CLASS = houseCollaborators.chip
 const HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS = houseCollaborators.chipActive
+const HOUSE_COLLABORATOR_CHIP_PENDING_CLASS = houseCollaborators.chipPending
 const HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS = houseCollaborators.chipRemoved
 const HOUSE_COLLABORATOR_CHIP_MANAGEABLE_CLASS = houseCollaborators.chipManageable
 const HOUSE_COLLABORATOR_CHIP_READONLY_CLASS = houseCollaborators.chipReadOnly
@@ -106,15 +127,18 @@ const HOUSE_NAV_ITEM_COUNT_CLASS = houseNavigation.itemCount
 const HOUSE_DRILLDOWN_SHEET_CLASS = houseDrilldown.sheet
 const HOUSE_DRILLDOWN_SHEET_BODY_CLASS = houseDrilldown.sheetBody
 const HOUSE_DRILLDOWN_ACTION_CLASS = houseDrilldown.action
+const HOUSE_DRILLDOWN_SECTION_LABEL_CLASS = houseDrilldown.sectionLabel
 const WORKSPACE_ICON_BUTTON_DIMENSION_CLASS = 'h-8 w-8 p-0'
 const HOUSE_SECTION_TOOLS_CLASS = houseActions.sectionTools
 const HOUSE_SECTION_TOOLS_WORKSPACE_CLASS = houseActions.sectionToolsWorkspace
+const HOUSE_SECTION_TOOLS_DATA_CLASS = houseActions.sectionToolsData
 const HOUSE_SECTION_TOOL_BUTTON_CLASS = houseActions.sectionToolButton
 const HOUSE_SECTION_TOOL_TOGGLE_CLASS = houseActions.sectionToolToggle
 const HOUSE_SECTION_TOOL_TOGGLE_ON_CLASS = houseActions.sectionToolToggleOn
 const HOUSE_SECTION_TOOL_TOGGLE_OFF_CLASS = houseActions.sectionToolToggleOff
 const HOUSE_ACTIONS_PILL_CLASS = houseActions.actionPill
 const HOUSE_ACTIONS_PILL_PRIMARY_CLASS = houseActions.actionPillPrimary
+const HOUSE_ACTIONS_PILL_TABLE_BODY_TEXT_CLASS = houseActions.actionPillTableBodyText
 const HOUSE_ACTIONS_PILL_ICON_GROUP_CLASS = houseActions.actionPillIconGroup
 const HOUSE_ACTIONS_PILL_ICON_CLASS = houseActions.actionPillIcon
 const HOUSE_WORKSPACE_TABLE_SHELL_CLASS = 'house-workspaces-table-shell'
@@ -210,6 +234,18 @@ function normalizeCollaboratorName(value: string | null | undefined): string {
   return (value || '').trim().replace(/\s+/g, ' ')
 }
 
+function normalizeCollaboratorRoleValue(value: string | null | undefined): WorkspaceCollaboratorRole | null {
+  const clean = (value || '').trim().toLowerCase()
+  if (clean === 'editor' || clean === 'reviewer' || clean === 'viewer') {
+    return clean
+  }
+  return null
+}
+
+function collaboratorRoleLabel(role: WorkspaceCollaboratorRole): string {
+  return role === 'reviewer' ? 'Reviewer' : role === 'viewer' ? 'Viewer' : 'Editor'
+}
+
 function isWorkspaceOwner(workspace: WorkspaceRecord, currentUserName: string | null): boolean {
   const cleanCurrentUser = normalizeCollaboratorName(currentUserName).toLowerCase()
   if (!cleanCurrentUser) {
@@ -227,6 +263,78 @@ function workspaceOwnerLabel(workspace: WorkspaceRecord, currentUserName: string
 
 function collaboratorRemovedSet(workspace: WorkspaceRecord): Set<string> {
   return new Set((workspace.removedCollaborators || []).map((value) => normalizeCollaboratorName(value).toLowerCase()))
+}
+
+function collaboratorPendingSet(workspace: WorkspaceRecord): Set<string> {
+  return new Set((workspace.pendingCollaborators || []).map((value) => normalizeCollaboratorName(value).toLowerCase()))
+}
+
+function collaboratorRoleByKey(
+  roles: Record<string, WorkspaceCollaboratorRole> | undefined,
+): Map<string, WorkspaceCollaboratorRole> {
+  const output = new Map<string, WorkspaceCollaboratorRole>()
+  for (const [name, role] of Object.entries(roles || {})) {
+    const clean = normalizeCollaboratorName(name)
+    if (!clean) {
+      continue
+    }
+    output.set(clean.toLowerCase(), role)
+  }
+  return output
+}
+
+function workspaceCollaboratorChips(workspace: WorkspaceRecord): CollaboratorChipEntry[] {
+  const removed = collaboratorRemovedSet(workspace)
+  const pending = collaboratorPendingSet(workspace)
+  const activeRoleByKey = collaboratorRoleByKey(workspace.collaboratorRoles)
+  const pendingRoleByKey = collaboratorRoleByKey(workspace.pendingCollaboratorRoles)
+  const seen = new Set<string>()
+  const chips: CollaboratorChipEntry[] = []
+
+  for (const collaborator of workspace.collaborators || []) {
+    const clean = normalizeCollaboratorName(collaborator)
+    if (!clean) {
+      continue
+    }
+    const key = clean.toLowerCase()
+    if (seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    const state: CollaboratorChipState = pending.has(key)
+      ? 'pending'
+      : removed.has(key)
+        ? 'removed'
+        : 'active'
+    chips.push({
+      key,
+      name: clean,
+      state,
+      role: pending.has(key)
+        ? pendingRoleByKey.get(key) || activeRoleByKey.get(key) || 'editor'
+        : activeRoleByKey.get(key) || 'editor',
+    })
+  }
+
+  for (const collaborator of workspace.pendingCollaborators || []) {
+    const clean = normalizeCollaboratorName(collaborator)
+    if (!clean) {
+      continue
+    }
+    const key = clean.toLowerCase()
+    if (seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    chips.push({
+      key,
+      name: clean,
+      state: 'pending',
+      role: pendingRoleByKey.get(key) || 'editor',
+    })
+  }
+
+  return chips
 }
 
 function buildCollaboratorCandidates(input: {
@@ -328,9 +436,260 @@ function sortWorkspaces(
   return next
 }
 
-function WorkspacesDrilldownPanel() {
+function WorkspacesDrilldownPanel({
+  selectedWorkspaceId,
+  selectedWorkspaceName,
+  selectedWorkspace,
+  collaboratorChips,
+  canManageSelectedWorkspace,
+  collaboratorComposerOpen,
+  collaboratorInviteRole,
+  collaboratorQuery,
+  collaboratorLookupLoading,
+  collaboratorLookupError,
+  collaboratorCandidates,
+  collaboratorTargetName,
+  canConfirmAddCollaborator,
+  onOpenCollaboratorComposer,
+  onCollaboratorInviteRoleChange,
+  onChangeCollaboratorRole,
+  onCollaboratorQueryChange,
+  onSelectCollaboratorCandidate,
+  onConfirmAddCollaborator,
+  onOpenSelectedWorkspace,
+}: {
+  selectedWorkspaceId: string | null
+  selectedWorkspaceName: string | null
+  selectedWorkspace: WorkspaceRecord | null
+  collaboratorChips: CollaboratorChipEntry[]
+  canManageSelectedWorkspace: boolean
+  collaboratorComposerOpen: boolean
+  collaboratorInviteRole: WorkspaceCollaboratorRole
+  collaboratorQuery: string
+  collaboratorLookupLoading: boolean
+  collaboratorLookupError: string
+  collaboratorCandidates: CollaboratorCandidate[]
+  collaboratorTargetName: string
+  canConfirmAddCollaborator: boolean
+  onOpenCollaboratorComposer: () => void
+  onCollaboratorInviteRoleChange: (role: WorkspaceCollaboratorRole) => void
+  onChangeCollaboratorRole: (
+    name: string,
+    state: CollaboratorChipState,
+    role: WorkspaceCollaboratorRole,
+  ) => void
+  onCollaboratorQueryChange: (value: string) => void
+  onSelectCollaboratorCandidate: (name: string) => void
+  onConfirmAddCollaborator: () => void
+  onOpenSelectedWorkspace: (workspaceId: string) => void
+}) {
+  const selectedLabel = selectedWorkspaceName?.trim() || ''
+  const canOpenSelectedWorkspace = Boolean(selectedWorkspaceId && selectedLabel)
   return (
-    <div className={HOUSE_DRILLDOWN_SHEET_BODY_CLASS} />
+    <div className={HOUSE_DRILLDOWN_SHEET_BODY_CLASS}>
+      <div className={HOUSE_LEFT_BORDER_CLASS}>
+        <h2 className={HOUSE_SECTION_TITLE_CLASS}>Manage workspace</h2>
+      </div>
+      <p className={cn(HOUSE_DRILLDOWN_SECTION_LABEL_CLASS, 'mt-1 pl-3')}>Workspace data</p>
+      <div className="w-full">
+        <Button
+          type="button"
+          variant="housePrimary"
+          onClick={() => {
+            if (!selectedWorkspaceId || !canOpenSelectedWorkspace) {
+              return
+            }
+            onOpenSelectedWorkspace(selectedWorkspaceId)
+          }}
+          className={cn(
+            'w-full justify-center px-3',
+            HOUSE_PRIMARY_ACTION_BUTTON_CLASS,
+            HOUSE_BUTTON_TEXT_CLASS,
+            HOUSE_ACTIONS_PILL_TABLE_BODY_TEXT_CLASS,
+          )}
+          disabled={!canOpenSelectedWorkspace}
+        >
+          <span className="truncate">
+            {canOpenSelectedWorkspace ? `Open ${selectedLabel} Workspace` : 'Select workspace'}
+          </span>
+        </Button>
+      </div>
+
+      <div className="space-y-2">
+        <p className={cn(HOUSE_DRILLDOWN_SECTION_LABEL_CLASS, 'pl-3')}>Collaborator</p>
+        <div className="min-h-6">
+          {selectedWorkspace ? (
+            <div className="space-y-1.5">
+              {collaboratorChips.map((chip) => (
+                <div key={chip.key} className="flex items-center justify-between gap-2">
+                  <span
+                    className={cn(
+                      HOUSE_COLLABORATOR_CHIP_CLASS,
+                      chip.state === 'pending'
+                        ? HOUSE_COLLABORATOR_CHIP_PENDING_CLASS
+                        : chip.state === 'removed'
+                          ? HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS
+                          : HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS,
+                      HOUSE_COLLABORATOR_CHIP_READONLY_CLASS,
+                    )}
+                  >
+                    {chip.name}
+                  </span>
+                  {canManageSelectedWorkspace ? (
+                    <select
+                      value={chip.role}
+                      onChange={(event) => {
+                        const nextRole = normalizeCollaboratorRoleValue(event.target.value)
+                        if (!nextRole) {
+                          return
+                        }
+                        onChangeCollaboratorRole(chip.name, chip.state, nextRole)
+                      }}
+                      className={cn('h-8 min-w-sz-110 rounded-md px-2 text-xs', HOUSE_SELECT_CLASS)}
+                    >
+                      {COLLABORATOR_ROLE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className={HOUSE_FIELD_HELPER_CLASS}>{collaboratorRoleLabel(chip.role)}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        {!selectedWorkspace ? (
+          <p className={HOUSE_FIELD_HELPER_CLASS}>Select a workspace to manage collaborators.</p>
+        ) : !canManageSelectedWorkspace ? (
+          <p className={HOUSE_FIELD_HELPER_CLASS}>Only the workspace owner can add collaborators.</p>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
+                onClick={onOpenCollaboratorComposer}
+              >
+                Add collaborator
+              </Button>
+            </div>
+
+            {collaboratorComposerOpen ? (
+              <>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <p className={HOUSE_FIELD_HELPER_CLASS}>Role</p>
+                    <select
+                      value={collaboratorInviteRole}
+                      onChange={(event) => {
+                        const nextRole = normalizeCollaboratorRoleValue(event.target.value)
+                        if (!nextRole) {
+                          return
+                        }
+                        onCollaboratorInviteRoleChange(nextRole)
+                      }}
+                      className={cn('h-8 min-w-sz-120 rounded-md px-2 text-xs', HOUSE_SELECT_CLASS)}
+                    >
+                      {COLLABORATOR_ROLE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Input
+                    value={collaboratorQuery}
+                    onChange={(event) => onCollaboratorQueryChange(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && canConfirmAddCollaborator) {
+                        event.preventDefault()
+                        onConfirmAddCollaborator()
+                      }
+                    }}
+                    placeholder="Search by name"
+                    className={HOUSE_INPUT_CLASS}
+                  />
+                  <p className={HOUSE_FIELD_HELPER_CLASS}>Type at least 2 characters to search by name.</p>
+                </div>
+
+                {collaboratorLookupLoading ? (
+                  <p className={HOUSE_FIELD_HELPER_CLASS}>Searching collaborator directory...</p>
+                ) : null}
+                {collaboratorLookupError ? (
+                  <p className="text-sm text-amber-700">{collaboratorLookupError}</p>
+                ) : null}
+
+                <div className={HOUSE_COLLABORATOR_LIST_SHELL_CLASS}>
+                  <ScrollArea className={HOUSE_COLLABORATOR_LIST_VIEWPORT_CLASS}>
+                    <div className={HOUSE_COLLABORATOR_LIST_BODY_CLASS}>
+                      {collaboratorCandidates.length === 0 ? (
+                        <p className={cn('px-2 py-1', HOUSE_FIELD_HELPER_CLASS)}>No matches yet.</p>
+                      ) : (
+                        collaboratorCandidates.map((candidate) => {
+                          const isSelected =
+                            normalizeCollaboratorName(candidate.name).toLowerCase() ===
+                            normalizeCollaboratorName(collaboratorTargetName).toLowerCase()
+                          return (
+                            <button
+                              key={candidate.key}
+                              type="button"
+                              onClick={() => onSelectCollaboratorCandidate(candidate.name)}
+                              className={cn(
+                                HOUSE_COLLABORATOR_CANDIDATE_CLASS,
+                                isSelected
+                                  ? HOUSE_COLLABORATOR_CANDIDATE_SELECTED_CLASS
+                                  : HOUSE_COLLABORATOR_CANDIDATE_IDLE_CLASS,
+                              )}
+                            >
+                              <p className={houseTypography.text}>{candidate.name}</p>
+                              <div className={HOUSE_COLLABORATOR_CANDIDATE_META_CLASS}>
+                                <p className={houseTypography.fieldHelper}>{candidate.subtitle}</p>
+                                <span className={HOUSE_COLLABORATOR_CANDIDATE_SOURCE_CLASS}>
+                                  {candidate.source === 'directory' ? 'Directory' : 'Workspace network'}
+                                </span>
+                              </div>
+                            </button>
+                          )
+                        })
+                      )}
+                    </div>
+                  </ScrollArea>
+                </div>
+
+                {collaboratorTargetName ? (
+                  <p className={HOUSE_FIELD_HELPER_CLASS}>Selected: {collaboratorTargetName}</p>
+                ) : null}
+
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    className={cn(HOUSE_PRIMARY_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
+                    onClick={onConfirmAddCollaborator}
+                    disabled={!canConfirmAddCollaborator}
+                  >
+                    Send invite
+                  </Button>
+                </div>
+              </>
+            ) : null}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DataLibraryDrilldownPanel() {
+  return (
+    <div className={HOUSE_DRILLDOWN_SHEET_BODY_CLASS}>
+      <div className={HOUSE_DATA_LEFT_BORDER_CLASS}>
+        <h2 className={HOUSE_SECTION_TITLE_CLASS}>Manage data</h2>
+      </div>
+      <p className={cn(HOUSE_DRILLDOWN_SECTION_LABEL_CLASS, 'mt-1 pl-3')}>Data library</p>
+    </div>
   )
 }
 
@@ -521,57 +880,65 @@ function CollaboratorBanners({
   onAddCollaborator: (workspace: WorkspaceRecord) => void
   onToggleRemoved: (workspace: WorkspaceRecord, collaboratorName: string) => void
 }) {
-  const removed = collaboratorRemovedSet(workspace)
+  const chips = workspaceCollaboratorChips(workspace)
   const ownerName = normalizeCollaboratorName(workspace.ownerName) || 'The workspace owner'
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <TooltipProvider delayDuration={120}>
-        {workspace.collaborators.map((collaborator) => {
-          const isRemoved = removed.has(normalizeCollaboratorName(collaborator).toLowerCase())
+        {chips.map((chip) => {
+          const isRemoved = chip.state === 'removed'
+          const isPending = chip.state === 'pending'
+          const canToggleRemoved = canManage && !isPending
           const collaboratorButton = (
             <button
               type="button"
               onClick={(event) => {
                 event.stopPropagation()
-                if (!canManage) {
+                if (!canToggleRemoved) {
                   return
                 }
-                onToggleRemoved(workspace, collaborator)
+                onToggleRemoved(workspace, chip.name)
               }}
-              aria-disabled={!canManage}
+              aria-disabled={!canToggleRemoved}
               title={
                 canManage
-                  ? isRemoved
+                  ? isPending
+                    ? `Invitation pending (${collaboratorRoleLabel(chip.role)})`
+                    : isRemoved
                     ? 'Click to restore collaborator'
                     : 'Click to remove collaborator'
                   : undefined
               }
               className={cn(
                 HOUSE_COLLABORATOR_CHIP_CLASS,
-                isRemoved
-                  ? HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS
-                  : HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS,
-                canManage ? HOUSE_COLLABORATOR_CHIP_MANAGEABLE_CLASS : HOUSE_COLLABORATOR_CHIP_READONLY_CLASS,
+                isPending
+                  ? HOUSE_COLLABORATOR_CHIP_PENDING_CLASS
+                  : isRemoved
+                    ? HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS
+                    : HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS,
+                canToggleRemoved ? HOUSE_COLLABORATOR_CHIP_MANAGEABLE_CLASS : HOUSE_COLLABORATOR_CHIP_READONLY_CLASS,
               )}
             >
-              {collaborator}
+              {chip.name}
             </button>
           )
 
           if (canManage) {
             return (
-              <span key={collaborator} className="contents">
+              <span key={chip.key} className="contents">
                 {collaboratorButton}
               </span>
             )
           }
 
-          const tooltipMessage = isRemoved
-            ? `${ownerName} manages collaborators. ${collaborator} is marked removed and only the owner can restore access.`
-            : `${ownerName} manages collaborators. You can view participants but only the owner can edit this list.`
+          const tooltipMessage = isPending
+            ? `${ownerName} manages collaborators. ${chip.name} is pending ${collaboratorRoleLabel(chip.role)} access.`
+            : isRemoved
+              ? `${ownerName} manages collaborators. ${chip.name} is marked removed (${collaboratorRoleLabel(chip.role)}), and only the owner can restore access.`
+              : `${ownerName} manages collaborators. ${chip.name} is ${collaboratorRoleLabel(chip.role)} and only the owner can edit this list.`
 
           return (
-            <Tooltip key={collaborator}>
+            <Tooltip key={chip.key}>
               <TooltipTrigger asChild>
                 <span className="inline-flex">{collaboratorButton}</span>
               </TooltipTrigger>
@@ -635,6 +1002,9 @@ export function WorkspacesPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>(() => parseSortDirection(searchParams.get('dir')))
   const [workspaceDrilldownDesktopOpen, setWorkspaceDrilldownDesktopOpen] = useState(false)
   const [workspaceDrilldownMobileOpen, setWorkspaceDrilldownMobileOpen] = useState(false)
+  const [dataLibraryDrilldownDesktopOpen, setDataLibraryDrilldownDesktopOpen] = useState(false)
+  const [dataLibraryDrilldownMobileOpen, setDataLibraryDrilldownMobileOpen] = useState(false)
+  const [workspaceDrilldownSelectionId, setWorkspaceDrilldownSelectionId] = useState<string | null>(null)
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
   const [createError, setCreateError] = useState('')
   const [invitationStatus, setInvitationStatus] = useState('')
@@ -643,10 +1013,10 @@ export function WorkspacesPage() {
     x: number
     y: number
   } | null>(null)
-  const [addCollaboratorSheetOpen, setAddCollaboratorSheetOpen] = useState(false)
-  const [addCollaboratorWorkspaceId, setAddCollaboratorWorkspaceId] = useState<string | null>(null)
   const [collaboratorQuery, setCollaboratorQuery] = useState('')
   const [selectedCollaboratorName, setSelectedCollaboratorName] = useState('')
+  const [collaboratorComposerOpen, setCollaboratorComposerOpen] = useState(false)
+  const [collaboratorInviteRole, setCollaboratorInviteRole] = useState<WorkspaceCollaboratorRole>('editor')
   const [directoryCollaborators, setDirectoryCollaborators] = useState<CollaboratorPayload[]>([])
   const [collaboratorLookupLoading, setCollaboratorLookupLoading] = useState(false)
   const [collaboratorLookupError, setCollaboratorLookupError] = useState('')
@@ -685,6 +1055,12 @@ export function WorkspacesPage() {
     })
     return sortWorkspaces(next, sortColumn, sortDirection)
   }, [filterKey, query, sortColumn, sortDirection, workspaces])
+  const workspaceDrilldownSelectionName = useMemo(() => {
+    if (!workspaceDrilldownSelectionId) {
+      return null
+    }
+    return workspaces.find((workspace) => workspace.id === workspaceDrilldownSelectionId)?.name || null
+  }, [workspaceDrilldownSelectionId, workspaces])
   const workspaceInboxSignals = useMemo<Record<string, WorkspaceInboxSignal>>(() => {
     const readerKey = normalizePerson(currentReaderName)
     const signalByWorkspaceId: Record<string, WorkspaceInboxSignal> = {}
@@ -724,6 +1100,7 @@ export function WorkspacesPage() {
           direction: 'incoming' as const,
           workspaceName: request.workspaceName,
           personName: request.authorName,
+          role: request.collaboratorRole,
           invitedAt: request.invitedAt,
           status: 'pending',
         })),
@@ -732,6 +1109,7 @@ export function WorkspacesPage() {
           direction: 'outgoing' as const,
           workspaceName: invitation.workspaceName,
           personName: invitation.inviteeName,
+          role: invitation.role,
           invitedAt: invitation.invitedAt,
           status: invitation.status,
         })),
@@ -746,12 +1124,16 @@ export function WorkspacesPage() {
     [activeWorkspaceId, workspaces],
   )
   const canOpenInbox = Boolean(inboxWorkspace)
-  const addCollaboratorWorkspace = useMemo(
+  const workspaceDrilldownSelection = useMemo(
     () =>
-      addCollaboratorWorkspaceId
-        ? workspaces.find((workspace) => workspace.id === addCollaboratorWorkspaceId) || null
+      workspaceDrilldownSelectionId
+        ? workspaces.find((workspace) => workspace.id === workspaceDrilldownSelectionId) || null
         : null,
-    [addCollaboratorWorkspaceId, workspaces],
+    [workspaceDrilldownSelectionId, workspaces],
+  )
+  const selectedWorkspaceCollaboratorChips = useMemo(
+    () => (workspaceDrilldownSelection ? workspaceCollaboratorChips(workspaceDrilldownSelection) : []),
+    [workspaceDrilldownSelection],
   )
   const localCandidateNames = useMemo(() => {
     const seen = new Set<string>()
@@ -771,6 +1153,9 @@ export function WorkspacesPage() {
     for (const workspace of workspaces) {
       pushName(workspace.ownerName)
       workspace.collaborators.forEach(pushName)
+      for (const pendingCollaborator of workspace.pendingCollaborators || []) {
+        pushName(pendingCollaborator)
+      }
     }
     authorRequests.forEach((request) => pushName(request.authorName))
     invitationsSent.forEach((invitation) => pushName(invitation.inviteeName))
@@ -786,10 +1171,19 @@ export function WorkspacesPage() {
     [collaboratorQuery, directoryCollaborators, localCandidateNames],
   )
   const collaboratorTargetName = normalizeCollaboratorName(selectedCollaboratorName || collaboratorQuery)
-  const canManageAddCollaboratorWorkspace = Boolean(
-    addCollaboratorWorkspace && isWorkspaceOwner(addCollaboratorWorkspace, workspaceOwnerName),
+  const canManageSelectedWorkspace = Boolean(
+    workspaceDrilldownSelection && isWorkspaceOwner(workspaceDrilldownSelection, workspaceOwnerName),
   )
-  const canConfirmAddCollaborator = Boolean(canManageAddCollaboratorWorkspace && collaboratorTargetName)
+  const canConfirmAddCollaborator = Boolean(
+    canManageSelectedWorkspace && collaboratorComposerOpen && collaboratorTargetName,
+  )
+  const collaboratorLookupEnabled = Boolean(
+    centerView === 'workspaces' &&
+    workspaceDrilldownSelection &&
+    canManageSelectedWorkspace &&
+    collaboratorComposerOpen &&
+    (workspaceDrilldownDesktopOpen || workspaceDrilldownMobileOpen),
+  )
 
   useEffect(() => {
     void hydrateWorkspaceStoreFromRemote()
@@ -827,20 +1221,20 @@ export function WorkspacesPage() {
   }, [menuState, workspaces])
 
   useEffect(() => {
-    if (!addCollaboratorWorkspaceId) {
+    if (!workspaceDrilldownSelectionId) {
       return
     }
-    const exists = workspaces.some((workspace) => workspace.id === addCollaboratorWorkspaceId)
+    const exists = workspaces.some((workspace) => workspace.id === workspaceDrilldownSelectionId)
     if (!exists) {
-      setAddCollaboratorSheetOpen(false)
-      setAddCollaboratorWorkspaceId(null)
+      setWorkspaceDrilldownSelectionId(null)
       setCollaboratorQuery('')
       setSelectedCollaboratorName('')
+      setCollaboratorComposerOpen(false)
       setDirectoryCollaborators([])
       setCollaboratorLookupLoading(false)
       setCollaboratorLookupError('')
     }
-  }, [addCollaboratorWorkspaceId, workspaces])
+  }, [workspaceDrilldownSelectionId, workspaces])
 
   useEffect(() => {
     const refreshOwner = () => {
@@ -878,6 +1272,12 @@ export function WorkspacesPage() {
   }, [centerView])
 
   useEffect(() => {
+    if (centerView !== 'data-library') {
+      setDataLibraryDrilldownMobileOpen(false)
+    }
+  }, [centerView])
+
+  useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       if (matchesScopedStorageEventKey(event.key, INBOX_MESSAGES_STORAGE_KEY)) {
         refreshInboxMessagesFromStorage()
@@ -893,7 +1293,7 @@ export function WorkspacesPage() {
   }, [refreshInboxMessagesFromStorage, refreshInboxReadsFromStorage])
 
   useEffect(() => {
-    if (!addCollaboratorSheetOpen) {
+    if (!collaboratorLookupEnabled) {
       setDirectoryCollaborators([])
       setCollaboratorLookupLoading(false)
       setCollaboratorLookupError('')
@@ -949,15 +1349,15 @@ export function WorkspacesPage() {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [addCollaboratorSheetOpen, collaboratorQuery])
+  }, [collaboratorLookupEnabled, collaboratorQuery])
 
   const canCreateWorkspace = Boolean(workspaceOwnerName)
 
-  const resetAddCollaboratorSheet = () => {
-    setAddCollaboratorSheetOpen(false)
-    setAddCollaboratorWorkspaceId(null)
+  const resetCollaboratorComposer = () => {
     setCollaboratorQuery('')
     setSelectedCollaboratorName('')
+    setCollaboratorComposerOpen(false)
+    setCollaboratorInviteRole('editor')
     setDirectoryCollaborators([])
     setCollaboratorLookupLoading(false)
     setCollaboratorLookupError('')
@@ -994,13 +1394,27 @@ export function WorkspacesPage() {
       setMenuState(null)
       return
     }
-    const sent = sendWorkspaceInvitation(workspace.id, invitationTarget)
+    const roleInput = window.prompt(
+      'Assign role before sending invite (editor, reviewer, viewer)',
+      'editor',
+    )
+    if (roleInput === null) {
+      setMenuState(null)
+      return
+    }
+    const inviteRole = normalizeCollaboratorRoleValue(roleInput)
+    if (!inviteRole) {
+      setInvitationStatus('Role must be editor, reviewer, or viewer.')
+      setMenuState(null)
+      return
+    }
+    const sent = sendWorkspaceInvitation(workspace.id, invitationTarget, inviteRole)
     if (!sent) {
       setInvitationStatus('Invitation was not sent. Check owner access or duplicate pending invitation.')
       setMenuState(null)
       return
     }
-    setInvitationStatus(`Invitation sent to ${sent.inviteeName}.`)
+    setInvitationStatus(`Invitation sent to ${sent.inviteeName} as ${collaboratorRoleLabel(sent.role)}.`)
     setMenuState(null)
   }
 
@@ -1009,21 +1423,24 @@ export function WorkspacesPage() {
       setInvitationStatus('Only the workspace author can add collaborators.')
       return
     }
-    setAddCollaboratorWorkspaceId(workspace.id)
-    setCollaboratorQuery('')
-    setSelectedCollaboratorName('')
-    setDirectoryCollaborators([])
-    setCollaboratorLookupError('')
-    setAddCollaboratorSheetOpen(true)
+    setWorkspaceDrilldownSelectionId(workspace.id)
+    resetCollaboratorComposer()
+    setCollaboratorComposerOpen(true)
+    if (window.matchMedia('(min-width: 1280px)').matches) {
+      setWorkspaceDrilldownDesktopOpen(true)
+      return
+    }
+    setWorkspaceDrilldownMobileOpen(true)
   }
 
   const onConfirmAddCollaborator = () => {
-    if (!addCollaboratorWorkspace) {
+    if (!workspaceDrilldownSelection) {
+      setInvitationStatus('Select a workspace first.')
       return
     }
-    if (!isWorkspaceOwner(addCollaboratorWorkspace, workspaceOwnerName)) {
+    if (!isWorkspaceOwner(workspaceDrilldownSelection, workspaceOwnerName)) {
       setInvitationStatus('Only the workspace author can add collaborators.')
-      resetAddCollaboratorSheet()
+      resetCollaboratorComposer()
       return
     }
     const clean = collaboratorTargetName
@@ -1031,46 +1448,106 @@ export function WorkspacesPage() {
       setInvitationStatus('Collaborator name is required.')
       return
     }
-    if (normalizeCollaboratorName(addCollaboratorWorkspace.ownerName).toLowerCase() === clean.toLowerCase()) {
+    if (normalizeCollaboratorName(workspaceDrilldownSelection.ownerName).toLowerCase() === clean.toLowerCase()) {
       setInvitationStatus('The workspace author is already included.')
       return
     }
-
-    const existing = addCollaboratorWorkspace.collaborators.find(
-      (collaborator) => normalizeCollaboratorName(collaborator).toLowerCase() === clean.toLowerCase(),
-    )
-    if (existing) {
-      const removed = collaboratorRemovedSet(addCollaboratorWorkspace)
-      if (removed.has(normalizeCollaboratorName(existing).toLowerCase())) {
-        updateWorkspace(addCollaboratorWorkspace.id, {
-          removedCollaborators: (addCollaboratorWorkspace.removedCollaborators || []).filter(
-            (value) => normalizeCollaboratorName(value).toLowerCase() !== normalizeCollaboratorName(existing).toLowerCase(),
-          ),
+    const cleanKey = clean.toLowerCase()
+    const removed = collaboratorRemovedSet(workspaceDrilldownSelection)
+    const pending = collaboratorPendingSet(workspaceDrilldownSelection)
+    if (pending.has(cleanKey)) {
+      const matchedPendingName =
+        workspaceDrilldownSelection.pendingCollaborators.find(
+          (value) => normalizeCollaboratorName(value).toLowerCase() === cleanKey,
+        ) || clean
+      const currentRole =
+        workspaceDrilldownSelection.pendingCollaboratorRoles?.[matchedPendingName] || 'editor'
+      if (currentRole !== collaboratorInviteRole) {
+        updateWorkspace(workspaceDrilldownSelection.id, {
+          pendingCollaboratorRoles: {
+            ...(workspaceDrilldownSelection.pendingCollaboratorRoles || {}),
+            [matchedPendingName]: collaboratorInviteRole,
+          },
           updatedAt: new Date().toISOString(),
         })
-        setInvitationStatus(`${existing} restored as collaborator.`)
-        resetAddCollaboratorSheet()
+        setInvitationStatus(
+          `${matchedPendingName} remains pending. Role updated to ${collaboratorRoleLabel(collaboratorInviteRole)}.`,
+        )
+        resetCollaboratorComposer()
         return
       }
-      setInvitationStatus(`${existing} is already a collaborator.`)
+      setInvitationStatus(`${clean} is already pending.`)
       return
     }
-
-    updateWorkspace(addCollaboratorWorkspace.id, {
-      collaborators: [...addCollaboratorWorkspace.collaborators, clean],
-      removedCollaborators: addCollaboratorWorkspace.removedCollaborators || [],
-      updatedAt: new Date().toISOString(),
+    const activeMatch = workspaceDrilldownSelection.collaborators.find((collaborator) => {
+      const key = normalizeCollaboratorName(collaborator).toLowerCase()
+      return key === cleanKey && !removed.has(key)
     })
-    setInvitationStatus(`${clean} added as collaborator.`)
-    resetAddCollaboratorSheet()
+    if (activeMatch) {
+      setInvitationStatus(`${activeMatch} is already a collaborator.`)
+      return
+    }
+    const sent = sendWorkspaceInvitation(
+      workspaceDrilldownSelection.id,
+      clean,
+      collaboratorInviteRole,
+    )
+    if (!sent) {
+      setInvitationStatus('Invitation was not sent. Check owner access or duplicate pending invitation.')
+      return
+    }
+    setInvitationStatus(
+      `${sent.inviteeName} added as pending ${collaboratorRoleLabel(sent.role)} collaborator.`,
+    )
+    resetCollaboratorComposer()
   }
 
-  const onAddCollaboratorSheetOpenChange = (open: boolean) => {
-    if (open) {
-      setAddCollaboratorSheetOpen(true)
+  const onChangeCollaboratorRole = (
+    collaboratorName: string,
+    state: CollaboratorChipState,
+    role: WorkspaceCollaboratorRole,
+  ) => {
+    if (!workspaceDrilldownSelection) {
+      setInvitationStatus('Select a workspace first.')
       return
     }
-    resetAddCollaboratorSheet()
+    if (!isWorkspaceOwner(workspaceDrilldownSelection, workspaceOwnerName)) {
+      setInvitationStatus('Only the workspace author can assign collaborator roles.')
+      return
+    }
+    const collaboratorKey = normalizeCollaboratorName(collaboratorName).toLowerCase()
+    if (!collaboratorKey) {
+      return
+    }
+
+    if (state === 'pending') {
+      const matchedPendingName =
+        workspaceDrilldownSelection.pendingCollaborators.find(
+          (value) => normalizeCollaboratorName(value).toLowerCase() === collaboratorKey,
+        ) || collaboratorName
+      updateWorkspace(workspaceDrilldownSelection.id, {
+        pendingCollaboratorRoles: {
+          ...(workspaceDrilldownSelection.pendingCollaboratorRoles || {}),
+          [matchedPendingName]: role,
+        },
+        updatedAt: new Date().toISOString(),
+      })
+      setInvitationStatus(`${matchedPendingName} role set to ${collaboratorRoleLabel(role)}.`)
+      return
+    }
+
+    const matchedActiveName =
+      workspaceDrilldownSelection.collaborators.find(
+        (value) => normalizeCollaboratorName(value).toLowerCase() === collaboratorKey,
+      ) || collaboratorName
+    updateWorkspace(workspaceDrilldownSelection.id, {
+      collaboratorRoles: {
+        ...(workspaceDrilldownSelection.collaboratorRoles || {}),
+        [matchedActiveName]: role,
+      },
+      updatedAt: new Date().toISOString(),
+    })
+    setInvitationStatus(`${matchedActiveName} role set to ${collaboratorRoleLabel(role)}.`)
   }
 
   const onToggleCollaboratorRemoved = (workspace: WorkspaceRecord, collaboratorName: string) => {
@@ -1135,6 +1612,8 @@ export function WorkspacesPage() {
   }
 
   const onSelectWorkspace = (workspaceId: string) => {
+    setWorkspaceDrilldownSelectionId(workspaceId)
+    resetCollaboratorComposer()
     setActiveWorkspaceId(workspaceId)
     if (window.matchMedia('(min-width: 1280px)').matches) {
       setWorkspaceDrilldownDesktopOpen(true)
@@ -1270,6 +1749,10 @@ export function WorkspacesPage() {
             (workspaceDrilldownDesktopOpen
               ? 'xl:grid-cols-[280px_minmax(0,1fr)_22rem]'
               : 'xl:grid-cols-[280px_minmax(0,1fr)_3rem]'),
+          centerView === 'data-library' &&
+            (dataLibraryDrilldownDesktopOpen
+              ? 'xl:grid-cols-[280px_minmax(0,1fr)_22rem]'
+              : 'xl:grid-cols-[280px_minmax(0,1fr)_3rem]'),
         )}
       >
         <aside className="hidden border-r border-border nav:block">
@@ -1375,7 +1858,11 @@ export function WorkspacesPage() {
                         'h-8 gap-1.5 px-3',
                         'xl:hidden',
                       )}
-                      onClick={() => setWorkspaceDrilldownMobileOpen(true)}
+                      onClick={() => {
+                        setWorkspaceDrilldownSelectionId(null)
+                        resetCollaboratorComposer()
+                        setWorkspaceDrilldownMobileOpen(true)
+                      }}
                     >
                       <PanelRightOpen className="mr-1 h-3.5 w-3.5" />
                       Drilldown
@@ -1727,6 +2214,7 @@ export function WorkspacesPage() {
                               <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Direction</th>
                               <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Workspace</th>
                               <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Person</th>
+                              <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Role</th>
                               <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Invited</th>
                               <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Status</th>
                               <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Actions</th>
@@ -1748,6 +2236,9 @@ export function WorkspacesPage() {
                                 </td>
                                 <td className={cn('px-3 py-2 font-medium', HOUSE_TABLE_CELL_TEXT_CLASS)}>{invitation.workspaceName}</td>
                                 <td className={cn('px-3 py-2 text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>{invitation.personName}</td>
+                                <td className={cn('px-3 py-2 text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                                  {collaboratorRoleLabel(invitation.role)}
+                                </td>
                                 <td className={cn('px-3 py-2 text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>{formatTimestamp(invitation.invitedAt)}</td>
                                 <td className={cn('px-3 py-2', HOUSE_TABLE_CELL_TEXT_CLASS)}>
                                   <span className="text-muted-foreground">
@@ -1786,7 +2277,7 @@ export function WorkspacesPage() {
                     )}
                   </>
                 ) : (
-                  <WorkspacesDataLibraryView />
+                  <WorkspacesDataLibraryView onOpenDrilldownMobile={() => setDataLibraryDrilldownMobileOpen(true)} />
                 )}
               </section>
             </div>
@@ -1809,7 +2300,40 @@ export function WorkspacesPage() {
                       <PanelRightClose className="h-4 w-4" />
                     </button>
                   </div>
-                  <WorkspacesDrilldownPanel />
+                  <WorkspacesDrilldownPanel
+                    selectedWorkspaceId={workspaceDrilldownSelectionId}
+                    selectedWorkspaceName={workspaceDrilldownSelectionName}
+                    selectedWorkspace={workspaceDrilldownSelection}
+                    collaboratorChips={selectedWorkspaceCollaboratorChips}
+                    canManageSelectedWorkspace={canManageSelectedWorkspace}
+                    collaboratorComposerOpen={collaboratorComposerOpen}
+                    collaboratorInviteRole={collaboratorInviteRole}
+                    collaboratorQuery={collaboratorQuery}
+                    collaboratorLookupLoading={collaboratorLookupLoading}
+                    collaboratorLookupError={collaboratorLookupError}
+                    collaboratorCandidates={collaboratorCandidates}
+                    collaboratorTargetName={collaboratorTargetName}
+                    canConfirmAddCollaborator={canConfirmAddCollaborator}
+                    onOpenCollaboratorComposer={() => {
+                      setCollaboratorComposerOpen(true)
+                      setCollaboratorLookupError('')
+                    }}
+                    onCollaboratorInviteRoleChange={(role) => {
+                      setCollaboratorInviteRole(role)
+                    }}
+                    onChangeCollaboratorRole={onChangeCollaboratorRole}
+                    onCollaboratorQueryChange={(value) => {
+                      setCollaboratorQuery(value)
+                      setSelectedCollaboratorName('')
+                      setCollaboratorLookupError('')
+                    }}
+                    onSelectCollaboratorCandidate={(name) => {
+                      setSelectedCollaboratorName(name)
+                      setCollaboratorQuery(name)
+                    }}
+                    onConfirmAddCollaborator={onConfirmAddCollaborator}
+                    onOpenSelectedWorkspace={onOpenWorkspace}
+                  />
                 </div>
               </ScrollArea>
             ) : (
@@ -1817,7 +2341,11 @@ export function WorkspacesPage() {
                 <div className={cn(HOUSE_SECTION_TOOLS_CLASS, HOUSE_SECTION_TOOLS_WORKSPACE_CLASS, HOUSE_ACTIONS_PILL_CLASS)}>
                   <button
                     type="button"
-                    onClick={() => setWorkspaceDrilldownDesktopOpen(true)}
+                    onClick={() => {
+                      setWorkspaceDrilldownSelectionId(null)
+                      resetCollaboratorComposer()
+                      setWorkspaceDrilldownDesktopOpen(true)
+                    }}
                     className={cn(
                       HOUSE_ACTIONS_PILL_ICON_CLASS,
                       HOUSE_SECTION_TOOL_BUTTON_CLASS,
@@ -1832,124 +2360,90 @@ export function WorkspacesPage() {
               </div>
             )}
           </aside>
+        ) : centerView === 'data-library' ? (
+          <aside className="hidden border-l border-border xl:block">
+            {dataLibraryDrilldownDesktopOpen ? (
+              <ScrollArea className="h-full">
+                <div className="space-y-3 p-3">
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setDataLibraryDrilldownDesktopOpen(false)}
+                      className={cn(HOUSE_DRILLDOWN_ACTION_CLASS, 'inline-flex h-8 w-8 items-center justify-center p-0')}
+                      aria-label="Collapse data library drilldown panel"
+                      title="Collapse data library drilldown panel"
+                    >
+                      <PanelRightClose className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <DataLibraryDrilldownPanel />
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="flex h-full items-start justify-center pt-3">
+                <div className={cn(HOUSE_SECTION_TOOLS_CLASS, HOUSE_SECTION_TOOLS_DATA_CLASS, HOUSE_ACTIONS_PILL_CLASS)}>
+                  <button
+                    type="button"
+                    onClick={() => setDataLibraryDrilldownDesktopOpen(true)}
+                    className={cn(
+                      HOUSE_ACTIONS_PILL_ICON_CLASS,
+                      HOUSE_SECTION_TOOL_BUTTON_CLASS,
+                      'inline-flex h-8 w-8 items-center justify-center p-0',
+                    )}
+                    aria-label="Expand data library drilldown panel"
+                    title="Expand data library drilldown panel"
+                  >
+                    <PanelRightOpen className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </aside>
         ) : null}
       </div>
 
       <Sheet open={workspaceDrilldownMobileOpen} onOpenChange={setWorkspaceDrilldownMobileOpen}>
         <SheetContent side="right" className={HOUSE_DRILLDOWN_SHEET_CLASS}>
-          <WorkspacesDrilldownPanel />
+          <WorkspacesDrilldownPanel
+            selectedWorkspaceId={workspaceDrilldownSelectionId}
+            selectedWorkspaceName={workspaceDrilldownSelectionName}
+            selectedWorkspace={workspaceDrilldownSelection}
+            collaboratorChips={selectedWorkspaceCollaboratorChips}
+            canManageSelectedWorkspace={canManageSelectedWorkspace}
+            collaboratorComposerOpen={collaboratorComposerOpen}
+            collaboratorInviteRole={collaboratorInviteRole}
+            collaboratorQuery={collaboratorQuery}
+            collaboratorLookupLoading={collaboratorLookupLoading}
+            collaboratorLookupError={collaboratorLookupError}
+            collaboratorCandidates={collaboratorCandidates}
+            collaboratorTargetName={collaboratorTargetName}
+            canConfirmAddCollaborator={canConfirmAddCollaborator}
+            onOpenCollaboratorComposer={() => {
+              setCollaboratorComposerOpen(true)
+              setCollaboratorLookupError('')
+            }}
+            onCollaboratorInviteRoleChange={(role) => {
+              setCollaboratorInviteRole(role)
+            }}
+            onChangeCollaboratorRole={onChangeCollaboratorRole}
+            onCollaboratorQueryChange={(value) => {
+              setCollaboratorQuery(value)
+              setSelectedCollaboratorName('')
+              setCollaboratorLookupError('')
+            }}
+            onSelectCollaboratorCandidate={(name) => {
+              setSelectedCollaboratorName(name)
+              setCollaboratorQuery(name)
+            }}
+            onConfirmAddCollaborator={onConfirmAddCollaborator}
+            onOpenSelectedWorkspace={onOpenWorkspace}
+          />
         </SheetContent>
       </Sheet>
 
-      <Sheet open={addCollaboratorSheetOpen} onOpenChange={onAddCollaboratorSheetOpenChange}>
-        <SheetContent side="right" className="w-full max-w-sz-480 p-0 sm:w-sz-480">
-          <div className="flex h-full flex-col">
-            <div className="border-b border-border p-4">
-              <div className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
-                <h2 className={HOUSE_SECTION_TITLE_CLASS}>Add collaborator</h2>
-                <p className={HOUSE_SECTION_SUBTITLE_CLASS}>
-                  {addCollaboratorWorkspace
-                    ? `Select a collaborator for ${addCollaboratorWorkspace.name}.`
-                    : 'Select a workspace first.'}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex-1 space-y-3 overflow-y-auto p-4">
-              <div className="space-y-1">
-                <label htmlFor="workspace-collaborator-search" className={houseTypography.fieldLabel}>
-                  Find person
-                </label>
-                <Input
-                  id="workspace-collaborator-search"
-                  value={collaboratorQuery}
-                  onChange={(event) => {
-                    setCollaboratorQuery(event.target.value)
-                    setSelectedCollaboratorName('')
-                    setCollaboratorLookupError('')
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && canConfirmAddCollaborator) {
-                      event.preventDefault()
-                      onConfirmAddCollaborator()
-                    }
-                  }}
-                  placeholder="Search by name or email"
-                  className={HOUSE_INPUT_CLASS}
-                />
-                <p className={HOUSE_FIELD_HELPER_CLASS}>
-                  Type at least 2 characters. Only top matches are loaded for speed at scale.
-                </p>
-              </div>
-
-              {collaboratorLookupLoading ? (
-                <p className={HOUSE_FIELD_HELPER_CLASS}>Searching collaborator directory...</p>
-              ) : null}
-              {collaboratorLookupError ? (
-                <p className="text-sm text-amber-700">{collaboratorLookupError}</p>
-              ) : null}
-
-              <div className={HOUSE_COLLABORATOR_LIST_SHELL_CLASS}>
-                <ScrollArea className={HOUSE_COLLABORATOR_LIST_VIEWPORT_CLASS}>
-                  <div className={HOUSE_COLLABORATOR_LIST_BODY_CLASS}>
-                    {collaboratorCandidates.length === 0 ? (
-                      <p className={cn('px-2 py-1', HOUSE_FIELD_HELPER_CLASS)}>No matches yet.</p>
-                    ) : (
-                      collaboratorCandidates.map((candidate) => {
-                        const isSelected =
-                          normalizeCollaboratorName(candidate.name).toLowerCase() ===
-                          normalizeCollaboratorName(selectedCollaboratorName || collaboratorQuery).toLowerCase()
-                        return (
-                          <button
-                            key={candidate.key}
-                            type="button"
-                            onClick={() => {
-                              setSelectedCollaboratorName(candidate.name)
-                              setCollaboratorQuery(candidate.name)
-                            }}
-                            className={cn(
-                              HOUSE_COLLABORATOR_CANDIDATE_CLASS,
-                              isSelected
-                                ? HOUSE_COLLABORATOR_CANDIDATE_SELECTED_CLASS
-                                : HOUSE_COLLABORATOR_CANDIDATE_IDLE_CLASS,
-                            )}
-                          >
-                            <p className={houseTypography.text}>{candidate.name}</p>
-                            <div className={HOUSE_COLLABORATOR_CANDIDATE_META_CLASS} data-ui="collaborator-candidate-meta">
-                              <p className={houseTypography.fieldHelper} data-ui="collaborator-candidate-subtitle">{candidate.subtitle}</p>
-                              <span className={HOUSE_COLLABORATOR_CANDIDATE_SOURCE_CLASS} data-ui="collaborator-candidate-source">
-                                {candidate.source === 'directory' ? 'Directory' : 'Workspace network'}
-                              </span>
-                            </div>
-                          </button>
-                        )
-                      })
-                    )}
-                  </div>
-                </ScrollArea>
-              </div>
-
-              {collaboratorTargetName ? <p className={HOUSE_FIELD_HELPER_CLASS} data-ui="collaborator-candidate-selected">Selected: {collaboratorTargetName}</p> : null}
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t border-border p-3" data-ui="collaborator-sheet-actions">
-              <Button
-                type="button"
-                className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
-                onClick={resetAddCollaboratorSheet}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                className={cn(HOUSE_PRIMARY_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
-                onClick={onConfirmAddCollaborator}
-                disabled={!canConfirmAddCollaborator}
-              >
-                Add collaborator
-              </Button>
-            </div>
-          </div>
+      <Sheet open={dataLibraryDrilldownMobileOpen} onOpenChange={setDataLibraryDrilldownMobileOpen}>
+        <SheetContent side="right" className={HOUSE_DRILLDOWN_SHEET_CLASS}>
+          <DataLibraryDrilldownPanel />
         </SheetContent>
       </Sheet>
 

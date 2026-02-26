@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
@@ -9,6 +10,7 @@ import research_os.services.publication_console_service as publication_console_s
 from research_os.api.app import app
 from research_os.db import (
     PublicationAiCache,
+    PublicationFile,
     PublicationImpactCache,
     User,
     Work,
@@ -27,6 +29,7 @@ def _set_test_environment(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("PUB_IMPACT_TTL_SECONDS", "60")
     monkeypatch.setenv("PUB_AI_TTL_SECONDS", "60")
     monkeypatch.setenv("PUB_AUTHORS_TTL_SECONDS", "60")
+    monkeypatch.setenv("PUBLICATION_FILES_ROOT", str(tmp_path / "publication-files"))
     api_module._AUTH_RATE_LIMIT_EVENTS.clear()
     reset_database_state()
 
@@ -401,3 +404,116 @@ def test_ai_endpoint_stale_while_revalidate_statuses(monkeypatch, tmp_path) -> N
     )
     assert failed_response["status"] == "FAILED"
     assert failed_response["last_error"] == "ai failed"
+
+
+def test_publication_file_upload_preserves_filename_and_download_header(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    with TestClient(app) as client:
+        owner_id, token = _register(client, email="file-owner@example.com")
+
+        with session_scope() as session:
+            work = Work(
+                user_id=owner_id,
+                title="File upload work",
+                title_lower="file upload work",
+                year=2024,
+                doi="10.1000/file-upload-work",
+                work_type="journal-article",
+                venue_name="Test Journal",
+                publisher="Test Publisher",
+                abstract="Abstract",
+                keywords=[],
+                url="",
+                provenance="manual",
+            )
+            session.add(work)
+            session.flush()
+            work_id = str(work.id)
+
+        upload_filename = "My manuscript; v2.final.pdf"
+        upload_response = client.post(
+            f"/v1/publications/{work_id}/files/upload",
+            headers=_auth_headers(token),
+            json={
+                "filename": upload_filename,
+                "mime_type": "application/pdf",
+                "content_base64": base64.b64encode(
+                    b"%PDF-1.7 test payload"
+                ).decode("ascii"),
+            },
+        )
+        assert upload_response.status_code == 200
+        uploaded = upload_response.json()
+        assert uploaded["file_name"] == upload_filename
+        assert uploaded["file_type"] == "PDF"
+        file_id = str(uploaded["id"])
+
+        download_response = client.get(
+            f"/v1/publications/{work_id}/files/{file_id}/download",
+            headers=_auth_headers(token),
+        )
+        assert download_response.status_code == 200
+        assert download_response.content == b"%PDF-1.7 test payload"
+        disposition = str(download_response.headers.get("content-disposition") or "")
+        assert "filename*=UTF-8''My%20manuscript%3B%20v2.final.pdf" in disposition
+
+
+def test_publication_file_download_restores_extension_for_legacy_filename(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    with TestClient(app) as client:
+        owner_id, token = _register(client, email="file-legacy@example.com")
+
+        with session_scope() as session:
+            work = Work(
+                user_id=owner_id,
+                title="Legacy file upload work",
+                title_lower="legacy file upload work",
+                year=2024,
+                doi="10.1000/legacy-file-upload-work",
+                work_type="journal-article",
+                venue_name="Test Journal",
+                publisher="Test Publisher",
+                abstract="Abstract",
+                keywords=[],
+                url="",
+                provenance="manual",
+            )
+            session.add(work)
+            session.flush()
+            work_id = str(work.id)
+
+        upload_response = client.post(
+            f"/v1/publications/{work_id}/files/upload",
+            headers=_auth_headers(token),
+            json={
+                "filename": "legacy-final.pdf",
+                "mime_type": "application/pdf",
+                "content_base64": base64.b64encode(
+                    b"%PDF-1.7 legacy payload"
+                ).decode("ascii"),
+            },
+        )
+        assert upload_response.status_code == 200
+        file_id = str(upload_response.json()["id"])
+
+        with session_scope() as session:
+            row = session.get(PublicationFile, file_id)
+            assert row is not None
+            row.file_name = "legacy-final"
+            session.flush()
+
+        download_response = client.get(
+            f"/v1/publications/{work_id}/files/{file_id}/download",
+            headers=_auth_headers(token),
+        )
+        assert download_response.status_code == 200
+        disposition = str(download_response.headers.get("content-disposition") or "")
+        assert "filename*=UTF-8''legacy-final.pdf" in disposition

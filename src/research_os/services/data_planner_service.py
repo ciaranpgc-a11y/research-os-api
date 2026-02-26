@@ -2075,6 +2075,82 @@ def update_library_asset_access(
         )
 
 
+def update_library_asset_metadata(
+    *,
+    asset_id: str,
+    user_id: str,
+    account_key_hint: str | None = None,
+    filename: str,
+) -> dict[str, object]:
+    create_all_tables()
+    clean_asset_id = _trim(asset_id)
+    clean_user_id = _trim(user_id)
+    clean_filename = _trim(filename)
+    if not clean_asset_id:
+        raise PlannerValidationError("asset_id is required.")
+    if not clean_user_id:
+        raise PlannerValidationError("Session token is required.")
+    if not clean_filename:
+        raise PlannerValidationError("filename is required.")
+
+    normalized_filename = _slugify_filename(clean_filename)
+
+    with session_scope() as session:
+        storage_root = _storage_root()
+        related_user_ids = _related_user_ids_for_user(
+            session=session,
+            user_id=clean_user_id,
+            account_key_hint=account_key_hint,
+        )
+        if clean_user_id not in related_user_ids:
+            related_user_ids.add(clean_user_id)
+        asset = session.get(DataLibraryAsset, clean_asset_id)
+        if asset is None:
+            _restore_asset_row_from_metadata(
+                session=session,
+                primary_root=storage_root,
+                asset_id=clean_asset_id,
+                claimant_user_id=clean_user_id,
+            )
+            _claim_legacy_ownerless_assets_for_user(
+                session=session,
+                user_id=clean_user_id,
+            )
+            asset = session.get(DataLibraryAsset, clean_asset_id)
+        if asset is None:
+            raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
+        if not _trim(asset.owner_user_id):
+            _claim_legacy_ownerless_assets_for_user(
+                session=session,
+                user_id=clean_user_id,
+            )
+            asset = session.get(DataLibraryAsset, clean_asset_id)
+            if asset is None:
+                raise DataAssetNotFoundError(
+                    f"Data asset '{clean_asset_id}' was not found."
+                )
+
+        owner_user_id = _trim(asset.owner_user_id)
+        if owner_user_id not in related_user_ids:
+            raise PlannerValidationError("Only the asset owner can rename files.")
+        if owner_user_id and owner_user_id != clean_user_id:
+            asset.owner_user_id = clean_user_id
+
+        asset.filename = normalized_filename
+        asset.kind = _guess_kind(normalized_filename)
+        session.flush()
+        _sync_asset_metadata_for_row(
+            session=session,
+            asset=asset,
+            primary_root=storage_root,
+        )
+        return _serialize_library_asset(
+            session=session,
+            asset=asset,
+            requesting_user_id=clean_user_id,
+        )
+
+
 def download_library_asset(
     *, asset_id: str, user_id: str, account_key_hint: str | None = None
 ) -> dict[str, object]:

@@ -223,9 +223,13 @@ function buildYAxisPanelWidthRem(ticks: number[], showAxisName: boolean): number
     1,
     ...ticks.map((tick) => formatInt(Math.max(0, Math.round(Number.isFinite(tick) ? tick : 0))).length),
   )
-  const baseWidthRem = 1.35 + (maxTickChars * 0.36)
-  const withAxisNameRem = showAxisName ? baseWidthRem + 0.72 : baseWidthRem
-  return Math.min(4.8, Math.max(2.8, withAxisNameRem))
+  // Keep y-axis label spacing stable across 1-4 digit ranges while still allowing larger values.
+  const tickColumnWidthRem = 1.3 + (maxTickChars * 0.28)
+  const axisNameAllowanceRem = showAxisName ? 0.68 : 0
+  const preferredWidthRem = tickColumnWidthRem + axisNameAllowanceRem
+  const minWidthRem = showAxisName ? 3.1 : 2.65
+  const maxWidthRem = showAxisName ? 3.95 : 3.3
+  return Math.min(maxWidthRem, Math.max(minWidthRem, preferredWidthRem))
 }
 
 type MomentumBreakdown = {
@@ -254,6 +258,8 @@ type MomentumYearBreakdown = {
 
 type MomentumWindowMode = '12m' | '5y'
 type PublicationsWindowMode = '1y' | '3y' | '5y' | 'all'
+type PublicationCategoryValueMode = 'absolute' | 'percentage'
+type PublicationCategoryDisplayMode = 'chart' | 'table'
 type HIndexViewMode = 'trajectory' | 'needed'
 type FieldPercentileThreshold = 50 | 75 | 90 | 95 | 99
 type DrilldownTab = 'summary' | 'breakdown' | 'trajectory' | 'context' | 'methods'
@@ -272,11 +278,18 @@ const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label:
   { value: '5y', label: '5y' },
   { value: 'all', label: 'All' },
 ]
+const PUBLICATION_VALUE_MODE_OPTIONS: Array<{ value: PublicationCategoryValueMode; label: string }> = [
+  { value: 'absolute', label: 'Absolute' },
+  { value: 'percentage', label: '%' },
+]
+const PUBLICATION_DISPLAY_MODE_OPTIONS: Array<{ value: PublicationCategoryDisplayMode; label: string }> = [
+  { value: 'chart', label: 'Chart' },
+  { value: 'table', label: 'Table' },
+]
 const HOUSE_HEADING_TITLE_CLASS = publicationsHouseHeadings.title
 const HOUSE_HEADING_SECTION_TITLE_CLASS = publicationsHouseHeadings.sectionTitle
 const HOUSE_HEADING_H2_CLASS = publicationsHouseHeadings.h2
 const HOUSE_TEXT_CLASS = publicationsHouseHeadings.text
-const HOUSE_TEXT_SOFT_CLASS = publicationsHouseHeadings.textSoft
 const HOUSE_METRIC_SUBTITLE_CLASS = publicationsHouseHeadings.metricSubtitle
 const HOUSE_METRIC_DETAIL_CLASS = publicationsHouseHeadings.metricDetail
 const HOUSE_TILE_SUBTITLE_CLASS = cn('house-metric-subtitle-row', HOUSE_METRIC_SUBTITLE_CLASS)
@@ -332,7 +345,9 @@ const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS = publicationsHouseDrilldown.summ
 const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_EMPHASIS_CLASS = publicationsHouseDrilldown.summaryStatValueEmphasis
 const HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS = publicationsHouseDrilldown.summaryStatTitle
 const HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS = publicationsHouseDrilldown.summaryStatCard
+const HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_ACTIVE_CLASS = publicationsHouseDrilldown.summaryStatCardActive
 const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS = publicationsHouseDrilldown.summaryStatValueWrap
+const HOUSE_DRILLDOWN_SECTION_LABEL_CLASS = publicationsHouseDrilldown.sectionLabel
 const HOUSE_DRILLDOWN_AXIS_CLASS = publicationsHouseDrilldown.axis
 const HOUSE_DRILLDOWN_RANGE_CLASS = publicationsHouseDrilldown.range
 const HOUSE_DRILLDOWN_BADGE_CLASS = publicationsHouseDrilldown.badge
@@ -356,6 +371,9 @@ const HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS = publicationsHouseDrilldown.toggleButt
 const HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS = publicationsHouseDrilldown.summaryStatsGrid
 const HOUSE_DRILLDOWN_SUMMARY_STATS_COMPACT_GRID_CLASS = publicationsHouseDrilldown.summaryStatsGridCompact
 const HOUSE_DRILLDOWN_SUMMARY_TREND_CHART_CLASS = publicationsHouseDrilldown.summaryTrendChart
+const HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS = publicationsHouseDrilldown.chartControlsRow
+const HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS = publicationsHouseDrilldown.chartControlsLeft
+const HOUSE_DRILLDOWN_CHART_META_CLASS = publicationsHouseDrilldown.chartMeta
 const HOUSE_DRILLDOWN_SHEET_BODY_CLASS = publicationsHouseDrilldown.sheetBody
 const HOUSE_DRILLDOWN_SECTION_SEPARATOR_CLASS = publicationsHouseDrilldown.sectionSeparator
 const HOUSE_DRILLDOWN_SECTION_TITLE_SPACER_CLASS = publicationsHouseDrilldown.sectionTitleSpacer
@@ -366,7 +384,11 @@ const HOUSE_CHART_BAR_NEUTRAL_CLASS = publicationsHouseCharts.barNeutral
 const HOUSE_CHART_BAR_CURRENT_CLASS = publicationsHouseCharts.barCurrent
 const HOUSE_CHART_GRID_LINE_CLASS = publicationsHouseCharts.gridLine
 const HOUSE_CHART_GRID_DASHED_CLASS = publicationsHouseCharts.gridDashed
+const HOUSE_CHART_GRID_LINE_SUBTLE_CLASS = publicationsHouseCharts.gridLineSubtle
+const HOUSE_CHART_MEAN_LINE_CLASS = publicationsHouseCharts.meanLine
 const HOUSE_CHART_AXIS_TEXT_CLASS = publicationsHouseCharts.axisText
+const HOUSE_CHART_AXIS_TEXT_TREND_CLASS = publicationsHouseCharts.axisTextTrend
+const HOUSE_CHART_AXIS_TITLE_CLASS = publicationsHouseCharts.axisTitle
 const HOUSE_CHART_AXIS_SUBTEXT_CLASS = publicationsHouseCharts.axisSubtext
 const HOUSE_CHART_AXIS_WINDOW_SUBTEXT_CLASS = publicationsHouseCharts.axisWindowSubtext
 const HOUSE_CHART_LINE_SOFT_SVG_CLASS = publicationsHouseCharts.lineSoftSvg
@@ -651,13 +673,23 @@ type HIndexProgressMeta = {
   hasGapData: boolean
 }
 
-function fallbackMonthLabels(count: number): string[] {
+function buildTrailingMonthStarts(count: number, endAtLastCompleteMonth = false): Date[] {
   const today = new Date()
+  const anchorMonth = endAtLastCompleteMonth ? today.getUTCMonth() - 1 : today.getUTCMonth()
   return Array.from({ length: count }, (_, index) => {
     const shift = count - 1 - index
-    const monthDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - shift, 1))
-    return monthDate.toLocaleString('en-GB', { month: 'short' })
+    return new Date(Date.UTC(today.getUTCFullYear(), anchorMonth - shift, 1))
   })
+}
+
+function fallbackMonthLabels(count: number, endAtLastCompleteMonth = false): string[] {
+  return buildTrailingMonthStarts(count, endAtLastCompleteMonth)
+    .map((monthDate) => monthDate.toLocaleString('en-GB', { month: 'short' }))
+}
+
+function fallbackMonthYearShortLabels(count: number, endAtLastCompleteMonth = false): string[] {
+  return buildTrailingMonthStarts(count, endAtLastCompleteMonth)
+    .map((monthDate) => String(monthDate.getUTCFullYear()).slice(-2))
 }
 
 const MONTH_INDEX_BY_NAME: Record<string, number> = {
@@ -1607,6 +1639,15 @@ function PublicationsPerYearChart({
   xAxisLabel = 'Publication year',
   yAxisLabel = 'Publications',
   enableWindowToggle = false,
+  subtleGrid = false,
+  showPeriodHint = true,
+  showCurrentPeriodSemantic = true,
+  useCompletedMonthWindowLabels = false,
+  autoScaleByWindow = false,
+  showMeanLine = false,
+  chartTitle,
+  activeWindowMode,
+  onWindowModeChange,
 }: {
   tile: PublicationMetricTilePayload
   showCaption?: boolean
@@ -1615,12 +1656,31 @@ function PublicationsPerYearChart({
   xAxisLabel?: string
   yAxisLabel?: string
   enableWindowToggle?: boolean
+  subtleGrid?: boolean
+  showPeriodHint?: boolean
+  showCurrentPeriodSemantic?: boolean
+  useCompletedMonthWindowLabels?: boolean
+  autoScaleByWindow?: boolean
+  showMeanLine?: boolean
+  chartTitle?: string
+  activeWindowMode?: PublicationsWindowMode
+  onWindowModeChange?: (mode: PublicationsWindowMode) => void
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [windowMode, setWindowMode] = useState<PublicationsWindowMode>('5y')
+  const effectiveWindowMode: PublicationsWindowMode = enableWindowToggle
+    ? (activeWindowMode ?? windowMode)
+    : 'all'
   useEffect(() => {
+    if (!enableWindowToggle) {
+      return
+    }
+    if (activeWindowMode !== undefined) {
+      setWindowMode(activeWindowMode)
+      return
+    }
     setWindowMode('5y')
-  }, [tile.key, enableWindowToggle])
+  }, [tile.key, enableWindowToggle, activeWindowMode])
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
@@ -1658,7 +1718,6 @@ function PublicationsPerYearChart({
   }
 
   const isCompactTileMode = !showAxes && !enableWindowToggle
-  const effectiveWindowMode: PublicationsWindowMode = enableWindowToggle ? windowMode : 'all'
 
   type PublicationChartBar = {
     key: string
@@ -1682,12 +1741,16 @@ function PublicationsPerYearChart({
         value: Math.max(0, bar.value),
         current: bar.current,
         axisLabel: String(bar.year).slice(-2),
-        axisSubLabel: bar.current ? 'YTD' : undefined,
+        axisSubLabel: showCurrentPeriodSemantic && bar.current ? 'YTD' : undefined,
       }))
-  ), [historyBars])
+  ), [historyBars, showCurrentPeriodSemantic])
 
   const groupedYearBarsByWindow = useMemo(() => {
-    const build = (windowYears: number | null, useCompactRangeLabels: boolean): PublicationYearWindowBars => {
+    const build = (
+      mode: Exclude<PublicationsWindowMode, '1y'>,
+      windowYears: number | null,
+      useCompactRangeLabels: boolean,
+    ): PublicationYearWindowBars => {
       const sourceBars = windowYears === null
         ? historyBars
         : historyBars.slice(-windowYears)
@@ -1703,7 +1766,7 @@ function PublicationsPerYearChart({
         }
         const startYear = chunk[0].year
         const endYear = chunk[chunk.length - 1].year
-        const isSingleCurrentYear = chunk.some((item) => item.current) && startYear === endYear
+        const isSingleCurrentYear = showCurrentPeriodSemantic && chunk.some((item) => item.current) && startYear === endYear
         grouped.push({
           key: `${startYear}-${endYear}`,
           value: chunk.reduce((sum, item) => sum + Math.max(0, item.value), 0),
@@ -1716,7 +1779,32 @@ function PublicationsPerYearChart({
           axisSubLabel: isSingleCurrentYear ? 'YTD' : undefined,
         })
       }
-      const visibleBars = grouped.slice(-MAX_PUBLICATION_CHART_BARS)
+      let visibleBars = grouped.slice(-MAX_PUBLICATION_CHART_BARS)
+      if (useCompletedMonthWindowLabels && mode !== 'all' && windowYears !== null && visibleBars.length === windowYears) {
+        const trailingMonths = buildTrailingMonthStarts(windowYears * 12, true)
+        const rollingLabels = Array.from({ length: windowYears }, (_, index) => {
+          const start = trailingMonths[index * 12]
+          const end = trailingMonths[(index * 12) + 11]
+          if (!(start instanceof Date) || !(end instanceof Date)) {
+            return {
+              label: visibleBars[index]?.axisLabel || '',
+              subLabel: visibleBars[index]?.axisSubLabel,
+            }
+          }
+          const label = `${MONTH_SHORT[start.getUTCMonth()]}-${MONTH_SHORT[end.getUTCMonth()]}`
+          const startYear = shortYearLabel(start.getUTCFullYear())
+          const endYear = shortYearLabel(end.getUTCFullYear())
+          return {
+            label,
+            subLabel: startYear === endYear ? startYear : `${startYear}-${endYear}`,
+          }
+        })
+        visibleBars = visibleBars.map((bar, index) => ({
+          ...bar,
+          axisLabel: rollingLabels[index]?.label || bar.axisLabel,
+          axisSubLabel: rollingLabels[index]?.subLabel || bar.axisSubLabel,
+        }))
+      }
       const firstBar = visibleBars[0] || null
       const lastBar = visibleBars[visibleBars.length - 1] || null
       const rangeLabel = firstBar && lastBar
@@ -1736,36 +1824,43 @@ function PublicationsPerYearChart({
       return { bars: visibleBars, bucketSize, rangeLabel }
     }
     return {
-      '3y': build(3, false),
-      '5y': build(5, false),
-      all: build(null, historyBars.length > MAX_PUBLICATION_CHART_BARS),
+      '3y': build('3y', 3, false),
+      '5y': build('5y', 5, false),
+      all: build('all', null, historyBars.length > MAX_PUBLICATION_CHART_BARS),
     } as const
-  }, [fullYearLabels, historyBars])
+  }, [fullYearLabels, historyBars, showCurrentPeriodSemantic, useCompletedMonthWindowLabels])
 
   const usingMonthlyBars = effectiveWindowMode === '1y'
   const groupedMonthBars = useMemo(() => {
     const sourceValues = toNumberArray(chartData.monthly_values_12m).map((item) => Math.max(0, item))
     const sourceLabels = toStringArray(chartData.month_labels_12m)
+    const currentMonthIndex = new Date().getUTCMonth()
+    const sourceLastMonthIndex = sourceLabels.length ? parseMonthIndex(sourceLabels[sourceLabels.length - 1]) : null
+    const sourceLikelyIncludesCurrentMonth = sourceLastMonthIndex !== null && sourceLastMonthIndex === currentMonthIndex
     const annualFallback = Math.max(0, historyBars[historyBars.length - 1]?.value || 0)
-    const values12 = sourceValues.length >= 12
-      ? sourceValues.slice(-12)
+    const sourceValuesWindow = sourceValues.length >= 13 && sourceLikelyIncludesCurrentMonth
+      ? sourceValues.slice(-13, -1)
+      : sourceValues.length >= 12
+        ? sourceValues.slice(-12)
+        : sourceValues
+    const values12 = sourceValuesWindow.length >= 12
+      ? sourceValuesWindow.slice(-12)
       : sourceValues.length > 0
-        ? [...Array.from({ length: 12 - sourceValues.length }, () => 0), ...sourceValues]
+        ? [...Array.from({ length: 12 - sourceValuesWindow.length }, () => 0), ...sourceValuesWindow]
         : Array.from({ length: 12 }, () => annualFallback / 12)
-    const labels12 = sourceLabels.length >= 12
-      ? sourceLabels.slice(-12)
-      : fallbackMonthLabels(12)
+    const monthLabels12 = fallbackMonthLabels(12, true)
+    const yearShortLabels12 = fallbackMonthYearShortLabels(12, true)
     const bars: PublicationChartBar[] = values12.map((value, index) => ({
-      key: `month-${index}-${labels12[index] || `M${index + 1}`}`,
+      key: `month-${yearShortLabels12[index] || '00'}-${monthLabels12[index] || `M${index + 1}`}-${index}`,
       value: Math.max(0, value),
-      current: index === values12.length - 1,
-      axisLabel: labels12[index] || `M${index + 1}`,
-      axisSubLabel: index === values12.length - 1 ? 'YTD' : undefined,
+      current: false,
+      axisLabel: monthLabels12[index] || `M${index + 1}`,
+      axisSubLabel: yearShortLabels12[index] || undefined,
     }))
     return {
       bars,
       bucketSize: 1,
-      rangeLabel: `${labels12[0] || 'Start'}-${labels12[labels12.length - 1] || 'End'}`,
+      rangeLabel: `${monthLabels12[0] || 'Start'} ${yearShortLabels12[0] || ''}-${monthLabels12[monthLabels12.length - 1] || 'End'} ${yearShortLabels12[yearShortLabels12.length - 1] || ''}`.trim(),
     }
   }, [chartData.month_labels_12m, chartData.monthly_values_12m, historyBars])
 
@@ -1840,7 +1935,7 @@ function PublicationsPerYearChart({
   const maxYearlyValue = Math.max(1, ...historyBars.map((bar) => Math.max(0, bar.value)))
   const maxMonthlyValue = Math.max(0, ...groupedMonthBars.bars.map((bar) => Math.max(0, bar.value)))
   const maxWindowValue = Math.max(maxYearlyValue, maxMonthlyValue)
-  const stableAxisScale = enableWindowToggle ? buildNiceAxis(maxWindowValue) : null
+  const stableAxisScale = enableWindowToggle && !autoScaleByWindow ? buildNiceAxis(maxWindowValue) : null
   const axisScale = showAxes
     ? stableAxisScale || buildNiceAxis(maxValue)
     : null
@@ -1850,8 +1945,8 @@ function PublicationsPerYearChart({
   const yAxisTickValues = axisScale
     ? axisScale.ticks
     : [0, axisMax * 0.25, axisMax * 0.5, axisMax * 0.75, axisMax]
-  const stableToggleTickValues = enableWindowToggle && stableAxisScale ? stableAxisScale.ticks : yAxisTickValues
-  const gridTickValues = yAxisTickValues.slice(1, -1)
+  const stableToggleTickValues = enableWindowToggle ? buildNiceAxis(maxWindowValue).ticks : yAxisTickValues
+  const gridTickValues = yAxisTickValues.slice(1)
   const resolvedXAxisLabel = usingMonthlyBars ? 'Publication month' : xAxisLabel
   const xAxisLabelLayout = enableWindowToggle
     ? mergeChartAxisLayouts(
@@ -1908,69 +2003,85 @@ function PublicationsPerYearChart({
     paddingBottom: `${xAxisLabelLayout.framePaddingBottomRem}rem`,
   }
   const yAxisTickOffsetRem = 0.4
-  const activeWindowIndex = PUBLICATIONS_WINDOW_OPTIONS.findIndex((option) => option.value === windowMode)
+  const gridLineToneClass = subtleGrid ? HOUSE_CHART_GRID_LINE_SUBTLE_CLASS : HOUSE_CHART_GRID_LINE_CLASS
+  const activeWindowIndex = PUBLICATIONS_WINDOW_OPTIONS.findIndex((option) => option.value === effectiveWindowMode)
   const monthRangeLabel = usingMonthlyBars ? groupedMonthBars.rangeLabel : null
   const yearRangeLabel = usingMonthlyBars ? null : activeWindowBars.rangeLabel
   const periodHintText = monthRangeLabel || yearRangeLabel || '\u00A0'
   const periodHintVisible = Boolean(monthRangeLabel || yearRangeLabel)
+  const rightMetaVisible = showPeriodHint
+  const rightMetaText = periodHintText
+  const rightMetaOpaque = periodHintVisible
   return (
     <div
       className="flex h-full min-h-0 w-full flex-col"
       data-ui="publications-per-year-chart"
       data-house-role="metric-chart"
     >
+          {chartTitle ? (
+        <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, 'mb-1')}>
+          {chartTitle}
+        </p>
+      ) : null}
       {enableWindowToggle ? (
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <div
-            className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
-            data-stop-tile-open="true"
-            data-ui="publications-window-toggle"
-            data-house-role="chart-toggle"
-          >
-            <span
-              className={HOUSE_TOGGLE_THUMB_CLASS}
-              style={{
-                width: 'calc(25% - 0.2rem)',
-                left: `calc(${Math.max(0, activeWindowIndex) * 25}% + 2px)`,
-              }}
-              aria-hidden="true"
-            />
-            {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
-              <button
-                key={`pub-window-${option.value}`}
-                type="button"
-                data-stop-tile-open="true"
-                className={cn(
-                  HOUSE_TOGGLE_BUTTON_CLASS,
-                  windowMode === option.value
-                    ? 'text-white'
-                    : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                )}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  if (windowMode === option.value) {
-                    return
-                  }
-                  setWindowMode(option.value)
+        <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, rightMetaVisible ? 'justify-between' : 'justify-start')}>
+          <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
+            <div
+              className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
+              data-stop-tile-open="true"
+              data-ui="publications-window-toggle"
+              data-house-role="chart-toggle"
+            >
+              <span
+                className={HOUSE_TOGGLE_THUMB_CLASS}
+                style={{
+                  width: 'calc(25% - 0.2rem)',
+                  left: `calc(${Math.max(0, activeWindowIndex) * 25}% + 2px)`,
                 }}
-                onMouseDown={(event) => event.stopPropagation()}
-                aria-pressed={windowMode === option.value}
-              >
-                {option.label}
-              </button>
-            ))}
+                aria-hidden="true"
+              />
+              {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
+                <button
+                  key={`pub-window-${option.value}`}
+                  type="button"
+                  data-stop-tile-open="true"
+                  className={cn(
+                    HOUSE_TOGGLE_BUTTON_CLASS,
+                    effectiveWindowMode === option.value
+                      ? 'text-white'
+                      : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                  )}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    if (effectiveWindowMode === option.value) {
+                      return
+                    }
+                    if (onWindowModeChange) {
+                      onWindowModeChange(option.value)
+                    }
+                    setWindowMode(option.value)
+                  }}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  aria-pressed={effectiveWindowMode === option.value}
+                >
+                    {option.label}
+                  </button>
+                ))}
+            </div>
           </div>
+          {rightMetaVisible ? (
             <p
               className={cn(
-                'min-h-[0.9rem]',
+                HOUSE_DRILLDOWN_CHART_META_CLASS,
                 HOUSE_HEADING_LABEL_CLASS,
                 HOUSE_TOGGLE_CHART_LABEL_CLASS,
-                periodHintVisible ? 'opacity-100' : 'opacity-0',
+                rightMetaOpaque ? 'opacity-100' : 'opacity-0',
               )}
               aria-live="polite"
-          >
-            {periodHintText}
-          </p>
+            >
+              {rightMetaText}
+            </p>
+          ) : null}
         </div>
       ) : null}
       <div
@@ -1986,23 +2097,25 @@ function PublicationsPerYearChart({
           {gridTickValues.map((tickValue) => (
             <div
               key={`pub-grid-${tickValue}`}
-              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
+              className={cn('pointer-events-none absolute inset-x-0', gridLineToneClass)}
               style={{ bottom: `${(tickValue / axisMax) * 100}%` }}
               aria-hidden="true"
             />
           ))}
-          <div
-            className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_DASHED_CLASS)}
-            style={{ bottom: `${Math.max(0, Math.min(100, (Math.max(0, meanValue) / axisMax) * 100))}%` }}
-            aria-hidden="true"
-          />
+          {showMeanLine ? (
+            <div
+              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_MEAN_LINE_CLASS)}
+              style={{ bottom: `${Math.max(0, Math.min(100, (Math.max(0, meanValue) / axisMax) * 100))}%` }}
+              aria-hidden="true"
+            />
+          ) : null}
           <div className="absolute inset-0 flex items-end gap-1" data-ui="chart-bars" data-house-role="chart-bars">
             {renderBars.map((bar, index) => {
               const animatedValue = Math.max(0, renderedValuesAnimated[index] ?? bar.value)
               const heightPct = animatedValue <= 0 ? 3 : Math.max(6, (animatedValue / axisMax) * 100)
               const isActive = hoveredIndex === index
               const relative = bar.value >= meanValue * 1.1 ? 'above' : bar.value <= meanValue * 0.9 ? 'below' : 'near'
-              const toneClass = bar.current
+              const toneClass = bar.current && showCurrentPeriodSemantic
                 ? HOUSE_CHART_BAR_CURRENT_CLASS
                 : relative === 'above'
                   ? HOUSE_CHART_BAR_POSITIVE_CLASS
@@ -2051,17 +2164,17 @@ function PublicationsPerYearChart({
           <div className="pointer-events-none absolute" style={yAxisPanelStyle} aria-hidden="true">
             {yAxisTickValues.map((tickValue) => {
               const pct = axisMax <= 0 ? 0 : (tickValue / axisMax) * 100
-              return (
-                <p
-                  key={`pub-y-axis-${tickValue}`}
-                  className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_CLASS)}
-                  style={{ bottom: `calc(${pct}% - ${yAxisTickOffsetRem}rem)` }}
-                >
-                  {formatInt(tickValue)}
-                </p>
-              )
-            })}
-            <p className={cn(HOUSE_HEADING_LABEL_CLASS, 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}>
+                return (
+                  <p
+                    key={`pub-y-axis-${tickValue}`}
+                    className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS)}
+                    style={{ bottom: `calc(${pct}% - ${yAxisTickOffsetRem}rem)` }}
+                  >
+                    {formatInt(tickValue)}
+                  </p>
+                )
+              })}
+            <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}>
               {yAxisLabel}
             </p>
           </div>
@@ -2070,7 +2183,7 @@ function PublicationsPerYearChart({
         <div className={cn('pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1', HOUSE_TOGGLE_CHART_LABEL_CLASS)} style={xAxisTicksStyle}>
           {renderBars.map((bar, index) => (
             <div key={`${bar.key}-${index}-axis`} className="text-center leading-none">
-              <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-0.5 leading-[1.05]')}>
+              <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>
                 {bar.axisLabel}
               </p>
               {bar.axisSubLabel ? (
@@ -2092,7 +2205,7 @@ function PublicationsPerYearChart({
               minHeight: `${xAxisLabelLayout.xAxisNameMinHeightRem}rem`,
             }}
           >
-            <p className={cn(HOUSE_HEADING_LABEL_CLASS, 'break-words text-center leading-tight')}>
+            <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, 'break-words text-center leading-tight')}>
               {resolvedXAxisLabel}
             </p>
           </div>
@@ -2977,8 +3090,9 @@ function median(values: number[]): number {
 type PublicationCategoryDimension = 'publication' | 'article'
 
 type PublicationCategoryWindowBars = {
-  bars: Array<{ key: string; label: string; value: number }>
+  bars: Array<{ key: string; label: string; count: number; percentage: number }>
   rangeLabel: string | null
+  totalCount: number
 }
 
 function categoryLabelFromPublication(
@@ -2996,16 +3110,22 @@ function PublicationCategoryDistributionChart({
   dimension,
   xAxisLabel,
   emptyLabel,
+  enableValueModeToggle = false,
 }: {
   publications: PublicationDrilldownRecord[]
   dimension: PublicationCategoryDimension
   xAxisLabel: string
   emptyLabel: string
+  enableValueModeToggle?: boolean
 }) {
   const [windowMode, setWindowMode] = useState<PublicationsWindowMode>('5y')
+  const [valueMode, setValueMode] = useState<PublicationCategoryValueMode>('absolute')
+  const [displayMode, setDisplayMode] = useState<PublicationCategoryDisplayMode>('chart')
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   useEffect(() => {
     setWindowMode('5y')
+    setValueMode('absolute')
+    setDisplayMode('chart')
   }, [dimension, publications.length])
 
   const yearsWithData = useMemo(() => {
@@ -3023,6 +3143,18 @@ function PublicationCategoryDistributionChart({
     }
     return output
   }, [maxYear, minYear])
+  const windowYears = useMemo(() => {
+    const windowSize = windowMode === '1y'
+      ? 1
+      : windowMode === '3y'
+        ? 3
+        : windowMode === '5y'
+          ? 5
+          : null
+    return windowSize === null
+      ? fullYears
+      : fullYears.slice(-windowSize)
+  }, [fullYears, windowMode])
 
   const categoryConfig = useMemo(() => {
     const totals = new Map<string, number>()
@@ -3080,21 +3212,31 @@ function PublicationCategoryDistributionChart({
       const bars = categoryConfig.primaryLabels.map((label) => ({
         key: `${mode}-${label}`,
         label,
-        value: Math.max(0, counts.get(label) || 0),
+        count: Math.max(0, counts.get(label) || 0),
+        percentage: 0,
       }))
       if (categoryConfig.hasOtherBucket) {
         bars.push({
           key: `${mode}-other`,
           label: 'Other',
-          value: Math.max(0, otherCount),
+          count: Math.max(0, otherCount),
+          percentage: 0,
         })
       }
+      const totalCount = Math.max(
+        0,
+        bars.reduce((sum, bar) => sum + Math.max(0, bar.count), 0),
+      )
+      const normalizedBars = bars.map((bar) => ({
+        ...bar,
+        percentage: totalCount > 0 ? (bar.count / totalCount) * 100 : 0,
+      }))
       const rangeLabel = windowYears.length
         ? windowYears[0] === windowYears[windowYears.length - 1]
           ? String(windowYears[0])
           : `${windowYears[0]}-${windowYears[windowYears.length - 1]}`
         : null
-      return { bars, rangeLabel }
+      return { bars: normalizedBars, rangeLabel, totalCount }
     }
     return {
       '1y': build('1y'),
@@ -3103,13 +3245,44 @@ function PublicationCategoryDistributionChart({
       all: build('all'),
     } as const
   }, [categoryConfig.hasOtherBucket, categoryConfig.primaryLabels, dimension, fullYears, publications])
+  const tableRows = useMemo(() => {
+    const yearSet = new Set(windowYears)
+    const counts = new Map<string, number>()
+    for (const record of publications) {
+      if (record.year === null || !yearSet.has(record.year)) {
+        continue
+      }
+      const label = categoryLabelFromPublication(record, dimension)
+      counts.set(label, (counts.get(label) || 0) + 1)
+    }
+    const totalCount = Array.from(counts.values()).reduce((sum, value) => sum + value, 0)
+    return Array.from(counts.entries())
+      .sort((left, right) => {
+        if (right[1] !== left[1]) {
+          return right[1] - left[1]
+        }
+        return left[0].localeCompare(right[0])
+      })
+      .map(([label, count]) => ({
+        label,
+        count,
+        percentage: totalCount > 0 ? (count / totalCount) * 100 : 0,
+      }))
+  }, [dimension, publications, windowYears])
 
   const activeWindowBars = barsByWindowMode[windowMode]
   const activeBars = activeWindowBars.bars
   const hasBars = activeBars.length > 0
+  const showPercentageMode = enableValueModeToggle && valueMode === 'percentage'
+  const renderValueForBar = (bar: { count: number; percentage: number }): number => (
+    showPercentageMode ? Math.max(0, bar.percentage) : Math.max(0, bar.count)
+  )
+  const formatRenderedValue = (value: number): string => (
+    showPercentageMode ? `${Math.round(value)}%` : formatInt(value)
+  )
   const animationKey = useMemo(
-    () => `${dimension}|${windowMode}|${activeBars.map((bar) => `${bar.label}-${bar.value}`).join('|')}`,
-    [activeBars, dimension, windowMode],
+    () => `${dimension}|${windowMode}|${valueMode}|${activeBars.map((bar) => `${bar.label}-${bar.count}`).join('|')}`,
+    [activeBars, dimension, valueMode, windowMode],
   )
   const swapTransition = useHouseBarSetTransition({
     bars: activeBars,
@@ -3119,8 +3292,8 @@ function PublicationCategoryDistributionChart({
   const renderBars = swapTransition.renderBars
   const barsExpanded = swapTransition.barsExpanded
   const renderedValuesTarget = useMemo(
-    () => renderBars.map((bar) => Math.max(0, bar.value)),
-    [renderBars],
+    () => renderBars.map((bar) => renderValueForBar(bar)),
+    [renderBars, showPercentageMode],
   )
   const renderedValuesAnimated = useEasedSeries(
     renderedValuesTarget,
@@ -3136,15 +3309,18 @@ function PublicationCategoryDistributionChart({
     return <div className={dashboardTileStyles.emptyChart}>{emptyLabel}</div>
   }
 
-  const maxWindowValue = Math.max(
-    1,
-    ...PUBLICATIONS_WINDOW_OPTIONS.flatMap((option) =>
-      barsByWindowMode[option.value].bars.map((bar) => Math.max(0, bar.value))),
-  )
-  const axisScale = buildNiceAxis(maxWindowValue)
+  const maxWindowValue = showPercentageMode
+    ? 100
+    : Math.max(
+      1,
+      ...[...activeBars, ...renderBars].map((bar) => Math.max(0, bar.count)),
+    )
+  const axisScale = showPercentageMode
+    ? { axisMax: 100, ticks: [0, 25, 50, 75, 100] }
+    : buildNiceAxis(maxWindowValue)
   const axisMax = axisScale.axisMax
   const yAxisTickValues = axisScale.ticks
-  const gridTickValues = yAxisTickValues.slice(1, -1)
+  const gridTickValues = yAxisTickValues.slice(1)
   const xAxisLabelLayout = mergeChartAxisLayouts(
     PUBLICATIONS_WINDOW_OPTIONS.map((option) =>
       buildChartAxisLayout({
@@ -3182,54 +3358,140 @@ function PublicationCategoryDistributionChart({
   }
   const yAxisTickOffsetRem = 0.4
   const activeWindowIndex = PUBLICATIONS_WINDOW_OPTIONS.findIndex((option) => option.value === windowMode)
+  const activeValueModeIndex = PUBLICATION_VALUE_MODE_OPTIONS.findIndex((option) => option.value === valueMode)
+  const activeDisplayModeIndex = PUBLICATION_DISPLAY_MODE_OPTIONS.findIndex((option) => option.value === displayMode)
   const periodHintText = activeWindowBars.rangeLabel || '\u00A0'
   const periodHintVisible = Boolean(activeWindowBars.rangeLabel)
+  const tableHeadingLabel = dimension === 'article' ? 'Article type' : 'Publication type'
+  const tableTotalCount = tableRows.reduce((sum, row) => sum + row.count, 0)
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div
-          className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
-          data-stop-tile-open="true"
-          data-ui="publications-window-toggle"
-          data-house-role="chart-toggle"
-        >
-          <span
-            className={HOUSE_TOGGLE_THUMB_CLASS}
-            style={{
-              width: 'calc(25% - 0.2rem)',
-              left: `calc(${Math.max(0, activeWindowIndex) * 25}% + 2px)`,
-            }}
-            aria-hidden="true"
-          />
-          {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
-            <button
-              key={`${dimension}-window-${option.value}`}
-              type="button"
-              data-stop-tile-open="true"
-              className={cn(
-                HOUSE_TOGGLE_BUTTON_CLASS,
-                windowMode === option.value
-                  ? 'text-white'
-                  : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-              )}
-              onClick={(event) => {
-                event.stopPropagation()
-                if (windowMode === option.value) {
-                  return
-                }
-                setWindowMode(option.value)
+      <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'justify-between')}>
+        <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
+          <div
+            className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
+            data-stop-tile-open="true"
+            data-ui="publications-window-toggle"
+            data-house-role="chart-toggle"
+          >
+            <span
+              className={HOUSE_TOGGLE_THUMB_CLASS}
+              style={{
+                width: 'calc(25% - 0.2rem)',
+                left: `calc(${Math.max(0, activeWindowIndex) * 25}% + 2px)`,
               }}
-              onMouseDown={(event) => event.stopPropagation()}
-              aria-pressed={windowMode === option.value}
+              aria-hidden="true"
+            />
+            {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
+              <button
+                key={`${dimension}-window-${option.value}`}
+                type="button"
+                data-stop-tile-open="true"
+                className={cn(
+                  HOUSE_TOGGLE_BUTTON_CLASS,
+                  windowMode === option.value
+                    ? 'text-white'
+                    : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                )}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  if (windowMode === option.value) {
+                    return
+                  }
+                  setWindowMode(option.value)
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+                aria-pressed={windowMode === option.value}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          {enableValueModeToggle ? (
+            <div
+              className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+              data-stop-tile-open="true"
+              data-ui={`${dimension}-value-mode-toggle`}
+              data-house-role="chart-toggle"
             >
-              {option.label}
-            </button>
-          ))}
+              <span
+                className={HOUSE_TOGGLE_THUMB_CLASS}
+                style={{
+                  width: 'calc(50% - 0.2rem)',
+                  left: `calc(${Math.max(0, activeValueModeIndex) * 50}% + 2px)`,
+                }}
+                aria-hidden="true"
+              />
+              {PUBLICATION_VALUE_MODE_OPTIONS.map((option) => (
+                <button
+                  key={`${dimension}-value-mode-${option.value}`}
+                  type="button"
+                  data-stop-tile-open="true"
+                  className={cn(
+                    HOUSE_TOGGLE_BUTTON_CLASS,
+                    valueMode === option.value
+                      ? 'text-white'
+                      : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                  )}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    if (valueMode === option.value) {
+                      return
+                    }
+                    setValueMode(option.value)
+                  }}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  aria-pressed={valueMode === option.value}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div
+            className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+            data-stop-tile-open="true"
+            data-ui={`${dimension}-display-mode-toggle`}
+            data-house-role="chart-toggle"
+          >
+            <span
+              className={HOUSE_TOGGLE_THUMB_CLASS}
+              style={{
+                width: 'calc(50% - 0.2rem)',
+                left: `calc(${Math.max(0, activeDisplayModeIndex) * 50}% + 2px)`,
+              }}
+              aria-hidden="true"
+            />
+            {PUBLICATION_DISPLAY_MODE_OPTIONS.map((option) => (
+              <button
+                key={`${dimension}-display-mode-${option.value}`}
+                type="button"
+                data-stop-tile-open="true"
+                className={cn(
+                  HOUSE_TOGGLE_BUTTON_CLASS,
+                  displayMode === option.value
+                    ? 'text-white'
+                    : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                )}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  if (displayMode === option.value) {
+                    return
+                  }
+                  setDisplayMode(option.value)
+                }}
+                onMouseDown={(event) => event.stopPropagation()}
+                aria-pressed={displayMode === option.value}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
         <p
           className={cn(
-            'min-h-[0.9rem]',
+            HOUSE_DRILLDOWN_CHART_META_CLASS,
             HOUSE_HEADING_LABEL_CLASS,
             HOUSE_TOGGLE_CHART_LABEL_CLASS,
             periodHintVisible ? 'opacity-100' : 'opacity-0',
@@ -3239,15 +3501,69 @@ function PublicationCategoryDistributionChart({
           {periodHintText}
         </p>
       </div>
-      <div
-        className={cn(
-          HOUSE_CHART_TRANSITION_CLASS,
-          HOUSE_CHART_ENTERED_CLASS,
-        )}
-        style={chartFrameStyle}
-        data-ui={`${dimension}-distribution-chart-frame`}
-        data-house-role="chart-frame"
-      >
+      {displayMode === 'table' ? (
+        <div
+          className={cn(
+            HOUSE_CHART_TRANSITION_CLASS,
+            HOUSE_CHART_ENTERED_CLASS,
+            'min-h-0 overflow-auto',
+          )}
+          data-ui={`${dimension}-distribution-table-frame`}
+          data-house-role="chart-frame"
+        >
+          <div className="house-table-shell h-full min-h-0 overflow-auto rounded-md bg-background">
+            <table className="w-full min-w-sz-500 border-collapse">
+              <thead className="house-table-head">
+                <tr>
+                  <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">
+                    {tableHeadingLabel}
+                  </th>
+                  <th className="house-table-head-text h-10 px-3 text-right align-middle font-semibold">
+                    Count
+                  </th>
+                  <th className="house-table-head-text h-10 px-3 text-right align-middle font-semibold">
+                    Share
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {tableRows.map((row) => (
+                  <tr key={`${dimension}-table-row-${row.label}`} className="house-table-row">
+                    <td className="house-table-cell-text px-3 py-2">
+                      <span className="block max-w-full break-words leading-snug">{row.label}</span>
+                    </td>
+                    <td className="house-table-cell-text px-3 py-2 text-right tabular-nums">{formatInt(row.count)}</td>
+                    <td className="house-table-cell-text px-3 py-2 text-right tabular-nums">{`${row.percentage.toFixed(1)}%`}</td>
+                  </tr>
+                ))}
+                {tableRows.length ? (
+                  <tr className="house-table-row">
+                    <td className="house-table-cell-text px-3 py-2 font-semibold">Total</td>
+                    <td className="house-table-cell-text px-3 py-2 text-right font-semibold tabular-nums">{formatInt(tableTotalCount)}</td>
+                    <td className="house-table-cell-text px-3 py-2 text-right font-semibold tabular-nums">100.0%</td>
+                  </tr>
+                ) : null}
+                {!tableRows.length ? (
+                  <tr>
+                    <td className={cn('house-table-cell-text px-3 py-4 text-center', HOUSE_DRILLDOWN_TABLE_EMPTY_CLASS)} colSpan={3}>
+                      {emptyLabel}
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div
+          className={cn(
+            HOUSE_CHART_TRANSITION_CLASS,
+            HOUSE_CHART_ENTERED_CLASS,
+          )}
+          style={chartFrameStyle}
+          data-ui={`${dimension}-distribution-chart-frame`}
+          data-house-role="chart-frame"
+        >
         <div className="absolute" style={plotAreaStyle}>
           {gridTickValues.map((tickValue) => (
             <div
@@ -3259,7 +3575,7 @@ function PublicationCategoryDistributionChart({
           ))}
           <div className="absolute inset-0 flex items-end gap-1">
             {renderBars.map((bar, index) => {
-              const animatedValue = Math.max(0, renderedValuesAnimated[index] ?? bar.value)
+              const animatedValue = Math.max(0, renderedValuesAnimated[index] ?? renderValueForBar(bar))
               const heightPct = animatedValue <= 0 ? 3 : Math.max(6, (animatedValue / axisMax) * 100)
               const isActive = hoveredIndex === index
               return (
@@ -3277,7 +3593,7 @@ function PublicationCategoryDistributionChart({
                     style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
                     aria-hidden="true"
                   >
-                    {formatInt(animatedValue)}
+                    {formatRenderedValue(animatedValue)}
                   </span>
                   <span
                     className={cn(
@@ -3305,21 +3621,21 @@ function PublicationCategoryDistributionChart({
             return (
               <p
                 key={`${dimension}-y-axis-${tickValue}`}
-                className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_CLASS)}
+                className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS)}
                 style={{ bottom: `calc(${pct}% - ${yAxisTickOffsetRem}rem)` }}
               >
-                {formatInt(tickValue)}
+                {showPercentageMode ? `${Math.round(tickValue)}%` : formatInt(tickValue)}
               </p>
             )
           })}
-          <p className={cn(HOUSE_HEADING_LABEL_CLASS, 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}>
-            Publications
+          <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}>
+            {showPercentageMode ? 'Share of publications' : 'Publications'}
           </p>
         </div>
         <div className={cn('pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1', HOUSE_TOGGLE_CHART_LABEL_CLASS)} style={xAxisTicksStyle}>
           {renderBars.map((bar, index) => (
             <div key={`${bar.key}-${index}-axis`} className="text-center leading-none">
-              <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-0.5 leading-[1.05]')}>
+              <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>
                 {bar.label}
               </p>
             </div>
@@ -3334,11 +3650,12 @@ function PublicationCategoryDistributionChart({
             minHeight: `${xAxisLabelLayout.xAxisNameMinHeightRem}rem`,
           }}
         >
-          <p className={cn(HOUSE_HEADING_LABEL_CLASS, 'break-words text-center leading-tight')}>
+          <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, 'break-words text-center leading-tight')}>
             {xAxisLabel}
           </p>
         </div>
       </div>
+      )}
     </div>
   )
 }
@@ -3388,6 +3705,8 @@ function TotalPublicationsDrilldownWorkspace({
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [trajectoryMode, setTrajectoryMode] = useState<PublicationTrajectoryMode>('raw')
   const [trajectoryWindow, setTrajectoryWindow] = useState(12)
+  const [publicationTrendWindowMode, setPublicationTrendWindowMode] = useState<PublicationsWindowMode>('5y')
+  const [hasPublicationTrendToggleInteracted, setHasPublicationTrendToggleInteracted] = useState(false)
 
   useEffect(() => {
     setSelectedYear(null)
@@ -3399,7 +3718,14 @@ function TotalPublicationsDrilldownWorkspace({
     setSortKey('year')
     setSortDirection('desc')
     setTrajectoryMode('raw')
+    setPublicationTrendWindowMode('5y')
+    setHasPublicationTrendToggleInteracted(false)
   }, [tile.key])
+
+  const handlePublicationTrendWindowChange = (mode: PublicationsWindowMode) => {
+    setHasPublicationTrendToggleInteracted(true)
+    setPublicationTrendWindowMode(mode)
+  }
 
   const yearsWithData = useMemo(() => {
     const values = publications
@@ -3544,7 +3870,7 @@ function TotalPublicationsDrilldownWorkspace({
   const workspaceSectionClass = HOUSE_SURFACE_SECTION_PANEL_CLASS
   const workspacePanelCompactClass = cn(HOUSE_SURFACE_SOFT_PANEL_CLASS, 'p-2')
   const workspaceHeadingClass = HOUSE_HEADING_H2_CLASS
-  const workspaceSubheadingClass = HOUSE_HEADING_H2_CLASS
+  const workspaceSubheadingClass = HOUSE_DRILLDOWN_SECTION_LABEL_CLASS
 
   const availableTypes = useMemo(
     () => Array.from(new Set(publications.map((record) => record.type))).sort((left, right) => left.localeCompare(right)),
@@ -3736,6 +4062,10 @@ function TotalPublicationsDrilldownWorkspace({
     const summaryStatValueWrapClass = HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS
     const summaryStatValueClass = cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums whitespace-nowrap leading-none')
     const summaryStatValueEmphasisClass = cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_EMPHASIS_CLASS, 'tabular-nums whitespace-nowrap leading-none')
+    const isRollingMean1Active = hasPublicationTrendToggleInteracted && publicationTrendWindowMode === '1y'
+    const isRollingMean3Active = hasPublicationTrendToggleInteracted && publicationTrendWindowMode === '3y'
+    const isRollingMean5Active = hasPublicationTrendToggleInteracted && publicationTrendWindowMode === '5y'
+    const isOverallMeanActive = hasPublicationTrendToggleInteracted && publicationTrendWindowMode === 'all'
     return (
       <div className="space-y-3">
         <div className={workspaceSectionClass}>
@@ -3753,7 +4083,12 @@ function TotalPublicationsDrilldownWorkspace({
                 <p className={summaryStatValueClass}>{formatInt(activeYears)}</p>
               </div>
             </div>
-            <div className={summaryStatCardClass}>
+            <div
+              className={cn(
+                summaryStatCardClass,
+                isOverallMeanActive && HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_ACTIVE_CLASS,
+              )}
+            >
               <p className={summaryStatTitleClass}>Mean per year</p>
               <div className={summaryStatValueWrapClass}>
                 <p className={summaryStatValueClass}>{formatInt(meanPerActiveYear)}</p>
@@ -3768,25 +4103,48 @@ function TotalPublicationsDrilldownWorkspace({
           </div>
 
           <div className={HOUSE_DRILLDOWN_SUMMARY_STATS_COMPACT_GRID_CLASS}>
-            <div className={cn(summaryStatCardClass, 'min-h-[4.9rem]')}>
+            <div
+              className={cn(
+                summaryStatCardClass,
+                'min-h-[4.9rem]',
+                isRollingMean1Active && HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_ACTIVE_CLASS,
+              )}
+            >
               <p className={summaryStatTitleClass}>1-year rolling mean</p>
               <div className={summaryStatValueWrapClass}>
                 <p className={summaryStatValueClass}>{rollingMean1yDisplay}</p>
               </div>
             </div>
-            <div className={cn(summaryStatCardClass, 'min-h-[4.9rem]')}>
+            <div
+              className={cn(
+                summaryStatCardClass,
+                'min-h-[4.9rem]',
+                isRollingMean3Active && HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_ACTIVE_CLASS,
+              )}
+            >
               <p className={summaryStatTitleClass}>3-year rolling mean</p>
               <div className={summaryStatValueWrapClass}>
                 <p className={summaryStatValueClass}>{rollingMean3yDisplay}</p>
               </div>
             </div>
-            <div className={cn(summaryStatCardClass, 'min-h-[4.9rem]')}>
+            <div
+              className={cn(
+                summaryStatCardClass,
+                'min-h-[4.9rem]',
+                isRollingMean5Active && HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_ACTIVE_CLASS,
+              )}
+            >
               <p className={summaryStatTitleClass}>5-year rolling mean</p>
               <div className={summaryStatValueWrapClass}>
                 <p className={summaryStatValueClass}>{rollingMean5yDisplay}</p>
               </div>
             </div>
-            <div className={cn(summaryStatCardClass, 'min-h-[4.9rem]')}>
+            <div
+              className={cn(
+                summaryStatCardClass,
+                'min-h-[4.9rem]',
+              )}
+            >
               <p className={summaryStatTitleClass}>Career peak</p>
               <div className={summaryStatValueWrapClass}>
                 <p className={summaryStatValueClass}>{`${formatInt(peakYearData.count)} (${peakYearData.year})`}</p>
@@ -3795,16 +4153,24 @@ function TotalPublicationsDrilldownWorkspace({
           </div>
 
           <div className={HOUSE_DRILLDOWN_SECTION_SEPARATOR_CLASS}>
-            <p className={cn(workspaceSubheadingClass, HOUSE_DRILLDOWN_SECTION_TITLE_SPACER_CLASS)}>Publication Trends</p>
             <div className={HOUSE_DRILLDOWN_SUMMARY_TREND_CHART_CLASS}>
               <PublicationsPerYearChart
                 tile={tile}
                 showCaption={false}
                 showAxes
+                chartTitle="Publications trends over time"
                 fullYearLabels
                 xAxisLabel="Publication year"
                 yAxisLabel="Publications"
                 enableWindowToggle
+                subtleGrid
+                showPeriodHint={false}
+                showCurrentPeriodSemantic={false}
+                useCompletedMonthWindowLabels
+                autoScaleByWindow
+                showMeanLine
+                activeWindowMode={publicationTrendWindowMode}
+                onWindowModeChange={handlePublicationTrendWindowChange}
               />
             </div>
           </div>
@@ -3817,6 +4183,7 @@ function TotalPublicationsDrilldownWorkspace({
                 dimension="publication"
                 xAxisLabel="Publication type"
                 emptyLabel="No publication type data"
+                enableValueModeToggle
               />
             </div>
           </div>
@@ -4785,7 +5152,7 @@ export function PublicationsTopStrip({
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [activeTileKey, setActiveTileKey] = useState<string>('')
   const [activeTileDetail, setActiveTileDetail] = useState<PublicationMetricTilePayload | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
+  const [, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
   const [activeDrilldownTab, setActiveDrilldownTab] = useState<DrilldownTab>('summary')
   const [momentumWindowMode, setMomentumWindowMode] = useState<MomentumWindowMode>('12m')
@@ -5354,7 +5721,6 @@ export function PublicationsTopStrip({
                 {showActiveTileDefinition ? (
                   <p className={cn(HOUSE_TEXT_CLASS, 'mt-1')}>{sanitizedActiveTileDefinition}</p>
                 ) : null}
-                {detailLoading ? <p className={cn('mt-2', HOUSE_TEXT_SOFT_CLASS)}>Loading metric detail...</p> : null}
                 {detailError ? <p className={cn('mt-2', HOUSE_DRILLDOWN_ALERT_CLASS)}>{detailError}</p> : null}
               </div>
               <Tabs
@@ -5379,7 +5745,8 @@ export function PublicationsTopStrip({
                     </TabsTrigger>
                   ))}
                 </TabsList>
-                <div className="mt-3">
+                <div className={cn('mt-2', HOUSE_DRILLDOWN_DIVIDER_TOP_CLASS)} />
+                <div className="mt-2.5">
                   {activeTile.key === 'this_year_vs_last' ? (
                     <TotalPublicationsDrilldownWorkspace
                       tile={activeTile}

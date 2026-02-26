@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Download, Loader2, RefreshCw, Search, UserPlus, X } from 'lucide-react'
+import { Download, Loader2, PanelRightOpen, RefreshCw, Save, Search, UserPlus, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { getAuthSessionToken } from '@/lib/auth-session'
-import { houseCollaborators, houseForms, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseActions, houseCollaborators, houseForms, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import { listCollaborators } from '@/lib/impact-api'
 import {
   downloadLibraryAsset,
   listLibraryAssets,
   updateLibraryAssetAccess,
+  updateLibraryAssetMetadata,
 } from '@/lib/study-core-api'
 import { cn } from '@/lib/utils'
 import type { CollaboratorPayload } from '@/types/impact'
@@ -24,15 +25,25 @@ import type {
 const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
 const HOUSE_SECTION_SUBTITLE_CLASS = houseTypography.sectionSubtitle
 const HOUSE_FIELD_HELPER_CLASS = houseTypography.fieldHelper
+const HOUSE_BUTTON_TEXT_CLASS = houseTypography.buttonText
 const HOUSE_TABLE_SHELL_CLASS = houseSurfaces.tableShell
 const HOUSE_TABLE_HEAD_CLASS = houseSurfaces.tableHead
 const HOUSE_TABLE_ROW_CLASS = houseSurfaces.tableRow
 const HOUSE_TABLE_HEAD_TEXT_CLASS = houseTypography.tableHead
 const HOUSE_TABLE_CELL_TEXT_CLASS = houseTypography.tableCell
+const HOUSE_TABLE_FILTER_INPUT_CLASS = houseTables.filterInput
+const HOUSE_TABLE_FILTER_SELECT_CLASS = houseTables.filterSelect
 const HOUSE_INPUT_CLASS = houseForms.input
 const HOUSE_SELECT_CLASS = houseForms.select
 const HOUSE_ACTION_BUTTON_CLASS = houseForms.actionButton
 const HOUSE_PRIMARY_ACTION_BUTTON_CLASS = houseForms.actionButtonPrimary
+const HOUSE_SUCCESS_ACTION_BUTTON_CLASS = houseForms.actionButtonSuccess
+const HOUSE_DANGER_ACTION_BUTTON_CLASS = houseForms.actionButtonDanger
+const HOUSE_SECTION_TOOLS_CLASS = houseActions.sectionTools
+const HOUSE_SECTION_TOOLS_DATA_CLASS = houseActions.sectionToolsData
+const HOUSE_SECTION_TOOL_BUTTON_CLASS = houseActions.sectionToolButton
+const HOUSE_ACTIONS_PILL_CLASS = houseActions.actionPill
+const HOUSE_ACTIONS_PILL_PRIMARY_CLASS = houseActions.actionPillPrimary
 const HOUSE_COLLABORATOR_LIST_SHELL_CLASS = houseCollaborators.listShell
 const HOUSE_COLLABORATOR_LIST_VIEWPORT_COMPACT_CLASS = houseCollaborators.listViewportCompact
 const HOUSE_COLLABORATOR_LIST_BODY_CLASS = houseCollaborators.listBody
@@ -46,9 +57,28 @@ const HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS = houseCollaborators.chipActive
 const HOUSE_COLLABORATOR_CHIP_MANAGEABLE_CLASS = houseCollaborators.chipManageable
 const HOUSE_COLLABORATOR_CHIP_READONLY_CLASS = houseCollaborators.chipReadOnly
 const HOUSE_COLLABORATOR_CHIP_ACTION_CLASS = houseCollaborators.chipAction
+const DATA_LIBRARY_ICON_BUTTON_DIMENSION_CLASS = 'h-8 w-8 p-0'
+const HOUSE_DATA_LIBRARY_FILTER_SELECT_CLASS = cn(
+  'h-9 rounded-md px-2',
+  HOUSE_SELECT_CLASS,
+  HOUSE_TABLE_FILTER_SELECT_CLASS,
+)
+
+type WorkspacesDataLibraryViewProps = {
+  onOpenDrilldownMobile?: () => void
+}
 
 function normalizeName(value: string | null | undefined): string {
   return (value || '').trim().replace(/\s+/g, ' ')
+}
+
+function displayAssetFilename(filename: string): string {
+  const clean = String(filename || '').trim()
+  if (!clean) {
+    return 'Untitled file'
+  }
+  const stripped = clean.replace(/\.(csv|xls|xlsx)$/i, '')
+  return stripped || clean
 }
 
 function formatTimestamp(value: string): string {
@@ -107,7 +137,7 @@ function selectedCandidateByAssetIdValue(
   return map[assetId] || null
 }
 
-export function WorkspacesDataLibraryView() {
+export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesDataLibraryViewProps = {}) {
   const [assets, setAssets] = useState<LibraryAssetRecord[]>([])
   const [queryInput, setQueryInput] = useState('')
   const [query, setQuery] = useState('')
@@ -122,6 +152,9 @@ export function WorkspacesDataLibraryView() {
   const [error, setError] = useState('')
   const [status, setStatus] = useState('')
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null)
+  const [assetMenuOpenId, setAssetMenuOpenId] = useState<string | null>(null)
+  const [renamingAssetId, setRenamingAssetId] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
   const [refreshTick, setRefreshTick] = useState(0)
 
   const [collaboratorQueryByAssetId, setCollaboratorQueryByAssetId] = useState<Record<string, string>>({})
@@ -131,6 +164,23 @@ export function WorkspacesDataLibraryView() {
   const [lookupBusyAssetId, setLookupBusyAssetId] = useState<string | null>(null)
 
   const hasSessionToken = Boolean(getAuthSessionToken())
+
+  useEffect(() => {
+    if (!assetMenuOpenId) {
+      return
+    }
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.closest('[data-ui="library-asset-menu-root"]')) {
+        return
+      }
+      setAssetMenuOpenId(null)
+    }
+    window.addEventListener('mousedown', onPointerDown)
+    return () => {
+      window.removeEventListener('mousedown', onPointerDown)
+    }
+  }, [assetMenuOpenId])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -216,6 +266,16 @@ export function WorkspacesDataLibraryView() {
     }
   }, [hasSessionToken, ownershipFilter, page, pageSize, query, refreshTick, sortBy, sortDirection])
 
+  useEffect(() => {
+    if (assetMenuOpenId && !assets.some((asset) => asset.id === assetMenuOpenId)) {
+      setAssetMenuOpenId(null)
+    }
+    if (renamingAssetId && !assets.some((asset) => asset.id === renamingAssetId)) {
+      setRenamingAssetId(null)
+      setRenameDraft('')
+    }
+  }, [assetMenuOpenId, assets, renamingAssetId])
+
   const updateAssetInState = useCallback((nextAsset: LibraryAssetRecord) => {
     setAssets((current) => current.map((item) => (item.id === nextAsset.id ? nextAsset : item)))
   }, [])
@@ -223,6 +283,66 @@ export function WorkspacesDataLibraryView() {
   const onRefresh = () => {
     setRefreshTick((current) => current + 1)
   }
+
+  const onCancelRenameAsset = useCallback(() => {
+    setRenamingAssetId(null)
+    setRenameDraft('')
+    setAssetMenuOpenId(null)
+  }, [])
+
+  const onStartRenameAsset = useCallback((asset: LibraryAssetRecord) => {
+    if (!asset.can_manage_access) {
+      setError('Only the file owner can rename files.')
+      return
+    }
+    setError('')
+    setStatus('')
+    setAssetMenuOpenId(null)
+    setRenamingAssetId(asset.id)
+    setRenameDraft(asset.filename)
+  }, [])
+
+  const onSaveRenameAsset = useCallback(
+    async (asset: LibraryAssetRecord) => {
+      const nextFilename = String(renameDraft || '').trim()
+      if (!asset.can_manage_access) {
+        setError('Only the file owner can rename files.')
+        return
+      }
+      if (!nextFilename) {
+        setError('File name is required.')
+        return
+      }
+      if (nextFilename === asset.filename) {
+        onCancelRenameAsset()
+        return
+      }
+      const token = getAuthSessionToken()
+      if (!token) {
+        setError('Sign in to manage permissions.')
+        return
+      }
+
+      setError('')
+      setStatus('')
+      setBusyAssetId(asset.id)
+      try {
+        const updated = await updateLibraryAssetMetadata({
+          token,
+          assetId: asset.id,
+          filename: nextFilename,
+        })
+        updateAssetInState(updated)
+        setStatus(`Renamed to ${updated.filename}.`)
+        onCancelRenameAsset()
+      } catch (renameError) {
+        setError(renameError instanceof Error ? renameError.message : 'Could not rename file.')
+      } finally {
+        setBusyAssetId((current) => (current === asset.id ? null : current))
+      }
+    },
+    [onCancelRenameAsset, renameDraft, updateAssetInState],
+  )
 
   const onDownloadAsset = useCallback(async (asset: LibraryAssetRecord) => {
     if (!isAssetAvailable(asset)) {
@@ -470,13 +590,32 @@ export function WorkspacesDataLibraryView() {
           <Button
             type="button"
             size="sm"
-            className={HOUSE_ACTION_BUTTON_CLASS}
+            className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
             onClick={onRefresh}
             disabled={!hasSessionToken || isLoading}
           >
             <RefreshCw className={cn('mr-1 h-4 w-4', isLoading && 'animate-spin')} />
             Refresh
           </Button>
+          {onOpenDrilldownMobile ? (
+            <div className={cn(HOUSE_SECTION_TOOLS_CLASS, HOUSE_SECTION_TOOLS_DATA_CLASS, HOUSE_ACTIONS_PILL_CLASS, 'xl:hidden')}>
+              <button
+                type="button"
+                onClick={onOpenDrilldownMobile}
+                className={cn(
+                  HOUSE_ACTIONS_PILL_PRIMARY_CLASS,
+                  HOUSE_SECTION_TOOL_BUTTON_CLASS,
+                  HOUSE_BUTTON_TEXT_CLASS,
+                  'inline-flex h-8 items-center gap-1.5 px-3',
+                )}
+                aria-label="Open data library drilldown"
+                title="Open data library drilldown"
+              >
+                <PanelRightOpen className="h-3.5 w-3.5" />
+                Drilldown
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -485,7 +624,7 @@ export function WorkspacesDataLibraryView() {
           value={queryInput}
           onChange={(event) => setQueryInput(event.target.value)}
           placeholder="Search files, owner, or access"
-          className={cn('w-sz-280', HOUSE_INPUT_CLASS)}
+          className={cn('w-sz-280', HOUSE_INPUT_CLASS, HOUSE_TABLE_FILTER_INPUT_CLASS)}
           disabled={!hasSessionToken}
         />
         <select
@@ -494,7 +633,7 @@ export function WorkspacesDataLibraryView() {
             setOwnershipFilter(event.target.value as LibraryAssetOwnership)
             setPage(1)
           }}
-          className={cn('h-9 rounded-md bg-background px-2 text-sm', HOUSE_SELECT_CLASS)}
+          className={HOUSE_DATA_LIBRARY_FILTER_SELECT_CLASS}
           disabled={!hasSessionToken}
         >
           <option value="all">All files</option>
@@ -507,7 +646,7 @@ export function WorkspacesDataLibraryView() {
             setSortBy(event.target.value as LibraryAssetSortBy)
             setPage(1)
           }}
-          className={cn('h-9 rounded-md bg-background px-2 text-sm', HOUSE_SELECT_CLASS)}
+          className={HOUSE_DATA_LIBRARY_FILTER_SELECT_CLASS}
           disabled={!hasSessionToken}
         >
           <option value="uploaded_at">Sort: Uploaded</option>
@@ -522,7 +661,7 @@ export function WorkspacesDataLibraryView() {
             setSortDirection(event.target.value as LibraryAssetSortDirection)
             setPage(1)
           }}
-          className={cn('h-9 rounded-md bg-background px-2 text-sm', HOUSE_SELECT_CLASS)}
+          className={HOUSE_DATA_LIBRARY_FILTER_SELECT_CLASS}
           disabled={!hasSessionToken}
         >
           <option value="desc">Descending</option>
@@ -544,7 +683,7 @@ export function WorkspacesDataLibraryView() {
       ) : error ? (
         <div className="space-y-2 p-6">
           <p className="text-sm text-red-700">{error}</p>
-          <Button type="button" size="sm" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onRefresh}>
+          <Button type="button" size="sm" className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)} onClick={onRefresh}>
             Retry
           </Button>
         </div>
@@ -553,7 +692,7 @@ export function WorkspacesDataLibraryView() {
           No files match the current filter.
         </div>
       ) : (
-        <div className={HOUSE_TABLE_SHELL_CLASS}>
+        <div className={cn(HOUSE_TABLE_SHELL_CLASS, 'house-workspaces-table-shell')}>
           <ScrollArea className="h-[min(65vh,46rem)]">
             <table className="w-full min-w-sz-1080 text-sm">
               <thead className={cn('text-left', HOUSE_TABLE_HEAD_CLASS)}>
@@ -573,6 +712,8 @@ export function WorkspacesDataLibraryView() {
                   const isBusy = busyAssetId === asset.id
                   const lookupBusy = lookupBusyAssetId === asset.id
                   const available = isAssetAvailable(asset)
+                  const menuOpen = assetMenuOpenId === asset.id
+                  const isRenaming = renamingAssetId === asset.id
                   const ownerName = normalizeName(asset.owner_name || '') || 'Unknown'
                   const searchQuery = collaboratorQueryByAssetId[asset.id] || ''
                   const matches = collaboratorLookupByAssetId[asset.id] || []
@@ -582,9 +723,88 @@ export function WorkspacesDataLibraryView() {
                   return (
                     <tr key={asset.id} className={HOUSE_TABLE_ROW_CLASS}>
                       <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                        <p className="font-medium">{asset.filename}</p>
-                        <p className="text-xs text-muted-foreground">{asset.kind.toUpperCase()}</p>
-                        {!available ? <p className="text-xs text-[hsl(var(--tone-warning-900))]">Storage missing</p> : null}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            {isRenaming ? (
+                              <div className="flex items-center gap-1.5" onClick={(event) => event.stopPropagation()}>
+                                <Input
+                                  value={renameDraft}
+                                  onChange={(event) => setRenameDraft(event.target.value)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter') {
+                                      event.preventDefault()
+                                      void onSaveRenameAsset(asset)
+                                    } else if (event.key === 'Escape') {
+                                      event.preventDefault()
+                                      onCancelRenameAsset()
+                                    }
+                                  }}
+                                  className={cn('h-8 w-full', HOUSE_INPUT_CLASS)}
+                                  disabled={isBusy}
+                                  autoFocus
+                                />
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className={cn(HOUSE_SUCCESS_ACTION_BUTTON_CLASS, DATA_LIBRARY_ICON_BUTTON_DIMENSION_CLASS)}
+                                  onClick={() => void onSaveRenameAsset(asset)}
+                                  disabled={isBusy || !String(renameDraft || '').trim() || String(renameDraft || '').trim() === asset.filename.trim()}
+                                  aria-label={`Save rename for ${asset.filename}`}
+                                  title="Save rename"
+                                >
+                                  <Save className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className={cn(HOUSE_DANGER_ACTION_BUTTON_CLASS, DATA_LIBRARY_ICON_BUTTON_DIMENSION_CLASS)}
+                                  onClick={onCancelRenameAsset}
+                                  disabled={isBusy}
+                                  aria-label="Cancel rename"
+                                  title="Cancel rename"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <>
+                                <p className="font-medium">{displayAssetFilename(asset.filename)}</p>
+                                <p className="text-xs text-muted-foreground">{asset.kind.toUpperCase()}</p>
+                                {!available ? <p className="text-xs text-[hsl(var(--tone-warning-900))]">Storage missing</p> : null}
+                              </>
+                            )}
+                          </div>
+                          {asset.can_manage_access ? (
+                            <div className="relative shrink-0" data-ui="library-asset-menu-root">
+                              <Button
+                                type="button"
+                                size="sm"
+                                className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS, DATA_LIBRARY_ICON_BUTTON_DIMENSION_CLASS)}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  setAssetMenuOpenId((current) => (current === asset.id ? null : asset.id))
+                                }}
+                                disabled={isBusy}
+                                aria-label={`File actions for ${asset.filename}`}
+                                title="File actions"
+                              >
+                                ...
+                              </Button>
+                              {menuOpen ? (
+                                <div className="absolute right-0 top-full z-20 mt-1 min-w-sz-140 rounded-md border border-border bg-background p-1 shadow-sm">
+                                  <button
+                                    type="button"
+                                    onClick={() => onStartRenameAsset(asset)}
+                                    className="w-full rounded px-2 py-1 text-left text-sm text-foreground transition-colors hover:bg-muted/70"
+                                    disabled={isBusy}
+                                  >
+                                    Rename
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
                       </td>
                       <td className={cn('px-3 py-2 align-middle text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>
                         {ownerName}
@@ -655,7 +875,7 @@ export function WorkspacesDataLibraryView() {
                                 <Button
                                   type="button"
                                   size="sm"
-                                  className={HOUSE_ACTION_BUTTON_CLASS}
+                                  className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
                                   onClick={() => void onSearchCollaborators(asset)}
                                   disabled={isBusy || lookupBusy || normalizeName(searchQuery).length < 2}
                                 >
@@ -711,7 +931,7 @@ export function WorkspacesDataLibraryView() {
                               <Button
                                 type="button"
                                 size="sm"
-                                className={HOUSE_PRIMARY_ACTION_BUTTON_CLASS}
+                                className={cn(HOUSE_PRIMARY_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
                                 onClick={() => void onAddAccess(asset)}
                                 disabled={isBusy || !selectedCandidate}
                               >
@@ -725,16 +945,18 @@ export function WorkspacesDataLibraryView() {
                         )}
                       </td>
                       <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className={HOUSE_ACTION_BUTTON_CLASS}
-                          onClick={() => void onDownloadAsset(asset)}
-                          disabled={isBusy || !available}
-                        >
-                          {isBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
-                          {available ? 'Download' : 'Unavailable'}
-                        </Button>
+                        <div className="flex items-center">
+                          <Button
+                            type="button"
+                            size="sm"
+                            className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
+                            onClick={() => void onDownloadAsset(asset)}
+                            disabled={isBusy || !available || isRenaming}
+                          >
+                            {isBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
+                            {available ? 'Download' : 'Unavailable'}
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -754,7 +976,7 @@ export function WorkspacesDataLibraryView() {
                   setPageSize(nextPageSize)
                   setPage(1)
                 }}
-                className={cn('h-8 rounded-md bg-background px-2 text-xs', HOUSE_SELECT_CLASS)}
+                className={cn('h-8 rounded-md px-2 text-xs', HOUSE_SELECT_CLASS, HOUSE_TABLE_FILTER_SELECT_CLASS)}
                 disabled={!hasSessionToken || isLoading}
               >
                 <option value="10">10 / page</option>
@@ -765,7 +987,7 @@ export function WorkspacesDataLibraryView() {
               <Button
                 type="button"
                 size="sm"
-                className={HOUSE_ACTION_BUTTON_CLASS}
+                className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
                 onClick={() => setPage((current) => Math.max(1, current - 1))}
                 disabled={isLoading || page <= 1}
               >
@@ -777,7 +999,7 @@ export function WorkspacesDataLibraryView() {
               <Button
                 type="button"
                 size="sm"
-                className={HOUSE_ACTION_BUTTON_CLASS}
+                className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
                 onClick={() => setPage((current) => current + 1)}
                 disabled={isLoading || !hasMore}
               >

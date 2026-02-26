@@ -1743,6 +1743,13 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     ):
         data_sources.append("Semantic Scholar")
 
+    def _available_metric_sources(*preferred: str) -> list[str]:
+        selected: list[str] = []
+        for source in preferred:
+            if source in data_sources and source not in selected:
+                selected.append(source)
+        return selected if selected else list(data_sources)
+
     dimensions_tile: dict[str, Any] | None = None
     if _dimensions_enabled():
         dimensions_values: list[float] = []
@@ -2751,9 +2758,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     )
     this_year_tooltip, this_year_tooltip_details = _build_tooltip(
         definition="What is this: total authored publications with per-year output over the latest 5 complete years.",
-        data_sources=["ORCID", "OpenAlex"]
-        if "OpenAlex" in data_sources
-        else data_sources,
+        data_sources=_available_metric_sources("ORCID", "OpenAlex"),
         computation="count(publications) grouped by publication year",
     )
     momentum_tooltip, momentum_tooltip_details = _build_tooltip(
@@ -2817,9 +2822,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         definition=(
             "What is this: collaboration network breadth and repeat-collaboration structure."
         ),
-        data_sources=["OpenAlex", "ORCID"]
-        if "OpenAlex" in data_sources
-        else data_sources,
+        data_sources=_available_metric_sources("OpenAlex", "ORCID"),
         computation=(
             "UniqueCollaborators = distinct non-user coauthors across works; "
             "RepeatCollaboratorRate% = collaborators with >=2 shared works / unique collaborators * 100; "
@@ -2921,9 +2924,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             sparkline=last5_publication_values,
             tooltip=this_year_tooltip,
             tooltip_details=this_year_tooltip_details,
-            data_source=["ORCID", "OpenAlex"]
-            if "OpenAlex" in data_sources
-            else data_sources,
+            data_source=_available_metric_sources("ORCID", "OpenAlex"),
             confidence_score=_confidence_score_from_publications(
                 publication_volume_publications
             ),
@@ -3364,9 +3365,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             ],
             tooltip=collaboration_tooltip,
             tooltip_details=collaboration_tooltip_details,
-            data_source=["OpenAlex", "ORCID"]
-            if "OpenAlex" in data_sources
-            else data_sources,
+            data_source=_available_metric_sources("OpenAlex", "ORCID"),
             confidence_score=_confidence_score_from_publications(
                 collaboration_structure_publications
             ),

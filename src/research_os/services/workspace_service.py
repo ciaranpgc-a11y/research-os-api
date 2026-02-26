@@ -18,6 +18,7 @@ from research_os.db import (
 
 WORKSPACE_HEALTH_VALUES = {"green", "amber", "red"}
 INVITATION_STATUS_VALUES = {"pending", "accepted", "declined"}
+WORKSPACE_COLLABORATOR_ROLE_VALUES = {"editor", "reviewer", "viewer"}
 WORKSPACE_FALLBACK_NAME = "Workspace"
 WORKSPACE_FALLBACK_OWNER_NAME = "Not set"
 
@@ -82,6 +83,38 @@ def _normalize_str_list(values: Any) -> list[str]:
     return output
 
 
+def _normalize_collaborator_role(value: Any) -> str:
+    clean = _trim(value).lower()
+    if clean in WORKSPACE_COLLABORATOR_ROLE_VALUES:
+        return clean
+    return "editor"
+
+
+def _normalize_role_map(values: Any, allowed_names: list[str]) -> dict[str, str]:
+    source = values if isinstance(values, dict) else {}
+    canonical_by_key: dict[str, str] = {}
+    for name in allowed_names:
+        clean = _normalize_name(name)
+        if not clean:
+            continue
+        canonical_by_key[clean.casefold()] = clean
+
+    output: dict[str, str] = {}
+    for raw_name, raw_role in source.items():
+        clean_name = _normalize_name(raw_name)
+        if not clean_name:
+            continue
+        canonical = canonical_by_key.get(clean_name.casefold())
+        if not canonical:
+            continue
+        output[canonical] = _normalize_collaborator_role(raw_role)
+
+    for canonical in canonical_by_key.values():
+        if canonical not in output:
+            output[canonical] = "editor"
+    return output
+
+
 def _slugify_workspace_id(value: str) -> str:
     lowered = value.strip().lower()
     cleaned = re.sub(r"[^a-z0-9]+", "-", lowered).strip("-")
@@ -115,13 +148,35 @@ def _normalize_workspace_record(payload: Any) -> dict[str, Any]:
     if not workspace_id:
         workspace_id = f"workspace-{uuid4().hex[:10]}"
 
-    collaborators = _normalize_str_list(source.get("collaborators"))
+    owner_name = _normalize_name(source.get("owner_name")) or WORKSPACE_FALLBACK_OWNER_NAME
+    owner_key = owner_name.casefold()
+    collaborators = [
+        value
+        for value in _normalize_str_list(source.get("collaborators"))
+        if value.casefold() != owner_key
+    ]
     collaborator_key_set = {name.casefold() for name in collaborators}
     removed = [
         value
         for value in _normalize_str_list(source.get("removed_collaborators"))
         if value.casefold() in collaborator_key_set
     ]
+    removed_keys = {value.casefold() for value in removed}
+    active_collaborator_keys = {
+        value.casefold() for value in collaborators if value.casefold() not in removed_keys
+    }
+    pending = [
+        value
+        for value in _normalize_str_list(source.get("pending_collaborators"))
+        if value.casefold() not in active_collaborator_keys
+        and value.casefold() != owner_key
+    ]
+    collaborator_roles = _normalize_role_map(
+        source.get("collaborator_roles"), collaborators
+    )
+    pending_collaborator_roles = _normalize_role_map(
+        source.get("pending_collaborator_roles"), pending
+    )
     health = _trim(source.get("health")).lower()
     if health not in WORKSPACE_HEALTH_VALUES:
         health = "amber"
@@ -129,9 +184,11 @@ def _normalize_workspace_record(payload: Any) -> dict[str, Any]:
     return {
         "id": workspace_id,
         "name": _normalize_name(source.get("name")) or WORKSPACE_FALLBACK_NAME,
-        "owner_name": _normalize_name(source.get("owner_name"))
-        or WORKSPACE_FALLBACK_OWNER_NAME,
+        "owner_name": owner_name,
         "collaborators": collaborators,
+        "pending_collaborators": pending,
+        "collaborator_roles": collaborator_roles,
+        "pending_collaborator_roles": pending_collaborator_roles,
         "removed_collaborators": removed,
         "version": _trim(source.get("version")) or "0.1",
         "health": health,
@@ -150,6 +207,9 @@ def _normalize_author_request(payload: Any) -> dict[str, Any]:
         "workspace_name": _normalize_name(source.get("workspace_name"))
         or "Untitled workspace",
         "author_name": _normalize_name(source.get("author_name")) or "Unknown author",
+        "collaborator_role": _normalize_collaborator_role(
+            source.get("collaborator_role")
+        ),
         "invited_at": _normalize_timestamp(source.get("invited_at")),
     }
     source_inviter_user_id = _trim(source.get("source_inviter_user_id"))
@@ -174,6 +234,7 @@ def _normalize_invitation_sent(payload: Any) -> dict[str, Any]:
         or "Untitled workspace",
         "invitee_name": _normalize_name(source.get("invitee_name"))
         or "Unknown collaborator",
+        "role": _normalize_collaborator_role(source.get("role")),
         "invited_at": _normalize_timestamp(source.get("invited_at")),
         "status": status,
     }
@@ -469,6 +530,7 @@ def _sync_workspace_collaborator_states(
     session,
     owner_user_id: str,
     owner_workspace: dict[str, Any],
+    previous_owner_name: str | None = None,
 ) -> None:
     clean_owner_user_id = _trim(owner_user_id)
     workspace_id = _trim(owner_workspace.get("id"))
@@ -478,10 +540,19 @@ def _sync_workspace_collaborator_states(
     owner_name = _normalize_name(owner_workspace.get("owner_name"))
     if not owner_name:
         return
+    owner_name_key = owner_name.casefold()
+    removable_owner_keys = {owner_name_key}
+    previous_owner_key = _normalize_name(previous_owner_name).casefold()
+    if previous_owner_key:
+        removable_owner_keys.add(previous_owner_key)
 
     collaborator_names = _normalize_str_list(owner_workspace.get("collaborators"))
     collaborator_keys = {value.casefold() for value in collaborator_names}
     collaborator_name_by_key = {value.casefold(): value for value in collaborator_names}
+    collaborator_role_by_name = _normalize_role_map(
+        owner_workspace.get("collaborator_roles"),
+        collaborator_names,
+    )
     removed_keys = {
         value.casefold()
         for value in _normalize_str_list(owner_workspace.get("removed_collaborators"))
@@ -501,12 +572,34 @@ def _sync_workspace_collaborator_states(
         row, state = _load_workspace_state_row(session=session, user_id=user_id)
         index = _workspace_index(state, workspace_id)
 
+        if user_name_key == owner_name_key:
+            existing_workspace = (
+                dict((state.get("workspaces") or [])[index]) if index >= 0 else {}
+            )
+            promoted_workspace_source = dict(owner_workspace)
+            promoted_workspace_source["pinned"] = bool(existing_workspace.get("pinned"))
+            promoted_workspace_source["archived"] = bool(
+                owner_workspace.get("archived")
+            ) or bool(existing_workspace.get("archived"))
+            promoted_workspace = _normalize_workspace_record(promoted_workspace_source)
+            promoted_workspace["id"] = workspace_id
+            items = list(state.get("workspaces") or [])
+            if index >= 0:
+                items[index] = promoted_workspace
+            else:
+                items.insert(0, promoted_workspace)
+            state["workspaces"] = items
+            if not _trim(state.get("active_workspace_id")):
+                state["active_workspace_id"] = workspace_id
+            _save_workspace_state_row(row=row, state=state)
+            continue
+
         if user_name_key not in collaborator_keys:
             if index < 0:
                 continue
             current_workspace = dict((state.get("workspaces") or [])[index])
             current_owner_key = _normalize_name(current_workspace.get("owner_name")).casefold()
-            if current_owner_key != owner_name.casefold():
+            if current_owner_key not in removable_owner_keys:
                 continue
             state["workspaces"] = [
                 item
@@ -525,6 +618,9 @@ def _sync_workspace_collaborator_states(
             continue
 
         collaborator_display_name = collaborator_name_by_key[user_name_key]
+        collaborator_role = collaborator_role_by_name.get(
+            collaborator_display_name, "editor"
+        )
         archived_flag = bool(owner_workspace.get("archived"))
         existing_workspace = (
             dict((state.get("workspaces") or [])[index]) if index >= 0 else {}
@@ -537,6 +633,11 @@ def _sync_workspace_collaborator_states(
                 or WORKSPACE_FALLBACK_NAME,
                 "owner_name": owner_name,
                 "collaborators": [collaborator_display_name],
+                "collaborator_roles": {
+                    collaborator_display_name: collaborator_role
+                },
+                "pending_collaborators": [],
+                "pending_collaborator_roles": {},
                 "removed_collaborators": (
                     [collaborator_display_name]
                     if user_name_key in removed_keys
@@ -603,6 +704,103 @@ def _find_user_id_by_display_name(
     return None
 
 
+def _sync_workspace_pending_collaborator(
+    *,
+    state: dict[str, Any],
+    workspace_id: str,
+    collaborator_name: str,
+    pending: bool,
+    role: str | None = None,
+) -> bool:
+    clean_workspace_id = _trim(workspace_id)
+    clean_collaborator_name = _normalize_name(collaborator_name)
+    if not clean_workspace_id or not clean_collaborator_name:
+        return False
+    workspace_index = _workspace_index(state, clean_workspace_id)
+    if workspace_index < 0:
+        return False
+
+    workspaces = list(state.get("workspaces") or [])
+    workspace = dict(workspaces[workspace_index])
+    pending_collaborators = _normalize_str_list(
+        workspace.get("pending_collaborators")
+    )
+    pending_roles = _normalize_role_map(
+        workspace.get("pending_collaborator_roles"), pending_collaborators
+    )
+    collaborator_key = clean_collaborator_name.casefold()
+    pending_keys = {value.casefold() for value in pending_collaborators}
+    normalized_role = _normalize_collaborator_role(role)
+
+    collaborators = _normalize_str_list(workspace.get("collaborators"))
+    removed_keys = {
+        value.casefold()
+        for value in _normalize_str_list(workspace.get("removed_collaborators"))
+    }
+    active_keys = {
+        value.casefold() for value in collaborators if value.casefold() not in removed_keys
+    }
+
+    changed = False
+    if pending:
+        if collaborator_key in active_keys:
+            next_pending = [
+                value
+                for value in pending_collaborators
+                if value.casefold() != collaborator_key
+            ]
+            if len(next_pending) != len(pending_collaborators):
+                pending_collaborators = next_pending
+                pending_roles = {
+                    name: value
+                    for name, value in pending_roles.items()
+                    if _normalize_name(name).casefold() != collaborator_key
+                }
+                changed = True
+        elif collaborator_key not in pending_keys:
+            pending_collaborators.append(clean_collaborator_name)
+            pending_roles[clean_collaborator_name] = normalized_role
+            changed = True
+        else:
+            existing_name = next(
+                (
+                    name
+                    for name in pending_collaborators
+                    if _normalize_name(name).casefold() == collaborator_key
+                ),
+                clean_collaborator_name,
+            )
+            if pending_roles.get(existing_name) != normalized_role:
+                pending_roles[existing_name] = normalized_role
+                changed = True
+    else:
+        next_pending = [
+            value
+            for value in pending_collaborators
+            if value.casefold() != collaborator_key
+        ]
+        if len(next_pending) != len(pending_collaborators):
+            pending_collaborators = next_pending
+            pending_roles = {
+                name: value
+                for name, value in pending_roles.items()
+                if _normalize_name(name).casefold() != collaborator_key
+            }
+            changed = True
+
+    if not changed:
+        return False
+
+    workspace["pending_collaborators"] = pending_collaborators
+    workspace["pending_collaborator_roles"] = pending_roles
+    workspace["updated_at"] = _iso_timestamp(_utcnow())
+    normalized_workspace = _normalize_workspace_record(workspace)
+    normalized_workspace["id"] = clean_workspace_id
+    workspaces[workspace_index] = normalized_workspace
+    state["workspaces"] = workspaces
+    return True
+
+
 def _set_invitation_status_for_user(
     *, session, user_id: str, invitation_id: str, status: str
 ) -> bool:
@@ -615,13 +813,26 @@ def _set_invitation_status_for_user(
     payload = row.payload_json if row and isinstance(row.payload_json, dict) else {}
     state = normalize_workspace_state(payload)
     changed = False
+    invitation_record: dict[str, Any] | None = None
     for item in state.get("invitations_sent") or []:
         if _trim(item.get("id")) == _trim(invitation_id):
+            invitation_record = item
             if _trim(item.get("status")).lower() != clean_status:
                 item["status"] = clean_status
                 changed = True
             break
-    if not changed:
+    if invitation_record is None:
+        return False
+
+    pending_changed = _sync_workspace_pending_collaborator(
+        state=state,
+        workspace_id=_trim(invitation_record.get("workspace_id")),
+        collaborator_name=_normalize_name(invitation_record.get("invitee_name")),
+        pending=clean_status == "pending",
+        role=_normalize_collaborator_role(invitation_record.get("role")),
+    )
+
+    if not changed and not pending_changed:
         return False
     if row is None:
         row = WorkspaceStateCache(user_id=user_id, payload_json=state)
@@ -747,29 +958,126 @@ def update_workspace_record(
         current = dict(items[index])
         current_owner_name = _normalize_name(current.get("owner_name"))
         requested_owner_name = _normalize_name((patch or {}).get("owner_name"))
-        if (
-            requested_owner_name
-            and current_owner_name
-            and requested_owner_name.casefold() != current_owner_name.casefold()
-        ):
-            raise WorkspaceValidationError("Workspace owner cannot be reassigned.")
         requester_is_owner = (
             _workspace_membership_role(
                 workspace=current, user_display_name=_normalize_name(user.name)
             )
             == "owner"
         )
+        transferring_owner = (
+            bool(requested_owner_name)
+            and bool(current_owner_name)
+            and requested_owner_name.casefold() != current_owner_name.casefold()
+        )
+        if transferring_owner and not requester_is_owner:
+            raise WorkspaceValidationError(
+                "Only the workspace owner can transfer ownership."
+            )
         touches_collaborators = any(
             key in (patch or {})
-            for key in ("collaborators", "removed_collaborators")
+            for key in (
+                "collaborators",
+                "pending_collaborators",
+                "collaborator_roles",
+                "pending_collaborator_roles",
+                "removed_collaborators",
+            )
         )
         if touches_collaborators and not requester_is_owner:
             raise WorkspaceValidationError(
                 "Only the workspace owner can manage collaborators."
             )
+
+        transfer_previous_owner_name: str | None = None
+        transfer_new_owner_name: str | None = None
+        if transferring_owner:
+            requested_owner_key = requested_owner_name.casefold()
+            current_owner_key = current_owner_name.casefold()
+            active_collaborator_names = [
+                value
+                for value in _normalize_str_list(current.get("collaborators"))
+                if value.casefold()
+                not in {
+                    removed.casefold()
+                    for removed in _normalize_str_list(
+                        current.get("removed_collaborators")
+                    )
+                }
+            ]
+            active_collaborator_keys = {
+                value.casefold() for value in active_collaborator_names
+            }
+            if requested_owner_key not in active_collaborator_keys:
+                raise WorkspaceValidationError(
+                    "New workspace owner must be an active collaborator."
+                )
+            target_owner_user_id = _find_user_id_by_display_name(
+                session=session, name=requested_owner_name
+            )
+            if not target_owner_user_id:
+                raise WorkspaceValidationError(
+                    "New workspace owner must have a registered account."
+                )
+
+            next_collaborators = [
+                value
+                for value in _normalize_str_list(current.get("collaborators"))
+                if value.casefold() != requested_owner_key
+            ]
+            if current_owner_name and current_owner_key not in {
+                value.casefold() for value in next_collaborators
+            }:
+                next_collaborators.append(current_owner_name)
+
+            next_removed = [
+                value
+                for value in _normalize_str_list(current.get("removed_collaborators"))
+                if value.casefold() not in {requested_owner_key, current_owner_key}
+            ]
+            next_pending = [
+                value
+                for value in _normalize_str_list(current.get("pending_collaborators"))
+                if value.casefold() not in {requested_owner_key, current_owner_key}
+            ]
+            next_roles = {
+                name: role
+                for name, role in _normalize_role_map(
+                    current.get("collaborator_roles"), next_collaborators
+                ).items()
+                if _normalize_name(name).casefold() != requested_owner_key
+            }
+            if current_owner_name:
+                next_roles[current_owner_name] = _normalize_collaborator_role(
+                    next_roles.get(current_owner_name)
+                )
+            next_pending_roles = {
+                name: role
+                for name, role in _normalize_role_map(
+                    current.get("pending_collaborator_roles"), next_pending
+                ).items()
+                if _normalize_name(name).casefold()
+                not in {requested_owner_key, current_owner_key}
+            }
+
+            transfer_previous_owner_name = current_owner_name
+            transfer_new_owner_name = requested_owner_name
+            patch = {
+                **(patch if isinstance(patch, dict) else {}),
+                "owner_name": requested_owner_name,
+                "collaborators": next_collaborators,
+                "removed_collaborators": next_removed,
+                "pending_collaborators": next_pending,
+                "collaborator_roles": next_roles,
+                "pending_collaborator_roles": next_pending_roles,
+            }
+
         merged = {**current, **(patch if isinstance(patch, dict) else {})}
         merged["id"] = clean_workspace_id
-        merged["owner_name"] = current_owner_name or _normalize_name(user.name)
+        merged["owner_name"] = (
+            transfer_new_owner_name
+            or current_owner_name
+            or _normalize_name(user.name)
+        )
         if "updated_at" not in (patch or {}):
             merged["updated_at"] = _iso_timestamp(_utcnow())
         normalized = _normalize_workspace_record(merged)
@@ -782,6 +1090,7 @@ def update_workspace_record(
                 session=session,
                 owner_user_id=user_id,
                 owner_workspace=normalized,
+                previous_owner_name=transfer_previous_owner_name,
             )
         session.flush()
         return normalized
@@ -868,6 +1177,7 @@ def list_workspace_invitations_sent(*, user_id: str) -> dict[str, Any]:
 def create_workspace_invitation(*, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     clean_workspace_id = _trim(payload.get("workspace_id"))
     invitee_name = _normalize_name(payload.get("invitee_name"))
+    collaborator_role = _normalize_collaborator_role(payload.get("role"))
     if not clean_workspace_id:
         raise WorkspaceValidationError("Workspace id is required.")
     if not invitee_name:
@@ -902,9 +1212,17 @@ def create_workspace_invitation(*, user_id: str, payload: dict[str, Any]) -> dic
             value.casefold()
             for value in _normalize_str_list(workspace.get("removed_collaborators"))
         }
+        pending_keys = {
+            value.casefold()
+            for value in _normalize_str_list(workspace.get("pending_collaborators"))
+        }
         if invitee_name.casefold() in collaborator_keys and invitee_name.casefold() not in removed_keys:
             raise WorkspaceValidationError(
                 "Invitee is already an active collaborator."
+            )
+        if invitee_name.casefold() in pending_keys:
+            raise WorkspaceValidationError(
+                "Invitee already has pending access."
             )
         if owner_name and owner_name.casefold() == invitee_name.casefold():
             raise WorkspaceValidationError(
@@ -930,6 +1248,7 @@ def create_workspace_invitation(*, user_id: str, payload: dict[str, Any]) -> dic
                 "workspace_id": clean_workspace_id,
                 "workspace_name": _normalize_name(workspace.get("name")),
                 "invitee_name": invitee_name,
+                "role": collaborator_role,
                 "invited_at": _normalize_timestamp(payload.get("invited_at")),
                 "status": _trim(payload.get("status")) or "pending",
             }
@@ -950,6 +1269,7 @@ def create_workspace_invitation(*, user_id: str, payload: dict[str, Any]) -> dic
                     "workspace_id": clean_workspace_id,
                     "workspace_name": _normalize_name(workspace.get("name")),
                     "author_name": owner_name or "Unknown author",
+                    "collaborator_role": collaborator_role,
                     "invited_at": invitation.get("invited_at"),
                     "source_inviter_user_id": user_id,
                     "source_invitation_id": invitation.get("id"),
@@ -961,6 +1281,13 @@ def create_workspace_invitation(*, user_id: str, payload: dict[str, Any]) -> dic
             _save_workspace_state_row(row=invitee_row, state=invitee_state)
 
         invitations.insert(0, invitation)
+        _sync_workspace_pending_collaborator(
+            state=sender_state,
+            workspace_id=clean_workspace_id,
+            collaborator_name=invitee_name,
+            pending=True,
+            role=collaborator_role,
+        )
         sender_state["invitations_sent"] = invitations
         _save_workspace_state_row(row=sender_row, state=sender_state)
         session.flush()
@@ -992,6 +1319,13 @@ def update_workspace_invitation_status(
             raise WorkspaceNotFoundError(
                 f"Invitation '{clean_invitation_id}' was not found."
             )
+        _sync_workspace_pending_collaborator(
+            state=state,
+            workspace_id=_trim(updated.get("workspace_id")),
+            collaborator_name=_normalize_name(updated.get("invitee_name")),
+            pending=clean_status == "pending",
+            role=_normalize_collaborator_role(updated.get("role")),
+        )
         state["invitations_sent"] = invitations
         _save_workspace_state_row(row=row, state=state)
         session.flush()
@@ -1032,6 +1366,9 @@ def accept_workspace_author_request(
             desired_id=requested_workspace_id, existing_ids=existing_ids
         )
         collaborator_display_name = clean_collaborator_name or _normalize_name(user.name)
+        collaborator_role = _normalize_collaborator_role(
+            request.get("collaborator_role")
+        )
         collaborators = (
             [collaborator_display_name] if collaborator_display_name else []
         )
@@ -1043,6 +1380,13 @@ def accept_workspace_author_request(
                 "owner_name": _normalize_name(request.get("author_name"))
                 or WORKSPACE_FALLBACK_OWNER_NAME,
                 "collaborators": collaborators,
+                "collaborator_roles": {
+                    collaborator_display_name: collaborator_role
+                }
+                if collaborator_display_name
+                else {},
+                "pending_collaborators": [],
+                "pending_collaborator_roles": {},
                 "removed_collaborators": [],
                 "version": "0.1",
                 "health": "amber",
@@ -1080,6 +1424,11 @@ def accept_workspace_author_request(
                     value.casefold() for value in owner_workspace_collaborators
                 }:
                     owner_workspace_collaborators.append(collaborator_display_name)
+                owner_workspace_roles = _normalize_role_map(
+                    inviter_workspace.get("collaborator_roles"),
+                    owner_workspace_collaborators,
+                )
+                owner_workspace_roles[collaborator_display_name] = collaborator_role
                 owner_workspace_removed = [
                     value
                     for value in _normalize_str_list(
@@ -1087,7 +1436,25 @@ def accept_workspace_author_request(
                     )
                     if value.casefold() != collaborator_key
                 ]
+                owner_workspace_pending = [
+                    value
+                    for value in _normalize_str_list(
+                        inviter_workspace.get("pending_collaborators")
+                    )
+                    if value.casefold() != collaborator_key
+                ]
+                owner_workspace_pending_roles = {
+                    name: value
+                    for name, value in _normalize_role_map(
+                        inviter_workspace.get("pending_collaborator_roles"),
+                        owner_workspace_pending,
+                    ).items()
+                    if _normalize_name(name).casefold() != collaborator_key
+                }
                 inviter_workspace["collaborators"] = owner_workspace_collaborators
+                inviter_workspace["collaborator_roles"] = owner_workspace_roles
+                inviter_workspace["pending_collaborators"] = owner_workspace_pending
+                inviter_workspace["pending_collaborator_roles"] = owner_workspace_pending_roles
                 inviter_workspace["removed_collaborators"] = owner_workspace_removed
                 inviter_workspace["updated_at"] = _iso_timestamp(_utcnow())
                 normalized_inviter_workspace = _normalize_workspace_record(
