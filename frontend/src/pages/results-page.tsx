@@ -562,6 +562,18 @@ export function ResultsPage() {
     setLibraryPickerPulling(false)
   }, [addDataAsset, isAssetInCurrentWorkspace, persistedAssets, selectedLibraryAssetSet])
 
+  const onBringRecentUploadIntoWorkspace = useCallback(
+    async (assetId: string) => {
+      const asset = persistedAssets.find((item) => item.id === assetId)
+      if (!asset) {
+        setLibraryActionError('Uploaded file is not available yet. Please try again.')
+        return
+      }
+      await onPullLibraryAssetIntoWorkspace(asset)
+    },
+    [onPullLibraryAssetIntoWorkspace, persistedAssets],
+  )
+
   return (
     <>
       <PageFrame title="Data" description="" hideScaffoldHeader>
@@ -716,7 +728,7 @@ export function ResultsPage() {
                                     onClick={() => void onPullLibraryAssetIntoWorkspace(asset)}
                                     disabled={isBusy || isInWorkspace}
                                   >
-                                    {isInWorkspace ? 'In workspace' : 'Pull to workspace'}
+                                    {isInWorkspace ? 'In current workspace' : 'Bring into current workspace'}
                                   </Button>
                                 </div>
                                 {canManageAccess ? (
@@ -779,7 +791,7 @@ export function ResultsPage() {
 
                   <Card data-house-role="workspace-card">
                     <CardHeader className="space-y-1">
-                      <CardTitle data-house-role="section-title">Upload to personal library</CardTitle>
+                      <CardTitle data-house-role="section-title">Upload data file</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
                       <input
@@ -814,6 +826,28 @@ export function ResultsPage() {
                       ) : null}
                       {uploadError ? <p className="text-xs text-destructive">{uploadError}</p> : null}
                       {uploadStatus ? <p className="text-xs text-emerald-600">{uploadStatus}</p> : null}
+                      {recentlyUploadedAssets.length > 0 ? (
+                        <div className="space-y-1 pt-1">
+                          {recentlyUploadedAssets.map((entry) => {
+                            const asset = persistedAssets.find((item) => item.id === entry.assetId)
+                            const isInWorkspace = asset ? isAssetInCurrentWorkspace(asset) : workspaceImportedAssetIds.includes(entry.assetId)
+                            return (
+                              <div key={entry.assetId} className="flex items-center justify-between gap-2 rounded-md border border-border/70 px-2 py-1.5">
+                                <p className="truncate text-xs">{entry.filename}</p>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => void onBringRecentUploadIntoWorkspace(entry.assetId)}
+                                  disabled={isInWorkspace || uploadBusy || persistSyncBusy}
+                                >
+                                  {isInWorkspace ? 'In current workspace' : 'Bring into current workspace'}
+                                </Button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ) : null}
                     </CardContent>
                   </Card>
                 </div>
@@ -903,7 +937,7 @@ export function ResultsPage() {
                                 onClick={() => void onPullLibraryAssetIntoWorkspace(asset)}
                                 disabled={isBusy || isInWorkspace}
                               >
-                                {isInWorkspace ? 'In workspace' : 'Pull now'}
+                                {isInWorkspace ? 'In current workspace' : 'Bring into current workspace'}
                               </Button>
                             </div>
                           </div>

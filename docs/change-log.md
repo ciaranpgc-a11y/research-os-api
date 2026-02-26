@@ -52,6 +52,24 @@
 - **Verification performed:**
 - `npx eslint src/pages/results-page.tsx` (run from `frontend/`)
 
+### Upload Data File CTA + Post-Upload Workspace Import Flow
+
+- **Area:** Workspace Data right panel upload and import copy/interaction.
+- **What changed:**
+- Renamed upload card title from `Upload to personal library` to `Upload data file`.
+- Updated upload behavior to validate and upload files into Personal Library first, without auto-pulling into the current workspace.
+- Added post-upload rows beneath the upload CTA showing uploaded file names with per-file action:
+  - `Bring into current workspace`
+  - state switches to `In current workspace` once imported.
+- Updated pull labels for consistency in both right-panel and sheet contexts:
+  - `Pull to workspace` / `Pull now` -> `Bring into current workspace`.
+- **Why it changed:**
+- Match expected semantics that upload persists to library first, then explicit import controls workspace inclusion.
+- **Key files touched:**
+- `frontend/src/pages/results-page.tsx`
+- **Verification performed:**
+- `npx eslint src/pages/results-page.tsx` (run from `frontend/`)
+
 ### Library Upload `project_id` Sentinel Normalization
 
 - **Area:** Personal library upload/list API resilience for workspace Data page.
