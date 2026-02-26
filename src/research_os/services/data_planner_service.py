@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import mimetypes
 import os
 import re
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
@@ -302,6 +303,310 @@ def _storage_root() -> Path:
     return root
 
 
+def _asset_metadata_path(*, asset_id: str, root: Path) -> Path:
+    return root / f"{asset_id}.meta.json"
+
+
+def _parse_iso_datetime(value: Any) -> datetime | None:
+    raw = _trim(value)
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _metadata_asset_id(payload: dict[str, Any]) -> str:
+    return _trim(payload.get("id") or payload.get("asset_id"))
+
+
+def _load_asset_metadata(path: Path) -> dict[str, Any] | None:
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _write_asset_metadata(*, root: Path, payload: dict[str, Any]) -> None:
+    asset_id = _metadata_asset_id(payload)
+    if not asset_id:
+        return
+    path = _asset_metadata_path(asset_id=asset_id, root=root)
+    tmp_path = path.with_suffix(f"{path.suffix}.tmp")
+    try:
+        tmp_path.write_text(
+            json.dumps(payload, ensure_ascii=True, sort_keys=True),
+            encoding="utf-8",
+        )
+        os.replace(tmp_path, path)
+    except OSError:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _resolve_owner_user_id_from_metadata(*, session, payload: dict[str, Any]) -> str | None:
+    owner_user_id = _trim(payload.get("owner_user_id"))
+    if owner_user_id:
+        owner_user = session.get(User, owner_user_id)
+        if owner_user is not None:
+            return owner_user_id
+    owner_email = _trim(payload.get("owner_email")).lower()
+    if owner_email:
+        owner_user = session.scalars(
+            select(User).where(func.lower(User.email) == owner_email)
+        ).first()
+        if owner_user is not None:
+            resolved_owner_user_id = _trim(owner_user.id)
+            if resolved_owner_user_id:
+                return resolved_owner_user_id
+    return None
+
+
+def _resolve_project_id_from_metadata(*, session, payload: dict[str, Any]) -> str | None:
+    project_id = _trim(payload.get("project_id"))
+    if not project_id:
+        return None
+    project = session.get(Project, project_id)
+    return project_id if project is not None else None
+
+
+def _resolve_shared_ids_from_metadata(*, session, payload: dict[str, Any], owner_user_id: str | None) -> list[str]:
+    raw_shared_ids = payload.get("shared_with_user_ids")
+    normalized = _normalize_user_ids(raw_shared_ids if isinstance(raw_shared_ids, list) else [])
+    owner_id = _trim(owner_user_id)
+    resolved: list[str] = []
+    seen: set[str] = set()
+    for user_id in normalized:
+        if user_id in seen or user_id == owner_id:
+            continue
+        if session.get(User, user_id) is None:
+            continue
+        seen.add(user_id)
+        resolved.append(user_id)
+    return resolved
+
+
+def _metadata_storage_candidates(*, payload: dict[str, Any], primary_root: Path) -> list[Path]:
+    asset_id = _metadata_asset_id(payload)
+    if not asset_id:
+        return []
+    candidates: list[Path] = []
+    filename = _trim(payload.get("filename"))
+    suffix = Path(filename).suffix
+    if suffix:
+        candidates.append(primary_root / f"{asset_id}{suffix}")
+    candidates.append(primary_root / f"{asset_id}.bin")
+    for match in primary_root.glob(f"{asset_id}.*"):
+        if match.name.endswith(".meta.json"):
+            continue
+        candidates.append(match)
+    raw_storage_path = _trim(payload.get("storage_path"))
+    if raw_storage_path:
+        candidates.append(Path(raw_storage_path))
+    for legacy_root in _legacy_storage_roots(primary_root):
+        if suffix:
+            candidates.append(legacy_root / f"{asset_id}{suffix}")
+        candidates.append(legacy_root / f"{asset_id}.bin")
+        if legacy_root.exists():
+            for match in legacy_root.glob(f"{asset_id}.*"):
+                if match.name.endswith(".meta.json"):
+                    continue
+                candidates.append(match)
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(candidate)
+    return deduped
+
+
+def _resolve_storage_path_from_metadata(*, payload: dict[str, Any], primary_root: Path) -> Path | None:
+    for candidate in _metadata_storage_candidates(payload=payload, primary_root=primary_root):
+        try:
+            if not candidate.exists() or not candidate.is_file():
+                continue
+            resolved = candidate.resolve()
+            if resolved.parent != primary_root:
+                migrated_target = (primary_root / resolved.name).resolve()
+                if not migrated_target.exists():
+                    try:
+                        shutil.copy2(resolved, migrated_target)
+                    except OSError:
+                        return resolved
+                return migrated_target
+            return resolved
+        except OSError:
+            continue
+    return None
+
+
+def _build_asset_metadata_payload(
+    *, session, asset: DataLibraryAsset, primary_root: Path
+) -> dict[str, Any]:
+    owner_user_id = _trim(asset.owner_user_id) or None
+    owner_email = ""
+    if owner_user_id:
+        owner_user = session.get(User, owner_user_id)
+        owner_email = _trim(owner_user.email).lower() if owner_user is not None else ""
+    uploaded_at = asset.uploaded_at
+    uploaded_at_str = ""
+    if isinstance(uploaded_at, datetime):
+        if uploaded_at.tzinfo is None:
+            uploaded_at = uploaded_at.replace(tzinfo=timezone.utc)
+        uploaded_at_str = uploaded_at.astimezone(timezone.utc).isoformat()
+    resolved_storage_path = _resolve_existing_asset_path(asset, primary_root)
+    storage_path = str(resolved_storage_path) if resolved_storage_path is not None else _trim(asset.storage_path)
+    shared_with_user_ids = _asset_shared_user_ids(asset)
+    return {
+        "id": asset.id,
+        "owner_user_id": owner_user_id,
+        "owner_email": owner_email,
+        "project_id": _trim(asset.project_id) or None,
+        "shared_with_user_ids": shared_with_user_ids,
+        "filename": _trim(asset.filename) or "asset.bin",
+        "kind": _trim(asset.kind) or _guess_kind(_trim(asset.filename)),
+        "mime_type": _trim(asset.mime_type) or None,
+        "byte_size": int(asset.byte_size or 0),
+        "storage_path": storage_path,
+        "uploaded_at": uploaded_at_str,
+    }
+
+
+def _sync_asset_metadata_for_row(*, session, asset: DataLibraryAsset, primary_root: Path) -> None:
+    payload = _build_asset_metadata_payload(
+        session=session,
+        asset=asset,
+        primary_root=primary_root,
+    )
+    _write_asset_metadata(root=primary_root, payload=payload)
+
+
+def _restore_asset_row_from_metadata(
+    *,
+    session,
+    primary_root: Path,
+    asset_id: str | None = None,
+) -> bool:
+    requested_asset_id = _trim(asset_id)
+    metadata_paths = (
+        [_asset_metadata_path(asset_id=requested_asset_id, root=primary_root)]
+        if requested_asset_id
+        else list(primary_root.glob("*.meta.json"))
+    )
+    restored_any = False
+    for metadata_path in metadata_paths:
+        if not metadata_path.exists() or not metadata_path.is_file():
+            continue
+        payload = _load_asset_metadata(metadata_path)
+        if not payload:
+            continue
+        metadata_asset_id = _metadata_asset_id(payload)
+        if not metadata_asset_id:
+            continue
+        if requested_asset_id and metadata_asset_id != requested_asset_id:
+            continue
+        storage_path = _resolve_storage_path_from_metadata(
+            payload=payload,
+            primary_root=primary_root,
+        )
+        if storage_path is None:
+            continue
+        existing = session.get(DataLibraryAsset, metadata_asset_id)
+        owner_user_id = _resolve_owner_user_id_from_metadata(session=session, payload=payload)
+        project_id = _resolve_project_id_from_metadata(session=session, payload=payload)
+        shared_with_user_ids = _resolve_shared_ids_from_metadata(
+            session=session,
+            payload=payload,
+            owner_user_id=owner_user_id,
+        )
+        byte_size_from_metadata = int(payload.get("byte_size") or 0)
+        byte_size = byte_size_from_metadata if byte_size_from_metadata > 0 else int(storage_path.stat().st_size)
+        filename = _trim(payload.get("filename")) or "asset.bin"
+        mime_type = _trim(payload.get("mime_type")) or None
+        kind = _trim(payload.get("kind")) or _guess_kind(filename)
+        uploaded_at = _parse_iso_datetime(payload.get("uploaded_at")) or datetime.now(timezone.utc)
+
+        if existing is None:
+            restored = DataLibraryAsset(
+                id=metadata_asset_id,
+                owner_user_id=owner_user_id,
+                project_id=project_id,
+                shared_with_user_ids=shared_with_user_ids,
+                filename=filename,
+                kind=kind,
+                mime_type=mime_type,
+                byte_size=byte_size,
+                storage_path=str(storage_path),
+                uploaded_at=uploaded_at,
+            )
+            session.add(restored)
+            session.flush()
+            _sync_asset_metadata_for_row(
+                session=session,
+                asset=restored,
+                primary_root=primary_root,
+            )
+            restored_any = True
+            continue
+
+        changed = False
+        existing_storage_path = _trim(existing.storage_path)
+        resolved_storage_path = str(storage_path)
+        if existing_storage_path != resolved_storage_path:
+            existing.storage_path = resolved_storage_path
+            changed = True
+        if _trim(existing.filename) == "" and filename:
+            existing.filename = filename
+            changed = True
+        if _trim(existing.kind) == "" and kind:
+            existing.kind = kind
+            changed = True
+        if _trim(existing.mime_type) == "" and mime_type:
+            existing.mime_type = mime_type
+            changed = True
+        if int(existing.byte_size or 0) <= 0 and byte_size > 0:
+            existing.byte_size = byte_size
+            changed = True
+        if existing.project_id is None and project_id is not None:
+            existing.project_id = project_id
+            changed = True
+        existing_owner_user_id = _trim(existing.owner_user_id)
+        if owner_user_id and existing_owner_user_id != owner_user_id:
+            if not existing_owner_user_id or session.get(User, existing_owner_user_id) is None:
+                existing.owner_user_id = owner_user_id
+                changed = True
+        if (
+            not _asset_shared_user_ids(existing)
+            and shared_with_user_ids
+            and bool(existing.owner_user_id)
+        ):
+            existing.shared_with_user_ids = shared_with_user_ids
+            changed = True
+        if changed:
+            session.flush()
+            restored_any = True
+        _sync_asset_metadata_for_row(
+            session=session,
+            asset=existing,
+            primary_root=primary_root,
+        )
+    return restored_any
+
+
 def _slugify_filename(value: str) -> str:
     candidate = re.sub(r"[^a-zA-Z0-9._-]+", "-", value.strip()).strip(".-")
     return candidate or "asset"
@@ -332,6 +637,7 @@ def upload_library_assets(
     if not files:
         raise PlannerValidationError("At least one file is required for upload.")
     asset_ids: list[str] = []
+    storage_root = _storage_root()
     with session_scope() as session:
         clean_project_id = _normalize_optional_id(project_id)
         clean_user_id = _trim(user_id) or None
@@ -358,12 +664,17 @@ def upload_library_assets(
             session.add(asset)
             session.flush()
             extension = Path(filename).suffix or ".bin"
-            path = _storage_root() / f"{asset.id}{extension}"
+            path = storage_root / f"{asset.id}{extension}"
             tmp_path = path.with_suffix(f"{path.suffix}.tmp")
             tmp_path.write_bytes(content)
             os.replace(tmp_path, path)
             asset.storage_path = str(path.resolve())
             session.flush()
+            _sync_asset_metadata_for_row(
+                session=session,
+                asset=asset,
+                primary_root=storage_root,
+            )
             asset_ids.append(asset.id)
     return asset_ids
 
@@ -419,6 +730,10 @@ def list_library_assets(
             }
         clean_project_id = _normalize_optional_id(project_id)
         storage_root = _storage_root()
+        _restore_asset_row_from_metadata(
+            session=session,
+            primary_root=storage_root,
+        )
         query = select(DataLibraryAsset).order_by(DataLibraryAsset.uploaded_at.desc())
         if clean_project_id:
             _resolve_project_for_user(
@@ -433,6 +748,11 @@ def list_library_assets(
             resolved_storage_str = str(resolved_storage_path)
             if _trim(row.storage_path) != resolved_storage_str:
                 row.storage_path = resolved_storage_str
+            _sync_asset_metadata_for_row(
+                session=session,
+                asset=row,
+                primary_root=storage_root,
+            )
         session.flush()
         accessible_rows = [
             row
@@ -536,7 +856,15 @@ def update_library_asset_access(
         raise PlannerValidationError("Session token is required.")
 
     with session_scope() as session:
+        storage_root = _storage_root()
         asset = session.get(DataLibraryAsset, clean_asset_id)
+        if asset is None:
+            _restore_asset_row_from_metadata(
+                session=session,
+                primary_root=storage_root,
+                asset_id=clean_asset_id,
+            )
+            asset = session.get(DataLibraryAsset, clean_asset_id)
         if asset is None:
             raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
         if _trim(asset.owner_user_id) != clean_user_id:
@@ -570,6 +898,11 @@ def update_library_asset_access(
 
         asset.shared_with_user_ids = merged_ids
         session.flush()
+        _sync_asset_metadata_for_row(
+            session=session,
+            asset=asset,
+            primary_root=storage_root,
+        )
         return _serialize_library_asset(
             session=session,
             asset=asset,
@@ -589,7 +922,15 @@ def download_library_asset(
         raise PlannerValidationError("Session token is required.")
 
     with session_scope() as session:
+        storage_root = _storage_root()
         asset = session.get(DataLibraryAsset, clean_asset_id)
+        if asset is None:
+            _restore_asset_row_from_metadata(
+                session=session,
+                primary_root=storage_root,
+                asset_id=clean_asset_id,
+            )
+            asset = session.get(DataLibraryAsset, clean_asset_id)
         if asset is None:
             raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
         if not _asset_accessible_for_user(
@@ -597,7 +938,6 @@ def download_library_asset(
         ):
             raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
 
-        storage_root = _storage_root()
         storage_path = _resolve_existing_asset_path(asset, storage_root)
         if storage_path is None:
             raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
@@ -605,6 +945,11 @@ def download_library_asset(
         if _trim(asset.storage_path) != resolved_storage_str:
             asset.storage_path = resolved_storage_str
             session.flush()
+        _sync_asset_metadata_for_row(
+            session=session,
+            asset=asset,
+            primary_root=storage_root,
+        )
 
         file_name = _trim(asset.filename) or "asset.bin"
         content = storage_path.read_bytes()
