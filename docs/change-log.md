@@ -70,6 +70,22 @@
 - **Verification performed:**
 - `npx eslint src/pages/results-page.tsx` (run from `frontend/`)
 
+### Personal Library Stale-Asset Recovery
+
+- **Area:** Personal Library sheet pull/import resilience.
+- **What changed:**
+- Added automatic personal-library refresh whenever the sheet is opened.
+- Improved stale asset handling for pull actions:
+  - When an asset is no longer available, show a friendly message (no raw ID error exposure).
+  - Refresh library data automatically and remove stale selections.
+- Applied this behavior to both single-item import and bulk `Pull selected`.
+- **Why it changed:**
+- Avoid confusing `Data asset '<id>' was not found` failures when library data is stale or changed between list and action.
+- **Key files touched:**
+- `frontend/src/pages/results-page.tsx`
+- **Verification performed:**
+- `npx eslint src/pages/results-page.tsx` (run from `frontend/`)
+
 ### Library Upload `project_id` Sentinel Normalization
 
 - **Area:** Personal library upload/list API resilience for workspace Data page.

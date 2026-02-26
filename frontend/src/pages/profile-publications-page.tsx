@@ -1002,6 +1002,8 @@ export type ProfilePublicationsPageFixture = {
   personaState?: PersonaStatePayload | null
   analyticsResponse?: PublicationsAnalyticsResponsePayload | null
   topMetricsResponse?: PublicationsTopMetricsPayload | null
+  initialActiveDetailTab?: PublicationDetailTab
+  filesByWorkId?: Record<string, PublicationFilesListPayload>
 }
 
 type ProfilePublicationsPageProps = {
@@ -1042,12 +1044,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [activeSyncJob, setActiveSyncJob] = useState<PersonaSyncJobPayload | null>(null)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
-  const [activeDetailTab, setActiveDetailTab] = useState<PublicationDetailTab>(() => loadActivePublicationDetailTab())
+  const [activeDetailTab, setActiveDetailTab] = useState<PublicationDetailTab>(
+    () => fixture?.initialActiveDetailTab ?? loadActivePublicationDetailTab(),
+  )
   const [detailCacheByWorkId, setDetailCacheByWorkId] = useState<Record<string, PublicationDetailPayload>>({})
   const [authorsCacheByWorkId, setAuthorsCacheByWorkId] = useState<Record<string, PublicationAuthorsPayload>>({})
   const [impactCacheByWorkId, setImpactCacheByWorkId] = useState<Record<string, PublicationImpactResponsePayload>>({})
   const [aiCacheByWorkId, setAiCacheByWorkId] = useState<Record<string, PublicationAiInsightsResponsePayload>>({})
-  const [filesCacheByWorkId, setFilesCacheByWorkId] = useState<Record<string, PublicationFilesListPayload>>({})
+  const [filesCacheByWorkId, setFilesCacheByWorkId] = useState<Record<string, PublicationFilesListPayload>>(
+    () => fixture?.filesByWorkId ?? {},
+  )
   const [, setPaneLoadingByKey] = useState<Record<string, boolean>>({})
   const [paneErrorByKey, setPaneErrorByKey] = useState<Record<string, string>>({})
   const [expandedAbstractByWorkId, setExpandedAbstractByWorkId] = useState<Record<string, boolean>>({})
@@ -2622,50 +2628,57 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
                         <TabsContent value="files" className="space-y-3">
                           {selectedFiles.length === 0 ? (
-                            <p className="text-xs text-muted-foreground">No files linked to this publication.</p>
+                            <div className={`${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS} text-xs text-muted-foreground`}>
+                              No files linked to this publication.
+                            </div>
                           ) : (
-                            <div className="space-y-2">
+                            <div className="space-y-3">
                               {selectedFiles.map((file) => {
                                 const fileLabel = 'OA Manuscript Download'
+                                const sourceLabel = file.source === 'OA_LINK' ? 'OA link' : 'Uploaded'
                                 return (
-                                <div key={file.id} className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}>
-                                  <p className="text-xs font-medium leading-snug">{fileLabel}</p>
-                                  <p className="break-all text-micro text-muted-foreground">{file.file_name}</p>
-                                  <p className="text-micro text-muted-foreground">{file.file_type} | {file.source === 'OA_LINK' ? 'OA link' : 'Uploaded'} | {formatShortDate(file.created_at)}</p>
-                                  <div className="mt-1 flex flex-wrap gap-1">
+                                <div key={file.id} className={`${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS} space-y-2`}>
+                                  <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>{fileLabel}</p>
+                                  <p className="truncate text-sm text-[hsl(var(--tone-neutral-700))]" title={file.file_name}>{file.file_name}</p>
+                                  <p className="text-micro text-muted-foreground">{file.file_type} | {sourceLabel} | {formatShortDate(file.created_at)}</p>
+                                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                     {file.source === 'OA_LINK' && file.download_url ? (
-                                      <Button type="button" size="sm" variant="outline" asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
+                                      <Button type="button" size="sm" variant="housePrimary" asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
                                     ) : (
-                                      <Button type="button" size="sm" variant="outline" disabled={downloadingFileId === file.id} onClick={() => void onDownloadPublicationFile(file.id, file.file_name)}>{downloadingFileId === file.id ? 'Downloading...' : 'Download'}</Button>
+                                      <Button type="button" size="sm" variant="housePrimary" disabled={downloadingFileId === file.id} onClick={() => void onDownloadPublicationFile(file.id, file.file_name)}>{downloadingFileId === file.id ? 'Downloading...' : 'Download'}</Button>
                                     )}
                                     <Button type="button" size="sm" variant="outline" onClick={() => onSharePublicationFileEmail(file)}>Share (email)</Button>
                                     <Button type="button" size="sm" variant="outline" onClick={() => onSharePublicationFileWithUser(file)}>Share with user</Button>
-                                    <Button type="button" size="sm" variant="outline" disabled={deletingFileId === file.id} onClick={() => void onDeletePublicationFile(file.id)}>{deletingFileId === file.id ? 'Deleting...' : 'Delete'}</Button>
+                                    <Button type="button" size="sm" variant="destructive" className="ml-auto" disabled={deletingFileId === file.id} onClick={() => void onDeletePublicationFile(file.id)}>{deletingFileId === file.id ? 'Deleting...' : 'Delete'}</Button>
                                   </div>
                                 </div>
                                 )
                               })}
                             </div>
                           )}
-                          <div className="grid gap-2 md:grid-cols-[auto_minmax(0,1fr)] md:items-stretch">
-                            <div className="flex items-start">
-                              <Button type="button" size="sm" variant="outline" onClick={() => filePickerRef.current?.click()} disabled={uploadingFile}>{uploadingFile ? 'Uploading...' : 'Upload file'}</Button>
-                              <input ref={filePickerRef} type="file" multiple className="hidden" onChange={(event) => void onUploadFiles(event.target.files)} />
-                            </div>
-                            <div
-                              className={`rounded border border-dashed p-3 text-xs ${filesDragOver ? 'border-emerald-500 bg-emerald-50/40' : 'border-border bg-muted/10'}`}
-                              onDragOver={(event) => {
-                                event.preventDefault()
-                                setFilesDragOver(true)
-                              }}
-                              onDragLeave={() => setFilesDragOver(false)}
-                              onDrop={(event) => {
-                                event.preventDefault()
-                                setFilesDragOver(false)
-                                void onUploadFiles(event.dataTransfer.files)
-                              }}
-                            >
-                              Drag and drop files here.
+                          <div data-house-role="files-tab-divider" className={HOUSE_SECTION_DIVIDER_STRONG_CLASS} />
+                          <div
+                            className={`rounded-md border border-dashed p-3 ${filesDragOver ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50)/0.55)]' : 'border-[hsl(var(--stroke-soft)/0.95)] bg-[hsl(var(--tone-neutral-50)/0.55)]'}`}
+                            onDragOver={(event) => {
+                              event.preventDefault()
+                              setFilesDragOver(true)
+                            }}
+                            onDragLeave={() => setFilesDragOver(false)}
+                            onDrop={(event) => {
+                              event.preventDefault()
+                              setFilesDragOver(false)
+                              void onUploadFiles(event.dataTransfer.files)
+                            }}
+                          >
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="space-y-0.5">
+                                <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Add files</p>
+                                <p className="text-xs text-muted-foreground">Drag and drop files here, or use upload.</p>
+                              </div>
+                              <div className="flex items-start">
+                                <Button type="button" size="sm" variant="outline" onClick={() => filePickerRef.current?.click()} disabled={uploadingFile}>{uploadingFile ? 'Uploading...' : 'Upload file'}</Button>
+                                <input ref={filePickerRef} type="file" multiple className="hidden" onChange={(event) => void onUploadFiles(event.target.files)} />
+                              </div>
                             </div>
                           </div>
                         </TabsContent>

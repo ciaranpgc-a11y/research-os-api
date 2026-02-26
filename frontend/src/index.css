@@ -1511,7 +1511,7 @@
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: hsl(var(--tone-positive-700));
+    color: hsl(var(--tone-neutral-600));
   }
 
   .house-publication-detail-info {

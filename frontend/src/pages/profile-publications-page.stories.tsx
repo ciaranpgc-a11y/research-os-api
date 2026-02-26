@@ -813,6 +813,27 @@ const fullPageFixture: ProfilePublicationsPageFixture = {
   topMetricsResponse: fixtureTopMetrics,
 }
 
+const filesTabMockFixture: ProfilePublicationsPageFixture = {
+  ...fullPageFixture,
+  initialActiveDetailTab: 'files',
+  filesByWorkId: {
+    'W-101': {
+      items: [
+        {
+          id: 'file-oa-101',
+          file_name: 'four-dimensional-flow-provides-incremental-diagnostic-value-over-echocardiography.pdf',
+          file_type: 'PDF',
+          source: 'OA_LINK',
+          oa_url: 'https://example.org/files/four-dimensional-flow.pdf',
+          checksum: null,
+          created_at: '2026-02-25T09:30:00Z',
+          download_url: 'https://example.org/files/four-dimensional-flow.pdf',
+        },
+      ],
+    },
+  },
+}
+
 const longCareerHighVolumeFixture: ProfilePublicationsPageFixture = {
   ...fullPageFixture,
   personaState: {
@@ -1056,6 +1077,12 @@ export const LongCareerHighVolume: Story = {
 export const SparsePatchyCareer: Story = {
   args: {
     fixture: sparsePatchyCareerFixture,
+  },
+}
+
+export const FilesTabMock: Story = {
+  args: {
+    fixture: filesTabMockFixture,
   },
 }
 

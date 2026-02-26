@@ -363,20 +363,29 @@ export function ResultsPage() {
         setWorkspaceImportedAssetIds((current) => (current.includes(asset.id) ? current : [asset.id, ...current]))
         setLibraryActionStatus(`Pulled ${parsed.name} into workspace files.`)
       } catch (error) {
-        setLibraryActionError(error instanceof Error ? error.message : 'Could not pull file into workspace.')
+        const message = error instanceof Error ? error.message : 'Could not pull file into workspace.'
+        if (message.toLowerCase().includes('was not found')) {
+          await refreshPersistedAssets()
+          setLibraryActionError('This file is no longer available. Personal library has been refreshed.')
+          setLibraryPickerSelection((current) => current.filter((assetId) => assetId !== asset.id))
+        } else {
+          setLibraryActionError(message)
+        }
       } finally {
         setLibraryActionBusyAssetId((current) => (current === asset.id ? null : current))
       }
     },
-    [addDataAsset],
+    [addDataAsset, refreshPersistedAssets],
   )
 
   const onLibraryPickerOpenChange = useCallback((nextOpen: boolean) => {
     setLibraryPickerOpen(nextOpen)
-    if (!nextOpen) {
-      setLibraryPickerSelection([])
+    if (nextOpen) {
+      void refreshPersistedAssets()
+      return
     }
-  }, [])
+    setLibraryPickerSelection([])
+  }, [refreshPersistedAssets])
 
   const onToggleLibraryPickerAsset = useCallback((assetId: string, checked: boolean) => {
     setLibraryPickerSelection((current) => {
@@ -427,6 +436,7 @@ export function ResultsPage() {
     setLibraryActionStatus('')
     const errors: string[] = []
     let pulledCount = 0
+    let missingCount = 0
 
     for (const asset of selectedAssets) {
       try {
@@ -439,13 +449,22 @@ export function ResultsPage() {
         })
         const parsed = await parseDataAsset(file)
         addDataAsset(parsed)
+        setWorkspaceImportedAssetIds((current) => (current.includes(asset.id) ? current : [asset.id, ...current]))
         pulledCount += 1
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not pull file into workspace.'
-        errors.push(`${asset.filename}: ${message}`)
+        if (message.toLowerCase().includes('was not found')) {
+          missingCount += 1
+          errors.push(`${asset.filename}: file no longer available.`)
+        } else {
+          errors.push(`${asset.filename}: ${message}`)
+        }
       }
     }
 
+    if (missingCount > 0) {
+      await refreshPersistedAssets()
+    }
     if (pulledCount > 0) {
       setLibraryActionStatus(`Pulled ${pulledCount} dataset${pulledCount === 1 ? '' : 's'} into workspace files.`)
       setLibraryPickerSelection([])
@@ -455,18 +474,19 @@ export function ResultsPage() {
       setLibraryActionError(errors.join(' '))
     }
     setLibraryPickerPulling(false)
-  }, [addDataAsset, isAssetInCurrentWorkspace, persistedAssets, selectedLibraryAssetSet])
+  }, [addDataAsset, isAssetInCurrentWorkspace, persistedAssets, refreshPersistedAssets, selectedLibraryAssetSet])
 
   const onBringRecentUploadIntoWorkspace = useCallback(
     async (assetId: string) => {
       const asset = persistedAssets.find((item) => item.id === assetId)
       if (!asset) {
-        setLibraryActionError('Uploaded file is not available yet. Please try again.')
+        await refreshPersistedAssets()
+        setLibraryActionError('Uploaded file is not available yet. Personal library has been refreshed.')
         return
       }
       await onPullLibraryAssetIntoWorkspace(asset)
     },
-    [onPullLibraryAssetIntoWorkspace, persistedAssets],
+    [onPullLibraryAssetIntoWorkspace, persistedAssets, refreshPersistedAssets],
   )
 
   return (
