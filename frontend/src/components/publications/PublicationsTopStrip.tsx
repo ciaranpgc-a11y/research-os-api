@@ -3128,8 +3128,8 @@ function TotalPublicationsDrilldownWorkspace({
   const workspaceSectionClass = HOUSE_SURFACE_SECTION_PANEL_CLASS
   const workspacePanelClass = cn(HOUSE_SURFACE_SOFT_PANEL_CLASS, 'px-3 py-2.5')
   const workspacePanelCompactClass = cn(HOUSE_SURFACE_SOFT_PANEL_CLASS, 'p-2')
-  const workspaceHeadingClass = HOUSE_HEADING_H1_SOFT_CLASS
-  const workspaceSubheadingClass = HOUSE_HEADING_H1_SOFT_CLASS
+  const workspaceHeadingClass = HOUSE_HEADING_H2_CLASS
+  const workspaceSubheadingClass = HOUSE_HEADING_H2_CLASS
 
   const availableTypes = useMemo(
     () => Array.from(new Set(publications.map((record) => record.type))).sort((left, right) => left.localeCompare(right)),
@@ -3316,7 +3316,7 @@ function TotalPublicationsDrilldownWorkspace({
               <p className={HOUSE_HEADING_H3_CLASS}>
                 Total publications
               </p>
-              <p className="mt-1 text-3xl font-semibold leading-none tracking-tight text-foreground">{headlineValue}</p>
+              <p className="mt-2 text-2xl font-bold leading-none tracking-tight text-foreground">{headlineValue}</p>
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
               <div className={cn(workspacePanelClass, 'grid min-h-[4.5rem] grid-rows-[2rem_auto] py-2 text-center')}>
@@ -3503,7 +3503,7 @@ function TotalPublicationsDrilldownWorkspace({
             />
             <button
               type="button"
-              className="house-button-action house-button-text inline-flex h-9 items-center rounded-md px-3"
+              className={cn('inline-flex h-9 items-center rounded-md px-3 text-sm font-medium transition-colors', HOUSE_DRILLDOWN_ACTION_CLASS)}
               onClick={clearFilters}
             >
               Clear filters

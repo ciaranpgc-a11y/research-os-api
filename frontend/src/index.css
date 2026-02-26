@@ -879,7 +879,7 @@
   .house-panel-section {
     border: 0;
     border-radius: 0.375rem;
-    background-color: hsl(var(--card));
+    background-color: transparent;
     box-shadow: none;
     padding: 0.75rem;
   }
@@ -887,7 +887,7 @@
   .house-panel-soft {
     border: 0;
     border-radius: 0.375rem;
-    background-color: hsl(var(--card));
+    background-color: hsl(var(--tone-neutral-50) / 0.4);
     box-shadow: none;
   }
 
@@ -1583,20 +1583,22 @@
   }
 
   .house-drilldown-chip {
-    border: 1px solid hsl(var(--stroke-strong) / 0.94);
+    border: 1px solid hsl(var(--stroke-strong) / 0.4);
     border-radius: 9999px;
-    background-color: hsl(var(--tone-neutral-50));
-    padding: 0.24rem 0.625rem;
-    font-size: 0.75rem;
+    background-color: transparent;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.813rem;
     line-height: 1rem;
     font-weight: 500;
     color: hsl(var(--tone-neutral-700));
+    cursor: pointer;
     transition: border-color var(--motion-duration-ui) ease-out, background-color var(--motion-duration-ui) ease-out, color var(--motion-duration-ui) ease-out;
   }
 
   .house-drilldown-chip:hover {
-    border-color: hsl(var(--tone-accent-300));
-    color: hsl(var(--tone-neutral-800));
+    border-color: hsl(var(--tone-accent-400));
+    background-color: hsl(var(--tone-accent-50) / 0.6);
+    color: hsl(var(--tone-accent-800));
   }
 
   .house-drilldown-chip-active {
@@ -1606,29 +1608,30 @@
   }
 
   .house-drilldown-action {
-    border: 1px solid hsl(var(--stroke-strong) / 0.92);
+    border: 1px solid hsl(var(--stroke-strong) / 0.4);
     border-radius: 0.375rem;
-    background-color: hsl(var(--tone-neutral-50));
-    padding: 0.25rem 0.625rem;
-    font-size: 0.75rem;
+    background-color: transparent;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.813rem;
     line-height: 1rem;
     font-weight: 600;
     color: hsl(var(--tone-neutral-700));
+    cursor: pointer;
     transition: border-color var(--motion-duration-ui) ease-out, background-color var(--motion-duration-ui) ease-out, color var(--motion-duration-ui) ease-out;
   }
 
   .house-drilldown-action:hover {
-    border-color: hsl(var(--tone-accent-300));
-    background-color: hsl(var(--tone-accent-50));
+    border-color: hsl(var(--tone-accent-400));
+    background-color: hsl(var(--tone-accent-50) / 0.6);
     color: hsl(var(--tone-accent-800));
   }
 
   .house-drilldown-row {
     width: 100%;
-    border: 1px solid hsl(var(--stroke-soft) / 0.92);
+    border: 1px solid hsl(var(--stroke-soft) / 0.5);
     border-radius: 0.375rem;
-    background-color: hsl(var(--card));
-    padding: 0.375rem 0.5rem;
+    background-color: hsl(var(--tone-neutral-50) / 0.3);
+    padding: 0.5rem 0.625rem;
     text-align: left;
     transition: border-color var(--motion-duration-ui) ease-out, background-color var(--motion-duration-ui) ease-out;
   }
@@ -1653,10 +1656,10 @@
   }
 
   .house-drilldown-stat-card {
-    border: 1px solid hsl(var(--stroke-soft) / 0.92);
+    border: 1px solid hsl(var(--stroke-soft) / 0.4);
     border-radius: 0.375rem;
-    background-color: hsl(var(--card));
-    padding: 0.375rem 0.5rem;
+    background-color: hsl(var(--tone-neutral-50) / 0.4);
+    padding: 0.5rem 0.625rem;
   }
 
   .house-drilldown-stat-title {
