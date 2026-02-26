@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { PanelRightClose, PanelRightOpen, Pin, Save, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, ChevronsUpDown, PanelRightClose, PanelRightOpen, Pin, Save, X } from 'lucide-react'
 
 import { TopBar } from '@/components/layout/top-bar'
 import { Button } from '@/components/ui/button'
@@ -479,7 +479,6 @@ function SortableHeader({
   onSort: (column: SortColumn) => void
 }) {
   const isActive = column === activeColumn
-  const icon = isActive ? (direction === 'desc' ? '▼' : '▲') : '▽'
   return (
     <button
       type="button"
@@ -487,7 +486,15 @@ function SortableHeader({
       className={cn('inline-flex items-center gap-1 transition-colors hover:text-foreground', HOUSE_TABLE_SORT_TRIGGER_CLASS)}
     >
       <span>{label}</span>
-      <span className={cn('text-caption', isActive ? 'text-foreground' : 'text-muted-foreground')}>{icon}</span>
+      {isActive ? (
+        direction === 'desc' ? (
+          <ChevronDown className="h-3.5 w-3.5 text-foreground" />
+        ) : (
+          <ChevronUp className="h-3.5 w-3.5 text-foreground" />
+        )
+      ) : (
+        <ChevronsUpDown className="h-3.5 w-3.5" />
+      )}
     </button>
   )
 }
