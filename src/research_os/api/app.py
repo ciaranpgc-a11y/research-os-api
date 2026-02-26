@@ -2,6 +2,7 @@ import base64
 import asyncio
 import logging
 import os
+import re
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
@@ -701,6 +702,21 @@ def _frontend_redirect_base() -> str:
     return configured or "http://localhost:5173"
 
 
+def _allowed_cors_origin_for_request(request: Request) -> str | None:
+    origin = str(request.headers.get("origin") or "").strip()
+    if not origin:
+        return None
+    if origin in allow_origins:
+        return origin
+    if allow_origin_regex:
+        try:
+            if re.match(allow_origin_regex, origin):
+                return origin
+        except re.error:
+            return None
+    return None
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
@@ -746,6 +762,18 @@ async def handle_unexpected_exception(request: Request, exc: Exception) -> JSONR
     response = _build_error_response(exc)
     if request_id:
         response.headers["X-Request-ID"] = request_id
+    allowed_origin = _allowed_cors_origin_for_request(request)
+    if allowed_origin and "access-control-allow-origin" not in {
+        key.lower() for key in response.headers.keys()
+    }:
+        response.headers["Access-Control-Allow-Origin"] = allowed_origin
+        existing_vary = str(response.headers.get("Vary") or "").strip()
+        if existing_vary:
+            vary_values = {item.strip() for item in existing_vary.split(",") if item.strip()}
+            if "Origin" not in vary_values:
+                response.headers["Vary"] = f"{existing_vary}, Origin"
+        else:
+            response.headers["Vary"] = "Origin"
     return response
 
 

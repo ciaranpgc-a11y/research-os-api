@@ -1792,10 +1792,87 @@ export function AdminPage() {
               </>
             ) : null}
 
+            {activeCapability.id === 'security' ? (
+              <Card className="border-[hsl(var(--tone-neutral-200))]">
+                <CardHeader className="pb-2">
+                  <CardTitle>Audit log</CardTitle>
+                  <CardDescription>Immutable trail for admin controls, including impersonation and job actions.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Events</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(auditEvents?.total || 0)}</p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Success</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                        {formatInteger(auditEvents?.summary.success_count || 0)}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Failure</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                        {formatInteger(auditEvents?.summary.failure_count || 0)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {auditItems.length ? (
+                    <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
+                      <table className="w-full min-w-full text-left text-sm">
+                        <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2">When</th>
+                            <th className="px-3 py-2">Action</th>
+                            <th className="px-3 py-2">Target</th>
+                            <th className="px-3 py-2">Actor</th>
+                            <th className="px-3 py-2">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {auditItems.slice(0, 100).map((item) => (
+                            <tr key={item.id} className="border-t border-[hsl(var(--tone-neutral-200))]">
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatTimestamp(item.created_at)}</td>
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-900))]">{item.action}</td>
+                              <td className="px-3 py-2">
+                                <p className="text-[hsl(var(--tone-neutral-900))]">{item.target_type}</p>
+                                <p className="text-xs text-muted-foreground">{item.target_id}</p>
+                              </td>
+                              <td className="px-3 py-2">
+                                <p className="text-[hsl(var(--tone-neutral-900))]">{item.actor_name}</p>
+                                <p className="text-xs text-muted-foreground">{item.actor_email || 'System'}</p>
+                              </td>
+                              <td className="px-3 py-2">
+                                <span
+                                  className={
+                                    item.status === 'success'
+                                      ? 'inline-flex rounded-full border border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] px-2 py-0.5 text-micro font-semibold text-[hsl(var(--tone-positive-700))]'
+                                      : 'inline-flex rounded-full border border-[hsl(var(--tone-danger-300))] bg-[hsl(var(--tone-danger-50))] px-2 py-0.5 text-micro font-semibold text-[hsl(var(--tone-danger-700))]'
+                                  }
+                                >
+                                  {item.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No audit events available yet.</p>
+                  )}
+                </CardContent>
+              </Card>
+            ) : null}
+
             {activeCapability.id !== 'overview' &&
             activeCapability.id !== 'organisations' &&
             activeCapability.id !== 'workspaces' &&
-            activeCapability.id !== 'users' ? (
+            activeCapability.id !== 'users' &&
+            activeCapability.id !== 'usage-costs' &&
+            activeCapability.id !== 'jobs' &&
+            activeCapability.id !== 'security' ? (
               <Card className="border-[hsl(var(--tone-neutral-200))]">
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between gap-2">

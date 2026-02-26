@@ -4,7 +4,7 @@ import time
 from fastapi.testclient import TestClient
 
 from research_os.api.app import app
-from research_os.db import User, reset_database_state, session_scope
+from research_os.db import GenerationJob, User, reset_database_state, session_scope
 from research_os.services.persona_service import upsert_work
 
 
@@ -2670,6 +2670,15 @@ def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> Non
         users_response = client.get("/v1/admin/users")
         organisations_response = client.get("/v1/admin/organisations")
         workspaces_response = client.get("/v1/admin/workspaces")
+        usage_costs_response = client.get("/v1/admin/usage-costs")
+        jobs_response = client.get("/v1/admin/jobs")
+        cancel_job_response = client.post("/v1/admin/jobs/job-unknown/cancel", json={})
+        retry_job_response = client.post("/v1/admin/jobs/job-unknown/retry", json={})
+        impersonate_response = client.post(
+            "/v1/admin/organisations/org-example.com/impersonate",
+            json={},
+        )
+        audit_response = client.get("/v1/admin/audit/events")
 
     assert overview_response.status_code == 401
     assert overview_response.json()["error"]["type"] == "unauthorized"
@@ -2679,6 +2688,18 @@ def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> Non
     assert organisations_response.json()["error"]["type"] == "unauthorized"
     assert workspaces_response.status_code == 401
     assert workspaces_response.json()["error"]["type"] == "unauthorized"
+    assert usage_costs_response.status_code == 401
+    assert usage_costs_response.json()["error"]["type"] == "unauthorized"
+    assert jobs_response.status_code == 401
+    assert jobs_response.json()["error"]["type"] == "unauthorized"
+    assert cancel_job_response.status_code == 401
+    assert cancel_job_response.json()["error"]["type"] == "unauthorized"
+    assert retry_job_response.status_code == 401
+    assert retry_job_response.json()["error"]["type"] == "unauthorized"
+    assert impersonate_response.status_code == 401
+    assert impersonate_response.json()["error"]["type"] == "unauthorized"
+    assert audit_response.status_code == 401
+    assert audit_response.json()["error"]["type"] == "unauthorized"
 
 
 def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
@@ -2706,6 +2727,33 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
             "/v1/admin/workspaces",
             headers=_auth_headers(token),
         )
+        usage_costs_response = client.get(
+            "/v1/admin/usage-costs",
+            headers=_auth_headers(token),
+        )
+        jobs_response = client.get(
+            "/v1/admin/jobs",
+            headers=_auth_headers(token),
+        )
+        cancel_job_response = client.post(
+            "/v1/admin/jobs/job-unknown/cancel",
+            headers=_auth_headers(token),
+            json={},
+        )
+        retry_job_response = client.post(
+            "/v1/admin/jobs/job-unknown/retry",
+            headers=_auth_headers(token),
+            json={},
+        )
+        impersonate_response = client.post(
+            "/v1/admin/organisations/org-example.com/impersonate",
+            headers=_auth_headers(token),
+            json={},
+        )
+        audit_response = client.get(
+            "/v1/admin/audit/events",
+            headers=_auth_headers(token),
+        )
 
     assert overview_response.status_code == 403
     assert overview_response.json()["error"]["type"] == "forbidden"
@@ -2715,6 +2763,18 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
     assert organisations_response.json()["error"]["type"] == "forbidden"
     assert workspaces_response.status_code == 403
     assert workspaces_response.json()["error"]["type"] == "forbidden"
+    assert usage_costs_response.status_code == 403
+    assert usage_costs_response.json()["error"]["type"] == "forbidden"
+    assert jobs_response.status_code == 403
+    assert jobs_response.json()["error"]["type"] == "forbidden"
+    assert cancel_job_response.status_code == 403
+    assert cancel_job_response.json()["error"]["type"] == "forbidden"
+    assert retry_job_response.status_code == 403
+    assert retry_job_response.json()["error"]["type"] == "forbidden"
+    assert impersonate_response.status_code == 403
+    assert impersonate_response.json()["error"]["type"] == "forbidden"
+    assert audit_response.status_code == 403
+    assert audit_response.json()["error"]["type"] == "forbidden"
 
 
 def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None:
@@ -2764,6 +2824,33 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
         )
         assert manuscript_response.status_code == 200
         manuscript_id = manuscript_response.json()["id"]
+        with session_scope() as session:
+            queued_job = GenerationJob(
+                project_id=project_id,
+                manuscript_id=manuscript_id,
+                status="queued",
+                sections=["introduction"],
+                notes_context="Queued job for admin control test",
+                estimated_input_tokens=320,
+                estimated_output_tokens_high=180,
+                estimated_cost_usd_high=0.0142,
+            )
+            failed_job = GenerationJob(
+                project_id=project_id,
+                manuscript_id=manuscript_id,
+                status="failed",
+                sections=["introduction"],
+                notes_context="Failed job for retry control test",
+                error_detail="Synthetic failure for admin retry test",
+                estimated_input_tokens=210,
+                estimated_output_tokens_high=160,
+                estimated_cost_usd_high=0.0111,
+            )
+            session.add(queued_job)
+            session.add(failed_job)
+            session.flush()
+            queued_job_id = queued_job.id
+            failed_job_id = failed_job.id
         snapshot_response = client.post(
             f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots",
             headers=_auth_headers(viewer_token),
@@ -2805,6 +2892,36 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
             "/v1/admin/workspaces",
             headers=_auth_headers(admin_token),
             params={"query": "org-workspace-1", "limit": 20, "offset": 0},
+        )
+        usage_costs_response = client.get(
+            "/v1/admin/usage-costs",
+            headers=_auth_headers(admin_token),
+            params={"query": "example.com"},
+        )
+        jobs_response = client.get(
+            "/v1/admin/jobs",
+            headers=_auth_headers(admin_token),
+            params={"query": "org-workspace-1", "limit": 20, "offset": 0},
+        )
+        cancel_job_response = client.post(
+            f"/v1/admin/jobs/{queued_job_id}/cancel",
+            headers=_auth_headers(admin_token),
+            json={"reason": "Stop queued run from admin console test"},
+        )
+        retry_job_response = client.post(
+            f"/v1/admin/jobs/{failed_job_id}/retry",
+            headers=_auth_headers(admin_token),
+            json={"reason": "Retry failed run from admin console test"},
+        )
+        impersonate_response = client.post(
+            "/v1/admin/organisations/org-example.com/impersonate",
+            headers=_auth_headers(admin_token),
+            json={"reason": "Integration test audit check"},
+        )
+        audit_response = client.get(
+            "/v1/admin/audit/events",
+            headers=_auth_headers(admin_token),
+            params={"limit": 20, "offset": 0},
         )
 
     assert overview_response.status_code == 200
@@ -2861,6 +2978,55 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
     assert isinstance(workspace["members"], list)
     assert isinstance(workspace["projects"], list)
     assert "job_health" in workspace
+
+    assert usage_costs_response.status_code == 200
+    usage_costs_payload = usage_costs_response.json()
+    assert usage_costs_payload["summary"]["tokens_current_month"] >= 1
+    assert usage_costs_payload["summary"]["tool_calls_current_month"] >= 1
+    assert isinstance(usage_costs_payload["model_usage"], list)
+    assert isinstance(usage_costs_payload["organisation_usage"], list)
+    assert isinstance(usage_costs_payload["user_usage"], list)
+    assert len(usage_costs_payload["monthly_trend"]) >= 1
+
+    assert jobs_response.status_code == 200
+    jobs_payload = jobs_response.json()
+    assert jobs_payload["limit"] == 20
+    assert jobs_payload["offset"] == 0
+    assert jobs_payload["total"] >= 2
+    assert jobs_payload["queue_health"]["total_jobs"] >= 2
+    assert jobs_payload["queue_health"]["retryable_jobs"] >= 1
+
+    assert cancel_job_response.status_code == 200
+    cancel_payload = cancel_job_response.json()
+    assert cancel_payload["action"] == "cancel"
+    assert cancel_payload["source_job_id"] == queued_job_id
+    assert cancel_payload["audit_event"]["status"] == "success"
+    assert cancel_payload["job"]["status"] in {"cancel_requested", "cancelled"}
+
+    assert retry_job_response.status_code == 200
+    retry_payload = retry_job_response.json()
+    assert retry_payload["action"] == "retry"
+    assert retry_payload["source_job_id"] == failed_job_id
+    assert retry_payload["audit_event"]["status"] == "success"
+    assert retry_payload["job"]["id"] != failed_job_id
+    assert retry_payload["job"]["status"] in {"queued", "running", "completed", "failed", "cancelled", "cancel_requested"}
+
+    assert impersonate_response.status_code == 200
+    impersonate_payload = impersonate_response.json()
+    assert impersonate_payload["org_id"] == "org-example.com"
+    assert impersonate_payload["audited"] is True
+    assert impersonate_payload["audit_event"]["status"] == "success"
+    assert impersonate_payload["target_user_email"].endswith("@example.com")
+
+    assert audit_response.status_code == 200
+    audit_payload = audit_response.json()
+    assert audit_payload["total"] >= 3
+    assert audit_payload["summary"]["success_count"] >= 3
+    assert isinstance(audit_payload["summary"]["action_totals"], list)
+    actions = {item["action"] for item in audit_payload["items"]}
+    assert "admin_job_cancel" in actions
+    assert "admin_job_retry" in actions
+    assert "admin_org_impersonation_start" in actions
 
 
 def test_v1_workspace_state_round_trip_persists_for_authenticated_user(
@@ -3905,6 +4071,33 @@ def test_v1_auth_oauth_connect_and_callback_endpoints(monkeypatch, tmp_path) -> 
     assert callback_response.status_code == 200
     assert callback_response.json()["provider"] == "orcid"
     assert callback_response.json()["session_token"] == "session-token-1"
+
+
+def test_v1_auth_oauth_connect_unhandled_error_still_returns_cors_origin(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    def _raise_unexpected(*, provider, frontend_origin=None):
+        raise RuntimeError("unexpected oauth connect failure")
+
+    monkeypatch.setattr(
+        "research_os.api.app.create_oauth_connect_url",
+        _raise_unexpected,
+    )
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/v1/auth/oauth/connect",
+            params={"provider": "orcid"},
+            headers={"Origin": "https://app.axiomos.studio"},
+        )
+
+    assert response.status_code == 500
+    assert (
+        response.headers.get("access-control-allow-origin")
+        == "https://app.axiomos.studio"
+    )
 
 
 def test_v1_orcid_connect_callback_and_import(monkeypatch, tmp_path) -> None:
