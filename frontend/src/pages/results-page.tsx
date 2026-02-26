@@ -150,6 +150,21 @@ function normalizeName(value: string): string {
   return value.trim().replace(/\s+/g, ' ')
 }
 
+function resolveDataImportFileName(downloadName: string, fallbackAssetName: string): string {
+  const preferred = String(downloadName || '').trim()
+  if (!preferred) {
+    return fallbackAssetName
+  }
+  const lowered = preferred.toLowerCase()
+  if (lowered === 'asset.bin') {
+    return fallbackAssetName
+  }
+  if (!lowered.endsWith('.csv') && !lowered.endsWith('.xlsx')) {
+    return fallbackAssetName
+  }
+  return preferred
+}
+
 export function ResultsPage() {
   const params = useParams<{ workspaceId: string }>()
   const workspaceId = (params.workspaceId || '').trim()
@@ -193,7 +208,6 @@ export function ResultsPage() {
       setPersistedProjectId(resolvedProjectId)
       const items = await listPersistedLibraryAssets({
         token,
-        projectId: resolvedProjectId || undefined,
       })
       setPersistedAssets(items.items)
     } catch (error) {
@@ -322,15 +336,16 @@ export function ResultsPage() {
           token,
           assetId: asset.id,
         })
+        const resolvedName = resolveDataImportFileName(payload.fileName, asset.filename)
         const objectUrl = window.URL.createObjectURL(payload.blob)
         const anchor = document.createElement('a')
         anchor.href = objectUrl
-        anchor.download = payload.fileName || asset.filename
+        anchor.download = resolvedName
         document.body.appendChild(anchor)
         anchor.click()
         anchor.remove()
         window.URL.revokeObjectURL(objectUrl)
-        setLibraryActionStatus(`Downloaded ${payload.fileName || asset.filename}.`)
+        setLibraryActionStatus(`Downloaded ${resolvedName}.`)
       } catch (error) {
         setLibraryActionError(error instanceof Error ? error.message : 'Could not download file.')
       } finally {
@@ -355,7 +370,8 @@ export function ResultsPage() {
           token,
           assetId: asset.id,
         })
-        const file = new File([payload.blob], payload.fileName || asset.filename, {
+        const resolvedName = resolveDataImportFileName(payload.fileName, asset.filename)
+        const file = new File([payload.blob], resolvedName, {
           type: payload.contentType || payload.blob.type || 'application/octet-stream',
         })
         const parsed = await parseDataAsset(file)
@@ -444,7 +460,8 @@ export function ResultsPage() {
           token,
           assetId: asset.id,
         })
-        const file = new File([payload.blob], payload.fileName || asset.filename, {
+        const resolvedName = resolveDataImportFileName(payload.fileName, asset.filename)
+        const file = new File([payload.blob], resolvedName, {
           type: payload.contentType || payload.blob.type || 'application/octet-stream',
         })
         const parsed = await parseDataAsset(file)

@@ -86,6 +86,22 @@
 - **Verification performed:**
 - `npx eslint src/pages/results-page.tsx` (run from `frontend/`)
 
+### Data Import Filename Guard (`asset.bin` Fallback)
+
+- **Area:** Workspace data import from Personal Library.
+- **What changed:**
+- Added filename normalization for downloads/imports so generic `asset.bin` (or non-data extensions) falls back to the known library asset filename.
+- Applied to:
+  - direct download action naming in workspace data panel
+  - single-item `Bring into current workspace`
+  - bulk `Pull selected`
+- **Why it changed:**
+- Prevent false parser failures (`asset.bin: only .csv and .xlsx are supported.`) when download headers do not include a usable data filename.
+- **Key files touched:**
+- `frontend/src/pages/results-page.tsx`
+- **Verification performed:**
+- `npx eslint src/pages/results-page.tsx` (run from `frontend/`)
+
 ### Library Upload `project_id` Sentinel Normalization
 
 - **Area:** Personal library upload/list API resilience for workspace Data page.
