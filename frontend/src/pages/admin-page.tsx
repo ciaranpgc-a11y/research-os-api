@@ -43,6 +43,7 @@ import {
 } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
 import type {
+  AdminAuditEventPayload,
   AdminAuditEventsListPayload,
   AdminJobsListPayload,
   AdminOrganisationsListPayload,
@@ -362,6 +363,70 @@ function integrationStatusClass(status: 'connected' | 'degraded' | 'not_configur
   return 'border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
 }
 
+function readMetadataRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return {}
+  }
+  return value as Record<string, unknown>
+}
+
+function readText(value: unknown): string {
+  return String(value ?? '').trim()
+}
+
+function readNumber(value: unknown): number {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : 0
+}
+
+function readBoolean(value: unknown): boolean {
+  if (typeof value === 'boolean') {
+    return value
+  }
+  const normalized = readText(value).toLowerCase()
+  return normalized === 'true' || normalized === '1' || normalized === 'yes'
+}
+
+function summarizeAuditDetails(item: AdminAuditEventPayload): string {
+  const metadata = readMetadataRecord(item.metadata)
+  if (item.action === 'user_library_reconcile') {
+    const summary = readMetadataRecord(metadata.reconcile_summary)
+    const before = readNumber(metadata.owned_assets_before)
+    const after = readNumber(metadata.owned_assets_after)
+    const restored = readNumber(summary.restored_rows)
+    const claimed = readNumber(summary.claimed_rows)
+    const recovered = readNumber(summary.identity_recovered_rows)
+    const canonicalized = readNumber(summary.canonicalized_owner_rows)
+    const noChanges = readBoolean(metadata.no_changes_detected)
+    if (item.status !== 'success') {
+      const errorType = readText(metadata.error_type) || 'ReconcileError'
+      const errorDetail = readText(metadata.error_detail) || readText(metadata.failure) || 'Unknown failure'
+      return `${errorType}: ${errorDetail}`
+    }
+    if (noChanges) {
+      return `No changes detected. Owned assets ${before} -> ${after}.`
+    }
+    return `Owned assets ${before} -> ${after}; restored ${restored}, claimed ${claimed}, identity ${recovered}, canonicalized ${canonicalized}.`
+  }
+  if (item.action === 'admin_user_delete') {
+    const email = readText(metadata.target_email)
+    const reason = readText(metadata.reason)
+    if (email && reason) {
+      return `${email} (${reason})`
+    }
+    return email || reason || '-'
+  }
+  const reason = readText(metadata.reason)
+  if (reason) {
+    return reason
+  }
+  const failure = readText(metadata.failure)
+  if (failure) {
+    return failure
+  }
+  return '-'
+}
+
 export function AdminPage() {
   const navigate = useNavigate()
   const params = useParams<{ sectionId?: string }>()
@@ -620,7 +685,13 @@ export function AdminPage() {
       const payload = await reconcileAdminUserLibrary(token, userId)
       const beforeCount = Number(payload.owned_assets_before || 0)
       const afterCount = Number(payload.owned_assets_after || 0)
-      setStatus(`${payload.message} Owned assets: ${beforeCount} -> ${afterCount}.`)
+      const diagnostics = readMetadataRecord(payload.diagnostics)
+      const noChanges = readBoolean(diagnostics.no_changes_detected)
+      setStatus(
+        noChanges
+          ? `${payload.message} Owned assets: ${beforeCount} -> ${afterCount}. No changes were detected; review reconcile tracker for diagnostics.`
+          : `${payload.message} Owned assets: ${beforeCount} -> ${afterCount}.`,
+      )
       await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Could not reconcile user library.')
@@ -672,6 +743,10 @@ export function AdminPage() {
   const usageTrendItems = usageCosts?.monthly_trend || []
   const jobsItems = jobs?.items || []
   const auditItems = auditEvents?.items || []
+  const reconcileAuditItems = useMemo(
+    () => auditItems.filter((item) => item.action === 'user_library_reconcile').slice(0, 12),
+    [auditItems],
+  )
 
   const metrics = useMemo(
     () => [
@@ -1404,112 +1479,162 @@ export function AdminPage() {
             ) : null}
 
             {activeCapability.id === 'users' ? (
-              <Card className="border-[hsl(var(--tone-neutral-200))]">
-                <CardHeader className="pb-2">
-                  <CardTitle>User directory</CardTitle>
-                  <CardDescription>Search and inspect account status across the system.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <form className="flex flex-wrap items-center gap-2" onSubmit={onUsersSearch}>
-                    <div className="relative w-full max-w-md">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        value={userQuery}
-                        onChange={(event) => setUserQuery(event.target.value)}
-                        placeholder="Search by name, email, user ID, or account key"
-                        className="pl-9"
-                      />
-                    </div>
-                    <Button type="submit" disabled={loading}>
-                      {loading ? 'Loading...' : 'Search'}
-                    </Button>
-                  </form>
+              <>
+                <Card className="border-[hsl(var(--tone-neutral-200))]">
+                  <CardHeader className="pb-2">
+                    <CardTitle>User directory</CardTitle>
+                    <CardDescription>Search and inspect account status across the system.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <form className="flex flex-wrap items-center gap-2" onSubmit={onUsersSearch}>
+                      <div className="relative w-full max-w-md">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={userQuery}
+                          onChange={(event) => setUserQuery(event.target.value)}
+                          placeholder="Search by name, email, user ID, or account key"
+                          className="pl-9"
+                        />
+                      </div>
+                      <Button type="submit" disabled={loading}>
+                        {loading ? 'Loading...' : 'Search'}
+                      </Button>
+                    </form>
 
-                  {usersItems.length ? (
-                    <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
-                      <table className="w-full min-w-full text-left text-sm">
-                        <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
-                          <tr>
-                            <th className="px-3 py-2">Name</th>
-                            <th className="px-3 py-2">User ID</th>
-                            <th className="px-3 py-2">Account key</th>
-                            <th className="px-3 py-2">Email</th>
-                            <th className="px-3 py-2">Role</th>
-                            <th className="px-3 py-2">Status</th>
-                            <th className="px-3 py-2">Last sign-in</th>
-                            <th className="px-3 py-2">Created</th>
-                            <th className="px-3 py-2 text-right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {usersItems.map((item) => (
-                            <tr key={item.id} className="border-t border-[hsl(var(--tone-neutral-200))]">
-                              <td className="px-3 py-2">
-                                <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{item.name || 'Unnamed user'}</p>
-                              </td>
-                              <td className="px-3 py-2 text-xs text-[hsl(var(--tone-neutral-700))]">
-                                <span className="font-mono">{item.id}</span>
-                              </td>
-                              <td className="px-3 py-2 text-xs text-[hsl(var(--tone-neutral-700))]">
-                                <span className="font-mono">{item.account_key || 'Not set'}</span>
-                              </td>
-                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{item.email}</td>
-                              <td className="px-3 py-2">
-                                <span
-                                  className={
-                                    item.role === 'admin'
-                                      ? 'inline-flex rounded-full border border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] px-2 py-0.5 text-micro font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-warning-900))]'
-                                      : 'inline-flex rounded-full border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] px-2 py-0.5 text-micro font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]'
-                                  }
-                                >
-                                  {item.role}
-                                </span>
-                              </td>
-                              <td className="px-3 py-2">
-                                <span
-                                  className={
-                                    item.is_active
-                                      ? 'inline-flex rounded-full border border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] px-2 py-0.5 text-micro font-semibold text-[hsl(var(--tone-positive-700))]'
-                                      : 'inline-flex rounded-full border border-[hsl(var(--tone-danger-300))] bg-[hsl(var(--tone-danger-50))] px-2 py-0.5 text-micro font-semibold text-[hsl(var(--tone-danger-700))]'
-                                  }
-                                >
-                                  {item.is_active ? 'active' : 'inactive'}
-                                </span>
-                              </td>
-                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatTimestamp(item.last_sign_in_at)}</td>
-                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatTimestamp(item.created_at)}</td>
-                              <td className="px-3 py-2 text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => void onReconcileUserLibrary(item.id)}
-                                    disabled={reconcilingUserId === item.id || deletingUserId === item.id}
-                                  >
-                                    {reconcilingUserId === item.id ? 'Reconciling...' : 'Reconcile library'}
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={() => void onDeleteUserAccount(item.id, item.name || item.email || item.id)}
-                                    disabled={deletingUserId === item.id || reconcilingUserId === item.id}
-                                  >
-                                    {deletingUserId === item.id ? 'Deleting...' : 'Delete account'}
-                                  </Button>
-                                </div>
-                              </td>
+                    {usersItems.length ? (
+                      <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
+                        <table className="w-full min-w-full text-left text-sm">
+                          <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
+                            <tr>
+                              <th className="px-3 py-2">Name</th>
+                              <th className="px-3 py-2">User ID</th>
+                              <th className="px-3 py-2">Account key</th>
+                              <th className="px-3 py-2">Email</th>
+                              <th className="px-3 py-2">Role</th>
+                              <th className="px-3 py-2">Status</th>
+                              <th className="px-3 py-2">Last sign-in</th>
+                              <th className="px-3 py-2">Created</th>
+                              <th className="px-3 py-2 text-right">Actions</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No users matched the current filter.</p>
-                  )}
-                </CardContent>
-              </Card>
+                          </thead>
+                          <tbody>
+                            {usersItems.map((item) => (
+                              <tr key={item.id} className="border-t border-[hsl(var(--tone-neutral-200))]">
+                                <td className="px-3 py-2">
+                                  <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{item.name || 'Unnamed user'}</p>
+                                </td>
+                                <td className="px-3 py-2 text-xs text-[hsl(var(--tone-neutral-700))]">
+                                  <span className="font-mono">{item.id}</span>
+                                </td>
+                                <td className="px-3 py-2 text-xs text-[hsl(var(--tone-neutral-700))]">
+                                  <span className="font-mono">{item.account_key || 'Not set'}</span>
+                                </td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{item.email}</td>
+                                <td className="px-3 py-2">
+                                  <span
+                                    className={
+                                      item.role === 'admin'
+                                        ? 'inline-flex rounded-full border border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] px-2 py-0.5 text-micro font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-warning-900))]'
+                                        : 'inline-flex rounded-full border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] px-2 py-0.5 text-micro font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]'
+                                    }
+                                  >
+                                    {item.role}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <span
+                                    className={
+                                      item.is_active
+                                        ? 'inline-flex rounded-full border border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] px-2 py-0.5 text-micro font-semibold text-[hsl(var(--tone-positive-700))]'
+                                        : 'inline-flex rounded-full border border-[hsl(var(--tone-danger-300))] bg-[hsl(var(--tone-danger-50))] px-2 py-0.5 text-micro font-semibold text-[hsl(var(--tone-danger-700))]'
+                                    }
+                                  >
+                                    {item.is_active ? 'active' : 'inactive'}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatTimestamp(item.last_sign_in_at)}</td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatTimestamp(item.created_at)}</td>
+                                <td className="px-3 py-2 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => void onReconcileUserLibrary(item.id)}
+                                      disabled={reconcilingUserId === item.id || deletingUserId === item.id}
+                                    >
+                                      {reconcilingUserId === item.id ? 'Reconciling...' : 'Reconcile library'}
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="destructive"
+                                      onClick={() => void onDeleteUserAccount(item.id, item.name || item.email || item.id)}
+                                      disabled={deletingUserId === item.id || reconcilingUserId === item.id}
+                                    >
+                                      {deletingUserId === item.id ? 'Deleting...' : 'Delete account'}
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No users matched the current filter.</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-[hsl(var(--tone-neutral-200))]">
+                  <CardHeader className="pb-2">
+                    <CardTitle>Reconcile tracker</CardTitle>
+                    <CardDescription>Latest user-library reconcile attempts with success/failure diagnostics.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {reconcileAuditItems.length ? (
+                      <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
+                        <table className="w-full min-w-full text-left text-sm">
+                          <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
+                            <tr>
+                              <th className="px-3 py-2">When</th>
+                              <th className="px-3 py-2">User</th>
+                              <th className="px-3 py-2">Status</th>
+                              <th className="px-3 py-2">Details</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {reconcileAuditItems.map((item) => (
+                              <tr key={item.id} className="border-t border-[hsl(var(--tone-neutral-200))]">
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatTimestamp(item.created_at)}</td>
+                                <td className="px-3 py-2">
+                                  <p className="text-[hsl(var(--tone-neutral-900))]">{readText(readMetadataRecord(item.metadata).target_email) || item.target_id}</p>
+                                  <p className="text-xs text-muted-foreground">{item.target_id}</p>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <span
+                                    className={
+                                      item.status === 'success'
+                                        ? 'inline-flex rounded-full border border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] px-2 py-0.5 text-micro font-semibold text-[hsl(var(--tone-positive-700))]'
+                                        : 'inline-flex rounded-full border border-[hsl(var(--tone-danger-300))] bg-[hsl(var(--tone-danger-50))] px-2 py-0.5 text-micro font-semibold text-[hsl(var(--tone-danger-700))]'
+                                    }
+                                  >
+                                    {item.status}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{summarizeAuditDetails(item)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No reconcile events available yet.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
             ) : null}
 
             {activeCapability.id === 'usage-costs' ? (
@@ -1913,6 +2038,7 @@ export function AdminPage() {
                             <th className="px-3 py-2">Target</th>
                             <th className="px-3 py-2">Actor</th>
                             <th className="px-3 py-2">Status</th>
+                            <th className="px-3 py-2">Details</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1939,6 +2065,7 @@ export function AdminPage() {
                                   {item.status}
                                 </span>
                               </td>
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{summarizeAuditDetails(item)}</td>
                             </tr>
                           ))}
                         </tbody>

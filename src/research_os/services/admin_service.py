@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
 import shutil
+import traceback
 from typing import Any
 from uuid import uuid4
 
@@ -1702,39 +1703,114 @@ def admin_reconcile_user_library(
     if not clean_user_id:
         raise AdminValidationError("user_id is required.")
 
-    with session_scope() as session:
-        user = session.get(User, clean_user_id)
-        if user is None:
-            raise AdminNotFoundError(f"User '{clean_user_id}' was not found.")
-        user_email = str(user.email or "").strip()
-        user_name = str(user.name or "").strip() or user_email or clean_user_id
-        user_account_key = str(user.account_key or "").strip() or None
-        owned_assets_before = _count_owned_assets(session=session, user_id=clean_user_id)
-        owned_personal_before = _count_owned_personal_assets(
-            session=session,
-            user_id=clean_user_id,
-        )
-        owned_project_before = _count_owned_project_assets(
-            session=session,
-            user_id=clean_user_id,
+    user_email = ""
+    user_name = ""
+    user_account_key: str | None = None
+    owned_assets_before = 0
+    owned_personal_before = 0
+    owned_project_before = 0
+    owned_assets_after = 0
+    owned_personal_after = 0
+    owned_project_after = 0
+    reconcile_summary: dict[str, int] = {
+        "restored_rows": 0,
+        "claimed_rows": 0,
+        "identity_recovered_rows": 0,
+        "canonicalized_owner_rows": 0,
+    }
+    diagnostics_before: dict[str, object] = {}
+    diagnostics_after: dict[str, object] = {}
+
+    try:
+        with session_scope() as session:
+            user = session.get(User, clean_user_id)
+            if user is None:
+                raise AdminNotFoundError(f"User '{clean_user_id}' was not found.")
+            user_email = str(user.email or "").strip()
+            user_name = str(user.name or "").strip() or user_email or clean_user_id
+            user_account_key = str(user.account_key or "").strip() or None
+            owned_assets_before = _count_owned_assets(
+                session=session, user_id=clean_user_id
+            )
+            owned_personal_before = _count_owned_personal_assets(
+                session=session,
+                user_id=clean_user_id,
+            )
+            owned_project_before = _count_owned_project_assets(
+                session=session,
+                user_id=clean_user_id,
+            )
+
+        from research_os.services.data_planner_service import (
+            collect_library_reconcile_diagnostics,
+            reconcile_library_for_user,
         )
 
-    from research_os.services.data_planner_service import reconcile_library_for_user
-
-    reconcile_summary = reconcile_library_for_user(
-        user_id=clean_user_id,
-        account_key_hint=user_account_key,
-    )
-
-    with session_scope() as session:
-        owned_assets_after = _count_owned_assets(session=session, user_id=clean_user_id)
-        owned_personal_after = _count_owned_personal_assets(
-            session=session,
+        diagnostics_before = collect_library_reconcile_diagnostics(
             user_id=clean_user_id,
+            account_key_hint=user_account_key,
         )
-        owned_project_after = _count_owned_project_assets(
-            session=session,
+        reconcile_summary = reconcile_library_for_user(
             user_id=clean_user_id,
+            account_key_hint=user_account_key,
+        )
+
+        with session_scope() as session:
+            owned_assets_after = _count_owned_assets(
+                session=session, user_id=clean_user_id
+            )
+            owned_personal_after = _count_owned_personal_assets(
+                session=session,
+                user_id=clean_user_id,
+            )
+            owned_project_after = _count_owned_project_assets(
+                session=session,
+                user_id=clean_user_id,
+            )
+
+        diagnostics_after = collect_library_reconcile_diagnostics(
+            user_id=clean_user_id,
+            account_key_hint=user_account_key,
+        )
+    except (AdminValidationError, AdminNotFoundError):
+        _record_admin_audit_event(
+            actor_user_id=clean_actor_user_id or None,
+            action="user_library_reconcile",
+            target_type="user",
+            target_id=clean_user_id,
+            status="failure",
+            metadata={
+                "target_email": user_email,
+                "target_account_key": user_account_key or "",
+                "owned_assets_before": owned_assets_before,
+                "owned_personal_before": owned_personal_before,
+                "owned_project_before": owned_project_before,
+                "diagnostics_before": diagnostics_before,
+                "error_type": "validation_or_not_found",
+            },
+        )
+        raise
+    except Exception as exc:
+        _record_admin_audit_event(
+            actor_user_id=clean_actor_user_id or None,
+            action="user_library_reconcile",
+            target_type="user",
+            target_id=clean_user_id,
+            status="failure",
+            metadata={
+                "target_email": user_email,
+                "target_account_key": user_account_key or "",
+                "owned_assets_before": owned_assets_before,
+                "owned_personal_before": owned_personal_before,
+                "owned_project_before": owned_project_before,
+                "diagnostics_before": diagnostics_before,
+                "error_type": exc.__class__.__name__,
+                "error_detail": str(exc),
+                "traceback_tail": traceback.format_exc(limit=10),
+            },
+        )
+        raise AdminValidationError(
+            "Library reconcile failed. Review admin audit log details for this user."
         )
 
     restored_rows = int(reconcile_summary.get("restored_rows") or 0)
@@ -1749,6 +1825,15 @@ def admin_reconcile_user_library(
         f"{restored_rows} restored, {claimed_rows} claimed, "
         f"{identity_recovered_rows} identity-recovered, "
         f"{canonicalized_owner_rows} canonicalized."
+    )
+    no_changes_detected = bool(
+        restored_rows == 0
+        and claimed_rows == 0
+        and identity_recovered_rows == 0
+        and canonicalized_owner_rows == 0
+        and owned_assets_before == owned_assets_after
+        and owned_personal_before == owned_personal_after
+        and owned_project_before == owned_project_after
     )
     audit_event = _record_admin_audit_event(
         actor_user_id=clean_actor_user_id or None,
@@ -1771,6 +1856,9 @@ def admin_reconcile_user_library(
                 "identity_recovered_rows": identity_recovered_rows,
                 "canonicalized_owner_rows": canonicalized_owner_rows,
             },
+            "diagnostics_before": diagnostics_before,
+            "diagnostics_after": diagnostics_after,
+            "no_changes_detected": no_changes_detected,
         },
     )
 
@@ -1791,6 +1879,11 @@ def admin_reconcile_user_library(
             "claimed_rows": claimed_rows,
             "identity_recovered_rows": identity_recovered_rows,
             "canonicalized_owner_rows": canonicalized_owner_rows,
+        },
+        "diagnostics": {
+            "before": diagnostics_before,
+            "after": diagnostics_after,
+            "no_changes_detected": no_changes_detected,
         },
         "generated_at": _utcnow(),
         "audit_event": audit_event,

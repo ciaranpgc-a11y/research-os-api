@@ -3100,6 +3100,76 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
     assert "admin_org_impersonation_start" in actions
 
 
+def test_v1_admin_user_library_reconcile_failure_is_audited(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        admin_register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "admin-audit@example.com",
+                "password": "StrongPassword123",
+                "name": "Admin Audit",
+            },
+        )
+        assert admin_register_response.status_code == 200
+        admin_user_payload = admin_register_response.json()["user"]
+        _promote_user_to_admin(admin_user_payload["id"])
+        admin_token = admin_register_response.json()["session_token"]
+
+        viewer_register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "viewer-audit@example.com",
+                "password": "StrongPassword123",
+                "name": "Viewer Audit",
+            },
+        )
+        assert viewer_register_response.status_code == 200
+        viewer_user_id = viewer_register_response.json()["user"]["id"]
+
+        def _raise_reconcile_error(*, user_id: str | None, account_key_hint: str | None = None):
+            del user_id, account_key_hint
+            raise RuntimeError("synthetic reconcile failure")
+
+        monkeypatch.setattr(
+            "research_os.services.data_planner_service.reconcile_library_for_user",
+            _raise_reconcile_error,
+        )
+
+        reconcile_response = client.post(
+            f"/v1/admin/users/{viewer_user_id}/library/reconcile",
+            headers=_auth_headers(admin_token),
+        )
+        audit_response = client.get(
+            "/v1/admin/audit/events",
+            headers=_auth_headers(admin_token),
+            params={
+                "action": "user_library_reconcile",
+                "target_type": "user",
+                "query": viewer_user_id,
+                "limit": 20,
+                "offset": 0,
+            },
+        )
+
+    assert reconcile_response.status_code == 400
+    assert "Library reconcile failed" in reconcile_response.json()["error"]["detail"]
+    assert audit_response.status_code == 200
+    audit_items = audit_response.json()["items"]
+    assert len(audit_items) >= 1
+    latest = audit_items[0]
+    assert latest["action"] == "user_library_reconcile"
+    assert latest["target_id"] == viewer_user_id
+    assert latest["status"] == "failure"
+    assert latest["metadata"]["error_type"] == "RuntimeError"
+    assert "synthetic reconcile failure" in str(
+        latest["metadata"].get("error_detail") or ""
+    )
+
+
 def test_v1_workspace_state_round_trip_persists_for_authenticated_user(
     monkeypatch, tmp_path
 ) -> None:

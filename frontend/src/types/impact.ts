@@ -73,6 +73,7 @@ export type AdminUserLibraryReconcilePayload = {
   owned_project_before: number
   owned_project_after: number
   reconcile_summary: AdminUserLibraryReconcileSummaryPayload
+  diagnostics: Record<string, unknown>
   generated_at: string
   audit_event: AdminAuditEventPayload
 }

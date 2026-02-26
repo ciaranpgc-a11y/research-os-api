@@ -1144,6 +1144,102 @@ def reconcile_library_for_user(
         }
 
 
+def collect_library_reconcile_diagnostics(
+    *,
+    user_id: str | None,
+    account_key_hint: str | None = None,
+) -> dict[str, object]:
+    """Return lightweight diagnostics for admin-visible reconcile troubleshooting."""
+    create_all_tables()
+    clean_user_id = _trim(user_id)
+    diagnostics: dict[str, object] = {
+        "user_id": clean_user_id,
+        "user_found": False,
+        "storage_root": "",
+        "storage_root_exists": False,
+        "metadata_index_count": 0,
+        "metadata_sidecar_count": 0,
+        "db_total_assets": 0,
+        "db_owned_assets": 0,
+        "db_related_owned_assets": 0,
+        "db_ownerless_assets": 0,
+        "db_shared_assets": 0,
+        "related_user_ids": [],
+        "account_key_hint": _trim(account_key_hint),
+    }
+    if not clean_user_id:
+        return diagnostics
+
+    with session_scope() as session:
+        user = session.get(User, clean_user_id)
+        if user is None:
+            return diagnostics
+        diagnostics["user_found"] = True
+
+        storage_root = _storage_root()
+        diagnostics["storage_root"] = str(storage_root.resolve())
+        diagnostics["storage_root_exists"] = bool(
+            storage_root.exists() and storage_root.is_dir()
+        )
+
+        metadata_index_ids = _read_metadata_index_ids(storage_root)
+        metadata_paths = _iter_metadata_paths(root=storage_root)
+        diagnostics["metadata_index_count"] = len(metadata_index_ids)
+        diagnostics["metadata_sidecar_count"] = len(metadata_paths)
+
+        related_user_ids = sorted(
+            _related_user_ids_for_user(
+                session=session,
+                user_id=clean_user_id,
+                account_key_hint=account_key_hint,
+            )
+        )
+        if clean_user_id not in related_user_ids:
+            related_user_ids.append(clean_user_id)
+        diagnostics["related_user_ids"] = related_user_ids[:20]
+
+        diagnostics["db_total_assets"] = int(
+            session.scalar(select(func.count()).select_from(DataLibraryAsset)) or 0
+        )
+        diagnostics["db_owned_assets"] = int(
+            session.scalar(
+                select(func.count())
+                .select_from(DataLibraryAsset)
+                .where(DataLibraryAsset.owner_user_id == clean_user_id)
+            )
+            or 0
+        )
+        diagnostics["db_related_owned_assets"] = int(
+            session.scalar(
+                select(func.count())
+                .select_from(DataLibraryAsset)
+                .where(DataLibraryAsset.owner_user_id.in_(related_user_ids))
+            )
+            or 0
+        )
+        diagnostics["db_ownerless_assets"] = int(
+            session.scalar(
+                select(func.count())
+                .select_from(DataLibraryAsset)
+                .where(DataLibraryAsset.owner_user_id.is_(None))
+            )
+            or 0
+        )
+        diagnostics["db_shared_assets"] = int(
+            session.scalar(
+                select(func.count())
+                .select_from(DataLibraryAsset)
+                .where(
+                    DataLibraryAsset.shared_with_user_ids.is_not(None),
+                    cast(DataLibraryAsset.shared_with_user_ids, String) != "[]",
+                )
+            )
+            or 0
+        )
+
+    return diagnostics
+
+
 def _slugify_filename(value: str) -> str:
     candidate = re.sub(r"[^a-zA-Z0-9._-]+", "-", value.strip()).strip(".-")
     return candidate or "asset"

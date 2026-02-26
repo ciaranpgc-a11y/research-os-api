@@ -1378,7 +1378,9 @@ function StructuredMetricTile({
             className={HOUSE_HEADING_H2_CLASS}
             data-testid={`metric-label-${tile.key}`}
           >
-            {tile.key === 'impact_concentration'
+            {tile.key === 'total_citations'
+              ? 'CITATIONS'
+              : tile.key === 'impact_concentration'
               ? (
                 <>
                   IMPACT

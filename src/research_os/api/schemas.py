@@ -1140,6 +1140,7 @@ class AdminUserLibraryReconcileResponse(BaseModel):
     reconcile_summary: AdminUserLibraryReconcileSummaryResponse = Field(
         default_factory=AdminUserLibraryReconcileSummaryResponse
     )
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
     generated_at: datetime
     audit_event: AdminAuditEventResponse
 
