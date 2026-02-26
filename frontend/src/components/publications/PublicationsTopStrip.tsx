@@ -4479,7 +4479,7 @@ export function PublicationsTopStrip({
             </div>
             <div
               className={cn(
-                'ml-auto flex flex-wrap items-center',
+                'ml-auto flex flex-wrap items-center house-publications-actions',
                 HOUSE_ACTIONS_SECTION_TOOLS_CLASS,
                 HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS,
               )}
@@ -4492,36 +4492,37 @@ export function PublicationsTopStrip({
                     data-stop-tile-open="true"
                     variant="house"
                     size="sm"
-                    className={cn('h-8 gap-1.5 px-3', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
+                    className={cn('h-8 gap-1.5 px-3 house-publications-action-primary', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
                     aria-label="Generate publication insights report"
                   >
                     <FileText className="h-3.5 w-3.5" />
                     <span>Generate report</span>
                   </Button>
                   <span className={HOUSE_ACTIONS_SECTION_TOOL_DIVIDER_CLASS} aria-hidden="true" />
-                  <Button
-                    type="button"
-                    data-stop-tile-open="true"
-                    variant="house"
-                    size="icon"
-                    className={cn('h-8 w-8', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
-                    aria-label="Download"
-                    title="Download"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    type="button"
-                    data-stop-tile-open="true"
-                    variant="house"
-                    size="icon"
-                    className={cn('h-8 w-8', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
-                    aria-label="Share"
-                    title="Share"
-                  >
-                    <Share2 className="h-3.5 w-3.5" />
-                  </Button>
-                  <span className={HOUSE_ACTIONS_SECTION_TOOL_DIVIDER_CLASS} aria-hidden="true" />
+                  <div className="house-publications-action-icons">
+                    <Button
+                      type="button"
+                      data-stop-tile-open="true"
+                      variant="house"
+                      size="icon"
+                      className={cn('h-8 w-8 house-publications-action-icon', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
+                      aria-label="Download"
+                      title="Download"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      type="button"
+                      data-stop-tile-open="true"
+                      variant="house"
+                      size="icon"
+                      className={cn('h-8 w-8 house-publications-action-icon', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
+                      aria-label="Share"
+                      title="Share"
+                    >
+                      <Share2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </>
               ) : null}
               <Button
@@ -4530,7 +4531,7 @@ export function PublicationsTopStrip({
                 variant="house"
                 size="icon"
                 className={cn(
-                  'h-8 w-8',
+                  'h-8 w-8 house-publications-action-icon house-publications-action-eye',
                   HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS,
                   HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_CLASS,
                   insightsVisible
