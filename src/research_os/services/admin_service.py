@@ -954,10 +954,8 @@ def list_admin_workspaces(
                 }
             )
         project_snippets.sort(
-            key=lambda item: (
-                item["last_activity_at"] is None,
-                item["last_activity_at"] or datetime(1970, 1, 1, tzinfo=timezone.utc),
-            ),
+            key=lambda item: item["last_activity_at"]
+            or datetime(1970, 1, 1, tzinfo=timezone.utc),
             reverse=True,
         )
 

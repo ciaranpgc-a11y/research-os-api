@@ -2,6 +2,46 @@
 
 ## 2026-02-26
 
+### Admin Workspaces Module (Live Operations Control Plane v1)
+
+- **Area:** Admin console workspace/project operations (backend API + frontend admin surface).
+- **What changed:**
+- Added new admin API endpoint: `GET /v1/admin/workspaces` with admin-only auth guard.
+- Added workspace aggregation in `admin_service` using existing persisted entities (`projects`, `manuscripts`, `data_library_assets`, `generation_jobs`, `manuscript_snapshots`, `users`) to produce:
+  - workspace ownership and member/role visibility,
+  - project-level summaries and activity timestamps,
+  - manuscript/data-source/storage/export counts,
+  - queue/run health (active, failed, retry, status distribution, cost/token averages).
+- Added new backend schema contracts for workspace member summaries, project summaries, job health, and list response payloads.
+- Expanded admin endpoint tests to cover `/v1/admin/workspaces` for authentication, admin-role enforcement, and payload shape.
+- Added frontend types/API integration for workspaces payloads and wired live fetch in admin data load flow.
+- Upgraded admin UI `Workspaces / Projects` module from placeholder to a live surface with:
+  - workspace-level metrics cards,
+  - searchable workspaces index,
+  - selectable workspace detail panel,
+  - job/queue health card,
+  - project table within selected workspace.
+- Promoted Workspaces lane/status in admin module metadata to `live` + `now`.
+- **Why it changed:**
+- Deliver the next `Scale` module so operations can manage workspace workload, data footprint, and run reliability from the admin console without waiting for separate observability tooling.
+- **Key files touched:**
+- `src/research_os/services/admin_service.py`
+- `src/research_os/api/schemas.py`
+- `src/research_os/api/app.py`
+- `tests/test_api.py`
+- `frontend/src/types/impact.ts`
+- `frontend/src/lib/impact-api.ts`
+- `frontend/src/pages/admin-page.tsx`
+- `docs/parallel-feature-delivery.md`
+- `docs/stories/admin-console-operations-v1.md`
+- **Verification performed:**
+- `pytest tests/test_api.py -k "v1_admin_endpoints" -q`
+- `npm --prefix frontend run --silent typecheck`
+- `python scripts/verify_change_documentation.py`
+- **Follow-up:**
+- Add explicit persisted workspace runtime/event objects (queue backlog, DLQ, exports) to replace current derived/proxy metrics.
+- Add owner/admin action endpoints for internal cancel/retry controls directly from admin module.
+
 ### Admin Organisations Module (Live Tenant Control Plane v1)
 
 - **Area:** Admin console organisations/tenants module (backend API + frontend operations surface).

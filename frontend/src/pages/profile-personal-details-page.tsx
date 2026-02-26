@@ -2159,6 +2159,31 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               </div>
             </div>
 
+            <aside className="sm:col-span-2 sm:ml-auto sm:w-full lg:max-w-sm">
+              <div className={HOUSE_ACCOUNT_PANEL_CLASS}>
+                <p className="house-field-label">Account</p>
+                <div className="mt-2 space-y-1.5 text-sm">
+                  <p className="text-[hsl(var(--tone-neutral-700))]">
+                    Member since: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{formatDate(user?.created_at)}</span>
+                  </p>
+                  <p className="text-[hsl(var(--tone-neutral-700))]">
+                    Account age: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{formatAccountAge(user?.created_at)}</span>
+                  </p>
+                </div>
+                <div className="mt-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="house"
+                    className={HOUSE_ACTION_BUTTON_CLASS}
+                    onClick={() => navigate('/profile/manage-account')}
+                  >
+                    Manage account
+                  </Button>
+                </div>
+              </div>
+            </aside>
+
             <label className="space-y-1 sm:col-span-2">
               <span className="house-field-label">Account email</span>
               <Input
@@ -2278,30 +2303,6 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               />
             </div>
 
-            <aside className="sm:col-span-2 sm:ml-auto sm:w-full lg:max-w-sm">
-              <div className={HOUSE_ACCOUNT_PANEL_CLASS}>
-                <p className="house-field-label">Account</p>
-                <div className="mt-2 space-y-1.5 text-sm">
-                  <p className="text-[hsl(var(--tone-neutral-700))]">
-                    Member since: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{formatDate(user?.created_at)}</span>
-                  </p>
-                  <p className="text-[hsl(var(--tone-neutral-700))]">
-                    Account age: <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{formatAccountAge(user?.created_at)}</span>
-                  </p>
-                </div>
-                <div className="mt-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="house"
-                    className={HOUSE_ACTION_BUTTON_CLASS}
-                    onClick={() => navigate('/profile/manage-account')}
-                  >
-                    Manage account
-                  </Button>
-                </div>
-              </div>
-            </aside>
           </div>
         </CardContent>
       </Card>

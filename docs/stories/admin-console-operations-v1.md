@@ -23,7 +23,7 @@ In scope:
 
 - Admin left navigation grouped by command/scale/governance.
 - Section model for all 12 admin domains.
-- Overview, Users, and Organisations as active operational modules.
+- Overview, Users, Organisations, and Workspaces/Projects as active operational modules.
 - Structured placeholders and planning metadata for remaining modules.
 - CI documentation enforcement for major changes.
 
@@ -40,9 +40,10 @@ Out of scope (v1):
 2. Admin UI shows grouped navigation and section-specific content.
 3. Overview and Users remain live/interactive and admin-protected.
 4. Organisations module is live/interactive with tenant profile, usage/cost, limits, integrations, and impersonation control visibility.
-5. Remaining modules display explicit status (`live`, `partial`, `planned`) and lane (`now`, `next`, `later`) metadata.
-6. A return action to main site remains available.
-7. Documentation and CI rules require same-delivery documentation for major changes.
+5. Workspaces module is live/interactive with workspace ownership, member visibility, project/data load, and queue/run health metrics.
+6. Remaining modules display explicit status (`live`, `partial`, `planned`) and lane (`now`, `next`, `later`) metadata.
+7. A return action to main site remains available.
+8. Documentation and CI rules require same-delivery documentation for major changes.
 
 ## Implementation Notes (2026-02-26)
 
@@ -62,6 +63,11 @@ Out of scope (v1):
   - backend domain-derived tenant aggregation (profiles, activity, usage/cost trend, quotas/limits, integrations, impersonation metadata),
   - admin UI tenant index + detail control plane,
   - organisations lane/status promoted to `live` + `now`.
+- Added live Workspaces module infrastructure:
+  - new admin API endpoint `/v1/admin/workspaces`,
+  - backend workspace aggregation (owner/members, project/manuscript/data-source counts, storage, exports, run health),
+  - admin UI workspace index + detail control plane with queue and project-level visibility,
+  - workspaces lane/status promoted to `live` + `now`.
 
 ## Verification
 
