@@ -6,6 +6,7 @@ import shutil
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
+from threading import Lock
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -1426,6 +1427,8 @@ class GenerationJob(Base):
 
 _engine = None
 _SessionLocal = None
+_create_all_tables_lock = Lock()
+_initialized_schema_engine_url: str | None = None
 
 
 def get_engine():
@@ -1706,17 +1709,25 @@ def _ensure_postgresql_schema_compatibility(engine) -> None:
 
 
 def create_all_tables() -> None:
+    global _initialized_schema_engine_url
     engine = get_engine()
-    try:
-        Base.metadata.create_all(bind=engine)
-        _ensure_sqlite_schema_compatibility(engine)
-        _ensure_postgresql_schema_compatibility(engine)
-    except (OperationalError, ProgrammingError) as exc:
-        # Concurrent startup/scheduler table checks can race in SQLite tests.
-        # Some PostgreSQL deployments may also report duplicate index/table
-        # creation attempts as ProgrammingError during rolling deploy overlap.
-        if "already exists" not in str(exc).lower():
-            raise
+    engine_url = str(engine.url)
+    if _initialized_schema_engine_url == engine_url:
+        return
+    with _create_all_tables_lock:
+        if _initialized_schema_engine_url == engine_url:
+            return
+        try:
+            Base.metadata.create_all(bind=engine)
+            _ensure_sqlite_schema_compatibility(engine)
+            _ensure_postgresql_schema_compatibility(engine)
+        except (OperationalError, ProgrammingError) as exc:
+            # Concurrent startup/scheduler table checks can race in SQLite tests.
+            # Some PostgreSQL deployments may also report duplicate index/table
+            # creation attempts as ProgrammingError during rolling deploy overlap.
+            if "already exists" not in str(exc).lower():
+                raise
+        _initialized_schema_engine_url = engine_url
 
 
 @contextmanager
@@ -1735,7 +1746,9 @@ def session_scope():
 def reset_database_state() -> None:
     global _engine
     global _SessionLocal
+    global _initialized_schema_engine_url
     if _engine is not None:
         _engine.dispose()
     _engine = None
     _SessionLocal = None
+    _initialized_schema_engine_url = None

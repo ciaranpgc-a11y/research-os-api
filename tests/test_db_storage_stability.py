@@ -321,6 +321,53 @@ def test_create_all_tables_ignores_duplicate_programming_error(monkeypatch, tmp_
     create_all_tables()
 
 
+def test_create_all_tables_initializes_once_per_engine(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    db_path = (tmp_path / "create_all_once.db").resolve()
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{db_path.as_posix()}")
+    reset_database_state()
+
+    calls = {
+        "create_all": 0,
+        "sqlite_compat": 0,
+        "postgres_compat": 0,
+    }
+
+    def _create_all(*args, **kwargs):
+        calls["create_all"] += 1
+
+    def _sqlite_compat(engine):
+        calls["sqlite_compat"] += 1
+
+    def _postgres_compat(engine):
+        calls["postgres_compat"] += 1
+
+    monkeypatch.setattr(Base.metadata, "create_all", _create_all)
+    monkeypatch.setattr(db_module, "_ensure_sqlite_schema_compatibility", _sqlite_compat)
+    monkeypatch.setattr(
+        db_module,
+        "_ensure_postgresql_schema_compatibility",
+        _postgres_compat,
+    )
+
+    create_all_tables()
+    create_all_tables()
+    create_all_tables()
+    assert calls == {
+        "create_all": 1,
+        "sqlite_compat": 1,
+        "postgres_compat": 1,
+    }
+
+    reset_database_state()
+    create_all_tables()
+    assert calls == {
+        "create_all": 2,
+        "sqlite_compat": 2,
+        "postgres_compat": 2,
+    }
+
+
 def test_ensure_postgresql_schema_compatibility_backfills_account_key() -> None:
     class _FakeResult:
         def __init__(self, rows):
