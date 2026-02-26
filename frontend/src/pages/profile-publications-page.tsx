@@ -1350,26 +1350,25 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             updatedAt: new Date().toISOString(),
           },
         }))
-      } else if (user?.id) {
-        const attempted = loadPublicationsOaAutoAttempted(user.id)
-        if (attempted.has(workId)) {
-          setOaPdfStatusByWorkId((current) => ({
-            ...current,
-            [workId]: {
-              status: 'missing',
-              downloadUrl: null,
-              fileName: null,
-              updatedAt: new Date().toISOString(),
-            },
-          }))
-        }
+      } else {
+        // When files are explicitly fetched and none exist, mark missing immediately
+        // so table attachment icon state updates without waiting for another pass.
+        setOaPdfStatusByWorkId((current) => ({
+          ...current,
+          [workId]: {
+            status: 'missing',
+            downloadUrl: null,
+            fileName: null,
+            updatedAt: new Date().toISOString(),
+          },
+        }))
       }
     } catch (loadError) {
       setPaneError(workId, 'files', loadError instanceof Error ? loadError.message : 'Could not load files.')
     } finally {
       setPaneLoading(workId, 'files', false)
     }
-  }, [filesCacheByWorkId, setPaneError, setPaneLoading, token, user?.id])
+  }, [filesCacheByWorkId, setPaneError, setPaneLoading, token])
 
   const ensureActiveTabData = useCallback(async (workId: string, tab: PublicationDetailTab) => {
     if (!workId) {
@@ -2059,8 +2058,38 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setUploadingFile(true)
     setPaneError(selectedWorkId, 'files', '')
     try {
+      const uploadedFiles: PublicationFilePayload[] = []
       for (const file of Array.from(files)) {
-        await uploadPublicationFile(token, selectedWorkId, file)
+        const uploaded = await uploadPublicationFile(token, selectedWorkId, file)
+        uploadedFiles.push(uploaded)
+      }
+      if (uploadedFiles.length > 0) {
+        setFilesCacheByWorkId((current) => {
+          const existing = current[selectedWorkId]?.items || []
+          const existingById = new Map(existing.map((item) => [item.id, item]))
+          for (const uploaded of uploadedFiles) {
+            existingById.set(uploaded.id, uploaded)
+          }
+          const nextItems = Array.from(existingById.values()).sort(
+            (left, right) => Date.parse(String(right.created_at || '')) - Date.parse(String(left.created_at || '')),
+          )
+          return {
+            ...current,
+            [selectedWorkId]: {
+              items: nextItems,
+            },
+          }
+        })
+        const preferred = uploadedFiles.find((item) => item.source === 'OA_LINK') || uploadedFiles[0]
+        setOaPdfStatusByWorkId((current) => ({
+          ...current,
+          [selectedWorkId]: {
+            status: 'available',
+            downloadUrl: preferred.download_url || preferred.oa_url || null,
+            fileName: preferred.file_name || null,
+            updatedAt: new Date().toISOString(),
+          },
+        }))
       }
       setStatus('File upload completed.')
       await refreshFilesTab(selectedWorkId)
@@ -2082,6 +2111,35 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPaneError(selectedWorkId, 'files', '')
     try {
       await deletePublicationFile(token, selectedWorkId, fileId)
+      const remainingFiles = selectedFiles.filter((file) => file.id !== fileId)
+      setFilesCacheByWorkId((current) => ({
+        ...current,
+        [selectedWorkId]: {
+          items: remainingFiles,
+        },
+      }))
+      if (remainingFiles.length > 0) {
+        const preferred = remainingFiles.find((file) => file.source === 'OA_LINK') || remainingFiles[0]
+        setOaPdfStatusByWorkId((current) => ({
+          ...current,
+          [selectedWorkId]: {
+            status: 'available',
+            downloadUrl: preferred.download_url || preferred.oa_url || null,
+            fileName: preferred.file_name || null,
+            updatedAt: new Date().toISOString(),
+          },
+        }))
+      } else {
+        setOaPdfStatusByWorkId((current) => ({
+          ...current,
+          [selectedWorkId]: {
+            status: 'missing',
+            downloadUrl: null,
+            fileName: null,
+            updatedAt: new Date().toISOString(),
+          },
+        }))
+      }
       await refreshFilesTab(selectedWorkId)
     } catch (deleteError) {
       setPaneError(selectedWorkId, 'files', deleteError instanceof Error ? deleteError.message : 'Could not delete publication file.')
