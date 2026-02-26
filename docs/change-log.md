@@ -827,3 +827,32 @@
 - `python -m py_compile src/research_os/services/data_planner_service.py tests/test_data_library_resilience.py`
 - **Follow-up:**
 - Add lightweight telemetry counters for owner-repair events so production support can quickly distinguish “no files uploaded” from “rows repaired on access”.
+
+### Hidden Account Key Linkage For Asset Ownership Recovery
+
+- **Area:** Account identity durability for data ownership linkage.
+- **What changed:**
+- Added immutable hidden `users.account_key` (UUID) with auto-generation for new users.
+- Added SQLite compatibility auto-heal for legacy installs:
+  - adds `users.account_key` when missing,
+  - backfills missing/blank values,
+  - creates a unique index (`ix_users_account_key`).
+- Data-library sidecar metadata now stores `owner_account_key` in addition to `owner_user_id` and `owner_email`.
+- Ownership restore now resolves in this order:
+  - `owner_account_key` (preferred),
+  - `owner_user_id`,
+  - `owner_email`.
+- Added regression coverage for stale metadata ids/emails where ownership is still recovered correctly through `owner_account_key`.
+- **Why it changed:**
+- Decouple asset linkage from mutable profile fields and make identity matching more durable across legacy/user-id churn scenarios.
+- **Key files touched:**
+- `src/research_os/db.py`
+- `src/research_os/services/data_planner_service.py`
+- `tests/test_db_storage_stability.py`
+- `tests/test_data_library_resilience.py`
+- `docs/change-log.md`
+- **Verification performed:**
+- `python -m py_compile src/research_os/db.py src/research_os/services/data_planner_service.py tests/test_db_storage_stability.py tests/test_data_library_resilience.py`
+- `pytest tests/test_db_storage_stability.py -q`
+- `pytest tests/test_data_library_resilience.py -q`
+- `pytest tests/test_api.py -k "library_assets_persist_across_logout_and_login or library_assets_support_server_pagination_sort_and_filters or library_asset_access_controls_and_download" -q`

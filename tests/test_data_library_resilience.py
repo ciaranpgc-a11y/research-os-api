@@ -129,6 +129,55 @@ def test_list_library_assets_rebinds_owner_by_email_when_user_id_changes(
     assert downloaded["content"] == b"col_a,col_b\n10,20\n"
 
 
+def test_list_library_assets_rebinds_owner_by_account_key_when_metadata_ids_stale(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    account_key = "f5f39872-5d5c-41f7-9d0b-c6608bd7bbf0"
+    first_user_id = _create_user(
+        email="library-account-key-first@example.com",
+        name="Owner First",
+        account_key=account_key,
+    )
+    storage_root = (tmp_path / "data_library").resolve()
+
+    asset_id = upload_library_assets(
+        files=[("account-key-rebind.csv", "text/csv", b"col_a,col_b\n15,30\n")],
+        project_id=None,
+        user_id=first_user_id,
+    )[0]
+
+    metadata_path = _metadata_path(storage_root, asset_id)
+    metadata_payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert str(metadata_payload.get("owner_account_key") or "") == account_key
+    metadata_payload["owner_user_id"] = "missing-owner-id"
+    metadata_payload["owner_email"] = "not-a-real-owner@example.com"
+    metadata_path.write_text(json.dumps(metadata_payload), encoding="utf-8")
+
+    with session_scope() as session:
+        row = session.get(DataLibraryAsset, asset_id)
+        assert row is not None
+        session.delete(row)
+        first_user = session.get(User, first_user_id)
+        assert first_user is not None
+        session.delete(first_user)
+
+    second_user_id = _create_user(
+        email="library-account-key-second@example.com",
+        name="Owner Second",
+        account_key=account_key,
+    )
+    assert second_user_id != first_user_id
+
+    payload = list_library_assets(project_id=None, user_id=second_user_id)
+    listed_ids = [str(item.get("id")) for item in payload.get("items", [])]
+    assert asset_id in listed_ids
+    listed_row = next(
+        item for item in payload.get("items", []) if str(item.get("id")) == asset_id
+    )
+    assert str(listed_row.get("owner_user_id") or "") == second_user_id
+
+
 def test_list_library_assets_recovers_when_metadata_index_is_corrupt(
     monkeypatch, tmp_path
 ) -> None:

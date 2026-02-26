@@ -472,6 +472,9 @@ export function AdminPage() {
   const organisationItems = organisations?.items || []
   const selectedOrganisation =
     organisationItems.find((item) => item.id === selectedOrganisationId) || organisationItems[0] || null
+  const workspaceItems = workspaces?.items || []
+  const selectedWorkspace =
+    workspaceItems.find((item) => item.id === selectedWorkspaceId) || workspaceItems[0] || null
 
   const metrics = useMemo(
     () => [
@@ -512,6 +515,20 @@ export function AdminPage() {
       { label: 'Storage footprint', value: formatBytes(totalStorageBytes), icon: HardDrive },
     ]
   }, [organisationItems, organisations?.total])
+
+  const workspaceMetrics = useMemo(() => {
+    const totalProjects = workspaceItems.reduce((sum, item) => sum + item.project_count, 0)
+    const totalMembers = workspaceItems.reduce((sum, item) => sum + item.member_count, 0)
+    const totalStorageBytes = workspaceItems.reduce((sum, item) => sum + item.storage_bytes, 0)
+    const totalActiveRuns = workspaceItems.reduce((sum, item) => sum + item.job_health.active_runs, 0)
+    return [
+      { label: 'Workspaces', value: formatInteger(workspaces?.total || 0), icon: Workflow },
+      { label: 'Projects', value: formatInteger(totalProjects), icon: Database },
+      { label: 'Members', value: formatInteger(totalMembers), icon: Users },
+      { label: 'Active jobs', value: formatInteger(totalActiveRuns), icon: Activity },
+      { label: 'Storage footprint', value: formatBytes(totalStorageBytes), icon: HardDrive },
+    ]
+  }, [workspaceItems, workspaces?.total])
 
   const statusCounts = useMemo(() => {
     return {
@@ -960,6 +977,227 @@ export function AdminPage() {
               </>
             ) : null}
 
+            {activeCapability.id === 'workspaces' ? (
+              <>
+                <Card className="border-[hsl(var(--tone-neutral-200))]">
+                  <CardHeader className="pb-2">
+                    <CardTitle>Workspace operations snapshot</CardTitle>
+                    <CardDescription>Ownership, project load, dataset footprint, and run pressure.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    {workspaceMetrics.map((item) => (
+                      <div key={item.label} className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <item.icon className="h-4 w-4 text-[hsl(var(--tone-accent-700))]" />
+                          <p className="text-sm uppercase tracking-wide text-muted-foreground">{item.label}</p>
+                        </div>
+                        <p className="mt-1 text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{item.value}</p>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-[hsl(var(--tone-neutral-200))]">
+                  <CardHeader className="pb-2">
+                    <CardTitle>Workspaces index</CardTitle>
+                    <CardDescription>Search by workspace slug, owner, or project title.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <form className="flex flex-wrap items-center gap-2" onSubmit={onWorkspacesSearch}>
+                      <div className="relative w-full max-w-md">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={workspaceQuery}
+                          onChange={(event) => setWorkspaceQuery(event.target.value)}
+                          placeholder="Search by workspace ID or owner"
+                          className="pl-9"
+                        />
+                      </div>
+                      <Button type="submit" disabled={loading}>
+                        {loading ? 'Loading...' : 'Search'}
+                      </Button>
+                    </form>
+
+                    {workspaceItems.length ? (
+                      <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
+                        <table className="w-full min-w-full text-left text-sm">
+                          <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
+                            <tr>
+                              <th className="px-3 py-2">Workspace</th>
+                              <th className="px-3 py-2">Owner</th>
+                              <th className="px-3 py-2">Members</th>
+                              <th className="px-3 py-2">Projects</th>
+                              <th className="px-3 py-2">Data sources</th>
+                              <th className="px-3 py-2">Active jobs</th>
+                              <th className="px-3 py-2">Failed (7d)</th>
+                              <th className="px-3 py-2">Last activity</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {workspaceItems.map((item) => {
+                              const selected = selectedWorkspace?.id === item.id
+                              return (
+                                <tr
+                                  key={item.id}
+                                  className={cn(
+                                    'cursor-pointer border-t border-[hsl(var(--tone-neutral-200))]',
+                                    selected ? 'bg-[hsl(var(--tone-accent-50))]' : 'hover:bg-[hsl(var(--tone-neutral-50))]',
+                                  )}
+                                  onClick={() => setSelectedWorkspaceId(item.id)}
+                                >
+                                  <td className="px-3 py-2">
+                                    <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{item.display_name}</p>
+                                    <p className="text-xs text-muted-foreground">{item.id}</p>
+                                  </td>
+                                  <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{item.owner_name}</td>
+                                  <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(item.member_count)}</td>
+                                  <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(item.project_count)}</td>
+                                  <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(item.data_sources_count)}</td>
+                                  <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(item.job_health.active_runs)}</td>
+                                  <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(item.job_health.failed_runs_7d)}</td>
+                                  <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatTimestamp(item.last_activity_at)}</td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No workspaces matched the current filter.</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {selectedWorkspace ? (
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    <Card className="border-[hsl(var(--tone-neutral-200))]">
+                      <CardHeader className="pb-2">
+                        <CardTitle>Workspace profile</CardTitle>
+                        <CardDescription>{selectedWorkspace.display_name} ({selectedWorkspace.id})</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-2 text-sm">
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Owner</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{selectedWorkspace.owner_name}</p>
+                            <p className="text-xs text-muted-foreground">{selectedWorkspace.owner_email || 'No owner email'}</p>
+                          </div>
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Members active (30d)</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">
+                              {formatInteger(selectedWorkspace.active_members_30d)} / {formatInteger(selectedWorkspace.member_count)}
+                            </p>
+                          </div>
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Collaboration density</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{formatPercent(selectedWorkspace.collaboration_density_pct)}</p>
+                          </div>
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Storage</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{formatBytes(selectedWorkspace.storage_bytes)}</p>
+                          </div>
+                        </div>
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                          <p className="text-sm uppercase tracking-wide text-muted-foreground">Manuscripts / Exports history</p>
+                          <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">
+                            {formatInteger(selectedWorkspace.manuscript_count)} / {formatInteger(selectedWorkspace.export_history_count)}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                          <p className="text-sm uppercase tracking-wide text-muted-foreground">Last activity</p>
+                          <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{formatTimestamp(selectedWorkspace.last_activity_at)}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border-[hsl(var(--tone-neutral-200))]">
+                      <CardHeader className="pb-2">
+                        <CardTitle>Job and queue health</CardTitle>
+                        <CardDescription>Run volume, active load, retries, and failure pressure.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-2 text-sm">
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Total runs</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(selectedWorkspace.job_health.total_runs)}</p>
+                          </div>
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Active runs</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(selectedWorkspace.job_health.active_runs)}</p>
+                          </div>
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Failed runs (7d)</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(selectedWorkspace.job_health.failed_runs_7d)}</p>
+                          </div>
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Retry runs (7d)</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(selectedWorkspace.job_health.retry_runs_7d)}</p>
+                          </div>
+                        </div>
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                          <p className="text-sm uppercase tracking-wide text-muted-foreground">Queue state</p>
+                          <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">
+                            queued {formatInteger(selectedWorkspace.job_health.queued_runs)} | running {formatInteger(selectedWorkspace.job_health.running_runs)} | completed {formatInteger(selectedWorkspace.job_health.completed_runs)}
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                          <p className="text-sm uppercase tracking-wide text-muted-foreground">Cost and token averages</p>
+                          <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">
+                            {formatInteger(selectedWorkspace.job_health.avg_tokens_per_run)} tokens/run | {formatCurrency(selectedWorkspace.job_health.avg_cost_usd_per_run)} / run
+                          </p>
+                          <p className="text-xs text-muted-foreground">Last run event: {formatTimestamp(selectedWorkspace.job_health.last_job_at)}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border-[hsl(var(--tone-neutral-200))] xl:col-span-2">
+                      <CardHeader className="pb-2">
+                        <CardTitle>Projects in workspace</CardTitle>
+                        <CardDescription>Project-level ownership, data/source density, and run activity.</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {selectedWorkspace.projects.length ? (
+                          <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
+                            <table className="w-full min-w-full text-left text-sm">
+                              <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
+                                <tr>
+                                  <th className="px-3 py-2">Project</th>
+                                  <th className="px-3 py-2">Owner</th>
+                                  <th className="px-3 py-2">Collaborators</th>
+                                  <th className="px-3 py-2">Manuscripts</th>
+                                  <th className="px-3 py-2">Data sources</th>
+                                  <th className="px-3 py-2">Job runs</th>
+                                  <th className="px-3 py-2">Last run</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selectedWorkspace.projects.map((project) => (
+                                  <tr key={project.id} className="border-t border-[hsl(var(--tone-neutral-200))]">
+                                    <td className="px-3 py-2">
+                                      <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{project.title}</p>
+                                      <p className="text-xs text-muted-foreground">{project.id}</p>
+                                    </td>
+                                    <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{project.owner_name}</td>
+                                    <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(project.collaborator_count)}</td>
+                                    <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(project.manuscript_count)}</td>
+                                    <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(project.data_sources_count)}</td>
+                                    <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(project.job_runs)}</td>
+                                    <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{project.last_run_status}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No projects are currently attached to this workspace.</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+
             {activeCapability.id === 'users' ? (
               <Card className="border-[hsl(var(--tone-neutral-200))]">
                 <CardHeader className="pb-2">
@@ -1038,7 +1276,10 @@ export function AdminPage() {
               </Card>
             ) : null}
 
-            {activeCapability.id !== 'overview' && activeCapability.id !== 'organisations' && activeCapability.id !== 'users' ? (
+            {activeCapability.id !== 'overview' &&
+            activeCapability.id !== 'organisations' &&
+            activeCapability.id !== 'workspaces' &&
+            activeCapability.id !== 'users' ? (
               <Card className="border-[hsl(var(--tone-neutral-200))]">
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between gap-2">
