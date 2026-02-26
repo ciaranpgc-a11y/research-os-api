@@ -999,3 +999,47 @@
 - **Verification performed:**
 - `python -m py_compile src/research_os/db.py tests/test_db_storage_stability.py tests/test_api.py`
 - `pytest tests/test_db_storage_stability.py tests/test_db_schema_integrity.py tests/test_api.py -k "auth_oauth_connect or duplicate_programming_error" -q`
+
+### OAuth Popup Loop Recovery (Used State Handling)
+
+- **Area:** Login reliability for repeated OAuth popup attempts.
+- **What changed:**
+- Added popup lifecycle management on auth page:
+  - closes stale OAuth popup/monitor before opening a new one,
+  - uses unique popup window names per attempt.
+- Added explicit recovery handling for reused OAuth state errors:
+  - when callback returns `OAuth state has already been used`, UI now clears error and shows a retry status message instead of getting stuck in an error loop.
+- Updated callback page postMessage payload to include provider on error responses.
+- Added duplicate-callback guard behavior:
+  - if callback is reloaded with same provider/state/code, notifies opener and closes popup.
+- **Why it changed:**
+- Prevent stale callback windows from re-emitting old state errors and blocking fresh sign-in attempts.
+- **Key files touched:**
+- `frontend/src/pages/auth-page.tsx`
+- `frontend/src/pages/auth-callback-page.tsx`
+- `docs/change-log.md`
+- **Verification performed:**
+- `npm --prefix frontend run typecheck`
+
+### Postgres Account Key Auto-Heal (Auth Unblock)
+
+- **Area:** Production login reliability after user-identity schema upgrade.
+- **What changed:**
+- Added PostgreSQL compatibility auto-heal in DB startup:
+  - `ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS account_key VARCHAR(36)`
+  - backfills blank/null `account_key` values with UUIDs
+  - creates unique index `ix_users_account_key` if missing.
+- Wired compatibility path into `create_all_tables()` for Postgres deployments.
+- Added regression/unit coverage for Postgres auto-heal SQL path and backfill behavior.
+- **Why it changed:**
+- Production auth started returning `500` on login with:
+  - `column users.account_key does not exist`
+- Existing Postgres tables predated the `account_key` addition and were not altered by `create_all()`.
+- **Key files touched:**
+- `src/research_os/db.py`
+- `tests/test_db_storage_stability.py`
+- `docs/change-log.md`
+- **Verification performed:**
+- `python -m py_compile src/research_os/db.py tests/test_db_storage_stability.py`
+- `pytest tests/test_db_storage_stability.py -q`
+- `pytest tests/test_api.py -k "auth_oauth_connect" -q`

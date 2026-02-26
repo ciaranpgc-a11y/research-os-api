@@ -5,6 +5,7 @@ import sqlite3
 
 from sqlalchemy.exc import ProgrammingError
 
+import research_os.db as db_module
 from research_os.db import (
     Base,
     DataLibraryAsset,
@@ -318,3 +319,61 @@ def test_create_all_tables_ignores_duplicate_programming_error(monkeypatch, tmp_
 
     monkeypatch.setattr(Base.metadata, "create_all", _raise_duplicate)
     create_all_tables()
+
+
+def test_ensure_postgresql_schema_compatibility_backfills_account_key() -> None:
+    class _FakeResult:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def all(self):
+            return list(self._rows)
+
+    class _FakeConnection:
+        def __init__(self):
+            self.calls: list[tuple[str, dict | None]] = []
+
+        def execute(self, statement, params=None):
+            sql = str(statement)
+            self.calls.append((sql, params))
+            if "SELECT id FROM users" in sql:
+                return _FakeResult([("user-1",), ("",), (None,)])
+            return _FakeResult([])
+
+    class _FakeBegin:
+        def __init__(self, connection):
+            self._connection = connection
+
+        def __enter__(self):
+            return self._connection
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class _FakeDialect:
+        name = "postgresql"
+
+    class _FakeEngine:
+        def __init__(self):
+            self.dialect = _FakeDialect()
+            self.connection = _FakeConnection()
+
+        def begin(self):
+            return _FakeBegin(self.connection)
+
+    fake_engine = _FakeEngine()
+    db_module._ensure_postgresql_schema_compatibility(fake_engine)
+
+    sql_calls = [sql for sql, _ in fake_engine.connection.calls]
+    assert any("ADD COLUMN IF NOT EXISTS account_key" in sql for sql in sql_calls)
+    assert any("SELECT id FROM users" in sql for sql in sql_calls)
+    assert any("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_account_key" in sql for sql in sql_calls)
+
+    update_calls = [
+        params
+        for sql, params in fake_engine.connection.calls
+        if "UPDATE users " in sql and params is not None
+    ]
+    assert len(update_calls) == 1
+    assert str(update_calls[0].get("user_id") or "") == "user-1"
+    assert str(update_calls[0].get("account_key") or "").strip() != ""

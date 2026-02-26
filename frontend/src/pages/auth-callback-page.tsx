@@ -37,6 +37,18 @@ export function AuthCallbackPage() {
     const callbackKey = `${providerRaw}:${state}:${code}`
     if (processedCallbackKeys.has(callbackKey)) {
       setStatus('Sign-in callback already processed. You can close this window.')
+      const hasOpener = typeof window !== 'undefined' && window.opener && !window.opener.closed
+      if (hasOpener) {
+        window.opener.postMessage(
+          {
+            type: 'aawe-oauth-error',
+            provider: providerRaw,
+            error: 'OAuth callback was already processed. Start sign-in again.',
+          },
+          window.location.origin,
+        )
+        window.close()
+      }
       return
     }
     processedCallbackKeys.add(callbackKey)
@@ -71,6 +83,7 @@ export function AuthCallbackPage() {
           window.opener.postMessage(
             {
               type: 'aawe-oauth-error',
+              provider: providerRaw,
               error: detail,
             },
             window.location.origin,

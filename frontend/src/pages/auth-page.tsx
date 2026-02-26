@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -48,6 +48,7 @@ type OAuthSuccessMessagePayload = {
 }
 type OAuthErrorMessagePayload = {
   type: 'aawe-oauth-error'
+  provider?: SocialProvider
   error?: string
 }
 
@@ -118,6 +119,8 @@ export function AuthPage() {
   const [verificationDeliveryHint, setVerificationDeliveryHint] = useState('')
   const [verificationToken, setVerificationToken] = useState('')
   const [oauthPending, setOauthPending] = useState(false)
+  const oauthPopupRef = useRef<Window | null>(null)
+  const oauthPopupMonitorRef = useRef<number | null>(null)
 
   const hasTestAccountShortcut = Boolean(TEST_ACCOUNT_EMAIL && TEST_ACCOUNT_PASSWORD)
 
@@ -233,12 +236,43 @@ export function AuthPage() {
         return
       }
       if (payload.type === 'aawe-oauth-error') {
+        if (oauthPopupMonitorRef.current !== null) {
+          window.clearInterval(oauthPopupMonitorRef.current)
+          oauthPopupMonitorRef.current = null
+        }
+        if (oauthPopupRef.current && !oauthPopupRef.current.closed) {
+          try {
+            oauthPopupRef.current.close()
+          } catch {
+            // no-op: best effort cleanup for popup lifecycle
+          }
+        }
+        oauthPopupRef.current = null
         setOauthPending(false)
         setLoading(false)
-        setError(payload.error || 'OAuth callback failed.')
+        const detail = String(payload.error || 'OAuth callback failed.')
+        if (detail.toLowerCase().includes('oauth state has already been used')) {
+          const providerName = payload.provider ? providerLabel(payload.provider) : 'OAuth'
+          setError('')
+          setStatus(`${providerName} sign-in session expired. Start sign-in again.`)
+          return
+        }
+        setError(detail)
         return
       }
       if (payload.type === 'aawe-oauth-success') {
+        if (oauthPopupMonitorRef.current !== null) {
+          window.clearInterval(oauthPopupMonitorRef.current)
+          oauthPopupMonitorRef.current = null
+        }
+        if (oauthPopupRef.current && !oauthPopupRef.current.closed) {
+          try {
+            oauthPopupRef.current.close()
+          } catch {
+            // no-op: best effort cleanup for popup lifecycle
+          }
+        }
+        oauthPopupRef.current = null
         const session = payload.payload
         setOauthPending(false)
         setLoading(false)
@@ -540,17 +574,30 @@ export function AuthPage() {
     setLoading(true)
     setError('')
     setStatus('')
+    if (oauthPopupMonitorRef.current !== null) {
+      window.clearInterval(oauthPopupMonitorRef.current)
+      oauthPopupMonitorRef.current = null
+    }
+    if (oauthPopupRef.current && !oauthPopupRef.current.closed) {
+      try {
+        oauthPopupRef.current.close()
+      } catch {
+        // no-op: best effort cleanup for popup lifecycle
+      }
+      oauthPopupRef.current = null
+    }
     try {
       const payload = await fetchOAuthConnect(provider)
       const popup = window.open(
         payload.url,
-        `aawe-oauth-${provider}`,
+        `aawe-oauth-${provider}-${Date.now()}`,
         'popup=yes,width=560,height=760,resizable=yes,scrollbars=yes',
       )
       if (!popup) {
         window.location.assign(payload.url)
         return
       }
+      oauthPopupRef.current = popup
       setOauthPending(true)
       setLoading(false)
       setStatus(`${providerLabel(provider)} sign-in window opened. Complete sign-in to continue.`)
@@ -560,12 +607,15 @@ export function AuthPage() {
           return
         }
         window.clearInterval(monitor)
+        oauthPopupMonitorRef.current = null
+        oauthPopupRef.current = null
         if (Date.now() - startedAt < 2500) {
           return
         }
         setOauthPending(false)
         setLoading(false)
       }, 500)
+      oauthPopupMonitorRef.current = monitor
     } catch (oauthError) {
       const detail = oauthError instanceof Error ? oauthError.message : `${providerLabel(provider)} sign-in failed.`
       if (detail.includes('(404)')) {

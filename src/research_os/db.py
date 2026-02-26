@@ -1669,11 +1669,48 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                         )
 
 
+def _ensure_postgresql_schema_compatibility(engine) -> None:
+    if engine.dialect.name != "postgresql":
+        return
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS users "
+                "ADD COLUMN IF NOT EXISTS account_key VARCHAR(36)"
+            )
+        )
+        rows = connection.execute(
+            text(
+                "SELECT id FROM users "
+                "WHERE account_key IS NULL OR BTRIM(account_key) = ''"
+            )
+        ).all()
+        for row in rows:
+            user_id = str(row[0] or "").strip()
+            if not user_id:
+                continue
+            connection.execute(
+                text(
+                    "UPDATE users "
+                    "SET account_key = :account_key "
+                    "WHERE id = :user_id"
+                ),
+                {"account_key": str(uuid4()), "user_id": user_id},
+            )
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_account_key "
+                "ON users (account_key)"
+            )
+        )
+
+
 def create_all_tables() -> None:
     engine = get_engine()
     try:
         Base.metadata.create_all(bind=engine)
         _ensure_sqlite_schema_compatibility(engine)
+        _ensure_postgresql_schema_compatibility(engine)
     except (OperationalError, ProgrammingError) as exc:
         # Concurrent startup/scheduler table checks can race in SQLite tests.
         # Some PostgreSQL deployments may also report duplicate index/table
