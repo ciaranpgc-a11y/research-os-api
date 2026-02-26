@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Pin } from 'lucide-react'
+import { PanelRightClose, PanelRightOpen, Pin } from 'lucide-react'
 
 import { TopBar } from '@/components/layout/top-bar'
 import { Button } from '@/components/ui/button'
@@ -16,7 +16,7 @@ import {
   WORKSPACE_OWNER_REQUIRED_MESSAGE,
   readWorkspaceOwnerNameFromProfile,
 } from '@/lib/workspace-owner'
-import { houseForms, houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseDrilldown, houseForms, houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { getHouseLeftBorderToneClass, getHouseNavToneClass } from '@/lib/section-tone'
 import { matchesScopedStorageEventKey } from '@/lib/user-scoped-storage'
 import { cn } from '@/lib/utils'
@@ -80,6 +80,20 @@ const HOUSE_NAV_ITEM_WORKSPACE_CLASS = getHouseNavToneClass('workspace')
 const HOUSE_NAV_ITEM_GOVERNANCE_CLASS = getHouseNavToneClass('governance')
 const HOUSE_NAV_ITEM_META_CLASS = houseNavigation.itemMeta
 const HOUSE_NAV_ITEM_COUNT_CLASS = houseNavigation.itemCount
+const HOUSE_DRILLDOWN_SHEET_CLASS = houseDrilldown.sheet
+const HOUSE_DRILLDOWN_ACTION_CLASS = houseDrilldown.action
+const HOUSE_DRILLDOWN_ROW_CLASS = houseDrilldown.row
+const HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS = houseDrilldown.progressTrack
+const HOUSE_DRILLDOWN_PROGRESS_FILL_CLASS = houseDrilldown.progressFill
+const HOUSE_DRILLDOWN_STAT_CARD_CLASS = houseDrilldown.statCard
+const HOUSE_DRILLDOWN_STAT_TITLE_CLASS = houseDrilldown.statTitle
+const HOUSE_DRILLDOWN_STAT_VALUE_CLASS = houseDrilldown.statValue
+const HOUSE_DRILLDOWN_HINT_CLASS = houseDrilldown.hint
+const HOUSE_DRILLDOWN_MICRO_VALUE_CLASS = houseDrilldown.microValue
+const HOUSE_DRILLDOWN_BADGE_CLASS = houseDrilldown.badge
+const HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS = houseDrilldown.badgeNeutral
+const HOUSE_DRILLDOWN_NOTE_SOFT_CLASS = houseDrilldown.noteSoft
+const HOUSE_DRILLDOWN_TABLE_ROW_CLASS = houseDrilldown.tableRow
 
 type WorkspaceInboxSignal = {
   unreadCount: number
@@ -276,6 +290,116 @@ function sortWorkspaces(
   })
 
   return next
+}
+
+function WorkspacesDrilldownPanel({
+  filteredWorkspaces,
+  filterCounts,
+  filterKey,
+  workspaceInboxSignals,
+}: {
+  filteredWorkspaces: WorkspaceRecord[]
+  filterCounts: Record<FilterKey, number>
+  filterKey: FilterKey
+  workspaceInboxSignals: Record<string, WorkspaceInboxSignal>
+}) {
+  const stageBuckets: Array<{ label: string; count: number }> = [
+    { label: 'Plan', count: 0 },
+    { label: 'Draft', count: 0 },
+    { label: 'QC', count: 0 },
+    { label: 'Archived', count: 0 },
+  ]
+  let unreadVisibleCount = 0
+  for (const workspace of filteredWorkspaces) {
+    const stage = workspaceStage(workspace)
+    const bucket = stageBuckets.find((item) => item.label === stage)
+    if (bucket) {
+      bucket.count += 1
+    }
+    unreadVisibleCount += workspaceInboxSignals[workspace.id]?.unreadCount || 0
+  }
+  const stageMax = Math.max(1, ...stageBuckets.map((item) => item.count))
+  const activeFilterLabel = FILTER_OPTIONS.find((option) => option.key === filterKey)?.label || 'All'
+  const recentWorkspaces = [...filteredWorkspaces]
+    .sort((left, right) => {
+      const leftValue = Date.parse(workspaceInboxSignals[left.id]?.lastActivityAt || left.updatedAt)
+      const rightValue = Date.parse(workspaceInboxSignals[right.id]?.lastActivityAt || right.updatedAt)
+      return rightValue - leftValue
+    })
+    .slice(0, 6)
+
+  return (
+    <div className="space-y-3">
+      <div className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
+        <h2 className={HOUSE_SECTION_TITLE_CLASS}>Workspace drilldown</h2>
+        <p className={HOUSE_SECTION_SUBTITLE_CLASS}>Filter snapshot and stage distribution.</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className={HOUSE_DRILLDOWN_STAT_CARD_CLASS}>
+          <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Visible</p>
+          <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{filteredWorkspaces.length}</p>
+        </div>
+        <div className={HOUSE_DRILLDOWN_STAT_CARD_CLASS}>
+          <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Unread</p>
+          <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{unreadVisibleCount}</p>
+        </div>
+        <div className={HOUSE_DRILLDOWN_STAT_CARD_CLASS}>
+          <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Active</p>
+          <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{filterCounts.active}</p>
+        </div>
+        <div className={HOUSE_DRILLDOWN_STAT_CARD_CLASS}>
+          <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Archived</p>
+          <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{filterCounts.archived}</p>
+        </div>
+      </div>
+
+      <div className="space-y-2 rounded-md border border-border/70 bg-background/80 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-micro uppercase text-muted-foreground">Stage mix</p>
+          <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS)}>
+            {activeFilterLabel}
+          </span>
+        </div>
+        {stageBuckets.map((bucket) => (
+          <div key={bucket.label} className={HOUSE_DRILLDOWN_ROW_CLASS}>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <p className={HOUSE_DRILLDOWN_HINT_CLASS}>{bucket.label}</p>
+              <p className={HOUSE_DRILLDOWN_MICRO_VALUE_CLASS}>{bucket.count}</p>
+            </div>
+            <div className={HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS}>
+              <span
+                className={HOUSE_DRILLDOWN_PROGRESS_FILL_CLASS}
+                style={{ width: `${Math.max(6, (bucket.count / stageMax) * 100)}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-2 rounded-md border border-border/70 bg-background/80 p-3">
+        <p className="text-micro uppercase text-muted-foreground">Recent activity</p>
+        {recentWorkspaces.length === 0 ? (
+          <p className={HOUSE_DRILLDOWN_NOTE_SOFT_CLASS}>No workspaces in this filter.</p>
+        ) : (
+          recentWorkspaces.map((workspace) => {
+            const signal = workspaceInboxSignals[workspace.id]
+            return (
+              <div key={workspace.id} className={cn('space-y-1 rounded-md border border-border/60 px-2 py-1.5', HOUSE_DRILLDOWN_TABLE_ROW_CLASS)}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-sm font-medium">{workspace.name}</p>
+                  <span className={HOUSE_DRILLDOWN_HINT_CLASS}>{signal?.unreadCount || 0} unread</span>
+                </div>
+                <p className={HOUSE_DRILLDOWN_NOTE_SOFT_CLASS}>
+                  Last activity {formatTimestamp(signal?.lastActivityAt || workspace.updatedAt)}
+                </p>
+              </div>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
 }
 
 function SortableHeader({
@@ -597,6 +721,8 @@ export function WorkspacesPage() {
   const [filterKey, setFilterKey] = useState<FilterKey>(() => parseFilterKey(searchParams.get('filter')))
   const [sortColumn, setSortColumn] = useState<SortColumn>(() => parseSortColumn(searchParams.get('sort')))
   const [sortDirection, setSortDirection] = useState<SortDirection>(() => parseSortDirection(searchParams.get('dir')))
+  const [workspaceDrilldownDesktopOpen, setWorkspaceDrilldownDesktopOpen] = useState(true)
+  const [workspaceDrilldownMobileOpen, setWorkspaceDrilldownMobileOpen] = useState(false)
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
   const [createError, setCreateError] = useState('')
   const [invitationStatus, setInvitationStatus] = useState('')
@@ -842,6 +968,12 @@ export function WorkspacesPage() {
       setSearchParams(nextParams, { replace: true })
     }
   }, [centerView, filterKey, viewMode, sortColumn, sortDirection, query, searchParams, setSearchParams])
+
+  useEffect(() => {
+    if (centerView !== 'workspaces') {
+      setWorkspaceDrilldownMobileOpen(false)
+    }
+  }, [centerView])
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
@@ -1220,7 +1352,15 @@ export function WorkspacesPage() {
     <div className="flex h-screen flex-col bg-background text-foreground">
       <TopBar scope="workspace" onOpenLeftNav={() => setLeftPanelOpen(true)} />
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[280px_minmax(0,1fr)]">
+      <div
+        className={cn(
+          'grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[280px_minmax(0,1fr)]',
+          centerView === 'workspaces' &&
+            (workspaceDrilldownDesktopOpen
+              ? 'xl:grid-cols-[280px_minmax(0,1fr)_22rem]'
+              : 'xl:grid-cols-[280px_minmax(0,1fr)_3rem]'),
+        )}
+      >
         <aside className="hidden border-r border-border nav:block">
           <WorkspacesHomeSidebar
             centerView={centerView}
@@ -1317,6 +1457,28 @@ export function WorkspacesPage() {
                     ) : null}
                   </div>
                   <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS, 'xl:hidden')}
+                      onClick={() => setWorkspaceDrilldownMobileOpen(true)}
+                    >
+                      <PanelRightOpen className="mr-1 h-3.5 w-3.5" />
+                      Drilldown
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS, 'hidden xl:inline-flex')}
+                      onClick={() => setWorkspaceDrilldownDesktopOpen((current) => !current)}
+                    >
+                      {workspaceDrilldownDesktopOpen ? (
+                        <PanelRightClose className="mr-1 h-3.5 w-3.5" />
+                      ) : (
+                        <PanelRightOpen className="mr-1 h-3.5 w-3.5" />
+                      )}
+                      {workspaceDrilldownDesktopOpen ? 'Collapse chart' : 'Expand chart'}
+                    </Button>
                     <button
                       type="button"
                       onClick={() => setViewMode('table')}
@@ -1677,7 +1839,47 @@ export function WorkspacesPage() {
             </div>
           </ScrollArea>
         </main>
+
+        {centerView === 'workspaces' ? (
+          <aside className="hidden border-l border-border xl:block">
+            {workspaceDrilldownDesktopOpen ? (
+              <ScrollArea className="h-full">
+                <div className="space-y-3 p-3">
+                  <WorkspacesDrilldownPanel
+                    filteredWorkspaces={filteredWorkspaces}
+                    filterCounts={filterCounts}
+                    filterKey={filterKey}
+                    workspaceInboxSignals={workspaceInboxSignals}
+                  />
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="flex h-full items-start justify-center pt-3">
+                <button
+                  type="button"
+                  onClick={() => setWorkspaceDrilldownDesktopOpen(true)}
+                  className={cn(HOUSE_DRILLDOWN_ACTION_CLASS, 'inline-flex h-8 w-8 items-center justify-center p-0')}
+                  aria-label="Expand workspace drilldown panel"
+                  title="Expand workspace drilldown panel"
+                >
+                  <PanelRightOpen className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </aside>
+        ) : null}
       </div>
+
+      <Sheet open={workspaceDrilldownMobileOpen} onOpenChange={setWorkspaceDrilldownMobileOpen}>
+        <SheetContent side="right" className={HOUSE_DRILLDOWN_SHEET_CLASS}>
+          <WorkspacesDrilldownPanel
+            filteredWorkspaces={filteredWorkspaces}
+            filterCounts={filterCounts}
+            filterKey={filterKey}
+            workspaceInboxSignals={workspaceInboxSignals}
+          />
+        </SheetContent>
+      </Sheet>
 
       <Sheet open={addCollaboratorSheetOpen} onOpenChange={onAddCollaboratorSheetOpenChange}>
         <SheetContent side="right" className="w-full max-w-sz-480 p-0 sm:w-sz-480">
