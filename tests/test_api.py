@@ -2688,6 +2688,11 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
     assert overview_payload["total_users"] >= 2
     assert overview_payload["admin_users"] >= 1
     assert overview_payload["active_users"] >= 2
+    assert overview_payload["active_users_24h"] >= 1
+    assert overview_payload["active_users_7d"] >= 1
+    assert overview_payload["active_users_30d"] >= 1
+    assert overview_payload["retention_7d_pct"] >= 0
+    assert overview_payload["retention_30d_pct"] >= 0
     assert overview_payload["inactive_users"] >= 0
 
     assert users_response.status_code == 200
