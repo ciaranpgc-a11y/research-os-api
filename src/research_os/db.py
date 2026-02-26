@@ -21,6 +21,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     create_engine,
+    text,
 )
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import (
@@ -1415,10 +1416,154 @@ def get_session_factory():
     return _SessionLocal
 
 
+def _sqlite_table_exists(connection, table_name: str) -> bool:
+    row = connection.execute(
+        text(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name = :table_name"
+        ),
+        {"table_name": table_name},
+    ).first()
+    return row is not None
+
+
+def _sqlite_table_columns(connection, table_name: str) -> set[str]:
+    if not _sqlite_table_exists(connection, table_name):
+        return set()
+    rows = connection.execute(text(f"PRAGMA table_info({table_name})")).all()
+    columns: set[str] = set()
+    for row in rows:
+        if len(row) > 1:
+            columns.add(str(row[1]))
+    return columns
+
+
+def _sqlite_add_column_if_missing(
+    connection, *, table_name: str, column_name: str, column_sql: str
+) -> bool:
+    columns = _sqlite_table_columns(connection, table_name)
+    if column_name in columns:
+        return False
+    connection.execute(
+        text(
+            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}"
+        )
+    )
+    return True
+
+
+def _ensure_sqlite_schema_compatibility(engine) -> None:
+    if engine.dialect.name != "sqlite":
+        return
+    with engine.begin() as connection:
+        if _sqlite_table_exists(connection, "projects"):
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="projects",
+                column_name="owner_user_id",
+                column_sql="VARCHAR(36)",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="projects",
+                column_name="collaborator_user_ids",
+                column_sql="JSON",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="projects",
+                column_name="workspace_id",
+                column_sql="VARCHAR(128)",
+            )
+            connection.execute(
+                text(
+                    "UPDATE projects SET collaborator_user_ids = '[]' "
+                    "WHERE collaborator_user_ids IS NULL"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_projects_owner_user_id "
+                    "ON projects (owner_user_id)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_projects_workspace_id "
+                    "ON projects (workspace_id)"
+                )
+            )
+
+        if _sqlite_table_exists(connection, "data_library_assets"):
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="data_library_assets",
+                column_name="owner_user_id",
+                column_sql="VARCHAR(36)",
+            )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="data_library_assets",
+                column_name="shared_with_user_ids",
+                column_sql="JSON",
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_data_library_assets_owner_user_id "
+                    "ON data_library_assets (owner_user_id)"
+                )
+            )
+
+            project_columns = _sqlite_table_columns(connection, "projects")
+            asset_columns = _sqlite_table_columns(connection, "data_library_assets")
+            if (
+                "project_id" in asset_columns
+                and "owner_user_id" in asset_columns
+                and "owner_user_id" in project_columns
+            ):
+                connection.execute(
+                    text(
+                        "UPDATE data_library_assets "
+                        "SET owner_user_id = ("
+                        "  SELECT projects.owner_user_id "
+                        "  FROM projects "
+                        "  WHERE projects.id = data_library_assets.project_id"
+                        ") "
+                        "WHERE owner_user_id IS NULL "
+                        "  AND project_id IS NOT NULL "
+                        "  AND EXISTS ("
+                        "    SELECT 1 FROM projects "
+                        "    WHERE projects.id = data_library_assets.project_id "
+                        "      AND projects.owner_user_id IS NOT NULL"
+                        "  )"
+                    )
+                )
+
+            if _sqlite_table_exists(connection, "users"):
+                user_count_row = connection.execute(
+                    text("SELECT COUNT(*) FROM users")
+                ).first()
+                user_count = int(user_count_row[0] or 0) if user_count_row else 0
+                if user_count == 1:
+                    owner_row = connection.execute(
+                        text("SELECT id FROM users LIMIT 1")
+                    ).first()
+                    only_user_id = str(owner_row[0]) if owner_row and owner_row[0] else ""
+                    if only_user_id:
+                        connection.execute(
+                            text(
+                                "UPDATE data_library_assets "
+                                "SET owner_user_id = :owner_user_id "
+                                "WHERE owner_user_id IS NULL"
+                            ),
+                            {"owner_user_id": only_user_id},
+                        )
+
+
 def create_all_tables() -> None:
     engine = get_engine()
     try:
         Base.metadata.create_all(bind=engine)
+        _ensure_sqlite_schema_compatibility(engine)
     except OperationalError as exc:
         # Concurrent startup/scheduler table checks can race in SQLite tests.
         if "already exists" not in str(exc).lower():

@@ -3,7 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 import sqlite3
 
-from research_os.db import get_database_url
+from research_os.db import (
+    DataLibraryAsset,
+    User,
+    create_all_tables,
+    get_database_url,
+    reset_database_state,
+    session_scope,
+)
+from research_os.services.data_planner_service import list_library_assets
 
 
 def _sqlite_url_to_path(url: str) -> Path:
@@ -121,3 +129,132 @@ def test_get_database_url_keeps_explicit_absolute_sqlite_url(monkeypatch, tmp_pa
     resolved = _sqlite_url_to_path(url)
 
     assert resolved == explicit_path
+
+
+def test_create_all_tables_repairs_legacy_asset_and_project_columns(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    db_path = (tmp_path / "legacy_schema.db").resolve()
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{db_path.as_posix()}")
+    data_root = (tmp_path / "data_library").resolve()
+    monkeypatch.setenv("DATA_LIBRARY_ROOT", str(data_root))
+    reset_database_state()
+
+    create_all_tables()
+    data_root.mkdir(parents=True, exist_ok=True)
+    storage_path = (data_root / "legacy-asset.csv").resolve()
+    storage_path.write_bytes(b"col_a,col_b\n1,2\n")
+
+    with session_scope() as session:
+        user = User(
+            email="legacy-schema-user@example.com",
+            password_hash="pbkdf2_sha256$390000$test$test",
+            name="Legacy Schema User",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+        asset = DataLibraryAsset(
+            owner_user_id=user_id,
+            project_id=None,
+            shared_with_user_ids=[],
+            filename="legacy-asset.csv",
+            kind="csv",
+            mime_type="text/csv",
+            byte_size=storage_path.stat().st_size,
+            storage_path=str(storage_path),
+        )
+        session.add(asset)
+        session.flush()
+        asset_id = str(asset.id)
+
+    connection = sqlite3.connect(str(db_path))
+    cursor = connection.cursor()
+    cursor.execute("ALTER TABLE data_library_assets RENAME TO data_library_assets_legacy_source")
+    cursor.execute(
+        """
+        CREATE TABLE data_library_assets (
+            id VARCHAR(36) PRIMARY KEY NOT NULL,
+            project_id VARCHAR(36),
+            filename VARCHAR(255) NOT NULL,
+            kind VARCHAR(32) NOT NULL,
+            mime_type VARCHAR(128),
+            byte_size INTEGER NOT NULL,
+            storage_path TEXT NOT NULL,
+            uploaded_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    cursor.execute(
+        """
+        INSERT INTO data_library_assets (
+            id, project_id, filename, kind, mime_type, byte_size, storage_path, uploaded_at, updated_at
+        )
+        SELECT
+            id, project_id, filename, kind, mime_type, byte_size, storage_path, uploaded_at, updated_at
+        FROM data_library_assets_legacy_source
+        """
+    )
+    cursor.execute("DROP TABLE data_library_assets_legacy_source")
+
+    cursor.execute("ALTER TABLE projects RENAME TO projects_legacy_source")
+    cursor.execute(
+        """
+        CREATE TABLE projects (
+            id VARCHAR(36) PRIMARY KEY NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            target_journal VARCHAR(128) NOT NULL,
+            journal_voice VARCHAR(128),
+            language VARCHAR(24) NOT NULL,
+            study_type VARCHAR(128),
+            study_brief TEXT,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    cursor.execute(
+        """
+        INSERT INTO projects (
+            id, title, target_journal, journal_voice, language, study_type, study_brief, created_at, updated_at
+        )
+        SELECT
+            id, title, target_journal, journal_voice, language, study_type, study_brief, created_at, updated_at
+        FROM projects_legacy_source
+        """
+    )
+    cursor.execute("DROP TABLE projects_legacy_source")
+    connection.commit()
+    connection.close()
+
+    reset_database_state()
+    create_all_tables()
+
+    verify_connection = sqlite3.connect(str(db_path))
+    verify_cursor = verify_connection.cursor()
+    verify_cursor.execute("PRAGMA table_info(data_library_assets)")
+    asset_columns = {str(row[1]) for row in verify_cursor.fetchall()}
+    assert "owner_user_id" in asset_columns
+    assert "shared_with_user_ids" in asset_columns
+
+    verify_cursor.execute("PRAGMA table_info(projects)")
+    project_columns = {str(row[1]) for row in verify_cursor.fetchall()}
+    assert "owner_user_id" in project_columns
+    assert "collaborator_user_ids" in project_columns
+    assert "workspace_id" in project_columns
+
+    verify_cursor.execute(
+        "SELECT owner_user_id FROM data_library_assets WHERE id = ?",
+        (asset_id,),
+    )
+    owner_row = verify_cursor.fetchone()
+    verify_connection.close()
+    assert owner_row is not None
+    assert str(owner_row[0] or "") == user_id
+
+    payload = list_library_assets(project_id=None, user_id=user_id)
+    listed_ids = [str(item.get("id")) for item in payload.get("items", [])]
+    assert asset_id in listed_ids

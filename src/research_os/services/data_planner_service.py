@@ -498,6 +498,14 @@ def _resolve_owner_user_id_from_metadata(*, session, payload: dict[str, Any]) ->
     return None
 
 
+def _single_user_owner_id(*, session) -> str | None:
+    rows = session.scalars(select(User.id).limit(2)).all()
+    if len(rows) != 1:
+        return None
+    clean = _trim(rows[0])
+    return clean or None
+
+
 def _resolve_project_id_from_metadata(*, session, payload: dict[str, Any]) -> str | None:
     project_id = _trim(payload.get("project_id"))
     if not project_id:
@@ -627,6 +635,7 @@ def _restore_asset_row_from_metadata(
     asset_id: str | None = None,
 ) -> bool:
     requested_asset_id = _trim(asset_id)
+    fallback_single_owner_user_id = _single_user_owner_id(session=session)
     metadata_paths = _iter_metadata_paths(
         root=primary_root,
         requested_asset_id=requested_asset_id or None,
@@ -651,6 +660,8 @@ def _restore_asset_row_from_metadata(
             continue
         existing = session.get(DataLibraryAsset, metadata_asset_id)
         owner_user_id = _resolve_owner_user_id_from_metadata(session=session, payload=payload)
+        if not owner_user_id and fallback_single_owner_user_id:
+            owner_user_id = fallback_single_owner_user_id
         project_id = _resolve_project_id_from_metadata(session=session, payload=payload)
         shared_with_user_ids = _resolve_shared_ids_from_metadata(
             session=session,
@@ -889,7 +900,13 @@ def list_library_assets(
             )
             if restored_any:
                 rows = session.scalars(stmt).all()
+        fallback_single_owner_user_id = _single_user_owner_id(session=session)
         for row in rows:
+            if (
+                not _trim(row.owner_user_id)
+                and fallback_single_owner_user_id
+            ):
+                row.owner_user_id = fallback_single_owner_user_id
             resolved_storage_path = _resolve_existing_asset_path(row, storage_root)
             if resolved_storage_path is None:
                 continue
