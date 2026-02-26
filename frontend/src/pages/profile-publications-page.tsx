@@ -2212,45 +2212,46 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           <h2 className={publicationsHouseHeadings.sectionTitle}>Publication library</h2>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Filter by title, journal, DOI, PMID, author"
+              className="w-sz-280"
+            />
+            <select
+              value={filterKey}
+              onChange={(event) => setFilterKey(event.target.value as PublicationFilterKey)}
+              className={`h-9 rounded-md px-2 text-sm ${HOUSE_SELECT_CLASS}`}
+            >
+              <option value="all">All works</option>
+              <option value="cited">Cited only</option>
+              <option value="with_doi">With DOI</option>
+              <option value="with_abstract">With abstract</option>
+              <option value="with_pmid">With PMID</option>
+            </select>
+            <select
+              value={typeFilter}
+              onChange={(event) => setTypeFilter(event.target.value)}
+              className={`h-9 rounded-md px-2 text-sm ${HOUSE_SELECT_CLASS}`}
+            >
+              <option value="all">All types</option>
+              {typeFilterOptions.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </div>
+          {autoOaStatus ? (
+            <p className="text-xs text-muted-foreground">
+              {autoOaStatus}
+              {autoOaFinding ? ' (running in background)' : ''}
+            </p>
+          ) : null}
+
+          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
             <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Filter by title, journal, DOI, PMID, author"
-                  className="w-sz-280"
-                />
-                <select
-                  value={filterKey}
-                  onChange={(event) => setFilterKey(event.target.value as PublicationFilterKey)}
-                  className={`h-9 rounded-md px-2 text-sm ${HOUSE_SELECT_CLASS}`}
-                >
-                  <option value="all">All works</option>
-                  <option value="cited">Cited only</option>
-                  <option value="with_doi">With DOI</option>
-                  <option value="with_abstract">With abstract</option>
-                  <option value="with_pmid">With PMID</option>
-                </select>
-                <select
-                  value={typeFilter}
-                  onChange={(event) => setTypeFilter(event.target.value)}
-                  className={`h-9 rounded-md px-2 text-sm ${HOUSE_SELECT_CLASS}`}
-                >
-                  <option value="all">All types</option>
-                  {typeFilterOptions.map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {autoOaStatus ? (
-                <p className="text-xs text-muted-foreground">
-                  {autoOaStatus}
-                  {autoOaFinding ? ' (running in background)' : ''}
-                </p>
-              ) : null}
 
               {filteredWorks.length === 0 ? (
                 <div className="rounded border border-dashed border-border p-4 text-sm text-muted-foreground">
@@ -2452,7 +2453,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               )}
             </div>
 
-            <Card className={`h-fit xl:sticky xl:top-4 ${HOUSE_PUBLICATION_DETAIL_PANEL_CLASS}`}>
+            <Card className={`self-start h-fit xl:sticky xl:top-4 ${HOUSE_PUBLICATION_DETAIL_PANEL_CLASS}`}>
               {!selectedWork ? (
                 <CardContent className="p-3 text-sm text-muted-foreground">
                   Select a publication to view details.
