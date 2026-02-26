@@ -925,6 +925,10 @@ def _extract_session_token(request: Request) -> str:
     return cookie_token
 
 
+def _extract_account_key_hint(request: Request) -> str:
+    return str(request.headers.get("X-AAWE-Account-Key", "")).strip()
+
+
 def _normalize_optional_id(value: Any) -> str | None:
     clean = str(value or "").strip()
     if not clean:
@@ -4008,6 +4012,7 @@ async def v1_upload_library_assets(
         return auth_error
     try:
         project_id_value = _normalize_optional_id(project_id)
+        account_key_hint = _extract_account_key_hint(request)
         file_payloads: list[tuple[str, str | None, bytes]] = []
         content_type = request.headers.get("content-type", "").lower()
 
@@ -4071,6 +4076,7 @@ async def v1_upload_library_assets(
             files=file_payloads,
             project_id=project_id_value,
             user_id=requesting_user_id,
+            account_key_hint=account_key_hint,
         )
         return LibraryAssetUploadResponse(asset_ids=asset_ids)
     except PlannerValidationError as exc:
@@ -4098,9 +4104,11 @@ def v1_list_library_assets(
     if auth_error is not None:
         return auth_error
     try:
+        account_key_hint = _extract_account_key_hint(request)
         payload = list_library_assets(
             project_id=project_id,
             user_id=requesting_user_id,
+            account_key_hint=account_key_hint,
             query=query,
             ownership=ownership,
             page=page,
@@ -4138,9 +4146,11 @@ def v1_update_library_asset_access(
     if auth_error is not None:
         return auth_error
     try:
+        account_key_hint = _extract_account_key_hint(request)
         updated = update_library_asset_access(
             asset_id=asset_id,
             user_id=requesting_user_id or "",
+            account_key_hint=account_key_hint,
             collaborator_user_ids=payload.collaborator_user_ids,
             collaborator_names=payload.collaborator_names,
         )
@@ -4165,9 +4175,11 @@ def v1_download_library_asset(
     if auth_error is not None:
         return auth_error
     try:
+        account_key_hint = _extract_account_key_hint(request)
         payload = download_library_asset(
             asset_id=asset_id,
             user_id=requesting_user_id or "",
+            account_key_hint=account_key_hint,
         )
         file_name = str(payload.get("file_name") or "asset.bin")
         media_type = str(payload.get("content_type") or "application/octet-stream")

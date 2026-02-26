@@ -118,7 +118,9 @@ def _resolve_user_ids_by_names(
     return deduped_ids
 
 
-def _related_user_ids_for_user(*, session, user_id: str | None) -> set[str]:
+def _related_user_ids_for_user(
+    *, session, user_id: str | None, account_key_hint: str | None = None
+) -> set[str]:
     clean_user_id = _trim(user_id)
     if not clean_user_id:
         return set()
@@ -128,15 +130,38 @@ def _related_user_ids_for_user(*, session, user_id: str | None) -> set[str]:
     if current_user is None:
         return related_ids
 
+    hinted_account_key = _trim(account_key_hint)
     account_key = _trim(current_user.account_key)
+    if hinted_account_key:
+        hinted_owner = session.scalars(
+            select(User).where(User.account_key == hinted_account_key)
+        ).first()
+        if hinted_owner is None:
+            if hinted_account_key != account_key:
+                current_user.account_key = hinted_account_key
+                account_key = hinted_account_key
+        else:
+            hinted_owner_id = _trim(hinted_owner.id)
+            if hinted_owner_id:
+                related_ids.add(hinted_owner_id)
+            if hinted_owner_id == clean_user_id and hinted_account_key != account_key:
+                current_user.account_key = hinted_account_key
+                account_key = hinted_account_key
+
     normalized_email = _trim(current_user.email).lower()
     orcid_id = _trim(current_user.orcid_id)
     google_sub = _trim(current_user.google_sub)
     microsoft_sub = _trim(current_user.microsoft_sub)
 
-    identity_predicates = []
+    account_keys = set()
     if account_key:
-        identity_predicates.append(User.account_key == account_key)
+        account_keys.add(account_key)
+    if hinted_account_key:
+        account_keys.add(hinted_account_key)
+
+    identity_predicates = []
+    for key in sorted(account_keys):
+        identity_predicates.append(User.account_key == key)
     if normalized_email:
         identity_predicates.append(func.lower(User.email) == normalized_email)
     if orcid_id:
@@ -945,6 +970,7 @@ def upload_library_assets(
     files: list[tuple[str, str | None, bytes]],
     project_id: str | None = None,
     user_id: str | None = None,
+    account_key_hint: str | None = None,
 ) -> list[str]:
     create_all_tables()
     if not files:
@@ -956,6 +982,11 @@ def upload_library_assets(
         clean_user_id = _trim(user_id) or None
         if not clean_user_id:
             raise PlannerValidationError("Session token is required.")
+        _related_user_ids_for_user(
+            session=session,
+            user_id=clean_user_id,
+            account_key_hint=account_key_hint,
+        )
         default_shared_with_ids: list[str] | None = []
         if clean_project_id:
             project = _resolve_project_for_user(
@@ -996,6 +1027,7 @@ def list_library_assets(
     *,
     project_id: str | None = None,
     user_id: str | None = None,
+    account_key_hint: str | None = None,
     query: str | None = None,
     ownership: Literal["all", "owned", "shared"] = "all",
     page: int = 1,
@@ -1046,6 +1078,7 @@ def list_library_assets(
         related_user_ids = _related_user_ids_for_user(
             session=session,
             user_id=clean_user_id,
+            account_key_hint=account_key_hint,
         )
         if clean_user_id not in related_user_ids:
             related_user_ids.add(clean_user_id)
@@ -1250,6 +1283,7 @@ def update_library_asset_access(
     *,
     asset_id: str,
     user_id: str,
+    account_key_hint: str | None = None,
     collaborator_user_ids: list[str] | None = None,
     collaborator_names: list[str] | None = None,
 ) -> dict[str, object]:
@@ -1266,6 +1300,7 @@ def update_library_asset_access(
         related_user_ids = _related_user_ids_for_user(
             session=session,
             user_id=clean_user_id,
+            account_key_hint=account_key_hint,
         )
         if clean_user_id not in related_user_ids:
             related_user_ids.add(clean_user_id)
@@ -1341,7 +1376,7 @@ def update_library_asset_access(
 
 
 def download_library_asset(
-    *, asset_id: str, user_id: str
+    *, asset_id: str, user_id: str, account_key_hint: str | None = None
 ) -> dict[str, object]:
     create_all_tables()
     clean_asset_id = _trim(asset_id)
@@ -1356,6 +1391,7 @@ def download_library_asset(
         related_user_ids = _related_user_ids_for_user(
             session=session,
             user_id=clean_user_id,
+            account_key_hint=account_key_hint,
         )
         if clean_user_id not in related_user_ids:
             related_user_ids.add(clean_user_id)

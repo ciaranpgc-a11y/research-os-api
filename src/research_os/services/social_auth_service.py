@@ -50,6 +50,7 @@ def _as_utc(value: datetime | None) -> datetime | None:
 def _serialize_user(user: User) -> dict[str, object]:
     return {
         "id": user.id,
+        "account_key": user.account_key,
         "email": user.email,
         "name": user.name,
         "is_active": bool(user.is_active),

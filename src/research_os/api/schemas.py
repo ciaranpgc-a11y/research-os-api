@@ -792,6 +792,7 @@ class ReferencePackRequest(BaseModel):
 
 class AuthUserResponse(BaseModel):
     id: str
+    account_key: str | None = None
     email: str
     name: str
     is_active: bool

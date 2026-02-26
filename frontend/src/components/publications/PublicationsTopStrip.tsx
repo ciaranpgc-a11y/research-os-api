@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Download, Eye, EyeOff, FileText, Share2 } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui/card'
@@ -17,6 +17,7 @@ import type {
 import { dashboardTileStyles } from './dashboard-tile-styles'
 import {
   publicationsHouseActions,
+  publicationsHouseDividers,
   publicationsHouseCharts,
   publicationsHouseDrilldown,
   publicationsHouseHeadings,
@@ -297,6 +298,7 @@ const HOUSE_SURFACE_METRIC_PILL_CLASS = publicationsHouseSurfaces.metricPill
 const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS = publicationsHouseSurfaces.metricPillPublications
 const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_REGULAR_CLASS = publicationsHouseSurfaces.metricPillPublicationsRegular
 const HOUSE_SURFACE_LEFT_BORDER_CLASS = publicationsHouseSurfaces.leftBorder
+const HOUSE_DIVIDER_BORDER_SOFT_CLASS = publicationsHouseDividers.borderSoft
 const HOUSE_ACTIONS_SECTION_TOOLS_CLASS = publicationsHouseActions.sectionTools
 const HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS = publicationsHouseActions.sectionToolsPublications
 const HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS = publicationsHouseActions.sectionToolButton
@@ -333,6 +335,8 @@ const HOUSE_DRILLDOWN_CHART_GRID_SVG_CLASS = publicationsHouseDrilldown.chartGri
 const HOUSE_DRILLDOWN_CHART_AREA_SVG_CLASS = publicationsHouseDrilldown.chartAreaSvg
 const HOUSE_DRILLDOWN_CHART_MOVING_SVG_CLASS = publicationsHouseDrilldown.chartMovingSvg
 const HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS = publicationsHouseDrilldown.chartMainSvg
+const HOUSE_DRILLDOWN_CHART_TOOLTIP_CLASS = publicationsHouseDrilldown.chartTooltip
+const HOUSE_DRILLDOWN_SKELETON_BLOCK_CLASS = publicationsHouseDrilldown.skeletonBlock
 const HOUSE_DRILLDOWN_BAR_SELECTED_CLASS = publicationsHouseDrilldown.barSelected
 const HOUSE_DRILLDOWN_BAR_SELECTED_OUTLINE_CLASS = publicationsHouseDrilldown.barSelectedOutline
 const HOUSE_DRILLDOWN_TABLE_ROW_CLASS = publicationsHouseDrilldown.tableRow
@@ -348,10 +352,25 @@ const HOUSE_CHART_GRID_DASHED_CLASS = publicationsHouseCharts.gridDashed
 const HOUSE_CHART_AXIS_TEXT_CLASS = publicationsHouseCharts.axisText
 const HOUSE_CHART_AXIS_SUBTEXT_CLASS = publicationsHouseCharts.axisSubtext
 const HOUSE_CHART_AXIS_WINDOW_SUBTEXT_CLASS = publicationsHouseCharts.axisWindowSubtext
+const HOUSE_CHART_LINE_SOFT_SVG_CLASS = publicationsHouseCharts.lineSoftSvg
+const HOUSE_CHART_RING_TRACK_SVG_CLASS = publicationsHouseCharts.ringTrackSvg
+const HOUSE_CHART_RING_MAIN_SVG_CLASS = publicationsHouseCharts.ringMainSvg
+const HOUSE_CHART_RING_SOFT_SVG_CLASS = publicationsHouseCharts.ringSoftSvg
+const HOUSE_CHART_MINI_DONUT_CLASS = publicationsHouseCharts.miniDonut
 const HOUSE_METRIC_PROGRESS_PANEL_CLASS =
-  'flex flex-1 flex-col gap-2.5 rounded-sm border border-[hsl(var(--stroke-strong)/0.92)] bg-[hsl(var(--tone-neutral-50))] px-2 py-2 transition-[opacity,transform,filter] duration-320 ease-out'
+  cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'flex flex-1 flex-col gap-2.5 px-2 py-2 transition-[opacity,transform,filter] duration-320 ease-out')
 const HOUSE_LINE_CHART_SURFACE_CLASS =
-  'relative flex-1 rounded-sm border border-[hsl(var(--stroke-strong)/0.92)] bg-[hsl(var(--tone-neutral-50))] px-1.5 pb-1.5 pt-2'
+  cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'relative flex-1 px-1.5 pb-1.5 pt-2')
+const HOUSE_DRILLDOWN_TOOLTIP_CLASS =
+  cn(
+    HOUSE_DRILLDOWN_CHART_TOOLTIP_CLASS,
+    'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out',
+  )
+const HOUSE_DRILLDOWN_TOOLTIP_WIDE_CLASS =
+  cn(
+    HOUSE_DRILLDOWN_CHART_TOOLTIP_CLASS,
+    'pointer-events-none absolute left-1/2 z-[2] w-[calc(100%-0.65rem)] max-w-full -translate-x-1/2 px-2 py-1 text-center text-caption leading-snug break-words transition-all duration-150 ease-out',
+  )
 
 const MAX_PUBLICATION_CHART_BARS = 12
 
@@ -1131,7 +1150,7 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
                 >
                   <span
                     className={cn(
-                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-caption leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
+                      HOUSE_DRILLDOWN_TOOLTIP_CLASS,
                       isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
                     )}
                     style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
@@ -1163,7 +1182,7 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
         >
           {model.bars.map((bar) => (
             <div key={`${bar.key}-axis`} className="text-center leading-none">
-              <p className="break-words px-0.5 text-caption font-semibold leading-tight text-[hsl(var(--tone-neutral-600))]">{bar.axisLabel}</p>
+              <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-0.5 leading-tight')}>{bar.axisLabel}</p>
               {bar.axisSubLabel ? (
                 <p className={cn(HOUSE_CHART_AXIS_SUBTEXT_CLASS, 'break-words px-0.5')}>
                   {bar.axisSubLabel}
@@ -1232,7 +1251,7 @@ function TotalCitationsTile({
           <p className={cn('min-h-[2.3rem] leading-snug', HOUSE_TEXT_SOFT_CLASS)}>Last 5 years shown</p>
         </div>
 
-        <div className="min-h-0 border-l border-[hsl(var(--stroke-strong)/0.92)] pl-3">
+        <div className={cn('min-h-0 border-l pl-3', HOUSE_DIVIDER_BORDER_SOFT_CLASS)}>
           <TotalCitationsModeChart tile={tile} />
         </div>
       </div>
@@ -1317,7 +1336,7 @@ function StructuredMetricTile({
             </div>
           ) : null}
         </div>
-        <div className="flex h-full min-h-0 items-center border-l border-[hsl(var(--stroke-strong)/0.92)] pl-3">
+        <div className={cn('flex h-full min-h-0 items-center border-l pl-3', HOUSE_DIVIDER_BORDER_SOFT_CLASS)}>
           {visual}
         </div>
       </div>
@@ -1441,7 +1460,7 @@ function HIndexYearChart({
                 >
                   <span
                     className={cn(
-                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-caption leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
+                      HOUSE_DRILLDOWN_TOOLTIP_CLASS,
                       isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
                     )}
                     style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
@@ -1474,7 +1493,7 @@ function HIndexYearChart({
         >
           {bars.map((bar, index) => (
             <div key={`${bar.year}-${index}-axis`} className={cn('text-center leading-none', HOUSE_TOGGLE_CHART_LABEL_CLASS)}>
-              <p className="break-words px-0.5 text-caption font-semibold leading-tight text-[hsl(var(--tone-neutral-600))]">{String(bar.year).slice(-2)}</p>
+              <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-0.5 leading-tight')}>{String(bar.year).slice(-2)}</p>
               {bar.current ? (
                 <p className={cn(HOUSE_CHART_AXIS_SUBTEXT_CLASS, 'break-words px-0.5')}>
                   YTD
@@ -1607,8 +1626,46 @@ function PublicationsPerYearChart({
     return { bars: grouped.slice(-MAX_PUBLICATION_CHART_BARS), bucketSize }
   }, [fullYearLabels, useCompactAllRangeLabels, windowedHistoryBars])
 
-  const activeBars = isCompactTileMode ? compactTileBars : groupedYearBars.bars
-  const activeBucketSize = isCompactTileMode ? 1 : groupedYearBars.bucketSize
+  const usingMonthlyBars = effectiveWindowMode === '1y'
+  const groupedMonthBars = useMemo(() => {
+    if (!usingMonthlyBars) {
+      return { bars: [] as PublicationChartBar[], bucketSize: 1, rangeLabel: null as string | null }
+    }
+    const sourceValues = toNumberArray(chartData.monthly_values_12m).map((item) => Math.max(0, item))
+    const sourceLabels = toStringArray(chartData.month_labels_12m)
+    const annualFallback = Math.max(0, windowedHistoryBars[windowedHistoryBars.length - 1]?.value || 0)
+    const values12 = sourceValues.length >= 12
+      ? sourceValues.slice(-12)
+      : sourceValues.length > 0
+        ? [...Array.from({ length: 12 - sourceValues.length }, () => 0), ...sourceValues]
+        : Array.from({ length: 12 }, () => annualFallback / 12)
+    const labels12 = sourceLabels.length >= 12
+      ? sourceLabels.slice(-12)
+      : fallbackMonthLabels(12)
+    const bars: PublicationChartBar[] = values12.map((value, index) => ({
+      key: `month-${index}-${labels12[index] || `M${index + 1}`}`,
+      value: Math.max(0, value),
+      current: index === values12.length - 1,
+      axisLabel: labels12[index] || `M${index + 1}`,
+      axisSubLabel: index === values12.length - 1 ? 'YTD' : undefined,
+    }))
+    return {
+      bars,
+      bucketSize: 1,
+      rangeLabel: `${labels12[0] || 'Start'}-${labels12[labels12.length - 1] || 'End'}`,
+    }
+  }, [chartData.month_labels_12m, chartData.monthly_values_12m, usingMonthlyBars, windowedHistoryBars])
+
+  const activeBars = isCompactTileMode
+    ? compactTileBars
+    : usingMonthlyBars
+      ? groupedMonthBars.bars
+      : groupedYearBars.bars
+  const activeBucketSize = isCompactTileMode
+    ? 1
+    : usingMonthlyBars
+      ? groupedMonthBars.bucketSize
+      : groupedYearBars.bucketSize
   const meanValue = isCompactTileMode && Number.isFinite(meanValueRaw) && meanValueRaw >= 0
     ? meanValueRaw
     : activeBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0) / Math.max(1, activeBars.length)
@@ -1654,20 +1711,24 @@ function PublicationsPerYearChart({
   const yAxisTickValues = axisScale
     ? axisScale.ticks
     : [0, axisMax * 0.25, axisMax * 0.5, axisMax * 0.75, axisMax]
+  const maxYearlyValue = Math.max(1, ...historyBars.map((bar) => Math.max(0, bar.value)))
+  const maxMonthlyValue = Math.max(0, ...groupedMonthBars.bars.map((bar) => Math.max(0, bar.value)))
+  const maxWindowValue = Math.max(maxYearlyValue, maxMonthlyValue)
+  const stableToggleTickValues = enableWindowToggle ? buildNiceAxis(maxWindowValue).ticks : yAxisTickValues
   const gridTickValues = yAxisTickValues.slice(1, -1)
-  const resolvedXAxisLabel = xAxisLabel
+  const resolvedXAxisLabel = usingMonthlyBars ? 'Publication month' : xAxisLabel
   const xAxisLabelLayout = buildChartAxisLayout({
     axisLabels: renderBars.map((bar) => bar.axisLabel),
     axisSubLabels: renderBars.map((bar) => bar.axisSubLabel || null),
     showXAxisName: showAxes,
     xAxisName: showAxes ? resolvedXAxisLabel : null,
-    dense: renderBars.length >= 7,
+    dense: renderBars.length >= 7 || usingMonthlyBars,
     maxLabelLines: 2,
     maxSubLabelLines: 2,
     maxAxisNameLines: 2,
   })
   const yAxisPanelWidthRem = showAxes
-    ? buildYAxisPanelWidthRem(yAxisTickValues, Boolean(yAxisLabel))
+    ? buildYAxisPanelWidthRem(stableToggleTickValues, Boolean(yAxisLabel))
     : 0
   const chartLeftInset = showAxes ? `${yAxisPanelWidthRem + 0.55}rem` : '0.5rem'
 
@@ -1694,6 +1755,7 @@ function PublicationsPerYearChart({
   }
   const yAxisTickOffsetRem = 0.4
   const activeWindowIndex = PUBLICATIONS_WINDOW_OPTIONS.findIndex((option) => option.value === windowMode)
+  const monthRangeLabel = usingMonthlyBars ? groupedMonthBars.rangeLabel : null
   const yearRangeLabel = windowedHistoryBars.length
     ? (() => {
       const startYear = windowedHistoryBars[0].year
@@ -1705,8 +1767,8 @@ function PublicationsPerYearChart({
       return `${startYear}-${endBar.year}${suffix}`
     })()
     : null
-  const periodHintText = yearRangeLabel || '\u00A0'
-  const periodHintVisible = Boolean(yearRangeLabel)
+  const periodHintText = monthRangeLabel || yearRangeLabel || '\u00A0'
+  const periodHintVisible = Boolean(monthRangeLabel || yearRangeLabel)
   return (
     <div
       className="flex h-full min-h-0 w-full flex-col"
@@ -1738,7 +1800,7 @@ function PublicationsPerYearChart({
                   HOUSE_TOGGLE_BUTTON_CLASS,
                   windowMode === option.value
                     ? 'text-white'
-                    : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
+                    : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
                 )}
                 onClick={(event) => {
                   event.stopPropagation()
@@ -1812,7 +1874,7 @@ function PublicationsPerYearChart({
                 >
                   <span
                     className={cn(
-                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-caption leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
+                      HOUSE_DRILLDOWN_TOOLTIP_CLASS,
                       isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
                     )}
                     style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
@@ -1848,7 +1910,7 @@ function PublicationsPerYearChart({
               return (
                 <p
                   key={`pub-y-axis-${tickValue}`}
-                  className="absolute right-0 whitespace-nowrap text-caption font-semibold tabular-nums leading-none text-[hsl(var(--tone-neutral-600))]"
+                  className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_CLASS)}
                   style={{ bottom: `calc(${pct}% - ${yAxisTickOffsetRem}rem)` }}
                 >
                   {formatInt(tickValue)}
@@ -1864,7 +1926,7 @@ function PublicationsPerYearChart({
         <div className={cn('pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1', HOUSE_TOGGLE_CHART_LABEL_CLASS)} style={xAxisTicksStyle}>
           {renderBars.map((bar, index) => (
             <div key={`${bar.key}-${index}-axis`} className="text-center leading-none">
-              <p className="break-words px-0.5 text-caption font-semibold leading-[1.05] text-[hsl(var(--tone-neutral-600))]">
+              <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-0.5 leading-[1.05]')}>
                 {bar.axisLabel}
               </p>
               {bar.axisSubLabel ? (
@@ -2000,7 +2062,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
             {hoveredSegment ? (
               <div
                 className={cn(
-                  'pointer-events-none absolute left-1/2 z-[2] w-[calc(100%-0.65rem)] max-w-full -translate-x-1/2 rounded-md border border-[hsl(var(--stroke-strong)/0.92)] bg-[hsl(var(--tone-neutral-50))] px-2 py-1 text-center text-caption leading-snug text-[hsl(var(--tone-neutral-700))] break-words transition-all duration-150 ease-out',
+                  HOUSE_DRILLDOWN_TOOLTIP_WIDE_CLASS,
                   hoveredSegment === 'top3' ? 'top-0.5' : 'bottom-0.5',
                 )}
               >
@@ -2040,7 +2102,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                 cy="50"
                 r={ringRadius}
                 fill="none"
-                stroke="hsl(var(--tone-neutral-200))"
+                className={HOUSE_CHART_RING_TRACK_SVG_CLASS}
                 strokeWidth={ringStrokeWidth}
               />
               <circle
@@ -2048,7 +2110,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                 cy="50"
                 r={ringRadius}
                 fill="none"
-                stroke="hsl(var(--tone-accent-700))"
+                className={HOUSE_CHART_RING_MAIN_SVG_CLASS}
                 strokeWidth={ringStrokeWidth}
                 strokeLinecap="round"
                 transform={`rotate(${top3ArcStart} 50 50)`}
@@ -2063,7 +2125,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                 cy="50"
                 r={ringRadius}
                 fill="none"
-                stroke="hsl(var(--tone-accent-300))"
+                className={HOUSE_CHART_RING_SOFT_SVG_CLASS}
                 strokeWidth={ringStrokeWidth}
                 strokeLinecap="round"
                 transform={`rotate(${top3ArcStart} 50 50)`}
@@ -2299,7 +2361,7 @@ function MomentumTilePanel({
                 >
                   <span
                     className={cn(
-                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-caption leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
+                      HOUSE_DRILLDOWN_TOOLTIP_CLASS,
                       isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
                     )}
                     style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
@@ -2443,7 +2505,7 @@ function FieldPercentilePanel({
             >
               <span
                 className={cn(
-                  'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-caption leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
+                  HOUSE_DRILLDOWN_TOOLTIP_CLASS,
                   hovered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
                 )}
                 style={{ bottom: `calc(${animatedHeightPct}% + 0.35rem)` }}
@@ -2531,7 +2593,7 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
 
   const rows = [
     { key: 'first', label: 'First authorship', value: Math.round(firstAuthorshipPct), tone: HOUSE_CHART_BAR_ACCENT_CLASS },
-    { key: 'second', label: 'Second authorship', value: Math.round(secondAuthorshipPct), tone: 'bg-[hsl(var(--tone-neutral-500))]' },
+    { key: 'second', label: 'Second authorship', value: Math.round(secondAuthorshipPct), tone: HOUSE_CHART_BAR_NEUTRAL_CLASS },
     { key: 'senior', label: 'Senior authorship', value: Math.round(seniorAuthorshipPct), tone: HOUSE_CHART_BAR_WARNING_CLASS },
     { key: 'leadership', label: 'Leadership index', value: Math.round(leadershipIndexPct), tone: HOUSE_CHART_BAR_POSITIVE_CLASS },
   ]
@@ -2547,10 +2609,10 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
         {rows.map((row, index) => (
           <div key={row.key} className="space-y-1.5">
             <div className="flex items-center justify-between gap-2 text-caption leading-none">
-              <span className="font-semibold text-[hsl(var(--tone-neutral-700))]">{row.label}</span>
-              <span className="font-semibold text-[hsl(var(--tone-neutral-700))]">{row.value}%</span>
+              <span className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'font-semibold')}>{row.label}</span>
+              <span className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'font-semibold')}>{row.value}%</span>
             </div>
-            <div className="h-[0.44rem] overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
+            <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[0.44rem]')}>
               <div
                 className={cn(
                   'h-full rounded-full transition-[width] duration-420 ease-out',
@@ -2739,10 +2801,10 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
   }, [animationKey])
 
   const rows = [
-    { key: 'collaborators', label: 'Unique collaborators', value: uniqueCollaborators, unit: 'count', tone: 'bg-[hsl(var(--tone-accent-600))]' },
+    { key: 'collaborators', label: 'Unique collaborators', value: uniqueCollaborators, unit: 'count', tone: HOUSE_CHART_BAR_ACCENT_CLASS },
     { key: 'repeat_rate', label: 'Repeat collaborator rate', value: repeatRatePct, unit: 'percent', tone: HOUSE_CHART_BAR_POSITIVE_CLASS },
     { key: 'institutions', label: 'Institutions', value: institutions, unit: 'count', tone: HOUSE_CHART_BAR_WARNING_CLASS },
-    { key: 'countries', label: 'Countries', value: countries, unit: 'count', tone: 'bg-[hsl(var(--tone-neutral-500))]' },
+    { key: 'countries', label: 'Countries', value: countries, unit: 'count', tone: HOUSE_CHART_BAR_NEUTRAL_CLASS },
   ] as const
 
   const maxCountMetric = Math.max(1, uniqueCollaborators, institutions, countries)
@@ -2774,10 +2836,10 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
           return (
             <div key={row.key} className="space-y-1.5">
               <div className="flex items-center justify-between gap-2 text-caption leading-none">
-                <span className="font-semibold text-[hsl(var(--tone-neutral-700))]">{row.label}</span>
-                <span className="font-semibold text-[hsl(var(--tone-neutral-700))]">{valueLabel}</span>
+                <span className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'font-semibold')}>{row.label}</span>
+                <span className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'font-semibold')}>{valueLabel}</span>
               </div>
-              <div className="h-[0.44rem] overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
+              <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[0.44rem]')}>
                 <div
                   className={cn(
                     'h-full rounded-full transition-[width] duration-420 ease-out',
@@ -3034,7 +3096,7 @@ function TotalPublicationsDrilldownWorkspace({
   const workspaceSectionClass = HOUSE_SURFACE_SECTION_PANEL_CLASS
   const workspacePanelCompactClass = cn(HOUSE_SURFACE_SOFT_PANEL_CLASS, 'p-2')
   const workspaceHeadingClass = HOUSE_HEADING_H2_CLASS
-  const workspaceSubheadingClass = HOUSE_TEXT_CLASS
+  const workspaceSubheadingClass = HOUSE_HEADING_H2_CLASS
 
   const availableTypes = useMemo(
     () => Array.from(new Set(publications.map((record) => record.type))).sort((left, right) => left.localeCompare(right)),
@@ -3212,43 +3274,52 @@ function TotalPublicationsDrilldownWorkspace({
       ? String(Math.round(rollingMean5yRounded))
       : rollingMean5yRounded.toFixed(1)
     const summaryStatCardClass = cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'px-3 py-2.5')
-    const summaryStatTitleClass = cn(HOUSE_DRILLDOWN_STAT_TITLE_CLASS, 'leading-[1.2]')
-    const microValueClass = cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'mt-0')
+    const summaryStatTitleClass = cn(HOUSE_DRILLDOWN_STAT_TITLE_CLASS, 'leading-[1.2] min-h-[2.1rem] w-full text-center')
+    const summaryStatValueWrapClass = 'mt-auto flex min-h-[1.5rem] items-end justify-center'
+    const summaryStatValueClass = cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'mt-0 tabular-nums leading-none')
     return (
       <div className="space-y-3">
         <div className={workspaceSectionClass}>
           <p className={workspaceSubheadingClass}>Headline results</p>
-          <div className="mt-2 grid gap-2 lg:grid-cols-[9rem_minmax(0,1fr)]">
-            <div className={cn(summaryStatCardClass, 'flex min-h-[4.75rem] flex-col justify-center text-center')}>
-              <p className={summaryStatTitleClass}>
-                Total publications
-              </p>
-              <p className={cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'mt-2 text-[1.7rem] leading-none tracking-tight')}>{headlineValue}</p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div className={cn(summaryStatCardClass, 'flex min-h-[4.9rem] flex-col items-center text-center')}>
+              <p className={summaryStatTitleClass}>Total publications</p>
+              <div className={summaryStatValueWrapClass}>
+                <p className={cn(summaryStatValueClass, 'text-[1.7rem] tracking-tight')}>{headlineValue}</p>
+              </div>
             </div>
-            <div className="grid gap-2 sm:grid-cols-3">
-              <div className={cn(summaryStatCardClass, 'flex min-h-[4.75rem] flex-col items-center justify-center gap-1 text-center')}>
-                <p className={summaryStatTitleClass}>Active years</p>
-                <p className={microValueClass}>{formatInt(activeYears)}</p>
+            <div className={cn(summaryStatCardClass, 'flex min-h-[4.9rem] flex-col items-center text-center')}>
+              <p className={summaryStatTitleClass}>Active years</p>
+              <div className={summaryStatValueWrapClass}>
+                <p className={summaryStatValueClass}>{formatInt(activeYears)}</p>
               </div>
-              <div className={cn(summaryStatCardClass, 'flex min-h-[4.75rem] flex-col items-center justify-center gap-1 text-center')}>
-                <p className={summaryStatTitleClass}>Median per year</p>
-                <p className={microValueClass}>{formatInt(Math.round(medianPerActiveYear))}</p>
+            </div>
+            <div className={cn(summaryStatCardClass, 'flex min-h-[4.9rem] flex-col items-center text-center')}>
+              <p className={summaryStatTitleClass}>Median per year</p>
+              <div className={summaryStatValueWrapClass}>
+                <p className={summaryStatValueClass}>{formatInt(Math.round(medianPerActiveYear))}</p>
               </div>
-              <div className={cn(summaryStatCardClass, 'flex min-h-[4.75rem] flex-col items-center justify-center gap-1 text-center')}>
-                <p className={summaryStatTitleClass}>Current year to date</p>
-                <p className={microValueClass}>{formatInt(ytdCount)}</p>
+            </div>
+            <div className={cn(summaryStatCardClass, 'flex min-h-[4.9rem] flex-col items-center text-center')}>
+              <p className={summaryStatTitleClass}>Current year to date</p>
+              <div className={summaryStatValueWrapClass}>
+                <p className={summaryStatValueClass}>{formatInt(ytdCount)}</p>
               </div>
             </div>
           </div>
 
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            <div className={summaryStatCardClass}>
+            <div className={cn(summaryStatCardClass, 'flex min-h-[4.75rem] flex-col')}>
               <p className={summaryStatTitleClass}>5-year rolling mean</p>
-              <p className={microValueClass}>{rollingMean5yDisplay}</p>
+              <div className={summaryStatValueWrapClass}>
+                <p className={summaryStatValueClass}>{rollingMean5yDisplay}</p>
+              </div>
             </div>
-            <div className={summaryStatCardClass}>
+            <div className={cn(summaryStatCardClass, 'flex min-h-[4.75rem] flex-col')}>
               <p className={summaryStatTitleClass}>Career peak</p>
-              <p className={microValueClass}>{`${formatInt(peakYearData.count)} (${peakYearData.year})`}</p>
+              <div className={summaryStatValueWrapClass}>
+                <p className={summaryStatValueClass}>{`${formatInt(peakYearData.count)} (${peakYearData.year})`}</p>
+              </div>
             </div>
           </div>
 
@@ -3752,7 +3823,7 @@ function HIndexNeedsChart({
                 >
                   <span
                     className={cn(
-                      'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-50))] px-2 py-0.5 text-caption leading-none text-[hsl(var(--tone-neutral-700))] transition-all duration-150 ease-out',
+                      HOUSE_DRILLDOWN_TOOLTIP_CLASS,
                       isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
                     )}
                     style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
@@ -3785,7 +3856,7 @@ function HIndexNeedsChart({
         >
           {bars.map((bar, index) => (
             <div key={`${bar.key}-${index}-axis`} className={cn('text-center leading-none', HOUSE_TOGGLE_CHART_LABEL_CLASS)}>
-              <p className="break-words px-0.5 text-caption font-semibold leading-tight text-[hsl(var(--tone-neutral-600))]">{bar.label}</p>
+              <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-0.5 leading-tight')}>{bar.label}</p>
             </div>
           ))}
         </div>
@@ -3793,7 +3864,7 @@ function HIndexNeedsChart({
           className="pointer-events-none absolute inset-x-2 text-center"
           style={{ bottom: `${axisLayout.xAxisNameBottomRem}rem`, minHeight: `${axisLayout.xAxisNameMinHeightRem}rem` }}
         >
-          <p className="break-words text-caption font-semibold leading-tight text-[hsl(var(--tone-neutral-600))]">
+          <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words leading-tight')}>
             Citations needed
           </p>
         </div>
@@ -3854,14 +3925,14 @@ function HIndexProgressInline({ tile }: { tile: PublicationMetricTilePayload }) 
   return (
     <div className="w-full max-w-[11.7rem] space-y-1">
       <div className="flex items-center gap-2">
-        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[hsl(var(--tone-neutral-200))]">
+        <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-1.5 flex-1')}>
           <div
             className={cn('h-full rounded-full transition-[width] duration-500 ease-out', HOUSE_CHART_BAR_POSITIVE_CLASS)}
             style={{ width: `${progressMeta.progressPct}%` }}
             aria-hidden="true"
           />
         </div>
-        <span className="text-caption font-medium leading-none text-[hsl(var(--tone-neutral-600))]">
+        <span className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'font-medium leading-none')}>
           {Math.round(progressMeta.progressPct)}%
         </span>
       </div>
@@ -3896,7 +3967,7 @@ function HIndexViewToggle({
           data-stop-tile-open="true"
           className={cn(
             HOUSE_TOGGLE_BUTTON_CLASS,
-            mode === 'trajectory' ? 'text-white' : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
+            mode === 'trajectory' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
           )}
           onClick={(event) => {
             event.stopPropagation()
@@ -3915,7 +3986,7 @@ function HIndexViewToggle({
           data-stop-tile-open="true"
           className={cn(
             HOUSE_TOGGLE_BUTTON_CLASS,
-            mode === 'needed' ? 'text-white' : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
+            mode === 'needed' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
           )}
           onClick={(event) => {
             event.stopPropagation()
@@ -3979,11 +4050,11 @@ function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload })
       <div className={HOUSE_LINE_CHART_SURFACE_CLASS}>
         <div className="relative h-full w-full">
           <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-full w-full">
-            <path d={areaPath} className="fill-[hsl(var(--tone-accent-100))]" fillOpacity={0.68} />
+            <path d={areaPath} className={HOUSE_DRILLDOWN_CHART_AREA_SVG_CLASS} fillOpacity={0.68} />
             <path
               d={path}
               fill="none"
-              className="stroke-[hsl(var(--tone-accent-700))]"
+              className={HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS}
               strokeWidth="3.25"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -4017,7 +4088,7 @@ function MiniBars({
         return (
           <div
             key={`${index}-${value}`}
-            className={cn('w-full rounded-sm bg-[hsl(var(--tone-accent-400))]', highlighted && HOUSE_CHART_BAR_POSITIVE_CLASS)}
+            className={cn('w-full rounded-sm', HOUSE_CHART_BAR_ACCENT_CLASS, highlighted && HOUSE_CHART_BAR_POSITIVE_CLASS)}
             style={{ height }}
           />
         )
@@ -4041,7 +4112,7 @@ function MiniPairedBars({
       {safe.map((value, index) => (
         <div key={`${index}-${value}`} className="flex w-full flex-col items-center gap-1">
           <div
-            className={cn('w-full rounded-sm', index === 0 ? 'bg-[hsl(var(--tone-accent-700))]' : 'bg-[hsl(var(--tone-accent-400))]')}
+            className={cn('w-full rounded-sm', index === 0 ? HOUSE_CHART_BAR_POSITIVE_CLASS : HOUSE_CHART_BAR_ACCENT_CLASS)}
             style={{ height: `${Math.max(12, Math.round((Math.max(0, value) / max) * 30))}px` }}
           />
         </div>
@@ -4061,13 +4132,13 @@ function MiniProgressRing({
   const offset = circumference - (pct / 100) * circumference
   return (
     <svg viewBox="0 0 36 36" className="h-8 w-8">
-      <circle cx="18" cy="18" r={radius} fill="none" stroke="hsl(var(--tone-accent-200))" strokeWidth="4" />
+      <circle cx="18" cy="18" r={radius} fill="none" className={HOUSE_CHART_RING_TRACK_SVG_CLASS} strokeWidth="4" />
       <circle
         cx="18"
         cy="18"
         r={radius}
         fill="none"
-        stroke="hsl(var(--tone-accent-700))"
+        className={HOUSE_CHART_RING_MAIN_SVG_CLASS}
         strokeWidth="4"
         strokeDasharray={circumference}
         strokeDashoffset={offset}
@@ -4090,9 +4161,9 @@ function MiniDonut({
   }
   const pct = safe[0] / total
   const angle = pct * 360
-  const gradient = `conic-gradient(hsl(var(--tone-accent-700)) 0deg ${angle}deg, hsl(var(--tone-positive-400)) ${angle}deg 360deg)`
+  const donutStyle = { '--house-donut-angle': `${angle}deg` } as CSSProperties
   return (
-    <div className="h-8 w-8 rounded-full" style={{ background: gradient }}>
+    <div className={cn('h-8 w-8 rounded-full', HOUSE_CHART_MINI_DONUT_CLASS)} style={donutStyle}>
       <div className="relative left-sz-7 top-sz-7 h-sz-18 w-sz-18 rounded-full bg-card" />
     </div>
   )
@@ -4101,11 +4172,9 @@ function MiniDonut({
 function MiniLine({
   values,
   overlay = [],
-  colorCode = 'hsl(var(--tone-accent-700))',
 }: {
   values: number[]
   overlay?: number[]
-  colorCode?: string
 }) {
   if (!values.length) {
     return <div className="h-8 rounded bg-card" />
@@ -4134,7 +4203,7 @@ function MiniLine({
       {overlayPoints ? (
         <polyline
           fill="none"
-          stroke="hsl(var(--tone-accent-400))"
+          className={HOUSE_CHART_LINE_SOFT_SVG_CLASS}
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -4143,7 +4212,7 @@ function MiniLine({
       ) : null}
       <polyline
         fill="none"
-        stroke={colorCode}
+        className={HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS}
         strokeWidth="3"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -4168,12 +4237,7 @@ function MiniChart({ tile }: { tile: PublicationMetricTilePayload }) {
     const monthly = toNumberArray(chartData.monthly_values_12m).map((item) => Math.max(0, item))
     const fallback = toNumberArray(tile.sparkline || []).map((item) => Math.max(0, item))
     const trendValues = monthly.length ? monthly : fallback
-    return (
-      <MiniLine
-        values={trendValues}
-        colorCode={tile.delta_color_code || 'hsl(var(--tone-accent-700))'}
-      />
-    )
+    return <MiniLine values={trendValues} />
   }
   if (chartType === 'progress_ring') {
     const progress = Number(chartData.progress_to_next_pct ?? 0)
@@ -4191,7 +4255,6 @@ function MiniChart({ tile }: { tile: PublicationMetricTilePayload }) {
     <MiniLine
       values={tile.sparkline || []}
       overlay={tile.sparkline_overlay || []}
-      colorCode={tile.delta_color_code || 'hsl(var(--tone-accent-700))'}
     />
   )
 }
@@ -4388,7 +4451,7 @@ export function PublicationsTopStrip({
             <div className="publications-insights-grid">
               {Array.from({ length: 6 }).map((_, index) => (
                 <div key={index} className="min-h-36 px-3 py-2.5">
-                  <div className="h-full rounded-sm bg-[hsl(var(--tone-neutral-50)/0.64)]" />
+                  <div className={cn('h-full rounded-sm', HOUSE_DRILLDOWN_SKELETON_BLOCK_CLASS)} />
                 </div>
               ))}
             </div>
@@ -4425,7 +4488,7 @@ export function PublicationsTopStrip({
                 let detailText: ReactNode | undefined = effectiveDeltaDisplay || undefined
                 let contentGridClassName: string | undefined
                 let visual: ReactNode = (
-                  <div className="flex h-full min-h-0 items-center rounded-sm border border-[hsl(var(--stroke-strong)/0.92)] bg-[hsl(var(--tone-neutral-50))] p-1">
+                  <div className={cn('flex h-full min-h-0 items-center p-1', HOUSE_SURFACE_STRONG_PANEL_CLASS)}>
                     <MiniChart tile={tile} />
                   </div>
                 )
@@ -4476,7 +4539,7 @@ export function PublicationsTopStrip({
                             HOUSE_TOGGLE_BUTTON_CLASS,
                             momentumWindowMode === '12m'
                               ? 'text-white'
-                              : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
+                              : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
                           )}
                           onClick={(event) => {
                             event.stopPropagation()
@@ -4497,7 +4560,7 @@ export function PublicationsTopStrip({
                             HOUSE_TOGGLE_BUTTON_CLASS,
                             momentumWindowMode === '5y'
                               ? 'text-white'
-                              : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
+                              : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
                           )}
                           onClick={(event) => {
                             event.stopPropagation()
@@ -4607,7 +4670,7 @@ export function PublicationsTopStrip({
                   contentGridClassName = 'grid-cols-[minmax(0,0.85fr)_minmax(0,0.99fr)]'
                   badgeNode = (
                     <div className="flex w-full flex-col items-center gap-0.5">
-                      <p className="text-center text-caption font-semibold uppercase tracking-[0.05em] text-[hsl(var(--tone-neutral-500))]">
+                      <p className={cn(HOUSE_HEADING_H3_CLASS, 'text-center')}>
                         Percentile
                       </p>
                       <div
@@ -4633,7 +4696,7 @@ export function PublicationsTopStrip({
                               HOUSE_TOGGLE_BUTTON_CLASS,
                               activeThreshold === threshold
                                 ? 'text-white'
-                                : 'text-[hsl(var(--tone-neutral-600))] hover:text-[hsl(var(--tone-neutral-800))]',
+                                : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
                             )}
                             onClick={(event) => {
                               event.stopPropagation()
@@ -4762,7 +4825,7 @@ export function PublicationsTopStrip({
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className={cn(HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS, HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS)}
+                      className={HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS}
                     >
                       {tab.label}
                     </TabsTrigger>

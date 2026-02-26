@@ -16,6 +16,9 @@
 - Added metadata-index self-repair so partial/stale index files are rewritten from merged sidecar + indexed IDs instead of hiding valid assets.
 - Added identity-linked owner recovery in library access checks using stable identity fields (`account_key`, normalized email, ORCID, Google subject, Microsoft subject) so assets remain visible when user IDs drift.
 - Added owner canonicalization on list/download/access-update paths to rebind linked legacy owner IDs to the current signed-in user.
+- Added hidden account-key continuity channel (`X-AAWE-Account-Key`) from frontend to backend for library endpoints.
+- Added per-email browser-side account-key hint persistence to survive sign-out/sign-in and reconnect ownership continuity when server-side user IDs drift.
+- Extended auth payloads to include `account_key` so frontend can maintain the hidden continuity key.
 - Added resilience tests for linked-identity owner recovery (shared ORCID identity) and index-partial recovery.
 - **Why it changed:**
 - Prevent personal library files from appearing to disappear after rebuilds/restarts when local file paths or stale owner IDs break normal lookup.

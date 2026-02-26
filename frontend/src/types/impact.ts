@@ -1,5 +1,6 @@
 export type AuthUser = {
   id: string
+  account_key?: string | null
   email: string
   name: string
   is_active: boolean

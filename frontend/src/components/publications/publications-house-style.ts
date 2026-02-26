@@ -65,6 +65,10 @@ export const publicationsHouseCharts = {
   axisText: houseChartColors.axisText,
   axisSubtext: houseChartColors.axisSubtext,
   axisWindowSubtext: houseChartColors.axisWindowSubtext,
+  lineSoftSvg: houseChartColors.lineSoftSvg,
+  ringTrackSvg: houseChartColors.ringTrackSvg,
+  ringMainSvg: houseChartColors.ringMainSvg,
+  ringSoftSvg: houseChartColors.ringSoftSvg,
 } as const
 
 export const publicationsHouseActions = {
@@ -122,6 +126,8 @@ export const publicationsHouseDrilldown = {
   chartAreaSvg: houseDrilldown.chartAreaSvg,
   chartMovingSvg: houseDrilldown.chartMovingSvg,
   chartMainSvg: houseDrilldown.chartMainSvg,
+  chartTooltip: houseDrilldown.chartTooltip,
+  skeletonBlock: houseDrilldown.skeletonBlock,
   barSelected: houseDrilldown.barSelected,
   barSelectedOutline: houseDrilldown.barSelectedOutline,
   tableRow: houseDrilldown.tableRow,

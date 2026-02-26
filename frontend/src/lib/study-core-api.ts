@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '@/lib/api'
+import { getAuthAccountKeyHint } from '@/lib/auth-session'
 import type { ApiErrorPayload } from '@/types/insight'
 import type { QCRunResponse } from '@/types/qc-run'
 import type {
@@ -54,10 +55,16 @@ async function parseApiError(response: Response, fallback: string): Promise<stri
 
 function authHeaders(token: string): Record<string, string> {
   const clean = token.trim()
-  if (!clean) {
-    return {}
+  const accountKeyHint = getAuthAccountKeyHint()
+  const headers: Record<string, string> = {}
+  if (accountKeyHint) {
+    headers['X-AAWE-Account-Key'] = accountKeyHint
   }
-  return { Authorization: `Bearer ${clean}` }
+  if (!clean) {
+    return headers
+  }
+  headers.Authorization = `Bearer ${clean}`
+  return headers
 }
 
 function normalizeOptionalId(value: string | null | undefined): string | null {

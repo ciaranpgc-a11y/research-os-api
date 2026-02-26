@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '@/lib/api'
-import { setCachedAuthRole } from '@/lib/auth-session'
+import { getAuthAccountKeyHint, rememberAuthUserIdentity, setCachedAuthRole } from '@/lib/auth-session'
 import type { ApiErrorPayload } from '@/types/insight'
 import type {
   AdminAuditEventsListPayload,
@@ -74,10 +74,24 @@ async function parseApiError(response: Response, fallback: string): Promise<stri
 
 function authHeaders(token: string): Record<string, string> {
   const clean = token.trim()
-  if (!clean) {
-    return {}
+  const accountKeyHint = getAuthAccountKeyHint()
+  const headers: Record<string, string> = {}
+  if (accountKeyHint) {
+    headers['X-AAWE-Account-Key'] = accountKeyHint
   }
-  return { Authorization: `Bearer ${clean}` }
+  if (!clean) {
+    return headers
+  }
+  headers.Authorization = `Bearer ${clean}`
+  return headers
+}
+
+function cacheAuthIdentity(user: AuthUser): void {
+  setCachedAuthRole(user.role)
+  rememberAuthUserIdentity({
+    email: user.email,
+    accountKey: user.account_key,
+  })
 }
 
 const REQUEST_TIMEOUT_MS =
@@ -161,7 +175,7 @@ export async function registerAuth(input: {
     },
     'Registration failed',
   )
-  setCachedAuthRole(payload.user.role)
+  cacheAuthIdentity(payload.user)
   return payload
 }
 
@@ -178,7 +192,7 @@ export async function loginAuth(input: {
     },
     'Login failed',
   )
-  setCachedAuthRole(payload.user.role)
+  cacheAuthIdentity(payload.user)
   return payload
 }
 
@@ -213,7 +227,7 @@ export async function verifyLoginTwoFactor(input: {
     },
     '2FA verification failed',
   )
-  setCachedAuthRole(payload.user.role)
+  cacheAuthIdentity(payload.user)
   return payload
 }
 
@@ -237,7 +251,7 @@ export async function fetchMe(token: string): Promise<AuthUser> {
     },
     'User lookup failed',
   )
-  setCachedAuthRole(payload.role)
+  cacheAuthIdentity(payload)
   return payload
 }
 
@@ -544,7 +558,7 @@ export async function updateMe(
     },
     'User update failed',
   )
-  setCachedAuthRole(payload.role)
+  cacheAuthIdentity(payload)
   return payload
 }
 
@@ -663,7 +677,7 @@ export async function completeOAuthCallback(input: {
     },
     'OAuth callback failed',
   )
-  setCachedAuthRole(payload.user.role)
+  cacheAuthIdentity(payload.user)
   return payload
 }
 
@@ -691,7 +705,7 @@ export async function confirmEmailVerification(input: {
     },
     'Email verification failed',
   )
-  setCachedAuthRole(payload.role)
+  cacheAuthIdentity(payload)
   return payload
 }
 

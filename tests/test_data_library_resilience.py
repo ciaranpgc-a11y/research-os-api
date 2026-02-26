@@ -228,6 +228,50 @@ def test_list_library_assets_rebinds_owner_for_linked_orcid_identity(
     assert downloaded["content"] == b"col_a,col_b\n55,66\n"
 
 
+def test_list_library_assets_rebinds_owner_by_account_key_hint(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    shared_account_key = "b7900f30-c51a-4f15-9f5e-4d6e0d35b874"
+    first_user_id = _create_user(
+        email="library-account-hint-first@example.com",
+        name="Owner First",
+        account_key=shared_account_key,
+    )
+
+    asset_id = upload_library_assets(
+        files=[("account-hint.csv", "text/csv", b"col_a,col_b\n77,88\n")],
+        project_id=None,
+        user_id=first_user_id,
+    )[0]
+
+    second_user_id = _create_user(
+        email="library-account-hint-second@example.com",
+        name="Owner Second",
+    )
+
+    payload = list_library_assets(
+        project_id=None,
+        user_id=second_user_id,
+        account_key_hint=shared_account_key,
+    )
+    listed_ids = [str(item.get("id")) for item in payload.get("items", [])]
+    assert asset_id in listed_ids
+
+    listed_row = next(
+        item for item in payload.get("items", []) if str(item.get("id")) == asset_id
+    )
+    assert str(listed_row.get("owner_user_id") or "") == second_user_id
+
+    downloaded = download_library_asset(
+        asset_id=asset_id,
+        user_id=second_user_id,
+        account_key_hint=shared_account_key,
+    )
+    assert downloaded["file_name"] == "account-hint.csv"
+    assert downloaded["content"] == b"col_a,col_b\n77,88\n"
+
+
 def test_list_library_assets_recovers_when_metadata_index_is_corrupt(
     monkeypatch, tmp_path
 ) -> None:
