@@ -904,6 +904,73 @@ class AdminOrganisationsListResponse(BaseModel):
     generated_at: datetime
 
 
+class AdminWorkspaceMemberResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+    platform_role: Literal["user", "admin"] = "user"
+    workspace_role: Literal["owner", "admin", "collaborator"] = "collaborator"
+    last_active_at: datetime | None = None
+
+
+class AdminWorkspaceProjectSummaryResponse(BaseModel):
+    id: str
+    title: str
+    owner_user_id: str | None = None
+    owner_name: str = ""
+    collaborator_count: int = 0
+    manuscript_count: int = 0
+    data_sources_count: int = 0
+    job_runs: int = 0
+    last_run_status: str = "not_run"
+    last_activity_at: datetime | None = None
+
+
+class AdminWorkspaceJobHealthResponse(BaseModel):
+    total_runs: int = 0
+    active_runs: int = 0
+    queued_runs: int = 0
+    running_runs: int = 0
+    completed_runs: int = 0
+    failed_runs: int = 0
+    cancelled_runs: int = 0
+    retry_runs_7d: int = 0
+    failed_runs_7d: int = 0
+    avg_tokens_per_run: int = 0
+    avg_cost_usd_per_run: float = 0.0
+    last_job_at: datetime | None = None
+
+
+class AdminWorkspaceSummaryResponse(BaseModel):
+    id: str
+    display_name: str
+    owner_user_id: str | None = None
+    owner_name: str = ""
+    owner_email: str = ""
+    member_count: int = 0
+    active_members_30d: int = 0
+    project_count: int = 0
+    manuscript_count: int = 0
+    data_sources_count: int = 0
+    storage_bytes: int = 0
+    export_history_count: int = 0
+    collaboration_density_pct: float = 0.0
+    last_activity_at: datetime | None = None
+    members: list[AdminWorkspaceMemberResponse] = Field(default_factory=list)
+    projects: list[AdminWorkspaceProjectSummaryResponse] = Field(default_factory=list)
+    job_health: AdminWorkspaceJobHealthResponse = Field(
+        default_factory=AdminWorkspaceJobHealthResponse
+    )
+
+
+class AdminWorkspacesListResponse(BaseModel):
+    items: list[AdminWorkspaceSummaryResponse] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
+    generated_at: datetime
+
+
 class AffiliationSuggestionItemResponse(BaseModel):
     name: str
     label: str
