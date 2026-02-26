@@ -1,8 +1,11 @@
+import { useEffect, useState } from 'react'
 import { Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-router-dom'
 
 import { AccountLayout } from '@/components/layout/account-layout'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { getAuthSessionToken, isAuthBypassEnabled } from '@/lib/auth-session'
+import { fetchMe } from '@/lib/impact-api'
+import { AdminPage } from '@/pages/admin-page'
 import { AgentLogsPage } from '@/pages/agent-logs-page'
 import { AuthCallbackPage } from '@/pages/auth-callback-page'
 import { AuthPage } from '@/pages/auth-page'
@@ -72,6 +75,52 @@ function RequireSignIn() {
   return <Outlet />
 }
 
+function RequireAdmin() {
+  const location = useLocation()
+  const token = getAuthSessionToken()
+  const [status, setStatus] = useState<'checking' | 'allowed' | 'signed_out' | 'forbidden'>('checking')
+
+  useEffect(() => {
+    if (isAuthBypassEnabled()) {
+      setStatus('allowed')
+      return
+    }
+    if (!token) {
+      setStatus('signed_out')
+      return
+    }
+    let cancelled = false
+    setStatus('checking')
+    void fetchMe(token)
+      .then((user) => {
+        if (cancelled) {
+          return
+        }
+        setStatus(user.role === 'admin' ? 'allowed' : 'forbidden')
+      })
+      .catch(() => {
+        if (cancelled) {
+          return
+        }
+        setStatus('signed_out')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  if (status === 'checking') {
+    return <div className="p-6 text-sm text-muted-foreground">Checking admin access...</div>
+  }
+  if (status === 'signed_out') {
+    return <Navigate to="/" replace state={{ from: location.pathname }} />
+  }
+  if (status === 'forbidden') {
+    return <Navigate to="/workspaces" replace />
+  }
+  return <Outlet />
+}
+
 export function AppRouter() {
   return (
     <Routes>
@@ -82,6 +131,12 @@ export function AppRouter() {
 
       <Route element={<RequireSignIn />}>
         <Route path="/workspaces" element={<WorkspacesPage />} />
+
+        <Route element={<RequireAdmin />}>
+          <Route element={<AccountLayout />}>
+            <Route path="/admin" element={<AdminPage />} />
+          </Route>
+        </Route>
 
         <Route element={<AccountLayout />}>
           <Route path="/profile" element={<ProfilePage />} />

@@ -4,7 +4,7 @@ import time
 from fastapi.testclient import TestClient
 
 from research_os.api.app import app
-from research_os.db import reset_database_state
+from research_os.db import User, reset_database_state, session_scope
 from research_os.services.persona_service import upsert_work
 
 
@@ -58,6 +58,13 @@ def _set_citation_state(monkeypatch) -> None:
 
 def _auth_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def _promote_user_to_admin(user_id: str) -> None:
+    with session_scope() as session:
+        user = session.get(User, user_id)
+        assert user is not None
+        user.role = "admin"
 
 
 def test_health_returns_ok(monkeypatch) -> None:
@@ -2600,6 +2607,96 @@ def test_v1_auth_register_login_me_patch_logout(monkeypatch, tmp_path) -> None:
     assert me_after_logout.status_code == 401
     assert login_response.status_code == 200
     assert login_response.json()["user"]["email"] == "ciaran@example.com"
+
+
+def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        overview_response = client.get("/v1/admin/overview")
+        users_response = client.get("/v1/admin/users")
+
+    assert overview_response.status_code == 401
+    assert overview_response.json()["error"]["type"] == "unauthorized"
+    assert users_response.status_code == 401
+    assert users_response.json()["error"]["type"] == "unauthorized"
+
+
+def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "standard-user@example.com",
+                "password": "StrongPassword123",
+                "name": "Standard User",
+            },
+        )
+        assert register_response.status_code == 200
+        token = register_response.json()["session_token"]
+
+        overview_response = client.get("/v1/admin/overview", headers=_auth_headers(token))
+        users_response = client.get("/v1/admin/users", headers=_auth_headers(token))
+
+    assert overview_response.status_code == 403
+    assert overview_response.json()["error"]["type"] == "forbidden"
+    assert users_response.status_code == 403
+    assert users_response.json()["error"]["type"] == "forbidden"
+
+
+def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        admin_register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "admin-user@example.com",
+                "password": "StrongPassword123",
+                "name": "Admin User",
+            },
+        )
+        assert admin_register_response.status_code == 200
+        admin_user_payload = admin_register_response.json()["user"]
+        _promote_user_to_admin(admin_user_payload["id"])
+        admin_token = admin_register_response.json()["session_token"]
+
+        viewer_register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "viewer-user@example.com",
+                "password": "StrongPassword123",
+                "name": "Viewer User",
+            },
+        )
+        assert viewer_register_response.status_code == 200
+
+        overview_response = client.get(
+            "/v1/admin/overview",
+            headers=_auth_headers(admin_token),
+        )
+        users_response = client.get(
+            "/v1/admin/users",
+            headers=_auth_headers(admin_token),
+            params={"query": "viewer", "limit": 10, "offset": 0},
+        )
+
+    assert overview_response.status_code == 200
+    overview_payload = overview_response.json()
+    assert overview_payload["total_users"] >= 2
+    assert overview_payload["admin_users"] >= 1
+    assert overview_payload["active_users"] >= 2
+    assert overview_payload["inactive_users"] >= 0
+
+    assert users_response.status_code == 200
+    users_payload = users_response.json()
+    assert users_payload["limit"] == 10
+    assert users_payload["offset"] == 0
+    assert users_payload["total"] >= 1
+    assert len(users_payload["items"]) >= 1
+    assert users_payload["items"][0]["email"] == "viewer-user@example.com"
 
 
 def test_v1_workspace_state_round_trip_persists_for_authenticated_user(

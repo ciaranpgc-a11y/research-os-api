@@ -226,3 +226,50 @@ def test_list_library_assets_skips_entries_with_missing_storage(
     listed_ids = [str(item.get("id")) for item in payload.get("items", [])]
     assert fresh_asset_id in listed_ids
     assert stale_asset_id not in listed_ids
+
+
+def test_list_library_assets_migrates_legacy_storage_to_stable_root(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.chdir(tmp_path)
+    create_all_tables()
+    with session_scope() as session:
+        user = User(
+            email="open-access-legacy-storage@example.com",
+            password_hash="pbkdf2_sha256$390000$test$test",
+            name="Open Access Test User",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+    asset_ids = upload_library_assets(
+        files=[("legacy.csv", "text/csv", b"col_a,col_b\n10,20\n")],
+        project_id=None,
+        user_id=user_id,
+    )
+    asset_id = asset_ids[0]
+    stable_root = (tmp_path / "data_library").resolve()
+    legacy_root = (tmp_path / "data_library_store").resolve()
+    legacy_root.mkdir(parents=True, exist_ok=True)
+
+    with session_scope() as session:
+        asset = session.get(DataLibraryAsset, asset_id)
+        assert asset is not None
+        current_path = Path(str(asset.storage_path)).resolve()
+        legacy_path = legacy_root / current_path.name
+        current_path.replace(legacy_path)
+        asset.storage_path = str(legacy_path)
+        session.flush()
+
+    payload = list_library_assets(project_id=None, user_id=user_id)
+    listed_ids = [str(item.get("id")) for item in payload.get("items", [])]
+    assert asset_id in listed_ids
+
+    with session_scope() as session:
+        refreshed = session.get(DataLibraryAsset, asset_id)
+        assert refreshed is not None
+        refreshed_path = Path(str(refreshed.storage_path)).resolve()
+        assert refreshed_path.parent == stable_root
+        assert refreshed_path.exists() and refreshed_path.is_file()

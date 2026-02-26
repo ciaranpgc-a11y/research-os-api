@@ -98,9 +98,10 @@ def list_admin_users(
             .limit(normalized_limit)
         ).all()
         total = int(session.scalar(total_stmt) or 0)
+        items = [_serialize_admin_user(user) for user in users]
 
     return {
-        "items": [_serialize_admin_user(user) for user in users],
+        "items": items,
         "total": total,
         "limit": normalized_limit,
         "offset": normalized_offset,

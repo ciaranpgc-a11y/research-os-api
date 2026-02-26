@@ -5,12 +5,14 @@ import io
 import mimetypes
 import os
 import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
 from sqlalchemy import func, select
 
+from research_os.config import get_data_library_root
 from research_os.db import (
     DataLibraryAsset,
     DataProfile,
@@ -41,6 +43,9 @@ class DataAssetNotFoundError(RuntimeError):
 
 class PlannerValidationError(RuntimeError):
     pass
+
+
+_STORAGE_MIGRATED_ROOTS: set[str] = set()
 
 
 def _trim(value: Any) -> str:
@@ -154,12 +159,93 @@ def _asset_shared_user_ids(asset: DataLibraryAsset) -> list[str]:
     return _normalize_user_ids(asset.shared_with_user_ids)
 
 
-def _asset_storage_exists(asset: DataLibraryAsset) -> bool:
-    clean_storage_path = _trim(asset.storage_path)
-    if not clean_storage_path:
-        return False
-    storage_path = Path(clean_storage_path)
-    return storage_path.exists() and storage_path.is_file()
+def _legacy_storage_roots(primary_root: Path) -> list[Path]:
+    candidates: list[Path] = []
+    repo_root_candidate = Path(__file__).resolve().parents[3] / "data_library_store"
+    cwd_candidate = Path.cwd() / "data_library_store"
+    for candidate in [repo_root_candidate, cwd_candidate]:
+        resolved = candidate.resolve()
+        if resolved == primary_root:
+            continue
+        if resolved not in candidates:
+            candidates.append(resolved)
+    return candidates
+
+
+def _migrate_legacy_storage_files(primary_root: Path) -> None:
+    root_key = str(primary_root.resolve())
+    if root_key in _STORAGE_MIGRATED_ROOTS:
+        return
+    _STORAGE_MIGRATED_ROOTS.add(root_key)
+    for legacy_root in _legacy_storage_roots(primary_root):
+        if not legacy_root.exists() or not legacy_root.is_dir():
+            continue
+        for source_path in legacy_root.iterdir():
+            if not source_path.is_file():
+                continue
+            target_path = primary_root / source_path.name
+            if target_path.exists():
+                continue
+            try:
+                shutil.copy2(source_path, target_path)
+            except OSError:
+                continue
+
+
+def _candidate_asset_paths(asset: DataLibraryAsset, primary_root: Path) -> list[Path]:
+    candidates: list[Path] = []
+    suffix = Path(_trim(asset.filename)).suffix
+    if suffix:
+        candidates.append(primary_root / f"{asset.id}{suffix}")
+    candidates.append(primary_root / f"{asset.id}.bin")
+
+    for match in primary_root.glob(f"{asset.id}.*"):
+        candidates.append(match)
+
+    raw_storage_path = _trim(asset.storage_path)
+    if raw_storage_path:
+        candidates.append(Path(raw_storage_path))
+
+    for legacy_root in _legacy_storage_roots(primary_root):
+        if suffix:
+            candidates.append(legacy_root / f"{asset.id}{suffix}")
+        candidates.append(legacy_root / f"{asset.id}.bin")
+        if legacy_root.exists():
+            for match in legacy_root.glob(f"{asset.id}.*"):
+                candidates.append(match)
+
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for path in candidates:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(path)
+    return deduped
+
+
+def _resolve_existing_asset_path(asset: DataLibraryAsset, primary_root: Path) -> Path | None:
+    for candidate in _candidate_asset_paths(asset, primary_root):
+        try:
+            if candidate.exists() and candidate.is_file():
+                resolved = candidate.resolve()
+                if resolved.parent != primary_root:
+                    migrated_target = (primary_root / resolved.name).resolve()
+                    if not migrated_target.exists():
+                        try:
+                            shutil.copy2(resolved, migrated_target)
+                        except OSError:
+                            return resolved
+                    return migrated_target
+                return resolved
+        except OSError:
+            continue
+    return None
+
+
+def _asset_storage_exists(asset: DataLibraryAsset, primary_root: Path) -> bool:
+    return _resolve_existing_asset_path(asset, primary_root) is not None
 
 
 def _display_name_for_user(*, user: User | None, fallback_user_id: str | None = None) -> str:
@@ -211,8 +297,8 @@ def _serialize_library_asset(
 
 
 def _storage_root() -> Path:
-    root = Path(os.getenv("DATA_LIBRARY_ROOT", "./data_library_store"))
-    root.mkdir(parents=True, exist_ok=True)
+    root = get_data_library_root()
+    _migrate_legacy_storage_files(root)
     return root
 
 
@@ -273,7 +359,9 @@ def upload_library_assets(
             session.flush()
             extension = Path(filename).suffix or ".bin"
             path = _storage_root() / f"{asset.id}{extension}"
-            path.write_bytes(content)
+            tmp_path = path.with_suffix(f"{path.suffix}.tmp")
+            tmp_path.write_bytes(content)
+            os.replace(tmp_path, path)
             asset.storage_path = str(path.resolve())
             session.flush()
             asset_ids.append(asset.id)
@@ -330,6 +418,7 @@ def list_library_assets(
                 "ownership": clean_ownership,
             }
         clean_project_id = _normalize_optional_id(project_id)
+        storage_root = _storage_root()
         query = select(DataLibraryAsset).order_by(DataLibraryAsset.uploaded_at.desc())
         if clean_project_id:
             _resolve_project_for_user(
@@ -337,11 +426,19 @@ def list_library_assets(
             )
             query = query.where(DataLibraryAsset.project_id == clean_project_id)
         rows = session.scalars(query).all()
+        for row in rows:
+            resolved_storage_path = _resolve_existing_asset_path(row, storage_root)
+            if resolved_storage_path is None:
+                continue
+            resolved_storage_str = str(resolved_storage_path)
+            if _trim(row.storage_path) != resolved_storage_str:
+                row.storage_path = resolved_storage_str
+        session.flush()
         accessible_rows = [
             row
             for row in rows
             if _asset_accessible_for_user(session=session, asset=row, user_id=clean_user_id)
-            and _asset_storage_exists(row)
+            and _asset_storage_exists(row, storage_root)
         ]
         payload_items = [
             _serialize_library_asset(
@@ -500,9 +597,14 @@ def download_library_asset(
         ):
             raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
 
-        storage_path = Path(_trim(asset.storage_path))
-        if not storage_path.exists() or not storage_path.is_file():
+        storage_root = _storage_root()
+        storage_path = _resolve_existing_asset_path(asset, storage_root)
+        if storage_path is None:
             raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
+        resolved_storage_str = str(storage_path)
+        if _trim(asset.storage_path) != resolved_storage_str:
+            asset.storage_path = resolved_storage_str
+            session.flush()
 
         file_name = _trim(asset.filename) or "asset.bin"
         content = storage_path.read_bytes()
@@ -672,9 +774,19 @@ def create_data_profile(
         warnings: list[str] = []
         rows_sampled = 0
         previews: list[dict[str, object]] = []
+        storage_root = _storage_root()
 
         for asset in assets:
-            content = Path(asset.storage_path).read_bytes()
+            storage_path = _resolve_existing_asset_path(asset, storage_root)
+            if storage_path is None:
+                raise DataAssetNotFoundError(
+                    f"Data asset '{asset.id}' was not found."
+                )
+            resolved_storage_str = str(storage_path)
+            if _trim(asset.storage_path) != resolved_storage_str:
+                asset.storage_path = resolved_storage_str
+                session.flush()
+            content = storage_path.read_bytes()
             sample = _decode_sample(content, max_chars=max_chars)
             if asset.kind in {"csv", "tsv", "txt"}:
                 delimiter = "\t" if asset.kind == "tsv" else ","

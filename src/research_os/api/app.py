@@ -1327,6 +1327,43 @@ def v1_auth_me(request: Request) -> AuthUserResponse | JSONResponse:
 
 
 @app.get(
+    "/v1/admin/overview",
+    response_model=AdminOverviewResponse,
+    responses=UNAUTHORIZED_RESPONSES | FORBIDDEN_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_overview(request: Request) -> AdminOverviewResponse | JSONResponse:
+    _, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    payload = get_admin_overview()
+    return AdminOverviewResponse(**payload)
+
+
+@app.get(
+    "/v1/admin/users",
+    response_model=AdminUsersListResponse,
+    responses=UNAUTHORIZED_RESPONSES | FORBIDDEN_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_users(
+    request: Request,
+    query: str = Query(default="", max_length=120),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> AdminUsersListResponse | JSONResponse:
+    _, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    payload = list_admin_users(
+        query=query,
+        limit=limit,
+        offset=offset,
+    )
+    return AdminUsersListResponse(**payload)
+
+
+@app.get(
     "/v1/auth/me/affiliation-suggestions",
     response_model=AffiliationSuggestionsResponse,
     responses=UNAUTHORIZED_RESPONSES | BAD_REQUEST_RESPONSES,

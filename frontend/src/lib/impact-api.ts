@@ -3,6 +3,8 @@ import type { ApiErrorPayload } from '@/types/insight'
 import type {
   AffiliationAddressResolutionPayload,
   AffiliationSuggestionsPayload,
+  AdminOverviewPayload,
+  AdminUsersListPayload,
   AuthEmailVerificationRequestPayload,
   AuthLoginChallengePayload,
   AuthOAuthProviderStatusesPayload,
@@ -220,6 +222,41 @@ export async function fetchMe(token: string): Promise<AuthUser> {
       headers: authHeaders(token),
     },
     'User lookup failed',
+  )
+}
+
+export async function fetchAdminOverview(token: string): Promise<AdminOverviewPayload> {
+  return requestJson<AdminOverviewPayload>(
+    `${API_BASE_URL}/v1/admin/overview`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Admin overview lookup failed',
+  )
+}
+
+export async function fetchAdminUsers(
+  token: string,
+  options?: {
+    query?: string
+    limit?: number
+    offset?: number
+  },
+): Promise<AdminUsersListPayload> {
+  const params = new URLSearchParams()
+  if (String(options?.query || '').trim()) {
+    params.set('query', String(options?.query || '').trim())
+  }
+  params.set('limit', String(Math.max(1, Math.min(200, Number(options?.limit || 50)))))
+  params.set('offset', String(Math.max(0, Number(options?.offset || 0))))
+  return requestJson<AdminUsersListPayload>(
+    `${API_BASE_URL}/v1/admin/users?${params.toString()}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Admin users lookup failed',
   )
 }
 

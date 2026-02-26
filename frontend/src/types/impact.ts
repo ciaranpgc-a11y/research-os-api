@@ -18,6 +18,34 @@ export type AuthSessionPayload = {
   session_expires_at: string
 }
 
+export type AdminOverviewPayload = {
+  total_users: number
+  active_users: number
+  inactive_users: number
+  admin_users: number
+  recent_signins_24h: number
+  generated_at: string
+}
+
+export type AdminUserSummaryPayload = {
+  id: string
+  email: string
+  name: string
+  is_active: boolean
+  role: 'user' | 'admin'
+  email_verified_at: string | null
+  last_sign_in_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type AdminUsersListPayload = {
+  items: AdminUserSummaryPayload[]
+  total: number
+  limit: number
+  offset: number
+}
+
 export type AffiliationSuggestionItemPayload = {
   name: string
   label: string
