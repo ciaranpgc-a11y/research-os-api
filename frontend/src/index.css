@@ -1252,6 +1252,13 @@
     stroke: hsl(var(--tone-accent-300));
   }
 
+  .house-chart-mini-donut {
+    background: conic-gradient(
+      hsl(var(--tone-accent-700)) 0deg var(--house-donut-angle, 0deg),
+      hsl(var(--tone-positive-400)) var(--house-donut-angle, 0deg) 360deg
+    );
+  }
+
   .house-table-shell {
     position: relative;
     width: 100%;

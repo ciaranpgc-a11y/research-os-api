@@ -69,6 +69,7 @@ export const publicationsHouseCharts = {
   ringTrackSvg: houseChartColors.ringTrackSvg,
   ringMainSvg: houseChartColors.ringMainSvg,
   ringSoftSvg: houseChartColors.ringSoftSvg,
+  miniDonut: houseChartColors.miniDonut,
 } as const
 
 export const publicationsHouseActions = {

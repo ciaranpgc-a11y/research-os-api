@@ -124,6 +124,7 @@ export const houseChartColors = {
   ringTrackSvg: 'house-chart-ring-track-svg',
   ringMainSvg: 'house-chart-ring-main-svg',
   ringSoftSvg: 'house-chart-ring-soft-svg',
+  miniDonut: 'house-chart-mini-donut',
 } as const
 
 export const houseDrilldown = {
@@ -247,6 +248,7 @@ export const houseElements = {
   chartRingTrackSvg: houseChartColors.ringTrackSvg,
   chartRingMainSvg: houseChartColors.ringMainSvg,
   chartRingSoftSvg: houseChartColors.ringSoftSvg,
+  chartMiniDonut: houseChartColors.miniDonut,
   drilldownSheet: houseDrilldown.sheet,
   drilldownTabTrigger: houseDrilldown.tabTrigger,
   drilldownPlaceholder: houseDrilldown.placeholder,

@@ -2,6 +2,28 @@
 
 ## 2026-02-26
 
+### Publications Drilldown Tokenization + Layout Stability Pass
+
+- **Area:** Publications drilldown visual consistency, token governance, and chart behavior stability.
+- **What changed:**
+- Completed a full token pass in `PublicationsTopStrip.tsx` for drilldown and related publication chart surfaces.
+- Replaced inline arbitrary color utilities and inline SVG color attributes with house-token classes mapped through `house-style.ts` and `publications-house-style.ts`.
+- Added new tokenized chart/drilldown utility classes in `frontend/src/index.css` (chart ring SVG classes, mini-donut token class, drilldown tooltip class, drilldown skeleton class).
+- Updated drilldown summary cards so metric labels/values align vertically across cards and use strong tokenized borders.
+- Kept 1-year view in monthly mode while preserving stable chart/toggle layout behavior and tokenized inactive toggle states.
+- Updated design governance to explicitly require token-contract usage in component code and prohibit arbitrary color utilities in new/changed UI.
+- **Why it changed:**
+- Align drilldown formatting with the rest of the publications surface, eliminate style drift, and make future visual updates token-safe by rule.
+- **Key files touched:**
+- `frontend/src/components/publications/PublicationsTopStrip.tsx`
+- `frontend/src/components/publications/publications-house-style.ts`
+- `frontend/src/lib/house-style.ts`
+- `frontend/src/index.css`
+- `docs/design-governance.md`
+- **Verification performed:**
+- `npm --prefix frontend run lint`
+- `npm --prefix frontend run typecheck`
+
 ### Data Library Durability Hardening (Build/Restart Resilience)
 
 - **Area:** Personal data library storage durability and cross-build survivability.

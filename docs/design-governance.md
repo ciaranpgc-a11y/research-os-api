@@ -34,6 +34,13 @@ It must not communicate:
 
 - All color usage must derive exclusively from token definitions.
 - No hard-coded color values are permitted outside token files.
+- Component code must consume tokenized class contracts from `frontend/src/lib/house-style.ts` (or domain token maps such as `publications-house-style.ts`).
+- Direct arbitrary Tailwind color utilities in component markup are prohibited for new/changed UI:
+- `text-[hsl(...)]`
+- `bg-[hsl(...)]`
+- `border-[hsl(...)]`
+- Inline SVG `stroke`/`fill` color literals in component files are prohibited; route SVG tones through token classes defined in `frontend/src/index.css`.
+- When a required semantic style does not exist, add a new token class in `frontend/src/index.css`, map it in `house-style.ts`, then consume that mapped token in components.
 - No additional accent colors may be introduced without updating this governance document.
 - Raw white/black surface utilities (`bg-white`, `bg-black`, `border-white`, `border-black`) are prohibited.
 - Overlays must use tokenized neutral tones with alpha, never raw black overlays.
@@ -262,6 +269,7 @@ No visual experimentation in production UI without system update.
 Codex must enforce:
 
 - No inline hex values
+- No inline RGB/HSL/HSLA color literals in component markup
 - No arbitrary spacing
 - No rogue typography sizes
 - No unapproved color usage
@@ -271,6 +279,7 @@ Codex must enforce:
 - No `CardTitle` text-size overrides (`text-xs`, `text-sm`, `text-base`, etc.)
 - No `text-xs` typography on `<table>`, `<thead>`, or `<th>` elements
 - Table typography must use shared table components or `house-table-*` tokens
+- New or modified drilldown surfaces must use house token contracts for typography, borders, tabs, chart states, and tooltips
 
 PRs violating governance must fail.
 

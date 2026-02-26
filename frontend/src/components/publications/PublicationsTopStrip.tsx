@@ -275,6 +275,7 @@ const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label:
 const HOUSE_HEADING_TITLE_CLASS = publicationsHouseHeadings.title
 const HOUSE_HEADING_SECTION_TITLE_CLASS = publicationsHouseHeadings.sectionTitle
 const HOUSE_HEADING_H2_CLASS = publicationsHouseHeadings.h2
+const HOUSE_HEADING_H3_CLASS = publicationsHouseHeadings.h3
 const HOUSE_TEXT_CLASS = publicationsHouseHeadings.text
 const HOUSE_TEXT_SOFT_CLASS = publicationsHouseHeadings.textSoft
 const HOUSE_HEADING_LABEL_CLASS = publicationsHouseHeadings.label
@@ -3285,7 +3286,7 @@ function TotalPublicationsDrilldownWorkspace({
             <div className={cn(summaryStatCardClass, 'flex min-h-[4.9rem] flex-col items-center text-center')}>
               <p className={summaryStatTitleClass}>Total publications</p>
               <div className={summaryStatValueWrapClass}>
-                <p className={cn(summaryStatValueClass, 'text-[1.7rem] tracking-tight')}>{headlineValue}</p>
+                <p className={cn(summaryStatValueClass, 'text-display tracking-tight')}>{headlineValue}</p>
               </div>
             </div>
             <div className={cn(summaryStatCardClass, 'flex min-h-[4.9rem] flex-col items-center text-center')}>
