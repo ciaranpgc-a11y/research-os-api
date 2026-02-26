@@ -9,10 +9,15 @@ import {
   Clock3,
   Database,
   Flag,
+  Globe2,
+  HardDrive,
+  KeyRound,
   LifeBuoy,
+  LineChart,
   Search,
   ServerCog,
   ShieldCheck,
+  TriangleAlert,
   Users,
   Workflow,
 } from 'lucide-react'
@@ -22,9 +27,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
-import { fetchAdminOverview, fetchAdminUsers } from '@/lib/impact-api'
+import { fetchAdminOrganisations, fetchAdminOverview, fetchAdminUsers } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
-import type { AdminOverviewPayload, AdminUsersListPayload } from '@/types/impact'
+import type { AdminOrganisationsListPayload, AdminOverviewPayload, AdminUsersListPayload } from '@/types/impact'
 
 type AdminCapabilitySection = {
   id: string
@@ -61,14 +66,14 @@ const CAPABILITY_SECTIONS: AdminCapabilitySection[] = [
     id: 'organisations',
     title: 'Organisations (Tenants)',
     icon: Building2,
-    status: 'planned',
-    lane: 'next',
-    summary: 'Tenant control plane for plan status, quotas, retention policy, and feature rollout.',
+    status: 'live',
+    lane: 'now',
+    summary: 'Tenant control plane for plan status, quotas, retention policy, integrations, and usage margin.',
     items: [
-      'Org profile, plan, billing status, quotas, and retention policy',
+      'Org profile, plan/billing state, quotas, and retention policy',
       'Members/roles with last active and monthly usage/cost trend',
-      'Feature flags by org and integration health',
-      'Internal audited org-admin impersonation',
+      'Feature flags, integration state, and rate-limit controls',
+      'Internal audited org-admin impersonation controls',
     ],
   },
   {
@@ -260,6 +265,42 @@ function formatPercent(value: number | null | undefined): string {
   return `${Math.round(numeric * 10) / 10}%`
 }
 
+function formatInteger(value: number | null | undefined): string {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return '0'
+  }
+  return new Intl.NumberFormat('en-GB').format(Math.max(0, Math.round(numeric)))
+}
+
+function formatCurrency(value: number | null | undefined): string {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return '£0.00'
+  }
+  return new Intl.NumberFormat('en-GB', {
+    style: 'currency',
+    currency: 'GBP',
+    maximumFractionDigits: 2,
+  }).format(numeric)
+}
+
+function formatBytes(value: number | null | undefined): string {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return '0 B'
+  }
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let size = numeric
+  let unitIndex = 0
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex += 1
+  }
+  const decimals = unitIndex === 0 ? 0 : size >= 100 ? 0 : size >= 10 ? 1 : 2
+  return `${size.toFixed(decimals)} ${units[unitIndex]}`
+}
+
 function statusChipClass(status: AdminCapabilitySection['status']): string {
   if (status === 'live') {
     return 'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))]'
@@ -290,12 +331,25 @@ function laneLabel(lane: AdminCapabilitySection['lane']): string {
   return 'Later'
 }
 
+function integrationStatusClass(status: 'connected' | 'degraded' | 'not_configured'): string {
+  if (status === 'connected') {
+    return 'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))]'
+  }
+  if (status === 'degraded') {
+    return 'border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] text-[hsl(var(--tone-warning-900))]'
+  }
+  return 'border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
+}
+
 export function AdminPage() {
   const navigate = useNavigate()
   const params = useParams<{ sectionId?: string }>()
   const [overview, setOverview] = useState<AdminOverviewPayload | null>(null)
   const [users, setUsers] = useState<AdminUsersListPayload | null>(null)
-  const [query, setQuery] = useState('')
+  const [organisations, setOrganisations] = useState<AdminOrganisationsListPayload | null>(null)
+  const [userQuery, setUserQuery] = useState('')
+  const [organisationQuery, setOrganisationQuery] = useState('')
+  const [selectedOrganisationId, setSelectedOrganisationId] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
@@ -319,7 +373,7 @@ export function AdminPage() {
   )
 
   const loadData = useCallback(
-    async (searchQuery: string) => {
+    async (nextUsersQuery: string, nextOrganisationsQuery: string) => {
       const token = getAuthSessionToken()
       if (!token) {
         navigate('/auth', { replace: true })
@@ -329,17 +383,32 @@ export function AdminPage() {
       setError('')
       setStatus('')
       try {
-        const [overviewPayload, usersPayload] = await Promise.all([
+        const [overviewPayload, usersPayload, organisationsPayload] = await Promise.all([
           fetchAdminOverview(token),
           fetchAdminUsers(token, {
-            query: searchQuery,
+            query: nextUsersQuery,
+            limit: 50,
+            offset: 0,
+          }),
+          fetchAdminOrganisations(token, {
+            query: nextOrganisationsQuery,
             limit: 50,
             offset: 0,
           }),
         ])
         setOverview(overviewPayload)
         setUsers(usersPayload)
-        setStatus(`Loaded ${usersPayload.items.length} of ${usersPayload.total} user accounts.`)
+        setOrganisations(organisationsPayload)
+        setSelectedOrganisationId((current) => {
+          if (!current) {
+            return organisationsPayload.items[0]?.id || ''
+          }
+          const exists = organisationsPayload.items.some((item) => item.id === current)
+          return exists ? current : organisationsPayload.items[0]?.id || ''
+        })
+        setStatus(
+          `Loaded ${usersPayload.items.length}/${usersPayload.total} users and ${organisationsPayload.items.length}/${organisationsPayload.total} organisations.`,
+        )
       } catch (loadError) {
         const detail = loadError instanceof Error ? loadError.message : 'Could not load admin data.'
         const lowered = detail.toLowerCase()
@@ -361,15 +430,23 @@ export function AdminPage() {
   )
 
   useEffect(() => {
-    void loadData('')
+    void loadData('', '')
   }, [loadData])
 
-  const onSearch = (event: FormEvent<HTMLFormElement>) => {
+  const onUsersSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    void loadData(query)
+    void loadData(userQuery, organisationQuery)
+  }
+
+  const onOrganisationsSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    void loadData(userQuery, organisationQuery)
   }
 
   const usersItems = users?.items || []
+  const organisationItems = organisations?.items || []
+  const selectedOrganisation =
+    organisationItems.find((item) => item.id === selectedOrganisationId) || organisationItems[0] || null
 
   const metrics = useMemo(
     () => [
@@ -396,6 +473,20 @@ export function AdminPage() {
     ],
     [overview],
   )
+
+  const organisationMetrics = useMemo(() => {
+    const totalMembers = organisationItems.reduce((sum, item) => sum + item.member_count, 0)
+    const totalProjects = organisationItems.reduce((sum, item) => sum + item.project_count, 0)
+    const totalCurrentCost = organisationItems.reduce((sum, item) => sum + item.cost_usd_current_month, 0)
+    const totalStorageBytes = organisationItems.reduce((sum, item) => sum + item.storage_bytes_current, 0)
+    return [
+      { label: 'Organisations', value: formatInteger(organisations?.total || 0), icon: Building2 },
+      { label: 'Members', value: formatInteger(totalMembers), icon: Users },
+      { label: 'Projects', value: formatInteger(totalProjects), icon: Workflow },
+      { label: 'Current month cost', value: formatCurrency(totalCurrentCost), icon: BadgeDollarSign },
+      { label: 'Storage footprint', value: formatBytes(totalStorageBytes), icon: HardDrive },
+    ]
+  }, [organisationItems, organisations?.total])
 
   const statusCounts = useMemo(() => {
     return {
@@ -437,7 +528,7 @@ export function AdminPage() {
                 <ArrowLeft className="mr-1.5 h-4 w-4" />
                 Return to main site
               </Button>
-              <Button type="button" variant="outline" onClick={() => void loadData(query)} disabled={loading}>
+              <Button type="button" variant="outline" onClick={() => void loadData(userQuery, organisationQuery)} disabled={loading}>
                 {loading ? 'Refreshing...' : 'Refresh'}
               </Button>
             </div>
@@ -563,6 +654,282 @@ export function AdminPage() {
               </Card>
             ) : null}
 
+            {activeCapability.id === 'organisations' ? (
+              <>
+                <Card className="border-[hsl(var(--tone-neutral-200))]">
+                  <CardHeader className="pb-2">
+                    <CardTitle>Tenant operations snapshot</CardTitle>
+                    <CardDescription>Organisation-level scale controls, usage pressure, and margin visibility.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    {organisationMetrics.map((item) => (
+                      <div key={item.label} className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <item.icon className="h-4 w-4 text-[hsl(var(--tone-accent-700))]" />
+                          <p className="text-sm uppercase tracking-wide text-muted-foreground">{item.label}</p>
+                        </div>
+                        <p className="mt-1 text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{item.value}</p>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-[hsl(var(--tone-neutral-200))]">
+                  <CardHeader className="pb-2">
+                    <CardTitle>Organisations index</CardTitle>
+                    <CardDescription>Search tenants by domain/plan and inspect control-plane readiness.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <form className="flex flex-wrap items-center gap-2" onSubmit={onOrganisationsSearch}>
+                      <div className="relative w-full max-w-md">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={organisationQuery}
+                          onChange={(event) => setOrganisationQuery(event.target.value)}
+                          placeholder="Search by domain or plan"
+                          className="pl-9"
+                        />
+                      </div>
+                      <Button type="submit" disabled={loading}>
+                        {loading ? 'Loading...' : 'Search'}
+                      </Button>
+                    </form>
+
+                    {organisationItems.length ? (
+                      <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
+                        <table className="w-full min-w-full text-left text-sm">
+                          <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
+                            <tr>
+                              <th className="px-3 py-2">Organisation</th>
+                              <th className="px-3 py-2">Plan</th>
+                              <th className="px-3 py-2">Members</th>
+                              <th className="px-3 py-2">Workspaces</th>
+                              <th className="px-3 py-2">Projects</th>
+                              <th className="px-3 py-2">Month spend</th>
+                              <th className="px-3 py-2">Token trend</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {organisationItems.map((item) => {
+                              const selected = selectedOrganisation?.id === item.id
+                              return (
+                                <tr
+                                  key={item.id}
+                                  className={cn(
+                                    'cursor-pointer border-t border-[hsl(var(--tone-neutral-200))]',
+                                    selected ? 'bg-[hsl(var(--tone-accent-50))]' : 'hover:bg-[hsl(var(--tone-neutral-50))]',
+                                  )}
+                                  onClick={() => setSelectedOrganisationId(item.id)}
+                                >
+                                  <td className="px-3 py-2">
+                                    <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{item.name}</p>
+                                    <p className="text-xs text-muted-foreground">{item.domain}</p>
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <span className="inline-flex rounded-full border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] px-2 py-0.5 text-micro font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-700))]">
+                                      {item.plan}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(item.member_count)}</td>
+                                  <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(item.workspace_count)}</td>
+                                  <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(item.project_count)}</td>
+                                  <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatCurrency(item.cost_usd_current_month)}</td>
+                                  <td className="px-3 py-2">
+                                    <span
+                                      className={cn(
+                                        'inline-flex rounded-full border px-2 py-0.5 text-micro font-semibold',
+                                        item.usage_tokens_trend_pct >= 0
+                                          ? 'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] text-[hsl(var(--tone-positive-700))]'
+                                          : 'border-[hsl(var(--tone-danger-300))] bg-[hsl(var(--tone-danger-50))] text-[hsl(var(--tone-danger-700))]',
+                                      )}
+                                    >
+                                      {formatPercent(item.usage_tokens_trend_pct)}
+                                    </span>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No organisations matched the current filter.</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {selectedOrganisation ? (
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    <Card className="border-[hsl(var(--tone-neutral-200))]">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="flex items-center gap-2">
+                          <Globe2 className="h-4 w-4 text-[hsl(var(--tone-accent-700))]" />
+                          Organisation profile
+                        </CardTitle>
+                        <CardDescription>{selectedOrganisation.name} ({selectedOrganisation.domain})</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-2 text-sm">
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Billing status</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{selectedOrganisation.billing_status}</p>
+                          </div>
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Members / Admins</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">
+                              {formatInteger(selectedOrganisation.member_count)} / {formatInteger(selectedOrganisation.admin_count)}
+                            </p>
+                          </div>
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Rate limit</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">
+                              {formatInteger(selectedOrganisation.rate_limit_rpm)} rpm
+                            </p>
+                          </div>
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Data retention</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">
+                              {formatInteger(selectedOrganisation.data_retention_days)} days
+                            </p>
+                          </div>
+                        </div>
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                          <p className="text-sm uppercase tracking-wide text-muted-foreground">Token / storage quotas</p>
+                          <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">
+                            {formatInteger(selectedOrganisation.monthly_token_quota)} tokens / {formatInteger(selectedOrganisation.storage_quota_gb)} GB
+                          </p>
+                        </div>
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                          <p className="text-sm uppercase tracking-wide text-muted-foreground">Last active</p>
+                          <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{formatTimestamp(selectedOrganisation.last_active_at)}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border-[hsl(var(--tone-neutral-200))]">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="flex items-center gap-2">
+                          <LineChart className="h-4 w-4 text-[hsl(var(--tone-accent-700))]" />
+                          Usage and cost controls
+                        </CardTitle>
+                        <CardDescription>Current-month health with previous-month trend deltas.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-2 text-sm">
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Tokens (month)</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(selectedOrganisation.usage_tokens_current_month)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Prev: {formatInteger(selectedOrganisation.usage_tokens_previous_month)} ({formatPercent(selectedOrganisation.usage_tokens_trend_pct)})
+                            </p>
+                          </div>
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Tool calls (month)</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(selectedOrganisation.usage_tool_calls_current_month)}</p>
+                          </div>
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Cost (month)</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{formatCurrency(selectedOrganisation.cost_usd_current_month)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Prev: {formatCurrency(selectedOrganisation.cost_usd_previous_month)} ({formatPercent(selectedOrganisation.cost_trend_pct)})
+                            </p>
+                          </div>
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Gross margin snapshot</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{formatPercent(selectedOrganisation.gross_margin_pct)}</p>
+                          </div>
+                        </div>
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                          <p className="text-sm uppercase tracking-wide text-muted-foreground">Storage footprint</p>
+                          <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">{formatBytes(selectedOrganisation.storage_bytes_current)}</p>
+                        </div>
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                          <p className="text-sm uppercase tracking-wide text-muted-foreground">3-month usage trend</p>
+                          <div className="mt-2 space-y-1">
+                            {selectedOrganisation.monthly_usage_trend.map((point) => (
+                              <div key={point.month} className="grid grid-cols-[88px_minmax(0,1fr)] gap-2 text-sm text-[hsl(var(--tone-neutral-700))]">
+                                <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{point.month}</span>
+                                <span>
+                                  {formatInteger(point.tokens)} tokens | {formatInteger(point.tool_calls)} calls | {formatCurrency(point.cost_usd)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border-[hsl(var(--tone-neutral-200))] xl:col-span-2">
+                      <CardHeader className="pb-2">
+                        <CardTitle>Flags, integrations, and internal controls</CardTitle>
+                        <CardDescription>Rollout guardrails and operational actions for this tenant.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="grid gap-4 xl:grid-cols-[1.2fr_1fr_1fr]">
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                          <p className="mb-2 flex items-center gap-2 text-sm uppercase tracking-wide text-muted-foreground">
+                            <Flag className="h-4 w-4" />
+                            Feature flags
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedOrganisation.feature_flags_enabled.length ? (
+                              selectedOrganisation.feature_flags_enabled.map((flag) => (
+                                <span
+                                  key={flag}
+                                  className="inline-flex rounded-full border border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] px-2 py-0.5 text-micro font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-accent-800))]"
+                                >
+                                  {flag}
+                                </span>
+                              ))
+                            ) : (
+                              <p className="text-sm text-muted-foreground">No flags are currently enabled.</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                          <p className="mb-2 flex items-center gap-2 text-sm uppercase tracking-wide text-muted-foreground">
+                            <KeyRound className="h-4 w-4" />
+                            Integrations
+                          </p>
+                          <div className="space-y-2">
+                            {selectedOrganisation.integrations.map((integration) => (
+                              <div key={integration.key} className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-2 py-1.5">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="text-sm font-semibold uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-900))]">{integration.key}</span>
+                                  <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-micro font-semibold uppercase tracking-[0.08em] ${integrationStatusClass(integration.status)}`}>
+                                    {integration.status}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  {formatInteger(integration.connected_members)} connected | Last sync {formatTimestamp(integration.last_sync_at)}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                          <p className="mb-2 flex items-center gap-2 text-sm uppercase tracking-wide text-muted-foreground">
+                            <TriangleAlert className="h-4 w-4" />
+                            Internal controls
+                          </p>
+                          <p className="text-sm text-[hsl(var(--tone-neutral-700))]">
+                            {selectedOrganisation.impersonation.note}
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Last event: {formatTimestamp(selectedOrganisation.impersonation.last_event_at)}
+                          </p>
+                          <Button type="button" variant="outline" className="mt-3 w-full" disabled>
+                            Impersonate org admin (audited)
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+
             {activeCapability.id === 'users' ? (
               <Card className="border-[hsl(var(--tone-neutral-200))]">
                 <CardHeader className="pb-2">
@@ -570,12 +937,12 @@ export function AdminPage() {
                   <CardDescription>Search and inspect account status across the system.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <form className="flex flex-wrap items-center gap-2" onSubmit={onSearch}>
+                  <form className="flex flex-wrap items-center gap-2" onSubmit={onUsersSearch}>
                     <div className="relative w-full max-w-md">
                       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
+                        value={userQuery}
+                        onChange={(event) => setUserQuery(event.target.value)}
                         placeholder="Search by name or email"
                         className="pl-9"
                       />
@@ -641,7 +1008,7 @@ export function AdminPage() {
               </Card>
             ) : null}
 
-            {activeCapability.id !== 'overview' && activeCapability.id !== 'users' ? (
+            {activeCapability.id !== 'overview' && activeCapability.id !== 'organisations' && activeCapability.id !== 'users' ? (
               <Card className="border-[hsl(var(--tone-neutral-200))]">
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between gap-2">

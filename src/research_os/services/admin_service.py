@@ -256,7 +256,16 @@ def list_admin_organisations(
     normalized_offset = max(0, int(offset))
 
     with session_scope() as session:
-        users = session.scalars(select(User)).all()
+        user_rows = session.execute(
+            select(
+                User.id,
+                User.email,
+                User.role,
+                User.last_sign_in_at,
+                User.orcid_id,
+                User.orcid_last_synced_at,
+            )
+        ).all()
         projects = session.execute(
             select(Project.owner_user_id, Project.workspace_id)
         ).all()
@@ -274,12 +283,29 @@ def list_admin_organisations(
         ).all()
         work_rows = session.execute(select(Work.user_id, Work.provenance)).all()
 
-    users_by_domain: dict[str, list[User]] = defaultdict(list)
+    users_by_domain: dict[str, list[dict[str, object]]] = defaultdict(list)
     domain_by_user_id: dict[str, str] = {}
-    for user in users:
-        domain = _extract_email_domain(user.email)
-        users_by_domain[domain].append(user)
-        domain_by_user_id[user.id] = domain
+    for (
+        user_id,
+        email,
+        role,
+        last_sign_in_at,
+        orcid_id,
+        orcid_last_synced_at,
+    ) in user_rows:
+        user_data = {
+            "id": str(user_id or "").strip(),
+            "email": str(email or "").strip(),
+            "role": str(role or "").strip().lower(),
+            "last_sign_in_at": _coerce_utc(last_sign_in_at),
+            "orcid_id": str(orcid_id or "").strip(),
+            "orcid_last_synced_at": _coerce_utc(orcid_last_synced_at),
+        }
+        if not user_data["id"]:
+            continue
+        domain = _extract_email_domain(user_data["email"])
+        users_by_domain[domain].append(user_data)
+        domain_by_user_id[str(user_data["id"])] = domain
 
     project_counts: dict[str, int] = defaultdict(int)
     workspace_ids: dict[str, set[str]] = defaultdict(set)
@@ -351,21 +377,21 @@ def list_admin_organisations(
     for domain, domain_users in users_by_domain.items():
         member_count = len(domain_users)
         admin_count = sum(
-            1 for user in domain_users if str(user.role or "").strip().lower() == "admin"
+            1 for user in domain_users if str(user["role"]) == "admin"
         )
         active_members_30d = sum(
             1
             for user in domain_users
             if (
-                _coerce_utc(user.last_sign_in_at) is not None
-                and _coerce_utc(user.last_sign_in_at) >= active_30d_threshold
+                user["last_sign_in_at"] is not None
+                and user["last_sign_in_at"] >= active_30d_threshold
             )
         )
         last_active_at = max(
             (
-                _coerce_utc(user.last_sign_in_at)
+                user["last_sign_in_at"]
                 for user in domain_users
-                if _coerce_utc(user.last_sign_in_at) is not None
+                if user["last_sign_in_at"] is not None
             ),
             default=None,
         )
@@ -385,16 +411,16 @@ def list_admin_organisations(
         openalex_connected_members = sum(
             1
             for user in domain_users
-            if "openalex" in provenances_by_user.get(user.id, set())
+            if "openalex" in provenances_by_user.get(str(user["id"]), set())
         )
         orcid_connected_members = sum(
-            1 for user in domain_users if str(user.orcid_id or "").strip()
+            1 for user in domain_users if str(user["orcid_id"])
         )
         orcid_last_sync_at = max(
             (
-                _coerce_utc(user.orcid_last_synced_at)
+                user["orcid_last_synced_at"]
                 for user in domain_users
-                if _coerce_utc(user.orcid_last_synced_at) is not None
+                if user["orcid_last_synced_at"] is not None
             ),
             default=None,
         )

@@ -28,8 +28,8 @@ Define how major features are delivered in parallel without documentation drift,
 
 ## Admin Console Lane Map (Current)
 
-- `Now`: Overview, Users, Security & Compliance.
-- `Next`: Organisations, Workspaces/Projects, Usage-Costs-Limits, Jobs & Queues.
+- `Now`: Overview, Organisations, Users, Security & Compliance.
+- `Next`: Workspaces/Projects, Usage-Costs-Limits, Jobs & Queues.
 - `Later`: Billing & Plans, Feature Flags & Experiments, Integrations, Support & Moderation, System Settings.
 
 ## Operating Rules

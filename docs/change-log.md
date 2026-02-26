@@ -2,6 +2,50 @@
 
 ## 2026-02-26
 
+### Admin Organisations Module (Live Tenant Control Plane v1)
+
+- **Area:** Admin console organisations/tenants module (backend API + frontend operations surface).
+- **What changed:**
+- Added a new admin API endpoint: `GET /v1/admin/organisations` with admin-only auth guard.
+- Added organisations aggregation service in `admin_service` that derives tenant profiles from account domains and enriches each tenant with:
+  - member/role activity,
+  - workspace/project counts,
+  - monthly tokens/tool-calls/cost trends,
+  - storage footprint,
+  - plan/billing/quotas/rate-limit/retention controls,
+  - integration status (ORCID/OpenAlex/Zotero),
+  - audited impersonation metadata.
+- Added new backend schema contracts for organisations list payloads (including trend points and integration status objects).
+- Expanded admin API tests to cover organisations endpoint authentication, admin-role enforcement, and payload contract shape.
+- Wired frontend API/types to consume organisations payloads.
+- Upgraded admin UI `Organisations (Tenants)` section from placeholder to a live module with:
+  - tenant snapshot metrics,
+  - searchable organisations index,
+  - selectable organisation detail panel,
+  - usage/cost controls, quotas, retention, and storage views,
+  - feature flags and integration status cards,
+  - audited impersonation control placeholder action.
+- Promoted Organisations lane/status in admin module metadata to `live` + `now`.
+- **Why it changed:**
+- Deliver the first live scale-control tenant surface so admin operations can track margin, limits, integration posture, and org growth in one place while remaining compatible with current data model constraints.
+- **Key files touched:**
+- `src/research_os/services/admin_service.py`
+- `src/research_os/api/schemas.py`
+- `src/research_os/api/app.py`
+- `tests/test_api.py`
+- `frontend/src/types/impact.ts`
+- `frontend/src/lib/impact-api.ts`
+- `frontend/src/pages/admin-page.tsx`
+- `docs/parallel-feature-delivery.md`
+- `docs/stories/admin-console-operations-v1.md`
+- **Verification performed:**
+- `pytest tests/test_api.py -k "v1_admin_endpoints" -q`
+- `npm --prefix frontend run --silent typecheck`
+- `python scripts/verify_change_documentation.py`
+- **Follow-up:**
+- Add a persisted first-class tenant table (domain verification, billing objects, explicit feature-flag records) so organisations are no longer domain-derived.
+- Add audited impersonation action/event persistence and UI event timeline.
+
 ### Admin Visibility Resilience (Link + Badge Persistence)
 
 - **Area:** Admin visibility behavior in top bar, route guard, and profile badges.

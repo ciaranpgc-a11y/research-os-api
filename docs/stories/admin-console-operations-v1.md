@@ -23,7 +23,7 @@ In scope:
 
 - Admin left navigation grouped by command/scale/governance.
 - Section model for all 12 admin domains.
-- Overview and Users as active operational modules.
+- Overview, Users, and Organisations as active operational modules.
 - Structured placeholders and planning metadata for remaining modules.
 - CI documentation enforcement for major changes.
 
@@ -39,9 +39,10 @@ Out of scope (v1):
 1. Admin routes support deep-link section navigation (`/admin/overview`, `/admin/users`, etc.).
 2. Admin UI shows grouped navigation and section-specific content.
 3. Overview and Users remain live/interactive and admin-protected.
-4. Remaining modules display explicit status (`live`, `partial`, `planned`) and lane (`now`, `next`, `later`) metadata.
-5. A return action to main site remains available.
-6. Documentation and CI rules require same-delivery documentation for major changes.
+4. Organisations module is live/interactive with tenant profile, usage/cost, limits, integrations, and impersonation control visibility.
+5. Remaining modules display explicit status (`live`, `partial`, `planned`) and lane (`now`, `next`, `later`) metadata.
+6. A return action to main site remains available.
+7. Documentation and CI rules require same-delivery documentation for major changes.
 
 ## Implementation Notes (2026-02-26)
 
@@ -56,9 +57,15 @@ Out of scope (v1):
 - Added CI-gated documentation enforcement script: `scripts/verify_change_documentation.py`.
 - Updated change documentation rules to v1.2 with parallel-lane and CI-enforcement clauses.
 - Added admin-role cache resilience so admin link and personal-details admin badge remain visible when `fetchMe` temporarily fails after a confirmed admin session.
+- Added live Organisations module infrastructure:
+  - new admin API endpoint `/v1/admin/organisations`,
+  - backend domain-derived tenant aggregation (profiles, activity, usage/cost trend, quotas/limits, integrations, impersonation metadata),
+  - admin UI tenant index + detail control plane,
+  - organisations lane/status promoted to `live` + `now`.
 
 ## Verification
 
 - `npm --prefix frontend run --silent typecheck`
 - `npm --prefix frontend run design:governance`
+- `pytest tests/test_api.py -k "v1_admin_endpoints" -q`
 - `python scripts/verify_change_documentation.py` (base SHA fallback in local mode)

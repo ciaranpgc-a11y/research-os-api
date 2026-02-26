@@ -513,6 +513,73 @@ def _single_user_owner_id(*, session) -> str | None:
     return clean or None
 
 
+def _claim_legacy_ownerless_assets_for_user(*, session, user_id: str | None) -> int:
+    clean_user_id = _trim(user_id)
+    if not clean_user_id:
+        return 0
+    if session.get(User, clean_user_id) is None:
+        return 0
+
+    ownerful_assets_count_row = session.execute(
+        select(func.count(DataLibraryAsset.id)).where(
+            DataLibraryAsset.owner_user_id.is_not(None),
+            DataLibraryAsset.owner_user_id != "",
+        )
+    ).first()
+    ownerful_assets_count = (
+        int(ownerful_assets_count_row[0] or 0) if ownerful_assets_count_row else 0
+    )
+    global_claim_allowed = ownerful_assets_count == 0
+
+    candidate_rows = session.scalars(
+        select(DataLibraryAsset).where(
+            or_(
+                DataLibraryAsset.owner_user_id.is_(None),
+                DataLibraryAsset.owner_user_id == "",
+            )
+        )
+    ).all()
+    if not candidate_rows:
+        return 0
+
+    claimed_count = 0
+    for row in candidate_rows:
+        if _asset_shared_user_ids(row):
+            continue
+        project_id = _trim(row.project_id)
+        if not project_id:
+            if global_claim_allowed:
+                row.owner_user_id = clean_user_id
+                claimed_count += 1
+            continue
+
+        project = session.get(Project, project_id)
+        if project is None:
+            if global_claim_allowed:
+                row.owner_user_id = clean_user_id
+                claimed_count += 1
+            continue
+
+        project_owner_id = _trim(project.owner_user_id)
+        project_collaborators = _normalize_user_ids(project.collaborator_user_ids)
+        if project_owner_id:
+            if project_owner_id == clean_user_id:
+                row.owner_user_id = clean_user_id
+                claimed_count += 1
+            continue
+
+        if len(project_collaborators) > 0:
+            continue
+        if global_claim_allowed:
+            project.owner_user_id = clean_user_id
+            row.owner_user_id = clean_user_id
+            claimed_count += 1
+
+    if claimed_count > 0:
+        session.flush()
+    return claimed_count
+
+
 def _resolve_project_id_from_metadata(*, session, payload: dict[str, Any]) -> str | None:
     project_id = _trim(payload.get("project_id"))
     if not project_id:
