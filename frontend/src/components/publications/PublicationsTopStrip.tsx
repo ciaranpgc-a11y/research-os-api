@@ -273,7 +273,6 @@ const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label:
 ]
 const HOUSE_HEADING_TITLE_CLASS = publicationsHouseHeadings.title
 const HOUSE_HEADING_SECTION_TITLE_CLASS = publicationsHouseHeadings.sectionTitle
-const HOUSE_HEADING_H1_SOFT_CLASS = publicationsHouseHeadings.h1Soft
 const HOUSE_HEADING_H2_CLASS = publicationsHouseHeadings.h2
 const HOUSE_HEADING_H3_CLASS = publicationsHouseHeadings.h3
 const HOUSE_TEXT_CLASS = publicationsHouseHeadings.text
