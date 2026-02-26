@@ -2,6 +2,41 @@
 
 ## 2026-02-26
 
+### Admin Console Navigation Infrastructure + Parallel Delivery Governance
+
+- **Area:** Admin console UX architecture, routing, and documentation governance enforcement.
+- **What changed:**
+- Refactored admin console into a navigable module shell with grouped left navigation (`Command`, `Scale`, `Governance`) and deep-link section routing (`/admin/:sectionId`).
+- Added explicit admin module metadata for all 12 domains (`status`: live/partial/planned and delivery `lane`: now/next/later).
+- Added a parallel delivery board in the admin UI (module status/lane visibility) and section-specific infrastructure render flow.
+- Updated top-bar admin shortcut to route directly to `/admin/overview`.
+- Added parallel-delivery governance documentation at `docs/parallel-feature-delivery.md`.
+- Added CI documentation gate script `scripts/verify_change_documentation.py` and wired it into `.github/workflows/ci.yml`.
+- Updated change documentation rules to v1.2 with:
+  - Rule 7 (parallel feature lane declaration),
+  - Rule 8 (CI enforcement for major-change documentation).
+- Added admin story record: `docs/stories/admin-console-operations-v1.md`.
+- Updated `README.md` documentation rules references.
+- **Why it changed:**
+- Establish scalable admin operations infrastructure while core site features continue shipping in parallel.
+- Prevent documentation drift by enforcing same-delivery docs updates for major code changes.
+- **Key files touched:**
+- `frontend/src/pages/admin-page.tsx`
+- `frontend/src/AppRouter.tsx`
+- `frontend/src/components/layout/top-bar.tsx`
+- `.github/workflows/ci.yml`
+- `scripts/verify_change_documentation.py`
+- `docs/change-documentation-rules.md`
+- `docs/parallel-feature-delivery.md`
+- `docs/stories/admin-console-operations-v1.md`
+- `README.md`
+- **Verification performed:**
+- `npm --prefix frontend run --silent typecheck`
+- `npm --prefix frontend run design:governance`
+- `python scripts/verify_change_documentation.py`
+- **Follow-up:**
+- Add backend admin endpoints for non-overview/non-user domains as modules move from `planned`/`partial` to `live`.
+
 ### Data Library Storage Hardening (Build-Safe Persistence)
 
 - **Area:** Backend data-library file persistence and recovery.

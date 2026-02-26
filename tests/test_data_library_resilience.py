@@ -42,6 +42,10 @@ def _metadata_path(root: Path, asset_id: str) -> Path:
     return root / f"{asset_id}.meta.json"
 
 
+def _metadata_index_path(root: Path) -> Path:
+    return root / "metadata.index.json"
+
+
 def test_list_library_assets_restores_missing_row_from_metadata(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     user_id = _create_user(email="library-resilience@example.com")
@@ -55,6 +59,10 @@ def test_list_library_assets_restores_missing_row_from_metadata(monkeypatch, tmp
 
     metadata_path = _metadata_path(storage_root, asset_id)
     assert metadata_path.exists() and metadata_path.is_file()
+    metadata_index_path = _metadata_index_path(storage_root)
+    assert metadata_index_path.exists() and metadata_index_path.is_file()
+    metadata_index_payload = json.loads(metadata_index_path.read_text(encoding="utf-8"))
+    assert asset_id in (metadata_index_payload.get("asset_ids") or [])
 
     with session_scope() as session:
         row = session.get(DataLibraryAsset, asset_id)
@@ -112,3 +120,29 @@ def test_list_library_assets_rebinds_owner_by_email_when_user_id_changes(
     assert downloaded["file_name"] == "owner-rebind.csv"
     assert downloaded["content"] == b"col_a,col_b\n10,20\n"
 
+
+def test_list_library_assets_recovers_when_metadata_index_is_corrupt(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    user_id = _create_user(email="library-index-corrupt@example.com")
+    storage_root = (tmp_path / "data_library").resolve()
+
+    asset_id = upload_library_assets(
+        files=[("index-corrupt.csv", "text/csv", b"col_a,col_b\n5,6\n")],
+        project_id=None,
+        user_id=user_id,
+    )[0]
+
+    index_path = _metadata_index_path(storage_root)
+    assert index_path.exists() and index_path.is_file()
+    index_path.write_text("{not-json", encoding="utf-8")
+
+    with session_scope() as session:
+        row = session.get(DataLibraryAsset, asset_id)
+        assert row is not None
+        session.delete(row)
+
+    payload = list_library_assets(project_id=None, user_id=user_id)
+    listed_ids = [str(item.get("id")) for item in payload.get("items", [])]
+    assert asset_id in listed_ids

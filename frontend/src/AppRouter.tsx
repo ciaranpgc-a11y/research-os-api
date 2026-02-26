@@ -110,7 +110,11 @@ function RequireAdmin() {
   }, [token])
 
   if (status === 'checking') {
-    return <div className="p-6 text-sm text-muted-foreground">Checking admin access...</div>
+    return (
+      <div data-ui="admin-access-checking" className="p-6 text-sm text-muted-foreground">
+        Checking admin access...
+      </div>
+    )
   }
   if (status === 'signed_out') {
     return <Navigate to="/" replace state={{ from: location.pathname }} />

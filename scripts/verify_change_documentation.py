@@ -68,8 +68,10 @@ def main() -> int:
         print("Documentation check skipped: no base revision available.")
         return 0
 
-    changed_raw = run_git(["diff", "--name-only", base_sha, "HEAD"])
-    changed_files = normalize_changed_files(changed_raw)
+    committed_changed = normalize_changed_files(run_git(["diff", "--name-only", base_sha, "HEAD"]))
+    working_tree_changed = normalize_changed_files(run_git(["diff", "--name-only"]))
+    staged_changed = normalize_changed_files(run_git(["diff", "--name-only", "--cached"]))
+    changed_files = sorted(set(committed_changed + working_tree_changed + staged_changed))
     if not changed_files:
         print("Documentation check passed: no changed files detected.")
         return 0

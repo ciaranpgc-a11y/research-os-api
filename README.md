@@ -191,5 +191,7 @@ The API emits structured JSON logs and attaches `X-Request-ID` to responses for 
 Major changes must be documented in the same delivery.
 
 - Rules: `docs/change-documentation-rules.md`
+- Parallel delivery framework: `docs/parallel-feature-delivery.md`
 - Running audit log: `docs/change-log.md`
 - Feature/story details: `docs/stories/`
+- CI gate for major-change documentation: `scripts/verify_change_documentation.py`

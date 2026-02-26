@@ -1,4 +1,4 @@
-# Change Documentation Rules v1.1
+# Change Documentation Rules v1.2
 
 ## Purpose
 
@@ -64,3 +64,27 @@ When a working chat/session is approaching context compression, perform an expli
 - Prefer one consolidated, comprehensive documentation pass rather than sparse partial notes.
 
 This rule is additive to Rules 1-5 and does not replace continuous documentation during delivery.
+
+## Rule 7: Parallel Feature Delivery Lanes Must Be Declared
+
+When major features are built in parallel (for example admin surfaces and core product UI/API changes in the same period), each delivery must clearly declare lane placement in documentation:
+
+- `Now` lane: actively shipping in current cycle.
+- `Next` lane: implementation-ready follow-on work.
+- `Later` lane: defined scope waiting on dependencies or sequencing.
+
+Lane placement must be reflected in either:
+
+- the relevant story document(s) under `docs/stories/`, or
+- `docs/parallel-feature-delivery.md` when the change affects cross-feature coordination rules.
+
+## Rule 8: CI Documentation Enforcement For Major Changes
+
+Major product/engineering changes are CI-gated by `scripts/verify_change_documentation.py`.
+
+When major code paths change, CI requires:
+
+1. `docs/change-log.md` updated in the same change set.
+2. At least one story or governance documentation update (`docs/stories/` or designated governance docs).
+
+Missing required documentation is a hard failure for major changes.

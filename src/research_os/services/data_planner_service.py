@@ -77,6 +77,19 @@ def _normalize_user_ids(values: Any) -> list[str]:
     return deduped
 
 
+def _escape_like_pattern(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _shared_access_hint_expression(user_id: str):
+    escaped_user_id = _escape_like_pattern(_trim(user_id))
+    pattern = f'%"{escaped_user_id}"%'
+    return cast(DataLibraryAsset.shared_with_user_ids, String).like(
+        pattern,
+        escape="\\",
+    )
+
+
 def _resolve_user_ids_by_names(
     *, session, names: list[str], exclude_user_id: str | None = None
 ) -> list[str]:
@@ -841,17 +854,41 @@ def list_library_assets(
             }
         clean_project_id = _normalize_optional_id(project_id)
         storage_root = _storage_root()
-        _restore_asset_row_from_metadata(
-            session=session,
-            primary_root=storage_root,
-        )
-        query = select(DataLibraryAsset).order_by(DataLibraryAsset.uploaded_at.desc())
+        owner_expr = DataLibraryAsset.owner_user_id == clean_user_id
+        shared_hint_expr = _shared_access_hint_expression(clean_user_id)
+        legacy_project_fallback_expr = DataLibraryAsset.shared_with_user_ids.is_(None)
+        stmt = select(DataLibraryAsset).order_by(DataLibraryAsset.uploaded_at.desc())
         if clean_project_id:
             _resolve_project_for_user(
                 session=session, project_id=clean_project_id, user_id=clean_user_id
             )
-            query = query.where(DataLibraryAsset.project_id == clean_project_id)
-        rows = session.scalars(query).all()
+            stmt = stmt.where(DataLibraryAsset.project_id == clean_project_id)
+
+        if clean_ownership == "owned":
+            stmt = stmt.where(owner_expr)
+        elif clean_ownership == "shared":
+            stmt = stmt.where(
+                and_(
+                    or_(
+                        DataLibraryAsset.owner_user_id.is_(None),
+                        DataLibraryAsset.owner_user_id != clean_user_id,
+                    ),
+                    or_(shared_hint_expr, legacy_project_fallback_expr),
+                )
+            )
+        else:
+            stmt = stmt.where(
+                or_(owner_expr, shared_hint_expr, legacy_project_fallback_expr)
+            )
+
+        rows = session.scalars(stmt).all()
+        if not rows:
+            restored_any = _restore_asset_row_from_metadata(
+                session=session,
+                primary_root=storage_root,
+            )
+            if restored_any:
+                rows = session.scalars(stmt).all()
         for row in rows:
             resolved_storage_path = _resolve_existing_asset_path(row, storage_root)
             if resolved_storage_path is None:
@@ -879,15 +916,6 @@ def list_library_assets(
             )
             for row in accessible_rows
         ]
-
-        if clean_ownership == "owned":
-            payload_items = [
-                item for item in payload_items if bool(item.get("can_manage_access"))
-            ]
-        elif clean_ownership == "shared":
-            payload_items = [
-                item for item in payload_items if not bool(item.get("can_manage_access"))
-            ]
 
         if clean_query:
             def _matches(item: dict[str, object]) -> bool:
