@@ -27,9 +27,28 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
-import { fetchAdminOrganisations, fetchAdminOverview, fetchAdminUsers, fetchAdminWorkspaces } from '@/lib/impact-api'
+import {
+  cancelAdminJob,
+  fetchAdminAuditEvents,
+  fetchAdminJobs,
+  fetchAdminOrganisations,
+  fetchAdminOverview,
+  fetchAdminUsageCosts,
+  fetchAdminUsers,
+  fetchAdminWorkspaces,
+  impersonateAdminOrganisation,
+  retryAdminJob,
+} from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
-import type { AdminOrganisationsListPayload, AdminOverviewPayload, AdminUsersListPayload, AdminWorkspacesListPayload } from '@/types/impact'
+import type {
+  AdminAuditEventsListPayload,
+  AdminJobsListPayload,
+  AdminOrganisationsListPayload,
+  AdminOverviewPayload,
+  AdminUsageCostsPayload,
+  AdminUsersListPayload,
+  AdminWorkspacesListPayload,
+} from '@/types/impact'
 
 type AdminCapabilitySection = {
   id: string
@@ -122,8 +141,8 @@ const CAPABILITY_SECTIONS: AdminCapabilitySection[] = [
     id: 'usage-costs',
     title: 'Usage, Costs, and Limits',
     icon: Database,
-    status: 'planned',
-    lane: 'next',
+    status: 'live',
+    lane: 'now',
     summary: 'Margin analytics by model/tool/org with quotas, throttling, and budget alerts.',
     items: [
       'Token usage by model/feature/org/user',
@@ -136,8 +155,8 @@ const CAPABILITY_SECTIONS: AdminCapabilitySection[] = [
     id: 'jobs',
     title: 'Jobs & Queues',
     icon: ServerCog,
-    status: 'planned',
-    lane: 'next',
+    status: 'live',
+    lane: 'now',
     summary: 'Back-office run pipeline for queues, workers, retries, and dead-letter visibility.',
     items: [
       'Queue health, backlog, worker status',
@@ -348,11 +367,19 @@ export function AdminPage() {
   const [users, setUsers] = useState<AdminUsersListPayload | null>(null)
   const [organisations, setOrganisations] = useState<AdminOrganisationsListPayload | null>(null)
   const [workspaces, setWorkspaces] = useState<AdminWorkspacesListPayload | null>(null)
+  const [usageCosts, setUsageCosts] = useState<AdminUsageCostsPayload | null>(null)
+  const [jobs, setJobs] = useState<AdminJobsListPayload | null>(null)
+  const [auditEvents, setAuditEvents] = useState<AdminAuditEventsListPayload | null>(null)
   const [userQuery, setUserQuery] = useState('')
   const [organisationQuery, setOrganisationQuery] = useState('')
   const [workspaceQuery, setWorkspaceQuery] = useState('')
+  const [usageQuery, setUsageQuery] = useState('')
+  const [jobsQuery, setJobsQuery] = useState('')
+  const [jobStatus, setJobStatus] = useState('all')
   const [selectedOrganisationId, setSelectedOrganisationId] = useState('')
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState('')
+  const [impersonatingOrganisationId, setImpersonatingOrganisationId] = useState('')
+  const [actingJobId, setActingJobId] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
@@ -380,6 +407,9 @@ export function AdminPage() {
       nextUsersQuery: string,
       nextOrganisationsQuery: string,
       nextWorkspacesQuery: string,
+      nextUsageQuery: string,
+      nextJobsQuery: string,
+      nextJobStatus: string,
     ) => {
       const token = getAuthSessionToken()
       if (!token) {
@@ -390,7 +420,15 @@ export function AdminPage() {
       setError('')
       setStatus('')
       try {
-        const [overviewPayload, usersPayload, organisationsPayload, workspacesPayload] = await Promise.all([
+        const [
+          overviewPayload,
+          usersPayload,
+          organisationsPayload,
+          workspacesPayload,
+          usagePayload,
+          jobsPayload,
+          auditPayload,
+        ] = await Promise.all([
           fetchAdminOverview(token),
           fetchAdminUsers(token, {
             query: nextUsersQuery,
@@ -407,11 +445,27 @@ export function AdminPage() {
             limit: 50,
             offset: 0,
           }),
+          fetchAdminUsageCosts(token, {
+            query: nextUsageQuery,
+          }),
+          fetchAdminJobs(token, {
+            query: nextJobsQuery,
+            status: nextJobStatus,
+            limit: 50,
+            offset: 0,
+          }),
+          fetchAdminAuditEvents(token, {
+            limit: 100,
+            offset: 0,
+          }),
         ])
         setOverview(overviewPayload)
         setUsers(usersPayload)
         setOrganisations(organisationsPayload)
         setWorkspaces(workspacesPayload)
+        setUsageCosts(usagePayload)
+        setJobs(jobsPayload)
+        setAuditEvents(auditPayload)
         setSelectedOrganisationId((current) => {
           if (!current) {
             return organisationsPayload.items[0]?.id || ''
@@ -427,7 +481,7 @@ export function AdminPage() {
           return exists ? current : workspacesPayload.items[0]?.id || ''
         })
         setStatus(
-          `Loaded ${usersPayload.items.length}/${usersPayload.total} users, ${organisationsPayload.items.length}/${organisationsPayload.total} organisations, and ${workspacesPayload.items.length}/${workspacesPayload.total} workspaces.`,
+          `Loaded users ${usersPayload.items.length}/${usersPayload.total}, organisations ${organisationsPayload.items.length}/${organisationsPayload.total}, workspaces ${workspacesPayload.items.length}/${workspacesPayload.total}, jobs ${jobsPayload.items.length}/${jobsPayload.total}, and ${auditPayload.items.length} audit events.`,
         )
       } catch (loadError) {
         const detail = loadError instanceof Error ? loadError.message : 'Could not load admin data.'
@@ -450,22 +504,103 @@ export function AdminPage() {
   )
 
   useEffect(() => {
-    void loadData('', '', '')
+    void loadData('', '', '', '', '', 'all')
   }, [loadData])
 
   const onUsersSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    void loadData(userQuery, organisationQuery, workspaceQuery)
+    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
   }
 
   const onOrganisationsSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    void loadData(userQuery, organisationQuery, workspaceQuery)
+    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
   }
 
   const onWorkspacesSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    void loadData(userQuery, organisationQuery, workspaceQuery)
+    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+  }
+
+  const onUsageSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+  }
+
+  const onJobsSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+  }
+
+  const onImpersonateOrganisation = async () => {
+    if (!selectedOrganisation) {
+      return
+    }
+    const token = getAuthSessionToken()
+    if (!token) {
+      navigate('/auth', { replace: true })
+      return
+    }
+    setImpersonatingOrganisationId(selectedOrganisation.id)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await impersonateAdminOrganisation(token, selectedOrganisation.id, {
+        reason: 'Admin console impersonation launch.',
+      })
+      setStatus(
+        `Impersonation ticket ${payload.impersonation_ticket} created for ${payload.target_user_email} (expires ${formatTimestamp(payload.expires_at)}).`,
+      )
+      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Could not impersonate organisation admin.')
+    } finally {
+      setImpersonatingOrganisationId('')
+    }
+  }
+
+  const onCancelJob = async (jobId: string) => {
+    const token = getAuthSessionToken()
+    if (!token) {
+      navigate('/auth', { replace: true })
+      return
+    }
+    setActingJobId(jobId)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await cancelAdminJob(token, jobId, {
+        reason: 'Admin console cancel action.',
+      })
+      setStatus(payload.message)
+      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Could not cancel job.')
+    } finally {
+      setActingJobId('')
+    }
+  }
+
+  const onRetryJob = async (jobId: string) => {
+    const token = getAuthSessionToken()
+    if (!token) {
+      navigate('/auth', { replace: true })
+      return
+    }
+    setActingJobId(jobId)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await retryAdminJob(token, jobId, {
+        reason: 'Admin console retry action.',
+      })
+      setStatus(payload.message)
+      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Could not retry job.')
+    } finally {
+      setActingJobId('')
+    }
   }
 
   const usersItems = users?.items || []
@@ -475,6 +610,14 @@ export function AdminPage() {
   const workspaceItems = workspaces?.items || []
   const selectedWorkspace =
     workspaceItems.find((item) => item.id === selectedWorkspaceId) || workspaceItems[0] || null
+  const usageSummary = usageCosts?.summary || null
+  const usageModelItems = usageCosts?.model_usage || []
+  const usageToolItems = usageCosts?.tool_usage || []
+  const usageOrganisationItems = usageCosts?.organisation_usage || []
+  const usageUserItems = usageCosts?.user_usage || []
+  const usageTrendItems = usageCosts?.monthly_trend || []
+  const jobsItems = jobs?.items || []
+  const auditItems = auditEvents?.items || []
 
   const metrics = useMemo(
     () => [
@@ -573,7 +716,7 @@ export function AdminPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => void loadData(userQuery, organisationQuery, workspaceQuery)}
+                onClick={() => void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)}
                 disabled={loading}
               >
                 {loading ? 'Refreshing...' : 'Refresh'}
