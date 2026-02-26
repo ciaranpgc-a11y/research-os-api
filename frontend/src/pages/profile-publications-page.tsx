@@ -2263,10 +2263,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       <div className={HOUSE_SECTION_DIVIDER_STRONG_CLASS} />
 
       <Card>
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-1">
           <h2 className={publicationsHouseHeadings.sectionTitle}>Publication library</h2>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <Input
               value={query}
@@ -2298,8 +2298,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               ))}
             </select>
           </div>
-          <div className="grid items-start gap-2 xl:grid-cols-[minmax(0,2.45fr)_minmax(360px,1fr)]">
-            <div className="space-y-2">
+          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2.9fr)_minmax(320px,1fr)]">
+            <div className="space-y-1">
 
               {filteredWorks.length === 0 ? (
                 <div className="rounded border border-dashed border-border p-4 text-sm text-muted-foreground">
@@ -2312,7 +2312,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 </div>
               ) : (
                 <div ref={publicationTableLayoutRef} className="relative">
-                  <div ref={columnSettingsRef} className="absolute right-0 -top-10 z-20">
+                  <div ref={columnSettingsRef} className="absolute right-0 -top-9 z-20">
                     <Button
                       type="button"
                       size="icon"

@@ -15,14 +15,15 @@ export function AppShell() {
   const setLeftPanelOpen = useAaweStore((state) => state.setLeftPanelOpen)
   const setRightPanelOpen = useAaweStore((state) => state.setRightPanelOpen)
   const isStudyCoreRoute = location.pathname === '/study-core'
-  const isProfileRoute = location.pathname === '/profile' || location.pathname === '/impact'
-  const showRightPanel = isProfileRoute
+  const isProfileLandingRoute = location.pathname === '/profile' || location.pathname === '/impact'
+  const isProfileSectionRoute = location.pathname.startsWith('/profile') || location.pathname === '/impact'
+  const showRightPanel = isProfileLandingRoute
   const rightPanel = <ProfilePanel />
 
   return (
     <div data-house-scope="app" data-house-role="app-shell" className="flex h-screen flex-col bg-background text-foreground">
       <TopBar
-        scope={isProfileRoute ? 'account' : 'workspace'}
+        scope={isProfileSectionRoute ? 'account' : 'workspace'}
         onOpenLeftNav={() => setLeftPanelOpen(true)}
       />
 
@@ -45,8 +46,8 @@ export function AppShell() {
                 'mx-auto w-full py-4',
                 isStudyCoreRoute
                   ? 'max-w-none px-3 md:px-4'
-                  : isProfileRoute
-                    ? 'max-w-sz-1360 px-3 md:px-5'
+                  : isProfileSectionRoute
+                    ? 'max-w-sz-1380 px-3 md:px-5'
                     : 'max-w-6xl px-4 md:px-6',
               )}
             >
