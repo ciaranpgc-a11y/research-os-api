@@ -795,3 +795,35 @@
 - `pytest tests/test_api.py -k "library_asset or persist_across_logout" -q`
 - **Follow-up:**
 - Add a startup/audit endpoint that surfaces schema version, auto-heal actions taken, and library recovery counts for support diagnostics.
+
+### Personal Library Empty-After-Login Hardening (Owner Repair Before Filters)
+
+- **Area:** Data-library list/access reliability after sign-in when legacy owner ids are stale/blank.
+- **What changed:**
+- Added explicit legacy owner-repair candidate detection for assets with:
+  - missing owner,
+  - blank owner,
+  - stale owner id (owner id no longer present in `users`).
+- Updated legacy claim flow so repair can proceed when current user already has owned assets, as long as all existing valid owners are the same user.
+- Extended claim candidates to include stale-owner rows (not just null/blank owner rows).
+- Added project-owner stale-id handling during claim:
+  - if a project owner id is stale, it is cleared and recoverable ownership logic is applied.
+- `list_library_assets` now performs repair before ownership filtering:
+  - optional metadata-sidecar reconciliation when repair candidates exist or sidecar index count exceeds DB row count,
+  - owner claim pass before `owned/shared/all` filtering.
+- `update_library_asset_access` and `download_library_asset` now trigger owner claim recovery for legacy ownerless rows by id before enforcing access checks.
+- Added regression coverage for `ownership="owned"` with mixed modern+legacy rows:
+  - validates stale-owner personal rows are reclaimed and visible when the same user already has owned assets.
+- **Why it changed:**
+- Fix persistent “personal library empty after login” scenarios where recoverable legacy rows were excluded by filters before ownership repair ran.
+- Prevent rows from disappearing between sessions when ownership metadata is stale but files still exist.
+- **Key files touched:**
+- `src/research_os/services/data_planner_service.py`
+- `tests/test_data_library_resilience.py`
+- `docs/change-log.md`
+- **Verification performed:**
+- `pytest tests/test_data_library_resilience.py -q`
+- `pytest tests/test_api.py -k "library_assets_persist_across_logout_and_login or library_assets_support_server_pagination_sort_and_filters or library_asset_access_controls_and_download" -q`
+- `python -m py_compile src/research_os/services/data_planner_service.py tests/test_data_library_resilience.py`
+- **Follow-up:**
+- Add lightweight telemetry counters for owner-repair events so production support can quickly distinguish “no files uploaded” from “rows repaired on access”.

@@ -510,6 +510,39 @@ function publicationColumnPercentileLength(values: string[]): number {
   return lengths[index]
 }
 
+function estimateWrappedLineCount(text: string, widthPx: number): number {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim()
+  if (!clean) {
+    return 1
+  }
+  const horizontalPaddingPx = 28
+  const charWidthPx = 7.1
+  const usableWidthPx = Math.max(36, widthPx - horizontalPaddingPx)
+  const charsPerLine = Math.max(6, Math.floor(usableWidthPx / charWidthPx))
+  const words = clean.split(' ')
+  let lines = 1
+  let currentLength = 0
+  for (const word of words) {
+    const tokenLength = Math.max(1, word.length)
+    if (tokenLength > charsPerLine) {
+      if (currentLength > 0) {
+        lines += 1
+      }
+      lines += Math.ceil(tokenLength / charsPerLine) - 1
+      currentLength = tokenLength % charsPerLine
+      continue
+    }
+    const nextLength = currentLength === 0 ? tokenLength : currentLength + 1 + tokenLength
+    if (nextLength > charsPerLine) {
+      lines += 1
+      currentLength = tokenLength
+      continue
+    }
+    currentLength = nextLength
+  }
+  return Math.max(1, lines)
+}
+
 function publicationTableColumnsEqual(
   left: Record<PublicationTableColumnKey, PublicationTableColumnPreference>,
   right: Record<PublicationTableColumnKey, PublicationTableColumnPreference>,
@@ -534,42 +567,54 @@ function autoFitPublicationTableColumns(input: {
     work_type: { ...input.current.work_type },
     citations: { ...input.current.citations },
   }
-  const charWidthPx = 7.2
   const columnLimits: Record<PublicationTableColumnKey, { min: number; max: number; growWeight: number }> = {
-    title: { min: 240, max: 560, growWeight: 4.6 },
-    year: { min: 92, max: 136, growWeight: 0.9 },
-    venue: { min: 220, max: 420, growWeight: 3.2 },
-    work_type: { min: 190, max: 300, growWeight: 2.4 },
-    citations: { min: 110, max: 150, growWeight: 1.0 },
+    title: { min: 320, max: 760, growWeight: 6.4 },
+    year: { min: 96, max: 124, growWeight: 0.6 },
+    venue: { min: 180, max: 340, growWeight: 2.1 },
+    work_type: { min: 170, max: 260, growWeight: 1.6 },
+    citations: { min: 96, max: 132, growWeight: 0.7 },
   }
+  const safeAvailableWidth = Math.max(760, Math.round(input.availableWidth))
 
   const sampleSize = Math.max(1, Math.min(220, input.works.length))
   const sample = input.works.slice(0, sampleSize)
-  const measured = PUBLICATION_TABLE_COLUMN_ORDER.reduce<Record<PublicationTableColumnKey, number>>((accumulator, column) => {
-    const headerLength = PUBLICATION_TABLE_COLUMN_DEFINITIONS[column].label.length
-    const values = sample.map((work) => publicationTableColumnTextForWork(column, work, input.metricsByWorkId))
-    const percentileLength = publicationColumnPercentileLength(values)
-    const effectiveLength = Math.max(headerLength, percentileLength)
-    const limit = columnLimits[column]
-    const measuredWidth = clampPublicationTableColumnWidth(
-      Math.round(30 + effectiveLength * charWidthPx),
-      next[column].width,
-    )
-    accumulator[column] = Math.max(limit.min, Math.min(limit.max, measuredWidth))
-    return accumulator
-  }, {
-    title: next.title.width,
-    year: next.year.width,
-    venue: next.venue.width,
-    work_type: next.work_type.width,
-    citations: next.citations.width,
-  })
+  const valuesByColumn = PUBLICATION_TABLE_COLUMN_ORDER.reduce<Record<PublicationTableColumnKey, string[]>>(
+    (accumulator, column) => {
+      accumulator[column] = sample.map((work) => publicationTableColumnTextForWork(column, work, input.metricsByWorkId))
+      return accumulator
+    },
+    {
+      title: [],
+      year: [],
+      venue: [],
+      work_type: [],
+      citations: [],
+    },
+  )
+  const initialWidths = PUBLICATION_TABLE_COLUMN_ORDER.reduce<Record<PublicationTableColumnKey, number>>(
+    (accumulator, column) => {
+      const headerLength = PUBLICATION_TABLE_COLUMN_DEFINITIONS[column].label.length
+      const percentileLength = publicationColumnPercentileLength(valuesByColumn[column])
+      const limit = columnLimits[column]
+      const charWidthPx = column === 'title' ? 7.6 : 7.2
+      const measuredWidth = Math.round(28 + Math.max(headerLength, percentileLength) * charWidthPx)
+      accumulator[column] = Math.max(limit.min, Math.min(limit.max, measuredWidth))
+      return accumulator
+    },
+    {
+      title: next.title.width,
+      year: next.year.width,
+      venue: next.venue.width,
+      work_type: next.work_type.width,
+      citations: next.citations.width,
+    },
+  )
+  const measured = { ...initialWidths }
 
   const visibleColumns = PUBLICATION_TABLE_COLUMN_ORDER.filter((column) => next[column].visible)
   if (visibleColumns.length === 0) {
     return next
   }
-  const safeAvailableWidth = Math.max(760, Math.round(input.availableWidth))
   let currentTotal = visibleColumns.reduce((sum, column) => sum + measured[column], 0)
   const targetTotal = Math.max(
     visibleColumns.reduce((sum, column) => sum + columnLimits[column].min, 0),
@@ -627,6 +672,85 @@ function autoFitPublicationTableColumns(input: {
       }
       if (consumedThisRound <= 0) {
         break
+      }
+    }
+  }
+
+  // Minimize sampled row height by balancing widths across wrapping columns.
+  const optimizeColumns = visibleColumns.filter((column) => (
+    column === 'title' || column === 'venue' || column === 'work_type'
+  ))
+  if (optimizeColumns.length >= 2) {
+    const optimizeColumnSet = new Set<PublicationTableColumnKey>(optimizeColumns)
+    const fixedWidth = visibleColumns.reduce(
+      (sum, column) => optimizeColumnSet.has(column) ? sum : sum + measured[column],
+      0,
+    )
+    const optimizeWidthBudget = Math.max(
+      optimizeColumns.reduce((sum, column) => sum + columnLimits[column].min, 0),
+      Math.min(
+        optimizeColumns.reduce((sum, column) => sum + columnLimits[column].max, 0),
+        targetTotal - fixedWidth,
+      ),
+    )
+    if (optimizeWidthBudget > 0) {
+      const venueStep = optimizeColumns.includes('venue') ? 12 : 1
+      const typeStep = optimizeColumns.includes('work_type') ? 12 : 1
+      const titleLimit = columnLimits.title
+      const venueLimit = columnLimits.venue
+      const typeLimit = columnLimits.work_type
+      let best: { title: number; venue: number; work_type: number; score: number } | null = null
+      const venueStart = optimizeColumns.includes('venue') ? venueLimit.min : 0
+      const venueEnd = optimizeColumns.includes('venue') ? venueLimit.max : 0
+      const typeStart = optimizeColumns.includes('work_type') ? typeLimit.min : 0
+      const typeEnd = optimizeColumns.includes('work_type') ? typeLimit.max : 0
+      for (
+        let venueWidth = venueStart;
+        venueWidth <= venueEnd;
+        venueWidth += venueStep
+      ) {
+        for (
+          let typeWidth = typeStart;
+          typeWidth <= typeEnd;
+          typeWidth += typeStep
+        ) {
+          const titleWidth = optimizeWidthBudget - venueWidth - typeWidth
+          if (titleWidth < titleLimit.min || titleWidth > titleLimit.max) {
+            continue
+          }
+          let score = 0
+          for (let index = 0; index < sample.length; index += 1) {
+            const titleText = valuesByColumn.title[index] || ''
+            const venueText = valuesByColumn.venue[index] || ''
+            const typeText = valuesByColumn.work_type[index] || ''
+            const rowLines = Math.max(
+              estimateWrappedLineCount(titleText, titleWidth),
+              estimateWrappedLineCount(venueText, venueWidth),
+              estimateWrappedLineCount(typeText, typeWidth),
+            )
+            score += rowLines
+          }
+          score += Math.max(0, Math.ceil((480 - titleWidth) / 14))
+          if (best === null || score < best.score || (score === best.score && titleWidth > best.title)) {
+            best = {
+              title: titleWidth,
+              venue: venueWidth,
+              work_type: typeWidth,
+              score,
+            }
+          }
+        }
+      }
+      if (best) {
+        if (optimizeColumns.includes('title')) {
+          measured.title = best.title
+        }
+        if (optimizeColumns.includes('venue')) {
+          measured.venue = best.venue
+        }
+        if (optimizeColumns.includes('work_type')) {
+          measured.work_type = best.work_type
+        }
       }
     }
   }
@@ -2458,7 +2582,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               if (columnKey === 'title') {
                                 return (
                                   <TableCell key={`${work.id}-${columnKey}`} className={`font-medium ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
-                                    <div className="flex items-center gap-1.5">
+                                    <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-1.5">
                                       {oaVisualStatus === 'available' && oaDownloadUrl ? (
                                         <button
                                           type="button"
@@ -2480,7 +2604,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                           )}
                                         </span>
                                       )}
-                                      <span className="min-w-0 truncate">{work.title}</span>
+                                      <span className="min-w-0 whitespace-normal break-words leading-snug">{work.title}</span>
                                     </div>
                                   </TableCell>
                                 )

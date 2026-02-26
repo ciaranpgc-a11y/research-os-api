@@ -291,3 +291,51 @@ def test_list_library_assets_claims_orphan_project_asset_for_requesting_user(
         assert refreshed_asset is not None
         assert str(refreshed_project.owner_user_id or "") == user_id
         assert str(refreshed_asset.owner_user_id or "") == user_id
+
+
+def test_list_library_assets_owned_repairs_stale_owner_rows_when_user_has_owned_assets(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    user_id = _create_user(email="owned-repair@example.com")
+    storage_root = (tmp_path / "data_library").resolve()
+    storage_root.mkdir(parents=True, exist_ok=True)
+
+    owned_asset_id = upload_library_assets(
+        files=[("owned.csv", "text/csv", b"col_a,col_b\n1,2\n")],
+        project_id=None,
+        user_id=user_id,
+    )[0]
+
+    stale_asset_path = storage_root / "stale-owner.csv"
+    stale_bytes = b"col_a,col_b\n3,4\n"
+    stale_asset_path.write_bytes(stale_bytes)
+
+    with session_scope() as session:
+        stale_row = DataLibraryAsset(
+            owner_user_id="missing-user-id",
+            project_id=None,
+            shared_with_user_ids=[],
+            filename="stale-owner.csv",
+            kind="csv",
+            mime_type="text/csv",
+            byte_size=len(stale_bytes),
+            storage_path=str(stale_asset_path),
+        )
+        session.add(stale_row)
+        session.flush()
+        stale_asset_id = str(stale_row.id)
+
+    payload = list_library_assets(
+        project_id=None,
+        user_id=user_id,
+        ownership="owned",
+    )
+    listed_ids = [str(item.get("id")) for item in payload.get("items", [])]
+    assert owned_asset_id in listed_ids
+    assert stale_asset_id in listed_ids
+
+    with session_scope() as session:
+        stale_row = session.get(DataLibraryAsset, stale_asset_id)
+        assert stale_row is not None
+        assert str(stale_row.owner_user_id or "") == user_id

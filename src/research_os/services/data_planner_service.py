@@ -513,6 +513,26 @@ def _single_user_owner_id(*, session) -> str | None:
     return clean or None
 
 
+def _legacy_asset_owner_repair_candidates_count(*, session) -> int:
+    owner_exists_expr = select(User.id).where(
+        User.id == DataLibraryAsset.owner_user_id
+    ).exists()
+    row = session.execute(
+        select(func.count(DataLibraryAsset.id)).where(
+            or_(
+                DataLibraryAsset.owner_user_id.is_(None),
+                DataLibraryAsset.owner_user_id == "",
+                and_(
+                    DataLibraryAsset.owner_user_id.is_not(None),
+                    DataLibraryAsset.owner_user_id != "",
+                    ~owner_exists_expr,
+                ),
+            )
+        )
+    ).first()
+    return int(row[0] or 0) if row else 0
+
+
 def _claim_legacy_ownerless_assets_for_user(*, session, user_id: str | None) -> int:
     clean_user_id = _trim(user_id)
     if not clean_user_id:
@@ -520,22 +540,37 @@ def _claim_legacy_ownerless_assets_for_user(*, session, user_id: str | None) -> 
     if session.get(User, clean_user_id) is None:
         return 0
 
-    ownerful_assets_count_row = session.execute(
-        select(func.count(DataLibraryAsset.id)).where(
+    owner_rows = session.scalars(
+        select(DataLibraryAsset.owner_user_id).where(
             DataLibraryAsset.owner_user_id.is_not(None),
             DataLibraryAsset.owner_user_id != "",
         )
-    ).first()
-    ownerful_assets_count = (
-        int(ownerful_assets_count_row[0] or 0) if ownerful_assets_count_row else 0
+    ).all()
+    existing_owner_ids: set[str] = set()
+    for owner_row in owner_rows:
+        owner_id = _trim(owner_row)
+        if not owner_id:
+            continue
+        if session.get(User, owner_id) is not None:
+            existing_owner_ids.add(owner_id)
+    global_claim_allowed = (
+        len(existing_owner_ids) == 0 or existing_owner_ids == {clean_user_id}
     )
-    global_claim_allowed = ownerful_assets_count == 0
+
+    owner_exists_expr = select(User.id).where(
+        User.id == DataLibraryAsset.owner_user_id
+    ).exists()
 
     candidate_rows = session.scalars(
         select(DataLibraryAsset).where(
             or_(
                 DataLibraryAsset.owner_user_id.is_(None),
                 DataLibraryAsset.owner_user_id == "",
+                and_(
+                    DataLibraryAsset.owner_user_id.is_not(None),
+                    DataLibraryAsset.owner_user_id != "",
+                    ~owner_exists_expr,
+                ),
             )
         )
     ).all()
@@ -561,6 +596,9 @@ def _claim_legacy_ownerless_assets_for_user(*, session, user_id: str | None) -> 
             continue
 
         project_owner_id = _trim(project.owner_user_id)
+        if project_owner_id and session.get(User, project_owner_id) is None:
+            project_owner_id = ""
+            project.owner_user_id = None
         project_collaborators = _normalize_user_ids(project.collaborator_user_ids)
         if project_owner_id:
             if project_owner_id == clean_user_id:
@@ -943,6 +981,29 @@ def list_library_assets(
             }
         clean_project_id = _normalize_optional_id(project_id)
         storage_root = _storage_root()
+        needs_metadata_repair = (
+            _legacy_asset_owner_repair_candidates_count(session=session) > 0
+        )
+        metadata_index_ids = _read_metadata_index_ids(storage_root)
+        if metadata_index_ids:
+            db_asset_count_row = session.execute(
+                select(func.count(DataLibraryAsset.id))
+            ).first()
+            db_asset_count = (
+                int(db_asset_count_row[0] or 0) if db_asset_count_row else 0
+            )
+            if len(metadata_index_ids) > db_asset_count:
+                needs_metadata_repair = True
+        if needs_metadata_repair:
+            _restore_asset_row_from_metadata(
+                session=session,
+                primary_root=storage_root,
+                claimant_user_id=clean_user_id,
+            )
+        _claim_legacy_ownerless_assets_for_user(
+            session=session,
+            user_id=clean_user_id,
+        )
         owner_expr = DataLibraryAsset.owner_user_id == clean_user_id
         shared_hint_expr = _shared_access_hint_expression(clean_user_id)
         legacy_project_fallback_expr = DataLibraryAsset.shared_with_user_ids.is_(None)
@@ -1134,9 +1195,23 @@ def update_library_asset_access(
                 asset_id=clean_asset_id,
                 claimant_user_id=clean_user_id,
             )
+            _claim_legacy_ownerless_assets_for_user(
+                session=session,
+                user_id=clean_user_id,
+            )
             asset = session.get(DataLibraryAsset, clean_asset_id)
         if asset is None:
             raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
+        if not _trim(asset.owner_user_id):
+            _claim_legacy_ownerless_assets_for_user(
+                session=session,
+                user_id=clean_user_id,
+            )
+            asset = session.get(DataLibraryAsset, clean_asset_id)
+            if asset is None:
+                raise DataAssetNotFoundError(
+                    f"Data asset '{clean_asset_id}' was not found."
+                )
         if _trim(asset.owner_user_id) != clean_user_id:
             raise PlannerValidationError("Only the asset owner can manage file access.")
 
@@ -1200,6 +1275,12 @@ def download_library_asset(
                 primary_root=storage_root,
                 asset_id=clean_asset_id,
                 claimant_user_id=clean_user_id,
+            )
+            asset = session.get(DataLibraryAsset, clean_asset_id)
+        if asset is not None and not _trim(asset.owner_user_id):
+            _claim_legacy_ownerless_assets_for_user(
+                session=session,
+                user_id=clean_user_id,
             )
             asset = session.get(DataLibraryAsset, clean_asset_id)
         if asset is None:
