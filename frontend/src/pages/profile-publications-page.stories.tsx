@@ -805,6 +805,211 @@ const sparsePatchyTopMetrics: PublicationsTopMetricsPayload = {
   }),
 }
 
+const extremeScaleYearCounts: YearCount[] = Array.from({ length: 30 }, (_, index) => {
+  const year = 1996 + index
+  const baseline = 28 + Math.round(index * 1.6)
+  const cycle = index % 5 === 0 ? 8 : index % 3 === 0 ? 4 : 0
+  return { year, count: baseline + cycle }
+})
+const extremeScalePublicationRows = buildPublicationRowsFromYearCounts(extremeScaleYearCounts, 'extreme')
+const extremeScaleCitationsPerYear = buildCitationTimeseriesFromYearCounts(extremeScaleYearCounts, 64)
+const extremeScaleTotalPublications = sumYearCounts(extremeScaleYearCounts)
+const extremeScaleTotalCitations = extremeScaleCitationsPerYear.length
+  ? extremeScaleCitationsPerYear[extremeScaleCitationsPerYear.length - 1].total_citations_end_year
+  : 0
+
+const extremeScaleTopMetrics: PublicationsTopMetricsPayload = {
+  ...fixtureTopMetrics,
+  tiles: fixtureTopMetrics.tiles.map((tile) => {
+    if (tile.key === 'this_year_vs_last') {
+      const yearlyValues = extremeScaleYearCounts.map((item) => item.count)
+      const mean = yearlyValues.length
+        ? yearlyValues.reduce((sum, value) => sum + value, 0) / yearlyValues.length
+        : 0
+      return {
+        ...tile,
+        value: extremeScaleTotalPublications,
+        main_value: extremeScaleTotalPublications,
+        value_display: String(extremeScaleTotalPublications),
+        main_value_display: String(extremeScaleTotalPublications),
+        chart_data: {
+          ...(tile.chart_data || {}),
+          years: extremeScaleYearCounts.map((item) => item.year).slice(-6),
+          values: yearlyValues.slice(-6),
+          mean_value: Number(mean.toFixed(2)),
+          projected_year: 2026,
+          current_year_ytd: 62,
+        },
+        sparkline: yearlyValues.slice(-6),
+        drilldown: {
+          ...tile.drilldown,
+          publications: extremeScalePublicationRows,
+          metadata: {
+            ...tile.drilldown.metadata,
+            scenario: 'extreme_scale_1500_publications',
+          },
+        },
+      }
+    }
+    if (tile.key === 'total_citations') {
+      return {
+        ...tile,
+        value: extremeScaleTotalCitations,
+        main_value: extremeScaleTotalCitations,
+        value_display: String(extremeScaleTotalCitations),
+        main_value_display: String(extremeScaleTotalCitations),
+        chart_data: {
+          ...(tile.chart_data || {}),
+          years: [2021, 2022, 2023, 2024, 2025],
+          values: [13920, 15488, 17344, 19136, 20928],
+          mean_value: 17363.2,
+          projected_year: 2026,
+          current_year_ytd: 11240,
+          monthly_values_12m: [812, 868, 902, 926, 954, 972, 996, 1012, 1038, 1075, 1006, 979],
+        },
+        sparkline: [13920, 15488, 17344, 19136, 20928],
+      }
+    }
+    if (tile.key === 'momentum') {
+      return {
+        ...tile,
+        value: 112,
+        main_value: 112,
+        value_display: '+112%',
+        main_value_display: '+112%',
+        delta_value: 112,
+        delta_display: '+112% vs prior window',
+        chart_data: {
+          ...(tile.chart_data || {}),
+          monthly_values_12m: [720, 744, 768, 812, 836, 864, 892, 916, 941, 978, 1010, 1042],
+          month_labels_12m: ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb'],
+          highlight_last_n: 3,
+        },
+        sparkline: [720, 744, 768, 812, 836, 864, 892, 916, 941, 978, 1010, 1042],
+      }
+    }
+    if (tile.key === 'h_index_projection') {
+      return {
+        ...tile,
+        value: 96,
+        main_value: 96,
+        value_display: 'h 96',
+        main_value_display: 'h 96',
+        chart_data: {
+          ...(tile.chart_data || {}),
+          years: [2021, 2022, 2023, 2024, 2025],
+          values: [82, 86, 90, 93, 96],
+          projected_year: 2026,
+          current_h_index: 96,
+          next_h_index: 100,
+          progress_to_next_pct: 67,
+        },
+        sparkline: [82, 86, 90, 93, 96],
+      }
+    }
+    if (tile.key === 'impact_concentration') {
+      return {
+        ...tile,
+        value: 44,
+        main_value: 44,
+        value_display: '44%',
+        main_value_display: '44%',
+        chart_data: {
+          ...(tile.chart_data || {}),
+          values: [9208, 11720],
+          total_publications: extremeScaleTotalPublications,
+          top_papers_count: 3,
+          remaining_papers_count: Math.max(0, extremeScaleTotalPublications - 3),
+          gini_profile_label: 'Distributed',
+        },
+      }
+    }
+    if (tile.key === 'influential_citations') {
+      return {
+        ...tile,
+        value: 2860,
+        main_value: 2860,
+        value_display: '2,860',
+        main_value_display: '2,860',
+        chart_data: {
+          ...(tile.chart_data || {}),
+          values: [1644, 1820, 2015, 2240, 2528, 2860],
+          influential_ratio_pct: 13.7,
+        },
+        sparkline: [1644, 1820, 2015, 2240, 2528, 2860],
+      }
+    }
+    if (tile.key === 'field_percentile_share') {
+      return {
+        ...tile,
+        value: 58,
+        main_value: 58,
+        value_display: '58%',
+        main_value_display: '58%',
+        chart_data: {
+          ...(tile.chart_data || {}),
+          share_by_threshold_pct: {
+            '50': 78.4,
+            '75': 58.2,
+            '90': 31.4,
+            '95': 18.3,
+            '99': 6.9,
+          },
+          count_by_threshold: {
+            '50': 1177,
+            '75': 874,
+            '90': 472,
+            '95': 275,
+            '99': 104,
+          },
+          evaluated_papers: extremeScaleTotalPublications,
+          total_papers: extremeScaleTotalPublications,
+          coverage_pct: 100,
+          median_percentile_rank: 79.6,
+        },
+      }
+    }
+    if (tile.key === 'authorship_composition') {
+      return {
+        ...tile,
+        value: 54,
+        main_value: 54,
+        value_display: '54%',
+        main_value_display: '54%',
+        chart_data: {
+          ...(tile.chart_data || {}),
+          first_authorship_pct: 27,
+          second_authorship_pct: 19,
+          senior_authorship_pct: 35,
+          leadership_index_pct: 54,
+          total_papers: extremeScaleTotalPublications,
+          median_author_position: 2,
+          median_author_position_display: '2',
+        },
+      }
+    }
+    if (tile.key === 'collaboration_structure') {
+      return {
+        ...tile,
+        value: 612,
+        main_value: 612,
+        value_display: '612',
+        main_value_display: '612',
+        chart_data: {
+          ...(tile.chart_data || {}),
+          unique_collaborators: 612,
+          repeat_collaborator_rate_pct: 74,
+          repeat_collaborators: 453,
+          institutions: 128,
+          countries: 42,
+          collaborative_works: 1437,
+        },
+      }
+    }
+    return tile
+  }),
+}
+
 const fullPageFixture: ProfilePublicationsPageFixture = {
   token: '',
   user: fixtureUser,
@@ -912,6 +1117,46 @@ const sparsePatchyCareerFixture: ProfilePublicationsPageFixture = {
     },
   },
   topMetricsResponse: sparsePatchyTopMetrics,
+}
+
+const extremeScale1500PublicationsFixture: ProfilePublicationsPageFixture = {
+  ...fullPageFixture,
+  personaState: {
+    ...fixturePersonaState,
+    timeline: extremeScaleYearCounts.map((item, index) => ({
+      year: item.year,
+      n_works: item.count,
+      citations: Math.round(item.count * (42 + Math.min(18, index))),
+    })),
+  },
+  analyticsResponse: {
+    ...fixtureAnalyticsResponse,
+    payload: {
+      ...fixtureAnalyticsResponse.payload,
+      summary: {
+        ...fixtureAnalyticsResponse.payload.summary,
+        total_citations: extremeScaleTotalCitations,
+        h_index: 96,
+        citations_last_12_months: 11240,
+        citations_previous_12_months: 9450,
+        citations_per_month_12m: 936.7,
+        citations_per_month_previous_12m: 787.5,
+        acceleration_citations_per_month: 149.2,
+        yoy_percent: 19.0,
+        yoy_pct: 19.0,
+        citations_ytd: 5620,
+      },
+      timeseries: {
+        ...fixtureAnalyticsResponse.payload.timeseries,
+        points: extremeScaleCitationsPerYear,
+      },
+      per_year: extremeScaleCitationsPerYear.map((point) => ({
+        year: point.year,
+        citations: point.citations_added,
+      })),
+    },
+  },
+  topMetricsResponse: extremeScaleTopMetrics,
 }
 
 const loadingFixture: ProfilePublicationsPageFixture = {
@@ -1071,6 +1316,12 @@ export const EmptyLibrary: Story = {
 export const LongCareerHighVolume: Story = {
   args: {
     fixture: longCareerHighVolumeFixture,
+  },
+}
+
+export const ExtremeScale1500Publications: Story = {
+  args: {
+    fixture: extremeScale1500PublicationsFixture,
   },
 }
 
