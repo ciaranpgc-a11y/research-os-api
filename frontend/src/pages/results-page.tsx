@@ -783,9 +783,6 @@ export function ResultsPage() {
                       </p>
                     ) : null}
 
-                    <p data-house-role="library-scope-note" className="text-xs text-muted-foreground">
-                      {persistedProjectId ? 'Project scope' : 'Workspace scope'} | {persistedAssets.length} asset(s)
-                    </p>
                     </CardContent>
                   </Card>
 
