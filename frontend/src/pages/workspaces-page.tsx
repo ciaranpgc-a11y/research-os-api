@@ -16,7 +16,7 @@ import {
   WORKSPACE_OWNER_REQUIRED_MESSAGE,
   readWorkspaceOwnerNameFromProfile,
 } from '@/lib/workspace-owner'
-import { houseCollaborators, houseDrilldown, houseForms, houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseCollaborators, houseDrilldown, houseForms, houseLayout, houseNavigation, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import { getHouseLeftBorderToneClass, getHouseNavToneClass } from '@/lib/section-tone'
 import { matchesScopedStorageEventKey } from '@/lib/user-scoped-storage'
 import { cn } from '@/lib/utils'
@@ -69,6 +69,9 @@ const HOUSE_TABLE_HEAD_CLASS = houseSurfaces.tableHead
 const HOUSE_TABLE_ROW_CLASS = houseSurfaces.tableRow
 const HOUSE_TABLE_HEAD_TEXT_CLASS = houseTypography.tableHead
 const HOUSE_TABLE_CELL_TEXT_CLASS = houseTypography.tableCell
+const HOUSE_TABLE_FILTER_INPUT_CLASS = houseTables.filterInput
+const HOUSE_TABLE_FILTER_SELECT_CLASS = houseTables.filterSelect
+const HOUSE_TABLE_SORT_TRIGGER_CLASS = houseTables.sortTrigger
 const HOUSE_INPUT_CLASS = houseForms.input
 const HOUSE_SELECT_CLASS = houseForms.select
 const HOUSE_ACTION_BUTTON_CLASS = houseForms.actionButton
@@ -127,7 +130,7 @@ const HOUSE_SECTION_TOOL_TOGGLE_OFF_CLASS = 'house-section-tool-toggle-off'
 const HOUSE_WORKSPACE_FILTER_SELECT_CLASS = cn(
   'h-9 rounded-md px-2',
   HOUSE_SELECT_CLASS,
-  HOUSE_BUTTON_TEXT_CLASS,
+  HOUSE_TABLE_FILTER_SELECT_CLASS,
 )
 
 type WorkspaceInboxSignal = {
@@ -481,7 +484,7 @@ function SortableHeader({
     <button
       type="button"
       onClick={() => onSort(column)}
-      className={cn('inline-flex items-center gap-1 transition-colors hover:text-foreground', HOUSE_TABLE_HEAD_TEXT_CLASS)}
+      className={cn('inline-flex items-center gap-1 transition-colors hover:text-foreground', HOUSE_TABLE_SORT_TRIGGER_CLASS)}
     >
       <span>{label}</span>
       <span className={cn('text-caption', isActive ? 'text-foreground' : 'text-muted-foreground')}>{icon}</span>
@@ -1481,7 +1484,7 @@ export function WorkspacesPage() {
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
                       placeholder="Filter workspaces"
-                      className={cn('w-sz-260', HOUSE_INPUT_CLASS)}
+                      className={cn('w-sz-260', HOUSE_INPUT_CLASS, HOUSE_TABLE_FILTER_INPUT_CLASS)}
                     />
                     <select
                       value={filterKey}

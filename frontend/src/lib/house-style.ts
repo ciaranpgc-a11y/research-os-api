@@ -115,6 +115,12 @@ export const houseForms = {
   actionButtonDanger: 'house-button-action-danger',
 } as const
 
+export const houseTables = {
+  filterInput: 'house-table-filter-input',
+  filterSelect: 'house-table-filter-select',
+  sortTrigger: 'house-table-sort-trigger',
+} as const
+
 export const houseCollaborators = {
   listShell: 'house-collaborator-list-shell',
   listViewport: 'house-collaborator-list-viewport',
@@ -241,6 +247,9 @@ export const houseElements = {
   actionButtonGhost: houseForms.actionButtonGhost,
   actionButtonSuccess: houseForms.actionButtonSuccess,
   actionButtonDanger: houseForms.actionButtonDanger,
+  tableFilterInput: houseTables.filterInput,
+  tableFilterSelect: houseTables.filterSelect,
+  tableSortTrigger: houseTables.sortTrigger,
   collaboratorListShell: houseCollaborators.listShell,
   collaboratorListViewport: houseCollaborators.listViewport,
   collaboratorListViewportCompact: houseCollaborators.listViewportCompact,

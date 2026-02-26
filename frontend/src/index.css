@@ -1797,6 +1797,40 @@
     vertical-align: middle;
   }
 
+  .house-table-filter-input {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    letter-spacing: 0.005em;
+    color: hsl(var(--tone-neutral-900));
+  }
+
+  .house-table-filter-input::placeholder {
+    color: hsl(var(--tone-neutral-500));
+  }
+
+  .house-table-filter-select {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    letter-spacing: 0.005em;
+    color: hsl(var(--tone-neutral-900));
+  }
+
+  .house-table-sort-trigger {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 600;
+    color: hsl(var(--tone-neutral-700));
+    transition-property: color;
+    transition-duration: var(--motion-duration-ui);
+    transition-timing-function: ease-out;
+  }
+
+  .house-table-sort-trigger:hover {
+    color: hsl(var(--tone-neutral-900));
+  }
+
   .house-table-row {
     border-bottom: 1px solid hsl(var(--stroke-strong) / 0.9);
     transition: background-color var(--motion-duration-ui) ease-out;

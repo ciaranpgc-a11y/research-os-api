@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { houseDividers, houseForms, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseDividers, houseForms, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import {
   deletePublicationFile,
   downloadPublicationFile,
@@ -98,7 +98,11 @@ const PUBLICATIONS_OA_AUTO_INTER_REQUEST_DELAY_MS = 220
 const PUBLICATIONS_OA_AUTO_STATUS_CLEAR_DELAY_MS = 9000
 const PUBLICATION_DETAIL_ACTIVE_TAB_STORAGE_KEY = 'aawe.pubDetail.activeTab'
 const HOUSE_SECTION_DIVIDER_STRONG_CLASS = houseDividers.strong
+const HOUSE_INPUT_CLASS = houseForms.input
 const HOUSE_SELECT_CLASS = houseForms.select
+const HOUSE_TABLE_FILTER_INPUT_CLASS = houseTables.filterInput
+const HOUSE_TABLE_FILTER_SELECT_CLASS = houseTables.filterSelect
+const HOUSE_TABLE_SORT_TRIGGER_CLASS = houseTables.sortTrigger
 const HOUSE_TABLE_HEAD_TEXT_CLASS = houseTypography.tableHead
 const HOUSE_TABLE_CELL_TEXT_CLASS = houseTypography.tableCell
 const HOUSE_BANNER_CLASS = houseSurfaces.banner
@@ -218,10 +222,10 @@ function inferArticleTypeFromTitle(title: string | null | undefined): string {
     return 'Scoping'
   }
   if (ARTICLE_TYPE_SR_PATTERN.test(clean)) {
-    return 'SR'
+    return 'Systematic review'
   }
   if (ARTICLE_TYPE_LITERATURE_PATTERN.test(clean)) {
-    return 'Literature'
+    return 'Literature review'
   }
   if (ARTICLE_TYPE_EDITORIAL_PATTERN.test(clean)) {
     return 'Editorial'
@@ -253,6 +257,12 @@ function deriveArticleTypeLabel(work: {
     if (normalizedClassification === 'review article') {
       return inferArticleTypeFromTitle(work.title)
     }
+    if (normalizedClassification === 'sr') {
+      return 'Systematic review'
+    }
+    if (normalizedClassification === 'literature') {
+      return 'Literature review'
+    }
     if (normalizedClassification === 'meta-analysis') {
       return 'Meta-analysis'
     }
@@ -260,13 +270,13 @@ function deriveArticleTypeLabel(work: {
       return 'Scoping'
     }
     if (normalizedClassification === 'systematic review') {
-      return 'SR'
+      return 'Systematic review'
     }
     if (
       normalizedClassification === 'literature review' ||
       normalizedClassification === 'narrative review'
     ) {
-      return 'Literature'
+      return 'Literature review'
     }
     return classification
   }
@@ -1266,7 +1276,7 @@ function SortHeader({
     <button
       type="button"
       onClick={() => onSort(column)}
-      className={`inline-flex w-full items-center gap-1 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground ${alignClass}`}
+      className={`inline-flex w-full items-center gap-1 transition-colors hover:text-foreground ${HOUSE_TABLE_SORT_TRIGGER_CLASS} ${alignClass}`}
     >
       <span>{label}</span>
       {active ? (
@@ -2513,12 +2523,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Filter by title, journal, DOI, PMID, author"
-              className="w-sz-280"
+              className={`w-sz-280 ${HOUSE_INPUT_CLASS} ${HOUSE_TABLE_FILTER_INPUT_CLASS}`}
             />
             <select
               value={filterKey}
               onChange={(event) => setFilterKey(event.target.value as PublicationFilterKey)}
-              className={`h-9 rounded-md px-2 text-sm ${HOUSE_SELECT_CLASS}`}
+              className={`h-9 rounded-md px-2 ${HOUSE_SELECT_CLASS} ${HOUSE_TABLE_FILTER_SELECT_CLASS}`}
             >
               <option value="all">All works</option>
               <option value="cited">Cited only</option>
@@ -2529,7 +2539,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             <select
               value={typeFilter}
               onChange={(event) => setTypeFilter(event.target.value)}
-              className={`h-9 rounded-md px-2 text-sm ${HOUSE_SELECT_CLASS}`}
+              className={`h-9 rounded-md px-2 ${HOUSE_SELECT_CLASS} ${HOUSE_TABLE_FILTER_SELECT_CLASS}`}
             >
               <option value="all">All types</option>
               {typeFilterOptions.map((value) => (

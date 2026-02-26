@@ -111,9 +111,9 @@ def _infer_article_type_from_title(title: str) -> str:
     if ARTICLE_TYPE_SCOPING_PATTERN.search(clean_title):
         return "Scoping"
     if ARTICLE_TYPE_SR_PATTERN.search(clean_title):
-        return "SR"
+        return "Systematic review"
     if ARTICLE_TYPE_LITERATURE_PATTERN.search(clean_title):
-        return "Literature"
+        return "Literature review"
     if ARTICLE_TYPE_EDITORIAL_PATTERN.search(clean_title):
         return "Editorial"
     if ARTICLE_TYPE_CASE_PATTERN.search(clean_title):
@@ -152,18 +152,18 @@ def _infer_article_type_for_work(
             "rapid-review",
         }:
             inferred = _infer_article_type_from_title(title)
-            if inferred in {"Meta-analysis", "Scoping", "SR"}:
+            if inferred in {"Meta-analysis", "Scoping", "Systematic review"}:
                 return inferred
             if hint == "meta-analysis":
                 return "Meta-analysis"
             if hint == "scoping-review":
                 return "Scoping"
-            return "SR"
+            return "Systematic review"
         if hint in {"review", "review-article", "narrative-review", "literature-review"}:
             inferred = _infer_article_type_from_title(title)
-            if inferred in {"Meta-analysis", "Scoping", "SR", "Literature"}:
+            if inferred in {"Meta-analysis", "Scoping", "Systematic review", "Literature review"}:
                 return inferred
-            return "Literature"
+            return "Literature review"
         if hint in {"editorial", "commentary", "perspective", "opinion"}:
             return "Editorial"
         if hint in {"letter", "correspondence"}:
@@ -273,12 +273,12 @@ def _classify_pubmed_publication_types(
         item in {"systematic review", "umbrella review", "rapid review"}
         for item in lowered
     ):
-        return "SR"
+        return "Systematic review"
     if any("review" in item for item in lowered):
         inferred = _infer_article_type_from_title(title)
-        if inferred in {"Meta-analysis", "Scoping", "SR", "Literature"}:
+        if inferred in {"Meta-analysis", "Scoping", "Systematic review", "Literature review"}:
             return inferred
-        return "Literature"
+        return "Literature review"
     if any("editorial" in item for item in lowered):
         return "Editorial"
     if any(item in {"letter", "comment"} or "correspondence" in item for item in lowered):
