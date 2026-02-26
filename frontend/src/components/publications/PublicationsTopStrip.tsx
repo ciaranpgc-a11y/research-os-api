@@ -296,6 +296,7 @@ const HOUSE_SURFACE_BANNER_WARNING_CLASS = publicationsHouseSurfaces.bannerWarni
 const HOUSE_SURFACE_BANNER_PUBLICATIONS_CLASS = publicationsHouseSurfaces.bannerPublications
 const HOUSE_SURFACE_METRIC_PILL_CLASS = publicationsHouseSurfaces.metricPill
 const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS = publicationsHouseSurfaces.metricPillPublications
+const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_REGULAR_CLASS = publicationsHouseSurfaces.metricPillPublicationsRegular
 const HOUSE_SURFACE_LEFT_BORDER_CLASS = publicationsHouseSurfaces.leftBorder
 const HOUSE_ACTIONS_SECTION_TOOLS_CLASS = publicationsHouseActions.sectionTools
 const HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS = publicationsHouseActions.sectionToolsPublications
@@ -4621,7 +4622,12 @@ export function PublicationsTopStrip({
                   detailText = undefined
                   if (impactBadgeLabel) {
                     badgeNode = (
-                      <span className={cn(HOUSE_SURFACE_METRIC_PILL_CLASS, HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS, 'font-normal')}>
+                      <span className={cn(
+                        HOUSE_SURFACE_METRIC_PILL_CLASS,
+                        HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS,
+                        HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_REGULAR_CLASS,
+                      )}
+                      >
                         {impactBadgeLabel}
                       </span>
                     )
@@ -4727,7 +4733,12 @@ export function PublicationsTopStrip({
                   secondaryText = 'Leadership index'
                   detailText = undefined
                   badgeNode = (
-                    <span className={cn(HOUSE_SURFACE_METRIC_PILL_CLASS, HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS, 'font-normal')}>
+                    <span className={cn(
+                      HOUSE_SURFACE_METRIC_PILL_CLASS,
+                      HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS,
+                      HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_REGULAR_CLASS,
+                    )}
+                    >
                       Median author position {medianAuthorPositionDisplay}
                     </span>
                   )

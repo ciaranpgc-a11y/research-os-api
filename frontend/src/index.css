@@ -989,6 +989,10 @@
     box-shadow: inset 0 0 0 1px hsl(var(--tone-positive-200) / 0.58);
   }
 
+  .house-metric-pill-publications-regular {
+    font-weight: 400;
+  }
+
   .house-left-border {
     position: relative;
     padding-left: 0.75rem;
