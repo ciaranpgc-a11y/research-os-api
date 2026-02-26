@@ -25,9 +25,17 @@ from sqlalchemy import text
 from research_os.config import get_openai_api_key
 from research_os.db import session_scope
 from research_os.api.schemas import (
+    AdminAuditEventsListResponse,
+    AdminJobActionResponse,
+    AdminJobCancelRequest,
+    AdminJobRetryRequest,
+    AdminJobsListResponse,
+    AdminOrganisationImpersonationRequest,
+    AdminOrganisationImpersonationStartResponse,
     AdminWorkspacesListResponse,
     AdminOrganisationsListResponse,
     AdminOverviewResponse,
+    AdminUsageCostsResponse,
     AdminUsersListResponse,
     AnalysisScaffoldRequest,
     AnalysisScaffoldResponse,
@@ -216,7 +224,16 @@ from research_os.api.schemas import (
     WizardInferResponse,
 )
 from research_os.services.admin_service import (
+    AdminNotFoundError,
+    AdminStateError,
+    AdminValidationError,
+    admin_cancel_job,
+    admin_retry_job,
+    create_admin_org_impersonation,
     get_admin_overview,
+    get_admin_usage_costs,
+    list_admin_audit_events,
+    list_admin_jobs,
     list_admin_organisations,
     list_admin_workspaces,
     list_admin_users,
