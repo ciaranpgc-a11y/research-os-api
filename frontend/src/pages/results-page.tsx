@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
-import { Download, Loader2, RefreshCw, UserPlus, X } from 'lucide-react'
+import { Download, Loader2, UserPlus, X } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -551,23 +551,23 @@ export function ResultsPage() {
 
                 <div className="grid gap-3 p-3">
                   <Card data-house-role="workspace-card">
-                  <CardHeader className="space-y-2">
-                    <div data-house-role="library-header-row" className="flex items-center gap-2">
-                      <CardTitle data-house-role="section-title">Access from personal library</CardTitle>
-                    </div>
-                    <div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onLibraryPickerOpenChange(true)}
-                        disabled={!hasSessionToken || persistSyncBusy}
-                        data-ui="data-open-personal-library"
-                      >
-                        Open personal library
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
+                    <CardHeader className="space-y-2">
+                      <div data-house-role="library-header-row" className="flex items-center gap-2">
+                        <CardTitle data-house-role="section-title">Access from personal library</CardTitle>
+                      </div>
+                      <div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onLibraryPickerOpenChange(true)}
+                          disabled={!hasSessionToken || persistSyncBusy}
+                          data-ui="data-open-personal-library"
+                        >
+                          Open personal library
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
                     <div data-house-role="library-filter-group" className="space-y-1">
                       <label data-house-role="field-label" htmlFor="library-filter" className={houseTypography.fieldLabel}>Search library</label>
                       <Input
@@ -713,8 +713,8 @@ export function ResultsPage() {
                     <p data-house-role="library-scope-note" className="text-xs text-muted-foreground">
                       {persistedProjectId ? 'Project scope' : 'Workspace scope'} | {persistedAssets.length} asset(s)
                     </p>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
                 </div>
               </div>
             )}
@@ -726,23 +726,11 @@ export function ResultsPage() {
         <SheetContent side="right" className="w-full max-w-sz-580 p-0 sm:w-sz-580">
           <div className="flex h-full flex-col">
             <div className="space-y-3 border-b border-border px-4 py-4">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <h3 className={houseTypography.sectionTitle}>Personal library</h3>
-                  <p className={houseTypography.fieldHelper}>
-                    Select datasets to pull into this workspace.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void refreshPersistedAssets()}
-                  disabled={!hasSessionToken || persistSyncBusy || libraryPickerPulling}
-                >
-                  <RefreshCw className="mr-1 h-4 w-4" />
-                  Refresh
-                </Button>
+              <div>
+                <h3 className={houseTypography.sectionTitle}>Personal library</h3>
+                <p className={houseTypography.fieldHelper}>
+                  Select datasets to pull into this workspace.
+                </p>
               </div>
               <div className="space-y-1">
                 <label htmlFor="library-picker-search" className={houseTypography.fieldLabel}>Search library</label>

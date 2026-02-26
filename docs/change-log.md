@@ -2,6 +2,22 @@
 
 ## 2026-02-26
 
+### Workspace Data Panel Simplification (Personal Library Only)
+
+- **Area:** Individual workspace Data right panel.
+- **What changed:**
+- Removed the `Upload new dataset` card from the Data right rail.
+- Simplified the access card to a single-line heading: `Access from personal library`.
+- Removed the inline `Refresh` action from the access card and moved `Open personal library` onto its own row directly beneath the heading.
+- Removed helper copy `Select datasets from your personal library and pull them into this workspace.` from the access card.
+- Removed the personal-library sheet `Refresh` button to keep the flow focused on search and selection.
+- **Why it changed:**
+- Align the panel with the requested streamlined interaction model centered on library access only.
+- **Key files touched:**
+- `frontend/src/pages/results-page.tsx`
+- **Verification performed:**
+- `npx eslint src/pages/results-page.tsx` (run from `frontend/`)
+
 ### Library Upload `project_id` Sentinel Normalization
 
 - **Area:** Personal library upload/list API resilience for workspace Data page.
