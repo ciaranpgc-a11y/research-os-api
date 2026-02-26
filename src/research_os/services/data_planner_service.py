@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import csv
+import gzip
+import hashlib
 import io
 import json
 import mimetypes
@@ -16,6 +18,7 @@ from sqlalchemy import String, and_, cast, func, or_, select
 from research_os.config import get_data_library_root
 from research_os.db import (
     DataLibraryAsset,
+    DataLibraryAssetBlob,
     DataProfile,
     Manuscript,
     ManuscriptAssetLink,
@@ -348,7 +351,115 @@ def _candidate_asset_paths(asset: DataLibraryAsset, primary_root: Path) -> list[
     return deduped
 
 
-def _resolve_existing_asset_path(asset: DataLibraryAsset, primary_root: Path) -> Path | None:
+def _decode_asset_backup_content(*, encoding: str, content_blob: bytes) -> bytes | None:
+    clean_encoding = _trim(encoding).lower() or "identity"
+    payload = bytes(content_blob or b"")
+    if clean_encoding == "gzip":
+        try:
+            return gzip.decompress(payload)
+        except OSError:
+            return None
+    if clean_encoding in {"identity", "raw"}:
+        return payload
+    return None
+
+
+def _upsert_asset_backup_blob(*, session, asset: DataLibraryAsset, content: bytes) -> None:
+    asset_id = _trim(asset.id)
+    if not asset_id:
+        return
+    encoding = "gzip"
+    encoded_payload = gzip.compress(content, compresslevel=6)
+    checksum = hashlib.sha256(content).hexdigest()
+    row = None
+    for pending in list(session.new):
+        if not isinstance(pending, DataLibraryAssetBlob):
+            continue
+        if _trim(pending.asset_id) != asset_id:
+            continue
+        row = pending
+        break
+    if row is None:
+        row = session.get(DataLibraryAssetBlob, asset_id)
+    if row is None:
+        row = DataLibraryAssetBlob(
+            asset_id=asset_id,
+            encoding=encoding,
+            byte_size=len(content),
+            checksum_sha256=checksum,
+            content_blob=encoded_payload,
+        )
+        session.add(row)
+        return
+    row.encoding = encoding
+    row.byte_size = len(content)
+    row.checksum_sha256 = checksum
+    row.content_blob = encoded_payload
+
+
+def _ensure_asset_backup_blob_from_path(
+    *,
+    session,
+    asset: DataLibraryAsset,
+    resolved_path: Path,
+) -> None:
+    asset_id = _trim(asset.id)
+    if not asset_id:
+        return
+    backup_row = session.get(DataLibraryAssetBlob, asset_id)
+    if backup_row is not None and int(backup_row.byte_size or 0) > 0 and bool(backup_row.content_blob):
+        return
+    try:
+        content = resolved_path.read_bytes()
+    except OSError:
+        return
+    _upsert_asset_backup_blob(session=session, asset=asset, content=content)
+
+
+def _restore_asset_file_from_backup(
+    *,
+    session,
+    asset: DataLibraryAsset,
+    primary_root: Path,
+) -> Path | None:
+    asset_id = _trim(asset.id)
+    if not asset_id:
+        return None
+    backup_row = session.get(DataLibraryAssetBlob, asset_id)
+    if backup_row is None:
+        return None
+    decoded_content = _decode_asset_backup_content(
+        encoding=_trim(backup_row.encoding),
+        content_blob=bytes(backup_row.content_blob or b""),
+    )
+    if decoded_content is None:
+        return None
+
+    extension = Path(_trim(asset.filename)).suffix or ".bin"
+    target_path = (primary_root / f"{asset_id}{extension}").resolve()
+    tmp_path = target_path.with_suffix(f"{target_path.suffix}.tmp")
+    try:
+        tmp_path.write_bytes(decoded_content)
+        os.replace(tmp_path, target_path)
+    except OSError:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return None
+
+    asset.storage_path = str(target_path)
+    if len(decoded_content) > 0 and int(asset.byte_size or 0) <= 0:
+        asset.byte_size = len(decoded_content)
+    return target_path
+
+
+def _resolve_existing_asset_path(
+    asset: DataLibraryAsset,
+    primary_root: Path,
+    *,
+    session=None,
+) -> Path | None:
     for candidate in _candidate_asset_paths(asset, primary_root):
         try:
             if candidate.exists() and candidate.is_file():
@@ -359,16 +470,48 @@ def _resolve_existing_asset_path(asset: DataLibraryAsset, primary_root: Path) ->
                         try:
                             shutil.copy2(resolved, migrated_target)
                         except OSError:
+                            if session is not None:
+                                _ensure_asset_backup_blob_from_path(
+                                    session=session,
+                                    asset=asset,
+                                    resolved_path=resolved,
+                                )
                             return resolved
+                    if session is not None:
+                        _ensure_asset_backup_blob_from_path(
+                            session=session,
+                            asset=asset,
+                            resolved_path=migrated_target,
+                        )
                     return migrated_target
+                if session is not None:
+                    _ensure_asset_backup_blob_from_path(
+                        session=session,
+                        asset=asset,
+                        resolved_path=resolved,
+                    )
                 return resolved
         except OSError:
             continue
+    if session is not None:
+        restored = _restore_asset_file_from_backup(
+            session=session,
+            asset=asset,
+            primary_root=primary_root,
+        )
+        if restored is not None:
+            return restored
     return None
 
 
-def _asset_storage_exists(asset: DataLibraryAsset, primary_root: Path) -> bool:
-    return _resolve_existing_asset_path(asset, primary_root) is not None
+def _asset_storage_exists(
+    asset: DataLibraryAsset, primary_root: Path, *, session=None
+) -> bool:
+    return _resolve_existing_asset_path(
+        asset,
+        primary_root,
+        session=session,
+    ) is not None
 
 
 def _display_name_for_user(*, user: User | None, fallback_user_id: str | None = None) -> str:
@@ -853,7 +996,11 @@ def _build_asset_metadata_payload(
         if uploaded_at.tzinfo is None:
             uploaded_at = uploaded_at.replace(tzinfo=timezone.utc)
         uploaded_at_str = uploaded_at.astimezone(timezone.utc).isoformat()
-    resolved_storage_path = _resolve_existing_asset_path(asset, primary_root)
+    resolved_storage_path = _resolve_existing_asset_path(
+        asset,
+        primary_root,
+        session=session,
+    )
     storage_path = str(resolved_storage_path) if resolved_storage_path is not None else _trim(asset.storage_path)
     shared_with_user_ids = _asset_shared_user_ids(asset)
     return {
@@ -1125,7 +1272,11 @@ def reconcile_library_for_user(
                 if row_owner_user_id and row_owner_user_id != clean_user_id:
                     row.owner_user_id = clean_user_id
                     canonicalized_owner_rows += 1
-                resolved_storage_path = _resolve_existing_asset_path(row, storage_root)
+                resolved_storage_path = _resolve_existing_asset_path(
+                    row,
+                    storage_root,
+                    session=session,
+                )
                 if resolved_storage_path is None:
                     continue
                 resolved_storage_path_str = str(resolved_storage_path)
@@ -1238,7 +1389,11 @@ def recover_library_storage_for_user(
                 except OSError:
                     pass
 
-            resolved_storage_path = _resolve_existing_asset_path(row, storage_root)
+            resolved_storage_path = _resolve_existing_asset_path(
+                row,
+                storage_root,
+                session=session,
+            )
             if resolved_storage_path is None:
                 if len(missing_asset_ids_sample) < 20:
                     missing_asset_ids_sample.append(_trim(row.id))
@@ -1292,11 +1447,14 @@ def collect_library_reconcile_diagnostics(
         "db_owned_assets": 0,
         "db_owned_assets_with_storage": 0,
         "db_owned_assets_missing_storage": 0,
+        "db_owned_assets_with_backup": 0,
+        "db_owned_assets_missing_backup": 0,
         "db_related_owned_assets": 0,
         "db_ownerless_assets": 0,
         "db_shared_assets": 0,
         "related_user_ids": [],
         "missing_storage_asset_ids_sample": [],
+        "missing_backup_asset_ids_sample": [],
         "account_key_hint": _trim(account_key_hint),
     }
     if not clean_user_id:
@@ -1374,7 +1532,11 @@ def collect_library_reconcile_diagnostics(
         owned_with_storage = 0
         missing_storage_ids: list[str] = []
         for row in owned_rows:
-            if _resolve_existing_asset_path(row, storage_root) is not None:
+            if _resolve_existing_asset_path(
+                row,
+                storage_root,
+                session=session,
+            ) is not None:
                 owned_with_storage += 1
                 continue
             if len(missing_storage_ids) < 20:
@@ -1384,6 +1546,26 @@ def collect_library_reconcile_diagnostics(
             max(0, len(owned_rows) - owned_with_storage)
         )
         diagnostics["missing_storage_asset_ids_sample"] = missing_storage_ids
+        owned_asset_ids = [_trim(row.id) for row in owned_rows if _trim(row.id)]
+        owned_backup_ids: set[str] = set()
+        if owned_asset_ids:
+            for backup_asset_id in session.scalars(
+                select(DataLibraryAssetBlob.asset_id).where(
+                    DataLibraryAssetBlob.asset_id.in_(owned_asset_ids)
+                )
+            ).all():
+                clean_backup_asset_id = _trim(backup_asset_id)
+                if clean_backup_asset_id:
+                    owned_backup_ids.add(clean_backup_asset_id)
+        diagnostics["db_owned_assets_with_backup"] = int(len(owned_backup_ids))
+        diagnostics["db_owned_assets_missing_backup"] = int(
+            max(0, len(owned_asset_ids) - len(owned_backup_ids))
+        )
+        diagnostics["missing_backup_asset_ids_sample"] = [
+            asset_id
+            for asset_id in owned_asset_ids
+            if asset_id not in owned_backup_ids
+        ][:20]
 
     return diagnostics
 
@@ -1456,6 +1638,11 @@ def upload_library_assets(
             tmp_path.write_bytes(content)
             os.replace(tmp_path, path)
             asset.storage_path = str(path.resolve())
+            _upsert_asset_backup_blob(
+                session=session,
+                asset=asset,
+                content=content,
+            )
             session.flush()
             _sync_asset_metadata_for_row(
                 session=session,
@@ -1692,7 +1879,11 @@ def list_library_assets(
                     elif len(project_collaborators) == 0:
                         project.owner_user_id = clean_user_id
                         row.owner_user_id = clean_user_id
-            resolved_storage_path = _resolve_existing_asset_path(row, storage_root)
+            resolved_storage_path = _resolve_existing_asset_path(
+                row,
+                storage_root,
+                session=session,
+            )
             if resolved_storage_path is None:
                 if row_id:
                     storage_available_by_asset_id[row_id] = False
@@ -1720,7 +1911,7 @@ def list_library_assets(
                 requesting_user_id=clean_user_id,
                 is_available=storage_available_by_asset_id.get(
                     _trim(row.id),
-                    _asset_storage_exists(row, storage_root),
+                    _asset_storage_exists(row, storage_root, session=session),
                 ),
             )
             for row in accessible_rows
@@ -1929,7 +2120,11 @@ def download_library_asset(
         if owner_user_id and owner_user_id in related_user_ids and owner_user_id != clean_user_id:
             asset.owner_user_id = clean_user_id
 
-        storage_path = _resolve_existing_asset_path(asset, storage_root)
+        storage_path = _resolve_existing_asset_path(
+            asset,
+            storage_root,
+            session=session,
+        )
         if storage_path is None:
             raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
         resolved_storage_str = str(storage_path)
@@ -2128,7 +2323,11 @@ def create_data_profile(
         previews: list[dict[str, object]] = []
 
         for asset in assets:
-            storage_path = _resolve_existing_asset_path(asset, storage_root)
+            storage_path = _resolve_existing_asset_path(
+                asset,
+                storage_root,
+                session=session,
+            )
             if storage_path is None:
                 raise DataAssetNotFoundError(
                     f"Data asset '{asset.id}' was not found."

@@ -47,6 +47,8 @@ export const publicationsHouseMotion = {
   chartPanel: houseMotion.chartPanel,
   chartEnter: houseMotion.chartEnter,
   chartExit: houseMotion.chartExit,
+  ringChartEnter: houseMotion.ringChartEnter,
+  ringChartExit: houseMotion.ringChartExit,
   toggleTrack: houseMotion.toggleTrack,
   toggleThumb: houseMotion.toggleThumb,
   toggleButton: houseMotion.toggleButton,

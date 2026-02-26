@@ -5,6 +5,7 @@ from pathlib import Path
 
 from research_os.db import (
     DataLibraryAsset,
+    DataLibraryAssetBlob,
     User,
     Work,
     create_all_tables,
@@ -221,6 +222,9 @@ def test_list_library_assets_marks_entries_with_missing_storage_unavailable(
         assert stale_asset is not None
         stale_path = Path(str(stale_asset.storage_path))
         stale_path.unlink(missing_ok=True)
+        backup = session.get(DataLibraryAssetBlob, stale_asset_id)
+        if backup is not None:
+            session.delete(backup)
 
     payload = list_library_assets(project_id=None, user_id=user_id)
     listed_by_id = {

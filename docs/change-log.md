@@ -1262,3 +1262,31 @@
 - `pytest tests/test_api.py -k "admin_endpoints" -q`
 - `pytest tests/test_open_access_service.py -k "missing_storage" -q`
 - `npm --prefix frontend run --silent typecheck`
+
+### Automatic Library Storage Self-Heal (No Admin Push Required)
+
+- **Area:** Data-library durability and automatic recovery in normal user flows.
+- **What changed:**
+- Added durable DB-backed shadow storage for each uploaded data-library asset (`data_library_asset_blobs`).
+- Upload path now persists file bytes to both filesystem and DB shadow storage.
+- Normal read paths (`list`, `download`, workspace pulls/profiling flows) now auto-restore missing filesystem files from DB shadow storage.
+- Existing assets are backfilled automatically: if file exists but backup blob is missing, backup is created on access.
+- Reconcile diagnostics now include backup coverage counters:
+  - `db_owned_assets_with_backup`
+  - `db_owned_assets_missing_backup`
+  - `missing_backup_asset_ids_sample`
+- **Why it changed:**
+- Users should not need admin-only recovery for routine sign-in/build cycles.
+- If storage files disappear but DB metadata remains, the product now self-heals during normal usage.
+- **Key files touched:**
+- `src/research_os/db.py`
+- `src/research_os/services/data_planner_service.py`
+- `tests/test_data_library_resilience.py`
+- `tests/test_open_access_service.py`
+- `docs/change-log.md`
+- **Verification performed:**
+- `pytest tests/test_data_library_resilience.py -q`
+- `pytest tests/test_open_access_service.py -k "missing_storage" -q`
+- `pytest tests/test_api.py -k "library_assets or admin_endpoints" -q`
+- `python -m py_compile src/research_os/db.py src/research_os/services/data_planner_service.py`
+- `npm --prefix frontend run --silent typecheck`

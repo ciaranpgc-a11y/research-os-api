@@ -92,6 +92,8 @@ export const houseMotion = {
   chartPanel: 'house-chart-frame',
   chartEnter: 'house-motion-enter',
   chartExit: 'house-motion-exit',
+  ringChartEnter: 'house-motion-static-enter',
+  ringChartExit: 'house-motion-static-exit',
   toggleTrack: 'house-toggle-track',
   toggleThumb: 'house-toggle-thumb',
   toggleButton: 'house-toggle-button',

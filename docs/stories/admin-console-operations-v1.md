@@ -104,6 +104,10 @@ Out of scope (v1):
   - per-user `Recover storage` action in Admin Users table,
   - immutable audit event action `user_library_storage_recover`,
   - recovery summary now reports net rebind count across full workflow (including prerequisite metadata-driven path fixes).
+- Added non-admin automatic storage self-heal for personal library:
+  - user-facing library flows now auto-restore missing asset files from DB-backed shadow blobs,
+  - uploads persist bytes to both filesystem and DB shadow storage,
+  - diagnostics expanded with backup coverage counters to distinguish missing files from missing backups.
 - Updated bootstrap seed behavior so startup bootstrap no longer overwrites an existing user name unless explicitly enabled via `AAWE_BOOTSTRAP_SYNC_NAME=1`.
 
 ## Verification

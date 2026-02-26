@@ -136,6 +136,7 @@
     --motion-duration-slower: 420ms;
     --motion-duration-emphasis: 500ms;
     --motion-duration-long: 700ms;
+    --motion-duration-chart-ring-fill: var(--motion-duration-slower);
 
     --top-nav-rail-width: 3px;
     --top-nav-rail-height: 18px;
@@ -1301,6 +1302,29 @@
     filter: blur(0.4px);
   }
 
+  .house-motion-static-enter {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+
+  .house-motion-static-exit {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+
+  .house-ring-float-enter {
+    transform: translateY(0);
+    opacity: 1;
+    transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms ease-out;
+  }
+
+  .house-ring-float-exit {
+    transform: translateY(0.4rem);
+    opacity: 0;
+  }
+
   .house-toggle-track {
     position: relative;
     isolation: isolate;
@@ -1508,6 +1532,11 @@
 
   .house-chart-ring-toggle-visual {
     grid-column: 4;
+    min-height: 0;
+    height: 100%;
+    align-self: stretch;
+    display: flex;
+    border-color: hsl(var(--stroke-soft) / 0.96);
   }
 
   .house-chart-ring-center-label {

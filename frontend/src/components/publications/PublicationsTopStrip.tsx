@@ -285,6 +285,8 @@ const HOUSE_HEADING_LABEL_CLASS = publicationsHouseHeadings.label
 const HOUSE_CHART_TRANSITION_CLASS = publicationsHouseMotion.chartPanel
 const HOUSE_CHART_ENTERED_CLASS = publicationsHouseMotion.chartEnter
 const HOUSE_CHART_EXITED_CLASS = publicationsHouseMotion.chartExit
+const HOUSE_CHART_RING_ENTERED_CLASS = publicationsHouseMotion.ringChartEnter
+const HOUSE_CHART_RING_EXITED_CLASS = publicationsHouseMotion.ringChartExit
 const HOUSE_TOGGLE_TRACK_CLASS = publicationsHouseMotion.toggleTrack
 const HOUSE_TOGGLE_THUMB_CLASS = publicationsHouseMotion.toggleThumb
 const HOUSE_TOGGLE_BUTTON_CLASS = publicationsHouseMotion.toggleButton
@@ -395,8 +397,8 @@ const HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_COLUMNS_CLASS = 'grid-cols-[2.5rem_
 const HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_GAP_CLASS = 'gap-2'
 const HOUSE_FIELD_PERCENTILE_LEFT_CHART_PANEL_CLASS = 'h-full min-h-0 min-w-0 w-full'
 const HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH = 14
-const HOUSE_RING_ARC_TRANSITION = 'stroke-dasharray 680ms cubic-bezier(0.22, 1, 0.36, 1), stroke-dashoffset 680ms cubic-bezier(0.22, 1, 0.36, 1)'
-const HOUSE_RING_COLOR_TRANSITION = 'stroke 680ms cubic-bezier(0.22, 1, 0.36, 1)'
+const HOUSE_RING_ARC_TRANSITION = 'stroke-dasharray var(--motion-duration-chart-ring-fill) cubic-bezier(0.22, 1, 0.36, 1), stroke-dashoffset var(--motion-duration-chart-ring-fill) cubic-bezier(0.22, 1, 0.36, 1)'
+const HOUSE_RING_COLOR_TRANSITION = 'stroke var(--motion-duration-chart-ring-fill) cubic-bezier(0.22, 1, 0.36, 1)'
 const FIELD_PERCENTILE_RING_CLASS_BY_THRESHOLD: Record<FieldPercentileThreshold, string> = {
   50: HOUSE_CHART_RING_THRESHOLD_50_SVG_CLASS,
   75: HOUSE_CHART_RING_THRESHOLD_75_SVG_CLASS,
@@ -1116,27 +1118,21 @@ function buildTotalCitationsChartModel(tile: PublicationMetricTilePayload): Tota
 
 function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload }) {
   const [chartVisible, setChartVisible] = useState(true)
-  const [barsExpanded, setBarsExpanded] = useState(false)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const model = useMemo(() => buildTotalCitationsChartModel(tile), [tile])
   const animationKey = useMemo(
     () => `year:${model.bars.map((bar) => `${bar.key}-${bar.value}`).join('|')}:${model.meanValue ?? 'none'}`,
     [model.bars, model.meanValue],
   )
+  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, model.bars.length > 0)
   useEffect(() => {
     setChartVisible(false)
-    setBarsExpanded(false)
     let rafOne = 0
-    let rafTwo = 0
     rafOne = window.requestAnimationFrame(() => {
       setChartVisible(true)
-      rafTwo = window.requestAnimationFrame(() => {
-        setBarsExpanded(true)
-      })
     })
     return () => {
       window.cancelAnimationFrame(rafOne)
-      window.cancelAnimationFrame(rafTwo)
     }
   }, [animationKey])
 
@@ -1218,7 +1214,7 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: `${Math.min(220, index * 18)}ms`,
+                      transitionDelay: barsExpanded ? `${Math.min(220, index * 18)}ms` : '0ms',
                     }}
                   />
                 </div>
@@ -1487,6 +1483,7 @@ function HIndexYearChart({
   }
   const animationKey = bars.map((bar) => `${bar.year}-${bar.value}-${bar.current ? 1 : 0}`).join('|')
   const hasBars = bars.length > 0
+  const barsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|hindex-year`, hasBars)
   const rawTargetValues = useMemo(
     () => bars.map((bar) => Math.max(0, bar.value)),
     [bars],
@@ -1573,9 +1570,9 @@ function HIndexYearChart({
                     )}
                     style={{
                       height: `${heightPct}%`,
-                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1})`,
+                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: `${Math.min(220, index * 18)}ms`,
+                      transitionDelay: barsExpanded ? `${Math.min(220, index * 18)}ms` : '0ms',
                     }}
                   />
                 </div>
@@ -2063,7 +2060,7 @@ function PublicationsPerYearChart({
 }
 
 function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload }) {
-  const [chartVisible, setChartVisible] = useState(true)
+  const [chartVisible, setChartVisible] = useState(false)
   const [hoveredSegment, setHoveredSegment] = useState<'top3' | 'rest' | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
@@ -2075,7 +2072,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const top3Pct = total > 0 ? (top3 / total) * 100 : 0
   const top3PctRounded = Math.max(0, Math.min(100, Math.round(top3Pct)))
   const restPctRounded = Math.max(0, 100 - top3PctRounded)
-  const top3Dash = (top3PctRounded / 100) * ringCircumference
+  const top3AnimatedDash = ((chartVisible ? top3PctRounded : 0) / 100) * ringCircumference
   const explicitRemainingRaw = Number(chartData.remaining_papers_count)
   const explicitTotalPublicationsCandidates = [
     Number(chartData.total_publications),
@@ -2144,7 +2141,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
           'pb-2 pt-2.5',
-          chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
+          chartVisible ? HOUSE_CHART_RING_ENTERED_CLASS : HOUSE_CHART_RING_EXITED_CLASS,
         )}
       >
         {total > 0 ? (
@@ -2207,7 +2204,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                 strokeLinecap="round"
                 transform="rotate(-90 50 50)"
                 style={{
-                  strokeDasharray: `${top3Dash} ${ringCircumference}`,
+                  strokeDasharray: `${top3AnimatedDash} ${ringCircumference}`,
                   strokeDashoffset: 0,
                   transition: `${HOUSE_RING_ARC_TRANSITION}, ${HOUSE_RING_COLOR_TRANSITION}`,
                 }}
@@ -2516,7 +2513,7 @@ function FieldPercentilePanel({
   threshold: FieldPercentileThreshold
   toggleControl?: ReactNode
 }) {
-  const [chartVisible, setChartVisible] = useState(true)
+  const [chartVisible, setChartVisible] = useState(false)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const shareMap = parseNumericKeyedMap(chartData.share_by_threshold_pct)
   const countMap = parseNumericKeyedMap(chartData.count_by_threshold)
@@ -2543,7 +2540,7 @@ function FieldPercentilePanel({
   const shareClamped = Math.max(0, Math.min(100, shareAbove))
   const ringRadius = 38
   const ringCircumference = 2 * Math.PI * ringRadius
-  const ringDash = (shareClamped / 100) * ringCircumference
+  const ringAnimatedDash = ((chartVisible ? shareClamped : 0) / 100) * ringCircumference
   const ringShareToneClass = FIELD_PERCENTILE_RING_CLASS_BY_THRESHOLD[threshold] || HOUSE_CHART_RING_MAIN_SVG_CLASS
   useEffect(() => {
     setChartVisible(false)
@@ -2562,20 +2559,21 @@ function FieldPercentilePanel({
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div
-        className={cn(
-          HOUSE_CHART_TRANSITION_CLASS,
-          'pb-2 pt-2.5',
-          chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
-        )}
-      >
+      <div className="h-full pb-2 pt-2.5">
         <div className={HOUSE_CHART_RING_TOGGLE_LAYOUT_CLASS}>
           {toggleControl ? (
             <div className={HOUSE_CHART_RING_TOGGLE_CONTROL_CLASS}>
               {toggleControl}
             </div>
           ) : null}
-          <div className={cn(HOUSE_CHART_RING_PANEL_CLASS, HOUSE_CHART_RING_TOGGLE_VISUAL_CLASS)}>
+          <div
+            className={cn(
+              HOUSE_CHART_RING_PANEL_CLASS,
+              HOUSE_CHART_RING_TOGGLE_VISUAL_CLASS,
+              HOUSE_CHART_TRANSITION_CLASS,
+              chartVisible ? HOUSE_CHART_RING_ENTERED_CLASS : HOUSE_CHART_RING_EXITED_CLASS,
+            )}
+          >
             <svg
               viewBox="0 0 100 100"
               className={HOUSE_CHART_RING_SIZE_CLASS}
@@ -2601,7 +2599,7 @@ function FieldPercentilePanel({
                 strokeLinecap="round"
                 transform="rotate(-90 50 50)"
                 style={{
-                  strokeDasharray: `${ringDash} ${ringCircumference}`,
+                  strokeDasharray: `${ringAnimatedDash} ${ringCircumference}`,
                   strokeDashoffset: 0,
                   transition: `${HOUSE_RING_ARC_TRANSITION}, ${HOUSE_RING_COLOR_TRANSITION}`,
                 }}
@@ -2688,7 +2686,7 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
             <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[0.44rem]')}>
               <div
                 className={cn(
-                  'h-full rounded-full transition-[width] duration-420 ease-out',
+                  'h-full rounded-full transition-[width] duration-320 ease-out',
                   row.tone,
                 )}
                 style={{
@@ -2915,7 +2913,7 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
               <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[0.44rem]')}>
                 <div
                   className={cn(
-                    'h-full rounded-full transition-[width] duration-420 ease-out',
+                    'h-full rounded-full transition-[width] duration-320 ease-out',
                     row.tone,
                   )}
                   style={{
@@ -3854,6 +3852,7 @@ function HIndexNeedsChart({
     () => bars.map((bar) => `${bar.key}-${bar.count}`).join('|'),
     [bars],
   )
+  const barsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|hindex-needed`, bars.length > 0)
   const rawTargetCounts = useMemo(
     () => bars.map((bar) => Math.max(0, bar.count)),
     [bars],
@@ -3939,9 +3938,9 @@ function HIndexNeedsChart({
                     )}
                     style={{
                       height: `${heightPct}%`,
-                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1})`,
+                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: `${Math.min(220, index * 18)}ms`,
+                      transitionDelay: barsExpanded ? `${Math.min(220, index * 18)}ms` : '0ms',
                     }}
                   />
                 </div>
@@ -3980,8 +3979,22 @@ function HIndexTrajectoryPanel({
   mode: HIndexViewMode
 }) {
   const [renderMode, setRenderMode] = useState<HIndexViewMode>(mode)
-  const [visible, setVisible] = useState(true)
+  const [visible, setVisible] = useState(false)
   const fadeMs = 220
+
+  useEffect(() => {
+    if (prefersReducedMotion()) {
+      setVisible(true)
+      return
+    }
+    let raf = 0
+    raf = window.requestAnimationFrame(() => {
+      setVisible(true)
+    })
+    return () => {
+      window.cancelAnimationFrame(raf)
+    }
+  }, [])
 
   useEffect(() => {
     if (mode === renderMode) {
@@ -4105,6 +4118,7 @@ function HIndexViewToggle({
 }
 
 function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload }) {
+  const [chartVisible, setChartVisible] = useState(false)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const primarySeries = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const fallbackSeries = toNumberArray(tile.sparkline || []).map((item) => Math.max(0, item))
@@ -4144,9 +4158,35 @@ function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload })
     ? `${areaCurve} L ${areaPoints[areaPoints.length - 1].x} ${baselineY} L ${areaPoints[0].x} ${baselineY} Z`
     : ''
 
+  const animationKey = useMemo(
+    () => `${values.length}-${values.join('|')}`,
+    [values],
+  )
+
+  useEffect(() => {
+    if (prefersReducedMotion()) {
+      setChartVisible(true)
+      return
+    }
+    setChartVisible(false)
+    let raf = 0
+    raf = window.requestAnimationFrame(() => {
+      setChartVisible(true)
+    })
+    return () => {
+      window.cancelAnimationFrame(raf)
+    }
+  }, [animationKey])
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div className={HOUSE_LINE_CHART_SURFACE_CLASS}>
+      <div
+        className={cn(
+          HOUSE_LINE_CHART_SURFACE_CLASS,
+          HOUSE_CHART_TRANSITION_CLASS,
+          chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
+        )}
+      >
         <div className="relative h-full w-full">
           <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-full w-full">
             <path d={areaPath} className={HOUSE_DRILLDOWN_CHART_AREA_SVG_CLASS} fillOpacity={0.68} />

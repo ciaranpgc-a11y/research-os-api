@@ -18,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -631,6 +632,30 @@ class DataLibraryAsset(Base):
     manuscript_links: Mapped[list["ManuscriptAssetLink"]] = relationship(
         back_populates="asset", cascade="all, delete-orphan"
     )
+    backup_blob: Mapped["DataLibraryAssetBlob | None"] = relationship(
+        back_populates="asset",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+
+
+class DataLibraryAssetBlob(Base):
+    __tablename__ = "data_library_asset_blobs"
+
+    asset_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("data_library_assets.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    encoding: Mapped[str] = mapped_column(String(16), default="gzip")
+    byte_size: Mapped[int] = mapped_column(Integer, default=0)
+    checksum_sha256: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    content_blob: Mapped[bytes] = mapped_column(LargeBinary)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    asset: Mapped[DataLibraryAsset] = relationship(back_populates="backup_blob")
 
 
 class Work(Base):

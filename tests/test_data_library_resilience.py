@@ -5,6 +5,7 @@ from pathlib import Path
 
 from research_os.db import (
     DataLibraryAsset,
+    DataLibraryAssetBlob,
     Project,
     User,
     create_all_tables,
@@ -99,6 +100,44 @@ def test_list_library_assets_restores_missing_row_from_metadata(monkeypatch, tmp
         assert restored is not None
         assert Path(str(restored.storage_path)).exists()
         assert str(restored.owner_user_id) == user_id
+
+
+def test_list_library_assets_restores_missing_storage_from_db_backup(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    user_id = _create_user(email="library-backup-restore@example.com")
+
+    asset_id = upload_library_assets(
+        files=[("backup-restore.csv", "text/csv", b"col_a,col_b\n11,22\n")],
+        project_id=None,
+        user_id=user_id,
+    )[0]
+
+    with session_scope() as session:
+        backup_row = session.get(DataLibraryAssetBlob, asset_id)
+        assert backup_row is not None
+        assert int(backup_row.byte_size or 0) > 0
+        row = session.get(DataLibraryAsset, asset_id)
+        assert row is not None
+        stale_path = Path(str(row.storage_path))
+        stale_path.unlink(missing_ok=True)
+        assert not stale_path.exists()
+
+    payload = list_library_assets(project_id=None, user_id=user_id)
+    listed = {
+        str(item.get("id")): item for item in payload.get("items", [])
+    }
+    assert asset_id in listed
+    assert bool(listed[asset_id].get("is_available")) is True
+
+    downloaded = download_library_asset(asset_id=asset_id, user_id=user_id)
+    assert downloaded["content"] == b"col_a,col_b\n11,22\n"
+
+    with session_scope() as session:
+        restored = session.get(DataLibraryAsset, asset_id)
+        assert restored is not None
+        assert Path(str(restored.storage_path)).exists()
 
 
 def test_reconcile_library_for_user_restores_missing_row_from_metadata(
