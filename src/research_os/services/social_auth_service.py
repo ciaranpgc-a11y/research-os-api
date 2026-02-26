@@ -521,6 +521,8 @@ def complete_oauth_callback(
     )
 
     create_all_tables()
+    response_payload: dict[str, object] = {}
+    signed_in_user_id = ""
     with session_scope() as session:
         state_row = session.scalars(
             select(AuthOAuthState).where(
@@ -554,10 +556,27 @@ def complete_oauth_callback(
         session_token, auth_session = _create_session(session=session, user=user)
         session.refresh(user)
 
-        return {
+        response_payload = {
             "provider": clean_provider,
             "is_new_user": is_new_user,
             "user": _serialize_user(user),
             "session_token": session_token,
             "session_expires_at": auth_session.expires_at,
         }
+        signed_in_user_id = str(user.id)
+
+    if signed_in_user_id:
+        try:
+            from research_os.services.publication_metrics_service import (
+                enqueue_publication_top_metrics_refresh,
+            )
+
+            enqueue_publication_top_metrics_refresh(
+                user_id=signed_in_user_id,
+                force=False,
+                reason="auth_oauth_sign_in",
+            )
+        except Exception:
+            pass
+
+    return response_payload

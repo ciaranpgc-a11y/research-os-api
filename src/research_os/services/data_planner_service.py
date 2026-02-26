@@ -122,9 +122,14 @@ def _project_allows_user(project: Project, user_id: str | None) -> bool:
     clean_user_id = _trim(user_id)
     if not clean_user_id:
         return True
-    if _trim(project.owner_user_id) == clean_user_id:
+    owner_user_id = _trim(project.owner_user_id)
+    collaborator_ids = _normalize_user_ids(project.collaborator_user_ids)
+    if owner_user_id == clean_user_id:
         return True
-    return clean_user_id in _normalize_user_ids(project.collaborator_user_ids)
+    if clean_user_id in collaborator_ids:
+        return True
+    # Legacy orphan project: owner/collaborators absent. Allow first-user recovery flow.
+    return (not owner_user_id) and (len(collaborator_ids) == 0)
 
 
 def _resolve_project_for_user(*, session, project_id: str, user_id: str | None) -> Project:
@@ -934,6 +939,20 @@ def list_library_assets(
                 and not _asset_shared_user_ids(row)
             ):
                 row.owner_user_id = clean_user_id
+            elif (
+                not _trim(row.owner_user_id)
+                and clean_user_id
+                and _trim(row.project_id)
+            ):
+                project = session.get(Project, _trim(row.project_id))
+                if project is not None:
+                    project_owner = _trim(project.owner_user_id)
+                    project_collaborators = _normalize_user_ids(project.collaborator_user_ids)
+                    if project_owner:
+                        row.owner_user_id = project_owner
+                    elif len(project_collaborators) == 0:
+                        project.owner_user_id = clean_user_id
+                        row.owner_user_id = clean_user_id
             resolved_storage_path = _resolve_existing_asset_path(row, storage_root)
             if resolved_storage_path is None:
                 continue

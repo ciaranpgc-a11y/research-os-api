@@ -25,6 +25,7 @@ from sqlalchemy import text
 from research_os.config import get_openai_api_key
 from research_os.db import session_scope
 from research_os.api.schemas import (
+    AdminOrganisationsListResponse,
     AdminOverviewResponse,
     AdminUsersListResponse,
     AnalysisScaffoldRequest,
@@ -215,6 +216,7 @@ from research_os.api.schemas import (
 )
 from research_os.services.admin_service import (
     get_admin_overview,
+    list_admin_organisations,
     list_admin_users,
 )
 from research_os.services.affiliation_suggestion_service import (
@@ -1361,6 +1363,29 @@ def v1_admin_users(
         offset=offset,
     )
     return AdminUsersListResponse(**payload)
+
+
+@app.get(
+    "/v1/admin/organisations",
+    response_model=AdminOrganisationsListResponse,
+    responses=UNAUTHORIZED_RESPONSES | FORBIDDEN_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_organisations(
+    request: Request,
+    query: str = Query(default="", max_length=120),
+    limit: int = Query(default=25, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> AdminOrganisationsListResponse | JSONResponse:
+    _, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    payload = list_admin_organisations(
+        query=query,
+        limit=limit,
+        offset=offset,
+    )
+    return AdminOrganisationsListResponse(**payload)
 
 
 @app.get(

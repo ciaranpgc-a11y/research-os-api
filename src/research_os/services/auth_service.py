@@ -220,6 +220,24 @@ def _serialize_session_payload(
     }
 
 
+def _enqueue_post_sign_in_refresh(*, user_id: str, reason: str) -> None:
+    clean_user_id = str(user_id or "").strip()
+    if not clean_user_id:
+        return
+    try:
+        from research_os.services.publication_metrics_service import (
+            enqueue_publication_top_metrics_refresh,
+        )
+
+        enqueue_publication_top_metrics_refresh(
+            user_id=clean_user_id,
+            force=False,
+            reason=reason or "auth_sign_in",
+        )
+    except Exception:
+        return
+
+
 def _prune_login_challenges(*, session, user_id: str) -> None:
     now = _utcnow()
     challenges = session.scalars(
@@ -443,6 +461,8 @@ def register_user(*, email: str, password: str, name: str) -> dict[str, object]:
     except SecurityValidationError as exc:
         raise AuthValidationError(str(exc)) from exc
 
+    response_payload: dict[str, object] = {}
+    signed_in_user_id = ""
     with session_scope() as session:
         user = User(
             email=normalized_email,
@@ -460,15 +480,25 @@ def register_user(*, email: str, password: str, name: str) -> dict[str, object]:
             ) from exc
         token, auth_session = _create_session(session=session, user=user)
         session.refresh(user)
-        return _serialize_session_payload(
+        response_payload = _serialize_session_payload(
             user=user,
             session_token=token,
             session_expires_at=auth_session.expires_at,
         )
+        signed_in_user_id = str(user.id)
+
+    if signed_in_user_id:
+        _enqueue_post_sign_in_refresh(
+            user_id=signed_in_user_id,
+            reason="auth_register_sign_in",
+        )
+    return response_payload
 
 
 def login_user(*, email: str, password: str) -> dict[str, object]:
     create_all_tables()
+    response_payload: dict[str, object] = {}
+    signed_in_user_id = ""
     with session_scope() as session:
         user = _get_user_by_credentials(session=session, email=email, password=password)
         if user.two_factor_enabled:
@@ -477,11 +507,19 @@ def login_user(*, email: str, password: str) -> dict[str, object]:
             )
         token, auth_session = _create_session(session=session, user=user)
         session.refresh(user)
-        return _serialize_session_payload(
+        response_payload = _serialize_session_payload(
             user=user,
             session_token=token,
             session_expires_at=auth_session.expires_at,
         )
+        signed_in_user_id = str(user.id)
+
+    if signed_in_user_id:
+        _enqueue_post_sign_in_refresh(
+            user_id=signed_in_user_id,
+            reason="auth_login_sign_in",
+        )
+    return response_payload
 
 
 def get_user_by_session_token(token: str) -> dict[str, object]:
@@ -632,12 +670,14 @@ def delete_current_user(
 
 def start_login_challenge(*, email: str, password: str) -> dict[str, object]:
     create_all_tables()
+    response_payload: dict[str, object] = {}
+    signed_in_user_id = ""
     with session_scope() as session:
         user = _get_user_by_credentials(session=session, email=email, password=password)
         if not user.two_factor_enabled:
             token, auth_session = _create_session(session=session, user=user)
             session.refresh(user)
-            return {
+            response_payload = {
                 "status": "authenticated",
                 "session": _serialize_session_payload(
                     user=user,
@@ -651,28 +691,36 @@ def start_login_challenge(*, email: str, password: str) -> dict[str, object]:
                     "name": user.name,
                 },
             }
+            signed_in_user_id = str(user.id)
+        else:
+            _prune_login_challenges(session=session, user_id=user.id)
+            challenge_token = generate_session_token()
+            challenge_hash = hash_session_token(challenge_token)
+            challenge = AuthLoginChallenge(
+                user_id=user.id,
+                challenge_hash=challenge_hash,
+                expires_at=_login_challenge_expiry(),
+                consumed_at=None,
+            )
+            session.add(challenge)
+            session.flush()
+            response_payload = {
+                "status": "two_factor_required",
+                "session": None,
+                "challenge_token": challenge_token,
+                "challenge_expires_at": challenge.expires_at,
+                "user_hint": {
+                    "email": user.email,
+                    "name": user.name,
+                },
+            }
 
-        _prune_login_challenges(session=session, user_id=user.id)
-        challenge_token = generate_session_token()
-        challenge_hash = hash_session_token(challenge_token)
-        challenge = AuthLoginChallenge(
-            user_id=user.id,
-            challenge_hash=challenge_hash,
-            expires_at=_login_challenge_expiry(),
-            consumed_at=None,
+    if signed_in_user_id:
+        _enqueue_post_sign_in_refresh(
+            user_id=signed_in_user_id,
+            reason="auth_login_challenge_sign_in",
         )
-        session.add(challenge)
-        session.flush()
-        return {
-            "status": "two_factor_required",
-            "session": None,
-            "challenge_token": challenge_token,
-            "challenge_expires_at": challenge.expires_at,
-            "user_hint": {
-                "email": user.email,
-                "name": user.name,
-            },
-        }
+    return response_payload
 
 
 def complete_login_challenge(*, challenge_token: str, code: str) -> dict[str, object]:
@@ -683,6 +731,8 @@ def complete_login_challenge(*, challenge_token: str, code: str) -> dict[str, ob
 
     challenge_hash = hash_session_token(clean_token)
     now = _utcnow()
+    response_payload: dict[str, object] = {}
+    signed_in_user_id = ""
     with session_scope() as session:
         challenge = session.scalars(
             select(AuthLoginChallenge).where(
@@ -705,11 +755,19 @@ def complete_login_challenge(*, challenge_token: str, code: str) -> dict[str, ob
         token, auth_session = _create_session(session=session, user=user)
         session.flush()
         session.refresh(user)
-        return _serialize_session_payload(
+        response_payload = _serialize_session_payload(
             user=user,
             session_token=token,
             session_expires_at=auth_session.expires_at,
         )
+        signed_in_user_id = str(user.id)
+
+    if signed_in_user_id:
+        _enqueue_post_sign_in_refresh(
+            user_id=signed_in_user_id,
+            reason="auth_login_2fa_sign_in",
+        )
+    return response_payload
 
 
 def request_email_verification(*, session_token: str) -> dict[str, object]:

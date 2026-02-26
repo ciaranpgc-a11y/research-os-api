@@ -2668,11 +2668,14 @@ def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> Non
     with TestClient(app) as client:
         overview_response = client.get("/v1/admin/overview")
         users_response = client.get("/v1/admin/users")
+        organisations_response = client.get("/v1/admin/organisations")
 
     assert overview_response.status_code == 401
     assert overview_response.json()["error"]["type"] == "unauthorized"
     assert users_response.status_code == 401
     assert users_response.json()["error"]["type"] == "unauthorized"
+    assert organisations_response.status_code == 401
+    assert organisations_response.json()["error"]["type"] == "unauthorized"
 
 
 def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
@@ -2692,15 +2695,22 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
 
         overview_response = client.get("/v1/admin/overview", headers=_auth_headers(token))
         users_response = client.get("/v1/admin/users", headers=_auth_headers(token))
+        organisations_response = client.get(
+            "/v1/admin/organisations",
+            headers=_auth_headers(token),
+        )
 
     assert overview_response.status_code == 403
     assert overview_response.json()["error"]["type"] == "forbidden"
     assert users_response.status_code == 403
     assert users_response.json()["error"]["type"] == "forbidden"
+    assert organisations_response.status_code == 403
+    assert organisations_response.json()["error"]["type"] == "forbidden"
 
 
 def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
+    encoded = base64.b64encode(b"col_a,col_b\n1,2\n").decode("ascii")
 
     with TestClient(app) as client:
         admin_register_response = client.post(
@@ -2725,6 +2735,35 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
             },
         )
         assert viewer_register_response.status_code == 200
+        viewer_token = viewer_register_response.json()["session_token"]
+
+        project_response = client.post(
+            "/v1/projects",
+            headers=_auth_headers(viewer_token),
+            json={
+                "title": "Org Analytics Project",
+                "target_journal": "ehj",
+                "workspace_id": "org-workspace-1",
+            },
+        )
+        assert project_response.status_code == 200
+        project_id = project_response.json()["id"]
+
+        upload_response = client.post(
+            "/v1/library/assets/upload",
+            headers=_auth_headers(viewer_token),
+            json={
+                "project_id": project_id,
+                "files": [
+                    {
+                        "filename": "org-usage-sample.csv",
+                        "mime_type": "text/csv",
+                        "content_base64": encoded,
+                    }
+                ],
+            },
+        )
+        assert upload_response.status_code == 200
 
         overview_response = client.get(
             "/v1/admin/overview",
@@ -2734,6 +2773,11 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
             "/v1/admin/users",
             headers=_auth_headers(admin_token),
             params={"query": "viewer", "limit": 10, "offset": 0},
+        )
+        organisations_response = client.get(
+            "/v1/admin/organisations",
+            headers=_auth_headers(admin_token),
+            params={"query": "example.com", "limit": 20, "offset": 0},
         )
 
     assert overview_response.status_code == 200
@@ -2755,6 +2799,23 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
     assert users_payload["total"] >= 1
     assert len(users_payload["items"]) >= 1
     assert users_payload["items"][0]["email"] == "viewer-user@example.com"
+
+    assert organisations_response.status_code == 200
+    organisations_payload = organisations_response.json()
+    assert organisations_payload["limit"] == 20
+    assert organisations_payload["offset"] == 0
+    assert organisations_payload["total"] >= 1
+    assert len(organisations_payload["items"]) >= 1
+    organisation = organisations_payload["items"][0]
+    assert organisation["domain"] == "example.com"
+    assert organisation["member_count"] >= 2
+    assert organisation["project_count"] >= 1
+    assert organisation["workspace_count"] >= 1
+    assert organisation["storage_bytes_current"] > 0
+    assert isinstance(organisation["feature_flags_enabled"], list)
+    assert len(organisation["integrations"]) >= 3
+    assert organisation["impersonation"]["available"] is True
+    assert organisation["impersonation"]["audited"] is True
 
 
 def test_v1_workspace_state_round_trip_persists_for_authenticated_user(

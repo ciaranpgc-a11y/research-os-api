@@ -837,6 +837,73 @@ class AdminOverviewResponse(BaseModel):
     generated_at: datetime
 
 
+class AdminOrganisationIntegrationResponse(BaseModel):
+    key: str
+    status: Literal["connected", "degraded", "not_configured"]
+    connected_members: int = 0
+    last_sync_at: datetime | None = None
+    detail: str = ""
+
+
+class AdminOrganisationMonthlyUsagePointResponse(BaseModel):
+    month: str
+    tokens: int = 0
+    tool_calls: int = 0
+    cost_usd: float = 0.0
+
+
+class AdminOrganisationImpersonationResponse(BaseModel):
+    available: bool = False
+    audited: bool = True
+    last_event_at: datetime | None = None
+    note: str = ""
+
+
+class AdminOrganisationSummaryResponse(BaseModel):
+    id: str
+    name: str
+    domain: str
+    plan: str
+    billing_status: str
+    member_count: int = 0
+    admin_count: int = 0
+    active_members_30d: int = 0
+    last_active_at: datetime | None = None
+    workspace_count: int = 0
+    project_count: int = 0
+    usage_tokens_current_month: int = 0
+    usage_tokens_previous_month: int = 0
+    usage_tokens_trend_pct: float = 0.0
+    usage_tool_calls_current_month: int = 0
+    storage_bytes_current: int = 0
+    cost_usd_current_month: float = 0.0
+    cost_usd_previous_month: float = 0.0
+    cost_trend_pct: float = 0.0
+    gross_margin_pct: float = 0.0
+    feature_flags_enabled: list[str] = Field(default_factory=list)
+    rate_limit_rpm: int = 0
+    monthly_token_quota: int = 0
+    storage_quota_gb: int = 0
+    data_retention_days: int = 0
+    integrations: list[AdminOrganisationIntegrationResponse] = Field(
+        default_factory=list
+    )
+    monthly_usage_trend: list[AdminOrganisationMonthlyUsagePointResponse] = Field(
+        default_factory=list
+    )
+    impersonation: AdminOrganisationImpersonationResponse = Field(
+        default_factory=AdminOrganisationImpersonationResponse
+    )
+
+
+class AdminOrganisationsListResponse(BaseModel):
+    items: list[AdminOrganisationSummaryResponse] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 25
+    offset: int = 0
+    generated_at: datetime
+
+
 class AffiliationSuggestionItemResponse(BaseModel):
     name: str
     label: str

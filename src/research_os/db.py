@@ -1551,6 +1551,14 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                     if only_user_id:
                         connection.execute(
                             text(
+                                "UPDATE projects "
+                                "SET owner_user_id = :owner_user_id "
+                                "WHERE owner_user_id IS NULL"
+                            ),
+                            {"owner_user_id": only_user_id},
+                        )
+                        connection.execute(
+                            text(
                                 "UPDATE data_library_assets "
                                 "SET owner_user_id = :owner_user_id "
                                 "WHERE owner_user_id IS NULL"
@@ -1571,6 +1579,25 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                     "ON data_profiles (owner_user_id)"
                 )
             )
+            if _sqlite_table_exists(connection, "users"):
+                user_count_row = connection.execute(
+                    text("SELECT COUNT(*) FROM users")
+                ).first()
+                user_count = int(user_count_row[0] or 0) if user_count_row else 0
+                if user_count == 1:
+                    owner_row = connection.execute(
+                        text("SELECT id FROM users LIMIT 1")
+                    ).first()
+                    only_user_id = str(owner_row[0]) if owner_row and owner_row[0] else ""
+                    if only_user_id:
+                        connection.execute(
+                            text(
+                                "UPDATE data_profiles "
+                                "SET owner_user_id = :owner_user_id "
+                                "WHERE owner_user_id IS NULL"
+                            ),
+                            {"owner_user_id": only_user_id},
+                        )
 
 
 def create_all_tables() -> None:

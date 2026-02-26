@@ -5,6 +5,7 @@ from pathlib import Path
 
 from research_os.db import (
     DataLibraryAsset,
+    Project,
     User,
     create_all_tables,
     reset_database_state,
@@ -240,3 +241,53 @@ def test_list_library_assets_claims_ownerless_legacy_asset_to_first_requesting_u
     second_payload = list_library_assets(project_id=None, user_id=second_user_id)
     second_ids = [str(item.get("id")) for item in second_payload.get("items", [])]
     assert asset_id not in second_ids
+
+
+def test_list_library_assets_claims_orphan_project_asset_for_requesting_user(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    user_id = _create_user(email="legacy-project-claim@example.com")
+    storage_root = (tmp_path / "data_library").resolve()
+    storage_root.mkdir(parents=True, exist_ok=True)
+
+    data_path = storage_root / "legacy-project-asset.csv"
+    data_bytes = b"col_a,col_b\n13,14\n"
+    data_path.write_bytes(data_bytes)
+
+    with session_scope() as session:
+        project = Project(
+            title="Legacy orphan project",
+            target_journal="ehj",
+            owner_user_id=None,
+            collaborator_user_ids=[],
+        )
+        session.add(project)
+        session.flush()
+        project_id = str(project.id)
+
+        asset = DataLibraryAsset(
+            owner_user_id=None,
+            project_id=project_id,
+            shared_with_user_ids=None,
+            filename="legacy-project-asset.csv",
+            kind="csv",
+            mime_type="text/csv",
+            byte_size=len(data_bytes),
+            storage_path=str(data_path),
+        )
+        session.add(asset)
+        session.flush()
+        asset_id = str(asset.id)
+
+    payload = list_library_assets(project_id=None, user_id=user_id)
+    listed_ids = [str(item.get("id")) for item in payload.get("items", [])]
+    assert asset_id in listed_ids
+
+    with session_scope() as session:
+        refreshed_project = session.get(Project, project_id)
+        refreshed_asset = session.get(DataLibraryAsset, asset_id)
+        assert refreshed_project is not None
+        assert refreshed_asset is not None
+        assert str(refreshed_project.owner_user_id or "") == user_id
+        assert str(refreshed_asset.owner_user_id or "") == user_id
