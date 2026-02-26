@@ -1568,6 +1568,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   updatedAt: new Date().toISOString(),
                 },
               }))
+            } else {
+              setOaPdfStatusByWorkId((current) => ({
+                ...current,
+                [work.id]: {
+                  status: 'missing',
+                  downloadUrl: null,
+                  fileName: null,
+                  updatedAt: new Date().toISOString(),
+                },
+              }))
             }
             if (payload.created && payload.file) {
               linked += 1
