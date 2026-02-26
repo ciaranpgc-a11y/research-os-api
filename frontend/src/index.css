@@ -135,9 +135,10 @@
     --motion-duration-emphasis: 500ms;
     --motion-duration-long: 700ms;
 
-    --top-nav-rail-width: 2px;
-    --top-nav-rail-height: 14px;
-    --top-nav-rail-left: 0.5rem;
+    --top-nav-rail-width: 3px;
+    --top-nav-rail-height: 18px;
+    --top-nav-rail-left: 0.56rem;
+    --top-nav-rail-gap: 0.46rem;
     --top-nav-hover-bg: var(--tone-neutral-100);
     --top-nav-active-bg: var(--tone-accent-50);
     --top-nav-accent-workspace: var(--tone-accent-500);
@@ -513,7 +514,8 @@
     height: 2.25rem;
     border: 0;
     border-radius: 0.42rem;
-    padding-inline: 0.75rem;
+    padding-inline-end: 0.75rem;
+    padding-inline-start: calc(var(--top-nav-rail-left) + var(--top-nav-rail-width) + var(--top-nav-rail-gap));
     font-size: 0.875rem;
     line-height: 1.25rem;
     font-weight: 600;
