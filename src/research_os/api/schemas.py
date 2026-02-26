@@ -807,6 +807,7 @@ class AuthUserResponse(BaseModel):
 
 class AdminUserSummaryResponse(BaseModel):
     id: str
+    account_key: str | None = None
     email: str
     name: str
     is_active: bool
@@ -1115,6 +1116,32 @@ class AdminAuditEventResponse(BaseModel):
     actor_email: str
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
+
+
+class AdminUserLibraryReconcileSummaryResponse(BaseModel):
+    restored_rows: int = 0
+    claimed_rows: int = 0
+    identity_recovered_rows: int = 0
+    canonicalized_owner_rows: int = 0
+
+
+class AdminUserLibraryReconcileResponse(BaseModel):
+    message: str
+    user_id: str
+    user_email: str
+    user_name: str
+    account_key: str | None = None
+    owned_assets_before: int = 0
+    owned_assets_after: int = 0
+    owned_personal_before: int = 0
+    owned_personal_after: int = 0
+    owned_project_before: int = 0
+    owned_project_after: int = 0
+    reconcile_summary: AdminUserLibraryReconcileSummaryResponse = Field(
+        default_factory=AdminUserLibraryReconcileSummaryResponse
+    )
+    generated_at: datetime
+    audit_event: AdminAuditEventResponse
 
 
 class AdminJobActionResponse(BaseModel):

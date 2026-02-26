@@ -2,6 +2,33 @@
 
 ## 2026-02-26
 
+### Admin User Library Recovery Controls + Identity Visibility
+
+- **Area:** Admin diagnostics for account-linked data recovery and identity consistency.
+- **What changed:**
+- Added admin endpoint `POST /v1/admin/users/{user_id}/library/reconcile` to trigger server-side personal-library reconciliation for a target user and return before/after ownership counts plus recovery summary.
+- Added audit logging for this action (`user_library_reconcile`) in the immutable admin audit event stream.
+- Extended admin user directory payloads with `account_key` and search support across `email`, `name`, `id`, and `account_key`.
+- Updated admin user table UI to show `User ID`, `Account key`, and a per-user `Reconcile library` action button.
+- Updated bootstrap-account behavior so seeded bootstrap startup no longer overwrites an existing user display name by default; name syncing now requires explicit `AAWE_BOOTSTRAP_SYNC_NAME=1`.
+- **Why it changed:**
+- Give admin a direct, visible recovery control when account libraries appear empty and make identity linkage diagnosable from the directory.
+- Prevent profile/admin name drift caused by startup bootstrap name overwrite.
+- **Key files touched:**
+- `src/research_os/services/admin_service.py`
+- `src/research_os/api/schemas.py`
+- `src/research_os/api/app.py`
+- `src/research_os/services/auth_service.py`
+- `frontend/src/types/impact.ts`
+- `frontend/src/lib/impact-api.ts`
+- `frontend/src/pages/admin-page.tsx`
+- `tests/test_api.py`
+- `tests/test_auth_service.py`
+- **Verification performed:**
+- `pytest tests/test_api.py -k "admin_endpoints" -q`
+- `pytest tests/test_auth_service.py -q`
+- `npm --prefix frontend run --silent typecheck`
+
 ### Automatic Library Reconciliation On Sign-In
 
 - **Area:** Data-library continuity after login/logout/build cycles.

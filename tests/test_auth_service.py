@@ -5,6 +5,7 @@ from sqlalchemy import select
 from research_os.db import User, create_all_tables, reset_database_state, session_scope
 from research_os.services.auth_service import (
     complete_login_challenge,
+    ensure_bootstrap_user,
     login_user,
     register_user,
     start_login_challenge,
@@ -178,3 +179,28 @@ def test_complete_login_challenge_enqueues_refresh(monkeypatch, tmp_path) -> Non
     assert enqueued[0]["force"] is False
     assert len(reconciled) == 2
     assert reconciled[1]["user_id"] == user_id
+
+
+def test_ensure_bootstrap_user_does_not_override_existing_name_by_default(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    monkeypatch.setenv("AAWE_BOOTSTRAP_EMAIL", "bootstrap-user@example.com")
+    monkeypatch.setenv("AAWE_BOOTSTRAP_PASSWORD", "StrongPassword123")
+    monkeypatch.setenv("AAWE_BOOTSTRAP_NAME", "AAWE Test User")
+    monkeypatch.delenv("AAWE_BOOTSTRAP_SYNC_NAME", raising=False)
+
+    register_payload = register_user(
+        email="bootstrap-user@example.com",
+        password="StrongPassword123",
+        name="Ciaran Grafton-Clarke",
+    )
+    user_id = str((register_payload.get("user") or {}).get("id") or "")
+    assert user_id
+
+    ensure_bootstrap_user()
+
+    with session_scope() as session:
+        user = session.get(User, user_id)
+        assert user is not None
+        assert str(user.name or "") == "Ciaran Grafton-Clarke"

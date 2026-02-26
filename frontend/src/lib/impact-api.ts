@@ -5,6 +5,7 @@ import type {
   AdminAuditEventsListPayload,
   AdminJobActionPayload,
   AdminJobsListPayload,
+  AdminUserLibraryReconcilePayload,
   AffiliationAddressResolutionPayload,
   AffiliationSuggestionsPayload,
   AdminOrganisationsListPayload,
@@ -287,6 +288,21 @@ export async function fetchAdminUsers(
       headers: authHeaders(token),
     },
     'Admin users lookup failed',
+  )
+}
+
+export async function reconcileAdminUserLibrary(
+  token: string,
+  userId: string,
+): Promise<AdminUserLibraryReconcilePayload> {
+  return requestJson<AdminUserLibraryReconcilePayload>(
+    `${API_BASE_URL}/v1/admin/users/${encodeURIComponent(userId)}/library/reconcile`,
+    {
+      method: 'POST',
+      headers: authHeaders(token),
+    },
+    'Admin user library reconcile failed',
+    { timeoutMs: 120_000, retryCount: 0 },
   )
 }
 

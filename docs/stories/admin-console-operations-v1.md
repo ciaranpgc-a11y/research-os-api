@@ -88,6 +88,11 @@ Out of scope (v1):
   - new admin API endpoint `/v1/admin/audit/events`,
   - backend immutable event persistence via `admin_audit_events`,
   - security section upgraded with live audit log visibility.
+- Added admin user-library recovery diagnostics and actioning:
+  - new admin API endpoint `/v1/admin/users/{user_id}/library/reconcile`,
+  - per-user `Reconcile library` control in Users table with status feedback,
+  - Users table now surfaces `User ID` and `Account key` for identity-link diagnostics.
+- Updated bootstrap seed behavior so startup bootstrap no longer overwrites an existing user name unless explicitly enabled via `AAWE_BOOTSTRAP_SYNC_NAME=1`.
 
 ## Verification
 

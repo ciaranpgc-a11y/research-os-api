@@ -26,6 +26,7 @@ from sqlalchemy import text
 from research_os.config import get_openai_api_key
 from research_os.db import session_scope
 from research_os.api.schemas import (
+    AdminUserLibraryReconcileResponse,
     AdminAuditEventsListResponse,
     AdminJobActionResponse,
     AdminJobCancelRequest,
@@ -229,6 +230,7 @@ from research_os.services.admin_service import (
     AdminStateError,
     AdminValidationError,
     admin_cancel_job,
+    admin_reconcile_user_library,
     admin_retry_job,
     create_admin_org_impersonation,
     get_admin_overview,
@@ -1414,6 +1416,31 @@ def v1_admin_users(
         offset=offset,
     )
     return AdminUsersListResponse(**payload)
+
+
+@app.post(
+    "/v1/admin/users/{user_id}/library/reconcile",
+    response_model=AdminUserLibraryReconcileResponse,
+    responses=UNAUTHORIZED_RESPONSES | FORBIDDEN_RESPONSES | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_reconcile_user_library(
+    request: Request,
+    user_id: str,
+) -> AdminUserLibraryReconcileResponse | JSONResponse:
+    admin_user, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    try:
+        payload = admin_reconcile_user_library(
+            actor_user_id=str((admin_user or {}).get("id") or ""),
+            user_id=user_id,
+        )
+        return AdminUserLibraryReconcileResponse(**payload)
+    except AdminNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except AdminValidationError as exc:
+        return _build_bad_request_response(str(exc))
 
 
 @app.get(

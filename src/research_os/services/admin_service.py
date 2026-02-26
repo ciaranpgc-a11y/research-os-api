@@ -96,6 +96,7 @@ def _serialize_admin_user(user: User) -> dict[str, object]:
         role = "user"
     return {
         "id": user.id,
+        "account_key": user.account_key,
         "email": user.email,
         "name": user.name,
         "is_active": bool(user.is_active),
@@ -105,6 +106,54 @@ def _serialize_admin_user(user: User) -> dict[str, object]:
         "created_at": user.created_at,
         "updated_at": user.updated_at,
     }
+
+
+def _count_owned_assets(*, session, user_id: str) -> int:
+    clean_user_id = str(user_id or "").strip()
+    if not clean_user_id:
+        return 0
+    return int(
+        session.scalar(
+            select(func.count())
+            .select_from(DataLibraryAsset)
+            .where(DataLibraryAsset.owner_user_id == clean_user_id)
+        )
+        or 0
+    )
+
+
+def _count_owned_personal_assets(*, session, user_id: str) -> int:
+    clean_user_id = str(user_id or "").strip()
+    if not clean_user_id:
+        return 0
+    return int(
+        session.scalar(
+            select(func.count())
+            .select_from(DataLibraryAsset)
+            .where(
+                DataLibraryAsset.owner_user_id == clean_user_id,
+                DataLibraryAsset.project_id.is_(None),
+            )
+        )
+        or 0
+    )
+
+
+def _count_owned_project_assets(*, session, user_id: str) -> int:
+    clean_user_id = str(user_id or "").strip()
+    if not clean_user_id:
+        return 0
+    return int(
+        session.scalar(
+            select(func.count())
+            .select_from(DataLibraryAsset)
+            .where(
+                DataLibraryAsset.owner_user_id == clean_user_id,
+                DataLibraryAsset.project_id.is_not(None),
+            )
+        )
+        or 0
+    )
 
 
 def _coerce_utc(value: datetime | None) -> datetime | None:
@@ -1463,6 +1512,8 @@ def list_admin_users(
             predicate = or_(
                 func.lower(User.email).like(like),
                 func.lower(User.name).like(like),
+                func.lower(User.id).like(like),
+                func.lower(User.account_key).like(like),
             )
             users_stmt = users_stmt.where(predicate)
             total_stmt = total_stmt.where(predicate)
@@ -1481,6 +1532,112 @@ def list_admin_users(
         "total": total,
         "limit": normalized_limit,
         "offset": normalized_offset,
+    }
+
+
+def admin_reconcile_user_library(
+    *,
+    actor_user_id: str,
+    user_id: str,
+) -> dict[str, object]:
+    create_all_tables()
+    clean_actor_user_id = str(actor_user_id or "").strip()
+    clean_user_id = str(user_id or "").strip()
+    if not clean_user_id:
+        raise AdminValidationError("user_id is required.")
+
+    with session_scope() as session:
+        user = session.get(User, clean_user_id)
+        if user is None:
+            raise AdminNotFoundError(f"User '{clean_user_id}' was not found.")
+        user_email = str(user.email or "").strip()
+        user_name = str(user.name or "").strip() or user_email or clean_user_id
+        user_account_key = str(user.account_key or "").strip() or None
+        owned_assets_before = _count_owned_assets(session=session, user_id=clean_user_id)
+        owned_personal_before = _count_owned_personal_assets(
+            session=session,
+            user_id=clean_user_id,
+        )
+        owned_project_before = _count_owned_project_assets(
+            session=session,
+            user_id=clean_user_id,
+        )
+
+    from research_os.services.data_planner_service import reconcile_library_for_user
+
+    reconcile_summary = reconcile_library_for_user(
+        user_id=clean_user_id,
+        account_key_hint=user_account_key,
+    )
+
+    with session_scope() as session:
+        owned_assets_after = _count_owned_assets(session=session, user_id=clean_user_id)
+        owned_personal_after = _count_owned_personal_assets(
+            session=session,
+            user_id=clean_user_id,
+        )
+        owned_project_after = _count_owned_project_assets(
+            session=session,
+            user_id=clean_user_id,
+        )
+
+    restored_rows = int(reconcile_summary.get("restored_rows") or 0)
+    claimed_rows = int(reconcile_summary.get("claimed_rows") or 0)
+    identity_recovered_rows = int(reconcile_summary.get("identity_recovered_rows") or 0)
+    canonicalized_owner_rows = int(
+        reconcile_summary.get("canonicalized_owner_rows") or 0
+    )
+
+    summary_text = (
+        f"Reconciled {user_name}: "
+        f"{restored_rows} restored, {claimed_rows} claimed, "
+        f"{identity_recovered_rows} identity-recovered, "
+        f"{canonicalized_owner_rows} canonicalized."
+    )
+    audit_event = _record_admin_audit_event(
+        actor_user_id=clean_actor_user_id or None,
+        action="user_library_reconcile",
+        target_type="user",
+        target_id=clean_user_id,
+        status="success",
+        metadata={
+            "target_email": user_email,
+            "target_account_key": user_account_key or "",
+            "owned_assets_before": owned_assets_before,
+            "owned_assets_after": owned_assets_after,
+            "owned_personal_before": owned_personal_before,
+            "owned_personal_after": owned_personal_after,
+            "owned_project_before": owned_project_before,
+            "owned_project_after": owned_project_after,
+            "reconcile_summary": {
+                "restored_rows": restored_rows,
+                "claimed_rows": claimed_rows,
+                "identity_recovered_rows": identity_recovered_rows,
+                "canonicalized_owner_rows": canonicalized_owner_rows,
+            },
+        },
+    )
+
+    return {
+        "message": summary_text,
+        "user_id": clean_user_id,
+        "user_email": user_email,
+        "user_name": user_name,
+        "account_key": user_account_key,
+        "owned_assets_before": owned_assets_before,
+        "owned_assets_after": owned_assets_after,
+        "owned_personal_before": owned_personal_before,
+        "owned_personal_after": owned_personal_after,
+        "owned_project_before": owned_project_before,
+        "owned_project_after": owned_project_after,
+        "reconcile_summary": {
+            "restored_rows": restored_rows,
+            "claimed_rows": claimed_rows,
+            "identity_recovered_rows": identity_recovered_rows,
+            "canonicalized_owner_rows": canonicalized_owner_rows,
+        },
+        "generated_at": _utcnow(),
+        "audit_event": audit_event,
     }
 
 

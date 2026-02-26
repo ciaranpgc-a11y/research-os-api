@@ -2672,6 +2672,9 @@ def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> Non
         workspaces_response = client.get("/v1/admin/workspaces")
         usage_costs_response = client.get("/v1/admin/usage-costs")
         jobs_response = client.get("/v1/admin/jobs")
+        reconcile_library_response = client.post(
+            "/v1/admin/users/user-unknown/library/reconcile"
+        )
         cancel_job_response = client.post("/v1/admin/jobs/job-unknown/cancel", json={})
         retry_job_response = client.post("/v1/admin/jobs/job-unknown/retry", json={})
         impersonate_response = client.post(
@@ -2692,6 +2695,8 @@ def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> Non
     assert usage_costs_response.json()["error"]["type"] == "unauthorized"
     assert jobs_response.status_code == 401
     assert jobs_response.json()["error"]["type"] == "unauthorized"
+    assert reconcile_library_response.status_code == 401
+    assert reconcile_library_response.json()["error"]["type"] == "unauthorized"
     assert cancel_job_response.status_code == 401
     assert cancel_job_response.json()["error"]["type"] == "unauthorized"
     assert retry_job_response.status_code == 401
@@ -2735,6 +2740,10 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
             "/v1/admin/jobs",
             headers=_auth_headers(token),
         )
+        reconcile_library_response = client.post(
+            "/v1/admin/users/user-unknown/library/reconcile",
+            headers=_auth_headers(token),
+        )
         cancel_job_response = client.post(
             "/v1/admin/jobs/job-unknown/cancel",
             headers=_auth_headers(token),
@@ -2767,6 +2776,8 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
     assert usage_costs_response.json()["error"]["type"] == "forbidden"
     assert jobs_response.status_code == 403
     assert jobs_response.json()["error"]["type"] == "forbidden"
+    assert reconcile_library_response.status_code == 403
+    assert reconcile_library_response.json()["error"]["type"] == "forbidden"
     assert cancel_job_response.status_code == 403
     assert cancel_job_response.json()["error"]["type"] == "forbidden"
     assert retry_job_response.status_code == 403
@@ -2903,6 +2914,10 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
             headers=_auth_headers(admin_token),
             params={"query": "org-workspace-1", "limit": 20, "offset": 0},
         )
+        reconcile_library_response = client.post(
+            f"/v1/admin/users/{viewer_register_response.json()['user']['id']}/library/reconcile",
+            headers=_auth_headers(admin_token),
+        )
         cancel_job_response = client.post(
             f"/v1/admin/jobs/{queued_job_id}/cancel",
             headers=_auth_headers(admin_token),
@@ -2943,6 +2958,8 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
     assert users_payload["total"] >= 1
     assert len(users_payload["items"]) >= 1
     assert users_payload["items"][0]["email"] == "viewer-user@example.com"
+    assert str(users_payload["items"][0]["id"]).strip() != ""
+    assert str(users_payload["items"][0].get("account_key") or "").strip() != ""
 
     assert organisations_response.status_code == 200
     organisations_payload = organisations_response.json()
@@ -2995,6 +3012,15 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
     assert jobs_payload["total"] >= 2
     assert jobs_payload["queue_health"]["total_jobs"] >= 2
     assert jobs_payload["queue_health"]["retryable_jobs"] >= 1
+
+    assert reconcile_library_response.status_code == 200
+    reconcile_payload = reconcile_library_response.json()
+    assert reconcile_payload["user_id"] == viewer_register_response.json()["user"]["id"]
+    assert str(reconcile_payload.get("account_key") or "").strip() != ""
+    assert "Reconciled" in str(reconcile_payload["message"])
+    assert isinstance(reconcile_payload["reconcile_summary"], dict)
+    assert "restored_rows" in reconcile_payload["reconcile_summary"]
+    assert "audit_event" in reconcile_payload
 
     assert cancel_job_response.status_code == 200
     cancel_payload = cancel_job_response.json()

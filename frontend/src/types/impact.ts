@@ -35,6 +35,7 @@ export type AdminOverviewPayload = {
 
 export type AdminUserSummaryPayload = {
   id: string
+  account_key: string | null
   email: string
   name: string
   is_active: boolean
@@ -50,6 +51,30 @@ export type AdminUsersListPayload = {
   total: number
   limit: number
   offset: number
+}
+
+export type AdminUserLibraryReconcileSummaryPayload = {
+  restored_rows: number
+  claimed_rows: number
+  identity_recovered_rows: number
+  canonicalized_owner_rows: number
+}
+
+export type AdminUserLibraryReconcilePayload = {
+  message: string
+  user_id: string
+  user_email: string
+  user_name: string
+  account_key: string | null
+  owned_assets_before: number
+  owned_assets_after: number
+  owned_personal_before: number
+  owned_personal_after: number
+  owned_project_before: number
+  owned_project_after: number
+  reconcile_summary: AdminUserLibraryReconcileSummaryPayload
+  generated_at: string
+  audit_event: AdminAuditEventPayload
 }
 
 export type AdminOrganisationIntegrationPayload = {

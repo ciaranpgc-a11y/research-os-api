@@ -137,6 +137,7 @@ def ensure_bootstrap_user() -> dict[str, object] | None:
     seed_name = default_name if len(default_name) >= 2 else "AAWE Test User"
     force_password_reset = _env_flag("AAWE_BOOTSTRAP_FORCE_PASSWORD", default=False)
     mark_email_verified = _env_flag("AAWE_BOOTSTRAP_EMAIL_VERIFIED", default=True)
+    sync_bootstrap_name = _env_flag("AAWE_BOOTSTRAP_SYNC_NAME", default=False)
     role = os.getenv("AAWE_BOOTSTRAP_ROLE", "user").strip().lower()
     if role not in {"user", "admin"}:
         role = "user"
@@ -165,7 +166,11 @@ def ensure_bootstrap_user() -> dict[str, object] | None:
             )
             session.add(user)
         else:
-            if user.name != normalized_name:
+            current_name = str(user.name or "").strip()
+            if not current_name and normalized_name:
+                user.name = normalized_name
+                updated = True
+            elif sync_bootstrap_name and user.name != normalized_name:
                 user.name = normalized_name
                 updated = True
             if not bool(user.is_active):

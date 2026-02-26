@@ -37,6 +37,7 @@ import {
   fetchAdminUsers,
   fetchAdminWorkspaces,
   impersonateAdminOrganisation,
+  reconcileAdminUserLibrary,
   retryAdminJob,
 } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
@@ -380,6 +381,7 @@ export function AdminPage() {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState('')
   const [impersonatingOrganisationId, setImpersonatingOrganisationId] = useState('')
   const [actingJobId, setActingJobId] = useState('')
+  const [reconcilingUserId, setReconcilingUserId] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
@@ -600,6 +602,28 @@ export function AdminPage() {
       setError(actionError instanceof Error ? actionError.message : 'Could not retry job.')
     } finally {
       setActingJobId('')
+    }
+  }
+
+  const onReconcileUserLibrary = async (userId: string) => {
+    const token = getAuthSessionToken()
+    if (!token) {
+      navigate('/auth', { replace: true })
+      return
+    }
+    setReconcilingUserId(userId)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await reconcileAdminUserLibrary(token, userId)
+      const beforeCount = Number(payload.owned_assets_before || 0)
+      const afterCount = Number(payload.owned_assets_after || 0)
+      setStatus(`${payload.message} Owned assets: ${beforeCount} -> ${afterCount}.`)
+      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Could not reconcile user library.')
+    } finally {
+      setReconcilingUserId('')
     }
   }
 
@@ -1377,11 +1401,14 @@ export function AdminPage() {
                         <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
                           <tr>
                             <th className="px-3 py-2">Name</th>
+                            <th className="px-3 py-2">User ID</th>
+                            <th className="px-3 py-2">Account key</th>
                             <th className="px-3 py-2">Email</th>
                             <th className="px-3 py-2">Role</th>
                             <th className="px-3 py-2">Status</th>
                             <th className="px-3 py-2">Last sign-in</th>
                             <th className="px-3 py-2">Created</th>
+                            <th className="px-3 py-2 text-right">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1389,6 +1416,12 @@ export function AdminPage() {
                             <tr key={item.id} className="border-t border-[hsl(var(--tone-neutral-200))]">
                               <td className="px-3 py-2">
                                 <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{item.name || 'Unnamed user'}</p>
+                              </td>
+                              <td className="px-3 py-2 text-xs text-[hsl(var(--tone-neutral-700))]">
+                                <span className="font-mono">{item.id}</span>
+                              </td>
+                              <td className="px-3 py-2 text-xs text-[hsl(var(--tone-neutral-700))]">
+                                <span className="font-mono">{item.account_key || 'Not set'}</span>
                               </td>
                               <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{item.email}</td>
                               <td className="px-3 py-2">
@@ -1415,6 +1448,17 @@ export function AdminPage() {
                               </td>
                               <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatTimestamp(item.last_sign_in_at)}</td>
                               <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatTimestamp(item.created_at)}</td>
+                              <td className="px-3 py-2 text-right">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => void onReconcileUserLibrary(item.id)}
+                                  disabled={reconcilingUserId === item.id}
+                                >
+                                  {reconcilingUserId === item.id ? 'Reconciling...' : 'Reconcile library'}
+                                </Button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>

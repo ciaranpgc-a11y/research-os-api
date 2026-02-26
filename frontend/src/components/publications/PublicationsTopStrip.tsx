@@ -277,6 +277,8 @@ const HOUSE_HEADING_SECTION_TITLE_CLASS = publicationsHouseHeadings.sectionTitle
 const HOUSE_HEADING_H2_CLASS = publicationsHouseHeadings.h2
 const HOUSE_TEXT_CLASS = publicationsHouseHeadings.text
 const HOUSE_TEXT_SOFT_CLASS = publicationsHouseHeadings.textSoft
+const HOUSE_TILE_SUBTITLE_CLASS = cn('mt-0.5 min-h-[2.5rem] leading-snug', HOUSE_TEXT_CLASS)
+const HOUSE_TILE_DETAIL_CLASS = cn('min-h-[2.3rem] leading-snug', HOUSE_TEXT_SOFT_CLASS)
 const HOUSE_HEADING_LABEL_CLASS = publicationsHouseHeadings.label
 const HOUSE_CHART_TRANSITION_CLASS = publicationsHouseMotion.chartPanel
 const HOUSE_CHART_ENTERED_CLASS = publicationsHouseMotion.chartEnter
@@ -373,6 +375,10 @@ const HOUSE_CHART_RING_THRESHOLD_75_SVG_CLASS = publicationsHouseCharts.ringThre
 const HOUSE_CHART_RING_THRESHOLD_90_SVG_CLASS = publicationsHouseCharts.ringThreshold90Svg
 const HOUSE_CHART_RING_THRESHOLD_95_SVG_CLASS = publicationsHouseCharts.ringThreshold95Svg
 const HOUSE_CHART_RING_THRESHOLD_99_SVG_CLASS = publicationsHouseCharts.ringThreshold99Svg
+const HOUSE_CHART_RING_TOGGLE_LAYOUT_CLASS = publicationsHouseCharts.ringToggleLayout
+const HOUSE_CHART_RING_TOGGLE_CONTROL_CLASS = publicationsHouseCharts.ringToggleControl
+const HOUSE_CHART_RING_TOGGLE_VISUAL_CLASS = publicationsHouseCharts.ringToggleVisual
+const HOUSE_CHART_RING_CENTER_LABEL_CLASS = publicationsHouseCharts.ringCenterLabel
 const HOUSE_CHART_RING_PANEL_CLASS = publicationsHouseCharts.ringPanel
 const HOUSE_CHART_RING_SIZE_CLASS = publicationsHouseCharts.ringSize
 const HOUSE_CHART_MINI_DONUT_CLASS = publicationsHouseCharts.miniDonut
@@ -393,6 +399,7 @@ const HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_GAP_CLASS = 'gap-2'
 const HOUSE_FIELD_PERCENTILE_LEFT_CHART_PANEL_CLASS = 'h-full min-h-0 min-w-0 w-full'
 const HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH = 14
 const HOUSE_RING_ARC_TRANSITION = 'stroke-dasharray 680ms cubic-bezier(0.22, 1, 0.36, 1), stroke-dashoffset 680ms cubic-bezier(0.22, 1, 0.36, 1)'
+const HOUSE_RING_COLOR_TRANSITION = 'stroke 680ms cubic-bezier(0.22, 1, 0.36, 1)'
 const FIELD_PERCENTILE_RING_CLASS_BY_THRESHOLD: Record<FieldPercentileThreshold, string> = {
   50: HOUSE_CHART_RING_THRESHOLD_50_SVG_CLASS,
   75: HOUSE_CHART_RING_THRESHOLD_75_SVG_CLASS,
@@ -1286,8 +1293,8 @@ function TotalCitationsTile({
           >
             {primaryValue}
           </p>
-          <p className={cn('mt-0.5 min-h-[2.5rem] leading-snug', HOUSE_TEXT_CLASS)}>Lifetime citations</p>
-          <p className={cn('min-h-[2.3rem] leading-snug', HOUSE_TEXT_SOFT_CLASS)}>Last 5 years shown</p>
+          <p className={HOUSE_TILE_SUBTITLE_CLASS}>Lifetime citations</p>
+          <p className={HOUSE_TILE_DETAIL_CLASS}>Last 5 years shown</p>
         </div>
 
         <div className={cn('min-h-0 border-l pl-3', HOUSE_DIVIDER_BORDER_SOFT_CLASS)}>
@@ -1368,9 +1375,9 @@ function StructuredMetricTile({
           >
             {primaryValue}
           </p>
-          <p className={cn('mt-0.5 min-h-[2.5rem] leading-snug', HOUSE_TEXT_CLASS)}>{subtitle}</p>
+          <p className={HOUSE_TILE_SUBTITLE_CLASS}>{subtitle}</p>
           {typeof detail === 'string'
-            ? <p className={cn('min-h-[2.3rem] leading-snug', HOUSE_TEXT_SOFT_CLASS)}>{detail}</p>
+            ? <p className={HOUSE_TILE_DETAIL_CLASS}>{detail}</p>
             : detail
               ? <div className="pt-0.5">{detail}</div>
               : null}
@@ -2051,9 +2058,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const top3Pct = total > 0 ? (top3 / total) * 100 : 0
   const top3PctRounded = Math.max(0, Math.min(100, Math.round(top3Pct)))
   const restPctRounded = Math.max(0, 100 - top3PctRounded)
-  const top3PctAnimated = useEasedValue(top3PctRounded, `impact-top3-${top3PctRounded}-${total}`, total > 0)
-  const top3PctAnimatedClamped = Math.max(0, Math.min(100, top3PctAnimated))
-  const top3Dash = (top3PctAnimatedClamped / 100) * ringCircumference
+  const top3Dash = (top3PctRounded / 100) * ringCircumference
   const explicitRemainingRaw = Number(chartData.remaining_papers_count)
   const explicitTotalPublicationsCandidates = [
     Number(chartData.total_publications),
@@ -2085,8 +2090,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const ringStrokeWidth = HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH
   const ringHitHalfWidth = (ringStrokeWidth / 2) + 3
   const top3ArcSpan = (top3PctRounded / 100) * 360
-  const top3ArcStart = 180 - (top3ArcSpan / 2)
-  const top3RenderArcStart = 180 - ((top3PctAnimatedClamped / 100) * 360) / 2
+  const top3ArcStart = 270 - (top3ArcSpan / 2)
   const isAngleInArc = (angle: number, start: number, span: number): boolean => {
     if (span <= 0) {
       return false
@@ -2174,7 +2178,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                 className={HOUSE_CHART_RING_REMAINDER_SVG_CLASS}
                 strokeWidth={ringStrokeWidth}
                 strokeLinecap="round"
-                transform="rotate(180 50 50)"
+                transform="rotate(-90 50 50)"
               />
               <circle
                 cx="50"
@@ -2184,11 +2188,11 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                 className={HOUSE_CHART_RING_MAIN_SVG_CLASS}
                 strokeWidth={ringStrokeWidth}
                 strokeLinecap="round"
-                transform={`rotate(${top3RenderArcStart} 50 50)`}
+                transform="rotate(-90 50 50)"
                 style={{
                   strokeDasharray: `${top3Dash} ${ringCircumference}`,
                   strokeDashoffset: 0,
-                  transition: `${HOUSE_RING_ARC_TRANSITION}, stroke 280ms ease-out`,
+                  transition: `${HOUSE_RING_ARC_TRANSITION}, ${HOUSE_RING_COLOR_TRANSITION}`,
                 }}
               />
             </svg>
@@ -2509,17 +2513,20 @@ function FieldPercentilePanel({
     : evaluatedPapers > 0
       ? (Math.max(0, Number(countMap[threshold] || 0)) / evaluatedPapers) * 100
       : 0
+  const papersAtThresholdRaw = Number(countMap[threshold])
+  const papersAtThreshold = Number.isFinite(papersAtThresholdRaw)
+    ? Math.max(0, Math.round(papersAtThresholdRaw))
+    : Math.max(0, Math.round((shareAbove / 100) * evaluatedPapers))
+  const papersAtThresholdLabel = `${formatInt(papersAtThreshold)} ${papersAtThreshold === 1 ? 'paper' : 'papers'}`
   const animationKey = useMemo(
     () => `${threshold}-${shareAbove.toFixed(2)}-${evaluatedPapers}`,
     [evaluatedPapers, shareAbove, threshold],
   )
   const hasPercentileData = evaluatedPapers > 0
-  const animatedShareAbove = useEasedValue(shareAbove, `${animationKey}|share`, hasPercentileData)
-  const animatedShareClamped = Math.max(0, Math.min(100, animatedShareAbove))
+  const shareClamped = Math.max(0, Math.min(100, shareAbove))
   const ringRadius = 38
   const ringCircumference = 2 * Math.PI * ringRadius
-  const ringDash = (animatedShareClamped / 100) * ringCircumference
-  const ringArcStart = 180 - ((animatedShareClamped / 100) * 360) / 2
+  const ringDash = (shareClamped / 100) * ringCircumference
   const ringShareToneClass = FIELD_PERCENTILE_RING_CLASS_BY_THRESHOLD[threshold] || HOUSE_CHART_RING_MAIN_SVG_CLASS
   useEffect(() => {
     setChartVisible(false)
@@ -2545,13 +2552,13 @@ function FieldPercentilePanel({
           chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
         )}
       >
-        <div className="grid h-full min-h-0 w-full grid-cols-[1fr_auto_1fr_auto_1fr] items-center">
+        <div className={HOUSE_CHART_RING_TOGGLE_LAYOUT_CLASS}>
           {toggleControl ? (
-            <div className="col-start-2 flex h-full min-h-0 items-center justify-center">
+            <div className={HOUSE_CHART_RING_TOGGLE_CONTROL_CLASS}>
               {toggleControl}
             </div>
           ) : null}
-          <div className={cn(HOUSE_CHART_RING_PANEL_CLASS, 'col-start-4')}>
+          <div className={cn(HOUSE_CHART_RING_PANEL_CLASS, HOUSE_CHART_RING_TOGGLE_VISUAL_CLASS)}>
             <svg
               viewBox="0 0 100 100"
               className={HOUSE_CHART_RING_SIZE_CLASS}
@@ -2565,7 +2572,7 @@ function FieldPercentilePanel({
                 className={HOUSE_CHART_RING_REMAINDER_SVG_CLASS}
                 strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
                 strokeLinecap="round"
-                transform="rotate(180 50 50)"
+                transform="rotate(-90 50 50)"
               />
               <circle
                 cx="50"
@@ -2575,13 +2582,16 @@ function FieldPercentilePanel({
                 className={ringShareToneClass}
                 strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
                 strokeLinecap="round"
-                transform={`rotate(${ringArcStart} 50 50)`}
+                transform="rotate(-90 50 50)"
                 style={{
                   strokeDasharray: `${ringDash} ${ringCircumference}`,
                   strokeDashoffset: 0,
-                  transition: `${HOUSE_RING_ARC_TRANSITION}, stroke 280ms ease-out`,
+                  transition: `${HOUSE_RING_ARC_TRANSITION}, ${HOUSE_RING_COLOR_TRANSITION}`,
                 }}
               />
+              <text x="50" y="50" textAnchor="middle" dominantBaseline="central" className={HOUSE_CHART_RING_CENTER_LABEL_CLASS}>
+                {papersAtThresholdLabel}
+              </text>
             </svg>
           </div>
         </div>
@@ -4737,7 +4747,11 @@ export function PublicationsTopStrip({
                   primaryValue = evaluated > 0
                     ? `${Math.round(shareAtThreshold)}%`
                     : mainValueDisplay
-                  secondaryText = `Papers at or above ${activeThreshold}th percentile`
+                  secondaryText = (
+                    <>
+                      Papers at or above <span className="font-semibold">{activeThreshold}%</span> percentile
+                    </>
+                  )
                   detailText = undefined
                   contentGridClassName = 'grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)]'
                   const percentileToggleNode = (
