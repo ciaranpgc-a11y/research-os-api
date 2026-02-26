@@ -227,6 +227,31 @@ def test_create_all_tables_repairs_legacy_asset_and_project_columns(
         """
     )
     cursor.execute("DROP TABLE projects_legacy_source")
+
+    cursor.execute("ALTER TABLE data_profiles RENAME TO data_profiles_legacy_source")
+    cursor.execute(
+        """
+        CREATE TABLE data_profiles (
+            id VARCHAR(36) PRIMARY KEY NOT NULL,
+            asset_ids JSON NOT NULL,
+            data_profile_json JSON NOT NULL,
+            human_summary TEXT NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """
+    )
+    cursor.execute(
+        """
+        INSERT INTO data_profiles (
+            id, asset_ids, data_profile_json, human_summary, created_at, updated_at
+        )
+        SELECT
+            id, asset_ids, data_profile_json, human_summary, created_at, updated_at
+        FROM data_profiles_legacy_source
+        """
+    )
+    cursor.execute("DROP TABLE data_profiles_legacy_source")
     connection.commit()
     connection.close()
 
@@ -245,6 +270,10 @@ def test_create_all_tables_repairs_legacy_asset_and_project_columns(
     assert "owner_user_id" in project_columns
     assert "collaborator_user_ids" in project_columns
     assert "workspace_id" in project_columns
+
+    verify_cursor.execute("PRAGMA table_info(data_profiles)")
+    profile_columns = {str(row[1]) for row in verify_cursor.fetchall()}
+    assert "owner_user_id" in profile_columns
 
     verify_cursor.execute(
         "SELECT owner_user_id FROM data_library_assets WHERE id = ?",

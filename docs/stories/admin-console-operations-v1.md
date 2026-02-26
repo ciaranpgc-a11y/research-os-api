@@ -55,6 +55,7 @@ Out of scope (v1):
 - Added `docs/parallel-feature-delivery.md`.
 - Added CI-gated documentation enforcement script: `scripts/verify_change_documentation.py`.
 - Updated change documentation rules to v1.2 with parallel-lane and CI-enforcement clauses.
+- Added admin-role cache resilience so admin link and personal-details admin badge remain visible when `fetchMe` temporarily fails after a confirmed admin session.
 
 ## Verification
 

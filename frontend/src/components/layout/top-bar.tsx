@@ -6,7 +6,7 @@ import { AxiomosMark } from '@/components/auth/AxiomosMark'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
+import { clearAuthSessionToken, getAuthSessionToken, getCachedAuthRole, setCachedAuthRole } from '@/lib/auth-session'
 import { fetchMe, logoutAuth } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
 import { useAaweStore } from '@/store/use-aawe-store'
@@ -42,7 +42,7 @@ export function TopBar({
   const setSearchQuery = useAaweStore((state) => state.setSearchQuery)
 
   const [isSigningOut, setIsSigningOut] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(getCachedAuthRole() === 'admin')
   const sessionToken = getAuthSessionToken()
   const isGuest = !sessionToken
 
@@ -59,13 +59,14 @@ export function TopBar({
         if (cancelled) {
           return
         }
+        setCachedAuthRole(user.role)
         setIsAdmin(user.role === 'admin')
       })
       .catch(() => {
         if (cancelled) {
           return
         }
-        setIsAdmin(false)
+        setIsAdmin(getCachedAuthRole() === 'admin')
       })
     return () => {
       cancelled = true

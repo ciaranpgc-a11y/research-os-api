@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
+import { clearAuthSessionToken, getAuthSessionToken, getCachedAuthRole } from '@/lib/auth-session'
 import { houseDividers, houseForms, houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import {
@@ -1203,7 +1203,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     () =>
       buildProfileBadges({
         orcidLinked,
-        isAdmin: user?.role === 'admin',
+        isAdmin: (user?.role || getCachedAuthRole()) === 'admin',
       }),
     [orcidLinked, user?.role],
   )

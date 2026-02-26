@@ -1558,6 +1558,20 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                             {"owner_user_id": only_user_id},
                         )
 
+        if _sqlite_table_exists(connection, "data_profiles"):
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="data_profiles",
+                column_name="owner_user_id",
+                column_sql="VARCHAR(36)",
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_data_profiles_owner_user_id "
+                    "ON data_profiles (owner_user_id)"
+                )
+            )
+
 
 def create_all_tables() -> None:
     engine = get_engine()

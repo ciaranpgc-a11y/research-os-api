@@ -3,7 +3,7 @@ import { Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-r
 
 import { AccountLayout } from '@/components/layout/account-layout'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
-import { getAuthSessionToken, isAuthBypassEnabled } from '@/lib/auth-session'
+import { getAuthSessionToken, getCachedAuthRole, isAuthBypassEnabled, setCachedAuthRole } from '@/lib/auth-session'
 import { fetchMe } from '@/lib/impact-api'
 import { AdminPage } from '@/pages/admin-page'
 import { AgentLogsPage } from '@/pages/agent-logs-page'
@@ -96,10 +96,15 @@ function RequireAdmin() {
         if (cancelled) {
           return
         }
+        setCachedAuthRole(user.role)
         setStatus(user.role === 'admin' ? 'allowed' : 'forbidden')
       })
       .catch(() => {
         if (cancelled) {
+          return
+        }
+        if (getCachedAuthRole() === 'admin') {
+          setStatus('allowed')
           return
         }
         setStatus('signed_out')

@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '@/lib/api'
+import { setCachedAuthRole } from '@/lib/auth-session'
 import type { ApiErrorPayload } from '@/types/insight'
 import type {
   AffiliationAddressResolutionPayload,
@@ -144,7 +145,7 @@ export async function registerAuth(input: {
   password: string
   name: string
 }): Promise<AuthSessionPayload> {
-  return requestJson<AuthSessionPayload>(
+  const payload = await requestJson<AuthSessionPayload>(
     `${API_BASE_URL}/v1/auth/register`,
     {
       method: 'POST',
@@ -153,13 +154,15 @@ export async function registerAuth(input: {
     },
     'Registration failed',
   )
+  setCachedAuthRole(payload.user.role)
+  return payload
 }
 
 export async function loginAuth(input: {
   email: string
   password: string
 }): Promise<AuthSessionPayload> {
-  return requestJson<AuthSessionPayload>(
+  const payload = await requestJson<AuthSessionPayload>(
     `${API_BASE_URL}/v1/auth/login`,
     {
       method: 'POST',
@@ -168,6 +171,8 @@ export async function loginAuth(input: {
     },
     'Login failed',
   )
+  setCachedAuthRole(payload.user.role)
+  return payload
 }
 
 export async function loginAuthChallenge(input: {
@@ -189,7 +194,7 @@ export async function verifyLoginTwoFactor(input: {
   challengeToken: string
   code: string
 }): Promise<AuthSessionPayload> {
-  return requestJson<AuthSessionPayload>(
+  const payload = await requestJson<AuthSessionPayload>(
     `${API_BASE_URL}/v1/auth/login/verify-2fa`,
     {
       method: 'POST',
@@ -201,6 +206,8 @@ export async function verifyLoginTwoFactor(input: {
     },
     '2FA verification failed',
   )
+  setCachedAuthRole(payload.user.role)
+  return payload
 }
 
 export async function logoutAuth(token: string): Promise<{ success: boolean }> {
@@ -215,7 +222,7 @@ export async function logoutAuth(token: string): Promise<{ success: boolean }> {
 }
 
 export async function fetchMe(token: string): Promise<AuthUser> {
-  return requestJson<AuthUser>(
+  const payload = await requestJson<AuthUser>(
     `${API_BASE_URL}/v1/auth/me`,
     {
       method: 'GET',
@@ -223,6 +230,8 @@ export async function fetchMe(token: string): Promise<AuthUser> {
     },
     'User lookup failed',
   )
+  setCachedAuthRole(payload.role)
+  return payload
 }
 
 export async function fetchAdminOverview(token: string): Promise<AdminOverviewPayload> {
@@ -317,7 +326,7 @@ export async function updateMe(
   token: string,
   input: { name?: string; email?: string; password?: string },
 ): Promise<AuthUser> {
-  return requestJson<AuthUser>(
+  const payload = await requestJson<AuthUser>(
     `${API_BASE_URL}/v1/auth/me`,
     {
       method: 'PATCH',
@@ -326,6 +335,8 @@ export async function updateMe(
     },
     'User update failed',
   )
+  setCachedAuthRole(payload.role)
+  return payload
 }
 
 export async function deleteMe(
@@ -430,7 +441,7 @@ export async function completeOAuthCallback(input: {
   state: string
   code: string
 }): Promise<AuthOAuthCallbackPayload> {
-  return requestJson<AuthOAuthCallbackPayload>(
+  const payload = await requestJson<AuthOAuthCallbackPayload>(
     `${API_BASE_URL}/v1/auth/oauth/callback`,
     {
       method: 'POST',
@@ -443,6 +454,8 @@ export async function completeOAuthCallback(input: {
     },
     'OAuth callback failed',
   )
+  setCachedAuthRole(payload.user.role)
+  return payload
 }
 
 export async function requestEmailVerification(token: string): Promise<AuthEmailVerificationRequestPayload> {
@@ -460,7 +473,7 @@ export async function confirmEmailVerification(input: {
   token: string
   code: string
 }): Promise<AuthUser> {
-  return requestJson<AuthUser>(
+  const payload = await requestJson<AuthUser>(
     `${API_BASE_URL}/v1/auth/email-verification/confirm`,
     {
       method: 'POST',
@@ -469,6 +482,8 @@ export async function confirmEmailVerification(input: {
     },
     'Email verification failed',
   )
+  setCachedAuthRole(payload.role)
+  return payload
 }
 
 export async function requestPasswordReset(email: string): Promise<AuthPasswordResetRequestPayload> {

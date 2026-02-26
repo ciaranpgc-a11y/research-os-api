@@ -146,3 +146,47 @@ def test_list_library_assets_recovers_when_metadata_index_is_corrupt(
     payload = list_library_assets(project_id=None, user_id=user_id)
     listed_ids = [str(item.get("id")) for item in payload.get("items", [])]
     assert asset_id in listed_ids
+
+
+def test_list_library_assets_assigns_single_user_owner_for_ownerless_metadata(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    user_id = _create_user(email="library-ownerless-meta@example.com")
+    storage_root = (tmp_path / "data_library").resolve()
+    storage_root.mkdir(parents=True, exist_ok=True)
+
+    asset_id = "8ef94844-3396-4e63-804a-cdbb4bf6ff33"
+    data_path = storage_root / f"{asset_id}.csv"
+    data_bytes = b"col_a,col_b\n7,8\n"
+    data_path.write_bytes(data_bytes)
+
+    metadata_payload = {
+        "id": asset_id,
+        "owner_user_id": None,
+        "owner_email": "",
+        "project_id": None,
+        "shared_with_user_ids": [],
+        "filename": "ownerless.csv",
+        "kind": "csv",
+        "mime_type": "text/csv",
+        "byte_size": len(data_bytes),
+        "storage_path": str(data_path),
+        "uploaded_at": "2026-02-26T00:00:00+00:00",
+    }
+    _metadata_path(storage_root, asset_id).write_text(
+        json.dumps(metadata_payload),
+        encoding="utf-8",
+    )
+    _metadata_index_path(storage_root).write_text(
+        json.dumps({"asset_ids": [asset_id]}),
+        encoding="utf-8",
+    )
+
+    payload = list_library_assets(project_id=None, user_id=user_id)
+    listed_ids = [str(item.get("id")) for item in payload.get("items", [])]
+    assert asset_id in listed_ids
+    listed_row = next(
+        item for item in payload.get("items", []) if str(item.get("id")) == asset_id
+    )
+    assert str(listed_row.get("owner_user_id") or "") == user_id

@@ -2,6 +2,28 @@
 
 ## 2026-02-26
 
+### Admin Visibility Resilience (Link + Badge Persistence)
+
+- **Area:** Admin visibility behavior in top bar, route guard, and profile badges.
+- **What changed:**
+- Added cached auth-role storage helpers in frontend session utilities.
+- Updated auth API client flows (`register`, `login`, `2FA verify`, `fetchMe`, `updateMe`, `OAuth callback`, `email verification`) to persist role cache on success.
+- Updated top bar to initialize admin visibility from cached role and fall back to cache when `fetchMe` fails transiently.
+- Updated admin route guard to allow cached-admin fallback when session token exists but live profile lookup fails temporarily.
+- Updated profile personal-details admin badge logic to use cached role fallback when user payload is temporarily unavailable.
+- **Why it changed:**
+- Prevent temporary API/session lookup failures from hiding admin-only UI affordances for confirmed admin sessions.
+- **Key files touched:**
+- `frontend/src/lib/auth-session.ts`
+- `frontend/src/lib/impact-api.ts`
+- `frontend/src/components/layout/top-bar.tsx`
+- `frontend/src/AppRouter.tsx`
+- `frontend/src/pages/profile-personal-details-page.tsx`
+- **Verification performed:**
+- `npm --prefix frontend run --silent typecheck`
+- **Follow-up:**
+- Add a small integration test to verify admin link/badge remain visible when `fetchMe` fails after a previously confirmed admin session.
+
 ### Admin Console Navigation Infrastructure + Parallel Delivery Governance
 
 - **Area:** Admin console UX architecture, routing, and documentation governance enforcement.
@@ -696,3 +718,32 @@
 - `pytest tests/test_api.py -k "library_asset or persist_across_logout" -q`
 - **Follow-up:**
 - Add startup diagnostics endpoint that reports active DB path and storage root to simplify support triage in production.
+
+### Data Library Robustness + Scale Upgrade (Legacy Schema Auto-Heal)
+
+- **Area:** Data-library reliability on long-lived installs and scaling behavior with large asset volumes.
+- **What changed:**
+- Added automatic SQLite compatibility upgrade during `create_all_tables()`:
+  - `data_library_assets`: adds missing `owner_user_id` and `shared_with_user_ids`.
+  - `projects`: adds missing `owner_user_id`, `collaborator_user_ids`, and `workspace_id`.
+  - applies safe backfill for legacy single-user installs so pre-owner assets are attributed and visible.
+- Added metadata-index support (`metadata.index.json`) to avoid full sidecar directory scans on every restore path.
+- Added fallback owner binding for ownerless sidecar metadata when the deployment has exactly one user account.
+- Tightened list-path scalability by adding SQL prefilter hints for ownership/shared scopes before in-memory filtering.
+- **Why it changed:**
+- Fix real-world legacy DB shape drift (missing columns) that caused empty library views after sign-in.
+- Improve recovery performance and keep behavior stable as stored datasets grow.
+- **Key files touched:**
+- `src/research_os/db.py`
+- `src/research_os/services/data_planner_service.py`
+- `tests/test_db_storage_stability.py`
+- `tests/test_data_library_resilience.py`
+- `docs/change-log.md`
+- **Verification performed:**
+- `python -m py_compile src/research_os/db.py src/research_os/services/data_planner_service.py tests/test_db_storage_stability.py tests/test_data_library_resilience.py`
+- `pytest tests/test_db_storage_stability.py -q`
+- `pytest tests/test_data_library_resilience.py -q`
+- `pytest tests/test_open_access_service.py -q`
+- `pytest tests/test_api.py -k "library_asset or persist_across_logout" -q`
+- **Follow-up:**
+- Add a startup/audit endpoint that surfaces schema version, auto-heal actions taken, and library recovery counts for support diagnostics.
