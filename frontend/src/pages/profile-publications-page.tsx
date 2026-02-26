@@ -3,10 +3,11 @@ import { ChevronDown, ChevronUp, ChevronsUpDown, Loader2, Paperclip, SlidersHori
 import { useNavigate } from 'react-router-dom'
 
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
-import { publicationsHouseDetail, publicationsHouseHeadings } from '@/components/publications/publications-house-style'
+import { publicationsHouseDetail, publicationsHouseDrilldown, publicationsHouseHeadings, publicationsHouseMotion } from '@/components/publications/publications-house-style'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { houseDividers, houseForms, houseSurfaces, houseTypography } from '@/lib/house-style'
@@ -101,7 +102,6 @@ const HOUSE_TABLE_CELL_TEXT_CLASS = houseTypography.tableCell
 const HOUSE_BANNER_CLASS = houseSurfaces.banner
 const HOUSE_BANNER_DANGER_CLASS = houseSurfaces.bannerDanger
 const HOUSE_BANNER_PUBLICATIONS_CLASS = houseSurfaces.bannerPublications
-const HOUSE_PUBLICATION_DETAIL_PANEL_CLASS = publicationsHouseDetail.panel
 const HOUSE_PUBLICATION_DETAIL_SCROLL_CLASS = publicationsHouseDetail.scroll
 const HOUSE_PUBLICATION_DETAIL_HEADER_CLASS = publicationsHouseDetail.header
 const HOUSE_PUBLICATION_DETAIL_TITLE_CLASS = publicationsHouseDetail.title
@@ -113,6 +113,16 @@ const HOUSE_PUBLICATION_DETAIL_LABEL_CLASS = publicationsHouseDetail.sectionLabe
 const HOUSE_PUBLICATION_DETAIL_INFO_CLASS = publicationsHouseDetail.info
 const HOUSE_PUBLICATION_TEXT_CLASS = publicationsHouseHeadings.text
 const HOUSE_PUBLICATION_TEXT_SOFT_CLASS = publicationsHouseHeadings.textSoft
+const HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS = publicationsHouseDrilldown.statCard
+const HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS = publicationsHouseDrilldown.statTitle
+const HOUSE_PUBLICATION_DRILLDOWN_CAPTION_CLASS = publicationsHouseDrilldown.caption
+const HOUSE_PUBLICATION_DRILLDOWN_ACTION_CLASS = publicationsHouseDrilldown.action
+const HOUSE_PUBLICATION_DRILLDOWN_ROW_CLASS = publicationsHouseDrilldown.row
+const HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS = publicationsHouseDrilldown.noteSoft
+const HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS = publicationsHouseDrilldown.dividerTop
+const HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS = publicationsHouseMotion.labelTransition
+const HOUSE_PUBLICATION_DRILLDOWN_SHEET_CLASS = publicationsHouseDrilldown.sheet
+const HOUSE_PUBLICATION_DRILLDOWN_SHEET_BODY_CLASS = publicationsHouseDrilldown.sheetBody
 
 const WORK_TYPE_LABELS: Record<string, string> = {
   'journal-article': 'Journal article',
@@ -2449,7 +2459,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               ))}
             </select>
           </div>
-          <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,2.9fr)_minmax(320px,1fr)]">
+          <div className="grid grid-cols-1 items-start gap-4">
             <div className="space-y-1">
 
               {filteredWorks.length === 0 ? (
@@ -2469,7 +2479,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       size="icon"
                       variant="outline"
                       aria-label="Column settings"
-                      title="Column settings"
+                      title="Columns"
                       onClick={() => setColumnSettingsOpen((current) => !current)}
                     >
                       <SlidersHorizontal className="h-4 w-4" />
@@ -2651,15 +2661,19 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               )}
             </div>
 
-            <Card className={`self-start h-fit xl:sticky xl:top-4 ${HOUSE_PUBLICATION_DETAIL_PANEL_CLASS}`}>
-              {!selectedWork ? (
-                <CardContent className="p-3 text-sm text-muted-foreground">
-                  Select a publication to view details.
-                </CardContent>
-              ) : (
-                <CardContent className="p-0 text-sm">
-                  <Tabs value={activeDetailTab} onValueChange={onDetailTabChange} className="w-full">
-                    <div className={`max-h-[78vh] overflow-auto ${HOUSE_PUBLICATION_DETAIL_SCROLL_CLASS}`}>
+            <Sheet
+              open={Boolean(selectedWork)}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setSelectedWorkId(null)
+                }
+              }}
+            >
+              <SheetContent side="right" className={HOUSE_PUBLICATION_DRILLDOWN_SHEET_CLASS}>
+                {selectedWork ? (
+                  <div className={HOUSE_PUBLICATION_DRILLDOWN_SHEET_BODY_CLASS}>
+                    <Tabs value={activeDetailTab} onValueChange={onDetailTabChange} className="w-full">
+                      <div className={`max-h-[78vh] overflow-auto ${HOUSE_PUBLICATION_DETAIL_SCROLL_CLASS}`}>
                       <div className={HOUSE_PUBLICATION_DETAIL_HEADER_CLASS}>
                         <p className={HOUSE_PUBLICATION_DETAIL_TITLE_CLASS}>
                           {selectedDetail?.title || selectedWork.title}
@@ -2769,8 +2783,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
                         <TabsContent value="files" className="space-y-3">
                           {selectedFiles.length === 0 ? (
-                            <div className={`${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS} text-xs text-muted-foreground`}>
-                              No files linked to this publication.
+                            <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS}`}>
+                              <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>No files linked to this publication.</p>
                             </div>
                           ) : (
                             <div className="space-y-3">
@@ -2778,28 +2792,28 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 const fileLabel = 'OA Manuscript Download'
                                 const sourceLabel = file.source === 'OA_LINK' ? 'OA link' : 'Uploaded'
                                 return (
-                                <div key={file.id} className={`${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS} space-y-2`}>
-                                  <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>{fileLabel}</p>
-                                  <p className={`truncate ${HOUSE_PUBLICATION_TEXT_CLASS}`} title={file.file_name}>{file.file_name}</p>
-                                  <p className={`text-micro ${HOUSE_PUBLICATION_TEXT_SOFT_CLASS}`}>{file.file_type} | {sourceLabel} | {formatShortDate(file.created_at)}</p>
-                                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                                    {file.source === 'OA_LINK' && file.download_url ? (
-                                      <Button type="button" size="sm" variant="housePrimary" asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
-                                    ) : (
-                                      <Button type="button" size="sm" variant="housePrimary" disabled={downloadingFileId === file.id} onClick={() => void onDownloadPublicationFile(file.id, file.file_name)}>{downloadingFileId === file.id ? 'Downloading...' : 'Download'}</Button>
-                                    )}
-                                    <Button type="button" size="sm" variant="outline" onClick={() => onSharePublicationFileEmail(file)}>Share (email)</Button>
-                                    <Button type="button" size="sm" variant="outline" onClick={() => onSharePublicationFileWithUser(file)}>Share with user</Button>
-                                    <Button type="button" size="sm" variant="destructive" className="ml-auto" disabled={deletingFileId === file.id} onClick={() => void onDeletePublicationFile(file.id)}>{deletingFileId === file.id ? 'Deleting...' : 'Delete'}</Button>
+                                  <div key={file.id} className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS} space-y-2`}>
+                                    <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>{fileLabel}</p>
+                                    <p className={`truncate ${HOUSE_PUBLICATION_TEXT_CLASS}`} title={file.file_name}>{file.file_name}</p>
+                                    <p className={HOUSE_PUBLICATION_DRILLDOWN_CAPTION_CLASS}>{file.file_type} | {sourceLabel} | {formatShortDate(file.created_at)}</p>
+                                    <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${HOUSE_PUBLICATION_DRILLDOWN_ACTION_CLASS}`}>
+                                      {file.source === 'OA_LINK' && file.download_url ? (
+                                        <Button type="button" size="sm" variant="housePrimary" asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
+                                      ) : (
+                                        <Button type="button" size="sm" variant="housePrimary" disabled={downloadingFileId === file.id} onClick={() => void onDownloadPublicationFile(file.id, file.file_name)}>{downloadingFileId === file.id ? 'Downloading...' : 'Download'}</Button>
+                                      )}
+                                      <Button type="button" size="sm" variant="outline" onClick={() => onSharePublicationFileEmail(file)}>Share (email)</Button>
+                                      <Button type="button" size="sm" variant="outline" onClick={() => onSharePublicationFileWithUser(file)}>Share with user</Button>
+                                      <Button type="button" size="sm" variant="destructive" className="ml-auto" disabled={deletingFileId === file.id} onClick={() => void onDeletePublicationFile(file.id)}>{deletingFileId === file.id ? 'Deleting...' : 'Delete'}</Button>
+                                    </div>
                                   </div>
-                                </div>
                                 )
                               })}
                             </div>
                           )}
-                          <div data-house-role="files-tab-divider" className={HOUSE_SECTION_DIVIDER_STRONG_CLASS} />
+                          <div data-house-role="files-tab-divider" className={HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS} />
                           <div
-                            className={`${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS} border-dashed p-3 ${filesDragOver ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50)/0.55)]' : 'bg-[hsl(var(--tone-neutral-50)/0.55)]'}`}
+                            className={`${HOUSE_PUBLICATION_DRILLDOWN_ROW_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS} border-dashed p-3 ${filesDragOver ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50)/0.55)]' : 'bg-[hsl(var(--tone-neutral-50)/0.55)]'}`}
                             onDragOver={(event) => {
                               event.preventDefault()
                               setFilesDragOver(true)
@@ -2813,8 +2827,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           >
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                               <div className="space-y-0.5">
-                                <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Add files</p>
-                                <p className={`text-xs ${HOUSE_PUBLICATION_TEXT_SOFT_CLASS}`}>Drag and drop files here, or use upload.</p>
+                                <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>Add files</p>
+                                <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Drag and drop files here, or use upload.</p>
                               </div>
                               <div className="flex items-start">
                                 <Button type="button" size="sm" variant="outline" onClick={() => filePickerRef.current?.click()} disabled={uploadingFile}>{uploadingFile ? 'Uploading...' : 'Upload file'}</Button>
@@ -2846,11 +2860,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           </div>
                         </TabsContent>
                       </div>
-                    </div>
-                  </Tabs>
-                </CardContent>
-              )}
-            </Card>
+                      </div>
+                    </Tabs>
+                  </div>
+                ) : null}
+              </SheetContent>
+            </Sheet>
 
           </div>
         </CardContent>

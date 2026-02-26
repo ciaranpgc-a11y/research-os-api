@@ -4063,7 +4063,6 @@ function HIndexViewToggle({
 }
 
 function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload }) {
-  const [chartVisible, setChartVisible] = useState(false)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const primarySeries = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const fallbackSeries = toNumberArray(tile.sparkline || []).map((item) => Math.max(0, item))
@@ -4103,33 +4102,13 @@ function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload })
     ? `${areaCurve} L ${areaPoints[areaPoints.length - 1].x} ${baselineY} L ${areaPoints[0].x} ${baselineY} Z`
     : ''
 
-  const animationKey = useMemo(
-    () => `${values.length}-${values.join('|')}`,
-    [values],
-  )
-
-  useEffect(() => {
-    if (prefersReducedMotion()) {
-      setChartVisible(true)
-      return
-    }
-    setChartVisible(false)
-    let raf = 0
-    raf = window.requestAnimationFrame(() => {
-      setChartVisible(true)
-    })
-    return () => {
-      window.cancelAnimationFrame(raf)
-    }
-  }, [animationKey])
-
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <div
         className={cn(
           HOUSE_LINE_CHART_SURFACE_CLASS,
           HOUSE_CHART_TRANSITION_CLASS,
-          chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
+          HOUSE_CHART_ENTERED_CLASS,
         )}
       >
         <div className="relative h-full w-full">
