@@ -418,12 +418,6 @@ const HOUSE_DRILLDOWN_TOOLTIP_CLASS =
     HOUSE_DRILLDOWN_CHART_TOOLTIP_CLASS,
     'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out',
   )
-const HOUSE_DRILLDOWN_TOOLTIP_WIDE_CLASS =
-  cn(
-    HOUSE_DRILLDOWN_CHART_TOOLTIP_CLASS,
-    'pointer-events-none absolute left-1/2 z-[2] w-[calc(100%-0.65rem)] max-w-full -translate-x-1/2 px-2 py-1 text-center text-caption leading-snug break-words transition-all duration-150 ease-out',
-  )
-
 const MAX_PUBLICATION_CHART_BARS = 12
 
 function prefersReducedMotion(): boolean {
@@ -2072,7 +2066,6 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const top3PctRounded = Math.max(0, Math.min(100, Math.round(top3Pct)))
   const restPctRounded = Math.max(0, 100 - top3PctRounded)
   const top3AnimatedDash = ((chartVisible ? top3PctRounded : 0) / 100) * ringCircumference
-  const explicitRemainingRaw = Number(chartData.remaining_papers_count)
   const explicitTotalPublicationsCandidates = [
     Number(chartData.total_publications),
     Number(chartData.total_publications_count),
@@ -2096,24 +2089,6 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
     ? topPapersCount
     : Math.max(0, Math.min(topPapersCount, totalPublications))
   const ringStrokeWidth = HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH
-  const ringHitHalfWidth = (ringStrokeWidth / 2) + 3
-  const top3ArcSpan = (top3PctRounded / 100) * 360
-  const top3ArcStart = 270 - (top3ArcSpan / 2)
-  const isAngleInArc = (angle: number, start: number, span: number): boolean => {
-    if (span <= 0) {
-      return false
-    }
-    if (span >= 360) {
-      return true
-    }
-    const normalizedAngle = ((angle % 360) + 360) % 360
-    const normalizedStart = ((start % 360) + 360) % 360
-    const end = (normalizedStart + span) % 360
-    if (normalizedStart <= end) {
-      return normalizedAngle >= normalizedStart && normalizedAngle <= end
-    }
-    return normalizedAngle >= normalizedStart || normalizedAngle <= end
-  }
   const animationKey = useMemo(
     () => `${top3PctRounded}-${restPctRounded}-${totalPublications ?? 'na'}-${effectiveTopPapersCount}`,
     [effectiveTopPapersCount, restPctRounded, top3PctRounded, totalPublications],
