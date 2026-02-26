@@ -297,7 +297,6 @@ const HOUSE_SURFACE_STRONG_PANEL_CLASS = publicationsHouseSurfaces.strongPanel
 const HOUSE_SURFACE_PANEL_BARE_CLASS = publicationsHouseSurfaces.panelBare
 const HOUSE_SURFACE_BANNER_CLASS = publicationsHouseSurfaces.banner
 const HOUSE_SURFACE_BANNER_WARNING_CLASS = publicationsHouseSurfaces.bannerWarning
-const HOUSE_SURFACE_BANNER_PUBLICATIONS_CLASS = publicationsHouseSurfaces.bannerPublications
 const HOUSE_SURFACE_METRIC_PILL_CLASS = publicationsHouseSurfaces.metricPill
 const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS = publicationsHouseSurfaces.metricPillPublications
 const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_REGULAR_CLASS = publicationsHouseSurfaces.metricPillPublicationsRegular
@@ -306,10 +305,6 @@ const HOUSE_DIVIDER_BORDER_SOFT_CLASS = publicationsHouseDividers.borderSoft
 const HOUSE_ACTIONS_SECTION_TOOLS_CLASS = publicationsHouseActions.sectionTools
 const HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS = publicationsHouseActions.sectionToolsPublications
 const HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS = publicationsHouseActions.sectionToolButton
-const HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_CLASS = publicationsHouseActions.sectionToolToggle
-const HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_ON_CLASS = publicationsHouseActions.sectionToolToggleOn
-const HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_OFF_CLASS = publicationsHouseActions.sectionToolToggleOff
-const HOUSE_ACTIONS_SECTION_TOOL_DIVIDER_CLASS = publicationsHouseActions.sectionToolDivider
 const HOUSE_DRILLDOWN_SHEET_CLASS = publicationsHouseDrilldown.sheet
 const HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS = publicationsHouseDrilldown.tabTrigger
 const HOUSE_DRILLDOWN_TAB_LIST_CLASS = publicationsHouseDrilldown.tabList
@@ -4479,28 +4474,27 @@ export function PublicationsTopStrip({
                 variant="house"
                 size="icon"
                 className={cn(
-                  'h-8 w-8 house-publications-action-icon house-publications-action-eye',
+                  'h-9 w-9 house-publications-action-icon house-publications-action-eye',
                   HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS,
-                  HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_CLASS,
                   insightsVisible
-                    ? HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_ON_CLASS
-                    : HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_OFF_CLASS,
+                    ? 'house-publications-action-eye-on'
+                    : 'house-publications-action-eye-off',
                 )}
                 onClick={() => setInsightsVisible((current) => !current)}
                 aria-pressed={insightsVisible}
                 aria-label={insightsVisible ? 'Set publication insights not visible' : 'Set publication insights visible'}
                 title={insightsVisible ? 'Publication insights visible' : 'Publication insights hidden'}
               >
-                <span className="relative block h-3.5 w-3.5" aria-hidden="true">
+                <span className="relative block h-4 w-4" aria-hidden="true">
                   <Eye
                     className={cn(
-                      'absolute inset-0 h-3.5 w-3.5 transition-opacity duration-150',
+                      'absolute inset-0 h-4 w-4 transition-opacity duration-150',
                       insightsVisible ? 'opacity-100' : 'opacity-0',
                     )}
                   />
                   <EyeOff
                     className={cn(
-                      'absolute inset-0 h-3.5 w-3.5 transition-opacity duration-150',
+                      'absolute inset-0 h-4 w-4 transition-opacity duration-150',
                       insightsVisible ? 'opacity-0' : 'opacity-100',
                     )}
                   />
@@ -4510,15 +4504,15 @@ export function PublicationsTopStrip({
                 <p className={cn('mt-1', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>Last update failed</p>
               ) : null}
             </div>
-            <div
-              className={cn(
-                'ml-auto flex flex-wrap items-center house-publications-actions',
-                HOUSE_ACTIONS_SECTION_TOOLS_CLASS,
-                HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS,
-              )}
-              data-stop-tile-open="true"
-            >
-              <div className={cn('flex items-center', !insightsVisible && 'invisible pointer-events-none')} aria-hidden={!insightsVisible}>
+            {insightsVisible ? (
+              <div
+                className={cn(
+                  'ml-auto flex flex-wrap items-center house-publications-actions',
+                  HOUSE_ACTIONS_SECTION_TOOLS_CLASS,
+                  HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS,
+                )}
+                data-stop-tile-open="true"
+              >
                 <Button
                   type="button"
                   data-stop-tile-open="true"
@@ -4555,14 +4549,10 @@ export function PublicationsTopStrip({
                   </Button>
                 </div>
               </div>
-            </div>
+            ) : null}
           </div>
 
-          {!insightsVisible ? (
-            <div className={cn('mx-3 mb-3', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_PUBLICATIONS_CLASS)}>
-              Publication insights are hidden.
-            </div>
-          ) : loading && tiles.length === 0 ? (
+          {insightsVisible && loading && tiles.length === 0 ? (
             <div className="publications-insights-grid">
               {Array.from({ length: 6 }).map((_, index) => (
                 <div key={index} className="min-h-36 px-3 py-2.5">
@@ -4570,7 +4560,7 @@ export function PublicationsTopStrip({
                 </div>
               ))}
             </div>
-          ) : (
+          ) : insightsVisible ? (
             <div className="publications-insights-grid">
               {tiles.map((tile) => {
                 const subtitle = String(tile.subtext || '').trim()
@@ -4932,7 +4922,7 @@ export function PublicationsTopStrip({
                 )
               })}
             </div>
-          )}
+          ) : null}
         </CardContent>
       </Card>
 
