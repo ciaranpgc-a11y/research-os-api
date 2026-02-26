@@ -727,8 +727,12 @@
   - `data_library_assets`: adds missing `owner_user_id` and `shared_with_user_ids`.
   - `projects`: adds missing `owner_user_id`, `collaborator_user_ids`, and `workspace_id`.
   - applies safe backfill for legacy single-user installs so pre-owner assets are attributed and visible.
+  - `data_profiles`: adds missing `owner_user_id` and index compatibility for legacy installs.
 - Added metadata-index support (`metadata.index.json`) to avoid full sidecar directory scans on every restore path.
 - Added fallback owner binding for ownerless sidecar metadata when the deployment has exactly one user account.
+- Added legacy owner-claim flow for ownerless personal assets:
+  - first authenticated requester can claim ownerless/no-project/unshared legacy rows,
+  - ownership is then persisted, preventing cross-user leakage on subsequent reads.
 - Tightened list-path scalability by adding SQL prefilter hints for ownership/shared scopes before in-memory filtering.
 - **Why it changed:**
 - Fix real-world legacy DB shape drift (missing columns) that caused empty library views after sign-in.

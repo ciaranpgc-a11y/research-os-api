@@ -15,6 +15,8 @@ import httpx
 from sqlalchemy import select
 
 from research_os.db import (
+    Collaborator,
+    CollaboratorAffiliation,
     MetricsSnapshot,
     PublicationMetric,
     PublicationMetricsSourceCache,
@@ -1365,6 +1367,16 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 collaborator_keys_by_work[work_id].add(collaborator_key)
                 collaborator_work_count_by_key[collaborator_key] += 1
 
+    collaborators = session.scalars(
+        select(Collaborator).where(Collaborator.owner_user_id == user_id)
+    ).all()
+    collaborator_ids = [str(row.id) for row in collaborators]
+    collaborator_affiliations = session.scalars(
+        select(CollaboratorAffiliation).where(
+            CollaboratorAffiliation.collaborator_id.in_(collaborator_ids or [""])
+        )
+    ).all()
+
     def _authorship_role_for_work(*, work_id: str) -> str | None:
         position = user_author_position_by_work.get(work_id)
         author_count = int(author_count_by_work.get(work_id, 0) or 0)
@@ -2232,6 +2244,37 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     country_keys_global: set[str] = set()
     institution_count_by_work: dict[str, int] = {}
     country_count_by_work: dict[str, int] = {}
+
+    def _collect_affiliation_tokens(
+        *,
+        raw: Any,
+        institutions: set[str],
+        countries: set[str],
+    ) -> None:
+        if isinstance(raw, dict):
+            institution_name = _clean_text(
+                raw.get("name")
+                or raw.get("display_name")
+                or raw.get("institution_name")
+                or raw.get("institution")
+                or raw.get("organization")
+                or raw.get("organization_name")
+            )
+            if institution_name:
+                institutions.add(institution_name.casefold())
+            country_token = _normalize_country_token(
+                raw.get("country_code")
+                or raw.get("country_name")
+                or raw.get("country")
+            )
+            if country_token:
+                countries.add(country_token.casefold())
+            return
+        if isinstance(raw, str):
+            institution_name = _clean_text(raw)
+            if institution_name:
+                institutions.add(institution_name.casefold())
+
     for work_id in collaborative_work_ids:
         work = work_by_id.get(work_id)
         if work is None:
@@ -2243,43 +2286,72 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             work.affiliations_json if isinstance(work.affiliations_json, list) else []
         )
         for affiliation in affiliations_json:
-            if not isinstance(affiliation, dict):
-                continue
-            institution_name = _clean_text(
-                affiliation.get("name")
-                or affiliation.get("display_name")
-                or affiliation.get("institution_name")
-                or affiliation.get("institution")
+            _collect_affiliation_tokens(
+                raw=affiliation,
+                institutions=work_institutions,
+                countries=work_countries,
             )
-            if institution_name:
-                work_institutions.add(institution_name.casefold())
-            country_token = _normalize_country_token(
-                affiliation.get("country_code")
-                or affiliation.get("country_name")
-                or affiliation.get("country")
-            )
-            if country_token:
-                work_countries.add(country_token.casefold())
 
-        if not work_institutions:
-            authors_json = (
-                work.authors_json if isinstance(work.authors_json, list) else []
-            )
-            for author in authors_json:
-                if not isinstance(author, dict):
-                    continue
-                affiliations = author.get("affiliations")
-                if not isinstance(affiliations, list):
-                    continue
-                for affiliation_name in affiliations:
-                    institution_name = _clean_text(affiliation_name)
-                    if institution_name:
-                        work_institutions.add(institution_name.casefold())
+        authors_json = work.authors_json if isinstance(work.authors_json, list) else []
+        for author in authors_json:
+            if not isinstance(author, dict):
+                continue
+            for candidate_key in (
+                "affiliation",
+                "institution",
+                "institution_name",
+                "organization",
+                "organization_name",
+            ):
+                _collect_affiliation_tokens(
+                    raw=author.get(candidate_key),
+                    institutions=work_institutions,
+                    countries=work_countries,
+                )
+            affiliations = author.get("affiliations")
+            if isinstance(affiliations, list):
+                for affiliation in affiliations:
+                    _collect_affiliation_tokens(
+                        raw=affiliation,
+                        institutions=work_institutions,
+                        countries=work_countries,
+                    )
+            else:
+                _collect_affiliation_tokens(
+                    raw=affiliations,
+                    institutions=work_institutions,
+                    countries=work_countries,
+                )
 
         institution_count_by_work[work_id] = len(work_institutions)
         country_count_by_work[work_id] = len(work_countries)
         institution_keys_global.update(work_institutions)
         country_keys_global.update(work_countries)
+
+    work_derived_institution_count = len(institution_keys_global)
+    work_derived_country_count = len(country_keys_global)
+
+    collaborator_institution_keys: set[str] = set()
+    collaborator_country_keys: set[str] = set()
+    for collaborator in collaborators:
+        institution_name = _clean_text(collaborator.primary_institution)
+        if institution_name:
+            collaborator_institution_keys.add(institution_name.casefold())
+        country_token = _normalize_country_token(collaborator.country)
+        if country_token:
+            collaborator_country_keys.add(country_token.casefold())
+    for affiliation in collaborator_affiliations:
+        institution_name = _clean_text(affiliation.institution_name)
+        if institution_name:
+            collaborator_institution_keys.add(institution_name.casefold())
+        country_token = _normalize_country_token(affiliation.country)
+        if country_token:
+            collaborator_country_keys.add(country_token.casefold())
+
+    institution_keys_global.update(collaborator_institution_keys)
+    country_keys_global.update(collaborator_country_keys)
+    collaborator_derived_institution_count = len(collaborator_institution_keys)
+    collaborator_derived_country_count = len(collaborator_country_keys)
 
     unique_collaborators_count = len(collaborator_work_count_by_key)
     repeat_collaborator_keys = {
@@ -3268,6 +3340,14 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "institutions": int(unique_institutions_count),
                 "countries": int(unique_countries_count),
                 "collaborative_works": int(collaborative_works_count),
+                "institutions_from_works": int(work_derived_institution_count),
+                "countries_from_works": int(work_derived_country_count),
+                "institutions_from_collaborators": int(
+                    collaborator_derived_institution_count
+                ),
+                "countries_from_collaborators": int(
+                    collaborator_derived_country_count
+                ),
             },
             delta_value=None,
             delta_display=None,
@@ -3308,6 +3388,16 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                         "institutions": int(unique_institutions_count),
                         "countries": int(unique_countries_count),
                         "collaborative_works": int(collaborative_works_count),
+                        "institutions_from_works": int(
+                            work_derived_institution_count
+                        ),
+                        "countries_from_works": int(work_derived_country_count),
+                        "institutions_from_collaborators": int(
+                            collaborator_derived_institution_count
+                        ),
+                        "countries_from_collaborators": int(
+                            collaborator_derived_country_count
+                        ),
                     }
                 },
             },

@@ -8,6 +8,8 @@ from sqlalchemy import select
 import research_os.services.publication_metrics_service as publication_metrics_service
 from research_os.api.app import app
 from research_os.db import (
+    Collaborator,
+    CollaboratorAffiliation,
     MetricsSnapshot,
     PublicationMetric,
     User,
@@ -346,6 +348,113 @@ def test_single_snapshot_without_history_is_conservative(monkeypatch, tmp_path) 
     last12_tile = _tile(payload, "this_year_vs_last")
     assert int(last12_tile["value"] or 0) == 1
     assert last12_tile["delta_display"] in {None, ""}
+
+
+def test_collaboration_structure_uses_collaborator_affiliations_when_work_data_is_sparse(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+
+    with session_scope() as session:
+        user = User(
+            email="collab-affiliations@example.com",
+            password_hash="test-hash",
+            name="Coverage User",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+        session.add_all(
+            [
+                Work(
+                    user_id=user_id,
+                    title="Sparse Collaboration Work A",
+                    title_lower="sparse collaboration work a",
+                    year=2023,
+                    doi="10.1000/sparse-collab-a",
+                    venue_name="Network Journal",
+                    journal="Network Journal",
+                    publication_type="journal-article",
+                    citations_total=0,
+                    work_type="journal-article",
+                    publisher="Publisher",
+                    abstract="Abstract",
+                    keywords=["network"],
+                    url="https://example.org/sparse-a",
+                    provenance="manual",
+                    authors_json=[
+                        {"name": "Coverage User"},
+                        {"name": "Alice Collaborator"},
+                        {"name": "Bob Collaborator"},
+                    ],
+                    affiliations_json=[],
+                ),
+                Work(
+                    user_id=user_id,
+                    title="Sparse Collaboration Work B",
+                    title_lower="sparse collaboration work b",
+                    year=2024,
+                    doi="10.1000/sparse-collab-b",
+                    venue_name="Network Journal",
+                    journal="Network Journal",
+                    publication_type="journal-article",
+                    citations_total=0,
+                    work_type="journal-article",
+                    publisher="Publisher",
+                    abstract="Abstract",
+                    keywords=["network"],
+                    url="https://example.org/sparse-b",
+                    provenance="manual",
+                    authors_json=[
+                        {"name": "Coverage User"},
+                        {"name": "Alice Collaborator"},
+                        {"name": "Cara Collaborator"},
+                    ],
+                    affiliations_json=[],
+                ),
+            ]
+        )
+        session.flush()
+
+        alice = Collaborator(
+            owner_user_id=user_id,
+            full_name="Alice Collaborator",
+            full_name_lower="alice collaborator",
+            primary_institution="Alpha Institute",
+            country="US",
+        )
+        bob = Collaborator(
+            owner_user_id=user_id,
+            full_name="Bob Collaborator",
+            full_name_lower="bob collaborator",
+            primary_institution="Beta Medical Center",
+            country="UK",
+        )
+        session.add_all([alice, bob])
+        session.flush()
+        session.add(
+            CollaboratorAffiliation(
+                collaborator_id=alice.id,
+                institution_name="Gamma University",
+                country="CA",
+                is_primary=False,
+            )
+        )
+
+    payload = compute_publication_top_metrics(user_id=user_id)
+    collaboration_tile = _tile(payload, "collaboration_structure")
+    chart_data = collaboration_tile.get("chart_data") or {}
+    assert isinstance(chart_data, dict)
+
+    assert chart_data.get("unique_collaborators") == 3
+    assert chart_data.get("institutions") == 3
+    assert chart_data.get("countries") == 3
+    assert chart_data.get("institutions_from_works") == 0
+    assert chart_data.get("countries_from_works") == 0
+    assert chart_data.get("institutions_from_collaborators") == 3
+    assert chart_data.get("countries_from_collaborators") == 3
 
 
 def test_snapshot_delta_ignores_mismatched_provider_baseline(

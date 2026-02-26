@@ -2808,8 +2808,8 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
     explicitCountryCount ? Math.round(explicitCountryCount) : 0,
     derivedCoverage.countryCount,
   )
-  const institutions = institutionsBase > 0 ? institutionsBase : (uniqueCollaborators > 0 ? 1 : 0)
-  const countries = countriesBase > 0 ? countriesBase : (uniqueCollaborators > 0 ? 1 : 0)
+  const institutions = institutionsBase > 0 ? institutionsBase : 0
+  const countries = countriesBase > 0 ? countriesBase : 0
 
   const animationKey = useMemo(
     () => `${uniqueCollaborators}-${Math.round(repeatRatePct)}-${institutions}-${countries}`,

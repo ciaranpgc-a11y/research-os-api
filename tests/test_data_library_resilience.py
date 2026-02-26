@@ -190,3 +190,53 @@ def test_list_library_assets_assigns_single_user_owner_for_ownerless_metadata(
         item for item in payload.get("items", []) if str(item.get("id")) == asset_id
     )
     assert str(listed_row.get("owner_user_id") or "") == user_id
+
+
+def test_list_library_assets_claims_ownerless_legacy_asset_to_first_requesting_user(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    first_user_id = _create_user(email="legacy-claim-first@example.com")
+    second_user_id = _create_user(email="legacy-claim-second@example.com")
+    storage_root = (tmp_path / "data_library").resolve()
+    storage_root.mkdir(parents=True, exist_ok=True)
+
+    asset_id = "dc3dd596-f8ba-4a4d-9ca1-0c5d8a98f82a"
+    data_path = storage_root / f"{asset_id}.csv"
+    data_bytes = b"col_a,col_b\n11,12\n"
+    data_path.write_bytes(data_bytes)
+
+    metadata_payload = {
+        "id": asset_id,
+        "owner_user_id": None,
+        "owner_email": "",
+        "project_id": None,
+        "shared_with_user_ids": [],
+        "filename": "legacy-claim.csv",
+        "kind": "csv",
+        "mime_type": "text/csv",
+        "byte_size": len(data_bytes),
+        "storage_path": str(data_path),
+        "uploaded_at": "2026-02-26T00:00:00+00:00",
+    }
+    _metadata_path(storage_root, asset_id).write_text(
+        json.dumps(metadata_payload),
+        encoding="utf-8",
+    )
+    _metadata_index_path(storage_root).write_text(
+        json.dumps({"asset_ids": [asset_id]}),
+        encoding="utf-8",
+    )
+
+    first_payload = list_library_assets(project_id=None, user_id=first_user_id)
+    first_ids = [str(item.get("id")) for item in first_payload.get("items", [])]
+    assert asset_id in first_ids
+
+    with session_scope() as session:
+        row = session.get(DataLibraryAsset, asset_id)
+        assert row is not None
+        assert str(row.owner_user_id or "") == first_user_id
+
+    second_payload = list_library_assets(project_id=None, user_id=second_user_id)
+    second_ids = [str(item.get("id")) for item in second_payload.get("items", [])]
+    assert asset_id not in second_ids

@@ -3,11 +3,10 @@ import { ChevronDown, ChevronUp, ChevronsUpDown, Loader2, Paperclip, SlidersHori
 import { useNavigate } from 'react-router-dom'
 
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
-import { publicationsHouseDetail, publicationsHouseDrilldown, publicationsHouseHeadings } from '@/components/publications/publications-house-style'
+import { publicationsHouseDetail, publicationsHouseHeadings } from '@/components/publications/publications-house-style'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { houseDividers, houseForms, houseSurfaces, houseTypography } from '@/lib/house-style'
@@ -112,7 +111,6 @@ const HOUSE_PUBLICATION_DETAIL_BODY_CLASS = publicationsHouseDetail.body
 const HOUSE_PUBLICATION_DETAIL_SECTION_CLASS = publicationsHouseDetail.section
 const HOUSE_PUBLICATION_DETAIL_LABEL_CLASS = publicationsHouseDetail.sectionLabel
 const HOUSE_PUBLICATION_DETAIL_INFO_CLASS = publicationsHouseDetail.info
-const HOUSE_DRILLDOWN_SHEET_CLASS = publicationsHouseDrilldown.sheet
 const HOUSE_PUBLICATION_TEXT_CLASS = publicationsHouseHeadings.text
 const HOUSE_PUBLICATION_TEXT_SOFT_CLASS = publicationsHouseHeadings.textSoft
 
@@ -1041,7 +1039,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [sortField, setSortField] = useState<PublicationSortField>('year')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null)
-  const [detailPanelOpen, setDetailPanelOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [richImporting, setRichImporting] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -1933,12 +1930,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [personaState?.works, selectedWorkId])
 
   useEffect(() => {
-    if (!selectedWork && detailPanelOpen) {
-      setDetailPanelOpen(false)
-    }
-  }, [detailPanelOpen, selectedWork])
-
-  useEffect(() => {
     if (!selectedWorkId) {
       return
     }
@@ -2090,7 +2081,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     setSelectedWorkId(normalizedWorkId)
     setActiveDetailTab(tab)
-    setDetailPanelOpen(true)
   }, [activeDetailTab, loadPublicationFilesData])
 
   const onToggleAbstractExpanded = () => {
@@ -2335,7 +2325,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               ))}
             </select>
           </div>
-          <div className="grid grid-cols-1 items-start gap-4">
+          <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,2.9fr)_minmax(320px,1fr)]">
             <div className="space-y-1">
 
               {filteredWorks.length === 0 ? (
@@ -2537,9 +2527,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               )}
             </div>
 
-            <Sheet open={detailPanelOpen} onOpenChange={setDetailPanelOpen}>
-            <SheetContent side="right" className={HOUSE_DRILLDOWN_SHEET_CLASS}>
-            <Card className={HOUSE_PUBLICATION_DETAIL_PANEL_CLASS}>
+            <Card className={`self-start h-fit xl:sticky xl:top-4 ${HOUSE_PUBLICATION_DETAIL_PANEL_CLASS}`}>
               {!selectedWork ? (
                 <CardContent className="p-3 text-sm text-muted-foreground">
                   Select a publication to view details.
@@ -2739,8 +2727,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 </CardContent>
               )}
             </Card>
-            </SheetContent>
-            </Sheet>
 
           </div>
         </CardContent>

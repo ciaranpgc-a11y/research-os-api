@@ -163,7 +163,9 @@ def _asset_accessible_for_user(
         return clean_user_id in _normalize_user_ids(shared_ids_raw)
     project_id = _trim(asset.project_id)
     if not project_id:
-        return False
+        # Legacy rows may be ownerless/unshared with no project linkage.
+        # These can be claimed by the first authenticated user during recovery/list flows.
+        return not _trim(asset.owner_user_id)
     project = session.get(Project, project_id)
     if project is None:
         return False
@@ -633,9 +635,11 @@ def _restore_asset_row_from_metadata(
     session,
     primary_root: Path,
     asset_id: str | None = None,
+    claimant_user_id: str | None = None,
 ) -> bool:
     requested_asset_id = _trim(asset_id)
     fallback_single_owner_user_id = _single_user_owner_id(session=session)
+    clean_claimant_user_id = _trim(claimant_user_id) or None
     metadata_paths = _iter_metadata_paths(
         root=primary_root,
         requested_asset_id=requested_asset_id or None,
@@ -662,6 +666,8 @@ def _restore_asset_row_from_metadata(
         owner_user_id = _resolve_owner_user_id_from_metadata(session=session, payload=payload)
         if not owner_user_id and fallback_single_owner_user_id:
             owner_user_id = fallback_single_owner_user_id
+        if not owner_user_id and clean_claimant_user_id:
+            owner_user_id = clean_claimant_user_id
         project_id = _resolve_project_id_from_metadata(session=session, payload=payload)
         shared_with_user_ids = _resolve_shared_ids_from_metadata(
             session=session,
@@ -868,6 +874,14 @@ def list_library_assets(
         owner_expr = DataLibraryAsset.owner_user_id == clean_user_id
         shared_hint_expr = _shared_access_hint_expression(clean_user_id)
         legacy_project_fallback_expr = DataLibraryAsset.shared_with_user_ids.is_(None)
+        legacy_ownerless_personal_expr = and_(
+            DataLibraryAsset.owner_user_id.is_(None),
+            DataLibraryAsset.project_id.is_(None),
+            or_(
+                DataLibraryAsset.shared_with_user_ids.is_(None),
+                cast(DataLibraryAsset.shared_with_user_ids, String) == "[]",
+            ),
+        )
         stmt = select(DataLibraryAsset).order_by(DataLibraryAsset.uploaded_at.desc())
         if clean_project_id:
             _resolve_project_for_user(
@@ -889,7 +903,12 @@ def list_library_assets(
             )
         else:
             stmt = stmt.where(
-                or_(owner_expr, shared_hint_expr, legacy_project_fallback_expr)
+                or_(
+                    owner_expr,
+                    shared_hint_expr,
+                    legacy_project_fallback_expr,
+                    legacy_ownerless_personal_expr,
+                )
             )
 
         rows = session.scalars(stmt).all()
@@ -897,6 +916,7 @@ def list_library_assets(
             restored_any = _restore_asset_row_from_metadata(
                 session=session,
                 primary_root=storage_root,
+                claimant_user_id=clean_user_id,
             )
             if restored_any:
                 rows = session.scalars(stmt).all()
@@ -907,6 +927,13 @@ def list_library_assets(
                 and fallback_single_owner_user_id
             ):
                 row.owner_user_id = fallback_single_owner_user_id
+            elif (
+                not _trim(row.owner_user_id)
+                and clean_user_id
+                and not _trim(row.project_id)
+                and not _asset_shared_user_ids(row)
+            ):
+                row.owner_user_id = clean_user_id
             resolved_storage_path = _resolve_existing_asset_path(row, storage_root)
             if resolved_storage_path is None:
                 continue
@@ -1019,6 +1046,7 @@ def update_library_asset_access(
                 session=session,
                 primary_root=storage_root,
                 asset_id=clean_asset_id,
+                claimant_user_id=clean_user_id,
             )
             asset = session.get(DataLibraryAsset, clean_asset_id)
         if asset is None:
@@ -1085,6 +1113,7 @@ def download_library_asset(
                 session=session,
                 primary_root=storage_root,
                 asset_id=clean_asset_id,
+                claimant_user_id=clean_user_id,
             )
             asset = session.get(DataLibraryAsset, clean_asset_id)
         if asset is None:
@@ -1146,6 +1175,7 @@ def attach_assets_to_manuscript(
                 session=session,
                 primary_root=storage_root,
                 asset_id=asset_id,
+                claimant_user_id=clean_user_id,
             )
         manuscript = _resolve_manuscript_for_user(
             session=session, manuscript_id=manuscript_id, user_id=clean_user_id
@@ -1266,6 +1296,7 @@ def create_data_profile(
                 session=session,
                 primary_root=storage_root,
                 asset_id=asset_id,
+                claimant_user_id=clean_user_id,
             )
         assets = session.scalars(
             select(DataLibraryAsset).where(DataLibraryAsset.id.in_(ids))
