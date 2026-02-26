@@ -81,7 +81,7 @@ const PUBLICATION_TABLE_COLUMN_DEFAULTS: Record<PublicationTableColumnKey, Publi
   venue: { visible: true, align: 'left', width: 280 },
   work_type: { visible: true, align: 'left', width: 200 },
   article_type: { visible: true, align: 'left', width: 168 },
-  citations: { visible: true, align: 'left', width: 120 },
+  citations: { visible: true, align: 'left', width: 136 },
 }
 const PUBLICATION_TABLE_COLUMN_WIDTH_MIN = 80
 const PUBLICATION_TABLE_COLUMN_WIDTH_MAX = 640
@@ -147,6 +147,19 @@ const CONFERENCE_HINT_PATTERN =
 const CONFERENCE_TYPE_HINT_PATTERN =
   /\b(conference|proceedings|meeting|congress|symposium|workshop)\b/i
 const NUMERIC_TITLE_START_PATTERN = /^\s*\d+([)\].,:;-]|\s|th\b|st\b|nd\b|rd\b)/i
+const ARTICLE_TYPE_META_ANALYSIS_PATTERN =
+  /\b(meta[-\s]?analysis|pooled analysis)\b/i
+const ARTICLE_TYPE_SCOPING_PATTERN =
+  /\b(scoping review|evidence map)\b/i
+const ARTICLE_TYPE_SR_PATTERN =
+  /\b(systematic review|umbrella review|rapid review)\b/i
+const ARTICLE_TYPE_LITERATURE_PATTERN =
+  /\b(literature review|narrative review|review article|review)\b/i
+const ARTICLE_TYPE_EDITORIAL_PATTERN =
+  /\b(editorial|commentary|perspective|viewpoint|opinion)\b/i
+const ARTICLE_TYPE_CASE_PATTERN = /\b(case report|case series)\b/i
+const ARTICLE_TYPE_PROTOCOL_PATTERN = /\b(protocol|study protocol)\b/i
+const ARTICLE_TYPE_LETTER_PATTERN = /\b(letter|correspondence)\b/i
 
 function normalizeWorkType(value: string | null | undefined): string {
   return (value || '')
@@ -189,6 +202,42 @@ function derivePublicationTypeLabel(work: {
   return text.replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
+function normalizeCompactText(value: string | null | undefined): string {
+  return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+function inferArticleTypeFromTitle(title: string | null | undefined): string {
+  const clean = normalizeCompactText(title)
+  if (!clean) {
+    return 'Original'
+  }
+  if (ARTICLE_TYPE_META_ANALYSIS_PATTERN.test(clean)) {
+    return 'Meta-analysis'
+  }
+  if (ARTICLE_TYPE_SCOPING_PATTERN.test(clean)) {
+    return 'Scoping'
+  }
+  if (ARTICLE_TYPE_SR_PATTERN.test(clean)) {
+    return 'SR'
+  }
+  if (ARTICLE_TYPE_LITERATURE_PATTERN.test(clean)) {
+    return 'Literature'
+  }
+  if (ARTICLE_TYPE_EDITORIAL_PATTERN.test(clean)) {
+    return 'Editorial'
+  }
+  if (ARTICLE_TYPE_CASE_PATTERN.test(clean)) {
+    return 'Case report'
+  }
+  if (ARTICLE_TYPE_PROTOCOL_PATTERN.test(clean)) {
+    return 'Protocol'
+  }
+  if (ARTICLE_TYPE_LETTER_PATTERN.test(clean)) {
+    return 'Letter'
+  }
+  return 'Original'
+}
+
 function deriveArticleTypeLabel(work: {
   work_type?: string | null
   publication_type?: string | null
@@ -197,10 +246,38 @@ function deriveArticleTypeLabel(work: {
 }): string {
   const classification = String(work.publication_type || '').trim()
   if (classification) {
+    const normalizedClassification = classification.toLowerCase()
+    if (normalizedClassification === 'review') {
+      return inferArticleTypeFromTitle(work.title)
+    }
+    if (normalizedClassification === 'review article') {
+      return inferArticleTypeFromTitle(work.title)
+    }
+    if (normalizedClassification === 'meta-analysis') {
+      return 'Meta-analysis'
+    }
+    if (normalizedClassification === 'scoping review') {
+      return 'Scoping'
+    }
+    if (normalizedClassification === 'systematic review') {
+      return 'SR'
+    }
+    if (
+      normalizedClassification === 'literature review' ||
+      normalizedClassification === 'narrative review'
+    ) {
+      return 'Literature'
+    }
     return classification
   }
   const publicationType = derivePublicationTypeLabel(work)
-  return publicationType === 'Journal article' ? 'Unspecified' : 'n/a'
+  if (
+    publicationType === 'Journal article' ||
+    publicationType.toLowerCase().startsWith('conference')
+  ) {
+    return inferArticleTypeFromTitle(work.title)
+  }
+  return 'n/a'
 }
 
 function formatShortDate(value: string | null | undefined): string {
@@ -604,7 +681,7 @@ function autoFitPublicationTableColumns(input: {
     venue: { min: 180, max: 340, growWeight: 2.1 },
     work_type: { min: 170, max: 260, growWeight: 1.6 },
     article_type: { min: 140, max: 220, growWeight: 1.2 },
-    citations: { min: 96, max: 132, growWeight: 0.7 },
+    citations: { min: 124, max: 168, growWeight: 0.8 },
   }
   const safeAvailableWidth = Math.max(760, Math.round(input.availableWidth))
 

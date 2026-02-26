@@ -556,6 +556,7 @@ def _extract_work_payload(
         "title": title,
         "year": int(year_raw) if year_raw.isdigit() else None,
         "doi": doi,
+        "pmid": pmid,
         "work_type": work_type,
         "venue_name": venue,
         "publisher": publisher,

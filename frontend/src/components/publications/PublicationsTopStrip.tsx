@@ -4376,9 +4376,20 @@ export function PublicationsTopStrip({
     () => String(activeTile?.drilldown?.definition || '').trim(),
     [activeTile],
   )
+  const sanitizedActiveTileDefinition = useMemo(() => {
+    if (!activeTileDefinition) {
+      return ''
+    }
+    if (activeTile?.key !== 'this_year_vs_last') {
+      return activeTileDefinition
+    }
+    return activeTileDefinition
+      .replace(/counts?\s+authored\s+publications?\s+and\s+groups?[^.]*\.?/i, '')
+      .trim()
+  }, [activeTileDefinition, activeTile?.key])
   const showActiveTileDefinition = useMemo(
-    () => Boolean(activeTileDefinition) && !/fixture\s+drilldown/i.test(activeTileDefinition),
-    [activeTileDefinition],
+    () => Boolean(sanitizedActiveTileDefinition) && !/fixture\s+drilldown/i.test(sanitizedActiveTileDefinition),
+    [sanitizedActiveTileDefinition],
   )
 
   useEffect(() => {
@@ -4887,7 +4898,7 @@ export function PublicationsTopStrip({
               <div className={HOUSE_SURFACE_LEFT_BORDER_CLASS}>
                 <h3 className={HOUSE_HEADING_TITLE_CLASS}>{activeTile.drilldown.title}</h3>
                 {showActiveTileDefinition ? (
-                  <p className={cn(HOUSE_TEXT_CLASS, 'mt-1')}>{activeTileDefinition}</p>
+                  <p className={cn(HOUSE_TEXT_CLASS, 'mt-1')}>{sanitizedActiveTileDefinition}</p>
                 ) : null}
                 {detailLoading ? <p className={cn('mt-2', HOUSE_TEXT_SOFT_CLASS)}>Loading metric detail...</p> : null}
                 {detailError ? <p className={cn('mt-2', HOUSE_DRILLDOWN_ALERT_CLASS)}>{detailError}</p> : null}

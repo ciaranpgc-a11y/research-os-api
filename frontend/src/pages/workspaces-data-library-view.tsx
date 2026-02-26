@@ -41,6 +41,11 @@ const HOUSE_COLLABORATOR_CANDIDATE_SELECTED_CLASS = houseCollaborators.candidate
 const HOUSE_COLLABORATOR_CANDIDATE_IDLE_CLASS = houseCollaborators.candidateIdle
 const HOUSE_COLLABORATOR_CANDIDATE_META_CLASS = houseCollaborators.candidateMeta
 const HOUSE_COLLABORATOR_CANDIDATE_SOURCE_CLASS = houseCollaborators.candidateSource
+const HOUSE_COLLABORATOR_CHIP_CLASS = houseCollaborators.chip
+const HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS = houseCollaborators.chipActive
+const HOUSE_COLLABORATOR_CHIP_MANAGEABLE_CLASS = houseCollaborators.chipManageable
+const HOUSE_COLLABORATOR_CHIP_READONLY_CLASS = houseCollaborators.chipReadOnly
+const HOUSE_COLLABORATOR_CHIP_ACTION_CLASS = houseCollaborators.chipAction
 
 function normalizeName(value: string | null | undefined): string {
   return (value || '').trim().replace(/\s+/g, ' ')
@@ -592,13 +597,17 @@ export function WorkspacesDataLibraryView() {
                             accessMembers.map((member) => (
                               <span
                                 key={`${asset.id}-${member.user_id}-${member.name}`}
-                                className="inline-flex items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 text-xs"
+                                className={cn(
+                                  HOUSE_COLLABORATOR_CHIP_CLASS,
+                                  HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS,
+                                  asset.can_manage_access ? HOUSE_COLLABORATOR_CHIP_MANAGEABLE_CLASS : HOUSE_COLLABORATOR_CHIP_READONLY_CLASS,
+                                )}
                               >
                                 <span>{member.name}</span>
                                 {asset.can_manage_access && member.user_id ? (
                                   <button
                                     type="button"
-                                    className="rounded border border-transparent p-0.5 text-muted-foreground hover:border-border hover:text-foreground"
+                                    className={HOUSE_COLLABORATOR_CHIP_ACTION_CLASS}
                                     onClick={() => void onRemoveAccess(asset, member.user_id)}
                                     disabled={isBusy}
                                     aria-label={`Remove ${member.name} access`}

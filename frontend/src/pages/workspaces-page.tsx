@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { PanelRightClose, PanelRightOpen, Pin } from 'lucide-react'
+import { PanelRightClose, PanelRightOpen, Pin, Save, X } from 'lucide-react'
 
 import { TopBar } from '@/components/layout/top-bar'
 import { Button } from '@/components/ui/button'
@@ -73,6 +73,8 @@ const HOUSE_INPUT_CLASS = houseForms.input
 const HOUSE_SELECT_CLASS = houseForms.select
 const HOUSE_ACTION_BUTTON_CLASS = houseForms.actionButton
 const HOUSE_PRIMARY_ACTION_BUTTON_CLASS = houseForms.actionButtonPrimary
+const HOUSE_SUCCESS_ACTION_BUTTON_CLASS = houseForms.actionButtonSuccess
+const HOUSE_DANGER_ACTION_BUTTON_CLASS = houseForms.actionButtonDanger
 const HOUSE_COLLABORATOR_LIST_SHELL_CLASS = houseCollaborators.listShell
 const HOUSE_COLLABORATOR_LIST_VIEWPORT_CLASS = houseCollaborators.listViewport
 const HOUSE_COLLABORATOR_LIST_BODY_CLASS = houseCollaborators.listBody
@@ -81,6 +83,11 @@ const HOUSE_COLLABORATOR_CANDIDATE_SELECTED_CLASS = houseCollaborators.candidate
 const HOUSE_COLLABORATOR_CANDIDATE_IDLE_CLASS = houseCollaborators.candidateIdle
 const HOUSE_COLLABORATOR_CANDIDATE_META_CLASS = houseCollaborators.candidateMeta
 const HOUSE_COLLABORATOR_CANDIDATE_SOURCE_CLASS = houseCollaborators.candidateSource
+const HOUSE_COLLABORATOR_CHIP_CLASS = houseCollaborators.chip
+const HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS = houseCollaborators.chipActive
+const HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS = houseCollaborators.chipRemoved
+const HOUSE_COLLABORATOR_CHIP_MANAGEABLE_CLASS = houseCollaborators.chipManageable
+const HOUSE_COLLABORATOR_CHIP_READONLY_CLASS = houseCollaborators.chipReadOnly
 const HOUSE_NAV_SECTION_LABEL_CLASS = houseNavigation.sectionLabel
 const HOUSE_NAV_ITEM_CLASS = houseNavigation.item
 const HOUSE_NAV_ITEM_ACTIVE_CLASS = houseNavigation.itemActive
@@ -89,19 +96,39 @@ const HOUSE_NAV_ITEM_GOVERNANCE_CLASS = getHouseNavToneClass('governance')
 const HOUSE_NAV_ITEM_META_CLASS = houseNavigation.itemMeta
 const HOUSE_NAV_ITEM_COUNT_CLASS = houseNavigation.itemCount
 const HOUSE_DRILLDOWN_SHEET_CLASS = houseDrilldown.sheet
+const HOUSE_DRILLDOWN_SHEET_BODY_CLASS = houseDrilldown.sheetBody
 const HOUSE_DRILLDOWN_ACTION_CLASS = houseDrilldown.action
 const HOUSE_DRILLDOWN_ROW_CLASS = houseDrilldown.row
 const HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS = houseDrilldown.progressTrack
 const HOUSE_DRILLDOWN_PROGRESS_FILL_CLASS = houseDrilldown.progressFill
 const HOUSE_DRILLDOWN_STAT_CARD_CLASS = houseDrilldown.statCard
 const HOUSE_DRILLDOWN_STAT_TITLE_CLASS = houseDrilldown.statTitle
-const HOUSE_DRILLDOWN_STAT_VALUE_CLASS = houseDrilldown.statValue
+const HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS = houseDrilldown.summaryStatCard
+const HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS = houseDrilldown.summaryStatTitle
+const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS = houseDrilldown.summaryStatValue
+const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS = houseDrilldown.summaryStatValueWrap
 const HOUSE_DRILLDOWN_HINT_CLASS = houseDrilldown.hint
+const HOUSE_DRILLDOWN_CAPTION_CLASS = houseDrilldown.caption
 const HOUSE_DRILLDOWN_MICRO_VALUE_CLASS = houseDrilldown.microValue
 const HOUSE_DRILLDOWN_BADGE_CLASS = houseDrilldown.badge
 const HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS = houseDrilldown.badgeNeutral
+const HOUSE_DRILLDOWN_NOTE_CLASS = houseDrilldown.note
 const HOUSE_DRILLDOWN_NOTE_SOFT_CLASS = houseDrilldown.noteSoft
+const HOUSE_DRILLDOWN_SECTION_SEPARATOR_CLASS = houseDrilldown.sectionSeparator
 const HOUSE_DRILLDOWN_TABLE_ROW_CLASS = houseDrilldown.tableRow
+const HOUSE_DRILLDOWN_TABLE_EMPTY_CLASS = houseDrilldown.tableEmpty
+const WORKSPACE_ICON_BUTTON_DIMENSION_CLASS = 'h-8 w-8 p-0'
+const HOUSE_SECTION_TOOLS_CLASS = 'house-section-tools'
+const HOUSE_SECTION_TOOLS_WORKSPACE_CLASS = 'house-section-tools-workspace'
+const HOUSE_SECTION_TOOL_BUTTON_CLASS = 'house-section-tool-button'
+const HOUSE_SECTION_TOOL_TOGGLE_CLASS = 'house-section-tool-toggle'
+const HOUSE_SECTION_TOOL_TOGGLE_ON_CLASS = 'house-section-tool-toggle-on'
+const HOUSE_SECTION_TOOL_TOGGLE_OFF_CLASS = 'house-section-tool-toggle-off'
+const HOUSE_WORKSPACE_FILTER_SELECT_CLASS = cn(
+  'h-9 rounded-md px-2',
+  HOUSE_SELECT_CLASS,
+  HOUSE_BUTTON_TEXT_CLASS,
+)
 
 type WorkspaceInboxSignal = {
   unreadCount: number
@@ -195,6 +222,13 @@ function isWorkspaceOwner(workspace: WorkspaceRecord, currentUserName: string | 
     return false
   }
   return normalizeCollaboratorName(workspace.ownerName).toLowerCase() === cleanCurrentUser
+}
+
+function workspaceOwnerLabel(workspace: WorkspaceRecord, currentUserName: string | null): string {
+  if (isWorkspaceOwner(workspace, currentUserName)) {
+    return 'You'
+  }
+  return normalizeCollaboratorName(workspace.ownerName) || 'Unknown'
 }
 
 function collaboratorRemovedSet(workspace: WorkspaceRecord): Set<string> {
@@ -328,6 +362,16 @@ function WorkspacesDrilldownPanel({
   }
   const stageMax = Math.max(1, ...stageBuckets.map((item) => item.count))
   const activeFilterLabel = FILTER_OPTIONS.find((option) => option.key === filterKey)?.label || 'All'
+  const summaryStatCardClass = HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS
+  const summaryStatTitleClass = cn(
+    HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS,
+    HOUSE_DRILLDOWN_STAT_TITLE_CLASS,
+  )
+  const summaryStatValueWrapClass = HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS
+  const summaryStatValueClass = cn(
+    HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS,
+    'tabular-nums whitespace-nowrap leading-none',
+  )
   const recentWorkspaces = [...filteredWorkspaces]
     .sort((left, right) => {
       const leftValue = Date.parse(workspaceInboxSignals[left.id]?.lastActivityAt || left.updatedAt)
@@ -337,41 +381,49 @@ function WorkspacesDrilldownPanel({
     .slice(0, 6)
 
   return (
-    <div className="space-y-3">
+    <div className={HOUSE_DRILLDOWN_SHEET_BODY_CLASS}>
       <div className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
         <h2 className={HOUSE_SECTION_TITLE_CLASS}>Workspace drilldown</h2>
-        <p className={HOUSE_SECTION_SUBTITLE_CLASS}>Filter snapshot and stage distribution.</p>
+        <p className={HOUSE_SECTION_SUBTITLE_CLASS}>Workspace status and recent activity.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <div className={HOUSE_DRILLDOWN_STAT_CARD_CLASS}>
-          <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Visible</p>
-          <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{filteredWorkspaces.length}</p>
+        <div className={summaryStatCardClass}>
+          <p className={summaryStatTitleClass}>Visible</p>
+          <div className={summaryStatValueWrapClass}>
+            <p className={summaryStatValueClass}>{filteredWorkspaces.length}</p>
+          </div>
         </div>
-        <div className={HOUSE_DRILLDOWN_STAT_CARD_CLASS}>
-          <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Unread</p>
-          <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{unreadVisibleCount}</p>
+        <div className={summaryStatCardClass}>
+          <p className={summaryStatTitleClass}>Unread</p>
+          <div className={summaryStatValueWrapClass}>
+            <p className={summaryStatValueClass}>{unreadVisibleCount}</p>
+          </div>
         </div>
-        <div className={HOUSE_DRILLDOWN_STAT_CARD_CLASS}>
-          <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Active</p>
-          <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{filterCounts.active}</p>
+        <div className={summaryStatCardClass}>
+          <p className={summaryStatTitleClass}>Active</p>
+          <div className={summaryStatValueWrapClass}>
+            <p className={summaryStatValueClass}>{filterCounts.active}</p>
+          </div>
         </div>
-        <div className={HOUSE_DRILLDOWN_STAT_CARD_CLASS}>
-          <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Archived</p>
-          <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{filterCounts.archived}</p>
+        <div className={summaryStatCardClass}>
+          <p className={summaryStatTitleClass}>Archived</p>
+          <div className={summaryStatValueWrapClass}>
+            <p className={summaryStatValueClass}>{filterCounts.archived}</p>
+          </div>
         </div>
       </div>
 
-      <div className="space-y-2 rounded-md border border-border/70 bg-background/80 p-3">
+      <div className={cn('space-y-2 px-3 py-2.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
         <div className="flex items-center justify-between gap-2">
-          <p className="text-micro uppercase text-muted-foreground">Stage mix</p>
+          <p className={cn(HOUSE_DRILLDOWN_CAPTION_CLASS, 'uppercase')}>Stage mix</p>
           <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS)}>
             {activeFilterLabel}
           </span>
         </div>
         {stageBuckets.map((bucket) => (
           <div key={bucket.label} className={HOUSE_DRILLDOWN_ROW_CLASS}>
-            <div className="mb-1 flex items-center justify-between gap-2">
+            <div className={cn('mb-1 flex items-center justify-between gap-2', HOUSE_DRILLDOWN_NOTE_CLASS)}>
               <p className={HOUSE_DRILLDOWN_HINT_CLASS}>{bucket.label}</p>
               <p className={HOUSE_DRILLDOWN_MICRO_VALUE_CLASS}>{bucket.count}</p>
             </div>
@@ -385,17 +437,17 @@ function WorkspacesDrilldownPanel({
         ))}
       </div>
 
-      <div className="space-y-2 rounded-md border border-border/70 bg-background/80 p-3">
-        <p className="text-micro uppercase text-muted-foreground">Recent activity</p>
+      <div className={cn('space-y-2 px-3 py-2.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS, HOUSE_DRILLDOWN_SECTION_SEPARATOR_CLASS)}>
+        <p className={cn(HOUSE_DRILLDOWN_CAPTION_CLASS, 'uppercase')}>Recent activity</p>
         {recentWorkspaces.length === 0 ? (
-          <p className={HOUSE_DRILLDOWN_NOTE_SOFT_CLASS}>No workspaces in this filter.</p>
+          <p className={HOUSE_DRILLDOWN_TABLE_EMPTY_CLASS}>No workspaces in this filter.</p>
         ) : (
           recentWorkspaces.map((workspace) => {
             const signal = workspaceInboxSignals[workspace.id]
             return (
-              <div key={workspace.id} className={cn('space-y-1 rounded-md border border-border/60 px-2 py-1.5', HOUSE_DRILLDOWN_TABLE_ROW_CLASS)}>
-                <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-sm font-medium">{workspace.name}</p>
+              <div key={workspace.id} className={cn('space-y-1 rounded-md px-2 py-1.5', HOUSE_DRILLDOWN_ROW_CLASS, HOUSE_DRILLDOWN_TABLE_ROW_CLASS)}>
+                <div className={cn('flex items-center justify-between gap-2', HOUSE_DRILLDOWN_NOTE_CLASS)}>
+                  <p className="truncate font-medium">{workspace.name}</p>
                   <span className={HOUSE_DRILLDOWN_HINT_CLASS}>{signal?.unreadCount || 0} unread</span>
                 </div>
                 <p className={HOUSE_DRILLDOWN_NOTE_SOFT_CLASS}>
@@ -429,7 +481,7 @@ function SortableHeader({
     <button
       type="button"
       onClick={() => onSort(column)}
-      className="inline-flex items-center gap-1 font-medium text-muted-foreground transition-colors hover:text-foreground"
+      className={cn('inline-flex items-center gap-1 transition-colors hover:text-foreground', HOUSE_TABLE_HEAD_TEXT_CLASS)}
     >
       <span>{label}</span>
       <span className={cn('text-caption', isActive ? 'text-foreground' : 'text-muted-foreground')}>{icon}</span>
@@ -450,7 +502,8 @@ function WorkspaceMenuTrigger({
       data-workspace-menu="true"
       onClick={onToggleMenu}
       className={cn(
-        'rounded-md border border-border bg-background px-2 py-1 text-sm text-muted-foreground hover:text-foreground',
+        'inline-flex items-center justify-center rounded-md border border-border bg-background text-sm leading-none text-muted-foreground hover:text-foreground',
+        WORKSPACE_ICON_BUTTON_DIMENSION_CLASS,
         menuOpen && 'border-emerald-400 text-foreground',
       )}
       aria-label="Workspace options"
@@ -643,11 +696,11 @@ function CollaboratorBanners({
                   : undefined
               }
               className={cn(
-                'rounded border px-1.5 py-0.5 text-micro',
+                HOUSE_COLLABORATOR_CHIP_CLASS,
                 isRemoved
-                  ? 'border-red-300 bg-red-50 text-red-700'
-                  : 'border-emerald-300 bg-emerald-50 text-emerald-700',
-                canManage ? 'cursor-pointer' : 'cursor-not-allowed opacity-70',
+                  ? HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS
+                  : HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS,
+                canManage ? HOUSE_COLLABORATOR_CHIP_MANAGEABLE_CLASS : HOUSE_COLLABORATOR_CHIP_READONLY_CLASS,
               )}
             >
               {collaborator}
@@ -1433,7 +1486,7 @@ export function WorkspacesPage() {
                     <select
                       value={filterKey}
                       onChange={(event) => setFilterKey(event.target.value as FilterKey)}
-                      className={cn('h-9 rounded-md bg-background px-2 text-sm', HOUSE_SELECT_CLASS)}
+                      className={HOUSE_WORKSPACE_FILTER_SELECT_CLASS}
                     >
                       {FILTER_OPTIONS.map((option) => (
                         <option key={option.key} value={option.key}>
@@ -1445,7 +1498,7 @@ export function WorkspacesPage() {
                       <select
                         value={sortColumn}
                         onChange={(event) => onSort(event.target.value as SortColumn)}
-                        className={cn('h-9 rounded-md bg-background px-2 text-sm', HOUSE_SELECT_CLASS)}
+                        className={HOUSE_WORKSPACE_FILTER_SELECT_CLASS}
                       >
                         <option value="updatedAt">Sort: Updated</option>
                         <option value="name">Sort: Name</option>
@@ -1464,11 +1517,16 @@ export function WorkspacesPage() {
                       </Button>
                     ) : null}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className={cn(HOUSE_SECTION_TOOLS_CLASS, HOUSE_SECTION_TOOLS_WORKSPACE_CLASS)}>
                     <Button
                       type="button"
                       size="sm"
-                      className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS, 'xl:hidden')}
+                      className={cn(
+                        HOUSE_ACTION_BUTTON_CLASS,
+                        HOUSE_BUTTON_TEXT_CLASS,
+                        HOUSE_SECTION_TOOL_BUTTON_CLASS,
+                        'xl:hidden',
+                      )}
                       onClick={() => setWorkspaceDrilldownMobileOpen(true)}
                     >
                       <PanelRightOpen className="mr-1 h-3.5 w-3.5" />
@@ -1477,7 +1535,12 @@ export function WorkspacesPage() {
                     <Button
                       type="button"
                       size="sm"
-                      className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS, 'hidden xl:inline-flex')}
+                      className={cn(
+                        HOUSE_ACTION_BUTTON_CLASS,
+                        HOUSE_BUTTON_TEXT_CLASS,
+                        HOUSE_SECTION_TOOL_BUTTON_CLASS,
+                        'hidden xl:inline-flex',
+                      )}
                       onClick={() => setWorkspaceDrilldownDesktopOpen((current) => !current)}
                     >
                       {workspaceDrilldownDesktopOpen ? (
@@ -1491,11 +1554,11 @@ export function WorkspacesPage() {
                       type="button"
                       onClick={() => setViewMode('table')}
                       className={cn(
-                        'rounded-md border px-2 py-1.5 text-sm',
+                        'h-8 rounded-full px-3 text-sm',
                         HOUSE_BUTTON_TEXT_CLASS,
-                        viewMode === 'table'
-                          ? 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))]'
-                          : 'border-border bg-background text-muted-foreground',
+                        HOUSE_SECTION_TOOL_BUTTON_CLASS,
+                        HOUSE_SECTION_TOOL_TOGGLE_CLASS,
+                        viewMode === 'table' ? HOUSE_SECTION_TOOL_TOGGLE_ON_CLASS : HOUSE_SECTION_TOOL_TOGGLE_OFF_CLASS,
                       )}
                     >
                       Table
@@ -1504,11 +1567,11 @@ export function WorkspacesPage() {
                       type="button"
                       onClick={() => setViewMode('cards')}
                       className={cn(
-                        'rounded-md border px-2 py-1.5 text-sm',
+                        'h-8 rounded-full px-3 text-sm',
                         HOUSE_BUTTON_TEXT_CLASS,
-                        viewMode === 'cards'
-                          ? 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))]'
-                          : 'border-border bg-background text-muted-foreground',
+                        HOUSE_SECTION_TOOL_BUTTON_CLASS,
+                        HOUSE_SECTION_TOOL_TOGGLE_CLASS,
+                        viewMode === 'cards' ? HOUSE_SECTION_TOOL_TOGGLE_ON_CLASS : HOUSE_SECTION_TOOL_TOGGLE_OFF_CLASS,
                       )}
                     >
                       Cards
@@ -1543,7 +1606,6 @@ export function WorkspacesPage() {
                               onSort={onSort}
                             />
                           </th>
-                          <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Last activity</th>
                           <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>
                             <SortableHeader
                               label="Status"
@@ -1563,6 +1625,7 @@ export function WorkspacesPage() {
                             firstUnreadMessageId: null,
                             lastActivityAt: workspace.updatedAt,
                           }
+                          const ownerLabel = workspaceOwnerLabel(workspace, workspaceOwnerName)
                           return (
                             <tr
                               key={workspace.id}
@@ -1573,21 +1636,43 @@ export function WorkspacesPage() {
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="min-w-0 flex-1">
                                     {renamingWorkspaceId === workspace.id ? (
-                                      <div className="space-y-2" onClick={(event) => event.stopPropagation()}>
+                                      <div className="flex items-center gap-1.5" onClick={(event) => event.stopPropagation()}>
                                         <Input
                                           value={renameDraft}
                                           onChange={(event) => setRenameDraft(event.target.value)}
-                                          className="h-8"
+                                          onKeyDown={(event) => {
+                                            if (event.key === 'Enter') {
+                                              event.preventDefault()
+                                              onSaveRenameWorkspace(workspace)
+                                            } else if (event.key === 'Escape') {
+                                              event.preventDefault()
+                                              onCancelRenameWorkspace()
+                                            }
+                                          }}
+                                          className={cn('h-8 w-full', HOUSE_INPUT_CLASS)}
                                           autoFocus
                                         />
-                                        <div className="flex items-center gap-2">
-                                          <Button type="button" size="sm" onClick={() => onSaveRenameWorkspace(workspace)}>
-                                            Save
-                                          </Button>
-                                          <Button type="button" size="sm" variant="outline" onClick={onCancelRenameWorkspace}>
-                                            Cancel
-                                          </Button>
-                                        </div>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          className={cn(HOUSE_SUCCESS_ACTION_BUTTON_CLASS, WORKSPACE_ICON_BUTTON_DIMENSION_CLASS)}
+                                          onClick={() => onSaveRenameWorkspace(workspace)}
+                                          disabled={!renameDraft.trim() || renameDraft.trim() === workspace.name.trim()}
+                                          aria-label={`Save rename for ${workspace.name}`}
+                                          title="Save rename"
+                                        >
+                                          <Save className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          className={cn(HOUSE_DANGER_ACTION_BUTTON_CLASS, WORKSPACE_ICON_BUTTON_DIMENSION_CLASS)}
+                                          onClick={onCancelRenameWorkspace}
+                                          aria-label="Cancel rename"
+                                          title="Cancel rename"
+                                        >
+                                          <X className="h-4 w-4" />
+                                        </Button>
                                       </div>
                                     ) : (
                                       <>
@@ -1605,7 +1690,7 @@ export function WorkspacesPage() {
                                   />
                                 </div>
                               </td>
-                              <td className={cn('px-3 py-2 align-middle text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>{workspace.ownerName}</td>
+                              <td className={cn('px-3 py-2 align-middle text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>{ownerLabel}</td>
                               <td className={cn('px-3 py-2 align-middle text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>
                                 <CollaboratorBanners
                                   workspace={workspace}
@@ -1615,9 +1700,6 @@ export function WorkspacesPage() {
                                 />
                               </td>
                               <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>{workspaceStage(workspace)}</td>
-                              <td className={cn('px-3 py-2 align-middle text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                                {formatTimestamp(signal.lastActivityAt)}
-                              </td>
                               <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
                                 <div className="flex items-center gap-2">
                                   <span
@@ -1659,6 +1741,7 @@ export function WorkspacesPage() {
                         firstUnreadMessageId: null,
                         lastActivityAt: workspace.updatedAt,
                       }
+                      const ownerLabel = workspaceOwnerLabel(workspace, workspaceOwnerName)
                       return (
                         <button
                           key={workspace.id}
@@ -1669,21 +1752,43 @@ export function WorkspacesPage() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             {renamingWorkspaceId === workspace.id ? (
-                              <div className="space-y-2" onClick={(event) => event.stopPropagation()}>
+                              <div className="flex items-center gap-1.5" onClick={(event) => event.stopPropagation()}>
                                 <Input
                                   value={renameDraft}
                                   onChange={(event) => setRenameDraft(event.target.value)}
-                                  className="h-8"
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter') {
+                                      event.preventDefault()
+                                      onSaveRenameWorkspace(workspace)
+                                    } else if (event.key === 'Escape') {
+                                      event.preventDefault()
+                                      onCancelRenameWorkspace()
+                                    }
+                                  }}
+                                  className={cn('h-8 w-full', HOUSE_INPUT_CLASS)}
                                   autoFocus
                                 />
-                                <div className="flex items-center gap-2">
-                                  <Button type="button" size="sm" onClick={() => onSaveRenameWorkspace(workspace)}>
-                                    Save
-                                  </Button>
-                                  <Button type="button" size="sm" variant="outline" onClick={onCancelRenameWorkspace}>
-                                    Cancel
-                                  </Button>
-                                </div>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className={cn(HOUSE_SUCCESS_ACTION_BUTTON_CLASS, WORKSPACE_ICON_BUTTON_DIMENSION_CLASS)}
+                                  onClick={() => onSaveRenameWorkspace(workspace)}
+                                  disabled={!renameDraft.trim() || renameDraft.trim() === workspace.name.trim()}
+                                  aria-label={`Save rename for ${workspace.name}`}
+                                  title="Save rename"
+                                >
+                                  <Save className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className={cn(HOUSE_DANGER_ACTION_BUTTON_CLASS, WORKSPACE_ICON_BUTTON_DIMENSION_CLASS)}
+                                  onClick={onCancelRenameWorkspace}
+                                  aria-label="Cancel rename"
+                                  title="Cancel rename"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
                               </div>
                             ) : (
                               <>
@@ -1691,7 +1796,7 @@ export function WorkspacesPage() {
                                   {workspace.pinned ? <Pin size={13} className="shrink-0 text-emerald-600" aria-label="Pinned workspace" /> : null}
                                   <span className="truncate">{workspace.name}</span>
                                 </p>
-                                <p className="mt-1 text-xs text-muted-foreground">Owner {workspace.ownerName}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">{ownerLabel === 'You' ? 'You' : `Owner ${ownerLabel}`}</p>
                                 <div className="mt-2 space-y-1" onClick={(event) => event.stopPropagation()}>
                                   <p className="text-xs text-muted-foreground">Collaborators</p>
                                   <CollaboratorBanners

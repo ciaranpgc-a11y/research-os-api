@@ -111,6 +111,8 @@ export const houseForms = {
   actionButton: 'house-button-action',
   actionButtonPrimary: 'house-button-action-primary',
   actionButtonGhost: 'house-button-action-ghost',
+  actionButtonSuccess: 'house-button-action-success',
+  actionButtonDanger: 'house-button-action-danger',
 } as const
 
 export const houseCollaborators = {
@@ -123,6 +125,12 @@ export const houseCollaborators = {
   candidateIdle: 'house-collaborator-candidate-idle',
   candidateMeta: 'house-collaborator-candidate-meta',
   candidateSource: 'house-collaborator-candidate-source',
+  chip: 'house-collaborator-chip',
+  chipActive: 'house-collaborator-chip-active',
+  chipRemoved: 'house-collaborator-chip-removed',
+  chipManageable: 'house-collaborator-chip-manageable',
+  chipReadOnly: 'house-collaborator-chip-readonly',
+  chipAction: 'house-collaborator-chip-action',
 } as const
 
 export const houseChartColors = {
@@ -231,6 +239,8 @@ export const houseElements = {
   actionButton: houseForms.actionButton,
   actionButtonPrimary: houseForms.actionButtonPrimary,
   actionButtonGhost: houseForms.actionButtonGhost,
+  actionButtonSuccess: houseForms.actionButtonSuccess,
+  actionButtonDanger: houseForms.actionButtonDanger,
   collaboratorListShell: houseCollaborators.listShell,
   collaboratorListViewport: houseCollaborators.listViewport,
   collaboratorListViewportCompact: houseCollaborators.listViewportCompact,
@@ -240,6 +250,12 @@ export const houseElements = {
   collaboratorCandidateIdle: houseCollaborators.candidateIdle,
   collaboratorCandidateMeta: houseCollaborators.candidateMeta,
   collaboratorCandidateSource: houseCollaborators.candidateSource,
+  collaboratorChip: houseCollaborators.chip,
+  collaboratorChipActive: houseCollaborators.chipActive,
+  collaboratorChipRemoved: houseCollaborators.chipRemoved,
+  collaboratorChipManageable: houseCollaborators.chipManageable,
+  collaboratorChipReadOnly: houseCollaborators.chipReadOnly,
+  collaboratorChipAction: houseCollaborators.chipAction,
   topPanel: houseSurfaces.topPanel,
   sectionPanel: houseSurfaces.sectionPanel,
   softPanel: houseSurfaces.softPanel,

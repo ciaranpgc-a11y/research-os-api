@@ -5,10 +5,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 import hashlib
 import math
+import os
 import re
+import time
 from statistics import mean
 from typing import Any
+import xml.etree.ElementTree as ET
 
+import httpx
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -51,13 +55,32 @@ METRICS_PROVIDER_PRIORITY = {
     "manual": 10,
 }
 METRICS_SYNC_MAX_WORKERS = 6
+PUBMED_FETCH_TIMEOUT_SECONDS = max(
+    5.0, float(os.getenv("PUBMED_FETCH_TIMEOUT_SECONDS", "12"))
+)
+PUBMED_FETCH_RETRY_COUNT = max(0, int(os.getenv("PUBMED_FETCH_RETRY_COUNT", "1")))
+PUBMED_FETCH_MAX_WORKERS = max(1, int(os.getenv("PUBMED_FETCH_MAX_WORKERS", "6")))
+PUBMED_ARTICLE_TYPE_PRIORITY = 100
+RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 PMID_PATTERNS = [
     re.compile(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", re.IGNORECASE),
     re.compile(r"/pubmed/(\d+)", re.IGNORECASE),
     re.compile(r"pmid[:\s]+(\d+)", re.IGNORECASE),
 ]
-ARTICLE_TYPE_REVIEW_PATTERN = re.compile(
-    r"\b(systematic review|meta[-\s]?analysis|scoping review|narrative review|literature review|umbrella review|rapid review|review)\b",
+ARTICLE_TYPE_META_ANALYSIS_PATTERN = re.compile(
+    r"\b(meta[-\s]?analysis|pooled analysis)\b",
+    re.IGNORECASE,
+)
+ARTICLE_TYPE_SCOPING_PATTERN = re.compile(
+    r"\b(scoping review|evidence map)\b",
+    re.IGNORECASE,
+)
+ARTICLE_TYPE_SR_PATTERN = re.compile(
+    r"\b(systematic review|umbrella review|rapid review)\b",
+    re.IGNORECASE,
+)
+ARTICLE_TYPE_LITERATURE_PATTERN = re.compile(
+    r"\b(literature review|narrative review|review article|review)\b",
     re.IGNORECASE,
 )
 ARTICLE_TYPE_EDITORIAL_PATTERN = re.compile(
@@ -79,12 +102,18 @@ def _normalize_publication_type_hint(value: Any) -> str:
     return re.sub(r"[\s_]+", "-", str(value or "").strip().lower())
 
 
-def _infer_journal_article_type_from_title(title: str) -> str:
+def _infer_article_type_from_title(title: str) -> str:
     clean_title = re.sub(r"\s+", " ", str(title or "").strip())
     if not clean_title:
         return "Original"
-    if ARTICLE_TYPE_REVIEW_PATTERN.search(clean_title):
-        return "Review"
+    if ARTICLE_TYPE_META_ANALYSIS_PATTERN.search(clean_title):
+        return "Meta-analysis"
+    if ARTICLE_TYPE_SCOPING_PATTERN.search(clean_title):
+        return "Scoping"
+    if ARTICLE_TYPE_SR_PATTERN.search(clean_title):
+        return "SR"
+    if ARTICLE_TYPE_LITERATURE_PATTERN.search(clean_title):
+        return "Literature"
     if ARTICLE_TYPE_EDITORIAL_PATTERN.search(clean_title):
         return "Editorial"
     if ARTICLE_TYPE_CASE_PATTERN.search(clean_title):
@@ -115,8 +144,26 @@ def _infer_article_type_for_work(
     ]
 
     for hint in hints:
-        if hint in {"review", "review-article"}:
-            return "Review"
+        if hint in {
+            "systematic-review",
+            "meta-analysis",
+            "scoping-review",
+            "umbrella-review",
+            "rapid-review",
+        }:
+            inferred = _infer_article_type_from_title(title)
+            if inferred in {"Meta-analysis", "Scoping", "SR"}:
+                return inferred
+            if hint == "meta-analysis":
+                return "Meta-analysis"
+            if hint == "scoping-review":
+                return "Scoping"
+            return "SR"
+        if hint in {"review", "review-article", "narrative-review", "literature-review"}:
+            inferred = _infer_article_type_from_title(title)
+            if inferred in {"Meta-analysis", "Scoping", "SR", "Literature"}:
+                return inferred
+            return "Literature"
         if hint in {"editorial", "commentary", "perspective", "opinion"}:
             return "Editorial"
         if hint in {"letter", "correspondence"}:
@@ -133,8 +180,134 @@ def _infer_article_type_for_work(
         "original-article",
         "original-research",
     }
+    conference_like_hints = {
+        "conference-paper",
+        "conference-abstract",
+        "conference-poster",
+        "conference-presentation",
+        "meeting-abstract",
+        "proceedings",
+        "proceedings-article",
+    }
     if any(hint in journal_like_hints for hint in hints):
-        return _infer_journal_article_type_from_title(title)
+        return _infer_article_type_from_title(title)
+    if any(hint in conference_like_hints for hint in hints):
+        return _infer_article_type_from_title(title)
+    return None
+
+
+def _pubmed_request_xml(pmid: str) -> str:
+    url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+    params = {"db": "pubmed", "id": pmid, "retmode": "xml"}
+    with httpx.Client(timeout=PUBMED_FETCH_TIMEOUT_SECONDS) as client:
+        response: httpx.Response | None = None
+        for attempt in range(PUBMED_FETCH_RETRY_COUNT + 1):
+            response = client.get(url, params=params)
+            if (
+                response.status_code not in RETRYABLE_STATUS_CODES
+                or attempt >= PUBMED_FETCH_RETRY_COUNT
+            ):
+                break
+            time.sleep(0.3 * (attempt + 1))
+        if response is None or response.status_code >= 400:
+            return ""
+        return str(response.text or "")
+
+
+def _fetch_pubmed_publication_types(pmid: str) -> list[str]:
+    xml_text = _pubmed_request_xml(str(pmid).strip())
+    if not xml_text.strip():
+        return []
+    try:
+        root = ET.fromstring(xml_text)
+    except Exception:
+        return []
+
+    values: list[str] = []
+    seen: set[str] = set()
+    for node in root.findall(".//PublicationTypeList/PublicationType"):
+        text = re.sub(r"\s+", " ", str(node.text or "").strip())
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        values.append(text)
+    return values
+
+
+def _fetch_pubmed_publication_types_batch(pmids: list[str]) -> dict[str, list[str]]:
+    normalized = [str(item).strip() for item in pmids if str(item).strip().isdigit()]
+    unique_pmids: list[str] = list(dict.fromkeys(normalized))
+    if not unique_pmids:
+        return {}
+    results: dict[str, list[str]] = {}
+    max_workers = max(1, min(PUBMED_FETCH_MAX_WORKERS, len(unique_pmids)))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_index = {
+            executor.submit(_fetch_pubmed_publication_types, pmid): pmid
+            for pmid in unique_pmids
+        }
+        for future in as_completed(future_index):
+            pmid = future_index[future]
+            try:
+                results[pmid] = future.result()
+            except Exception:
+                results[pmid] = []
+    return results
+
+
+def _classify_pubmed_publication_types(
+    *, publication_types: list[str], title: str
+) -> str | None:
+    lowered = [re.sub(r"\s+", " ", item.strip().lower()) for item in publication_types]
+    if not lowered:
+        return None
+
+    if any("meta-analysis" in item for item in lowered):
+        return "Meta-analysis"
+    if any("scoping review" in item for item in lowered):
+        return "Scoping"
+    if any(
+        item in {"systematic review", "umbrella review", "rapid review"}
+        for item in lowered
+    ):
+        return "SR"
+    if any("review" in item for item in lowered):
+        inferred = _infer_article_type_from_title(title)
+        if inferred in {"Meta-analysis", "Scoping", "SR", "Literature"}:
+            return inferred
+        return "Literature"
+    if any("editorial" in item for item in lowered):
+        return "Editorial"
+    if any(item in {"letter", "comment"} or "correspondence" in item for item in lowered):
+        return "Letter"
+    if any("case reports" in item or "case report" in item for item in lowered):
+        return "Case report"
+    if any("protocol" in item for item in lowered):
+        return "Protocol"
+    if any(
+        "congresses" in item
+        or "conference" in item
+        or "meeting abstract" in item
+        for item in lowered
+    ):
+        return "Conference abstract"
+    if any(
+        item in {
+            "journal article",
+            "clinical trial",
+            "randomized controlled trial",
+            "observational study",
+            "comparative study",
+            "evaluation study",
+            "multicenter study",
+            "validation study",
+        }
+        for item in lowered
+    ):
+        return "Original"
     return None
 
 
@@ -336,6 +509,7 @@ def upsert_work(
     year = int(year_raw) if str(year_raw).strip().isdigit() else None
     doi = _normalize_doi(work.get("doi"))
     url = str(work.get("url", "")).strip()
+    pmid = _extract_pmid(work.get("pmid")) or _extract_pmid(url)
     authors = work.get("authors", [])
     if not isinstance(authors, list):
         authors = []
@@ -356,6 +530,7 @@ def upsert_work(
             "title_lower": title_lower,
             "year": year,
             "doi": doi,
+            "pmid": pmid,
             "work_type": re.sub(r"\s+", " ", str(work.get("work_type", "")).strip()),
             "venue_name": re.sub(r"\s+", " ", str(work.get("venue_name", "")).strip()),
             "publisher": re.sub(r"\s+", " ", str(work.get("publisher", "")).strip()),
@@ -373,6 +548,7 @@ def upsert_work(
                 title_lower=mutable_fields["title_lower"],
                 year=mutable_fields["year"],
                 doi=mutable_fields["doi"],
+                pmid=mutable_fields["pmid"],
                 work_type=mutable_fields["work_type"],
                 venue_name=mutable_fields["venue_name"],
                 publisher=mutable_fields["publisher"],
@@ -396,6 +572,8 @@ def upsert_work(
                 existing.url = mutable_fields["url"]
             if doi and not existing.doi:
                 existing.doi = doi
+            if mutable_fields["pmid"] and not _extract_pmid(existing.pmid):
+                existing.pmid = mutable_fields["pmid"]
             existing.provenance = mutable_fields["provenance"] or existing.provenance
 
         if authors:
@@ -517,7 +695,7 @@ def list_works(*, user_id: str) -> list[dict[str, Any]]:
         for work in works:
             snapshot = latest_metrics.get(work.id)
             metric_payload = dict(snapshot.metric_payload or {}) if snapshot else {}
-            pmid = _extract_pmid(work.url)
+            pmid = _extract_pmid(work.pmid) or _extract_pmid(work.url)
             journal_metric = None
             derived_pmid, derived_metric = _extract_pmid_and_journal_metric(
                 metric_payload
@@ -887,7 +1065,7 @@ def sync_metrics(
                     "work_type": work.work_type,
                     "venue_name": work.venue_name,
                     "url": work.url,
-                    "pmid": _extract_pmid(work.url),
+                    "pmid": _extract_pmid(work.pmid) or _extract_pmid(work.url),
                 },
             )
             for work in works
@@ -952,6 +1130,7 @@ def sync_metrics(
                 )
 
     best_abstract_by_work: dict[str, tuple[int, str]] = {}
+    best_pmid_by_work: dict[str, tuple[int, str]] = {}
     best_article_type_by_work: dict[str, tuple[int, str]] = {}
     for row in metric_rows:
         work_id = str(row.get("work_id", "")).strip()
@@ -961,6 +1140,11 @@ def sync_metrics(
         work_payload = work_payload_by_id.get(work_id) or {}
         provider_name = str(row.get("provider", "")).strip().lower()
         priority = METRICS_PROVIDER_PRIORITY.get(provider_name, 0)
+        payload_pmid, _ = _extract_pmid_and_journal_metric(payload)
+        if payload_pmid:
+            existing_pmid = best_pmid_by_work.get(work_id)
+            if existing_pmid is None or priority > existing_pmid[0]:
+                best_pmid_by_work[work_id] = (priority, payload_pmid)
         article_type = _infer_article_type_for_work(
             work_payload=work_payload,
             metric_payload=payload,
@@ -977,13 +1161,45 @@ def sync_metrics(
         if existing is None or priority > existing[0]:
             best_abstract_by_work[work_id] = (priority, abstract)
 
+    resolved_pmid_by_work: dict[str, str] = {}
+    for work_id, work_payload in work_payload_by_id.items():
+        pmid_value = _extract_pmid(work_payload.get("pmid")) or _extract_pmid(
+            work_payload.get("url")
+        )
+        if pmid_value:
+            resolved_pmid_by_work[work_id] = pmid_value
+    for work_id, (_, pmid_value) in best_pmid_by_work.items():
+        resolved_pmid_by_work[work_id] = pmid_value
+
+    if resolved_pmid_by_work:
+        publication_types_by_pmid = _fetch_pubmed_publication_types_batch(
+            list(set(resolved_pmid_by_work.values()))
+        )
+        for work_id, pmid_value in resolved_pmid_by_work.items():
+            publication_types = publication_types_by_pmid.get(pmid_value, [])
+            if not publication_types:
+                continue
+            work_payload = work_payload_by_id.get(work_id) or {}
+            classified = _classify_pubmed_publication_types(
+                publication_types=publication_types,
+                title=str(work_payload.get("title", "")).strip(),
+            )
+            if not classified:
+                continue
+            best_article_type_by_work[work_id] = (
+                PUBMED_ARTICLE_TYPE_PRIORITY,
+                classified,
+            )
+
     synced = 0
     provider_counts: dict[str, int] = defaultdict(int)
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
         works_by_id: dict[str, Work] = {}
         hydrated_work_ids = list(
-            set(best_abstract_by_work.keys()) | set(best_article_type_by_work.keys())
+            set(best_abstract_by_work.keys())
+            | set(best_article_type_by_work.keys())
+            | set(resolved_pmid_by_work.keys())
         )
         if hydrated_work_ids:
             works = session.scalars(
@@ -1024,6 +1240,13 @@ def sync_metrics(
             if str(work.publication_type or "").strip() == article_type:
                 continue
             work.publication_type = article_type
+        for work_id, pmid_value in resolved_pmid_by_work.items():
+            work = works_by_id.get(work_id)
+            if work is None:
+                continue
+            if _extract_pmid(work.pmid):
+                continue
+            work.pmid = pmid_value
         session.flush()
 
     collaboration = recompute_collaborator_edges(user_id=user_id)
