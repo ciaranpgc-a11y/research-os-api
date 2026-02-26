@@ -385,6 +385,7 @@ def _serialize_library_asset(
     session,
     asset: DataLibraryAsset,
     requesting_user_id: str | None = None,
+    is_available: bool = True,
 ) -> dict[str, object]:
     owner_id = _trim(asset.owner_user_id) or None
     owner_user = session.get(User, owner_id) if owner_id else None
@@ -416,6 +417,7 @@ def _serialize_library_asset(
         "can_manage_access": bool(
             _trim(requesting_user_id) and _trim(requesting_user_id) == _trim(asset.owner_user_id)
         ),
+        "is_available": bool(is_available),
     }
 
 
@@ -1161,10 +1163,13 @@ def collect_library_reconcile_diagnostics(
         "metadata_sidecar_count": 0,
         "db_total_assets": 0,
         "db_owned_assets": 0,
+        "db_owned_assets_with_storage": 0,
+        "db_owned_assets_missing_storage": 0,
         "db_related_owned_assets": 0,
         "db_ownerless_assets": 0,
         "db_shared_assets": 0,
         "related_user_ids": [],
+        "missing_storage_asset_ids_sample": [],
         "account_key_hint": _trim(account_key_hint),
     }
     if not clean_user_id:
@@ -1236,6 +1241,22 @@ def collect_library_reconcile_diagnostics(
             )
             or 0
         )
+        owned_rows = session.scalars(
+            select(DataLibraryAsset).where(DataLibraryAsset.owner_user_id == clean_user_id)
+        ).all()
+        owned_with_storage = 0
+        missing_storage_ids: list[str] = []
+        for row in owned_rows:
+            if _resolve_existing_asset_path(row, storage_root) is not None:
+                owned_with_storage += 1
+                continue
+            if len(missing_storage_ids) < 20:
+                missing_storage_ids.append(_trim(row.id))
+        diagnostics["db_owned_assets_with_storage"] = int(owned_with_storage)
+        diagnostics["db_owned_assets_missing_storage"] = int(
+            max(0, len(owned_rows) - owned_with_storage)
+        )
+        diagnostics["missing_storage_asset_ids_sample"] = missing_storage_ids
 
     return diagnostics
 
@@ -1508,7 +1529,9 @@ def list_library_assets(
                         )
                     ]
         fallback_single_owner_user_id = _single_user_owner_id(session=session)
+        storage_available_by_asset_id: dict[str, bool] = {}
         for row in rows:
+            row_id = _trim(row.id)
             row_owner_user_id = _trim(row.owner_user_id)
             if (
                 row_owner_user_id
@@ -1544,7 +1567,11 @@ def list_library_assets(
                         row.owner_user_id = clean_user_id
             resolved_storage_path = _resolve_existing_asset_path(row, storage_root)
             if resolved_storage_path is None:
+                if row_id:
+                    storage_available_by_asset_id[row_id] = False
                 continue
+            if row_id:
+                storage_available_by_asset_id[row_id] = True
             resolved_storage_str = str(resolved_storage_path)
             if _trim(row.storage_path) != resolved_storage_str:
                 row.storage_path = resolved_storage_str
@@ -1558,13 +1585,16 @@ def list_library_assets(
             row
             for row in rows
             if _asset_accessible_for_user(session=session, asset=row, user_id=clean_user_id)
-            and _asset_storage_exists(row, storage_root)
         ]
         payload_items = [
             _serialize_library_asset(
                 session=session,
                 asset=row,
                 requesting_user_id=clean_user_id,
+                is_available=storage_available_by_asset_id.get(
+                    _trim(row.id),
+                    _asset_storage_exists(row, storage_root),
+                ),
             )
             for row in accessible_rows
         ]

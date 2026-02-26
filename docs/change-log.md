@@ -30,6 +30,36 @@
 - `pytest tests/test_api.py -k "admin_endpoints or admin_user_library_reconcile_failure_is_audited" -q`
 - `npm --prefix frontend run --silent typecheck`
 
+### Library Visibility For Missing Storage + Reconcile Storage Diagnostics
+
+- **Area:** Data library continuity when DB rows exist but backing file paths are missing.
+- **What changed:**
+- Updated library listing so assets are no longer hidden when storage files are missing; records now remain visible with `is_available=false`.
+- Added storage availability surfacing in UI:
+  - workspace-home Data Library table shows `Storage missing` row state and disables download for unavailable files,
+  - workspace Data panel personal-library picker marks unavailable files and disables pull/download actions.
+- Extended reconcile diagnostics to include explicit storage-health counters:
+  - `db_owned_assets_with_storage`,
+  - `db_owned_assets_missing_storage`,
+  - `missing_storage_asset_ids_sample`.
+- Updated admin reconcile status/detail formatting to call out missing-storage counts when reconcile is a no-op.
+- **Why it changed:**
+- Prevent the “library looks empty even though owned assets exist” failure mode and give admin an immediate explanation of whether the issue is ownership linkage vs storage loss.
+- **Key files touched:**
+- `src/research_os/services/data_planner_service.py`
+- `src/research_os/api/schemas.py`
+- `frontend/src/types/study-core.ts`
+- `frontend/src/pages/workspaces-data-library-view.tsx`
+- `frontend/src/pages/results-page.tsx`
+- `frontend/src/pages/admin-page.tsx`
+- `tests/test_open_access_service.py`
+- **Verification performed:**
+- `python -m py_compile src/research_os/services/data_planner_service.py src/research_os/api/schemas.py`
+- `pytest tests/test_open_access_service.py -k "missing_storage" -q`
+- `pytest tests/test_data_library_resilience.py -k "list_library_assets" -q`
+- `pytest tests/test_api.py -k "admin_endpoints or admin_user_library_reconcile_failure_is_audited" -q`
+- `npm --prefix frontend run --silent typecheck`
+
 ### Admin User Library Recovery Controls + Identity Visibility
 
 - **Area:** Admin diagnostics for account-linked data recovery and identity consistency.

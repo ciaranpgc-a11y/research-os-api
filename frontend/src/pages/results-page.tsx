@@ -150,6 +150,10 @@ function normalizeName(value: string): string {
   return value.trim().replace(/\s+/g, ' ')
 }
 
+function isLibraryAssetAvailable(asset: LibraryAssetRecord): boolean {
+  return asset.is_available !== false
+}
+
 function resolveDataImportFileName(downloadName: string, fallbackAssetName: string): string {
   const preferred = String(downloadName || '').trim()
   if (!preferred) {
@@ -243,7 +247,7 @@ export function ResultsPage() {
 
   const selectedLibraryAssetSet = useMemo(() => new Set(libraryPickerSelection), [libraryPickerSelection])
   const selectablePickerAssets = useMemo(
-    () => persistedAssets.filter((asset) => !isAssetInCurrentWorkspace(asset)),
+    () => persistedAssets.filter((asset) => isLibraryAssetAvailable(asset) && !isAssetInCurrentWorkspace(asset)),
     [persistedAssets, isAssetInCurrentWorkspace],
   )
   const allPickerSelectableSelected = useMemo(() => {
@@ -324,6 +328,10 @@ export function ResultsPage() {
 
   const onDownloadLibraryAsset = useCallback(
     async (asset: LibraryAssetRecord) => {
+      if (!isLibraryAssetAvailable(asset)) {
+        setLibraryActionError(`'${asset.filename}' is currently unavailable (missing storage).`)
+        return
+      }
       const token = getAuthSessionToken()
       if (!token) {
         setLibraryActionError('Sign in to download files.')
@@ -358,6 +366,10 @@ export function ResultsPage() {
 
   const onPullLibraryAssetIntoWorkspace = useCallback(
     async (asset: LibraryAssetRecord) => {
+      if (!isLibraryAssetAvailable(asset)) {
+        setLibraryActionError(`'${asset.filename}' is currently unavailable (missing storage).`)
+        return
+      }
       const token = getAuthSessionToken()
       if (!token) {
         setLibraryActionError('Sign in to pull files into this workspace.')
@@ -441,7 +453,10 @@ export function ResultsPage() {
       return
     }
     const selectedAssets = persistedAssets.filter(
-      (asset) => selectedLibraryAssetSet.has(asset.id) && !isAssetInCurrentWorkspace(asset),
+      (asset) =>
+        selectedLibraryAssetSet.has(asset.id) &&
+        isLibraryAssetAvailable(asset) &&
+        !isAssetInCurrentWorkspace(asset),
     )
     if (selectedAssets.length === 0) {
       setLibraryActionError('No pullable datasets selected.')
@@ -701,6 +716,7 @@ export function ResultsPage() {
                           {recentlyUploadedAssets.map((entry) => {
                             const asset = persistedAssets.find((item) => item.id === entry.assetId)
                             const isInWorkspace = asset ? isAssetInCurrentWorkspace(asset) : workspaceImportedAssetIds.includes(entry.assetId)
+                            const isAvailable = asset ? isLibraryAssetAvailable(asset) : true
                             return (
                               <div key={entry.assetId} className="flex items-center justify-between gap-2 rounded-md border border-border/70 px-2 py-1.5">
                                 <p className="truncate text-xs">{entry.filename}</p>
@@ -709,9 +725,9 @@ export function ResultsPage() {
                                   variant="outline"
                                   size="sm"
                                   onClick={() => void onBringRecentUploadIntoWorkspace(entry.assetId)}
-                                  disabled={isInWorkspace || uploadBusy || persistSyncBusy}
+                                  disabled={!isAvailable || isInWorkspace || uploadBusy || persistSyncBusy}
                                 >
-                                  {isInWorkspace ? 'In current workspace' : 'Bring into current workspace'}
+                                  {!isAvailable ? 'Unavailable' : isInWorkspace ? 'In current workspace' : 'Bring into current workspace'}
                                 </Button>
                               </div>
                             )
@@ -764,6 +780,7 @@ export function ResultsPage() {
                     const checked = selectedLibraryAssetSet.has(asset.id)
                     const isBusy = libraryPickerPulling || libraryActionBusyAssetId === asset.id
                     const isInWorkspace = isAssetInCurrentWorkspace(asset)
+                    const isAvailable = isLibraryAssetAvailable(asset)
                     return (
                       <div key={asset.id} className="rounded-md border border-border/70 p-2">
                         <div className="flex items-start gap-2">
@@ -772,7 +789,7 @@ export function ResultsPage() {
                             className="mt-1 h-4 w-4 rounded border border-border"
                             checked={checked}
                             onChange={(event) => onToggleLibraryPickerAsset(asset.id, event.target.checked)}
-                            disabled={isBusy || isInWorkspace}
+                            disabled={isBusy || isInWorkspace || !isAvailable}
                             aria-label={`Select ${asset.filename}`}
                           />
                           <div className="min-w-0 flex-1">
@@ -781,6 +798,7 @@ export function ResultsPage() {
                               <div className="flex items-center gap-1">
                                 <Badge variant="outline">{asset.kind}</Badge>
                                 {isInWorkspace ? <Badge variant="outline">In workspace</Badge> : null}
+                                {!isAvailable ? <Badge variant="outline">Unavailable</Badge> : null}
                               </div>
                             </div>
                             <p className="text-xs text-muted-foreground">
@@ -789,25 +807,28 @@ export function ResultsPage() {
                             <p className="text-xs text-muted-foreground">
                               Owner: {normalizeName(String(asset.owner_name || '')) || 'Unknown'}
                             </p>
+                            {!isAvailable ? (
+                              <p className="text-xs text-[hsl(var(--tone-warning-900))]">Storage missing for this file.</p>
+                            ) : null}
                             <div className="flex flex-wrap items-center gap-2 pt-2">
                               <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
                                 onClick={() => void onDownloadLibraryAsset(asset)}
-                                disabled={isBusy}
+                                disabled={isBusy || !isAvailable}
                               >
                                 <Download className="mr-1 h-3.5 w-3.5" />
-                                Download
+                                {isAvailable ? 'Download' : 'Unavailable'}
                               </Button>
                               <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
                                 onClick={() => void onPullLibraryAssetIntoWorkspace(asset)}
-                                disabled={isBusy || isInWorkspace}
+                                disabled={isBusy || isInWorkspace || !isAvailable}
                               >
-                                {isInWorkspace ? 'In current workspace' : 'Bring into current workspace'}
+                                {!isAvailable ? 'Unavailable' : isInWorkspace ? 'In current workspace' : 'Bring into current workspace'}
                               </Button>
                             </div>
                           </div>

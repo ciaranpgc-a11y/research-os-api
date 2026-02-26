@@ -391,6 +391,7 @@ function summarizeAuditDetails(item: AdminAuditEventPayload): string {
   const metadata = readMetadataRecord(item.metadata)
   if (item.action === 'user_library_reconcile') {
     const summary = readMetadataRecord(metadata.reconcile_summary)
+    const diagnosticsAfter = readMetadataRecord(metadata.diagnostics_after)
     const before = readNumber(metadata.owned_assets_before)
     const after = readNumber(metadata.owned_assets_after)
     const restored = readNumber(summary.restored_rows)
@@ -398,13 +399,16 @@ function summarizeAuditDetails(item: AdminAuditEventPayload): string {
     const recovered = readNumber(summary.identity_recovered_rows)
     const canonicalized = readNumber(summary.canonicalized_owner_rows)
     const noChanges = readBoolean(metadata.no_changes_detected)
+    const missingStorage = readNumber(diagnosticsAfter.db_owned_assets_missing_storage)
     if (item.status !== 'success') {
       const errorType = readText(metadata.error_type) || 'ReconcileError'
       const errorDetail = readText(metadata.error_detail) || readText(metadata.failure) || 'Unknown failure'
       return `${errorType}: ${errorDetail}`
     }
     if (noChanges) {
-      return `No changes detected. Owned assets ${before} -> ${after}.`
+      return missingStorage > 0
+        ? `No changes detected. Owned assets ${before} -> ${after}. Missing storage: ${missingStorage}.`
+        : `No changes detected. Owned assets ${before} -> ${after}.`
     }
     return `Owned assets ${before} -> ${after}; restored ${restored}, claimed ${claimed}, identity ${recovered}, canonicalized ${canonicalized}.`
   }
@@ -687,9 +691,13 @@ export function AdminPage() {
       const afterCount = Number(payload.owned_assets_after || 0)
       const diagnostics = readMetadataRecord(payload.diagnostics)
       const noChanges = readBoolean(diagnostics.no_changes_detected)
+      const diagnosticsAfter = readMetadataRecord(diagnostics.after)
+      const missingStorage = readNumber(diagnosticsAfter.db_owned_assets_missing_storage)
       setStatus(
         noChanges
-          ? `${payload.message} Owned assets: ${beforeCount} -> ${afterCount}. No changes were detected; review reconcile tracker for diagnostics.`
+          ? missingStorage > 0
+            ? `${payload.message} Owned assets: ${beforeCount} -> ${afterCount}. No changes detected; ${missingStorage} file(s) are missing from storage.`
+            : `${payload.message} Owned assets: ${beforeCount} -> ${afterCount}. No changes were detected; review reconcile tracker for diagnostics.`
           : `${payload.message} Owned assets: ${beforeCount} -> ${afterCount}.`,
       )
       await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)

@@ -366,6 +366,7 @@ export type LibraryAssetRecord = {
   shared_with_user_ids?: string[]
   shared_with?: Array<{ user_id: string; name: string }>
   can_manage_access?: boolean
+  is_available?: boolean
 }
 
 export type LibraryAssetSortBy = 'uploaded_at' | 'filename' | 'byte_size' | 'kind' | 'owner_name'

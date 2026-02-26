@@ -4471,8 +4471,28 @@ export function PublicationsTopStrip({
       <Card className={HOUSE_SURFACE_PANEL_BARE_CLASS}>
         <CardContent className="p-0">
           <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5">
-            <div className="min-w-0">
+            <div className="min-w-0 flex items-center gap-2">
               <p className={HOUSE_HEADING_SECTION_TITLE_CLASS}>Publication insights</p>
+              <Button
+                type="button"
+                data-stop-tile-open="true"
+                variant="house"
+                size="icon"
+                className={cn(
+                  'h-8 w-8 house-publications-action-icon house-publications-action-eye',
+                  HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS,
+                  HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_CLASS,
+                  insightsVisible
+                    ? HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_ON_CLASS
+                    : HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_OFF_CLASS,
+                )}
+                onClick={() => setInsightsVisible((current) => !current)}
+                aria-pressed={insightsVisible}
+                aria-label={insightsVisible ? 'Set publication insights not visible' : 'Set publication insights visible'}
+                title={insightsVisible ? 'Publication insights visible' : 'Publication insights hidden'}
+              >
+                {insightsVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+              </Button>
               {metrics?.status === 'FAILED' ? (
                 <p className={cn('mt-1', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>Last update failed</p>
               ) : null}
@@ -4483,6 +4503,13 @@ export function PublicationsTopStrip({
                 HOUSE_ACTIONS_SECTION_TOOLS_CLASS,
                 HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS,
               )}
+              style={{
+                borderRadius: '0',
+                border: '0',
+                background: 'transparent',
+                padding: '0',
+                gap: '0.16rem',
+              }}
               data-stop-tile-open="true"
             >
               {insightsVisible ? (
@@ -4498,7 +4525,6 @@ export function PublicationsTopStrip({
                     <FileText className="h-3.5 w-3.5" />
                     <span>Generate report</span>
                   </Button>
-                  <span className={HOUSE_ACTIONS_SECTION_TOOL_DIVIDER_CLASS} aria-hidden="true" />
                   <div className="house-publications-action-icons">
                     <Button
                       type="button"
@@ -4525,26 +4551,6 @@ export function PublicationsTopStrip({
                   </div>
                 </>
               ) : null}
-              <Button
-                type="button"
-                data-stop-tile-open="true"
-                variant="house"
-                size="icon"
-                className={cn(
-                  'h-8 w-8 house-publications-action-icon house-publications-action-eye',
-                  HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS,
-                  HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_CLASS,
-                  insightsVisible
-                    ? HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_ON_CLASS
-                    : HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_OFF_CLASS,
-                )}
-                onClick={() => setInsightsVisible((current) => !current)}
-                aria-pressed={insightsVisible}
-                aria-label={insightsVisible ? 'Set publication insights not visible' : 'Set publication insights visible'}
-                title={insightsVisible ? 'Publication insights visible' : 'Publication insights hidden'}
-              >
-                {insightsVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-              </Button>
             </div>
           </div>
 

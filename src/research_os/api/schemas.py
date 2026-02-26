@@ -435,6 +435,7 @@ class LibraryAssetResponse(BaseModel):
     shared_with_user_ids: list[str] = Field(default_factory=list)
     shared_with: list[LibraryAssetAccessMemberResponse] = Field(default_factory=list)
     can_manage_access: bool = False
+    is_available: bool = True
 
 
 class LibraryAssetListResponse(BaseModel):

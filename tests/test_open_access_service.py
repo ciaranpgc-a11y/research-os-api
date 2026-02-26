@@ -190,7 +190,7 @@ def test_open_access_discovery_returns_no_match_when_lookup_fails(
     assert payload["records"][0]["status"] == "no_match"
 
 
-def test_list_library_assets_skips_entries_with_missing_storage(
+def test_list_library_assets_marks_entries_with_missing_storage_unavailable(
     monkeypatch, tmp_path
 ) -> None:
     _set_test_environment(monkeypatch, tmp_path)
@@ -223,9 +223,14 @@ def test_list_library_assets_skips_entries_with_missing_storage(
         stale_path.unlink(missing_ok=True)
 
     payload = list_library_assets(project_id=None, user_id=user_id)
-    listed_ids = [str(item.get("id")) for item in payload.get("items", [])]
+    listed_by_id = {
+        str(item.get("id")): item for item in payload.get("items", [])
+    }
+    listed_ids = list(listed_by_id.keys())
     assert fresh_asset_id in listed_ids
-    assert stale_asset_id not in listed_ids
+    assert stale_asset_id in listed_ids
+    assert bool(listed_by_id[fresh_asset_id].get("is_available")) is True
+    assert bool(listed_by_id[stale_asset_id].get("is_available")) is False
 
 
 def test_list_library_assets_migrates_legacy_storage_to_stable_root(

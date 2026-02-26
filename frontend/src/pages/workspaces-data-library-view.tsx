@@ -67,6 +67,10 @@ function formatBytes(bytes: number): string {
   return `${size.toFixed(precision)} ${unit}`
 }
 
+function isAssetAvailable(asset: LibraryAssetRecord): boolean {
+  return asset.is_available !== false
+}
+
 function libraryAssetAccessMembers(asset: LibraryAssetRecord): Array<{ user_id: string; name: string }> {
   if (Array.isArray(asset.shared_with) && asset.shared_with.length > 0) {
     return asset.shared_with.map((item) => ({
@@ -208,6 +212,10 @@ export function WorkspacesDataLibraryView() {
   }
 
   const onDownloadAsset = useCallback(async (asset: LibraryAssetRecord) => {
+    if (!isAssetAvailable(asset)) {
+      setError(`'${asset.filename}' is currently unavailable (missing storage).`)
+      return
+    }
     const token = getAuthSessionToken()
     if (!token) {
       setError('Sign in to download files.')
@@ -396,6 +404,10 @@ export function WorkspacesDataLibraryView() {
     () => assets.filter((asset) => Boolean(asset.can_manage_access)).length,
     [assets],
   )
+  const unavailableAssetCount = useMemo(
+    () => assets.filter((asset) => !isAssetAvailable(asset)).length,
+    [assets],
+  )
   const sharedAssetCount = Math.max(0, assets.length - ownedAssetCount)
   const totalPages = Math.max(1, Math.ceil(Math.max(0, total) / Math.max(1, pageSize)))
   const visibleStart = total === 0 ? 0 : (page - 1) * pageSize + 1
@@ -420,6 +432,11 @@ export function WorkspacesDataLibraryView() {
           <span className="inline-flex items-center rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
             Shared {sharedAssetCount}
           </span>
+          {unavailableAssetCount > 0 ? (
+            <span className="inline-flex items-center rounded border border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] px-2 py-1 text-xs text-[hsl(var(--tone-warning-900))]">
+              Missing storage {unavailableAssetCount}
+            </span>
+          ) : null}
           <Button
             type="button"
             size="sm"
@@ -525,6 +542,7 @@ export function WorkspacesDataLibraryView() {
                   const accessMembers = libraryAssetAccessMembers(asset)
                   const isBusy = busyAssetId === asset.id
                   const lookupBusy = lookupBusyAssetId === asset.id
+                  const available = isAssetAvailable(asset)
                   const ownerName = normalizeName(asset.owner_name || '') || 'Unknown'
                   const searchQuery = collaboratorQueryByAssetId[asset.id] || ''
                   const matches = collaboratorLookupByAssetId[asset.id] || []
@@ -536,6 +554,7 @@ export function WorkspacesDataLibraryView() {
                       <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
                         <p className="font-medium">{asset.filename}</p>
                         <p className="text-xs text-muted-foreground">{asset.kind.toUpperCase()}</p>
+                        {!available ? <p className="text-xs text-[hsl(var(--tone-warning-900))]">Storage missing</p> : null}
                       </td>
                       <td className={cn('px-3 py-2 align-middle text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>
                         {ownerName}
@@ -657,10 +676,10 @@ export function WorkspacesDataLibraryView() {
                           size="sm"
                           className={HOUSE_ACTION_BUTTON_CLASS}
                           onClick={() => void onDownloadAsset(asset)}
-                          disabled={isBusy}
+                          disabled={isBusy || !available}
                         >
                           {isBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
-                          Download
+                          {available ? 'Download' : 'Unavailable'}
                         </Button>
                       </td>
                     </tr>

@@ -98,6 +98,7 @@ Out of scope (v1):
   - reconcile failures now persist structured audit metadata (`error_type`, `error_detail`, traceback tail, diagnostics-before snapshot),
   - reconcile success payload includes diagnostics (`before`, `after`, `no_changes_detected`),
   - Users section now includes a `Reconcile tracker` table and Security audit table now surfaces metadata details.
+  - reconcile diagnostics now include storage-health counters (`db_owned_assets_with_storage`, `db_owned_assets_missing_storage`, sample missing IDs) so no-op reconciles can be attributed to storage loss vs identity mismatch.
 - Updated bootstrap seed behavior so startup bootstrap no longer overwrites an existing user name unless explicitly enabled via `AAWE_BOOTSTRAP_SYNC_NAME=1`.
 
 ## Verification
