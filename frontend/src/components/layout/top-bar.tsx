@@ -178,7 +178,7 @@ export function TopBar({
                   size="sm"
                   variant="outline"
                   className={cn(utilityButtonClass, 'px-3 text-label font-semibold')}
-                  onClick={() => navigate('/admin')}
+                  onClick={() => navigate('/admin/overview')}
                 >
                   Admin
                 </Button>

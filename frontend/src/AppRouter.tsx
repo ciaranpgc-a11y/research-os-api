@@ -133,7 +133,8 @@ export function AppRouter() {
         <Route path="/workspaces" element={<WorkspacesPage />} />
 
         <Route element={<RequireAdmin />}>
-          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/admin" element={<Navigate to="/admin/overview" replace />} />
+          <Route path="/admin/:sectionId" element={<AdminPage />} />
         </Route>
 
         <Route element={<AccountLayout />}>

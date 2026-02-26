@@ -27,6 +27,11 @@ jobs:
       - name: Run lint checks
         run: ruff check .
 
+      - name: Enforce documentation updates for major changes
+        env:
+          DOCS_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python scripts/verify_change_documentation.py
+
       - name: Run tests
         run: python -m pytest -q
 

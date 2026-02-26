@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import String, and_, cast, func, or_, select
 
 from research_os.config import get_data_library_root
 from research_os.db import (
@@ -47,6 +47,7 @@ class PlannerValidationError(RuntimeError):
 
 
 _STORAGE_MIGRATED_ROOTS: set[str] = set()
+_METADATA_INDEX_CACHE: dict[str, tuple[float, list[str]]] = {}
 
 
 def _trim(value: Any) -> str:
@@ -311,6 +312,112 @@ def _asset_metadata_path(*, asset_id: str, root: Path) -> Path:
     return root / f"{asset_id}.meta.json"
 
 
+def _metadata_index_path(root: Path) -> Path:
+    return root / "metadata.index.json"
+
+
+def _normalize_string_ids(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        clean = _trim(value)
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        deduped.append(clean)
+    return deduped
+
+
+def _read_metadata_index_ids(root: Path) -> list[str]:
+    path = _metadata_index_path(root)
+    if not path.exists() or not path.is_file():
+        return []
+    root_key = str(root.resolve())
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return []
+    cached = _METADATA_INDEX_CACHE.get(root_key)
+    if cached is not None and cached[0] == mtime:
+        return list(cached[1])
+
+    try:
+        raw = path.read_text(encoding="utf-8")
+        payload = json.loads(raw)
+    except (OSError, json.JSONDecodeError):
+        return []
+    if isinstance(payload, dict):
+        raw_ids = payload.get("asset_ids")
+    else:
+        raw_ids = payload
+    ids = _normalize_string_ids(raw_ids if isinstance(raw_ids, list) else [])
+    _METADATA_INDEX_CACHE[root_key] = (mtime, ids)
+    return list(ids)
+
+
+def _write_metadata_index_ids(*, root: Path, asset_ids: list[str]) -> None:
+    path = _metadata_index_path(root)
+    ids = sorted(_normalize_string_ids(asset_ids))
+    tmp_path = path.with_suffix(f"{path.suffix}.tmp")
+    try:
+        tmp_path.write_text(
+            json.dumps({"asset_ids": ids}, ensure_ascii=True, sort_keys=True),
+            encoding="utf-8",
+        )
+        os.replace(tmp_path, path)
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        _METADATA_INDEX_CACHE[str(root.resolve())] = (mtime, ids)
+    except OSError:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _upsert_metadata_index_id(*, root: Path, asset_id: str) -> None:
+    clean_asset_id = _trim(asset_id)
+    if not clean_asset_id:
+        return
+    ids = _read_metadata_index_ids(root)
+    if clean_asset_id in set(ids):
+        return
+    ids.append(clean_asset_id)
+    _write_metadata_index_ids(root=root, asset_ids=ids)
+
+
+def _rebuild_metadata_index_from_sidecars(root: Path) -> list[str]:
+    discovered: list[str] = []
+    for path in root.glob("*.meta.json"):
+        stem = _trim(path.stem)
+        clean = stem[:-5] if stem.endswith(".meta") else stem
+        if not clean:
+            payload = _load_asset_metadata(path)
+            if payload:
+                clean = _metadata_asset_id(payload)
+        clean = _trim(clean)
+        if clean:
+            discovered.append(clean)
+    ids = _normalize_string_ids(discovered)
+    if ids:
+        _write_metadata_index_ids(root=root, asset_ids=ids)
+    return ids
+
+
+def _iter_metadata_paths(*, root: Path, requested_asset_id: str | None = None) -> list[Path]:
+    clean_asset_id = _trim(requested_asset_id)
+    if clean_asset_id:
+        return [_asset_metadata_path(asset_id=clean_asset_id, root=root)]
+    ids = _read_metadata_index_ids(root)
+    if not ids:
+        ids = _rebuild_metadata_index_from_sidecars(root)
+    return [_asset_metadata_path(asset_id=asset_id, root=root) for asset_id in ids]
+
+
 def _parse_iso_datetime(value: Any) -> datetime | None:
     raw = _trim(value)
     if not raw:
@@ -352,6 +459,7 @@ def _write_asset_metadata(*, root: Path, payload: dict[str, Any]) -> None:
             encoding="utf-8",
         )
         os.replace(tmp_path, path)
+        _upsert_metadata_index_id(root=root, asset_id=asset_id)
     except OSError:
         try:
             tmp_path.unlink(missing_ok=True)
@@ -506,10 +614,9 @@ def _restore_asset_row_from_metadata(
     asset_id: str | None = None,
 ) -> bool:
     requested_asset_id = _trim(asset_id)
-    metadata_paths = (
-        [_asset_metadata_path(asset_id=requested_asset_id, root=primary_root)]
-        if requested_asset_id
-        else list(primary_root.glob("*.meta.json"))
+    metadata_paths = _iter_metadata_paths(
+        root=primary_root,
+        requested_asset_id=requested_asset_id or None,
     )
     restored_any = False
     for metadata_path in metadata_paths:
