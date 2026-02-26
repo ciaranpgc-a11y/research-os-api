@@ -4,6 +4,7 @@ import type { ApiErrorPayload } from '@/types/insight'
 import type {
   AffiliationAddressResolutionPayload,
   AffiliationSuggestionsPayload,
+  AdminOrganisationsListPayload,
   AdminOverviewPayload,
   AdminUsersListPayload,
   AuthEmailVerificationRequestPayload,
@@ -266,6 +267,30 @@ export async function fetchAdminUsers(
       headers: authHeaders(token),
     },
     'Admin users lookup failed',
+  )
+}
+
+export async function fetchAdminOrganisations(
+  token: string,
+  options?: {
+    query?: string
+    limit?: number
+    offset?: number
+  },
+): Promise<AdminOrganisationsListPayload> {
+  const params = new URLSearchParams()
+  if (String(options?.query || '').trim()) {
+    params.set('query', String(options?.query || '').trim())
+  }
+  params.set('limit', String(Math.max(1, Math.min(200, Number(options?.limit || 25)))))
+  params.set('offset', String(Math.max(0, Number(options?.offset || 0))))
+  return requestJson<AdminOrganisationsListPayload>(
+    `${API_BASE_URL}/v1/admin/organisations?${params.toString()}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Admin organisations lookup failed',
   )
 }
 
