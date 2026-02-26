@@ -1,0 +1,9 @@
+﻿patient_id,age,sex,group,rhc_mean_pap_mmHg,pcwp_mmHg,flow_index,outcome_12m,followup_days
+P001,62,F,4D-Flow,28,16,2.10,event,365
+P002,58,M,4D-Flow,24,14,1.82,no_event,365
+P003,67,F,4D-Flow,31,18,2.34,event,365
+P004,54,M,4D-Flow,22,12,1.48,no_event,365
+P005,61,F,4D-Flow,29,17,2.05,event,365
+P006,49,M,4D-Flow,20,11,1.31,no_event,365
+P007,73,F,4D-Flow,35,20,2.61,event,365
+P008,57,M,4D-Flow,23,13,1.67,no_event,365

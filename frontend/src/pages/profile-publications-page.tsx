@@ -1011,8 +1011,22 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     if (!user?.id) {
       return
     }
+    setOaPdfStatusByWorkId(loadPublicationsOaStatus(user.id))
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) {
+      return
+    }
     savePublicationTableColumnPreferences(user.id, publicationTableColumns)
   }, [publicationTableColumns, user?.id])
+
+  useEffect(() => {
+    if (!user?.id) {
+      return
+    }
+    savePublicationsOaStatus(user.id, oaPdfStatusByWorkId)
+  }, [oaPdfStatusByWorkId, user?.id])
 
   useEffect(() => {
     if (!columnSettingsOpen) {
@@ -1130,12 +1144,37 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     try {
       const payload = await fetchPublicationFiles(token, workId)
       setFilesCacheByWorkId((current) => ({ ...current, [workId]: payload }))
+      const linkedOaFile = (payload.items || []).find((item) => item.source === 'OA_LINK') || null
+      if (linkedOaFile) {
+        setOaPdfStatusByWorkId((current) => ({
+          ...current,
+          [workId]: {
+            status: 'available',
+            downloadUrl: linkedOaFile.download_url || linkedOaFile.oa_url || null,
+            fileName: linkedOaFile.file_name || null,
+            updatedAt: new Date().toISOString(),
+          },
+        }))
+      } else if (user?.id) {
+        const attempted = loadPublicationsOaAutoAttempted(user.id)
+        if (attempted.has(workId)) {
+          setOaPdfStatusByWorkId((current) => ({
+            ...current,
+            [workId]: {
+              status: 'missing',
+              downloadUrl: null,
+              fileName: null,
+              updatedAt: new Date().toISOString(),
+            },
+          }))
+        }
+      }
     } catch (loadError) {
       setPaneError(workId, 'files', loadError instanceof Error ? loadError.message : 'Could not load files.')
     } finally {
       setPaneLoading(workId, 'files', false)
     }
-  }, [filesCacheByWorkId, setPaneError, setPaneLoading, token])
+  }, [filesCacheByWorkId, setPaneError, setPaneLoading, token, user?.id])
 
   const ensureActiveTabData = useCallback(async (workId: string, tab: PublicationDetailTab) => {
     if (!workId) {
@@ -1506,15 +1545,45 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           if (cancelled) {
             break
           }
+          setOaPdfStatusByWorkId((current) => ({
+            ...current,
+            [work.id]: {
+              status: 'checking',
+              downloadUrl: current[work.id]?.downloadUrl || null,
+              fileName: current[work.id]?.fileName || null,
+              updatedAt: new Date().toISOString(),
+            },
+          }))
           attempted.add(work.id)
           try {
             const payload = await linkPublicationOpenAccessPdf(token, work.id)
+            if (payload.file) {
+              const downloadUrl = payload.file.download_url || payload.file.oa_url || null
+              setOaPdfStatusByWorkId((current) => ({
+                ...current,
+                [work.id]: {
+                  status: 'available',
+                  downloadUrl,
+                  fileName: payload.file?.file_name || null,
+                  updatedAt: new Date().toISOString(),
+                },
+              }))
+            }
             if (payload.created && payload.file) {
               linked += 1
             } else {
               unchanged += 1
             }
           } catch {
+            setOaPdfStatusByWorkId((current) => ({
+              ...current,
+              [work.id]: {
+                status: 'missing',
+                downloadUrl: null,
+                fileName: null,
+                updatedAt: new Date().toISOString(),
+              },
+            }))
             unavailable += 1
           }
           checked += 1
@@ -1734,27 +1803,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
   const refreshFilesTab = async (workId: string) => {
     await loadPublicationFilesData(workId, true)
-  }
-
-  const onFindOpenAccessPdf = async () => {
-    if (!token || !selectedWorkId) {
-      return
-    }
-    setFindingOa(true)
-    setPaneError(selectedWorkId, 'files', '')
-    try {
-      const payload = await linkPublicationOpenAccessPdf(token, selectedWorkId)
-      if (payload.file) {
-        setStatus(payload.message || 'Open-access PDF link added.')
-      } else {
-        setStatus(payload.message || 'Open-access PDF link checked.')
-      }
-      await refreshFilesTab(selectedWorkId)
-    } catch (linkError) {
-      setPaneError(selectedWorkId, 'files', linkError instanceof Error ? linkError.message : 'Could not resolve open-access PDF.')
-    } finally {
-      setFindingOa(false)
-    }
   }
 
   const onUploadFiles = async (files: FileList | null) => {
@@ -1990,6 +2038,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       {filteredWorks.map((work) => {
                         const metrics = metricsByWorkId.get(work.id)
                         const isSelected = selectedWorkId === work.id
+                        const oaRecord = oaPdfStatusByWorkId[work.id] || null
+                        const hasDoi = Boolean((work.doi || '').trim())
+                        const oaVisualStatus = publicationOaStatusVisualStatus(work, oaRecord)
+                        const oaToneClass = publicationOaStatusToneClass(oaVisualStatus)
+                        const oaLabel = publicationOaStatusLabel(oaVisualStatus, hasDoi)
+                        const oaDownloadUrl = oaRecord?.downloadUrl || null
                         return (
                           <TableRow
                             key={work.id}
@@ -2002,7 +2056,29 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               if (columnKey === 'title') {
                                 return (
                                   <TableCell key={`${work.id}-${columnKey}`} className={`font-medium ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
-                                    {work.title}
+                                    <div className="flex items-center gap-1.5">
+                                      {oaVisualStatus === 'available' && oaDownloadUrl ? (
+                                        <a
+                                          href={oaDownloadUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          title={`${oaLabel}. Open PDF.`}
+                                          className={`inline-flex items-center ${oaToneClass}`}
+                                          onClick={(event) => event.stopPropagation()}
+                                        >
+                                          <Paperclip className="h-3.5 w-3.5" />
+                                        </a>
+                                      ) : (
+                                        <span title={oaLabel} className={`inline-flex items-center ${oaToneClass}`}>
+                                          {oaVisualStatus === 'checking' ? (
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                          ) : (
+                                            <Paperclip className="h-3.5 w-3.5" />
+                                          )}
+                                        </span>
+                                      )}
+                                      <span className="min-w-0 truncate">{work.title}</span>
+                                    </div>
                                   </TableCell>
                                 )
                               }
@@ -2180,10 +2256,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
                         <TabsContent value="files" className="space-y-3">
                           <div className="flex flex-wrap gap-2">
-                            <Button type="button" size="sm" variant="outline" onClick={onFindOpenAccessPdf} disabled={findingOa}>{findingOa ? 'Finding OA PDF...' : 'Find open access PDF'}</Button>
                             <Button type="button" size="sm" variant="outline" onClick={() => filePickerRef.current?.click()} disabled={uploadingFile}>{uploadingFile ? 'Uploading...' : 'Upload file'}</Button>
                             <input ref={filePickerRef} type="file" multiple className="hidden" onChange={(event) => void onUploadFiles(event.target.files)} />
                           </div>
+                          <p className="text-xs text-muted-foreground">Open-access PDF detection runs automatically in the background.</p>
                           <div
                             className={`rounded border border-dashed p-3 text-xs ${filesDragOver ? 'border-emerald-500 bg-emerald-50/40' : 'border-border bg-muted/10'}`}
                             onDragOver={(event) => {

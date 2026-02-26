@@ -16,6 +16,11 @@
 - Removed all center-console content (workspace summary badges, files list, preview table, and bottom status badges) so the Data page now uses a right-rail-first composition.
 - Added `Open personal library` picker flow: users can open a dedicated library sheet, multi-select datasets, and pull selected files into the workspace in one action.
 - Preserved house-token styling patterns and existing upload/personal-library behavior.
+- Added reusable sample data fixtures for manual/live library upload testing:
+  - `tmp/sample-datasets/4d_flow_rhc_primary.csv`
+  - `tmp/sample-datasets/af_screening_cohort.csv`
+  - `tmp/sample-datasets/data_quality_flags.csv`
+- Added helper uploader script `scripts/upload_sample_datasets.ps1` to post sample datasets to `/v1/library/assets/upload` using a session bearer token.
 - Removed `Insight & Integrity` right-rail injection from workspace and non-profile app shells.
 - Added collapse/expand controls for the workspace inbox right navigation panel so users can widen the conversation area on demand.
 - **Why it changed:**
