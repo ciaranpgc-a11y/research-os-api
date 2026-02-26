@@ -376,8 +376,16 @@ const HOUSE_METRIC_PROGRESS_PANEL_CLASS =
 const HOUSE_LINE_CHART_SURFACE_CLASS =
   cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'relative flex-1 px-1.5 pb-1.5 pt-2')
 const HOUSE_FIELD_PERCENTILE_TOGGLE_WIDTH_CLASS = 'w-10'
-const HOUSE_FIELD_PERCENTILE_LEFT_CHART_TOGGLE_LEFT_CLASS = 'left-0'
-const HOUSE_FIELD_PERCENTILE_LEFT_CHART_PADDING_CLASS = 'pl-10'
+const HOUSE_FIELD_PERCENTILE_LEFT_CHART_TRACK_CLASS = cn(
+  HOUSE_TOGGLE_TRACK_CLASS,
+  HOUSE_FIELD_PERCENTILE_TOGGLE_WIDTH_CLASS,
+  'relative grid items-stretch',
+)
+const HOUSE_FIELD_PERCENTILE_LEFT_CHART_SLOT_CLASS = 'pointer-events-none flex h-full items-stretch justify-center'
+const HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_CLASS = 'grid w-full min-h-0 items-stretch'
+const HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_COLUMNS_CLASS = 'grid-cols-[2.5rem_minmax(0,1fr)]'
+const HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_GAP_CLASS = 'gap-2'
+const HOUSE_FIELD_PERCENTILE_LEFT_CHART_PANEL_CLASS = 'h-full min-h-0 min-w-0 w-full'
 const HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH = 14
 const HOUSE_DRILLDOWN_TOOLTIP_CLASS =
   cn(
@@ -1362,8 +1370,10 @@ function StructuredMetricTile({
         <div className={cn(
           'flex h-full min-h-0 border-l',
           HOUSE_DIVIDER_BORDER_SOFT_CLASS,
-          isFloatingBadge
-            ? 'relative items-stretch pl-3'
+          isLeftChartBadge
+            ? 'items-stretch pl-3'
+            : isFloatingBadge
+              ? 'relative items-stretch pl-3'
             : 'items-center pl-3',
         )}>
           {badge && isTopRightBadge ? (
@@ -1374,17 +1384,17 @@ function StructuredMetricTile({
           {badge && isLeftChartBadge ? (
             <div
               className={cn(
-                'pointer-events-none absolute top-2 z-10 flex items-stretch justify-center pb-2 pt-2',
-                HOUSE_FIELD_PERCENTILE_TOGGLE_WIDTH_CLASS,
-                HOUSE_FIELD_PERCENTILE_LEFT_CHART_TOGGLE_LEFT_CLASS,
+                HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_CLASS,
+                HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_COLUMNS_CLASS,
+                HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_GAP_CLASS,
               )}
             >
-              <div className="pointer-events-auto flex">{badge}</div>
-            </div>
-          ) : null}
-          {isLeftChartBadge ? (
-            <div className={cn('h-full min-h-0 w-full', HOUSE_FIELD_PERCENTILE_LEFT_CHART_PADDING_CLASS)}>
-              {visual}
+              <div className={HOUSE_FIELD_PERCENTILE_LEFT_CHART_SLOT_CLASS}>
+                <div className="pointer-events-auto">{badge}</div>
+              </div>
+              <div className={HOUSE_FIELD_PERCENTILE_LEFT_CHART_PANEL_CLASS}>
+                {visual}
+              </div>
             </div>
           ) : visual}
         </div>
@@ -2485,9 +2495,11 @@ function parseNumericKeyedMap(value: unknown): Record<number, number> {
 function FieldPercentilePanel({
   tile,
   threshold,
+  toggleControl,
 }: {
   tile: PublicationMetricTilePayload
   threshold: FieldPercentileThreshold
+  toggleControl?: ReactNode
 }) {
   const [chartVisible, setChartVisible] = useState(true)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
@@ -2538,51 +2550,50 @@ function FieldPercentilePanel({
           chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
         )}
       >
-        <div className={cn(HOUSE_CHART_RING_PANEL_CLASS)}>
-          <svg
-            viewBox="0 0 100 100"
-            className={HOUSE_CHART_RING_SIZE_CLASS}
-            data-stop-tile-open="true"
-          >
-            <circle
-              cx="50"
-              cy="50"
-              r={ringRadius}
-              fill="none"
-              className={HOUSE_CHART_RING_TRACK_SVG_CLASS}
-              strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
-            />
-            <circle
-              cx="50"
-              cy="50"
-              r={ringRadius}
-              fill="none"
-              className={HOUSE_CHART_RING_MAIN_SVG_CLASS}
-              strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
-              strokeLinecap="round"
-              transform="rotate(-90 50 50)"
-              style={{
-                strokeDasharray: `${ringDash} ${ringCircumference}`,
-                strokeDashoffset: 0,
-                transition: 'stroke-dasharray 560ms cubic-bezier(0.2, 0.68, 0.16, 1)',
-              }}
-            />
-            <circle
-              cx="50"
-              cy="50"
-              r={ringRadius}
-              fill="none"
-              className={HOUSE_CHART_RING_SOFT_SVG_CLASS}
-              strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
-              strokeLinecap="round"
-              transform={`rotate(${-90 + ((animatedShareClamped / 100) * 360)} 50 50)`}
-              style={{
-                strokeDasharray: `${ringRestDash} ${ringCircumference}`,
-                strokeDashoffset: -ringDash,
-                transition: 'stroke-dasharray 560ms cubic-bezier(0.2, 0.68, 0.16, 1), stroke-dashoffset 560ms cubic-bezier(0.2, 0.68, 0.16, 1)',
-              }}
-            />
-          </svg>
+        <div className="grid h-full min-h-0 w-full grid-cols-[1fr_auto_1fr_auto_1fr] items-center">
+          {toggleControl ? (
+            <div className="col-start-2 flex h-full min-h-0 items-center justify-center">
+              {toggleControl}
+            </div>
+          ) : null}
+          <div className={cn(HOUSE_CHART_RING_PANEL_CLASS, 'col-start-4')}>
+            <svg
+              viewBox="0 0 100 100"
+              className={HOUSE_CHART_RING_SIZE_CLASS}
+              data-stop-tile-open="true"
+            >
+              <circle
+                cx="50"
+                cy="50"
+                r={ringRadius}
+                fill="none"
+                className={HOUSE_CHART_RING_MAIN_SVG_CLASS}
+                strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
+                strokeLinecap="round"
+                transform="rotate(-90 50 50)"
+                style={{
+                  strokeDasharray: `${ringDash} ${ringCircumference}`,
+                  strokeDashoffset: 0,
+                  transition: 'stroke-dasharray 560ms cubic-bezier(0.2, 0.68, 0.16, 1)',
+                }}
+              />
+              <circle
+                cx="50"
+                cy="50"
+                r={ringRadius}
+                fill="none"
+                className={HOUSE_CHART_RING_SOFT_SVG_CLASS}
+                strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
+                strokeLinecap="round"
+                transform="rotate(-90 50 50)"
+                style={{
+                  strokeDasharray: `${ringRestDash} ${ringCircumference}`,
+                  strokeDashoffset: -ringDash,
+                  transition: 'stroke-dasharray 560ms cubic-bezier(0.2, 0.68, 0.16, 1), stroke-dashoffset 560ms cubic-bezier(0.2, 0.68, 0.16, 1)',
+                }}
+              />
+            </svg>
+          </div>
         </div>
       </div>
     </div>
@@ -4739,67 +4750,62 @@ export function PublicationsTopStrip({
                   secondaryText = `Papers at or above ${activeThreshold}th percentile`
                   detailText = undefined
                   contentGridClassName = 'grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)]'
-                  badgeNode = (
-                    <div className="flex h-full flex-col items-center gap-0.5">
-                      <div
-                        className={cn(
-                          HOUSE_TOGGLE_TRACK_CLASS,
-                          HOUSE_FIELD_PERCENTILE_TOGGLE_WIDTH_CLASS,
-                          'relative mx-auto mt-1 grid',
-                          'items-stretch',
-                        )}
+                  const percentileToggleNode = (
+                    <div
+                      className={HOUSE_FIELD_PERCENTILE_LEFT_CHART_TRACK_CLASS}
+                      style={{
+                        gridTemplateRows: `repeat(${availableThresholds.length}, minmax(0, 1fr))`,
+                        minHeight: `${availableThresholds.length * 1.785}rem`,
+                      }}
+                      data-stop-tile-open="true"
+                    >
+                      <span
+                        className={HOUSE_TOGGLE_THUMB_CLASS}
                         style={{
-                          gridTemplateRows: `repeat(${availableThresholds.length}, minmax(0, 1fr))`,
-                          minHeight: `${availableThresholds.length * 1.785}rem`,
+                          width: 'calc(100% - 0.25rem)',
+                          height: `calc(${100 / availableThresholds.length}% - 0.125rem)`,
+                          top: `calc(${(100 / availableThresholds.length) * activeThresholdIndex}% + 2px)`,
+                          left: '0.125rem',
+                          bottom: 'auto',
+                          right: 'auto',
+                          transitionProperty: 'top, height',
+                          willChange: 'top,height',
                         }}
-                        data-stop-tile-open="true"
-                      >
-                        <span
-                          className={HOUSE_TOGGLE_THUMB_CLASS}
-                          style={{
-                            width: 'calc(100% - 0.25rem)',
-                            height: `calc(${100 / availableThresholds.length}% - 0.125rem)`,
-                            top: `calc(${(100 / availableThresholds.length) * activeThresholdIndex}% + 2px)`,
-                            left: '0.125rem',
-                            bottom: 'auto',
-                            right: 'auto',
-                            transitionProperty: 'top, height',
-                            willChange: 'top,height',
+                        aria-hidden="true"
+                      />
+                      {availableThresholds.map((threshold) => (
+                        <button
+                          key={`field-threshold-${threshold}`}
+                          type="button"
+                          data-stop-tile-open="true"
+                          className={cn(
+                            HOUSE_TOGGLE_BUTTON_CLASS,
+                            'inline-flex h-full w-full min-h-0 flex-1 items-center justify-center px-0 py-0',
+                            activeThreshold === threshold
+                              ? 'text-white'
+                              : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                          )}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            if (activeThreshold === threshold) {
+                              return
+                            }
+                            setFieldPercentileThreshold(threshold)
                           }}
-                          aria-hidden="true"
-                        />
-                        {availableThresholds.map((threshold) => (
-                          <button
-                            key={`field-threshold-${threshold}`}
-                            type="button"
-                            data-stop-tile-open="true"
-                            className={cn(
-                              HOUSE_TOGGLE_BUTTON_CLASS,
-                              'inline-flex h-full w-full min-h-0 flex-1 items-center justify-center px-0 py-0',
-                              activeThreshold === threshold
-                                ? 'text-white'
-                                : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                            )}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              if (activeThreshold === threshold) {
-                                return
-                              }
-                              setFieldPercentileThreshold(threshold)
-                            }}
-                            onMouseDown={(event) => event.stopPropagation()}
-                            aria-pressed={activeThreshold === threshold}
-                          >
-                            {threshold}
-                          </button>
-                        ))}
-                      </div>
+                          onMouseDown={(event) => event.stopPropagation()}
+                          aria-pressed={activeThreshold === threshold}
+                        >
+                          {threshold}
+                        </button>
+                      ))}
                     </div>
                   )
+                  badgeNode = undefined
                   visual = (
                     <FieldPercentilePanel
                       tile={tile}
                       threshold={activeThreshold}
+                      toggleControl={percentileToggleNode}
                     />
                   )
                 } else if (tile.key === 'authorship_composition') {
@@ -4865,7 +4871,7 @@ export function PublicationsTopStrip({
                     shouldIgnoreTileOpen={shouldIgnoreTileOpen}
                     primaryValue={primaryValue}
                     badge={badgeNode}
-                    badgePlacement={tile.key === 'field_percentile_share' ? 'leftChart' : 'inline'}
+                    badgePlacement="inline"
                     pinBadgeBottom={pinBadgeBottom}
                     centerBadge={tile.key === 'impact_concentration'}
                     subtitle={secondaryText}

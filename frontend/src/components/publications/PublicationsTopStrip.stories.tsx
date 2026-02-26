@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 
 import type { PublicationMetricTilePayload, PublicationsTopMetricsPayload } from '@/types/impact'
+import { readAccountSettings, writeAccountSettings } from '@/lib/account-preferences'
 
 import { PublicationsTopStrip } from './PublicationsTopStrip'
 
@@ -590,9 +591,26 @@ const collaborationStructureEmptyTile = buildTile({
   sparkline: [0, 0, 0, 0],
 })
 
+function forcePublicationInsightsVisibleDefault(): void {
+  const settings = readAccountSettings()
+  if (settings.publicationInsightsDefaultVisibility === 'visible') {
+    return
+  }
+  writeAccountSettings({
+    ...settings,
+    publicationInsightsDefaultVisibility: 'visible',
+  })
+}
+
 const meta: Meta<typeof PublicationsTopStrip> = {
   title: 'Publications/Tiles',
   component: PublicationsTopStrip,
+  decorators: [
+    (Story, context) => {
+      forcePublicationInsightsVisibleDefault()
+      return <Story key={context.id} />
+    },
+  ],
 }
 
 export default meta
