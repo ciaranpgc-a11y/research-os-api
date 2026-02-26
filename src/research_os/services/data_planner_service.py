@@ -81,13 +81,27 @@ def _escape_like_pattern(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def _shared_access_hint_expression(user_id: str):
-    escaped_user_id = _escape_like_pattern(_trim(user_id))
-    pattern = f'%"{escaped_user_id}"%'
-    return cast(DataLibraryAsset.shared_with_user_ids, String).like(
-        pattern,
-        escape="\\",
-    )
+def _shared_access_hint_expression(user_ids: list[str]):
+    clean_ids = _normalize_user_ids(user_ids)
+    if not clean_ids:
+        # Return a deterministic no-match predicate.
+        return cast(DataLibraryAsset.shared_with_user_ids, String).like(
+            '%"__aawe_no_match__"%',
+            escape="\\",
+        )
+    expressions = []
+    for user_id in clean_ids:
+        escaped_user_id = _escape_like_pattern(user_id)
+        pattern = f'%"{escaped_user_id}"%'
+        expressions.append(
+            cast(DataLibraryAsset.shared_with_user_ids, String).like(
+                pattern,
+                escape="\\",
+            )
+        )
+    if len(expressions) == 1:
+        return expressions[0]
+    return or_(*expressions)
 
 
 def _resolve_user_ids_by_names(
@@ -182,15 +196,23 @@ def _related_user_ids_for_user(
     return related_ids
 
 
-def _project_allows_user(project: Project, user_id: str | None) -> bool:
+def _project_allows_user(
+    project: Project,
+    user_id: str | None,
+    *,
+    related_user_ids: set[str] | None = None,
+) -> bool:
     clean_user_id = _trim(user_id)
     if not clean_user_id:
         return True
+    effective_user_ids: set[str] = {clean_user_id}
+    if related_user_ids:
+        effective_user_ids.update({_trim(item) for item in related_user_ids if _trim(item)})
     owner_user_id = _trim(project.owner_user_id)
     collaborator_ids = _normalize_user_ids(project.collaborator_user_ids)
-    if owner_user_id == clean_user_id:
+    if owner_user_id in effective_user_ids:
         return True
-    if clean_user_id in collaborator_ids:
+    if any(candidate in collaborator_ids for candidate in effective_user_ids):
         return True
     # Legacy orphan project: owner/collaborators absent. Allow first-user recovery flow.
     return (not owner_user_id) and (len(collaborator_ids) == 0)
@@ -235,7 +257,8 @@ def _asset_accessible_for_user(
         return True
     shared_ids_raw = asset.shared_with_user_ids
     if shared_ids_raw is not None:
-        return clean_user_id in _normalize_user_ids(shared_ids_raw)
+        shared_ids = _normalize_user_ids(shared_ids_raw)
+        return any(candidate in shared_ids for candidate in related_user_ids)
     project_id = _trim(asset.project_id)
     if not project_id:
         # Legacy rows may be ownerless/unshared with no project linkage.
@@ -244,7 +267,11 @@ def _asset_accessible_for_user(
     project = session.get(Project, project_id)
     if project is None:
         return False
-    return _project_allows_user(project, clean_user_id)
+    return _project_allows_user(
+        project,
+        clean_user_id,
+        related_user_ids=related_user_ids,
+    )
 
 
 def _asset_shared_user_ids(asset: DataLibraryAsset) -> list[str]:
@@ -945,6 +972,72 @@ def _restore_asset_row_from_metadata(
     return restored_any
 
 
+def _recover_assets_for_user_from_identity_metadata(
+    *,
+    session,
+    primary_root: Path,
+    user_id: str | None,
+    account_key_hint: str | None = None,
+) -> int:
+    clean_user_id = _trim(user_id)
+    if not clean_user_id:
+        return 0
+    user = session.get(User, clean_user_id)
+    if user is None:
+        return 0
+
+    user_email = _trim(user.email).lower()
+    clean_account_key_hint = _trim(account_key_hint)
+    candidate_account_keys: set[str] = set()
+    current_account_key = _trim(user.account_key)
+    if current_account_key:
+        candidate_account_keys.add(current_account_key)
+    if clean_account_key_hint:
+        candidate_account_keys.add(clean_account_key_hint)
+
+    recovered_count = 0
+    metadata_paths = _iter_metadata_paths(root=primary_root)
+    for metadata_path in metadata_paths:
+        payload = _load_asset_metadata(metadata_path)
+        if not payload:
+            continue
+        owner_email = _trim(payload.get("owner_email")).lower()
+        owner_account_key = _trim(payload.get("owner_account_key"))
+        matches_email = bool(user_email and owner_email and owner_email == user_email)
+        matches_account_key = bool(
+            owner_account_key and owner_account_key in candidate_account_keys
+        )
+        if not matches_email and not matches_account_key:
+            continue
+
+        asset_id = _metadata_asset_id(payload)
+        if not asset_id:
+            continue
+        _restore_asset_row_from_metadata(
+            session=session,
+            primary_root=primary_root,
+            asset_id=asset_id,
+            claimant_user_id=clean_user_id,
+        )
+        asset = session.get(DataLibraryAsset, asset_id)
+        if asset is None:
+            continue
+        if _trim(asset.owner_user_id) != clean_user_id:
+            asset.owner_user_id = clean_user_id
+            recovered_count += 1
+
+        if owner_account_key and _trim(user.account_key) != owner_account_key:
+            existing_owner = session.scalars(
+                select(User).where(User.account_key == owner_account_key)
+            ).first()
+            if existing_owner is None or _trim(existing_owner.id) == clean_user_id:
+                user.account_key = owner_account_key
+
+    if recovered_count > 0:
+        session.flush()
+    return recovered_count
+
+
 def _slugify_filename(value: str) -> str:
     candidate = re.sub(r"[^a-zA-Z0-9._-]+", "-", value.strip()).strip(".-")
     return candidate or "asset"
@@ -1107,7 +1200,7 @@ def list_library_assets(
             user_id=clean_user_id,
         )
         owner_expr = DataLibraryAsset.owner_user_id.in_(related_user_id_list)
-        shared_hint_expr = _shared_access_hint_expression(clean_user_id)
+        shared_hint_expr = _shared_access_hint_expression(related_user_id_list)
         legacy_project_fallback_expr = DataLibraryAsset.shared_with_user_ids.is_(None)
         legacy_ownerless_personal_expr = and_(
             DataLibraryAsset.owner_user_id.is_(None),
@@ -1155,6 +1248,63 @@ def list_library_assets(
             )
             if restored_any:
                 rows = session.scalars(stmt).all()
+        if not rows:
+            # Fail-safe recovery path: when filtered query returns no rows, scan all assets
+            # and re-evaluate access with identity-linked user IDs. This is intentionally
+            # heavier but only runs for empty-result scenarios to avoid "false empty" libraries.
+            broad_stmt = select(DataLibraryAsset).order_by(DataLibraryAsset.uploaded_at.desc())
+            if clean_project_id:
+                broad_stmt = broad_stmt.where(DataLibraryAsset.project_id == clean_project_id)
+            broad_rows = session.scalars(broad_stmt).all()
+            broad_accessible_rows = [
+                row
+                for row in broad_rows
+                if _asset_accessible_for_user(
+                    session=session,
+                    asset=row,
+                    user_id=clean_user_id,
+                )
+            ]
+            if clean_ownership == "owned":
+                rows = [
+                    row
+                    for row in broad_accessible_rows
+                    if _trim(row.owner_user_id) in related_user_ids
+                ]
+            elif clean_ownership == "shared":
+                rows = [
+                    row
+                    for row in broad_accessible_rows
+                    if _trim(row.owner_user_id) not in related_user_ids
+                ]
+            else:
+                rows = broad_accessible_rows
+        if not rows:
+            recovered_by_identity = _recover_assets_for_user_from_identity_metadata(
+                session=session,
+                primary_root=storage_root,
+                user_id=clean_user_id,
+                account_key_hint=account_key_hint,
+            )
+            if recovered_by_identity > 0:
+                rows = session.scalars(stmt).all()
+                if not rows:
+                    broad_stmt = select(DataLibraryAsset).order_by(
+                        DataLibraryAsset.uploaded_at.desc()
+                    )
+                    if clean_project_id:
+                        broad_stmt = broad_stmt.where(
+                            DataLibraryAsset.project_id == clean_project_id
+                        )
+                    rows = [
+                        row
+                        for row in session.scalars(broad_stmt).all()
+                        if _asset_accessible_for_user(
+                            session=session,
+                            asset=row,
+                            user_id=clean_user_id,
+                        )
+                    ]
         fallback_single_owner_user_id = _single_user_owner_id(session=session)
         for row in rows:
             row_owner_user_id = _trim(row.owner_user_id)

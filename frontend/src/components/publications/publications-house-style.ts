@@ -69,6 +69,8 @@ export const publicationsHouseCharts = {
   ringTrackSvg: houseChartColors.ringTrackSvg,
   ringMainSvg: houseChartColors.ringMainSvg,
   ringSoftSvg: houseChartColors.ringSoftSvg,
+  ringPanel: houseChartColors.ringPanel,
+  ringSize: houseChartColors.ringSize,
   miniDonut: houseChartColors.miniDonut,
 } as const
 
@@ -98,7 +100,15 @@ export const publicationsHouseDetail = {
 
 export const publicationsHouseDrilldown = {
   sheet: houseDrilldown.sheet,
+  sheetBody: houseDrilldown.sheetBody,
   tabTrigger: houseDrilldown.tabTrigger,
+  tabList: houseDrilldown.tabList,
+  sectionSeparator: houseDrilldown.sectionSeparator,
+  summaryStatValue: houseDrilldown.summaryStatValue,
+  summaryStatValueEmphasis: houseDrilldown.summaryStatValueEmphasis,
+  summaryStatCard: houseDrilldown.summaryStatCard,
+  summaryStatValueWrap: houseDrilldown.summaryStatValueWrap,
+  sectionTitleSpacer: houseDrilldown.sectionTitleSpacer,
   placeholder: houseDrilldown.placeholder,
   alert: houseDrilldown.alert,
   microValue: houseDrilldown.microValue,
@@ -114,6 +124,7 @@ export const publicationsHouseDrilldown = {
   statCard: houseDrilldown.statCard,
   statTitle: houseDrilldown.statTitle,
   statValue: houseDrilldown.statValue,
+  statValueEmphasis: houseDrilldown.statValueEmphasis,
   axis: houseDrilldown.axis,
   range: houseDrilldown.range,
   badge: houseDrilldown.badge,
@@ -134,4 +145,8 @@ export const publicationsHouseDrilldown = {
   tableRow: houseDrilldown.tableRow,
   tableEmpty: houseDrilldown.tableEmpty,
   toggleButtonMuted: houseDrilldown.toggleButtonMuted,
+  summaryStatsGrid: houseDrilldown.summaryStatsGrid,
+  summaryStatsGridCompact: houseDrilldown.summaryStatsGridCompact,
+  summaryTrendChart: houseDrilldown.summaryTrendChart,
+  summaryStatTitle: houseDrilldown.summaryStatTitle,
 } as const

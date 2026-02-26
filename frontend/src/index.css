@@ -47,6 +47,7 @@
     --tone-neutral-700: 220 24% 25%;
     --tone-neutral-800: 221 30% 19%;
     --tone-neutral-900: 222 36% 14%;
+    --tone-neutral-950: 223 42% 8%;
 
     --tone-positive-50: 162 22% 94%;
     --tone-positive-100: 162 21% 89%;
@@ -91,6 +92,7 @@
     --tone-accent-700: 213 34% 32%;
     --tone-accent-800: 215 37% 25%;
     --tone-accent-900: 217 40% 18%;
+    --house-bold-outline-width: 1px;
     --brand-orcid-green: 76 60% 52%;
     --brand-google-red: 5 81% 56%;
     --brand-google-green: 136 53% 43%;
@@ -187,6 +189,7 @@
     --tone-neutral-700: 221 20% 26%;
     --tone-neutral-800: 221 24% 20%;
     --tone-neutral-900: 221 28% 14%;
+    --tone-neutral-950: 221 34% 8%;
 
     --tone-positive-50: 164 18% 26%;
     --tone-positive-100: 164 18% 30%;
@@ -231,6 +234,7 @@
     --tone-accent-700: 210 42% 72%;
     --tone-accent-800: 210 46% 78%;
     --tone-accent-900: 210 50% 84%;
+    --house-bold-outline-width: 1px;
     --brand-orcid-green: 76 60% 52%;
     --brand-google-red: 5 81% 56%;
     --brand-google-green: 136 53% 43%;
@@ -892,10 +896,10 @@
   }
 
   .house-panel-strong {
-    border: 1px solid hsl(var(--stroke-strong));
+    border: var(--house-bold-outline-width) solid hsl(var(--stroke-strong));
     border-radius: 0.375rem;
     background-color: hsl(var(--card));
-    box-shadow: inset 0 0 0 1px hsl(var(--stroke-strong) / 0.16);
+    box-shadow: inset 0 0 0 var(--house-bold-outline-width) hsl(var(--stroke-strong) / 0.16);
   }
 
   .house-panel-card {
@@ -928,7 +932,7 @@
   }
 
   .house-banner {
-    border: 1px solid hsl(var(--stroke-strong) / 0.94);
+    border: var(--house-bold-outline-width) solid hsl(var(--stroke-strong) / 0.94);
     border-radius: 0.5rem;
     padding: 0.625rem 0.75rem;
     font-size: 0.875rem;
@@ -961,7 +965,7 @@
 
   .house-banner-publications {
     border-color: hsl(var(--tone-positive-300) / 0.96);
-    border-left-width: 3px;
+    border-left-width: var(--house-bold-outline-width);
     background-color: hsl(var(--tone-positive-50) / 0.94);
     color: hsl(var(--tone-positive-800));
   }
@@ -1095,7 +1099,7 @@
     display: inline-grid;
     align-items: center;
     overflow: hidden;
-    border: 0;
+    border: 1px solid hsl(var(--stroke-strong));
     border-radius: 9999px;
     background-color: hsl(var(--tone-neutral-100) / 0.86);
     padding: 0.125rem;
@@ -1250,6 +1254,19 @@
 
   .house-chart-ring-soft-svg {
     stroke: hsl(var(--tone-accent-300));
+  }
+
+  .house-chart-ring-panel {
+    position: relative;
+    display: flex;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .house-chart-ring-size {
+    width: 7rem;
+    height: 7rem;
   }
 
   .house-chart-mini-donut {
@@ -1580,6 +1597,19 @@
     transition-property: border-color, background-color, color, box-shadow;
     transition-duration: var(--motion-duration-ui);
     transition-timing-function: ease-out;
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .house-drilldown-sheet-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .house-drilldown-tab-trigger:hover {
@@ -1723,10 +1753,79 @@
 
   .house-drilldown-stat-value {
     margin-top: 0.125rem;
-    font-size: 0.8125rem;
-    line-height: 1rem;
+    font-size: 1rem;
+    line-height: 1.25rem;
     font-weight: 600;
     color: hsl(var(--tone-neutral-800));
+  }
+
+  .house-drilldown-summary-stat-value {
+    margin-top: 0.125rem;
+    font-size: 1.2rem;
+    line-height: 1.5rem;
+    font-weight: 600;
+    color: hsl(var(--tone-neutral-800));
+  }
+
+  .house-drilldown-summary-stat-value-emphasis {
+    margin-top: 0.125rem;
+    font-size: 2.275rem;
+    line-height: 2.5rem;
+    font-weight: 700;
+    color: hsl(var(--tone-neutral-900));
+  }
+
+  .house-drilldown-summary-stat-title {
+    margin: 0;
+    min-height: 2.9rem;
+    width: 100%;
+    display: grid;
+    align-items: center;
+    justify-content: center;
+    align-content: center;
+    text-align: center;
+    line-height: 1.1rem;
+    padding-inline: 0.125rem;
+  }
+
+  .house-drilldown-summary-stat-card {
+    display: grid;
+    min-height: 5rem;
+    grid-template-rows: auto 1fr;
+    align-items: center;
+    justify-items: center;
+    text-align: center;
+    border: 1px solid hsl(var(--stroke-strong));
+    border-radius: 0.375rem;
+    background-color: hsl(var(--card));
+    box-shadow: inset 0 0 0 1px hsl(var(--stroke-strong) / 0.16);
+    padding: 0.55rem 0.75rem;
+    gap: 0.2rem;
+    box-sizing: border-box;
+  }
+
+  .house-drilldown-summary-stat-value-wrap {
+    display: flex;
+    min-height: 1.8rem;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    margin-top: 0;
+  }
+
+  .house-drilldown-stat-value-emphasis {
+    font-size: 1.15rem;
+    line-height: 1.45rem;
+    font-weight: 700;
+    color: hsl(var(--tone-neutral-900));
+  }
+
+  .house-drilldown-section-separator {
+    margin-top: 2rem;
+  }
+
+  .house-drilldown-section-title-spacer {
+    margin-bottom: 0.625rem;
   }
 
   .house-drilldown-axis {
@@ -1839,11 +1938,75 @@
   }
 
   .house-drilldown-toggle-button-muted {
-    color: hsl(var(--tone-neutral-600));
+    color: hsl(var(--tone-neutral-950));
+    opacity: 1;
+    font-weight: 600;
   }
 
   .house-drilldown-toggle-button-muted:hover {
-    color: hsl(var(--tone-neutral-800));
+    color: hsl(var(--tone-neutral-900));
+  }
+
+  .house-drilldown-tab-list {
+    display: grid !important;
+    width: 100%;
+    max-width: 100%;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-content: stretch;
+    justify-content: stretch;
+    align-items: stretch;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    box-sizing: border-box;
+  }
+
+  .house-drilldown-summary-stats-grid {
+    margin-top: 0.5rem;
+    width: 100%;
+    max-width: 100%;
+    display: grid;
+    min-width: 0;
+    gap: 0.5rem;
+    grid-template-columns: minmax(0, 1fr);
+    box-sizing: border-box;
+  }
+
+  @media (min-width: 640px) {
+    .house-drilldown-summary-stats-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .house-drilldown-summary-stats-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  .house-drilldown-summary-stats-grid-compact {
+    margin-top: 0.5rem;
+    width: 100%;
+    max-width: 100%;
+    display: grid;
+    min-width: 0;
+    gap: 0.5rem;
+    grid-template-columns: minmax(0, 1fr);
+    box-sizing: border-box;
+  }
+
+  @media (min-width: 640px) {
+    .house-drilldown-summary-stats-grid-compact {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  .house-drilldown-summary-trend-chart {
+    margin-top: 0.75rem;
+    width: 100%;
+    max-width: 100%;
+    height: 14.625rem;
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .publications-insights-grid {

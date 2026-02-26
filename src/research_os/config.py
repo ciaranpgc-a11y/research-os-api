@@ -51,9 +51,24 @@ def get_data_library_root() -> Path:
             / "data_library_store"
         )
     else:
-        xdg_data_home = str(os.getenv("XDG_DATA_HOME", "")).strip()
-        base = Path(xdg_data_home) if xdg_data_home else Path.home() / ".local" / "share"
-        root = base / "research-os" / "data_library_store"
+        persistent_mount_raw = str(
+            os.getenv("AAWE_PERSISTENT_MOUNT_ROOT", "/var/data")
+        ).strip()
+        persistent_mount = Path(persistent_mount_raw).expanduser() if persistent_mount_raw else None
+        if (
+            persistent_mount is not None
+            and persistent_mount.exists()
+            and persistent_mount.is_dir()
+        ):
+            root = persistent_mount / "data_library_store"
+        else:
+            xdg_data_home = str(os.getenv("XDG_DATA_HOME", "")).strip()
+            base = (
+                Path(xdg_data_home)
+                if xdg_data_home
+                else Path.home() / ".local" / "share"
+            )
+            root = base / "research-os" / "data_library_store"
 
     root = root.expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)

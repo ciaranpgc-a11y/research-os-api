@@ -35,6 +35,7 @@ It must not communicate:
 - All color usage must derive exclusively from token definitions.
 - No hard-coded color values are permitted outside token files.
 - Component code must consume tokenized class contracts from `frontend/src/lib/house-style.ts` (or domain token maps such as `publications-house-style.ts`).
+- For drilldown layout surfaces (tabs, controls, summary cards, chart wrappers), use token contracts from `houseDrilldown` (and publication domain overrides) and avoid adding new inline layout utility classes for structural distribution.
 - Direct arbitrary Tailwind color utilities in component markup are prohibited for new/changed UI:
 - `text-[hsl(...)]`
 - `bg-[hsl(...)]`

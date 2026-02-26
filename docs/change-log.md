@@ -41,21 +41,37 @@
 - Added hidden account-key continuity channel (`X-AAWE-Account-Key`) from frontend to backend for library endpoints.
 - Added per-email browser-side account-key hint persistence to survive sign-out/sign-in and reconnect ownership continuity when server-side user IDs drift.
 - Extended auth payloads to include `account_key` so frontend can maintain the hidden continuity key.
+- Added identity-aware shared-access evaluation (related user IDs), not just exact current `user_id`.
+- Added fail-safe broad-scan fallback in library listing when filtered query returns empty, then re-evaluate access server-side to avoid false-empty results.
+- Added metadata-identity recovery pass that claims/restores assets by metadata `owner_email` / `owner_account_key` when normal filtered listing still returns empty.
+- Added Linux persistent-mount preference (`AAWE_PERSISTENT_MOUNT_ROOT`, default `/var/data`) for `DATA_LIBRARY_ROOT` fallback when explicit env is missing.
+- Added configuration tests for explicit root precedence, persistent mount preference, and XDG fallback.
 - Added resilience tests for linked-identity owner recovery (shared ORCID identity) and index-partial recovery.
 - **Why it changed:**
 - Prevent personal library files from appearing to disappear after rebuilds/restarts when local file paths or stale owner IDs break normal lookup.
 - Ensure users retain access to uploaded datasets across sign-out/sign-in and deployment cycles.
 - **Key files touched:**
 - `src/research_os/db.py`
+- `src/research_os/config.py`
 - `src/research_os/services/data_planner_service.py`
+- `src/research_os/api/app.py`
+- `src/research_os/api/schemas.py`
+- `src/research_os/services/auth_service.py`
+- `src/research_os/services/social_auth_service.py`
+- `frontend/src/lib/auth-session.ts`
+- `frontend/src/lib/impact-api.ts`
+- `frontend/src/lib/study-core-api.ts`
+- `frontend/src/types/impact.ts`
 - `tests/test_data_library_resilience.py`
+- `tests/test_config_data_library_root.py`
 - `tests/test_open_access_service.py`
 - `tests/test_db_storage_stability.py`
 - **Verification performed:**
 - `pytest tests/test_data_library_resilience.py -q`
+- `pytest tests/test_config_data_library_root.py -q`
 - `pytest tests/test_open_access_service.py -q`
 - `pytest tests/test_db_storage_stability.py -q`
-- `pytest tests/test_api.py -k "library_assets_persist_across_logout_and_login or library_asset_access_controls_and_download" -q`
+- `pytest tests/test_api.py -k "auth_register_login_me_patch_logout or library_assets_persist_across_logout_and_login or library_asset_access_controls_and_download" -q`
 
 ### Admin Usage-Costs + Jobs + Audited Actions (Live Operations Control Plane v2)
 

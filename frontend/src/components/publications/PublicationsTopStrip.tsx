@@ -275,7 +275,6 @@ const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label:
 const HOUSE_HEADING_TITLE_CLASS = publicationsHouseHeadings.title
 const HOUSE_HEADING_SECTION_TITLE_CLASS = publicationsHouseHeadings.sectionTitle
 const HOUSE_HEADING_H2_CLASS = publicationsHouseHeadings.h2
-const HOUSE_HEADING_H3_CLASS = publicationsHouseHeadings.h3
 const HOUSE_TEXT_CLASS = publicationsHouseHeadings.text
 const HOUSE_TEXT_SOFT_CLASS = publicationsHouseHeadings.textSoft
 const HOUSE_HEADING_LABEL_CLASS = publicationsHouseHeadings.label
@@ -309,6 +308,7 @@ const HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_OFF_CLASS = publicationsHouseActions.sec
 const HOUSE_ACTIONS_SECTION_TOOL_DIVIDER_CLASS = publicationsHouseActions.sectionToolDivider
 const HOUSE_DRILLDOWN_SHEET_CLASS = publicationsHouseDrilldown.sheet
 const HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS = publicationsHouseDrilldown.tabTrigger
+const HOUSE_DRILLDOWN_TAB_LIST_CLASS = publicationsHouseDrilldown.tabList
 const HOUSE_DRILLDOWN_PLACEHOLDER_CLASS = publicationsHouseDrilldown.placeholder
 const HOUSE_DRILLDOWN_ALERT_CLASS = publicationsHouseDrilldown.alert
 const HOUSE_DRILLDOWN_HINT_CLASS = publicationsHouseDrilldown.hint
@@ -323,6 +323,11 @@ const HOUSE_DRILLDOWN_PROGRESS_FILL_CLASS = publicationsHouseDrilldown.progressF
 const HOUSE_DRILLDOWN_STAT_CARD_CLASS = publicationsHouseDrilldown.statCard
 const HOUSE_DRILLDOWN_STAT_TITLE_CLASS = publicationsHouseDrilldown.statTitle
 const HOUSE_DRILLDOWN_STAT_VALUE_CLASS = publicationsHouseDrilldown.statValue
+const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS = publicationsHouseDrilldown.summaryStatValue
+const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_EMPHASIS_CLASS = publicationsHouseDrilldown.summaryStatValueEmphasis
+const HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS = publicationsHouseDrilldown.summaryStatTitle
+const HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS = publicationsHouseDrilldown.summaryStatCard
+const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS = publicationsHouseDrilldown.summaryStatValueWrap
 const HOUSE_DRILLDOWN_AXIS_CLASS = publicationsHouseDrilldown.axis
 const HOUSE_DRILLDOWN_RANGE_CLASS = publicationsHouseDrilldown.range
 const HOUSE_DRILLDOWN_BADGE_CLASS = publicationsHouseDrilldown.badge
@@ -343,6 +348,12 @@ const HOUSE_DRILLDOWN_BAR_SELECTED_OUTLINE_CLASS = publicationsHouseDrilldown.ba
 const HOUSE_DRILLDOWN_TABLE_ROW_CLASS = publicationsHouseDrilldown.tableRow
 const HOUSE_DRILLDOWN_TABLE_EMPTY_CLASS = publicationsHouseDrilldown.tableEmpty
 const HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS = publicationsHouseDrilldown.toggleButtonMuted
+const HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS = publicationsHouseDrilldown.summaryStatsGrid
+const HOUSE_DRILLDOWN_SUMMARY_STATS_COMPACT_GRID_CLASS = publicationsHouseDrilldown.summaryStatsGridCompact
+const HOUSE_DRILLDOWN_SUMMARY_TREND_CHART_CLASS = publicationsHouseDrilldown.summaryTrendChart
+const HOUSE_DRILLDOWN_SHEET_BODY_CLASS = publicationsHouseDrilldown.sheetBody
+const HOUSE_DRILLDOWN_SECTION_SEPARATOR_CLASS = publicationsHouseDrilldown.sectionSeparator
+const HOUSE_DRILLDOWN_SECTION_TITLE_SPACER_CLASS = publicationsHouseDrilldown.sectionTitleSpacer
 const HOUSE_CHART_BAR_ACCENT_CLASS = publicationsHouseCharts.barAccent
 const HOUSE_CHART_BAR_POSITIVE_CLASS = publicationsHouseCharts.barPositive
 const HOUSE_CHART_BAR_WARNING_CLASS = publicationsHouseCharts.barWarning
@@ -357,11 +368,17 @@ const HOUSE_CHART_LINE_SOFT_SVG_CLASS = publicationsHouseCharts.lineSoftSvg
 const HOUSE_CHART_RING_TRACK_SVG_CLASS = publicationsHouseCharts.ringTrackSvg
 const HOUSE_CHART_RING_MAIN_SVG_CLASS = publicationsHouseCharts.ringMainSvg
 const HOUSE_CHART_RING_SOFT_SVG_CLASS = publicationsHouseCharts.ringSoftSvg
+const HOUSE_CHART_RING_PANEL_CLASS = publicationsHouseCharts.ringPanel
+const HOUSE_CHART_RING_SIZE_CLASS = publicationsHouseCharts.ringSize
 const HOUSE_CHART_MINI_DONUT_CLASS = publicationsHouseCharts.miniDonut
 const HOUSE_METRIC_PROGRESS_PANEL_CLASS =
   cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'flex flex-1 flex-col gap-2.5 px-2 py-2 transition-[opacity,transform,filter] duration-320 ease-out')
 const HOUSE_LINE_CHART_SURFACE_CLASS =
   cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'relative flex-1 px-1.5 pb-1.5 pt-2')
+const HOUSE_FIELD_PERCENTILE_TOGGLE_WIDTH_CLASS = 'w-10'
+const HOUSE_FIELD_PERCENTILE_LEFT_CHART_TOGGLE_LEFT_CLASS = 'left-0'
+const HOUSE_FIELD_PERCENTILE_LEFT_CHART_PADDING_CLASS = 'pl-10'
+const HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH = 14
 const HOUSE_DRILLDOWN_TOOLTIP_CLASS =
   cn(
     HOUSE_DRILLDOWN_CHART_TOOLTIP_CLASS,
@@ -1266,6 +1283,7 @@ function StructuredMetricTile({
   badge,
   pinBadgeBottom = true,
   centerBadge = false,
+  badgePlacement = 'inline',
   subtitle,
   detail,
   visual,
@@ -1278,6 +1296,7 @@ function StructuredMetricTile({
   badge?: ReactNode
   pinBadgeBottom?: boolean
   centerBadge?: boolean
+  badgePlacement?: 'inline' | 'topRight' | 'leftChart'
   subtitle: ReactNode
   detail?: ReactNode
   visual: ReactNode
@@ -1285,6 +1304,9 @@ function StructuredMetricTile({
   onOpen: () => void
   shouldIgnoreTileOpen: (target: EventTarget | null) => boolean
 }) {
+  const isTopRightBadge = badgePlacement === 'topRight'
+  const isLeftChartBadge = badgePlacement === 'leftChart'
+  const isFloatingBadge = isTopRightBadge || isLeftChartBadge
   return (
     <div
       role="button"
@@ -1331,14 +1353,40 @@ function StructuredMetricTile({
             : detail
               ? <div className="pt-0.5">{detail}</div>
               : null}
-          {badge ? (
+          {badge && !isFloatingBadge ? (
             <div className={cn(pinBadgeBottom ? 'mt-auto pt-1' : 'pt-1', centerBadge && 'flex w-full justify-center')}>
               {badge}
             </div>
           ) : null}
         </div>
-        <div className={cn('flex h-full min-h-0 items-center border-l pl-3', HOUSE_DIVIDER_BORDER_SOFT_CLASS)}>
-          {visual}
+        <div className={cn(
+          'flex h-full min-h-0 border-l',
+          HOUSE_DIVIDER_BORDER_SOFT_CLASS,
+          isFloatingBadge
+            ? 'relative items-stretch pl-3'
+            : 'items-center pl-3',
+        )}>
+          {badge && isTopRightBadge ? (
+            <div className="pointer-events-none absolute right-2 top-0 z-10 flex w-full justify-end">
+              <div className="pointer-events-auto pt-0.5">{badge}</div>
+            </div>
+          ) : null}
+          {badge && isLeftChartBadge ? (
+            <div
+              className={cn(
+                'pointer-events-none absolute top-2 z-10 flex items-stretch justify-center pb-2 pt-2',
+                HOUSE_FIELD_PERCENTILE_TOGGLE_WIDTH_CLASS,
+                HOUSE_FIELD_PERCENTILE_LEFT_CHART_TOGGLE_LEFT_CLASS,
+              )}
+            >
+              <div className="pointer-events-auto flex">{badge}</div>
+            </div>
+          ) : null}
+          {isLeftChartBadge ? (
+            <div className={cn('h-full min-h-0 w-full', HOUSE_FIELD_PERCENTILE_LEFT_CHART_PADDING_CLASS)}>
+              {visual}
+            </div>
+          ) : visual}
         </div>
       </div>
     </div>
@@ -1528,6 +1576,9 @@ function PublicationsPerYearChart({
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [windowMode, setWindowMode] = useState<PublicationsWindowMode>('5y')
+  useEffect(() => {
+    setWindowMode('5y')
+  }, [tile.key, enableWindowToggle])
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
@@ -2009,7 +2060,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
     : totalPublications === null
       ? null
       : Math.max(0, totalPublications - effectiveTopPapersCount)
-  const ringStrokeWidth = 14
+  const ringStrokeWidth = HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH
   const ringHitHalfWidth = (ringStrokeWidth / 2) + 3
   const top3ArcSpan = (top3PctRounded / 100) * 360
   const top3ArcStart = 270 - (top3ArcSpan / 2)
@@ -2059,7 +2110,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
         )}
       >
         {total > 0 ? (
-          <div className="relative flex h-full items-center justify-center">
+          <div className={HOUSE_CHART_RING_PANEL_CLASS}>
             {hoveredSegment ? (
               <div
                 className={cn(
@@ -2076,7 +2127,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
             ) : null}
             <svg
               viewBox="0 0 100 100"
-              className="h-[7rem] w-[7rem]"
+              className={HOUSE_CHART_RING_SIZE_CLASS}
               data-stop-tile-open="true"
               onMouseMove={(event) => {
                 const bounds = event.currentTarget.getBoundingClientRect()
@@ -2438,7 +2489,7 @@ function FieldPercentilePanel({
   tile: PublicationMetricTilePayload
   threshold: FieldPercentileThreshold
 }) {
-  const [hovered, setHovered] = useState(false)
+  const [chartVisible, setChartVisible] = useState(true)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const shareMap = parseNumericKeyedMap(chartData.share_by_threshold_pct)
   const countMap = parseNumericKeyedMap(chartData.count_by_threshold)
@@ -2452,93 +2503,86 @@ function FieldPercentilePanel({
     : evaluatedPapers > 0
       ? (Math.max(0, Number(countMap[threshold] || 0)) / evaluatedPapers) * 100
       : 0
-  const countAboveRaw = countMap[threshold]
-  const countAbove = Number.isFinite(countAboveRaw)
-    ? Math.max(0, Math.round(Number(countAboveRaw)))
-    : Math.round((shareAbove / 100) * evaluatedPapers)
-  const barLabel = `>= ${threshold}th`
   const animationKey = useMemo(
     () => `${threshold}-${shareAbove.toFixed(2)}-${evaluatedPapers}`,
     [evaluatedPapers, shareAbove, threshold],
   )
   const hasPercentileData = evaluatedPapers > 0
   const animatedShareAbove = useEasedValue(shareAbove, `${animationKey}|share`, hasPercentileData)
-  const animatedHeightPct = Math.max(0, Math.min(100, animatedShareAbove))
-
+  const animatedShareClamped = Math.max(0, Math.min(100, animatedShareAbove))
+  const ringRadius = 38
+  const ringCircumference = 2 * Math.PI * ringRadius
+  const ringDash = (animatedShareClamped / 100) * ringCircumference
+  const ringRestDash = ((100 - animatedShareClamped) / 100) * ringCircumference
   useEffect(() => {
-    setHovered(false)
+    setChartVisible(false)
+    let rafOne = 0
+    rafOne = window.requestAnimationFrame(() => {
+      setChartVisible(true)
+    })
+    return () => {
+      window.cancelAnimationFrame(rafOne)
+    }
   }, [animationKey])
 
   if (!hasPercentileData) {
     return <div className={dashboardTileStyles.emptyChart}>No field percentile data</div>
   }
-  const axisLayout = buildChartAxisLayout({
-    axisLabels: [barLabel],
-    dense: false,
-  })
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
-          HOUSE_CHART_ENTERED_CLASS,
+          'pb-2 pt-2.5',
+          chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
         )}
-        style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
       >
-        <div
-          className="absolute inset-x-2 top-4"
-          style={{ bottom: `${axisLayout.plotBottomRem}rem` }}
-        >
-          {[50].map((pct) => (
-            <div
-              key={`field-percentile-grid-${pct}`}
-              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
-              style={{ bottom: `${pct}%` }}
-              aria-hidden="true"
+        <div className={cn(HOUSE_CHART_RING_PANEL_CLASS)}>
+          <svg
+            viewBox="0 0 100 100"
+            className={HOUSE_CHART_RING_SIZE_CLASS}
+            data-stop-tile-open="true"
+          >
+            <circle
+              cx="50"
+              cy="50"
+              r={ringRadius}
+              fill="none"
+              className={HOUSE_CHART_RING_TRACK_SVG_CLASS}
+              strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
             />
-          ))}
-          <div className="absolute inset-0 flex items-end justify-center">
-            <div
-              className="relative flex h-full min-h-0 w-[44%] items-end"
-              onMouseEnter={() => setHovered(true)}
-              onMouseLeave={() => setHovered(false)}
-            >
-              <span
-                className={cn(
-                  HOUSE_DRILLDOWN_TOOLTIP_CLASS,
-                  hovered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
-                )}
-                style={{ bottom: `calc(${animatedHeightPct}% + 0.35rem)` }}
-                aria-hidden="true"
-              >
-                {Math.round(animatedShareAbove)}% ({formatInt(countAbove)} papers)
-              </span>
-              <span
-                className={cn(
-                  'block w-full rounded',
-                  HOUSE_TOGGLE_CHART_BAR_CLASS,
-                  HOUSE_CHART_BAR_POSITIVE_CLASS,
-                  hovered && 'brightness-[1.08] saturate-[1.14]',
-                )}
-                style={{
-                  height: `${animatedHeightPct}%`,
-                  transform: `translateY(${hovered ? '-1px' : '0px'}) scaleX(${hovered ? 1.03 : 1})`,
-                  transformOrigin: 'bottom',
-                }}
-              />
-            </div>
-          </div>
-        </div>
-        <div
-          className="pointer-events-none absolute inset-x-2"
-          style={{ bottom: `${axisLayout.axisBottomRem}rem`, minHeight: `${axisLayout.axisMinHeightRem}rem` }}
-        >
-          <div className={cn('leading-none text-center', HOUSE_TOGGLE_CHART_LABEL_CLASS)}>
-            <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-0.5 text-center')}>
-              {barLabel}
-            </p>
-          </div>
+            <circle
+              cx="50"
+              cy="50"
+              r={ringRadius}
+              fill="none"
+              className={HOUSE_CHART_RING_MAIN_SVG_CLASS}
+              strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
+              strokeLinecap="round"
+              transform="rotate(-90 50 50)"
+              style={{
+                strokeDasharray: `${ringDash} ${ringCircumference}`,
+                strokeDashoffset: 0,
+                transition: 'stroke-dasharray 560ms cubic-bezier(0.2, 0.68, 0.16, 1)',
+              }}
+            />
+            <circle
+              cx="50"
+              cy="50"
+              r={ringRadius}
+              fill="none"
+              className={HOUSE_CHART_RING_SOFT_SVG_CLASS}
+              strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
+              strokeLinecap="round"
+              transform={`rotate(${-90 + ((animatedShareClamped / 100) * 360)} 50 50)`}
+              style={{
+                strokeDasharray: `${ringRestDash} ${ringCircumference}`,
+                strokeDashoffset: -ringDash,
+                transition: 'stroke-dasharray 560ms cubic-bezier(0.2, 0.68, 0.16, 1), stroke-dashoffset 560ms cubic-bezier(0.2, 0.68, 0.16, 1)',
+              }}
+            />
+          </svg>
         </div>
       </div>
     </div>
@@ -3042,7 +3086,10 @@ function TotalPublicationsDrilldownWorkspace({
   }, [publications])
 
   const activeYears = yearSeriesRaw.filter((count) => count > 0).length
-  const medianPerActiveYear = median(yearSeriesRaw.filter((count) => count > 0))
+  const activeYearValues = yearSeriesRaw.filter((count) => count > 0)
+  const meanPerActiveYear = activeYearValues.length
+    ? Math.round(activeYearValues.reduce((sum, count) => sum + count, 0) / activeYearValues.length)
+    : 0
   const peakYearData = useMemo(() => {
     let bestYear = maxYear
     let bestCount = -1
@@ -3266,42 +3313,53 @@ function TotalPublicationsDrilldownWorkspace({
 
   if (activeTab === 'summary') {
     const headlineValue = String(tile.value_display || formatInt(publications.length))
-    const rollingWindow5y = yearSeriesRaw.slice(-5)
-    const rollingMean5y = rollingWindow5y.length
-      ? (rollingWindow5y.reduce((sum, value) => sum + value, 0) / rollingWindow5y.length)
-      : 0
-    const rollingMean5yRounded = Math.round(rollingMean5y * 10) / 10
-    const rollingMean5yDisplay = Number.isInteger(rollingMean5yRounded)
-      ? String(Math.round(rollingMean5yRounded))
-      : rollingMean5yRounded.toFixed(1)
-    const summaryStatCardClass = cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'px-3 py-2.5')
-    const summaryStatTitleClass = cn(HOUSE_DRILLDOWN_STAT_TITLE_CLASS, 'leading-[1.2] min-h-[2.1rem] w-full text-center')
-    const summaryStatValueWrapClass = 'mt-auto flex min-h-[1.5rem] items-end justify-center'
-    const summaryStatValueClass = cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'mt-0 tabular-nums leading-none')
+    const computeRollingMean = (windowSize: number): number => {
+      if (!yearSeriesRaw.length) {
+        return 0
+      }
+      const windowEnd = Math.max(0, yearSeriesRaw.length - Math.max(1, windowSize))
+      const windowValues = yearSeriesRaw.slice(windowEnd)
+      return windowValues.length ? (windowValues.reduce((sum, value) => sum + value, 0) / windowValues.length) : 0
+    }
+    const formatRollingMean = (value: number): string => formatInt(Math.round(value))
+    const rollingMean1y = computeRollingMean(1)
+    const rollingMean3y = computeRollingMean(3)
+    const rollingMean5y = computeRollingMean(5)
+    const rollingMean1yDisplay = formatRollingMean(rollingMean1y)
+    const rollingMean3yDisplay = formatRollingMean(rollingMean3y)
+    const rollingMean5yDisplay = formatRollingMean(rollingMean5y)
+    const summaryStatCardClass = HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS
+    const summaryStatTitleClass = cn(
+      HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS,
+      HOUSE_DRILLDOWN_STAT_TITLE_CLASS,
+    )
+    const summaryStatValueWrapClass = HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS
+    const summaryStatValueClass = cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums whitespace-nowrap leading-none')
+    const summaryStatValueEmphasisClass = cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_EMPHASIS_CLASS, 'tabular-nums whitespace-nowrap leading-none')
     return (
       <div className="space-y-3">
         <div className={workspaceSectionClass}>
-          <p className={workspaceSubheadingClass}>Headline results</p>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <div className={cn(summaryStatCardClass, 'flex min-h-[4.9rem] flex-col items-center text-center')}>
+            <p className={cn(workspaceSubheadingClass, HOUSE_DRILLDOWN_SECTION_TITLE_SPACER_CLASS)}>Headline results</p>
+          <div className={HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS}>
+            <div className={summaryStatCardClass}>
               <p className={summaryStatTitleClass}>Total publications</p>
               <div className={summaryStatValueWrapClass}>
-                <p className={cn(summaryStatValueClass, 'text-display tracking-tight')}>{headlineValue}</p>
+                <p className={summaryStatValueEmphasisClass}>{headlineValue}</p>
               </div>
             </div>
-            <div className={cn(summaryStatCardClass, 'flex min-h-[4.9rem] flex-col items-center text-center')}>
+            <div className={summaryStatCardClass}>
               <p className={summaryStatTitleClass}>Active years</p>
               <div className={summaryStatValueWrapClass}>
                 <p className={summaryStatValueClass}>{formatInt(activeYears)}</p>
               </div>
             </div>
-            <div className={cn(summaryStatCardClass, 'flex min-h-[4.9rem] flex-col items-center text-center')}>
-              <p className={summaryStatTitleClass}>Median per year</p>
+            <div className={summaryStatCardClass}>
+              <p className={summaryStatTitleClass}>Mean per year</p>
               <div className={summaryStatValueWrapClass}>
-                <p className={summaryStatValueClass}>{formatInt(Math.round(medianPerActiveYear))}</p>
+                <p className={summaryStatValueClass}>{formatInt(meanPerActiveYear)}</p>
               </div>
             </div>
-            <div className={cn(summaryStatCardClass, 'flex min-h-[4.9rem] flex-col items-center text-center')}>
+            <div className={summaryStatCardClass}>
               <p className={summaryStatTitleClass}>Current year to date</p>
               <div className={summaryStatValueWrapClass}>
                 <p className={summaryStatValueClass}>{formatInt(ytdCount)}</p>
@@ -3309,14 +3367,26 @@ function TotalPublicationsDrilldownWorkspace({
             </div>
           </div>
 
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            <div className={cn(summaryStatCardClass, 'flex min-h-[4.75rem] flex-col')}>
+          <div className={HOUSE_DRILLDOWN_SUMMARY_STATS_COMPACT_GRID_CLASS}>
+            <div className={cn(summaryStatCardClass, 'min-h-[4.9rem]')}>
+              <p className={summaryStatTitleClass}>1-year rolling mean</p>
+              <div className={summaryStatValueWrapClass}>
+                <p className={summaryStatValueClass}>{rollingMean1yDisplay}</p>
+              </div>
+            </div>
+            <div className={cn(summaryStatCardClass, 'min-h-[4.9rem]')}>
+              <p className={summaryStatTitleClass}>3-year rolling mean</p>
+              <div className={summaryStatValueWrapClass}>
+                <p className={summaryStatValueClass}>{rollingMean3yDisplay}</p>
+              </div>
+            </div>
+            <div className={cn(summaryStatCardClass, 'min-h-[4.9rem]')}>
               <p className={summaryStatTitleClass}>5-year rolling mean</p>
               <div className={summaryStatValueWrapClass}>
                 <p className={summaryStatValueClass}>{rollingMean5yDisplay}</p>
               </div>
             </div>
-            <div className={cn(summaryStatCardClass, 'flex min-h-[4.75rem] flex-col')}>
+            <div className={cn(summaryStatCardClass, 'min-h-[4.9rem]')}>
               <p className={summaryStatTitleClass}>Career peak</p>
               <div className={summaryStatValueWrapClass}>
                 <p className={summaryStatValueClass}>{`${formatInt(peakYearData.count)} (${peakYearData.year})`}</p>
@@ -3324,9 +3394,9 @@ function TotalPublicationsDrilldownWorkspace({
             </div>
           </div>
 
-          <div className="mt-3">
-            <p className={workspaceSubheadingClass}>Publication trend</p>
-            <div className="mt-2 h-[14.6rem]">
+          <div className={HOUSE_DRILLDOWN_SECTION_SEPARATOR_CLASS}>
+            <p className={cn(workspaceSubheadingClass, HOUSE_DRILLDOWN_SECTION_TITLE_SPACER_CLASS)}>Publication Trends</p>
+            <div className={HOUSE_DRILLDOWN_SUMMARY_TREND_CHART_CLASS}>
               <PublicationsPerYearChart
                 tile={tile}
                 showCaption={false}
@@ -3671,7 +3741,7 @@ function TotalPublicationsDrilldownWorkspace({
             <div className={cn('p-2.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
               <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Portfolio structure</p>
               <p className={cn('mt-1', HOUSE_DRILLDOWN_NOTE_CLASS)}>{`Active years ${formatInt(activeYears)}`}</p>
-              <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`Median/year ${medianPerActiveYear.toFixed(1)}`}</p>
+              <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`Mean/year ${meanPerActiveYear.toFixed(0)}`}</p>
               <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`Unknown year records ${formatInt(unknownYearCount)}`}</p>
             </div>
             <div className={cn('p-2.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
@@ -4668,23 +4738,33 @@ export function PublicationsTopStrip({
                     : mainValueDisplay
                   secondaryText = `Papers at or above ${activeThreshold}th percentile`
                   detailText = undefined
-                  contentGridClassName = 'grid-cols-[minmax(0,0.85fr)_minmax(0,0.99fr)]'
+                  contentGridClassName = 'grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)]'
                   badgeNode = (
-                    <div className="flex w-full flex-col items-center gap-0.5">
-                      <p className={cn(HOUSE_HEADING_H3_CLASS, 'text-center')}>
-                        Percentile
-                      </p>
+                    <div className="flex h-full flex-col items-center gap-0.5">
                       <div
-                        className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'mx-auto grid w-full')}
-                        style={{ gridTemplateColumns: `repeat(${availableThresholds.length}, minmax(0, 1fr))` }}
+                        className={cn(
+                          HOUSE_TOGGLE_TRACK_CLASS,
+                          HOUSE_FIELD_PERCENTILE_TOGGLE_WIDTH_CLASS,
+                          'relative mx-auto mt-1 grid',
+                          'items-stretch',
+                        )}
+                        style={{
+                          gridTemplateRows: `repeat(${availableThresholds.length}, minmax(0, 1fr))`,
+                          minHeight: `${availableThresholds.length * 1.785}rem`,
+                        }}
                         data-stop-tile-open="true"
                       >
                         <span
                           className={HOUSE_TOGGLE_THUMB_CLASS}
                           style={{
-                            width: `calc(${100 / availableThresholds.length}% - 0.125rem)`,
-                            left: `calc(${(100 / availableThresholds.length) * activeThresholdIndex}% + 2px)`,
-                            willChange: 'left,width',
+                            width: 'calc(100% - 0.25rem)',
+                            height: `calc(${100 / availableThresholds.length}% - 0.125rem)`,
+                            top: `calc(${(100 / availableThresholds.length) * activeThresholdIndex}% + 2px)`,
+                            left: '0.125rem',
+                            bottom: 'auto',
+                            right: 'auto',
+                            transitionProperty: 'top, height',
+                            willChange: 'top,height',
                           }}
                           aria-hidden="true"
                         />
@@ -4695,6 +4775,7 @@ export function PublicationsTopStrip({
                             data-stop-tile-open="true"
                             className={cn(
                               HOUSE_TOGGLE_BUTTON_CLASS,
+                              'inline-flex h-full w-full min-h-0 flex-1 items-center justify-center px-0 py-0',
                               activeThreshold === threshold
                                 ? 'text-white'
                                 : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
@@ -4784,6 +4865,7 @@ export function PublicationsTopStrip({
                     shouldIgnoreTileOpen={shouldIgnoreTileOpen}
                     primaryValue={primaryValue}
                     badge={badgeNode}
+                    badgePlacement={tile.key === 'field_percentile_share' ? 'leftChart' : 'inline'}
                     pinBadgeBottom={pinBadgeBottom}
                     centerBadge={tile.key === 'impact_concentration'}
                     subtitle={secondaryText}
@@ -4801,7 +4883,7 @@ export function PublicationsTopStrip({
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent side="right" className={HOUSE_DRILLDOWN_SHEET_CLASS}>
           {activeTile ? (
-            <div className="space-y-4 pr-8">
+            <div className={HOUSE_DRILLDOWN_SHEET_BODY_CLASS}>
               <div className={HOUSE_SURFACE_LEFT_BORDER_CLASS}>
                 <h3 className={HOUSE_HEADING_TITLE_CLASS}>{activeTile.drilldown.title}</h3>
                 {showActiveTileDefinition ? (
@@ -4819,7 +4901,7 @@ export function PublicationsTopStrip({
                   className={cn(
                     HOUSE_ACTIONS_SECTION_TOOLS_CLASS,
                     HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS,
-                    'grid h-auto w-full grid-cols-5 gap-1 rounded-lg p-1',
+                    HOUSE_DRILLDOWN_TAB_LIST_CLASS,
                   )}
                 >
                   {DRILLDOWN_TABS.map((tab) => (
