@@ -177,6 +177,185 @@ export type AdminWorkspacesListPayload = {
   generated_at: string
 }
 
+export type AdminUsageCostsSummaryPayload = {
+  tokens_current_month: number
+  tool_calls_current_month: number
+  cost_usd_current_month: number
+  storage_bytes_total: number
+  avg_chain_length: number
+  cache_hit_rate_pct: number
+  rate_limit_events_current_month: number
+  quota_breaches_current_month: number
+  budget_alerts_current_month: number
+  failed_runs_current_month: number
+  running_runs_current: number
+}
+
+export type AdminUsageCostsModelUsagePayload = {
+  model: string
+  tokens_current_month: number
+  tool_calls_current_month: number
+  cost_usd_current_month: number
+  avg_cost_usd_per_call: number
+}
+
+export type AdminUsageCostsToolUsagePayload = {
+  tool_type: string
+  calls_current_month: number
+  cost_usd_current_month: number
+}
+
+export type AdminUsageCostsOrganisationUsagePayload = {
+  org_id: string
+  org_name: string
+  domain: string
+  plan: string
+  tokens_current_month: number
+  tokens_previous_month: number
+  tokens_trend_pct: number
+  tool_calls_current_month: number
+  cost_usd_current_month: number
+  cost_usd_previous_month: number
+  cost_trend_pct: number
+  storage_bytes: number
+  token_quota_monthly: number
+  quota_used_pct: number
+}
+
+export type AdminUsageCostsUserUsagePayload = {
+  user_id: string
+  name: string
+  email: string
+  tokens_current_month: number
+  tool_calls_current_month: number
+  cost_usd_current_month: number
+  storage_bytes: number
+}
+
+export type AdminUsageCostsMonthlyTrendPointPayload = {
+  month: string
+  tokens: number
+  tool_calls: number
+  cost_usd: number
+}
+
+export type AdminUsageCostsPayload = {
+  generated_at: string
+  summary: AdminUsageCostsSummaryPayload
+  model_usage: AdminUsageCostsModelUsagePayload[]
+  tool_usage: AdminUsageCostsToolUsagePayload[]
+  organisation_usage: AdminUsageCostsOrganisationUsagePayload[]
+  user_usage: AdminUsageCostsUserUsagePayload[]
+  monthly_trend: AdminUsageCostsMonthlyTrendPointPayload[]
+}
+
+export type AdminJobSummaryPayload = {
+  id: string
+  status: string
+  cancel_requested: boolean
+  run_count: number
+  retry_count: number
+  parent_job_id: string | null
+  project_id: string
+  project_title: string
+  workspace_id: string
+  workspace_name: string
+  manuscript_id: string
+  owner_user_id: string | null
+  owner_name: string
+  owner_email: string
+  pricing_model: string
+  estimated_tokens: number
+  estimated_cost_usd_high: number
+  sections_count: number
+  progress_percent: number
+  current_section: string | null
+  error_detail: string | null
+  created_at: string | null
+  started_at: string | null
+  completed_at: string | null
+  updated_at: string | null
+  duration_seconds: number | null
+}
+
+export type AdminJobsQueueHealthPayload = {
+  total_jobs: number
+  active_jobs: number
+  terminal_jobs: number
+  queued_jobs: number
+  running_jobs: number
+  cancel_requested_jobs: number
+  failed_jobs: number
+  completed_jobs: number
+  cancelled_jobs: number
+  retryable_jobs: number
+  backlog_jobs: number
+}
+
+export type AdminJobsListPayload = {
+  items: AdminJobSummaryPayload[]
+  total: number
+  limit: number
+  offset: number
+  generated_at: string
+  queue_health: AdminJobsQueueHealthPayload
+}
+
+export type AdminAuditEventPayload = {
+  id: string
+  action: string
+  target_type: string
+  target_id: string
+  status: string
+  actor_user_id: string | null
+  actor_name: string
+  actor_email: string
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export type AdminJobActionPayload = {
+  action: 'cancel' | 'retry'
+  message: string
+  source_job_id: string
+  job: AdminJobSummaryPayload
+  audit_event: AdminAuditEventPayload
+}
+
+export type AdminOrganisationImpersonationStartPayload = {
+  org_id: string
+  org_name: string
+  domain: string
+  target_user_id: string
+  target_user_name: string
+  target_user_email: string
+  impersonation_ticket: string
+  started_at: string
+  expires_at: string
+  audited: boolean
+  audit_event: AdminAuditEventPayload
+}
+
+export type AdminAuditActionTotalPayload = {
+  action: string
+  count: number
+}
+
+export type AdminAuditEventsSummaryPayload = {
+  success_count: number
+  failure_count: number
+  action_totals: AdminAuditActionTotalPayload[]
+}
+
+export type AdminAuditEventsListPayload = {
+  items: AdminAuditEventPayload[]
+  total: number
+  limit: number
+  offset: number
+  generated_at: string
+  summary: AdminAuditEventsSummaryPayload
+}
+
 export type AffiliationSuggestionItemPayload = {
   name: string
   label: string

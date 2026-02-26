@@ -1431,6 +1431,185 @@ def v1_admin_workspaces(
 
 
 @app.get(
+    "/v1/admin/usage-costs",
+    response_model=AdminUsageCostsResponse,
+    responses=UNAUTHORIZED_RESPONSES | FORBIDDEN_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_usage_costs(
+    request: Request,
+    query: str = Query(default="", max_length=120),
+) -> AdminUsageCostsResponse | JSONResponse:
+    _, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    payload = get_admin_usage_costs(query=query)
+    return AdminUsageCostsResponse(**payload)
+
+
+@app.get(
+    "/v1/admin/jobs",
+    response_model=AdminJobsListResponse,
+    responses=UNAUTHORIZED_RESPONSES | FORBIDDEN_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_jobs(
+    request: Request,
+    query: str = Query(default="", max_length=160),
+    status: str = Query(default="", max_length=64),
+    workspace_id: str = Query(default="", max_length=120),
+    project_id: str = Query(default="", max_length=40),
+    owner_user_id: str = Query(default="", max_length=40),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> AdminJobsListResponse | JSONResponse:
+    _, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    payload = list_admin_jobs(
+        query=query,
+        status=status,
+        workspace_id=workspace_id,
+        project_id=project_id,
+        owner_user_id=owner_user_id,
+        limit=limit,
+        offset=offset,
+    )
+    return AdminJobsListResponse(**payload)
+
+
+@app.post(
+    "/v1/admin/jobs/{job_id}/cancel",
+    response_model=AdminJobActionResponse,
+    responses=UNAUTHORIZED_RESPONSES
+    | FORBIDDEN_RESPONSES
+    | BAD_REQUEST_RESPONSES
+    | NOT_FOUND_RESPONSES
+    | CONFLICT_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_cancel_job(
+    job_id: str,
+    request: Request,
+    payload: AdminJobCancelRequest | None = None,
+) -> AdminJobActionResponse | JSONResponse:
+    admin_user, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    try:
+        result = admin_cancel_job(
+            job_id=job_id,
+            actor_user_id=str((admin_user or {}).get("id") or ""),
+            reason=str((payload.reason if payload else "") or ""),
+        )
+        return AdminJobActionResponse(**result)
+    except AdminValidationError as exc:
+        return _build_bad_request_response(str(exc))
+    except AdminNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except AdminStateError as exc:
+        return _build_conflict_response(str(exc))
+
+
+@app.post(
+    "/v1/admin/jobs/{job_id}/retry",
+    response_model=AdminJobActionResponse,
+    responses=UNAUTHORIZED_RESPONSES
+    | FORBIDDEN_RESPONSES
+    | BAD_REQUEST_RESPONSES
+    | NOT_FOUND_RESPONSES
+    | CONFLICT_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_retry_job(
+    job_id: str,
+    request: Request,
+    payload: AdminJobRetryRequest | None = None,
+) -> AdminJobActionResponse | JSONResponse:
+    admin_user, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    try:
+        result = admin_retry_job(
+            job_id=job_id,
+            actor_user_id=str((admin_user or {}).get("id") or ""),
+            reason=str((payload.reason if payload else "") or ""),
+            max_estimated_cost_usd=(
+                payload.max_estimated_cost_usd if payload is not None else None
+            ),
+            project_daily_budget_usd=(
+                payload.project_daily_budget_usd if payload is not None else None
+            ),
+        )
+        return AdminJobActionResponse(**result)
+    except AdminValidationError as exc:
+        return _build_bad_request_response(str(exc))
+    except AdminNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except AdminStateError as exc:
+        return _build_conflict_response(str(exc))
+
+
+@app.post(
+    "/v1/admin/organisations/{org_id}/impersonate",
+    response_model=AdminOrganisationImpersonationStartResponse,
+    responses=UNAUTHORIZED_RESPONSES
+    | FORBIDDEN_RESPONSES
+    | BAD_REQUEST_RESPONSES
+    | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_impersonate_organisation(
+    org_id: str,
+    request: Request,
+    payload: AdminOrganisationImpersonationRequest | None = None,
+) -> AdminOrganisationImpersonationStartResponse | JSONResponse:
+    admin_user, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    try:
+        result = create_admin_org_impersonation(
+            org_id=org_id,
+            actor_user_id=str((admin_user or {}).get("id") or ""),
+            reason=str((payload.reason if payload else "") or ""),
+        )
+        return AdminOrganisationImpersonationStartResponse(**result)
+    except AdminValidationError as exc:
+        return _build_bad_request_response(str(exc))
+    except AdminNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except AdminStateError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
+    "/v1/admin/audit/events",
+    response_model=AdminAuditEventsListResponse,
+    responses=UNAUTHORIZED_RESPONSES | FORBIDDEN_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_audit_events(
+    request: Request,
+    query: str = Query(default="", max_length=160),
+    action: str = Query(default="", max_length=96),
+    target_type: str = Query(default="", max_length=64),
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> AdminAuditEventsListResponse | JSONResponse:
+    _, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    payload = list_admin_audit_events(
+        query=query,
+        action=action,
+        target_type=target_type,
+        limit=limit,
+        offset=offset,
+    )
+    return AdminAuditEventsListResponse(**payload)
+
+
+@app.get(
     "/v1/auth/me/affiliation-suggestions",
     response_model=AffiliationSuggestionsResponse,
     responses=UNAUTHORIZED_RESPONSES | BAD_REQUEST_RESPONSES,
