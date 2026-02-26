@@ -4503,13 +4503,6 @@ export function PublicationsTopStrip({
                 HOUSE_ACTIONS_SECTION_TOOLS_CLASS,
                 HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS,
               )}
-              style={{
-                borderRadius: '0',
-                border: '0',
-                background: 'transparent',
-                padding: '0',
-                gap: '0.16rem',
-              }}
               data-stop-tile-open="true"
             >
               {insightsVisible ? (
