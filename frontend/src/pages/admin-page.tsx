@@ -1109,8 +1109,16 @@ export function AdminPage() {
                           <p className="mt-1 text-xs text-muted-foreground">
                             Last event: {formatTimestamp(selectedOrganisation.impersonation.last_event_at)}
                           </p>
-                          <Button type="button" variant="outline" className="mt-3 w-full" disabled>
-                            Impersonate org admin (audited)
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="mt-3 w-full"
+                            disabled={loading || impersonatingOrganisationId === selectedOrganisation.id}
+                            onClick={() => void onImpersonateOrganisation()}
+                          >
+                            {impersonatingOrganisationId === selectedOrganisation.id
+                              ? 'Creating ticket...'
+                              : 'Impersonate org admin (audited)'}
                           </Button>
                         </div>
                       </CardContent>
