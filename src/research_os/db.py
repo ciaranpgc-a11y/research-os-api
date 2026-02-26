@@ -375,6 +375,9 @@ class User(Base):
     owned_data_profiles: Mapped[list["DataProfile"]] = relationship(
         back_populates="owner_user", cascade="all, delete-orphan"
     )
+    admin_audit_events: Mapped[list["AdminAuditEvent"]] = relationship(
+        back_populates="actor_user", cascade="all, delete-orphan"
+    )
 
 
 class WorkspaceStateCache(Base):
@@ -1344,6 +1347,37 @@ class ManuscriptSnapshot(Base):
     )
 
     manuscript: Mapped[Manuscript] = relationship(back_populates="snapshots")
+
+
+class AdminAuditEvent(Base):
+    __tablename__ = "admin_audit_events"
+    __table_args__ = (
+        Index("ix_admin_audit_events_created_at", "created_at"),
+        Index("ix_admin_audit_events_action_created", "action", "created_at"),
+        Index(
+            "ix_admin_audit_events_target_created",
+            "target_type",
+            "target_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    actor_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    action: Mapped[str] = mapped_column(String(96), index=True, default="")
+    target_type: Mapped[str] = mapped_column(String(64), index=True, default="")
+    target_id: Mapped[str] = mapped_column(String(128), index=True, default="")
+    status: Mapped[str] = mapped_column(String(24), index=True, default="success")
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
+
+    actor_user: Mapped[User | None] = relationship(back_populates="admin_audit_events")
 
 
 class GenerationJob(Base):

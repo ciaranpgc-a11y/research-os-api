@@ -896,3 +896,24 @@
 - `pytest tests/test_db_storage_stability.py -q`
 - `pytest tests/test_data_library_resilience.py -q`
 - `pytest tests/test_api.py -k "library_assets_persist_across_logout_and_login or library_assets_support_server_pagination_sort_and_filters or library_asset_access_controls_and_download" -q`
+
+### OAuth Sign-In Reliability + Diagnostics Hardening
+
+- **Area:** Login reliability and support diagnostics for OAuth callback flows (ORCID/Google/Microsoft).
+- **What changed:**
+- Improved OAuth token exchange error reporting to include provider-safe error details:
+  - `ORCID token exchange failed (invalid_grant).`
+  - fallback: `... failed (status 400).`
+- Added duplicate callback guard in `AuthCallbackPage`:
+  - de-duplicates repeated `provider/state/code` processing in the same browser session,
+  - prevents accidental second exchange attempt of one-time OAuth code (common in dev/strict render paths).
+- **Why it changed:**
+- Reduce false-positive OAuth failures caused by duplicate callback execution.
+- Make production troubleshooting faster by exposing actionable upstream error codes.
+- **Key files touched:**
+- `src/research_os/services/social_auth_service.py`
+- `frontend/src/pages/auth-callback-page.tsx`
+- `docs/change-log.md`
+- **Verification performed:**
+- `python -m py_compile src/research_os/services/social_auth_service.py`
+- `pytest tests/test_api.py -k "auth_oauth_connect_and_callback_endpoints or auth/login or login_challenge" -q`

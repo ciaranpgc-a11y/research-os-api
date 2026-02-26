@@ -242,7 +242,26 @@ def _exchange_oauth_code(
     with httpx.Client(timeout=20.0) as client:
         response = client.post(config["token_url"], data=payload, headers=headers)
     if response.status_code >= 400:
-        raise AuthValidationError(f"{provider.capitalize()} token exchange failed.")
+        provider_label = "ORCID" if provider == "orcid" else provider.capitalize()
+        error_code = ""
+        try:
+            raw_payload = response.json()
+        except Exception:
+            raw_payload = None
+        if isinstance(raw_payload, dict):
+            error_code = str(
+                raw_payload.get("error")
+                or raw_payload.get("error_code")
+                or raw_payload.get("error_description")
+                or ""
+            ).strip()
+        if error_code:
+            raise AuthValidationError(
+                f"{provider_label} token exchange failed ({error_code})."
+            )
+        raise AuthValidationError(
+            f"{provider_label} token exchange failed (status {response.status_code})."
+        )
     return response.json()
 
 

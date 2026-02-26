@@ -12,6 +12,8 @@ function isProvider(value: string): value is OAuthProvider {
   return value === 'orcid' || value === 'google' || value === 'microsoft'
 }
 
+const processedCallbackKeys = new Set<string>()
+
 export function AuthCallbackPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
@@ -32,6 +34,12 @@ export function AuthCallbackPage() {
       setError('OAuth callback is missing provider, state, or code.')
       return
     }
+    const callbackKey = `${providerRaw}:${state}:${code}`
+    if (processedCallbackKeys.has(callbackKey)) {
+      setStatus('Sign-in callback already processed. You can close this window.')
+      return
+    }
+    processedCallbackKeys.add(callbackKey)
 
     void (async () => {
       try {

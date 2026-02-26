@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import func, or_, select
 
 from research_os.db import (
+    AdminAuditEvent,
     DataLibraryAsset,
     GenerationJob,
     Manuscript,
@@ -15,6 +18,11 @@ from research_os.db import (
     Work,
     create_all_tables,
     session_scope,
+)
+from research_os.services.generation_job_service import (
+    GenerationJobConflictError,
+    GenerationJobStateError,
+    enqueue_generation_job,
 )
 
 PERSONAL_EMAIL_DOMAINS = {
@@ -60,6 +68,22 @@ PLAN_LIMITS: dict[str, dict[str, float | int]] = {
         "gross_margin_pct": 74.0,
     },
 }
+
+ADMIN_JOB_ACTIVE_STATUSES = {"queued", "running", "cancel_requested"}
+ADMIN_JOB_RETRYABLE_STATUSES = {"failed", "cancelled"}
+ADMIN_JOB_TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
+
+
+class AdminNotFoundError(RuntimeError):
+    """Raised when an admin-targeted object cannot be located."""
+
+
+class AdminStateError(RuntimeError):
+    """Raised when an admin action cannot be executed in the current state."""
+
+
+class AdminValidationError(RuntimeError):
+    """Raised when admin action input is invalid."""
 
 
 def _utcnow() -> datetime:
@@ -197,6 +221,76 @@ def _cost_to_revenue_ratio(plan: str) -> float:
     if plan == "team":
         return 1.9
     return 2.4
+
+
+def _safe_float(value: Any) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return 0.0
+
+
+def _serialize_admin_audit_event(
+    event: AdminAuditEvent,
+    actor_name: str,
+    actor_email: str,
+) -> dict[str, object]:
+    metadata = event.metadata_json if isinstance(event.metadata_json, dict) else {}
+    return {
+        "id": event.id,
+        "action": event.action,
+        "target_type": event.target_type,
+        "target_id": event.target_id,
+        "status": event.status,
+        "actor_user_id": event.actor_user_id,
+        "actor_name": actor_name,
+        "actor_email": actor_email,
+        "metadata": metadata,
+        "created_at": event.created_at,
+    }
+
+
+def _record_admin_audit_event(
+    *,
+    actor_user_id: str | None,
+    action: str,
+    target_type: str,
+    target_id: str,
+    status: str = "success",
+    metadata: dict[str, object] | None = None,
+) -> dict[str, object]:
+    create_all_tables()
+    clean_actor_user_id = str(actor_user_id or "").strip() or None
+    clean_action = str(action or "").strip()[:96]
+    clean_target_type = str(target_type or "").strip()[:64]
+    clean_target_id = str(target_id or "").strip()[:128]
+    clean_status = str(status or "").strip()[:24] or "success"
+    clean_metadata = metadata if isinstance(metadata, dict) else {}
+
+    with session_scope() as session:
+        actor_name = "System"
+        actor_email = ""
+        if clean_actor_user_id:
+            actor = session.get(User, clean_actor_user_id)
+            if actor is not None:
+                actor_name = str(actor.name or "").strip() or "Unknown user"
+                actor_email = str(actor.email or "").strip()
+        event = AdminAuditEvent(
+            actor_user_id=clean_actor_user_id,
+            action=clean_action,
+            target_type=clean_target_type,
+            target_id=clean_target_id,
+            status=clean_status,
+            metadata_json=clean_metadata,
+        )
+        session.add(event)
+        session.flush()
+        payload = _serialize_admin_audit_event(
+            event,
+            actor_name=actor_name,
+            actor_email=actor_email,
+        )
+    return payload
 
 
 def get_admin_overview() -> dict[str, object]:
