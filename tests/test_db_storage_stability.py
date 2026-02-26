@@ -3,7 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 import sqlite3
 
+from sqlalchemy.exc import ProgrammingError
+
 from research_os.db import (
+    Base,
     DataLibraryAsset,
     User,
     create_all_tables,
@@ -298,3 +301,20 @@ def test_create_all_tables_repairs_legacy_asset_and_project_columns(
     payload = list_library_assets(project_id=None, user_id=user_id)
     listed_ids = [str(item.get("id")) for item in payload.get("items", [])]
     assert asset_id in listed_ids
+
+
+def test_create_all_tables_ignores_duplicate_programming_error(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    db_path = (tmp_path / "duplicate_programming_error.db").resolve()
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{db_path.as_posix()}")
+    reset_database_state()
+
+    def _raise_duplicate(*args, **kwargs):
+        raise ProgrammingError(
+            "CREATE INDEX ix_already_exists ON table_name (column_name)",
+            {},
+            Exception('relation "ix_already_exists" already exists'),
+        )
+
+    monkeypatch.setattr(Base.metadata, "create_all", _raise_duplicate)
+    create_all_tables()

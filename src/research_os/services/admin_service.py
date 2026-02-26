@@ -1559,49 +1559,148 @@ def list_admin_jobs(
     normalized_offset = max(0, int(offset))
 
     with session_scope() as session:
-        jobs = session.scalars(
-            select(GenerationJob).order_by(GenerationJob.created_at.desc())
+        job_rows = session.execute(
+            select(
+                GenerationJob.id,
+                GenerationJob.status,
+                GenerationJob.cancel_requested,
+                GenerationJob.run_count,
+                GenerationJob.parent_job_id,
+                GenerationJob.project_id,
+                GenerationJob.manuscript_id,
+                GenerationJob.pricing_model,
+                GenerationJob.estimated_input_tokens,
+                GenerationJob.estimated_output_tokens_high,
+                GenerationJob.estimated_cost_usd_high,
+                GenerationJob.sections,
+                GenerationJob.progress_percent,
+                GenerationJob.current_section,
+                GenerationJob.error_detail,
+                GenerationJob.created_at,
+                GenerationJob.started_at,
+                GenerationJob.completed_at,
+                GenerationJob.updated_at,
+            ).order_by(GenerationJob.created_at.desc())
         ).all()
-        project_rows = session.scalars(select(Project)).all()
-        user_rows = session.scalars(select(User)).all()
+        project_rows = session.execute(
+            select(
+                Project.id,
+                Project.title,
+                Project.owner_user_id,
+                Project.workspace_id,
+            )
+        ).all()
+        user_rows = session.execute(select(User.id, User.name, User.email)).all()
 
-    project_by_id = {
-        str(project.id): project for project in project_rows if str(project.id or "").strip()
-    }
-    user_by_id = {
-        str(user.id): user for user in user_rows if str(user.id or "").strip()
-    }
+    project_by_id = {}
+    for project_id, title, owner_id, workspace in project_rows:
+        clean_project_id = str(project_id or "").strip()
+        if not clean_project_id:
+            continue
+        project_by_id[clean_project_id] = {
+            "title": str(title or "").strip(),
+            "owner_user_id": str(owner_id or "").strip(),
+            "workspace_id": _workspace_token(workspace),
+        }
+
+    user_by_id = {}
+    for user_id, name, email in user_rows:
+        clean_user_id = str(user_id or "").strip()
+        if not clean_user_id:
+            continue
+        user_by_id[clean_user_id] = {
+            "name": str(name or "").strip(),
+            "email": str(email or "").strip(),
+        }
 
     status_counts: dict[str, int] = defaultdict(int)
     active_count = 0
     terminal_count = 0
     items: list[dict[str, object]] = []
 
-    for job in jobs:
-        clean_status = str(job.status or "").strip().lower()
+    for (
+        job_id,
+        status_value,
+        cancel_requested,
+        run_count,
+        parent_job_id,
+        project_id_value,
+        manuscript_id,
+        pricing_model,
+        estimated_input_tokens,
+        estimated_output_tokens_high,
+        estimated_cost_usd_high,
+        sections,
+        progress_percent,
+        current_section,
+        error_detail,
+        created_at,
+        started_at,
+        completed_at,
+        updated_at,
+    ) in job_rows:
+        clean_status = str(status_value or "").strip().lower()
         if normalized_status and normalized_status not in {"all", "any"}:
             if clean_status != normalized_status:
                 continue
 
-        project = project_by_id.get(str(job.project_id or "").strip())
-        workspace_token = _workspace_token(
-            project.workspace_id if project is not None else ""
-        )
+        clean_project_id = str(project_id_value or "").strip()
+        project = project_by_id.get(clean_project_id, {})
+        workspace_token = str(project.get("workspace_id") or "").strip()
         if normalized_workspace_id and workspace_token != normalized_workspace_id:
             continue
 
-        clean_project_id = str(job.project_id or "").strip()
         if normalized_project_id and clean_project_id != normalized_project_id:
             continue
 
-        clean_owner_user_id = (
-            str(project.owner_user_id or "").strip() if project is not None else ""
-        )
+        clean_owner_user_id = str(project.get("owner_user_id") or "").strip()
         if normalized_owner_user_id and clean_owner_user_id != normalized_owner_user_id:
             continue
 
-        owner = user_by_id.get(clean_owner_user_id)
-        item = _serialize_admin_job_row(job=job, project=project, owner=owner)
+        owner = user_by_id.get(clean_owner_user_id, {})
+        started_at_utc = _coerce_utc(started_at)
+        completed_at_utc = _coerce_utc(completed_at)
+        created_at_utc = _coerce_utc(created_at)
+        updated_at_utc = _coerce_utc(updated_at)
+        duration_seconds: int | None = None
+        if (
+            started_at_utc is not None
+            and completed_at_utc is not None
+            and completed_at_utc >= started_at_utc
+        ):
+            duration_seconds = int((completed_at_utc - started_at_utc).total_seconds())
+        estimated_tokens = int(
+            max(0, int(estimated_input_tokens or 0))
+            + max(0, int(estimated_output_tokens_high or 0))
+        )
+        item = {
+            "id": str(job_id or "").strip(),
+            "status": clean_status,
+            "cancel_requested": bool(cancel_requested),
+            "run_count": max(1, int(run_count or 1)),
+            "retry_count": max(0, int(run_count or 1) - 1),
+            "parent_job_id": str(parent_job_id or "").strip() or None,
+            "project_id": clean_project_id,
+            "project_title": str(project.get("title") or ""),
+            "workspace_id": workspace_token,
+            "workspace_name": _workspace_display_name(workspace_token),
+            "manuscript_id": str(manuscript_id or "").strip(),
+            "owner_user_id": clean_owner_user_id or None,
+            "owner_name": str(owner.get("name") or ""),
+            "owner_email": str(owner.get("email") or ""),
+            "pricing_model": str(pricing_model or "").strip() or "unknown-model",
+            "estimated_tokens": estimated_tokens,
+            "estimated_cost_usd_high": round(float(estimated_cost_usd_high or 0.0), 6),
+            "sections_count": len(list(sections or [])),
+            "progress_percent": max(0, min(100, int(progress_percent or 0))),
+            "current_section": str(current_section or "").strip() or None,
+            "error_detail": str(error_detail or "").strip() or None,
+            "created_at": created_at_utc,
+            "started_at": started_at_utc,
+            "completed_at": completed_at_utc,
+            "updated_at": updated_at_utc,
+            "duration_seconds": duration_seconds,
+        }
         if normalized_query:
             searchable = " ".join(
                 [
@@ -1613,7 +1712,7 @@ def list_admin_jobs(
                     str(item["owner_name"]),
                     str(item["owner_email"]),
                     str(item["pricing_model"]),
-                    str(item["error_detail"] or ""),
+                    str(item["error_detail"]),
                 ]
             ).lower()
             if normalized_query not in searchable:
@@ -1903,13 +2002,20 @@ def create_admin_org_impersonation(
 
     try:
         with session_scope() as session:
-            org_users = session.scalars(
-                select(User).where(func.lower(User.email).like(f"%@{domain}"))
+            org_user_rows = session.execute(
+                select(
+                    User.id,
+                    User.name,
+                    User.email,
+                    User.role,
+                    User.is_active,
+                    User.last_sign_in_at,
+                ).where(func.lower(User.email).like(f"%@{domain}"))
             ).all()
     except Exception as exc:  # pragma: no cover - defensive guard
         raise AdminStateError("Could not query organisation users.") from exc
 
-    if not org_users:
+    if not org_user_rows:
         _record_admin_audit_event(
             actor_user_id=clean_actor_user_id,
             action="admin_org_impersonation_start",
@@ -1922,16 +2028,40 @@ def create_admin_org_impersonation(
             f"Organisation '{normalized_org_id}' was not found."
         )
 
-    def _priority(user: User) -> tuple[int, int, float]:
-        role = str(user.role or "").strip().lower()
-        last_sign_in = _coerce_utc(user.last_sign_in_at)
+    users: list[dict[str, object]] = []
+    for user_id, name, email, role, is_active, last_sign_in_at in org_user_rows:
+        clean_user_id = str(user_id or "").strip()
+        clean_email = str(email or "").strip()
+        if not clean_user_id or not clean_email:
+            continue
+        users.append(
+            {
+                "id": clean_user_id,
+                "name": str(name or "").strip(),
+                "email": clean_email,
+                "role": str(role or "").strip().lower(),
+                "is_active": bool(is_active),
+                "last_sign_in_at": _coerce_utc(last_sign_in_at),
+            }
+        )
+
+    if not users:
+        raise AdminNotFoundError(
+            f"Organisation '{normalized_org_id}' was not found."
+        )
+
+    def _priority(user: dict[str, object]) -> tuple[int, int, float]:
+        role = str(user.get("role") or "").strip().lower()
+        last_sign_in = user.get("last_sign_in_at")
+        if not isinstance(last_sign_in, datetime):
+            last_sign_in = None
         return (
             0 if role == "admin" else 1,
-            0 if bool(user.is_active) else 1,
+            0 if bool(user.get("is_active")) else 1,
             -(last_sign_in.timestamp() if last_sign_in is not None else 0.0),
         )
 
-    target_user = sorted(org_users, key=_priority)[0]
+    target_user = sorted(users, key=_priority)[0]
     started_at = _utcnow()
     expires_at = started_at + timedelta(minutes=20)
     impersonation_ticket = f"imp-{uuid4()}"
@@ -1945,8 +2075,8 @@ def create_admin_org_impersonation(
         metadata={
             "reason": clean_reason,
             "organisation_domain": domain,
-            "target_user_id": str(target_user.id),
-            "target_user_email": str(target_user.email or "").strip(),
+            "target_user_id": str(target_user["id"]),
+            "target_user_email": str(target_user["email"]),
             "impersonation_ticket": impersonation_ticket,
             "expires_at": expires_at.isoformat(),
         },
@@ -1955,9 +2085,9 @@ def create_admin_org_impersonation(
         "org_id": normalized_org_id,
         "org_name": _derive_org_name(domain),
         "domain": domain,
-        "target_user_id": str(target_user.id),
-        "target_user_name": str(target_user.name or "").strip() or "Unknown user",
-        "target_user_email": str(target_user.email or "").strip(),
+        "target_user_id": str(target_user["id"]),
+        "target_user_name": str(target_user["name"] or "").strip() or "Unknown user",
+        "target_user_email": str(target_user["email"]),
         "impersonation_ticket": impersonation_ticket,
         "started_at": started_at,
         "expires_at": expires_at,
@@ -1983,27 +2113,45 @@ def list_admin_audit_events(
     normalized_offset = max(0, int(offset))
 
     with session_scope() as session:
-        events = session.scalars(
-            select(AdminAuditEvent).order_by(AdminAuditEvent.created_at.desc())
+        event_rows = session.execute(
+            select(
+                AdminAuditEvent.id,
+                AdminAuditEvent.action,
+                AdminAuditEvent.target_type,
+                AdminAuditEvent.target_id,
+                AdminAuditEvent.status,
+                AdminAuditEvent.actor_user_id,
+                AdminAuditEvent.metadata_json,
+                AdminAuditEvent.created_at,
+            ).order_by(AdminAuditEvent.created_at.desc())
         ).all()
-        users = session.scalars(select(User)).all()
+        user_rows = session.execute(select(User.id, User.name, User.email)).all()
 
     user_meta_by_id: dict[str, tuple[str, str]] = {}
-    for user in users:
-        clean_user_id = str(user.id or "").strip()
+    for user_id, name, email in user_rows:
+        clean_user_id = str(user_id or "").strip()
         if not clean_user_id:
             continue
         user_meta_by_id[clean_user_id] = (
-            str(user.name or "").strip() or "Unknown user",
-            str(user.email or "").strip(),
+            str(name or "").strip() or "Unknown user",
+            str(email or "").strip(),
         )
 
     items: list[dict[str, object]] = []
     status_counts: dict[str, int] = defaultdict(int)
     action_counts: dict[str, int] = defaultdict(int)
-    for event in events:
-        event_action = str(event.action or "").strip().lower()
-        event_target_type = str(event.target_type or "").strip().lower()
+    for (
+        event_id,
+        action_value,
+        target_type_value,
+        target_id_value,
+        status_value,
+        actor_user_id,
+        metadata_json,
+        created_at,
+    ) in event_rows:
+        event_action = str(action_value or "").strip().lower()
+        event_target_type = str(target_type_value or "").strip().lower()
         if normalized_action and normalized_action not in {"all", "any"}:
             if event_action != normalized_action:
                 continue
@@ -2011,16 +2159,23 @@ def list_admin_audit_events(
             if event_target_type != normalized_target_type:
                 continue
 
-        actor_user_id = str(event.actor_user_id or "").strip()
+        clean_actor_user_id = str(actor_user_id or "").strip()
         actor_name, actor_email = user_meta_by_id.get(
-            actor_user_id,
+            clean_actor_user_id,
             ("System", ""),
         )
-        item = _serialize_admin_audit_event(
-            event,
-            actor_name=actor_name,
-            actor_email=actor_email,
-        )
+        item = {
+            "id": str(event_id),
+            "action": str(action_value or "").strip(),
+            "target_type": str(target_type_value or "").strip(),
+            "target_id": str(target_id_value or "").strip(),
+            "status": str(status_value or "").strip(),
+            "actor_user_id": clean_actor_user_id or None,
+            "actor_name": actor_name,
+            "actor_email": actor_email,
+            "metadata": metadata_json if isinstance(metadata_json, dict) else {},
+            "created_at": _coerce_utc(created_at),
+        }
         if normalized_query:
             metadata_blob = str(item["metadata"])
             searchable = " ".join(

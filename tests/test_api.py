@@ -3009,7 +3009,7 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
     assert retry_payload["source_job_id"] == failed_job_id
     assert retry_payload["audit_event"]["status"] == "success"
     assert retry_payload["job"]["id"] != failed_job_id
-    assert retry_payload["job"]["status"] in {"queued", "running", "completed", "failed", "cancelled", "cancel_requested"}
+    assert retry_payload["job"]["run_count"] >= 2
 
     assert impersonate_response.status_code == 200
     impersonate_payload = impersonate_response.json()
@@ -4086,7 +4086,7 @@ def test_v1_auth_oauth_connect_unhandled_error_still_returns_cors_origin(
         _raise_unexpected,
     )
 
-    with TestClient(app) as client:
+    with TestClient(app, raise_server_exceptions=False) as client:
         response = client.get(
             "/v1/auth/oauth/connect",
             params={"provider": "orcid"},

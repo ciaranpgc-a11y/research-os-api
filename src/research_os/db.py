@@ -23,7 +23,7 @@ from sqlalchemy import (
     create_engine,
     text,
 )
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -1674,8 +1674,10 @@ def create_all_tables() -> None:
     try:
         Base.metadata.create_all(bind=engine)
         _ensure_sqlite_schema_compatibility(engine)
-    except OperationalError as exc:
+    except (OperationalError, ProgrammingError) as exc:
         # Concurrent startup/scheduler table checks can race in SQLite tests.
+        # Some PostgreSQL deployments may also report duplicate index/table
+        # creation attempts as ProgrammingError during rolling deploy overlap.
         if "already exists" not in str(exc).lower():
             raise
 
