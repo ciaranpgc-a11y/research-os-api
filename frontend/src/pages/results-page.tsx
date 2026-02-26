@@ -910,7 +910,7 @@ export function ResultsPage() {
                 <p className="text-xs text-emerald-600">{libraryActionStatus}</p>
               ) : null}
               <div className="flex items-center justify-between gap-2">
-                <p className={houseTypography.fieldHelper}>{libraryPickerSelection.length} selected</p>
+                <p className={houseTypography.fieldHelper}>{selectedPullableCount} selected</p>
                 <div className="flex items-center gap-2">
                   <Button
                     type="button"
@@ -925,9 +925,9 @@ export function ResultsPage() {
                     type="button"
                     size="sm"
                     onClick={() => void onPullSelectedLibraryAssets()}
-                    disabled={!hasSessionToken || libraryPickerSelection.length === 0 || libraryPickerPulling}
+                    disabled={!hasSessionToken || selectedPullableCount === 0 || libraryPickerPulling}
                   >
-                    {libraryPickerPulling ? 'Pulling...' : `Pull selected (${libraryPickerSelection.length})`}
+                    {libraryPickerPulling ? 'Pulling...' : `Pull selected (${selectedPullableCount})`}
                   </Button>
                 </div>
               </div>

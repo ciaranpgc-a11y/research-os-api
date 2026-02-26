@@ -33,6 +33,25 @@
 - **Verification performed:**
 - `npx eslint src/pages/results-page.tsx` (run from `frontend/`)
 
+### Personal Library Pull UX: Remove Search + Workspace-Aware Status
+
+- **Area:** Workspace Data right panel + Personal Library sheet interaction model.
+- **What changed:**
+- Removed `Search library` inputs from both the right-panel library card and the Personal Library sheet.
+- Added workspace-awareness for library assets:
+  - Assets already scoped to the current workspace project are shown as `In workspace`.
+  - `Pull to workspace` / `Pull now` actions are disabled and relabeled to `In workspace` for those assets.
+  - Selection checkboxes are disabled for already-in-workspace assets.
+- Updated bulk select/pull behavior to operate only on pullable (not-yet-in-workspace) assets:
+  - `Select all available (n)` reflects only pullable assets.
+  - Footer selected count and `Pull selected (n)` now track only pullable selections.
+- **Why it changed:**
+- Align behavior with expected semantics: datasets uploaded within a workspace should be treated as already contained in that workspace, not presented as needing re-import.
+- **Key files touched:**
+- `frontend/src/pages/results-page.tsx`
+- **Verification performed:**
+- `npx eslint src/pages/results-page.tsx` (run from `frontend/`)
+
 ### Library Upload `project_id` Sentinel Normalization
 
 - **Area:** Personal library upload/list API resilience for workspace Data page.
