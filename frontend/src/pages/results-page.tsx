@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
-import { Download, Loader2, UserPlus, X } from 'lucide-react'
+import { Download, Loader2, UploadCloud, UserPlus, X } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,7 @@ import {
   fetchWorkspaceRunContext,
   listLibraryAssets as listPersistedLibraryAssets,
   updateLibraryAssetAccess as updatePersistedLibraryAssetAccess,
+  uploadLibraryAssets as uploadPersistedLibraryAssets,
 } from '@/lib/study-core-api'
 import { cn } from '@/lib/utils'
 import { PageFrame } from '@/pages/page-frame'
@@ -180,6 +181,9 @@ export function ResultsPage() {
 
   const [libraryFilterQuery, setLibraryFilterQuery] = useState('')
   const [persistSyncError, setPersistSyncError] = useState('')
+  const [uploadError, setUploadError] = useState('')
+  const [uploadStatus, setUploadStatus] = useState('')
+  const [uploadBusy, setUploadBusy] = useState(false)
   const [persistedProjectId, setPersistedProjectId] = useState<string | null>(null)
   const [persistedAssets, setPersistedAssets] = useState<LibraryAssetRecord[]>([])
   const [persistSyncBusy, setPersistSyncBusy] = useState(false)
@@ -192,6 +196,7 @@ export function ResultsPage() {
   const [libraryPickerSelection, setLibraryPickerSelection] = useState<string[]>([])
   const [libraryPickerPulling, setLibraryPickerPulling] = useState(false)
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
+  const uploadInputRef = useRef<HTMLInputElement | null>(null)
 
   const hasSessionToken = Boolean(getAuthSessionToken())
   const activeWorkspace = useMemo(
@@ -272,6 +277,64 @@ export function ResultsPage() {
     }
     return pickerFilteredPersistedAssets.every((asset) => selectedLibraryAssetSet.has(asset.id))
   }, [pickerFilteredPersistedAssets, selectedLibraryAssetSet])
+
+  const onUploadFilesToAccount = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) {
+        return
+      }
+      const token = getAuthSessionToken()
+      if (!token) {
+        setUploadError('Sign in to upload files to your personal library.')
+        return
+      }
+
+      setUploadBusy(true)
+      setUploadError('')
+      setUploadStatus('')
+
+      const parseErrors: string[] = []
+      const validFiles: File[] = []
+      for (const file of files) {
+        try {
+          const parsed = await parseDataAsset(file)
+          addDataAsset(parsed)
+          validFiles.push(file)
+        } catch (error) {
+          parseErrors.push(error instanceof Error ? error.message : `Could not parse ${file.name}.`)
+        }
+      }
+
+      if (validFiles.length === 0) {
+        setUploadBusy(false)
+        setUploadError(parseErrors.join(' ') || 'No valid files were selected.')
+        return
+      }
+
+      try {
+        const payload = await uploadPersistedLibraryAssets({
+          token,
+          files: validFiles,
+          projectId: persistedProjectId || undefined,
+        })
+        await refreshPersistedAssets()
+        const skipped = parseErrors.length
+        setUploadStatus(
+          skipped > 0
+            ? `Uploaded ${payload.asset_ids.length} file(s); skipped ${skipped} file(s).`
+            : `Uploaded ${payload.asset_ids.length} file(s) to your personal library.`,
+        )
+        if (skipped > 0) {
+          setUploadError(parseErrors.join(' '))
+        }
+      } catch (error) {
+        setUploadError(error instanceof Error ? error.message : 'Could not upload files to personal library.')
+      } finally {
+        setUploadBusy(false)
+      }
+    },
+    [addDataAsset, persistedProjectId, refreshPersistedAssets],
+  )
 
   const updatePersistedAssetInState = useCallback((nextAsset: LibraryAssetRecord) => {
     setPersistedAssets((current) => current.map((item) => (item.id === nextAsset.id ? nextAsset : item)))
@@ -713,6 +776,46 @@ export function ResultsPage() {
                     <p data-house-role="library-scope-note" className="text-xs text-muted-foreground">
                       {persistedProjectId ? 'Project scope' : 'Workspace scope'} | {persistedAssets.length} asset(s)
                     </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card data-house-role="workspace-card">
+                    <CardHeader className="space-y-1">
+                      <CardTitle data-house-role="section-title">Upload to personal library</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <input
+                        ref={uploadInputRef}
+                        type="file"
+                        multiple
+                        accept=".csv,.xlsx"
+                        className="hidden"
+                        onChange={(event) => {
+                          const files = Array.from(event.target.files ?? [])
+                          void onUploadFilesToAccount(files)
+                          event.target.value = ''
+                        }}
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => uploadInputRef.current?.click()}
+                        disabled={!hasSessionToken || uploadBusy || persistSyncBusy}
+                      >
+                        <UploadCloud className="mr-1 h-4 w-4" />
+                        Select files
+                      </Button>
+
+                      {!hasSessionToken ? (
+                        <p className="text-xs text-muted-foreground">Sign in to upload files.</p>
+                      ) : null}
+                      {uploadBusy ? (
+                        <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Uploading...
+                        </p>
+                      ) : null}
+                      {uploadError ? <p className="text-xs text-destructive">{uploadError}</p> : null}
+                      {uploadStatus ? <p className="text-xs text-emerald-600">{uploadStatus}</p> : null}
                     </CardContent>
                   </Card>
                 </div>

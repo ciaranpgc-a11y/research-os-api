@@ -18,6 +18,21 @@
 - **Verification performed:**
 - `npx eslint src/pages/results-page.tsx` (run from `frontend/`)
 
+### Workspace Data Sources Upload Restoration
+
+- **Area:** Individual workspace Data right panel upload flow.
+- **What changed:**
+- Restored a dedicated `Upload to personal library` card in the Data sources right panel.
+- Re-wired upload action to authenticated personal-library persistence (`uploadLibraryAssets`) with workspace-linked `projectId` when available.
+- Kept `Access from personal library` simplified (single-line title + `Open personal library` on the next line).
+- Added upload status/error messaging and retained local workspace parsing for uploaded CSV/XLSX files.
+- **Why it changed:**
+- Reinstate account-level upload capability after the upload block was removed during panel simplification.
+- **Key files touched:**
+- `frontend/src/pages/results-page.tsx`
+- **Verification performed:**
+- `npx eslint src/pages/results-page.tsx` (run from `frontend/`)
+
 ### Library Upload `project_id` Sentinel Normalization
 
 - **Area:** Personal library upload/list API resilience for workspace Data page.
