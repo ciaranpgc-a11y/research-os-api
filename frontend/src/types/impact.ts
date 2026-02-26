@@ -51,6 +51,67 @@ export type AdminUsersListPayload = {
   offset: number
 }
 
+export type AdminOrganisationIntegrationPayload = {
+  key: string
+  status: 'connected' | 'degraded' | 'not_configured'
+  connected_members: number
+  last_sync_at: string | null
+  detail: string
+}
+
+export type AdminOrganisationMonthlyUsagePointPayload = {
+  month: string
+  tokens: number
+  tool_calls: number
+  cost_usd: number
+}
+
+export type AdminOrganisationImpersonationPayload = {
+  available: boolean
+  audited: boolean
+  last_event_at: string | null
+  note: string
+}
+
+export type AdminOrganisationSummaryPayload = {
+  id: string
+  name: string
+  domain: string
+  plan: string
+  billing_status: string
+  member_count: number
+  admin_count: number
+  active_members_30d: number
+  last_active_at: string | null
+  workspace_count: number
+  project_count: number
+  usage_tokens_current_month: number
+  usage_tokens_previous_month: number
+  usage_tokens_trend_pct: number
+  usage_tool_calls_current_month: number
+  storage_bytes_current: number
+  cost_usd_current_month: number
+  cost_usd_previous_month: number
+  cost_trend_pct: number
+  gross_margin_pct: number
+  feature_flags_enabled: string[]
+  rate_limit_rpm: number
+  monthly_token_quota: number
+  storage_quota_gb: number
+  data_retention_days: number
+  integrations: AdminOrganisationIntegrationPayload[]
+  monthly_usage_trend: AdminOrganisationMonthlyUsagePointPayload[]
+  impersonation: AdminOrganisationImpersonationPayload
+}
+
+export type AdminOrganisationsListPayload = {
+  items: AdminOrganisationSummaryPayload[]
+  total: number
+  limit: number
+  offset: number
+  generated_at: string
+}
+
 export type AffiliationSuggestionItemPayload = {
   name: string
   label: string
