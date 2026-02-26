@@ -26,6 +26,7 @@ export const publicationsHouseSurfaces = {
   bannerPublications: houseSurfaces.bannerPublications,
   metricPill: houseSurfaces.metricPill,
   metricPillPublications: houseSurfaces.metricPillPublications,
+  metricPillPublicationsRegular: houseSurfaces.metricPillPublicationsRegular,
   leftBorder: houseSurfaces.leftBorder,
   leftBorderPublications: houseSurfaces.leftBorderPublications,
   tableShell: houseSurfaces.tableShell,
@@ -69,6 +70,9 @@ export const publicationsHouseActions = {
   sectionTools: 'house-section-tools',
   sectionToolsPublications: 'house-section-tools-publications',
   sectionToolButton: 'house-section-tool-button',
+  sectionToolToggle: 'house-section-tool-toggle',
+  sectionToolToggleOn: 'house-section-tool-toggle-on',
+  sectionToolToggleOff: 'house-section-tool-toggle-off',
   sectionToolDivider: 'house-section-tool-divider',
 } as const
 

@@ -300,6 +300,9 @@ const HOUSE_SURFACE_LEFT_BORDER_CLASS = publicationsHouseSurfaces.leftBorder
 const HOUSE_ACTIONS_SECTION_TOOLS_CLASS = publicationsHouseActions.sectionTools
 const HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS = publicationsHouseActions.sectionToolsPublications
 const HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS = publicationsHouseActions.sectionToolButton
+const HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_CLASS = publicationsHouseActions.sectionToolToggle
+const HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_ON_CLASS = publicationsHouseActions.sectionToolToggleOn
+const HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_OFF_CLASS = publicationsHouseActions.sectionToolToggleOff
 const HOUSE_ACTIONS_SECTION_TOOL_DIVIDER_CLASS = publicationsHouseActions.sectionToolDivider
 const HOUSE_DRILLDOWN_SHEET_CLASS = publicationsHouseDrilldown.sheet
 const HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS = publicationsHouseDrilldown.tabTrigger
@@ -4418,11 +4421,12 @@ export function PublicationsTopStrip({
                 variant="house"
                 size="icon"
                 className={cn(
-                  'h-8 w-8 rounded-full transition-colors house-section-tool-toggle',
+                  'h-8 w-8',
                   HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS,
+                  HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_CLASS,
                   insightsVisible
-                    ? 'bg-[hsl(var(--tone-positive-100)/0.9)] text-[hsl(var(--tone-positive-700))] hover:bg-[hsl(var(--tone-positive-200)/0.88)]'
-                    : 'bg-[hsl(var(--tone-neutral-100)/0.72)] text-[hsl(var(--tone-neutral-500))] hover:bg-[hsl(var(--tone-neutral-200)/0.72)]',
+                    ? HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_ON_CLASS
+                    : HOUSE_ACTIONS_SECTION_TOOL_TOGGLE_OFF_CLASS,
                 )}
                 onClick={() => setInsightsVisible((current) => !current)}
                 aria-pressed={insightsVisible}
