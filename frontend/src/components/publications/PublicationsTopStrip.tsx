@@ -2052,7 +2052,8 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const top3PctRounded = Math.max(0, Math.min(100, Math.round(top3Pct)))
   const restPctRounded = Math.max(0, 100 - top3PctRounded)
   const top3PctAnimated = useEasedValue(top3PctRounded, `impact-top3-${top3PctRounded}-${total}`, total > 0)
-  const top3Dash = (Math.max(0, Math.min(100, top3PctAnimated)) / 100) * ringCircumference
+  const top3PctAnimatedClamped = Math.max(0, Math.min(100, top3PctAnimated))
+  const top3Dash = (top3PctAnimatedClamped / 100) * ringCircumference
   const explicitRemainingRaw = Number(chartData.remaining_papers_count)
   const explicitTotalPublicationsCandidates = [
     Number(chartData.total_publications),
@@ -2084,7 +2085,8 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const ringStrokeWidth = HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH
   const ringHitHalfWidth = (ringStrokeWidth / 2) + 3
   const top3ArcSpan = (top3PctRounded / 100) * 360
-  const top3ArcStart = 180
+  const top3ArcStart = 180 - (top3ArcSpan / 2)
+  const top3RenderArcStart = 180 - ((top3PctAnimatedClamped / 100) * 360) / 2
   const isAngleInArc = (angle: number, start: number, span: number): boolean => {
     if (span <= 0) {
       return false
@@ -2182,11 +2184,11 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                 className={HOUSE_CHART_RING_MAIN_SVG_CLASS}
                 strokeWidth={ringStrokeWidth}
                 strokeLinecap="round"
-                transform="rotate(180 50 50)"
+                transform={`rotate(${top3RenderArcStart} 50 50)`}
                 style={{
                   strokeDasharray: `${top3Dash} ${ringCircumference}`,
                   strokeDashoffset: 0,
-                  transition: HOUSE_RING_ARC_TRANSITION,
+                  transition: `${HOUSE_RING_ARC_TRANSITION}, stroke 280ms ease-out`,
                 }}
               />
             </svg>
@@ -2517,6 +2519,7 @@ function FieldPercentilePanel({
   const ringRadius = 38
   const ringCircumference = 2 * Math.PI * ringRadius
   const ringDash = (animatedShareClamped / 100) * ringCircumference
+  const ringArcStart = 180 - ((animatedShareClamped / 100) * 360) / 2
   const ringShareToneClass = FIELD_PERCENTILE_RING_CLASS_BY_THRESHOLD[threshold] || HOUSE_CHART_RING_MAIN_SVG_CLASS
   useEffect(() => {
     setChartVisible(false)
@@ -2572,11 +2575,11 @@ function FieldPercentilePanel({
                 className={ringShareToneClass}
                 strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
                 strokeLinecap="round"
-                transform="rotate(180 50 50)"
+                transform={`rotate(${ringArcStart} 50 50)`}
                 style={{
                   strokeDasharray: `${ringDash} ${ringCircumference}`,
                   strokeDashoffset: 0,
-                  transition: HOUSE_RING_ARC_TRANSITION,
+                  transition: `${HOUSE_RING_ARC_TRANSITION}, stroke 280ms ease-out`,
                 }}
               />
             </svg>
