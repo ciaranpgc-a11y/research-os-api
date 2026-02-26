@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 from typing import Any
+from pathlib import Path
 
 from research_os.db import (
+    DataLibraryAsset,
     User,
     Work,
     create_all_tables,
     reset_database_state,
     session_scope,
 )
-from research_os.services.data_planner_service import list_library_assets
+from research_os.services.data_planner_service import list_library_assets, upload_library_assets
 from research_os.services.open_access_service import discover_open_access_for_persona
 
 
@@ -186,3 +188,41 @@ def test_open_access_discovery_returns_no_match_when_lookup_fails(
     assert payload["open_access_count"] == 0
     assert payload["uploaded_pdf_count"] == 0
     assert payload["records"][0]["status"] == "no_match"
+
+
+def test_list_library_assets_skips_entries_with_missing_storage(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    with session_scope() as session:
+        user = User(
+            email="open-access-missing-storage@example.com",
+            password_hash="pbkdf2_sha256$390000$test$test",
+            name="Open Access Test User",
+        )
+        session.add(user)
+        session.flush()
+        user_id = str(user.id)
+
+    asset_ids = upload_library_assets(
+        files=[
+            ("stale.csv", "text/csv", b"col_a,col_b\n1,2\n"),
+            ("fresh.csv", "text/csv", b"col_a,col_b\n3,4\n"),
+        ],
+        project_id=None,
+        user_id=user_id,
+    )
+    stale_asset_id = asset_ids[0]
+    fresh_asset_id = asset_ids[1]
+
+    with session_scope() as session:
+        stale_asset = session.get(DataLibraryAsset, stale_asset_id)
+        assert stale_asset is not None
+        stale_path = Path(str(stale_asset.storage_path))
+        stale_path.unlink(missing_ok=True)
+
+    payload = list_library_assets(project_id=None, user_id=user_id)
+    listed_ids = [str(item.get("id")) for item in payload.get("items", [])]
+    assert fresh_asset_id in listed_ids
+    assert stale_asset_id not in listed_ids

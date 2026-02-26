@@ -154,6 +154,14 @@ def _asset_shared_user_ids(asset: DataLibraryAsset) -> list[str]:
     return _normalize_user_ids(asset.shared_with_user_ids)
 
 
+def _asset_storage_exists(asset: DataLibraryAsset) -> bool:
+    clean_storage_path = _trim(asset.storage_path)
+    if not clean_storage_path:
+        return False
+    storage_path = Path(clean_storage_path)
+    return storage_path.exists() and storage_path.is_file()
+
+
 def _display_name_for_user(*, user: User | None, fallback_user_id: str | None = None) -> str:
     if user is not None:
         name = _trim(user.name)
@@ -333,6 +341,7 @@ def list_library_assets(
             row
             for row in rows
             if _asset_accessible_for_user(session=session, asset=row, user_id=clean_user_id)
+            and _asset_storage_exists(row)
         ]
         payload_items = [
             _serialize_library_asset(
