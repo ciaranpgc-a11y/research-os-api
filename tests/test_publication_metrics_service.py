@@ -697,6 +697,15 @@ def test_publications_metrics_api_response_contract(monkeypatch, tmp_path) -> No
         "definition",
         "formula",
         "confidence_note",
+        "tile_id",
+        "as_of_date",
+        "windows",
+        "headline_metrics",
+        "series",
+        "breakdowns",
+        "benchmarks",
+        "methods",
+        "qc_flags",
         "publications",
         "metadata",
     }.issubset(first_tile["drilldown"].keys())
@@ -807,3 +816,53 @@ def test_metric_detail_endpoint_returns_drilldown(monkeypatch, tmp_path) -> None
     assert payload["tile"]["key"] == "total_citations"
     assert "drilldown" in payload["tile"]
     assert "publications" in payload["tile"]["drilldown"]
+
+
+def test_total_publications_drilldown_contract_windows_and_series(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    create_all_tables()
+    user_id = _seed_user_with_metrics(email="drilldown-contract@example.com")
+    payload = compute_publication_top_metrics(user_id=user_id)
+
+    total_publications_tile = _tile(payload, "this_year_vs_last")
+    drilldown = total_publications_tile.get("drilldown")
+    assert isinstance(drilldown, dict)
+
+    windows = drilldown.get("windows")
+    assert isinstance(windows, list)
+    window_ids = {
+        str(item.get("window_id"))
+        for item in windows
+        if isinstance(item, dict)
+    }
+    assert {"1y", "3y", "5y", "all"}.issubset(window_ids)
+
+    headline_metrics = drilldown.get("headline_metrics")
+    assert isinstance(headline_metrics, list)
+    metric_ids = {
+        str(item.get("metric_id"))
+        for item in headline_metrics
+        if isinstance(item, dict)
+    }
+    assert {"primary", "active_years", "median_per_year", "current_ytd"}.issubset(
+        metric_ids
+    )
+
+    series = drilldown.get("series")
+    assert isinstance(series, list)
+    yearly_series = next(
+        (
+            item
+            for item in series
+            if isinstance(item, dict) and str(item.get("series_id")) == "yearly"
+        ),
+        None,
+    )
+    assert isinstance(yearly_series, dict)
+    points = yearly_series.get("points")
+    assert isinstance(points, list) and points
+    first_point = points[0]
+    assert isinstance(first_point, dict)
+    assert "period_start" in first_point and "period_end" in first_point

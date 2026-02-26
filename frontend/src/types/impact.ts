@@ -519,6 +519,15 @@ export type PublicationMetricDrilldownPayload = {
   definition: string
   formula: string
   confidence_note: string
+  tile_id?: string
+  as_of_date?: string | null
+  windows?: Array<Record<string, unknown>>
+  headline_metrics?: Array<Record<string, unknown>>
+  series?: Array<Record<string, unknown>>
+  breakdowns?: Array<Record<string, unknown>>
+  benchmarks?: Array<Record<string, unknown>>
+  methods?: Record<string, unknown>
+  qc_flags?: Array<Record<string, unknown>>
   publications: Array<Record<string, unknown>>
   metadata: Record<string, unknown>
 }

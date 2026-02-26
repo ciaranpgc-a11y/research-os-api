@@ -2,6 +2,20 @@
 
 ## 2026-02-26
 
+### Publications Detail Panel: Restore Right-Side Drilldown Sheet
+
+- **Area:** Publications page layout/interaction (`ProfilePublicationsPage`).
+- **What changed:**
+- Replaced the inline/sticky right detail card with the house-style right-side slide-over sheet.
+- Wired sheet open/close state to publication row selection (`selectedWorkId`) so selecting a row opens the drilldown and closing the sheet clears selection.
+- Kept the existing detail content/tabs/actions unchanged inside the sheet (`Overview`, `Content`, `Impact`, `Files`, `AI Insights`).
+- **Why it changed:**
+- Restore the established house interaction pattern for publication drilldowns and avoid the regressed inline card layout.
+- **Key files touched:**
+- `frontend/src/pages/profile-publications-page.tsx`
+- **Verification performed:**
+- `npm --prefix frontend run typecheck`
+
 ### Admin Usage-Costs + Jobs + Audited Actions (Live Operations Control Plane v2)
 
 - **Area:** Admin console scale/operations/security modules (backend API + frontend admin surface).

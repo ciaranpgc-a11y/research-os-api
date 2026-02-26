@@ -13,6 +13,7 @@ import type {
   PublicationMetricTilePayload,
   PublicationsTopMetricsPayload,
 } from '@/types/impact'
+import { PublicationMetricDrilldownPanel } from '@/components/publications/PublicationMetricDrilldownPanel'
 
 import { dashboardTileStyles } from './dashboard-tile-styles'
 import {
@@ -30,6 +31,9 @@ type PublicationsTopStripProps = {
   token?: string | null
   onOpenPublication?: (workId: string) => void
   fetchMetricDetail?: (token: string, metricId: string) => Promise<PublicationMetricDetailPayload>
+  initialDrilldownMetricKey?: string | null
+  initialDrilldownTab?: DrilldownTab
+  initialDrilldownOpen?: boolean
 }
 
 function toNumberArray(value: unknown): number[] {
@@ -4295,13 +4299,16 @@ export function PublicationsTopStrip({
   token = null,
   onOpenPublication,
   fetchMetricDetail = fetchPublicationMetricDetail,
+  initialDrilldownMetricKey = null,
+  initialDrilldownTab = 'summary',
+  initialDrilldownOpen = false,
 }: PublicationsTopStripProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [activeTileKey, setActiveTileKey] = useState<string>('')
   const [activeTileDetail, setActiveTileDetail] = useState<PublicationMetricTilePayload | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
-  const [activeDrilldownTab, setActiveDrilldownTab] = useState<DrilldownTab>('summary')
+  const [activeDrilldownTab, setActiveDrilldownTab] = useState<DrilldownTab>(initialDrilldownTab)
   const [momentumWindowMode, setMomentumWindowMode] = useState<MomentumWindowMode>('12m')
   const [hIndexViewMode, setHIndexViewMode] = useState<HIndexViewMode>('trajectory')
   const [fieldPercentileThreshold, setFieldPercentileThreshold] = useState<FieldPercentileThreshold>(75)
@@ -4347,6 +4354,33 @@ export function PublicationsTopStrip({
     () => Boolean(activeTileDefinition) && !/fixture\s+drilldown/i.test(activeTileDefinition),
     [activeTileDefinition],
   )
+  const hasCanonicalDrilldown = useMemo(() => {
+    if (!activeTile) {
+      return false
+    }
+    const windows = activeTile.drilldown?.windows
+    const headlines = activeTile.drilldown?.headline_metrics
+    return Array.isArray(windows) && windows.length > 0 && Array.isArray(headlines) && headlines.length > 0
+  }, [activeTile])
+  const initialDrilldownAppliedRef = useRef(false)
+
+  useEffect(() => {
+    if (initialDrilldownAppliedRef.current) {
+      return
+    }
+    if (!initialDrilldownMetricKey) {
+      return
+    }
+    const initialTile = tiles.find((tile) => tile.key === initialDrilldownMetricKey)
+    if (!initialTile) {
+      return
+    }
+    initialDrilldownAppliedRef.current = true
+    setActiveTileKey(initialTile.key)
+    setActiveTileDetail(initialTile)
+    setActiveDrilldownTab(initialDrilldownTab)
+    setDrawerOpen(Boolean(initialDrilldownOpen))
+  }, [initialDrilldownMetricKey, initialDrilldownOpen, initialDrilldownTab, tiles])
 
   useEffect(() => {
     setActiveDrilldownTab('summary')
@@ -4378,18 +4412,6 @@ export function PublicationsTopStrip({
       return false
     }
     return Boolean(target.closest('[data-stop-tile-open="true"]'))
-  }
-
-  const onOpenPublicationFromDrilldown = (workId: string) => {
-    if (!onOpenPublication) {
-      return
-    }
-    const normalizedWorkId = String(workId || '').trim()
-    if (!normalizedWorkId) {
-      return
-    }
-    onOpenPublication(normalizedWorkId)
-    setDrawerOpen(false)
   }
 
   return (
@@ -4856,16 +4878,18 @@ export function PublicationsTopStrip({
                   ))}
                 </TabsList>
                 <div className="mt-3">
-                  {activeTile.key === 'this_year_vs_last' ? (
+                  {activeTile.key === 'this_year_vs_last' && !hasCanonicalDrilldown ? (
                     <TotalPublicationsDrilldownWorkspace
                       tile={activeTile}
                       activeTab={activeDrilldownTab}
-                      onOpenPublication={onOpenPublication ? onOpenPublicationFromDrilldown : undefined}
+                      onOpenPublication={onOpenPublication}
                     />
                   ) : (
-                    <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>
-                      Tab scaffold ready.
-                    </div>
+                    <PublicationMetricDrilldownPanel
+                      tile={activeTile}
+                      activeTab={activeDrilldownTab}
+                      onOpenPublication={onOpenPublication}
+                    />
                   )}
                 </div>
               </Tabs>

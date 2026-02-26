@@ -607,6 +607,17 @@ function singleTileArgs(tile: PublicationMetricTilePayload) {
   }
 }
 
+function singleTileDrilldownArgs(tile: PublicationMetricTilePayload, tab: 'summary' | 'breakdown' | 'trajectory' | 'context' | 'methods') {
+  return {
+    metrics: buildMetricsFixture([tile]),
+    loading: false,
+    token: null,
+    initialDrilldownMetricKey: tile.key,
+    initialDrilldownTab: tab,
+    initialDrilldownOpen: true,
+  }
+}
+
 const loadingArgs = {
   metrics: null,
   loading: true,
@@ -697,3 +708,44 @@ export const AuthorshipCompositionLoading: Story = { args: loadingArgs }
 export const CollaborationStructureDefault: Story = { args: singleTileArgs(collaborationStructureTile) }
 export const CollaborationStructureNoData: Story = { args: singleTileArgs(collaborationStructureEmptyTile) }
 export const CollaborationStructureLoading: Story = { args: loadingArgs }
+
+export const TotalPublicationsDrilldownSummaryTab: Story = {
+  args: singleTileDrilldownArgs(totalPublicationsDrilldownTile, 'summary'),
+}
+export const TotalPublicationsDrilldownBreakdownTab: Story = {
+  args: singleTileDrilldownArgs(totalPublicationsDrilldownTile, 'breakdown'),
+}
+export const TotalPublicationsDrilldownTrajectoryTab: Story = {
+  args: singleTileDrilldownArgs(totalPublicationsDrilldownTile, 'trajectory'),
+}
+export const TotalPublicationsDrilldownContextTab: Story = {
+  args: singleTileDrilldownArgs(totalPublicationsDrilldownTile, 'context'),
+}
+export const TotalPublicationsDrilldownMethodsTab: Story = {
+  args: singleTileDrilldownArgs(totalPublicationsDrilldownTile, 'methods'),
+}
+
+export const TotalCitationsDrilldownSummary: Story = {
+  args: singleTileDrilldownArgs(totalCitationsTile, 'summary'),
+}
+export const CitationMomentumDrilldownSummary: Story = {
+  args: singleTileDrilldownArgs(citationMomentumTile, 'summary'),
+}
+export const HIndexDrilldownSummary: Story = {
+  args: singleTileDrilldownArgs(hIndexTile, 'summary'),
+}
+export const ImpactConcentrationDrilldownSummary: Story = {
+  args: singleTileDrilldownArgs(impactConcentrationTile, 'summary'),
+}
+export const InfluentialCitationsDrilldownSummary: Story = {
+  args: singleTileDrilldownArgs(influentialCitationsTile, 'summary'),
+}
+export const FieldPercentileShareDrilldownSummary: Story = {
+  args: singleTileDrilldownArgs(fieldPercentileShareTile, 'summary'),
+}
+export const AuthorshipCompositionDrilldownSummary: Story = {
+  args: singleTileDrilldownArgs(authorshipCompositionTile, 'summary'),
+}
+export const CollaborationStructureDrilldownSummary: Story = {
+  args: singleTileDrilldownArgs(collaborationStructureTile, 'summary'),
+}

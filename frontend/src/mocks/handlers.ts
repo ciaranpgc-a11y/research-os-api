@@ -1,11 +1,13 @@
 import { HttpResponse, http } from 'msw'
 
 import {
+  buildPublicationMetricDetailFixture,
   publicationsMetricsEmptyFixture,
   publicationsMetricsHappyFixture,
 } from '@/mocks/fixtures/publications-metrics'
 
 const metricsPath = '*/v1/publications/metrics'
+const metricDetailPath = '*/v1/publications/metric/:metricId'
 
 type MetricsMockMode = 'happy' | 'empty' | 'error'
 
@@ -39,4 +41,20 @@ export const publicationsMetricsHandler = http.get(metricsPath, () => {
   return HttpResponse.json(publicationsMetricsHappyFixture)
 })
 
-export const handlers = [publicationsMetricsHandler]
+export const publicationMetricDetailHandler = http.get(metricDetailPath, ({ params }) => {
+  const metricId = String(params.metricId || '').trim()
+  if (!metricId) {
+    return HttpResponse.json(
+      {
+        error: {
+          message: 'Metric id is required',
+          detail: 'Missing metric id in mocked /v1/publications/metric route.',
+        },
+      },
+      { status: 400 },
+    )
+  }
+  return HttpResponse.json(buildPublicationMetricDetailFixture(metricId))
+})
+
+export const handlers = [publicationsMetricsHandler, publicationMetricDetailHandler]

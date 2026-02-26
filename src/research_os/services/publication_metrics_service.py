@@ -34,9 +34,20 @@ RUNNING_STATUS = "RUNNING"
 FAILED_STATUS = "FAILED"
 STATUSES = {READY_STATUS, RUNNING_STATUS, FAILED_STATUS}
 TOP_METRICS_KEY = "top_metrics_strip_v1"
-TOP_METRICS_SCHEMA_VERSION = 20
+TOP_METRICS_SCHEMA_VERSION = 21
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 FIELD_PERCENTILE_THRESHOLDS = [50, 75, 90, 95, 99]
+DRILLDOWN_TILE_ID_BY_KEY = {
+    "this_year_vs_last": "t1_total_publications",
+    "total_citations": "t2_total_citations",
+    "momentum": "t3_momentum",
+    "h_index_projection": "t4_h_index",
+    "impact_concentration": "t5_impact_concentration",
+    "influential_citations": "t6_influential_citations",
+    "field_percentile_share": "t7_field_percentile_share",
+    "authorship_composition": "t8_authorship_composition",
+    "collaboration_structure": "t9_collaboration_structure",
+}
 
 DELTA_COLOR_BY_TONE = {
     "positive": "#166534",
@@ -1194,6 +1205,578 @@ def _rolling_yoy_percent(values: list[int], index: int) -> float | None:
         sum(max(0, int(v or 0)) for v in values[previous_start:previous_end])
     )
     return compute_yoy_percent(citations_last_12m=current, citations_prev_12m=previous)
+
+
+def _year_back_safe(base: date, years: int) -> date:
+    target_year = base.year - years
+    day = base.day
+    while day > 1:
+        try:
+            return date(target_year, base.month, day)
+        except ValueError:
+            day -= 1
+    return date(target_year, base.month, 1)
+
+
+def _month_ranges_last_n(*, now_date: date, months: int) -> list[tuple[date, date]]:
+    if months <= 0:
+        return []
+    anchor = date(now_date.year, now_date.month, 1)
+    ranges: list[tuple[date, date]] = []
+    for idx in range(months):
+        shift = (months - 1) - idx
+        month = anchor.month - shift
+        year = anchor.year
+        while month <= 0:
+            month += 12
+            year -= 1
+        start = date(year, month, 1)
+        if month == 12:
+            next_start = date(year + 1, 1, 1)
+        else:
+            next_start = date(year, month + 1, 1)
+        ranges.append((start, next_start - timedelta(days=1)))
+    return ranges
+
+
+def _contract_windows(
+    *,
+    metric_key: str,
+    now_date: date,
+    min_publication_year: int | None,
+) -> list[dict[str, Any]]:
+    start_year = (
+        int(min_publication_year)
+        if isinstance(min_publication_year, int)
+        and 1900 <= int(min_publication_year) <= now_date.year
+        else now_date.year
+    )
+    lifetime_start = date(start_year, 1, 1)
+    if metric_key == "this_year_vs_last":
+        return [
+            {
+                "window_id": "1y",
+                "label": "1y",
+                "start_date": _year_back_safe(now_date, 1).isoformat(),
+                "end_date": now_date.isoformat(),
+                "is_default": False,
+            },
+            {
+                "window_id": "3y",
+                "label": "3y",
+                "start_date": _year_back_safe(now_date, 3).isoformat(),
+                "end_date": now_date.isoformat(),
+                "is_default": False,
+            },
+            {
+                "window_id": "5y",
+                "label": "5y",
+                "start_date": _year_back_safe(now_date, 5).isoformat(),
+                "end_date": now_date.isoformat(),
+                "is_default": True,
+            },
+            {
+                "window_id": "all",
+                "label": "All",
+                "start_date": lifetime_start.isoformat(),
+                "end_date": now_date.isoformat(),
+                "is_default": False,
+            },
+        ]
+    return [
+        {
+            "window_id": "last_12m",
+            "label": "Last 12m",
+            "start_date": _year_back_safe(now_date, 1).isoformat(),
+            "end_date": now_date.isoformat(),
+            "is_default": True,
+        },
+        {
+            "window_id": "last_3y",
+            "label": "Last 3y",
+            "start_date": _year_back_safe(now_date, 3).isoformat(),
+            "end_date": now_date.isoformat(),
+            "is_default": False,
+        },
+        {
+            "window_id": "last_5y",
+            "label": "Last 5y",
+            "start_date": _year_back_safe(now_date, 5).isoformat(),
+            "end_date": now_date.isoformat(),
+            "is_default": False,
+        },
+        {
+            "window_id": "ytd",
+            "label": "YTD",
+            "start_date": date(now_date.year, 1, 1).isoformat(),
+            "end_date": now_date.isoformat(),
+            "is_default": False,
+        },
+        {
+            "window_id": "lifetime",
+            "label": "Lifetime",
+            "start_date": lifetime_start.isoformat(),
+            "end_date": now_date.isoformat(),
+            "is_default": False,
+        },
+    ]
+
+
+def _default_window_id(windows: list[dict[str, Any]]) -> str:
+    for window in windows:
+        if bool(window.get("is_default")):
+            return str(window.get("window_id") or "")
+    if windows:
+        return str(windows[0].get("window_id") or "")
+    return "lifetime"
+
+
+def _contract_metric_row(
+    *,
+    metric_id: str,
+    label: str,
+    value: float | int | None,
+    value_display: str | None = None,
+    unit: str = "",
+    window_id: str = "",
+) -> dict[str, Any]:
+    display = str(value_display or "").strip()
+    if not display:
+        if value is None:
+            display = "Not available"
+        elif unit == "percent":
+            display = f"{float(value):.1f}%"
+        elif abs(float(value) - round(float(value))) <= 1e-9:
+            display = _format_int(int(round(float(value))))
+        else:
+            display = f"{float(value):,.2f}"
+    return {
+        "metric_id": metric_id,
+        "label": label,
+        "value": value,
+        "value_display": display,
+        "unit": unit,
+        "window_id": window_id,
+    }
+
+
+def _contract_headline_metrics(
+    *,
+    tile: dict[str, Any],
+    chart_data: dict[str, Any],
+    metric_key: str,
+    default_window_id: str,
+) -> list[dict[str, Any]]:
+    rows = [
+        _contract_metric_row(
+            metric_id="primary",
+            label=str(tile.get("label") or "Metric"),
+            value=_safe_float(tile.get("value")),
+            value_display=str(
+                tile.get("main_value_display")
+                or tile.get("value_display")
+                or "Not available"
+            ),
+            unit=str(tile.get("unit") or ""),
+            window_id=default_window_id,
+        )
+    ]
+    years = [max(0, int(value or 0)) for value in (chart_data.get("years") or []) if _safe_int(value) is not None]
+    values = [
+        max(0, int(_safe_int(value) or 0)) for value in (chart_data.get("values") or [])
+    ]
+    monthly_values = [
+        max(0.0, float(_safe_float(value) or 0.0))
+        for value in (chart_data.get("monthly_values_12m") or [])
+    ]
+    if metric_key == "this_year_vs_last":
+        active_years = sum(1 for value in values if value > 0)
+        median_per_year = (
+            float(sorted([value for value in values if value > 0])[len([value for value in values if value > 0]) // 2])
+            if any(value > 0 for value in values)
+            else 0.0
+        )
+        rolling_5 = (
+            round(sum(values[-5:]) / float(min(5, len(values))), 1) if values else 0.0
+        )
+        rows.extend(
+            [
+                _contract_metric_row(
+                    metric_id="active_years",
+                    label="Active years",
+                    value=active_years,
+                    window_id="all",
+                ),
+                _contract_metric_row(
+                    metric_id="median_per_year",
+                    label="Median per year",
+                    value=median_per_year,
+                    window_id="all",
+                ),
+                _contract_metric_row(
+                    metric_id="current_ytd",
+                    label="Current YTD",
+                    value=max(0, int(_safe_int(chart_data.get("current_year_ytd")) or 0)),
+                    window_id="ytd",
+                ),
+                _contract_metric_row(
+                    metric_id="rolling_mean_5y",
+                    label="5y rolling mean",
+                    value=rolling_5,
+                    window_id="5y",
+                ),
+            ]
+        )
+        if years and values and len(years) == len(values):
+            peak_idx = max(range(len(values)), key=lambda idx: values[idx])
+            rows.append(
+                _contract_metric_row(
+                    metric_id="career_peak",
+                    label="Career peak",
+                    value=values[peak_idx],
+                    value_display=f"{values[peak_idx]} ({years[peak_idx]})",
+                    window_id="all",
+                )
+            )
+    elif metric_key == "momentum":
+        recent = monthly_values[-3:] if len(monthly_values) >= 3 else monthly_values
+        prior = monthly_values[:-3] if len(monthly_values) > 3 else []
+        recent_rate = sum(recent) / float(len(recent)) if recent else 0.0
+        prior_rate = sum(prior) / float(len(prior)) if prior else 0.0
+        lift_pct = (
+            ((recent_rate - prior_rate) / prior_rate) * 100.0 if prior_rate > 0 else None
+        )
+        rows.extend(
+            [
+                _contract_metric_row(
+                    metric_id="recent_rate",
+                    label="Recent pace (3m avg)",
+                    value=round(recent_rate, 2),
+                    window_id="last_12m",
+                ),
+                _contract_metric_row(
+                    metric_id="prior_rate",
+                    label="Prior pace (9m avg)",
+                    value=round(prior_rate, 2),
+                    window_id="last_12m",
+                ),
+                _contract_metric_row(
+                    metric_id="lift_pct",
+                    label="Lift vs prior pace",
+                    value=round(lift_pct, 1) if lift_pct is not None else None,
+                    unit="percent",
+                    window_id="last_12m",
+                ),
+            ]
+        )
+    return rows[:6]
+
+
+def _contract_series(
+    *,
+    chart_data: dict[str, Any],
+    now_date: date,
+    metric_key: str,
+) -> list[dict[str, Any]]:
+    output: list[dict[str, Any]] = []
+    years = [int(value) for value in (chart_data.get("years") or []) if _safe_int(value) is not None]
+    year_values = [float(_safe_float(value) or 0.0) for value in (chart_data.get("values") or [])]
+    if years and year_values:
+        points = []
+        for idx in range(min(len(years), len(year_values))):
+            year = years[idx]
+            points.append(
+                {
+                    "label": str(year),
+                    "period_start": date(year, 1, 1).isoformat(),
+                    "period_end": date(year, 12, 31).isoformat(),
+                    "value": year_values[idx],
+                }
+            )
+        output.append(
+            {
+                "series_id": "yearly",
+                "label": "Yearly trend",
+                "granularity": "year",
+                "window_id": "5y" if metric_key == "this_year_vs_last" else "last_5y",
+                "unit": "count",
+                "points": points,
+            }
+        )
+    monthly_values = [float(_safe_float(value) or 0.0) for value in (chart_data.get("monthly_values_12m") or [])]
+    month_labels = [str(value or "").strip() for value in (chart_data.get("month_labels_12m") or [])]
+    if monthly_values:
+        ranges = _month_ranges_last_n(now_date=now_date, months=len(monthly_values))
+        points = []
+        for idx, value in enumerate(monthly_values):
+            start, end = ranges[idx]
+            label = month_labels[idx] if idx < len(month_labels) and month_labels[idx] else start.strftime("%b %Y")
+            points.append(
+                {
+                    "label": label,
+                    "period_start": start.isoformat(),
+                    "period_end": end.isoformat(),
+                    "value": value,
+                }
+            )
+        output.append(
+            {
+                "series_id": "monthly",
+                "label": "Monthly trend",
+                "granularity": "month",
+                "window_id": "last_12m",
+                "unit": "count",
+                "points": points,
+            }
+        )
+    return output
+
+
+def _contract_breakdowns(
+    *,
+    metric_key: str,
+    publications: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not publications:
+        return []
+    type_counts: dict[str, int] = defaultdict(int)
+    venue_counts: dict[str, int] = defaultdict(int)
+    for publication in publications:
+        publication_type = (
+            str(publication.get("publication_type") or publication.get("work_type") or "Unspecified").strip()
+            or "Unspecified"
+        )
+        venue = str(publication.get("journal") or publication.get("venue") or "Unknown venue").strip() or "Unknown venue"
+        type_counts[publication_type] += 1
+        venue_counts[venue] += 1
+    total = max(1, len(publications))
+
+    def _rows_from_counts(counts: dict[str, int], limit: int = 10) -> list[dict[str, Any]]:
+        ranked = sorted(counts.items(), key=lambda item: (-int(item[1]), item[0]))
+        return [
+            {
+                "key": key,
+                "label": key,
+                "value": int(value),
+                "share_pct": round((int(value) / float(total)) * 100.0, 1),
+            }
+            for key, value in ranked[:limit]
+        ]
+
+    output = []
+    if metric_key == "this_year_vs_last":
+        output.append(
+            {
+                "breakdown_id": "by_publication_type",
+                "label": "By publication type",
+                "dimension": "publication_type",
+                "items": _rows_from_counts(type_counts, limit=12),
+            }
+        )
+        output.append(
+            {
+                "breakdown_id": "by_venue",
+                "label": "By venue (top 10)",
+                "dimension": "venue",
+                "items": _rows_from_counts(venue_counts, limit=10),
+            }
+        )
+    top_publications = sorted(
+        publications,
+        key=lambda item: max(
+            0, int(_safe_int(item.get("citations_lifetime")) or 0)
+        ),
+        reverse=True,
+    )[:10]
+    output.append(
+        {
+            "breakdown_id": "top_publications",
+            "label": "Top publications",
+            "dimension": "publication",
+            "items": [
+                {
+                    "key": str(item.get("work_id") or item.get("title") or ""),
+                    "label": str(item.get("title") or "Untitled"),
+                    "value": max(0, int(_safe_int(item.get("citations_lifetime")) or 0)),
+                    "year": _safe_int(item.get("year")),
+                }
+                for item in top_publications
+            ],
+        }
+    )
+    return output
+
+
+def _contract_benchmarks(*, metric_key: str, chart_data: dict[str, Any]) -> list[dict[str, Any]]:
+    if metric_key == "field_percentile_share":
+        default_threshold = int(_safe_int(chart_data.get("default_threshold")) or 75)
+        share_map = (
+            chart_data.get("share_by_threshold_pct")
+            if isinstance(chart_data.get("share_by_threshold_pct"), dict)
+            else {}
+        )
+        value = _safe_float(share_map.get(str(default_threshold)))
+        return [
+            {
+                "benchmark_id": "field_cohort",
+                "label": "Field/year cohort percentile share",
+                "value": value,
+                "value_display": f"{float(value or 0.0):.1f}%",
+                "unit": "percent",
+                "context": f"Threshold {default_threshold}th percentile",
+            }
+        ]
+    if metric_key == "h_index_projection":
+        value = _safe_float(chart_data.get("progress_to_next_pct"))
+        return [
+            {
+                "benchmark_id": "next_h_progress",
+                "label": "Progress to next h-index",
+                "value": value,
+                "value_display": f"{float(value or 0.0):.1f}%",
+                "unit": "percent",
+                "context": "Threshold benchmark",
+            }
+        ]
+    return []
+
+
+def _contract_qc_flags(
+    *,
+    publications: list[dict[str, Any]],
+    chart_data: dict[str, Any],
+    benchmarks: list[dict[str, Any]],
+    now_date: date,
+) -> list[dict[str, Any]]:
+    flags: list[dict[str, Any]] = []
+    missing_dates = 0
+    doi_seen: set[str] = set()
+    title_seen: set[str] = set()
+    duplicates = 0
+    for item in publications:
+        if _safe_int(item.get("year")) is None:
+            missing_dates += 1
+        doi = str(item.get("doi") or "").strip().lower()
+        if doi:
+            if doi in doi_seen:
+                duplicates += 1
+            doi_seen.add(doi)
+        else:
+            key = f"{str(item.get('title') or '').strip().lower()}|{_safe_int(item.get('year')) or 'na'}"
+            if key in title_seen:
+                duplicates += 1
+            title_seen.add(key)
+    if missing_dates > 0:
+        flags.append(
+            {
+                "code": "missing_dates",
+                "severity": "warning",
+                "message": f"{missing_dates} records are missing publication dates.",
+            }
+        )
+    if duplicates > 0:
+        flags.append(
+            {
+                "code": "suspected_duplicates",
+                "severity": "warning",
+                "message": f"{duplicates} potential duplicate records were detected.",
+            }
+        )
+    if chart_data.get("projected_year") is not None and now_date.month < 12:
+        flags.append(
+            {
+                "code": "partial_window",
+                "severity": "info",
+                "message": f"Current-year window is partial as of {now_date.isoformat()}.",
+            }
+        )
+    if not benchmarks:
+        flags.append(
+            {
+                "code": "benchmark_unavailable",
+                "severity": "info",
+                "message": "Benchmark data is not available for this metric.",
+            }
+        )
+    return flags
+
+
+def _attach_canonical_drilldown(*, tile: dict[str, Any], now: datetime) -> dict[str, Any]:
+    chart_data = tile.get("chart_data") if isinstance(tile.get("chart_data"), dict) else {}
+    drilldown = tile.get("drilldown") if isinstance(tile.get("drilldown"), dict) else {}
+    publications = (
+        [dict(item) for item in drilldown.get("publications", []) if isinstance(item, dict)]
+        if isinstance(drilldown.get("publications"), list)
+        else []
+    )
+    publication_years = [
+        int(value)
+        for value in (
+            _safe_int(item.get("year")) for item in publications
+        )
+        if value is not None and 1900 <= int(value) <= now.year
+    ]
+    windows = _contract_windows(
+        metric_key=str(tile.get("key") or ""),
+        now_date=now.date(),
+        min_publication_year=min(publication_years) if publication_years else None,
+    )
+    default_window_id = _default_window_id(windows)
+    benchmarks = _contract_benchmarks(
+        metric_key=str(tile.get("key") or ""),
+        chart_data=chart_data,
+    )
+    merged = dict(drilldown)
+    merged.update(
+        {
+            "tile_id": DRILLDOWN_TILE_ID_BY_KEY.get(str(tile.get("key") or ""), str(tile.get("key") or "")),
+            "as_of_date": now.date().isoformat(),
+            "windows": windows,
+            "headline_metrics": _contract_headline_metrics(
+                tile=tile,
+                chart_data=chart_data,
+                metric_key=str(tile.get("key") or ""),
+                default_window_id=default_window_id,
+            ),
+            "series": _contract_series(
+                chart_data=chart_data,
+                now_date=now.date(),
+                metric_key=str(tile.get("key") or ""),
+            ),
+            "breakdowns": _contract_breakdowns(
+                metric_key=str(tile.get("key") or ""),
+                publications=publications,
+            ),
+            "benchmarks": benchmarks,
+            "methods": {
+                "definition": str(merged.get("definition") or ""),
+                "formula": str(merged.get("formula") or ""),
+                "data_sources": [
+                    str(item).strip()
+                    for item in (tile.get("data_source") or [])
+                    if str(item).strip()
+                ],
+                "caveats": [str(merged.get("confidence_note") or "")],
+                "refresh_cadence": str(
+                    (tile.get("tooltip_details") or {}).get("update_frequency") or ""
+                )
+                or _update_frequency_label(),
+                "dedupe_rules": [
+                    "DOI/PMID identity match takes precedence.",
+                    "Fallback duplicate checks use title + publication year.",
+                ],
+                "last_updated": now.isoformat(),
+            },
+            "qc_flags": _contract_qc_flags(
+                publications=publications,
+                chart_data=chart_data,
+                benchmarks=benchmarks,
+                now_date=now.date(),
+            ),
+        }
+    )
+    tile["drilldown"] = merged
+    return tile
 
 
 def _metric_tile(
@@ -3406,6 +3989,11 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
 
     if dimensions_tile is not None:
         tiles.append(dimensions_tile)
+
+    for index, tile in enumerate(tiles):
+        if not isinstance(tile, dict):
+            continue
+        tiles[index] = _attach_canonical_drilldown(tile=tile, now=now)
 
     refresh_date = now.date()
     source_payload = {
