@@ -88,6 +88,40 @@ def test_list_library_assets_restores_missing_row_from_metadata(monkeypatch, tmp
         assert str(restored.owner_user_id) == user_id
 
 
+def test_library_assets_recover_from_blob_when_storage_file_is_missing(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    user_id = _create_user(email="library-blob-recovery@example.com")
+
+    asset_id = upload_library_assets(
+        files=[("blob-recovery.csv", "text/csv", b"col_a,col_b\n21,42\n")],
+        project_id=None,
+        user_id=user_id,
+    )[0]
+
+    with session_scope() as session:
+        row = session.get(DataLibraryAsset, asset_id)
+        assert row is not None
+        stale_path = Path(str(row.storage_path))
+        stale_path.unlink(missing_ok=True)
+
+    payload = list_library_assets(project_id=None, user_id=user_id)
+    listed_ids = [str(item.get("id")) for item in payload.get("items", [])]
+    assert asset_id in listed_ids
+
+    downloaded = download_library_asset(asset_id=asset_id, user_id=user_id)
+    assert downloaded["file_name"] == "blob-recovery.csv"
+    assert downloaded["content"] == b"col_a,col_b\n21,42\n"
+
+    with session_scope() as session:
+        restored = session.get(DataLibraryAsset, asset_id)
+        assert restored is not None
+        restored_path = Path(str(restored.storage_path))
+        assert restored_path.exists() and restored_path.is_file()
+        assert restored.content_blob == b"col_a,col_b\n21,42\n"
+
+
 def test_list_library_assets_rebinds_owner_by_email_when_user_id_changes(
     monkeypatch, tmp_path
 ) -> None:
@@ -203,6 +237,53 @@ def test_list_library_assets_recovers_when_metadata_index_is_corrupt(
     payload = list_library_assets(project_id=None, user_id=user_id)
     listed_ids = [str(item.get("id")) for item in payload.get("items", [])]
     assert asset_id in listed_ids
+
+
+def test_list_library_assets_recovers_when_metadata_index_is_partial(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    user_id = _create_user(email="library-index-partial@example.com")
+    storage_root = (tmp_path / "data_library").resolve()
+
+    first_asset_id = upload_library_assets(
+        files=[("index-partial-a.csv", "text/csv", b"col_a,col_b\n1,2\n")],
+        project_id=None,
+        user_id=user_id,
+    )[0]
+    second_asset_id = upload_library_assets(
+        files=[("index-partial-b.csv", "text/csv", b"col_a,col_b\n3,4\n")],
+        project_id=None,
+        user_id=user_id,
+    )[0]
+
+    index_path = _metadata_index_path(storage_root)
+    assert index_path.exists() and index_path.is_file()
+    index_path.write_text(
+        json.dumps({"asset_ids": [first_asset_id]}),
+        encoding="utf-8",
+    )
+
+    with session_scope() as session:
+        first_row = session.get(DataLibraryAsset, first_asset_id)
+        second_row = session.get(DataLibraryAsset, second_asset_id)
+        assert first_row is not None
+        assert second_row is not None
+        session.delete(first_row)
+        session.delete(second_row)
+
+    payload = list_library_assets(project_id=None, user_id=user_id)
+    listed_ids = {str(item.get("id")) for item in payload.get("items", [])}
+    assert first_asset_id in listed_ids
+    assert second_asset_id in listed_ids
+
+    repaired_index = json.loads(index_path.read_text(encoding="utf-8"))
+    repaired_ids = {
+        str(item)
+        for item in (repaired_index.get("asset_ids") or [])
+    }
+    assert first_asset_id in repaired_ids
+    assert second_asset_id in repaired_ids
 
 
 def test_list_library_assets_assigns_single_user_owner_for_ownerless_metadata(

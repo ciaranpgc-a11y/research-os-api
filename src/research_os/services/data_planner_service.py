@@ -251,6 +251,43 @@ def _candidate_asset_paths(asset: DataLibraryAsset, primary_root: Path) -> list[
     return deduped
 
 
+def _asset_blob_bytes(asset: DataLibraryAsset) -> bytes | None:
+    raw = asset.content_blob
+    if raw is None:
+        return None
+    if isinstance(raw, bytes):
+        return raw
+    if isinstance(raw, bytearray):
+        return bytes(raw)
+    if isinstance(raw, memoryview):
+        return raw.tobytes()
+    try:
+        return bytes(raw)
+    except Exception:
+        return None
+
+
+def _materialize_asset_from_blob(
+    *, asset: DataLibraryAsset, primary_root: Path
+) -> Path | None:
+    blob = _asset_blob_bytes(asset)
+    if blob is None:
+        return None
+    suffix = Path(_trim(asset.filename)).suffix or ".bin"
+    target_path = (primary_root / f"{asset.id}{suffix}").resolve()
+    tmp_path = target_path.with_suffix(f"{target_path.suffix}.tmp")
+    try:
+        tmp_path.write_bytes(blob)
+        os.replace(tmp_path, target_path)
+        return target_path
+    except OSError:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return None
+
+
 def _resolve_existing_asset_path(asset: DataLibraryAsset, primary_root: Path) -> Path | None:
     for candidate in _candidate_asset_paths(asset, primary_root):
         try:
@@ -267,6 +304,9 @@ def _resolve_existing_asset_path(asset: DataLibraryAsset, primary_root: Path) ->
                 return resolved
         except OSError:
             continue
+    materialized = _materialize_asset_from_blob(asset=asset, primary_root=primary_root)
+    if materialized is not None:
+        return materialized
     return None
 
 
@@ -403,14 +443,22 @@ def _upsert_metadata_index_id(*, root: Path, asset_id: str) -> None:
     clean_asset_id = _trim(asset_id)
     if not clean_asset_id:
         return
-    ids = _read_metadata_index_ids(root)
-    if clean_asset_id in set(ids):
-        return
-    ids.append(clean_asset_id)
-    _write_metadata_index_ids(root=root, asset_ids=ids)
+    indexed_ids = _read_metadata_index_ids(root)
+    # Merge with direct sidecar discovery to tolerate stale/incomplete index files
+    # created during concurrent writes across workers.
+    merged_ids = _normalize_string_ids(
+        [
+            *indexed_ids,
+            *_scan_sidecar_asset_ids(root),
+        ]
+    )
+    if clean_asset_id not in set(merged_ids):
+        merged_ids.append(clean_asset_id)
+    if merged_ids != indexed_ids:
+        _write_metadata_index_ids(root=root, asset_ids=merged_ids)
 
 
-def _rebuild_metadata_index_from_sidecars(root: Path) -> list[str]:
+def _scan_sidecar_asset_ids(root: Path) -> list[str]:
     discovered: list[str] = []
     for path in root.glob("*.meta.json"):
         stem = _trim(path.stem)
@@ -422,7 +470,11 @@ def _rebuild_metadata_index_from_sidecars(root: Path) -> list[str]:
         clean = _trim(clean)
         if clean:
             discovered.append(clean)
-    ids = _normalize_string_ids(discovered)
+    return _normalize_string_ids(discovered)
+
+
+def _rebuild_metadata_index_from_sidecars(root: Path) -> list[str]:
+    ids = _scan_sidecar_asset_ids(root)
     if ids:
         _write_metadata_index_ids(root=root, asset_ids=ids)
     return ids
@@ -432,7 +484,11 @@ def _iter_metadata_paths(*, root: Path, requested_asset_id: str | None = None) -
     clean_asset_id = _trim(requested_asset_id)
     if clean_asset_id:
         return [_asset_metadata_path(asset_id=clean_asset_id, root=root)]
-    ids = _read_metadata_index_ids(root)
+    indexed_ids = _read_metadata_index_ids(root)
+    sidecar_ids = _scan_sidecar_asset_ids(root)
+    ids = _normalize_string_ids([*indexed_ids, *sidecar_ids])
+    if ids and ids != indexed_ids:
+        _write_metadata_index_ids(root=root, asset_ids=ids)
     if not ids:
         ids = _rebuild_metadata_index_from_sidecars(root)
     return [_asset_metadata_path(asset_id=asset_id, root=root) for asset_id in ids]
@@ -789,6 +845,10 @@ def _restore_asset_row_from_metadata(
         )
         if storage_path is None:
             continue
+        try:
+            recovered_content = storage_path.read_bytes()
+        except OSError:
+            recovered_content = b""
         existing = session.get(DataLibraryAsset, metadata_asset_id)
         owner_user_id = _resolve_owner_user_id_from_metadata(session=session, payload=payload)
         if not owner_user_id and fallback_single_owner_user_id:
@@ -802,7 +862,11 @@ def _restore_asset_row_from_metadata(
             owner_user_id=owner_user_id,
         )
         byte_size_from_metadata = int(payload.get("byte_size") or 0)
-        byte_size = byte_size_from_metadata if byte_size_from_metadata > 0 else int(storage_path.stat().st_size)
+        byte_size = (
+            byte_size_from_metadata
+            if byte_size_from_metadata > 0
+            else int(len(recovered_content))
+        )
         filename = _trim(payload.get("filename")) or "asset.bin"
         mime_type = _trim(payload.get("mime_type")) or None
         kind = _trim(payload.get("kind")) or _guess_kind(filename)
@@ -819,6 +883,7 @@ def _restore_asset_row_from_metadata(
                 mime_type=mime_type,
                 byte_size=byte_size,
                 storage_path=str(storage_path),
+                content_blob=recovered_content,
                 uploaded_at=uploaded_at,
             )
             session.add(restored)
@@ -848,6 +913,9 @@ def _restore_asset_row_from_metadata(
             changed = True
         if int(existing.byte_size or 0) <= 0 and byte_size > 0:
             existing.byte_size = byte_size
+            changed = True
+        if _asset_blob_bytes(existing) is None and recovered_content:
+            existing.content_blob = recovered_content
             changed = True
         if existing.project_id is None and project_id is not None:
             existing.project_id = project_id
@@ -928,6 +996,7 @@ def upload_library_assets(
                 mime_type=(mime_type or "").strip() or None,
                 byte_size=len(content),
                 storage_path="",
+                content_blob=content,
             )
             session.add(asset)
             session.flush()
@@ -1104,6 +1173,14 @@ def list_library_assets(
             resolved_storage_str = str(resolved_storage_path)
             if _trim(row.storage_path) != resolved_storage_str:
                 row.storage_path = resolved_storage_str
+            if _asset_blob_bytes(row) is None:
+                try:
+                    row.content_blob = resolved_storage_path.read_bytes()
+                except OSError:
+                    pass
+            blob_content = _asset_blob_bytes(row)
+            if int(row.byte_size or 0) <= 0 and blob_content is not None:
+                row.byte_size = len(blob_content)
             _sync_asset_metadata_for_row(
                 session=session,
                 asset=row,
@@ -1308,12 +1385,25 @@ def download_library_asset(
             raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
 
         storage_path = _resolve_existing_asset_path(asset, storage_root)
-        if storage_path is None:
+        blob_content = _asset_blob_bytes(asset)
+        content: bytes | None = None
+        if storage_path is not None:
+            resolved_storage_str = str(storage_path)
+            if _trim(asset.storage_path) != resolved_storage_str:
+                asset.storage_path = resolved_storage_str
+            try:
+                content = storage_path.read_bytes()
+            except OSError:
+                content = blob_content
+        else:
+            content = blob_content
+        if content is None:
             raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
-        resolved_storage_str = str(storage_path)
-        if _trim(asset.storage_path) != resolved_storage_str:
-            asset.storage_path = resolved_storage_str
-            session.flush()
+        if blob_content is None:
+            asset.content_blob = content
+        if int(asset.byte_size or 0) <= 0:
+            asset.byte_size = len(content)
+        session.flush()
         _sync_asset_metadata_for_row(
             session=session,
             asset=asset,
@@ -1321,7 +1411,6 @@ def download_library_asset(
         )
 
         file_name = _trim(asset.filename) or "asset.bin"
-        content = storage_path.read_bytes()
         media_type = _trim(asset.mime_type)
         if not media_type:
             guessed, _ = mimetypes.guess_type(file_name)

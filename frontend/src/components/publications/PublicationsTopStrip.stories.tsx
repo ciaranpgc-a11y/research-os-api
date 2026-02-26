@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import { expect, userEvent, within } from '@storybook/test'
 
 import type { PublicationMetricTilePayload, PublicationsTopMetricsPayload } from '@/types/impact'
 
@@ -665,6 +666,26 @@ export const TotalCitationsLoading: Story = { args: loadingArgs }
 
 export const TotalPublicationsDefault: Story = { args: singleTileArgs(totalPublicationsTile) }
 export const TotalPublicationsDrilldownPreview: Story = { args: singleTileArgs(totalPublicationsDrilldownTile) }
+export const TotalPublicationsDrilldownStoryboard: Story = {
+  args: singleTileArgs(totalPublicationsDrilldownTile),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const totalPublicationsTileCard = canvasElement.querySelector('[data-metric-key="this_year_vs_last"]') as HTMLElement | null
+    if (!totalPublicationsTileCard) {
+      throw new Error('Total publications tile was not found in the canvas.')
+    }
+    await userEvent.click(totalPublicationsTileCard)
+    await expect(document.querySelector('[data-ui="sheet-content"]')).toBeTruthy()
+    await expect(canvas.getByRole('tab', { name: 'Summary' })).toBeVisible()
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: 'Auto-opens the Total publications drilldown so nav/tabs styling can be reviewed in Storybook.',
+      },
+    },
+  },
+}
 export const TotalPublicationsLowVolume: Story = { args: singleTileArgs(totalPublicationsLowVolumeTile) }
 export const TotalPublicationsHighVariance: Story = { args: singleTileArgs(totalPublicationsHighVarianceTile) }
 export const TotalPublicationsNoData: Story = { args: singleTileArgs(totalPublicationsEmptyTile) }

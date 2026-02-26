@@ -219,6 +219,7 @@ def test_list_library_assets_skips_entries_with_missing_storage(
     with session_scope() as session:
         stale_asset = session.get(DataLibraryAsset, stale_asset_id)
         assert stale_asset is not None
+        stale_asset.content_blob = None
         stale_path = Path(str(stale_asset.storage_path))
         stale_path.unlink(missing_ok=True)
 

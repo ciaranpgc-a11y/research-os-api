@@ -268,6 +268,7 @@ def test_create_all_tables_repairs_legacy_asset_and_project_columns(
     asset_columns = {str(row[1]) for row in verify_cursor.fetchall()}
     assert "owner_user_id" in asset_columns
     assert "shared_with_user_ids" in asset_columns
+    assert "content_blob" in asset_columns
 
     verify_cursor.execute("PRAGMA table_info(projects)")
     project_columns = {str(row[1]) for row in verify_cursor.fetchall()}
@@ -413,6 +414,7 @@ def test_ensure_postgresql_schema_compatibility_backfills_account_key() -> None:
 
     sql_calls = [sql for sql, _ in fake_engine.connection.calls]
     assert any("ADD COLUMN IF NOT EXISTS account_key" in sql for sql in sql_calls)
+    assert any("ADD COLUMN IF NOT EXISTS content_blob BYTEA" in sql for sql in sql_calls)
     assert any("SELECT id FROM users" in sql for sql in sql_calls)
     assert any("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_account_key" in sql for sql in sql_calls)
 

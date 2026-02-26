@@ -16,6 +16,7 @@ export const publicationsHouseSurfaces = {
   topPanel: houseSurfaces.topPanel,
   sectionPanel: houseSurfaces.sectionPanel,
   softPanel: houseSurfaces.softPanel,
+  strongPanel: houseSurfaces.strongPanel,
   card: houseSurfaces.card,
   panelBare: houseSurfaces.panelBare,
   banner: houseSurfaces.banner,

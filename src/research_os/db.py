@@ -18,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -619,6 +620,7 @@ class DataLibraryAsset(Base):
     mime_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
     byte_size: Mapped[int] = mapped_column(Integer, default=0)
     storage_path: Mapped[str] = mapped_column(Text)
+    content_blob: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow
     )
@@ -1578,6 +1580,12 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
                 column_name="shared_with_user_ids",
                 column_sql="JSON",
             )
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="data_library_assets",
+                column_name="content_blob",
+                column_sql="BLOB",
+            )
             connection.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_data_library_assets_owner_user_id "
@@ -1680,6 +1688,12 @@ def _ensure_postgresql_schema_compatibility(engine) -> None:
             text(
                 "ALTER TABLE IF EXISTS users "
                 "ADD COLUMN IF NOT EXISTS account_key VARCHAR(36)"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS data_library_assets "
+                "ADD COLUMN IF NOT EXISTS content_blob BYTEA"
             )
         )
         rows = connection.execute(
