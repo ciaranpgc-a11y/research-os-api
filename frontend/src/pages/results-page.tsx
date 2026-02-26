@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
-import { Download, Loader2, RefreshCw, UploadCloud, UserPlus, X } from 'lucide-react'
+import { Download, Loader2, RefreshCw, UserPlus, X } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -10,14 +10,13 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { getAuthSessionToken } from '@/lib/auth-session'
-import { houseDividers, houseForms, houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseForms, houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { getHouseLeftBorderToneClass } from '@/lib/section-tone'
 import {
   downloadLibraryAsset as downloadPersistedLibraryAsset,
   fetchWorkspaceRunContext,
   listLibraryAssets as listPersistedLibraryAssets,
   updateLibraryAssetAccess as updatePersistedLibraryAssetAccess,
-  uploadLibraryAssets as uploadPersistedLibraryAssets,
 } from '@/lib/study-core-api'
 import { cn } from '@/lib/utils'
 import { PageFrame } from '@/pages/page-frame'
@@ -180,11 +179,7 @@ export function ResultsPage() {
   const addDataAsset = useDataWorkspaceStore((state) => state.addDataAsset)
 
   const [libraryFilterQuery, setLibraryFilterQuery] = useState('')
-  const [isUploading, setIsUploading] = useState(false)
-  const [isDragActive, setIsDragActive] = useState(false)
-  const [uploadError, setUploadError] = useState('')
   const [persistSyncError, setPersistSyncError] = useState('')
-  const [status, setStatus] = useState('')
   const [persistedProjectId, setPersistedProjectId] = useState<string | null>(null)
   const [persistedAssets, setPersistedAssets] = useState<LibraryAssetRecord[]>([])
   const [persistSyncBusy, setPersistSyncBusy] = useState(false)
@@ -198,7 +193,6 @@ export function ResultsPage() {
   const [libraryPickerPulling, setLibraryPickerPulling] = useState(false)
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const hasSessionToken = Boolean(getAuthSessionToken())
   const activeWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === workspaceId) ?? null,
@@ -278,58 +272,6 @@ export function ResultsPage() {
     }
     return pickerFilteredPersistedAssets.every((asset) => selectedLibraryAssetSet.has(asset.id))
   }, [pickerFilteredPersistedAssets, selectedLibraryAssetSet])
-
-  const handleFiles = async (files: File[]) => {
-    if (files.length === 0) {
-      return
-    }
-    setIsUploading(true)
-    setPersistSyncBusy(true)
-    setUploadError('')
-    setPersistSyncError('')
-    setStatus('')
-    const errors: string[] = []
-    const parsedFiles: File[] = []
-
-    for (const file of files) {
-      try {
-        const asset = await parseDataAsset(file)
-        addDataAsset(asset)
-        parsedFiles.push(file)
-      } catch (error) {
-        errors.push(error instanceof Error ? error.message : `Could not parse ${file.name}.`)
-      }
-    }
-
-    let persistedSynced = 0
-    const token = getAuthSessionToken()
-    if (token && parsedFiles.length > 0) {
-      try {
-        const uploaded = await uploadPersistedLibraryAssets({
-          token,
-          files: parsedFiles,
-          projectId: persistedProjectId || undefined,
-        })
-        persistedSynced = uploaded.asset_ids.length
-        await refreshPersistedAssets()
-      } catch (error) {
-        setPersistSyncError(error instanceof Error ? error.message : 'Could not sync to personal library.')
-      }
-    }
-
-    if (parsedFiles.length > 0) {
-      if (persistedSynced > 0) {
-        setStatus(`Uploaded ${parsedFiles.length} file(s); synced ${persistedSynced} to personal library.`)
-      } else {
-        setStatus(`Uploaded ${parsedFiles.length} file(s).`)
-      }
-    }
-    if (errors.length > 0) {
-      setUploadError(errors.join(' '))
-    }
-    setIsUploading(false)
-    setPersistSyncBusy(false)
-  }
 
   const updatePersistedAssetInState = useCallback((nextAsset: LibraryAssetRecord) => {
     setPersistedAssets((current) => current.map((item) => (item.id === nextAsset.id ? nextAsset : item)))
@@ -592,7 +534,6 @@ export function ResultsPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, HOUSE_LEFT_BORDER_DATA_CLASS)}>
                       <h2 className={houseTypography.sectionTitle}>Data sources</h2>
-                      <p className={houseTypography.fieldHelper}>Personal library and upload</p>
                     </div>
                     <Button
                       type="button"
@@ -609,105 +550,24 @@ export function ResultsPage() {
                 </div>
 
                 <div className="grid gap-3 p-3">
-                  <Card data-house-role="workspace-card" className="order-3">
-                    <CardHeader>
-                      <CardTitle data-house-role="section-title">Upload new dataset</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <button
-                        type="button"
-                        data-house-role="upload-dropzone"
-                        className={`w-full rounded-md border border-dashed p-4 text-left transition-colors ${
-                          isDragActive ? 'border-primary bg-primary/5' : 'border-border bg-muted/20 hover:bg-muted/30'
-                        }`}
-                        onDragOver={(event) => {
-                          event.preventDefault()
-                          setIsDragActive(true)
-                        }}
-                        onDragLeave={(event) => {
-                          event.preventDefault()
-                          setIsDragActive(false)
-                        }}
-                        onDrop={(event) => {
-                          event.preventDefault()
-                          setIsDragActive(false)
-                          const files = Array.from(event.dataTransfer.files)
-                          void handleFiles(files)
-                        }}
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={isUploading}
-                      >
-                        <div data-house-role="upload-dropzone-row" className="flex items-center gap-3">
-                          <UploadCloud className="h-6 w-6 text-muted-foreground" />
-                          <p data-house-role="upload-dropzone-label" className={houseTypography.fieldLabel}>Drop files or click</p>
-                        </div>
-                      </button>
-
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        multiple
-                        accept=".csv,.xlsx"
-                        className="hidden"
-                        onChange={(event) => {
-                          const files = Array.from(event.target.files ?? [])
-                          void handleFiles(files)
-                          event.target.value = ''
-                        }}
-                      />
-
-                      <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
-                        Select files
-                      </Button>
-
-                      {isUploading ? (
-                        <p data-house-role="upload-status-note" className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          Uploading...
-                        </p>
-                      ) : null}
-                      {persistSyncBusy ? (
-                        <p data-house-role="sync-status-note" className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          Syncing...
-                        </p>
-                      ) : null}
-                      {uploadError ? <p data-house-role="upload-error" className="text-xs text-destructive">{uploadError}</p> : null}
-                      {persistSyncError ? <p data-house-role="sync-error" className="text-xs text-destructive">{persistSyncError}</p> : null}
-                      {status ? <p data-house-role="upload-success" className="text-xs text-emerald-600">{status}</p> : null}
-                    </CardContent>
-                  </Card>
-
-                <Card data-house-role="workspace-card" className="order-1">
-                  <CardHeader className="space-y-0">
-                    <div data-house-role="library-header-row" className="flex items-center justify-between gap-2">
+                  <Card data-house-role="workspace-card">
+                  <CardHeader className="space-y-2">
+                    <div data-house-role="library-header-row" className="flex items-center gap-2">
                       <CardTitle data-house-role="section-title">Access from personal library</CardTitle>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onLibraryPickerOpenChange(true)}
-                          disabled={!hasSessionToken || persistSyncBusy}
-                          data-ui="data-open-personal-library"
-                        >
-                          Open personal library
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void refreshPersistedAssets()}
-                          disabled={!hasSessionToken || persistSyncBusy}
-                        >
-                          <RefreshCw className="mr-1 h-4 w-4" />
-                          Refresh
-                        </Button>
-                      </div>
+                    </div>
+                    <div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onLibraryPickerOpenChange(true)}
+                        disabled={!hasSessionToken || persistSyncBusy}
+                        data-ui="data-open-personal-library"
+                      >
+                        Open personal library
+                      </Button>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-2">
-                    <p className={houseTypography.fieldHelper}>
-                      Select datasets from your personal library and pull them into this workspace.
-                    </p>
                     <div data-house-role="library-filter-group" className="space-y-1">
                       <label data-house-role="field-label" htmlFor="library-filter" className={houseTypography.fieldLabel}>Search library</label>
                       <Input
@@ -834,6 +694,11 @@ export function ResultsPage() {
                       </ScrollArea>
                     )}
 
+                    {persistSyncError ? (
+                      <p data-house-role="sync-error" className="text-xs text-destructive">
+                        {persistSyncError}
+                      </p>
+                    ) : null}
                     {libraryActionError ? (
                       <p data-house-role="library-action-error" className="text-xs text-destructive">
                         {libraryActionError}
@@ -850,7 +715,6 @@ export function ResultsPage() {
                     </p>
                   </CardContent>
                 </Card>
-                  <div data-house-role="data-right-panel-divider" className={cn(houseDividers.strong, 'order-2')} />
                 </div>
               </div>
             )}

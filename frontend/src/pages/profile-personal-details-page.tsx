@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
-import { houseForms, houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseDividers, houseForms, houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import {
   fetchAffiliationAddressForMe,
@@ -123,8 +123,12 @@ const LEGACY_TOP_PROFILE_PHOTO_POSITION_Y = 20
 const HOUSE_ACTION_BUTTON_CLASS = `h-9 rounded-md px-3.5 ${houseTypography.buttonText} shadow-none`
 const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
 const HOUSE_PAGE_SUBTITLE_CLASS = houseTypography.subtitle
+const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
 const HOUSE_LEFT_BORDER_CLASS = `${houseSurfaces.leftBorder} ${houseSurfaces.leftBorderAccount}`
 const HOUSE_SELECT_CLASS = `h-9 w-full rounded-md px-3 py-1 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${houseForms.select}`
+const HOUSE_SOCIAL_LINK_ROW_CLASS = 'sm:col-span-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3'
+const HOUSE_SOCIAL_LINK_LABEL_CLASS = 'inline-flex w-full shrink-0 items-center gap-2 px-1 py-1 house-field-label sm:w-[11.25rem]'
+const HOUSE_SOCIAL_LINK_ICON_CLASS = 'inline-flex h-6 w-6 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-caption font-semibold text-[hsl(var(--tone-neutral-700))]'
 
 function formatDate(value: string | null | undefined): string {
   if (!value) {
@@ -2013,7 +2017,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         <CardHeader className="space-y-2 border-b border-[hsl(var(--tone-neutral-200))] pb-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex flex-wrap items-center gap-2">
-              <CardTitle>
+              <CardTitle className={HOUSE_SECTION_TITLE_CLASS}>
                 Profile
               </CardTitle>
               {badges.map((badge) => (
@@ -2147,14 +2151,14 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   </label>
                 </div>
 
-                <div className="sm:col-span-2 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                <div className={HOUSE_SOCIAL_LINK_ROW_CLASS}>
                   <label
                     htmlFor="personal-website"
-                    className="inline-flex w-full shrink-0 items-center gap-1.5 house-field-label sm:w-[11.25rem]"
+                    className={HOUSE_SOCIAL_LINK_LABEL_CLASS}
                   >
                     <span
                       aria-hidden
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-caption font-semibold text-[hsl(var(--tone-neutral-700))]"
+                      className={HOUSE_SOCIAL_LINK_ICON_CLASS}
                     >
                       W
                     </span>
@@ -2170,14 +2174,14 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   />
                 </div>
 
-                <div className="sm:col-span-2 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                <div className={HOUSE_SOCIAL_LINK_ROW_CLASS}>
                   <label
                     htmlFor="personal-researchgate"
-                    className="inline-flex w-full shrink-0 items-center gap-1.5 house-field-label sm:w-[11.25rem]"
+                    className={HOUSE_SOCIAL_LINK_LABEL_CLASS}
                   >
                     <span
                       aria-hidden
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-caption font-semibold text-[hsl(var(--tone-neutral-700))]"
+                      className={HOUSE_SOCIAL_LINK_ICON_CLASS}
                     >
                       RG
                     </span>
@@ -2193,14 +2197,14 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   />
                 </div>
 
-                <div className="sm:col-span-2 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+                <div className={HOUSE_SOCIAL_LINK_ROW_CLASS}>
                   <label
                     htmlFor="personal-x-handle"
-                    className="inline-flex w-full shrink-0 items-center gap-1.5 house-field-label sm:w-[11.25rem]"
+                    className={HOUSE_SOCIAL_LINK_LABEL_CLASS}
                   >
                     <span
                       aria-hidden
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-caption font-semibold text-[hsl(var(--tone-neutral-700))]"
+                      className={HOUSE_SOCIAL_LINK_ICON_CLASS}
                     >
                       X
                     </span>
@@ -2245,11 +2249,12 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
         </CardContent>
       </Card>
+      <div data-house-role="section-divider" className={houseDividers.strong} />
 
       <Card className="border-[hsl(var(--tone-neutral-200))]">
         <CardHeader className="border-b border-[hsl(var(--tone-neutral-200))] pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle>
+            <CardTitle className={HOUSE_SECTION_TITLE_CLASS}>
               Affiliation
             </CardTitle>
             <Button
@@ -2578,11 +2583,12 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           ) : null}
         </CardContent>
       </Card>
+      <div data-house-role="section-divider" className={houseDividers.strong} />
 
       <Card className="border-[hsl(var(--tone-neutral-200))]">
         <CardHeader className="border-b border-[hsl(var(--tone-neutral-200))] pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle>
+            <CardTitle className={HOUSE_SECTION_TITLE_CLASS}>
               Publication affiliation
             </CardTitle>
             <Button

@@ -4617,7 +4617,7 @@ export function PublicationsTopStrip({
                   detailText = undefined
                   if (impactBadgeLabel) {
                     badgeNode = (
-                      <span className={cn(HOUSE_SURFACE_METRIC_PILL_CLASS, HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS)}>
+                      <span className={cn(HOUSE_SURFACE_METRIC_PILL_CLASS, HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS, 'font-normal')}>
                         {impactBadgeLabel}
                       </span>
                     )
@@ -4723,7 +4723,7 @@ export function PublicationsTopStrip({
                   secondaryText = 'Leadership index'
                   detailText = undefined
                   badgeNode = (
-                    <span className={cn(HOUSE_SURFACE_METRIC_PILL_CLASS, HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS)}>
+                    <span className={cn(HOUSE_SURFACE_METRIC_PILL_CLASS, HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS, 'font-normal')}>
                       Median author position {medianAuthorPositionDisplay}
                     </span>
                   )

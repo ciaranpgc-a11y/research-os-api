@@ -34,8 +34,10 @@ import type {
   PublicationAiInsightsResponsePayload,
   PublicationAuthorsPayload,
   PublicationDetailPayload,
+  PublicationFilePayload,
   PublicationFilesListPayload,
   PublicationImpactResponsePayload,
+  PersonaWork,
   PersonaStatePayload,
   PersonaSyncJobPayload,
   PublicationsAnalyticsResponsePayload,
@@ -72,11 +74,11 @@ const PUBLICATION_TABLE_COLUMN_DEFINITIONS: Record<PublicationTableColumnKey, { 
   citations: { label: 'Citations', sortField: 'citations' },
 }
 const PUBLICATION_TABLE_COLUMN_DEFAULTS: Record<PublicationTableColumnKey, PublicationTableColumnPreference> = {
-  title: { visible: true, align: 'left', width: 360 },
+  title: { visible: true, align: 'center', width: 360 },
   year: { visible: true, align: 'center', width: 92 },
-  venue: { visible: true, align: 'left', width: 280 },
-  work_type: { visible: true, align: 'left', width: 200 },
-  citations: { visible: true, align: 'right', width: 120 },
+  venue: { visible: true, align: 'center', width: 280 },
+  work_type: { visible: true, align: 'center', width: 200 },
+  citations: { visible: true, align: 'center', width: 120 },
 }
 const PUBLICATION_TABLE_COLUMN_WIDTH_MIN = 80
 const PUBLICATION_TABLE_COLUMN_WIDTH_MAX = 640
@@ -395,10 +397,10 @@ function clampPublicationTableColumnWidth(value: number, fallback: number): numb
 
 function parsePublicationTableColumnAlign(value: unknown): PublicationTableColumnAlign {
   const clean = String(value || '').trim().toLowerCase()
-  if (clean === 'center' || clean === 'right') {
+  if (clean === 'center' || clean === 'right' || clean === 'left') {
     return clean
   }
-  return 'left'
+  return 'center'
 }
 
 function createDefaultPublicationTableColumnPreferences(): Record<PublicationTableColumnKey, PublicationTableColumnPreference> {
@@ -468,6 +470,171 @@ function publicationTableColumnAlignClass(align: PublicationTableColumnAlign): s
     return 'text-right'
   }
   return 'text-left'
+}
+
+function publicationTableColumnTextForWork(
+  column: PublicationTableColumnKey,
+  work: PersonaWork,
+  metricsByWorkId: Map<string, { citations: number; provider: string }>,
+): string {
+  if (column === 'title') {
+    return String(work.title || '').trim()
+  }
+  if (column === 'year') {
+    return work.year === null || work.year === undefined ? 'n/a' : String(work.year)
+  }
+  if (column === 'venue') {
+    return formatJournalName(work.venue_name)
+  }
+  if (column === 'work_type') {
+    return derivePublicationTypeLabel(work)
+  }
+  return String(metricsByWorkId.get(work.id)?.citations ?? 0)
+}
+
+function publicationColumnPercentileLength(values: string[]): number {
+  if (values.length === 0) {
+    return 0
+  }
+  const lengths = values
+    .map((value) => String(value || '').trim().length)
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b)
+  if (lengths.length === 0) {
+    return 0
+  }
+  const index = Math.max(0, Math.min(lengths.length - 1, Math.floor((lengths.length - 1) * 0.9)))
+  return lengths[index]
+}
+
+function publicationTableColumnsEqual(
+  left: Record<PublicationTableColumnKey, PublicationTableColumnPreference>,
+  right: Record<PublicationTableColumnKey, PublicationTableColumnPreference>,
+): boolean {
+  return PUBLICATION_TABLE_COLUMN_ORDER.every((column) => (
+    left[column].visible === right[column].visible &&
+    left[column].align === right[column].align &&
+    left[column].width === right[column].width
+  ))
+}
+
+function autoFitPublicationTableColumns(input: {
+  works: PersonaWork[]
+  metricsByWorkId: Map<string, { citations: number; provider: string }>
+  current: Record<PublicationTableColumnKey, PublicationTableColumnPreference>
+  availableWidth: number
+}): Record<PublicationTableColumnKey, PublicationTableColumnPreference> {
+  const next: Record<PublicationTableColumnKey, PublicationTableColumnPreference> = {
+    title: { ...input.current.title },
+    year: { ...input.current.year },
+    venue: { ...input.current.venue },
+    work_type: { ...input.current.work_type },
+    citations: { ...input.current.citations },
+  }
+  const charWidthPx = 7.2
+  const columnLimits: Record<PublicationTableColumnKey, { min: number; max: number; growWeight: number }> = {
+    title: { min: 240, max: 560, growWeight: 4.6 },
+    year: { min: 92, max: 136, growWeight: 0.9 },
+    venue: { min: 220, max: 420, growWeight: 3.2 },
+    work_type: { min: 190, max: 300, growWeight: 2.4 },
+    citations: { min: 110, max: 150, growWeight: 1.0 },
+  }
+
+  const sampleSize = Math.max(1, Math.min(220, input.works.length))
+  const sample = input.works.slice(0, sampleSize)
+  const measured = PUBLICATION_TABLE_COLUMN_ORDER.reduce<Record<PublicationTableColumnKey, number>>((accumulator, column) => {
+    const headerLength = PUBLICATION_TABLE_COLUMN_DEFINITIONS[column].label.length
+    const values = sample.map((work) => publicationTableColumnTextForWork(column, work, input.metricsByWorkId))
+    const percentileLength = publicationColumnPercentileLength(values)
+    const effectiveLength = Math.max(headerLength, percentileLength)
+    const limit = columnLimits[column]
+    const measuredWidth = clampPublicationTableColumnWidth(
+      Math.round(30 + effectiveLength * charWidthPx),
+      next[column].width,
+    )
+    accumulator[column] = Math.max(limit.min, Math.min(limit.max, measuredWidth))
+    return accumulator
+  }, {
+    title: next.title.width,
+    year: next.year.width,
+    venue: next.venue.width,
+    work_type: next.work_type.width,
+    citations: next.citations.width,
+  })
+
+  const visibleColumns = PUBLICATION_TABLE_COLUMN_ORDER.filter((column) => next[column].visible)
+  if (visibleColumns.length === 0) {
+    return next
+  }
+  const safeAvailableWidth = Math.max(760, Math.round(input.availableWidth))
+  let currentTotal = visibleColumns.reduce((sum, column) => sum + measured[column], 0)
+  const targetTotal = Math.max(
+    visibleColumns.reduce((sum, column) => sum + columnLimits[column].min, 0),
+    safeAvailableWidth - 8,
+  )
+
+  if (currentTotal > targetTotal) {
+    let remainingOverflow = currentTotal - targetTotal
+    const shrinkableTotal = visibleColumns.reduce(
+      (sum, column) => sum + Math.max(0, measured[column] - columnLimits[column].min),
+      0,
+    )
+    if (shrinkableTotal > 0) {
+      for (const column of visibleColumns) {
+        const shrinkable = Math.max(0, measured[column] - columnLimits[column].min)
+        if (shrinkable <= 0) {
+          continue
+        }
+        const share = shrinkable / shrinkableTotal
+        const deduction = Math.min(shrinkable, Math.round(remainingOverflow * share))
+        measured[column] -= deduction
+        remainingOverflow -= deduction
+      }
+    }
+    currentTotal = visibleColumns.reduce((sum, column) => sum + measured[column], 0)
+  }
+
+  if (currentTotal < targetTotal) {
+    let remainingExtra = targetTotal - currentTotal
+    const growableColumns = [...visibleColumns]
+    while (remainingExtra > 0 && growableColumns.length > 0) {
+      const totalGrowWeight = growableColumns.reduce((sum, column) => sum + columnLimits[column].growWeight, 0)
+      if (totalGrowWeight <= 0) {
+        break
+      }
+      let consumedThisRound = 0
+      for (const column of [...growableColumns]) {
+        const limit = columnLimits[column]
+        const availableGrow = Math.max(0, limit.max - measured[column])
+        if (availableGrow <= 0) {
+          const index = growableColumns.indexOf(column)
+          if (index >= 0) {
+            growableColumns.splice(index, 1)
+          }
+          continue
+        }
+        const share = limit.growWeight / totalGrowWeight
+        const growth = Math.max(0, Math.min(availableGrow, Math.round(remainingExtra * share)))
+        if (growth <= 0) {
+          continue
+        }
+        measured[column] += growth
+        remainingExtra -= growth
+        consumedThisRound += growth
+      }
+      if (consumedThisRound <= 0) {
+        break
+      }
+    }
+  }
+
+  for (const column of PUBLICATION_TABLE_COLUMN_ORDER) {
+    next[column] = {
+      ...next[column],
+      width: measured[column],
+    }
+  }
+  return next
 }
 
 function publicationsOaAutoAttemptedStorageKey(userId: string): string {
@@ -578,7 +745,7 @@ function publicationOaStatusToneClass(status: PublicationOaPdfStatus): string {
   if (status === 'missing') {
     return 'text-[hsl(var(--tone-danger-700))]'
   }
-  return 'text-[hsl(var(--tone-neutral-500))]'
+  return 'text-[hsl(var(--tone-neutral-400))]'
 }
 
 function publicationOaStatusLabel(status: PublicationOaPdfStatus, hasDoi: boolean): string {
@@ -859,6 +1026,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [query, setQuery] = useState('')
   const [filterKey, setFilterKey] = useState<PublicationFilterKey>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
+  const [publicationTableLayoutWidth, setPublicationTableLayoutWidth] = useState(1100)
   const [publicationTableColumns, setPublicationTableColumns] = useState<Record<PublicationTableColumnKey, PublicationTableColumnPreference>>(
     () => createDefaultPublicationTableColumnPreferences(),
   )
@@ -892,6 +1060,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [filesDragOver, setFilesDragOver] = useState(false)
   const autoOaInFlightRef = useRef(false)
   const autoOaStatusClearTimerRef = useRef<number | null>(null)
+  const publicationTableLayoutRef = useRef<HTMLDivElement | null>(null)
   const columnSettingsRef = useRef<HTMLDivElement | null>(null)
   const filePickerRef = useRef<HTMLInputElement | null>(null)
 
@@ -1047,6 +1216,30 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
   }, [columnSettingsOpen])
 
+  useEffect(() => {
+    const node = publicationTableLayoutRef.current
+    if (!node) {
+      return
+    }
+    const updateWidth = () => {
+      setPublicationTableLayoutWidth(Math.max(760, Math.round(node.clientWidth || 760)))
+    }
+    updateWidth()
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateWidth)
+      return () => {
+        window.removeEventListener('resize', updateWidth)
+      }
+    }
+    const observer = new ResizeObserver(() => {
+      updateWidth()
+    })
+    observer.observe(node)
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
+
   const setPaneLoading = useCallback((workId: string, tab: PublicationDetailTab, loadingValue: boolean) => {
     const key = publicationPaneKey(workId, tab)
     setPaneLoadingByKey((current) => ({ ...current, [key]: loadingValue }))
@@ -1144,14 +1337,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     try {
       const payload = await fetchPublicationFiles(token, workId)
       setFilesCacheByWorkId((current) => ({ ...current, [workId]: payload }))
-      const linkedOaFile = (payload.items || []).find((item) => item.source === 'OA_LINK') || null
-      if (linkedOaFile) {
+      const oaFile = (payload.items || []).find((item) => item.source === 'OA_LINK') || null
+      const anyFile = (payload.items || [])[0] || null
+      const resolvedFile = oaFile || anyFile
+      if (resolvedFile) {
         setOaPdfStatusByWorkId((current) => ({
           ...current,
           [workId]: {
             status: 'available',
-            downloadUrl: linkedOaFile.download_url || linkedOaFile.oa_url || null,
-            fileName: linkedOaFile.file_name || null,
+            downloadUrl: resolvedFile.download_url || resolvedFile.oa_url || null,
+            fileName: resolvedFile.file_name || null,
             updatedAt: new Date().toISOString(),
           },
         }))
@@ -1428,6 +1623,25 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     return filtered
   }, [filterKey, metricsByWorkId, personaState?.works, query, sortDirection, sortField, typeFilter])
 
+  useEffect(() => {
+    const works = personaState?.works ?? []
+    if (works.length === 0) {
+      return
+    }
+    setPublicationTableColumns((current) => {
+      const next = autoFitPublicationTableColumns({
+        works,
+        metricsByWorkId,
+        current,
+        availableWidth: publicationTableLayoutWidth,
+      })
+      if (publicationTableColumnsEqual(current, next)) {
+        return current
+      }
+      return next
+    })
+  }, [metricsByWorkId, personaState?.works, publicationTableLayoutWidth])
+
   const visiblePublicationTableColumns = useMemo(() => (
     PUBLICATION_TABLE_COLUMN_ORDER.filter((key) => publicationTableColumns[key].visible)
   ), [publicationTableColumns])
@@ -1558,13 +1772,26 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           try {
             const payload = await linkPublicationOpenAccessPdf(token, work.id)
             if (payload.file) {
-              const downloadUrl = payload.file.download_url || payload.file.oa_url || null
+              const linkedFile = payload.file
+              const downloadUrl = linkedFile.download_url || linkedFile.oa_url || null
+              setFilesCacheByWorkId((current) => {
+                const existing = current[work.id]?.items || []
+                if (existing.some((item) => item.id === linkedFile.id)) {
+                  return current
+                }
+                return {
+                  ...current,
+                  [work.id]: {
+                    items: [linkedFile, ...existing],
+                  },
+                }
+              })
               setOaPdfStatusByWorkId((current) => ({
                 ...current,
                 [work.id]: {
                   status: 'available',
                   downloadUrl,
-                  fileName: payload.file?.file_name || null,
+                  fileName: linkedFile.file_name || null,
                   updatedAt: new Date().toISOString(),
                 },
               }))
@@ -1649,6 +1876,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const selectedImpactResponse = selectedWorkId ? impactCacheByWorkId[selectedWorkId] || null : null
   const selectedAiResponse = selectedWorkId ? aiCacheByWorkId[selectedWorkId] || null : null
   const selectedFilesPayload = selectedWorkId ? filesCacheByWorkId[selectedWorkId] || null : null
+  const selectedFiles = useMemo(() => {
+    const files = [...(selectedFilesPayload?.items || [])]
+    files.sort((left, right) => {
+      if (left.source !== right.source) {
+        return left.source === 'OA_LINK' ? -1 : 1
+      }
+      return Date.parse(String(right.created_at || '')) - Date.parse(String(left.created_at || ''))
+    })
+    return files
+  }, [selectedFilesPayload?.items])
 
   const selectedAuthorNames = useMemo(() => {
     if (selectedAuthorsPayload?.authors_json?.length) {
@@ -1876,6 +2113,31 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
   }
 
+  const publicationFileShareContext = (file: PublicationFilePayload): { label: string; url: string | null; body: string } => {
+    const label = 'OA Manuscript Download'
+    const publicationTitle = (selectedDetail?.title || selectedWork?.title || 'Publication').trim()
+    const directUrl = String(file.download_url || file.oa_url || '').trim() || null
+    const body = directUrl
+      ? `Publication: ${publicationTitle}\nFile: ${label}\nDownload: ${directUrl}`
+      : `Publication: ${publicationTitle}\nFile: ${label}\nOpen Publications > Files in Axiomos to access this file.`
+    return { label, url: directUrl, body }
+  }
+
+  const onSharePublicationFileEmail = (file: PublicationFilePayload, recipientEmail = '') => {
+    const context = publicationFileShareContext(file)
+    const subject = encodeURIComponent(`${context.label} | ${selectedDetail?.title || selectedWork?.title || 'Publication'}`)
+    const mailto = `mailto:${encodeURIComponent(recipientEmail)}?subject=${subject}&body=${encodeURIComponent(context.body)}`
+    window.location.href = mailto
+  }
+
+  const onSharePublicationFileWithUser = (file: PublicationFilePayload) => {
+    const recipient = (window.prompt('Enter collaborator email') || '').trim()
+    if (!recipient) {
+      return
+    }
+    onSharePublicationFileEmail(file, recipient)
+  }
+
   return (
     <section className="space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -1942,7 +2204,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   </ol>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div ref={publicationTableLayoutRef} className="space-y-2">
                   <div className="sticky top-2 z-20 flex justify-end">
                     <div ref={columnSettingsRef} className="relative">
                       <Button
@@ -2024,19 +2286,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       <TableRow>
                         {visiblePublicationTableColumns.map((columnKey) => {
                           const definition = PUBLICATION_TABLE_COLUMN_DEFINITIONS[columnKey]
-                          const preference = publicationTableColumns[columnKey]
-                          const alignClass = publicationTableColumnAlignClass(preference.align)
                           return (
                             <TableHead
                               key={`table-head-${columnKey}`}
-                              className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} ${alignClass}`}
+                              className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-center`}
                             >
                               <SortHeader
                                 label={definition.label}
                                 column={definition.sortField}
                                 sortField={sortField}
                                 sortDirection={sortDirection}
-                                align={preference.align}
+                                align="center"
                                 onSort={onSortColumn}
                               />
                             </TableHead>
@@ -2265,46 +2525,53 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         </TabsContent>
 
                         <TabsContent value="files" className="space-y-3">
-                          <div className="flex flex-wrap gap-2">
-                            <Button type="button" size="sm" variant="outline" onClick={() => filePickerRef.current?.click()} disabled={uploadingFile}>{uploadingFile ? 'Uploading...' : 'Upload file'}</Button>
-                            <input ref={filePickerRef} type="file" multiple className="hidden" onChange={(event) => void onUploadFiles(event.target.files)} />
-                          </div>
-                          <p className="text-xs text-muted-foreground">Open-access PDF detection runs automatically in the background.</p>
-                          <div
-                            className={`rounded border border-dashed p-3 text-xs ${filesDragOver ? 'border-emerald-500 bg-emerald-50/40' : 'border-border bg-muted/10'}`}
-                            onDragOver={(event) => {
-                              event.preventDefault()
-                              setFilesDragOver(true)
-                            }}
-                            onDragLeave={() => setFilesDragOver(false)}
-                            onDrop={(event) => {
-                              event.preventDefault()
-                              setFilesDragOver(false)
-                              void onUploadFiles(event.dataTransfer.files)
-                            }}
-                          >
-                            Drag and drop files here, or use Upload file.
-                          </div>
-                          {(selectedFilesPayload?.items || []).length === 0 ? (
+                          {selectedFiles.length === 0 ? (
                             <p className="text-xs text-muted-foreground">No files linked to this publication.</p>
                           ) : (
                             <div className="space-y-2">
-                              {(selectedFilesPayload?.items || []).map((file) => (
+                              {selectedFiles.map((file) => {
+                                const fileLabel = 'OA Manuscript Download'
+                                return (
                                 <div key={file.id} className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}>
-                                  <p className="break-all text-xs font-medium leading-snug">{file.file_name}</p>
+                                  <p className="text-xs font-medium leading-snug">{fileLabel}</p>
+                                  <p className="break-all text-micro text-muted-foreground">{file.file_name}</p>
                                   <p className="text-micro text-muted-foreground">{file.file_type} | {file.source === 'OA_LINK' ? 'OA link' : 'Uploaded'} | {formatShortDate(file.created_at)}</p>
-                                  <div className="mt-1 flex gap-1">
+                                  <div className="mt-1 flex flex-wrap gap-1">
                                     {file.source === 'OA_LINK' && file.download_url ? (
                                       <Button type="button" size="sm" variant="outline" asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
                                     ) : (
                                       <Button type="button" size="sm" variant="outline" disabled={downloadingFileId === file.id} onClick={() => void onDownloadPublicationFile(file.id, file.file_name)}>{downloadingFileId === file.id ? 'Downloading...' : 'Download'}</Button>
                                     )}
+                                    <Button type="button" size="sm" variant="outline" onClick={() => onSharePublicationFileEmail(file)}>Share (email)</Button>
+                                    <Button type="button" size="sm" variant="outline" onClick={() => onSharePublicationFileWithUser(file)}>Share with user</Button>
                                     <Button type="button" size="sm" variant="outline" disabled={deletingFileId === file.id} onClick={() => void onDeletePublicationFile(file.id)}>{deletingFileId === file.id ? 'Deleting...' : 'Delete'}</Button>
                                   </div>
                                 </div>
-                              ))}
+                                )
+                              })}
                             </div>
                           )}
+                          <div className="grid gap-2 md:grid-cols-[auto_minmax(0,1fr)] md:items-stretch">
+                            <div className="flex items-start">
+                              <Button type="button" size="sm" variant="outline" onClick={() => filePickerRef.current?.click()} disabled={uploadingFile}>{uploadingFile ? 'Uploading...' : 'Upload file'}</Button>
+                              <input ref={filePickerRef} type="file" multiple className="hidden" onChange={(event) => void onUploadFiles(event.target.files)} />
+                            </div>
+                            <div
+                              className={`rounded border border-dashed p-3 text-xs ${filesDragOver ? 'border-emerald-500 bg-emerald-50/40' : 'border-border bg-muted/10'}`}
+                              onDragOver={(event) => {
+                                event.preventDefault()
+                                setFilesDragOver(true)
+                              }}
+                              onDragLeave={() => setFilesDragOver(false)}
+                              onDrop={(event) => {
+                                event.preventDefault()
+                                setFilesDragOver(false)
+                                void onUploadFiles(event.dataTransfer.files)
+                              }}
+                            >
+                              Drag and drop files here.
+                            </div>
+                          </div>
                         </TabsContent>
 
                         <TabsContent value="ai" className="space-y-3">

@@ -47,6 +47,15 @@ def _trim(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _normalize_optional_id(value: Any) -> str | None:
+    clean = _trim(value)
+    if not clean:
+        return None
+    if clean.lower() in {"none", "null", "undefined"}:
+        return None
+    return clean
+
+
 def _normalize_user_ids(values: Any) -> list[str]:
     if not isinstance(values, list):
         return []
@@ -230,7 +239,7 @@ def upload_library_assets(
         raise PlannerValidationError("At least one file is required for upload.")
     asset_ids: list[str] = []
     with session_scope() as session:
-        clean_project_id = _trim(project_id) or None
+        clean_project_id = _normalize_optional_id(project_id)
         clean_user_id = _trim(user_id) or None
         if not clean_user_id:
             raise PlannerValidationError("Session token is required.")
@@ -312,7 +321,7 @@ def list_library_assets(
                 "query": clean_query,
                 "ownership": clean_ownership,
             }
-        clean_project_id = _trim(project_id) or None
+        clean_project_id = _normalize_optional_id(project_id)
         query = select(DataLibraryAsset).order_by(DataLibraryAsset.uploaded_at.desc())
         if clean_project_id:
             _resolve_project_for_user(

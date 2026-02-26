@@ -853,6 +853,15 @@ def _extract_session_token(request: Request) -> str:
     return cookie_token
 
 
+def _normalize_optional_id(value: Any) -> str | None:
+    clean = str(value or "").strip()
+    if not clean:
+        return None
+    if clean.lower() in {"none", "null", "undefined"}:
+        return None
+    return clean
+
+
 def _resolve_request_user_optional(
     request: Request,
 ) -> tuple[str | None, JSONResponse | None]:
@@ -3648,7 +3657,7 @@ async def v1_upload_library_assets(
     if auth_error is not None:
         return auth_error
     try:
-        project_id_value = project_id
+        project_id_value = _normalize_optional_id(project_id)
         file_payloads: list[tuple[str, str | None, bytes]] = []
         content_type = request.headers.get("content-type", "").lower()
 
@@ -3657,8 +3666,8 @@ async def v1_upload_library_assets(
             if not isinstance(payload, dict):
                 return _build_bad_request_response("JSON payload must be an object.")
 
-            payload_project_id = str(payload.get("project_id", "")).strip()
-            if payload_project_id:
+            payload_project_id = _normalize_optional_id(payload.get("project_id"))
+            if payload_project_id is not None:
                 project_id_value = payload_project_id
 
             raw_files = payload.get("files", [])
@@ -3692,8 +3701,8 @@ async def v1_upload_library_assets(
                     )
                 )
 
-            form_project_id = str(form.get("project_id", "")).strip()
-            if form_project_id:
+            form_project_id = _normalize_optional_id(form.get("project_id"))
+            if form_project_id is not None:
                 project_id_value = form_project_id
 
             files = form.getlist("files")

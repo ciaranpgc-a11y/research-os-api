@@ -1,5 +1,25 @@
 # Change Log
 
+## 2026-02-26
+
+### Library Upload `project_id` Sentinel Normalization
+
+- **Area:** Personal library upload/list API resilience for workspace Data page.
+- **What changed:**
+- Normalized optional `project_id` values in backend upload request parsing so `None`, `null`, and `undefined` are treated as unset.
+- Added the same optional-ID normalization in data planner service methods for `upload_library_assets` and `list_library_assets`.
+- Added API regression coverage to ensure sentinel `project_id` strings no longer trigger `Project '<value>' was not found.` and are handled as unscoped library operations.
+- **Why it changed:**
+- Prevent false project lookup errors when clients (or legacy payloads) send sentinel string values for optional project scope.
+- **Key files touched:**
+- `src/research_os/api/app.py`
+- `src/research_os/services/data_planner_service.py`
+- `tests/test_api.py`
+- **Verification performed:**
+- `python -m py_compile src/research_os/services/data_planner_service.py src/research_os/api/app.py tests/test_api.py`
+- `pytest tests/test_api.py -k "library_asset_routes_ignore_sentinel_project_ids or v1_library_asset_routes_require_session_token" -q`
+- `pytest tests/test_api.py -k "library_asset" -q`
+
 ## 2026-02-25
 
 ### Workspace Data Right-Rail + Insight Panel Removal

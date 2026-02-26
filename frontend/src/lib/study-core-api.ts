@@ -60,6 +60,18 @@ function authHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${clean}` }
 }
 
+function normalizeOptionalId(value: string | null | undefined): string | null {
+  const clean = String(value || '').trim()
+  if (!clean) {
+    return null
+  }
+  const lowered = clean.toLowerCase()
+  if (lowered === 'none' || lowered === 'null' || lowered === 'undefined') {
+    return null
+  }
+  return clean
+}
+
 export async function fetchJournalOptions(): Promise<JournalOption[]> {
   const response = await fetch(`${API_BASE_URL}/v1/journals`)
   if (!response.ok) {
@@ -73,7 +85,7 @@ export async function uploadLibraryAssets(input: {
   files: File[]
   projectId?: string
 }): Promise<LibraryAssetUploadPayload> {
-  const projectId = (input.projectId || '').trim()
+  const projectId = normalizeOptionalId(input.projectId)
 
   const toBase64 = async (file: File): Promise<string> => {
     const buffer = await file.arrayBuffer()
@@ -137,9 +149,10 @@ export async function listLibraryAssets(input: {
   sortBy?: LibraryAssetSortBy
   sortDirection?: LibraryAssetSortDirection
 }): Promise<LibraryAssetListPayload> {
+  const projectId = normalizeOptionalId(input.projectId)
   const search = new URLSearchParams()
-  if ((input.projectId || '').trim()) {
-    search.set('project_id', input.projectId!.trim())
+  if (projectId) {
+    search.set('project_id', projectId)
   }
   if ((input.query || '').trim()) {
     search.set('query', input.query!.trim())
@@ -413,7 +426,16 @@ export async function fetchWorkspaceRunContext(input: {
   if (!response.ok) {
     throw new Error(await parseApiError(response, `Workspace run context lookup failed (${response.status})`))
   }
-  return (await response.json()) as WorkspaceRunContextPayload
+  const payload = (await response.json()) as WorkspaceRunContextPayload
+  return {
+    workspace_id: String(payload.workspace_id || '').trim(),
+    project_id: normalizeOptionalId(payload.project_id),
+    manuscript_id: normalizeOptionalId(payload.manuscript_id),
+    owner_user_id: normalizeOptionalId(payload.owner_user_id),
+    collaborator_user_ids: Array.isArray(payload.collaborator_user_ids)
+      ? payload.collaborator_user_ids.map((value) => String(value || '').trim()).filter((value) => value.length > 0)
+      : [],
+  }
 }
 
 export async function estimateGeneration(input: {

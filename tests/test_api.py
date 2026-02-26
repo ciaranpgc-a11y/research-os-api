@@ -337,6 +337,71 @@ def test_v1_library_asset_routes_require_session_token(monkeypatch, tmp_path) ->
     assert download_response.status_code == 401
 
 
+def test_v1_library_asset_routes_ignore_sentinel_project_ids(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    encoded = base64.b64encode(b"a,b\n1,2\n").decode("ascii")
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "library-sentinel-user@example.com",
+                "password": "StrongPassword123",
+                "name": "Library Sentinel User",
+            },
+        )
+        assert register_response.status_code == 200
+        headers = _auth_headers(register_response.json()["session_token"])
+
+        upload_none = client.post(
+            "/v1/library/assets/upload",
+            headers=headers,
+            json={
+                "project_id": "None",
+                "files": [
+                    {
+                        "filename": "none-sentinel.csv",
+                        "mime_type": "text/csv",
+                        "content_base64": encoded,
+                    }
+                ],
+            },
+        )
+        upload_null = client.post(
+            "/v1/library/assets/upload",
+            headers=headers,
+            json={
+                "project_id": "null",
+                "files": [
+                    {
+                        "filename": "null-sentinel.csv",
+                        "mime_type": "text/csv",
+                        "content_base64": encoded,
+                    }
+                ],
+            },
+        )
+        assert upload_none.status_code == 200
+        assert upload_null.status_code == 200
+
+        list_none = client.get(
+            "/v1/library/assets",
+            headers=headers,
+            params={"project_id": "None"},
+        )
+        list_null = client.get(
+            "/v1/library/assets",
+            headers=headers,
+            params={"project_id": "null"},
+        )
+        assert list_none.status_code == 200
+        assert list_null.status_code == 200
+        assert list_none.json()["total"] == 2
+        assert list_null.json()["total"] == 2
+        assert all(item["project_id"] is None for item in list_none.json()["items"])
+
+
 def test_v1_library_asset_access_controls_and_download(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
 
