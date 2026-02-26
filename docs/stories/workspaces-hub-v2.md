@@ -91,6 +91,13 @@ Out of scope (this story):
 
 ## Implementation Updates
 
+### 2026-02-26
+
+- Added automatic server-side personal-library reconciliation on successful sign-in (password, register, challenge-auth, 2FA, and OAuth).
+- Added metadata merge recovery so library restore reads both metadata index entries and discovered sidecar metadata files.
+- Added canonical owner rebind on sign-in so legacy linked owner IDs are reassigned to the current authenticated account.
+- Added regression coverage for sign-in reconciliation wiring and direct reconcile restore behavior.
+
 ### 2026-02-25
 
 - Added per-workspace inbox conversation text search in the header with result navigation.

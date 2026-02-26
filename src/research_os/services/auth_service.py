@@ -239,6 +239,23 @@ def _enqueue_post_sign_in_refresh(*, user_id: str, reason: str) -> None:
         return
 
 
+def _reconcile_data_library_after_sign_in(
+    *, user_id: str, account_key_hint: str | None = None
+) -> None:
+    clean_user_id = str(user_id or "").strip()
+    if not clean_user_id:
+        return
+    try:
+        from research_os.services.data_planner_service import reconcile_library_for_user
+
+        reconcile_library_for_user(
+            user_id=clean_user_id,
+            account_key_hint=account_key_hint,
+        )
+    except Exception:
+        return
+
+
 def _prune_login_challenges(*, session, user_id: str) -> None:
     now = _utcnow()
     challenges = session.scalars(
@@ -464,6 +481,7 @@ def register_user(*, email: str, password: str, name: str) -> dict[str, object]:
 
     response_payload: dict[str, object] = {}
     signed_in_user_id = ""
+    signed_in_account_key = ""
     with session_scope() as session:
         user = User(
             email=normalized_email,
@@ -487,8 +505,13 @@ def register_user(*, email: str, password: str, name: str) -> dict[str, object]:
             session_expires_at=auth_session.expires_at,
         )
         signed_in_user_id = str(user.id)
+        signed_in_account_key = str(user.account_key or "").strip()
 
     if signed_in_user_id:
+        _reconcile_data_library_after_sign_in(
+            user_id=signed_in_user_id,
+            account_key_hint=signed_in_account_key or None,
+        )
         _enqueue_post_sign_in_refresh(
             user_id=signed_in_user_id,
             reason="auth_register_sign_in",
@@ -500,6 +523,7 @@ def login_user(*, email: str, password: str) -> dict[str, object]:
     create_all_tables()
     response_payload: dict[str, object] = {}
     signed_in_user_id = ""
+    signed_in_account_key = ""
     with session_scope() as session:
         user = _get_user_by_credentials(session=session, email=email, password=password)
         if user.two_factor_enabled:
@@ -514,8 +538,13 @@ def login_user(*, email: str, password: str) -> dict[str, object]:
             session_expires_at=auth_session.expires_at,
         )
         signed_in_user_id = str(user.id)
+        signed_in_account_key = str(user.account_key or "").strip()
 
     if signed_in_user_id:
+        _reconcile_data_library_after_sign_in(
+            user_id=signed_in_user_id,
+            account_key_hint=signed_in_account_key or None,
+        )
         _enqueue_post_sign_in_refresh(
             user_id=signed_in_user_id,
             reason="auth_login_sign_in",
@@ -673,6 +702,7 @@ def start_login_challenge(*, email: str, password: str) -> dict[str, object]:
     create_all_tables()
     response_payload: dict[str, object] = {}
     signed_in_user_id = ""
+    signed_in_account_key = ""
     with session_scope() as session:
         user = _get_user_by_credentials(session=session, email=email, password=password)
         if not user.two_factor_enabled:
@@ -693,6 +723,7 @@ def start_login_challenge(*, email: str, password: str) -> dict[str, object]:
                 },
             }
             signed_in_user_id = str(user.id)
+            signed_in_account_key = str(user.account_key or "").strip()
         else:
             _prune_login_challenges(session=session, user_id=user.id)
             challenge_token = generate_session_token()
@@ -717,6 +748,10 @@ def start_login_challenge(*, email: str, password: str) -> dict[str, object]:
             }
 
     if signed_in_user_id:
+        _reconcile_data_library_after_sign_in(
+            user_id=signed_in_user_id,
+            account_key_hint=signed_in_account_key or None,
+        )
         _enqueue_post_sign_in_refresh(
             user_id=signed_in_user_id,
             reason="auth_login_challenge_sign_in",
@@ -734,6 +769,7 @@ def complete_login_challenge(*, challenge_token: str, code: str) -> dict[str, ob
     now = _utcnow()
     response_payload: dict[str, object] = {}
     signed_in_user_id = ""
+    signed_in_account_key = ""
     with session_scope() as session:
         challenge = session.scalars(
             select(AuthLoginChallenge).where(
@@ -762,8 +798,13 @@ def complete_login_challenge(*, challenge_token: str, code: str) -> dict[str, ob
             session_expires_at=auth_session.expires_at,
         )
         signed_in_user_id = str(user.id)
+        signed_in_account_key = str(user.account_key or "").strip()
 
     if signed_in_user_id:
+        _reconcile_data_library_after_sign_in(
+            user_id=signed_in_user_id,
+            account_key_hint=signed_in_account_key or None,
+        )
         _enqueue_post_sign_in_refresh(
             user_id=signed_in_user_id,
             reason="auth_login_2fa_sign_in",

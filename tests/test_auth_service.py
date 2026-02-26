@@ -21,9 +21,14 @@ def test_register_user_enqueues_publication_metrics_refresh(monkeypatch, tmp_pat
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     enqueued: list[dict[str, object]] = []
+    reconciled: list[dict[str, object]] = []
     monkeypatch.setattr(
         "research_os.services.publication_metrics_service.enqueue_publication_top_metrics_refresh",
         lambda **kwargs: enqueued.append(kwargs) or True,
+    )
+    monkeypatch.setattr(
+        "research_os.services.auth_service._reconcile_data_library_after_sign_in",
+        lambda **kwargs: reconciled.append(kwargs) or None,
     )
 
     payload = register_user(
@@ -38,15 +43,22 @@ def test_register_user_enqueues_publication_metrics_refresh(monkeypatch, tmp_pat
     assert enqueued[0]["user_id"] == user_id
     assert enqueued[0]["reason"] == "auth_register_sign_in"
     assert enqueued[0]["force"] is False
+    assert len(reconciled) == 1
+    assert reconciled[0]["user_id"] == user_id
 
 
 def test_login_user_enqueues_publication_metrics_refresh(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     enqueued: list[dict[str, object]] = []
+    reconciled: list[dict[str, object]] = []
     monkeypatch.setattr(
         "research_os.services.publication_metrics_service.enqueue_publication_top_metrics_refresh",
         lambda **kwargs: enqueued.append(kwargs) or True,
+    )
+    monkeypatch.setattr(
+        "research_os.services.auth_service._reconcile_data_library_after_sign_in",
+        lambda **kwargs: reconciled.append(kwargs) or None,
     )
 
     created = register_user(
@@ -68,15 +80,22 @@ def test_login_user_enqueues_publication_metrics_refresh(monkeypatch, tmp_path) 
     assert enqueued[0]["user_id"] == user_id
     assert enqueued[0]["reason"] == "auth_login_sign_in"
     assert enqueued[0]["force"] is False
+    assert len(reconciled) == 2
+    assert reconciled[1]["user_id"] == user_id
 
 
 def test_login_challenge_authenticated_enqueues_refresh(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     enqueued: list[dict[str, object]] = []
+    reconciled: list[dict[str, object]] = []
     monkeypatch.setattr(
         "research_os.services.publication_metrics_service.enqueue_publication_top_metrics_refresh",
         lambda **kwargs: enqueued.append(kwargs) or True,
+    )
+    monkeypatch.setattr(
+        "research_os.services.auth_service._reconcile_data_library_after_sign_in",
+        lambda **kwargs: reconciled.append(kwargs) or None,
     )
 
     created = register_user(
@@ -100,15 +119,22 @@ def test_login_challenge_authenticated_enqueues_refresh(monkeypatch, tmp_path) -
     assert enqueued[0]["user_id"] == user_id
     assert enqueued[0]["reason"] == "auth_login_challenge_sign_in"
     assert enqueued[0]["force"] is False
+    assert len(reconciled) == 2
+    assert reconciled[1]["user_id"] == user_id
 
 
 def test_complete_login_challenge_enqueues_refresh(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     create_all_tables()
     enqueued: list[dict[str, object]] = []
+    reconciled: list[dict[str, object]] = []
     monkeypatch.setattr(
         "research_os.services.publication_metrics_service.enqueue_publication_top_metrics_refresh",
         lambda **kwargs: enqueued.append(kwargs) or True,
+    )
+    monkeypatch.setattr(
+        "research_os.services.auth_service._reconcile_data_library_after_sign_in",
+        lambda **kwargs: reconciled.append(kwargs) or None,
     )
 
     created = register_user(
@@ -150,3 +176,5 @@ def test_complete_login_challenge_enqueues_refresh(monkeypatch, tmp_path) -> Non
     assert enqueued[0]["user_id"] == user_id
     assert enqueued[0]["reason"] == "auth_login_2fa_sign_in"
     assert enqueued[0]["force"] is False
+    assert len(reconciled) == 2
+    assert reconciled[1]["user_id"] == user_id

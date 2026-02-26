@@ -98,6 +98,11 @@ def test_complete_oauth_callback_sets_state_user_id_after_success(
 ) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     _create_oauth_state(state="state-success", consumed=False)
+    reconciled: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "research_os.services.social_auth_service._reconcile_data_library_after_sign_in",
+        lambda **kwargs: reconciled.append(kwargs) or None,
+    )
 
     monkeypatch.setattr(
         "research_os.services.social_auth_service._exchange_oauth_code",
@@ -128,4 +133,5 @@ def test_complete_oauth_callback_sets_state_user_id_after_success(
         assert row is not None
         assert row.consumed_at is not None
         assert row.user_id == payload["user"]["id"]
-
+    assert len(reconciled) == 1
+    assert reconciled[0]["user_id"] == payload["user"]["id"]

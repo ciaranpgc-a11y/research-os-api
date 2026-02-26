@@ -14,6 +14,7 @@ from research_os.db import (
 from research_os.services.data_planner_service import (
     download_library_asset,
     list_library_assets,
+    reconcile_library_for_user,
     upload_library_assets,
 )
 
@@ -98,6 +99,31 @@ def test_list_library_assets_restores_missing_row_from_metadata(monkeypatch, tmp
         assert restored is not None
         assert Path(str(restored.storage_path)).exists()
         assert str(restored.owner_user_id) == user_id
+
+
+def test_reconcile_library_for_user_restores_missing_row_from_metadata(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    user_id = _create_user(email="library-reconcile@example.com")
+
+    asset_id = upload_library_assets(
+        files=[("reconcile.csv", "text/csv", b"col_a,col_b\n9,10\n")],
+        project_id=None,
+        user_id=user_id,
+    )[0]
+
+    with session_scope() as session:
+        row = session.get(DataLibraryAsset, asset_id)
+        assert row is not None
+        session.delete(row)
+
+    summary = reconcile_library_for_user(user_id=user_id)
+    assert int(summary.get("restored_rows") or 0) >= 1
+
+    payload = list_library_assets(project_id=None, user_id=user_id)
+    listed_ids = [str(item.get("id")) for item in payload.get("items", [])]
+    assert asset_id in listed_ids
 
 
 def test_list_library_assets_rebinds_owner_by_email_when_user_id_changes(

@@ -525,13 +525,38 @@ def _rebuild_metadata_index_from_sidecars(root: Path) -> list[str]:
     return ids
 
 
+def _sidecar_asset_ids(root: Path) -> list[str]:
+    discovered: list[str] = []
+    for path in root.glob("*.meta.json"):
+        stem = _trim(path.stem)
+        clean = stem[:-5] if stem.endswith(".meta") else stem
+        if not clean:
+            payload = _load_asset_metadata(path)
+            if payload:
+                clean = _metadata_asset_id(payload)
+        clean = _trim(clean)
+        if clean:
+            discovered.append(clean)
+    return _normalize_string_ids(discovered)
+
+
 def _iter_metadata_paths(*, root: Path, requested_asset_id: str | None = None) -> list[Path]:
     clean_asset_id = _trim(requested_asset_id)
     if clean_asset_id:
         return [_asset_metadata_path(asset_id=clean_asset_id, root=root)]
-    ids = _read_metadata_index_ids(root)
-    if not ids:
-        ids = _rebuild_metadata_index_from_sidecars(root)
+    indexed_ids = _read_metadata_index_ids(root)
+    sidecar_ids = _sidecar_asset_ids(root)
+    if not indexed_ids and not sidecar_ids:
+        return []
+    if not indexed_ids:
+        ids = sidecar_ids
+        _write_metadata_index_ids(root=root, asset_ids=ids)
+    elif not sidecar_ids:
+        ids = indexed_ids
+    else:
+        ids = _normalize_string_ids([*indexed_ids, *sidecar_ids])
+        if ids != indexed_ids:
+            _write_metadata_index_ids(root=root, asset_ids=ids)
     return [_asset_metadata_path(asset_id=asset_id, root=root) for asset_id in ids]
 
 
@@ -1036,6 +1061,87 @@ def _recover_assets_for_user_from_identity_metadata(
     if recovered_count > 0:
         session.flush()
     return recovered_count
+
+
+def reconcile_library_for_user(
+    *,
+    user_id: str | None,
+    account_key_hint: str | None = None,
+) -> dict[str, int]:
+    create_all_tables()
+    clean_user_id = _trim(user_id)
+    if not clean_user_id:
+        return {
+            "restored_rows": 0,
+            "claimed_rows": 0,
+            "identity_recovered_rows": 0,
+            "canonicalized_owner_rows": 0,
+        }
+
+    with session_scope() as session:
+        if session.get(User, clean_user_id) is None:
+            return {
+                "restored_rows": 0,
+                "claimed_rows": 0,
+                "identity_recovered_rows": 0,
+                "canonicalized_owner_rows": 0,
+            }
+
+        storage_root = _storage_root()
+        restored_any = _restore_asset_row_from_metadata(
+            session=session,
+            primary_root=storage_root,
+            claimant_user_id=clean_user_id,
+        )
+        claimed_rows = _claim_legacy_ownerless_assets_for_user(
+            session=session,
+            user_id=clean_user_id,
+        )
+        identity_recovered_rows = _recover_assets_for_user_from_identity_metadata(
+            session=session,
+            primary_root=storage_root,
+            user_id=clean_user_id,
+            account_key_hint=account_key_hint,
+        )
+
+        related_user_ids = _related_user_ids_for_user(
+            session=session,
+            user_id=clean_user_id,
+            account_key_hint=account_key_hint,
+        )
+        if clean_user_id not in related_user_ids:
+            related_user_ids.add(clean_user_id)
+        canonicalized_owner_rows = 0
+        if related_user_ids:
+            owned_rows = session.scalars(
+                select(DataLibraryAsset).where(
+                    DataLibraryAsset.owner_user_id.in_(sorted(related_user_ids))
+                )
+            ).all()
+            for row in owned_rows:
+                row_owner_user_id = _trim(row.owner_user_id)
+                if row_owner_user_id and row_owner_user_id != clean_user_id:
+                    row.owner_user_id = clean_user_id
+                    canonicalized_owner_rows += 1
+                resolved_storage_path = _resolve_existing_asset_path(row, storage_root)
+                if resolved_storage_path is None:
+                    continue
+                resolved_storage_path_str = str(resolved_storage_path)
+                if _trim(row.storage_path) != resolved_storage_path_str:
+                    row.storage_path = resolved_storage_path_str
+                _sync_asset_metadata_for_row(
+                    session=session,
+                    asset=row,
+                    primary_root=storage_root,
+                )
+
+        session.flush()
+        return {
+            "restored_rows": 1 if restored_any else 0,
+            "claimed_rows": int(claimed_rows or 0),
+            "identity_recovered_rows": int(identity_recovered_rows or 0),
+            "canonicalized_owner_rows": int(canonicalized_owner_rows or 0),
+        }
 
 
 def _slugify_filename(value: str) -> str:

@@ -367,7 +367,12 @@ const HOUSE_CHART_AXIS_WINDOW_SUBTEXT_CLASS = publicationsHouseCharts.axisWindow
 const HOUSE_CHART_LINE_SOFT_SVG_CLASS = publicationsHouseCharts.lineSoftSvg
 const HOUSE_CHART_RING_TRACK_SVG_CLASS = publicationsHouseCharts.ringTrackSvg
 const HOUSE_CHART_RING_MAIN_SVG_CLASS = publicationsHouseCharts.ringMainSvg
-const HOUSE_CHART_RING_SOFT_SVG_CLASS = publicationsHouseCharts.ringSoftSvg
+const HOUSE_CHART_RING_REMAINDER_SVG_CLASS = publicationsHouseCharts.ringRemainderSvg
+const HOUSE_CHART_RING_THRESHOLD_50_SVG_CLASS = publicationsHouseCharts.ringThreshold50Svg
+const HOUSE_CHART_RING_THRESHOLD_75_SVG_CLASS = publicationsHouseCharts.ringThreshold75Svg
+const HOUSE_CHART_RING_THRESHOLD_90_SVG_CLASS = publicationsHouseCharts.ringThreshold90Svg
+const HOUSE_CHART_RING_THRESHOLD_95_SVG_CLASS = publicationsHouseCharts.ringThreshold95Svg
+const HOUSE_CHART_RING_THRESHOLD_99_SVG_CLASS = publicationsHouseCharts.ringThreshold99Svg
 const HOUSE_CHART_RING_PANEL_CLASS = publicationsHouseCharts.ringPanel
 const HOUSE_CHART_RING_SIZE_CLASS = publicationsHouseCharts.ringSize
 const HOUSE_CHART_MINI_DONUT_CLASS = publicationsHouseCharts.miniDonut
@@ -387,6 +392,14 @@ const HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_COLUMNS_CLASS = 'grid-cols-[2.5rem_
 const HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_GAP_CLASS = 'gap-2'
 const HOUSE_FIELD_PERCENTILE_LEFT_CHART_PANEL_CLASS = 'h-full min-h-0 min-w-0 w-full'
 const HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH = 14
+const HOUSE_RING_ARC_TRANSITION = 'stroke-dasharray 680ms cubic-bezier(0.22, 1, 0.36, 1), stroke-dashoffset 680ms cubic-bezier(0.22, 1, 0.36, 1)'
+const FIELD_PERCENTILE_RING_CLASS_BY_THRESHOLD: Record<FieldPercentileThreshold, string> = {
+  50: HOUSE_CHART_RING_THRESHOLD_50_SVG_CLASS,
+  75: HOUSE_CHART_RING_THRESHOLD_75_SVG_CLASS,
+  90: HOUSE_CHART_RING_THRESHOLD_90_SVG_CLASS,
+  95: HOUSE_CHART_RING_THRESHOLD_95_SVG_CLASS,
+  99: HOUSE_CHART_RING_THRESHOLD_99_SVG_CLASS,
+}
 const HOUSE_DRILLDOWN_TOOLTIP_CLASS =
   cn(
     HOUSE_DRILLDOWN_CHART_TOOLTIP_CLASS,
@@ -2027,7 +2040,6 @@ function PublicationsPerYearChart({
 
 function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload }) {
   const [chartVisible, setChartVisible] = useState(true)
-  const [ringExpanded, setRingExpanded] = useState(false)
   const [hoveredSegment, setHoveredSegment] = useState<'top3' | 'rest' | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
@@ -2039,9 +2051,8 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const top3Pct = total > 0 ? (top3 / total) * 100 : 0
   const top3PctRounded = Math.max(0, Math.min(100, Math.round(top3Pct)))
   const restPctRounded = Math.max(0, 100 - top3PctRounded)
-  const top3Dash = ((ringExpanded ? top3PctRounded : 0) / 100) * ringCircumference
-  const restDash = ((ringExpanded ? restPctRounded : 100) / 100) * ringCircumference
-  const restOffset = -top3Dash
+  const top3PctAnimated = useEasedValue(top3PctRounded, `impact-top3-${top3PctRounded}-${total}`, total > 0)
+  const top3Dash = (Math.max(0, Math.min(100, top3PctAnimated)) / 100) * ringCircumference
   const explicitRemainingRaw = Number(chartData.remaining_papers_count)
   const explicitTotalPublicationsCandidates = [
     Number(chartData.total_publications),
@@ -2073,7 +2084,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const ringStrokeWidth = HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH
   const ringHitHalfWidth = (ringStrokeWidth / 2) + 3
   const top3ArcSpan = (top3PctRounded / 100) * 360
-  const top3ArcStart = 270 - (top3ArcSpan / 2)
+  const top3ArcStart = 180
   const isAngleInArc = (angle: number, start: number, span: number): boolean => {
     if (span <= 0) {
       return false
@@ -2095,18 +2106,12 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   )
   useEffect(() => {
     setChartVisible(false)
-    setRingExpanded(false)
     let rafOne = 0
-    let rafTwo = 0
     rafOne = window.requestAnimationFrame(() => {
       setChartVisible(true)
-      rafTwo = window.requestAnimationFrame(() => {
-        setRingExpanded(true)
-      })
     })
     return () => {
       window.cancelAnimationFrame(rafOne)
-      window.cancelAnimationFrame(rafTwo)
     }
   }, [animationKey])
 
@@ -2164,8 +2169,10 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                 cy="50"
                 r={ringRadius}
                 fill="none"
-                className={HOUSE_CHART_RING_TRACK_SVG_CLASS}
+                className={HOUSE_CHART_RING_REMAINDER_SVG_CLASS}
                 strokeWidth={ringStrokeWidth}
+                strokeLinecap="round"
+                transform="rotate(180 50 50)"
               />
               <circle
                 cx="50"
@@ -2175,26 +2182,11 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                 className={HOUSE_CHART_RING_MAIN_SVG_CLASS}
                 strokeWidth={ringStrokeWidth}
                 strokeLinecap="round"
-                transform={`rotate(${top3ArcStart} 50 50)`}
+                transform="rotate(180 50 50)"
                 style={{
                   strokeDasharray: `${top3Dash} ${ringCircumference}`,
                   strokeDashoffset: 0,
-                  transition: 'stroke-dasharray 560ms cubic-bezier(0.2, 0.68, 0.16, 1)',
-                }}
-              />
-              <circle
-                cx="50"
-                cy="50"
-                r={ringRadius}
-                fill="none"
-                className={HOUSE_CHART_RING_SOFT_SVG_CLASS}
-                strokeWidth={ringStrokeWidth}
-                strokeLinecap="round"
-                transform={`rotate(${top3ArcStart} 50 50)`}
-                style={{
-                  strokeDasharray: `${restDash} ${ringCircumference}`,
-                  strokeDashoffset: restOffset,
-                  transition: 'stroke-dasharray 560ms cubic-bezier(0.2, 0.68, 0.16, 1), stroke-dashoffset 560ms cubic-bezier(0.2, 0.68, 0.16, 1)',
+                  transition: HOUSE_RING_ARC_TRANSITION,
                 }}
               />
             </svg>
@@ -2525,7 +2517,7 @@ function FieldPercentilePanel({
   const ringRadius = 38
   const ringCircumference = 2 * Math.PI * ringRadius
   const ringDash = (animatedShareClamped / 100) * ringCircumference
-  const ringRestDash = ((100 - animatedShareClamped) / 100) * ringCircumference
+  const ringShareToneClass = FIELD_PERCENTILE_RING_CLASS_BY_THRESHOLD[threshold] || HOUSE_CHART_RING_MAIN_SVG_CLASS
   useEffect(() => {
     setChartVisible(false)
     let rafOne = 0
@@ -2567,29 +2559,24 @@ function FieldPercentilePanel({
                 cy="50"
                 r={ringRadius}
                 fill="none"
-                className={HOUSE_CHART_RING_MAIN_SVG_CLASS}
+                className={HOUSE_CHART_RING_REMAINDER_SVG_CLASS}
                 strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
                 strokeLinecap="round"
-                transform="rotate(-90 50 50)"
-                style={{
-                  strokeDasharray: `${ringDash} ${ringCircumference}`,
-                  strokeDashoffset: 0,
-                  transition: 'stroke-dasharray 560ms cubic-bezier(0.2, 0.68, 0.16, 1)',
-                }}
+                transform="rotate(180 50 50)"
               />
               <circle
                 cx="50"
                 cy="50"
                 r={ringRadius}
                 fill="none"
-                className={HOUSE_CHART_RING_SOFT_SVG_CLASS}
+                className={ringShareToneClass}
                 strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
                 strokeLinecap="round"
-                transform="rotate(-90 50 50)"
+                transform="rotate(180 50 50)"
                 style={{
-                  strokeDasharray: `${ringRestDash} ${ringCircumference}`,
-                  strokeDashoffset: -ringDash,
-                  transition: 'stroke-dasharray 560ms cubic-bezier(0.2, 0.68, 0.16, 1), stroke-dashoffset 560ms cubic-bezier(0.2, 0.68, 0.16, 1)',
+                  strokeDasharray: `${ringDash} ${ringCircumference}`,
+                  strokeDashoffset: 0,
+                  transition: HOUSE_RING_ARC_TRANSITION,
                 }}
               />
             </svg>

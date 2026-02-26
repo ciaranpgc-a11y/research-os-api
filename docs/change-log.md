@@ -2,6 +2,37 @@
 
 ## 2026-02-26
 
+### Automatic Library Reconciliation On Sign-In
+
+- **Area:** Data-library continuity after login/logout/build cycles.
+- **What changed:**
+- Added `reconcile_library_for_user(...)` in `data_planner_service` to run a full server-side recovery pass:
+  - restore missing DB rows from metadata sidecars,
+  - claim legacy ownerless/stale-owner assets for the authenticated user,
+  - recover ownership via identity metadata (`owner_email` / `owner_account_key`),
+  - canonicalize legacy linked owner IDs to the current signed-in account.
+- Hardened metadata iteration to merge `metadata.index.json` IDs with actual `*.meta.json` sidecars so partial/stale index files cannot hide recoverable assets.
+- Wired automatic reconciliation into all successful sign-in paths:
+  - password login,
+  - register + immediate sign-in,
+  - login challenge direct-auth path,
+  - 2FA challenge completion,
+  - OAuth callback sign-in.
+- Expanded test coverage to assert reconciliation is triggered on auth flows and that direct reconciliation restores missing rows.
+- **Why it changed:**
+- Ensure account libraries are repopulated automatically from durable server data at sign-in, instead of depending on manual refresh/actions.
+- **Key files touched:**
+- `src/research_os/services/data_planner_service.py`
+- `src/research_os/services/auth_service.py`
+- `src/research_os/services/social_auth_service.py`
+- `tests/test_data_library_resilience.py`
+- `tests/test_auth_service.py`
+- `tests/test_social_auth_service.py`
+- **Verification performed:**
+- `pytest tests/test_data_library_resilience.py -q`
+- `pytest tests/test_auth_service.py -q`
+- `pytest tests/test_social_auth_service.py -q`
+
 ### Publications Drilldown Tokenization + Layout Stability Pass
 
 - **Area:** Publications drilldown visual consistency, token governance, and chart behavior stability.

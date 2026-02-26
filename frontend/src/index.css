@@ -1256,6 +1256,30 @@
     stroke: hsl(var(--tone-accent-300));
   }
 
+  .house-chart-ring-remainder-svg {
+    stroke: hsl(var(--tone-neutral-300));
+  }
+
+  .house-chart-ring-threshold-50-svg {
+    stroke: hsl(var(--tone-accent-400));
+  }
+
+  .house-chart-ring-threshold-75-svg {
+    stroke: hsl(var(--tone-accent-500));
+  }
+
+  .house-chart-ring-threshold-90-svg {
+    stroke: hsl(var(--tone-accent-600));
+  }
+
+  .house-chart-ring-threshold-95-svg {
+    stroke: hsl(var(--tone-accent-700));
+  }
+
+  .house-chart-ring-threshold-99-svg {
+    stroke: hsl(var(--tone-accent-800));
+  }
+
   .house-chart-ring-panel {
     position: relative;
     display: flex;

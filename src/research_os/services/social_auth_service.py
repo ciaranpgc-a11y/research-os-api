@@ -64,6 +64,23 @@ def _serialize_user(user: User) -> dict[str, object]:
     }
 
 
+def _reconcile_data_library_after_sign_in(
+    *, user_id: str, account_key_hint: str | None = None
+) -> None:
+    clean_user_id = str(user_id or "").strip()
+    if not clean_user_id:
+        return
+    try:
+        from research_os.services.data_planner_service import reconcile_library_for_user
+
+        reconcile_library_for_user(
+            user_id=clean_user_id,
+            account_key_hint=account_key_hint,
+        )
+    except Exception:
+        return
+
+
 def _normalize_provider(provider: str) -> str:
     clean = (provider or "").strip().lower()
     if clean not in SUPPORTED_OAUTH_PROVIDERS:
@@ -574,6 +591,7 @@ def complete_oauth_callback(
 
     response_payload: dict[str, object] = {}
     signed_in_user_id = ""
+    signed_in_account_key = ""
     with session_scope() as session:
         state_row = _load_oauth_state(
             session=session,
@@ -608,8 +626,13 @@ def complete_oauth_callback(
             "session_expires_at": auth_session.expires_at,
         }
         signed_in_user_id = str(user.id)
+        signed_in_account_key = str(user.account_key or "").strip()
 
     if signed_in_user_id:
+        _reconcile_data_library_after_sign_in(
+            user_id=signed_in_user_id,
+            account_key_hint=signed_in_account_key or None,
+        )
         try:
             from research_os.services.publication_metrics_service import (
                 enqueue_publication_top_metrics_refresh,
