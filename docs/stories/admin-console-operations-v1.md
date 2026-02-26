@@ -24,13 +24,16 @@ In scope:
 - Admin left navigation grouped by command/scale/governance.
 - Section model for all 12 admin domains.
 - Overview, Users, Organisations, and Workspaces/Projects as active operational modules.
+- Usage, Costs, and Limits as a live margin-control module.
+- Jobs and Queues as a live operations module with internal cancel/retry controls.
+- Immutable admin audit events, including org impersonation action logging.
 - Structured placeholders and planning metadata for remaining modules.
 - CI documentation enforcement for major changes.
 
 Out of scope (v1):
 
 - Full backend data pipelines for every planned module.
-- Tenant impersonation tooling.
+- Full end-user session takeover from impersonation ticket (internal ticketing/audit only in v1).
 - Billing provider integrations and queue observability backends.
 - Support ticketing integration.
 
@@ -44,6 +47,8 @@ Out of scope (v1):
 6. Remaining modules display explicit status (`live`, `partial`, `planned`) and lane (`now`, `next`, `later`) metadata.
 7. A return action to main site remains available.
 8. Documentation and CI rules require same-delivery documentation for major changes.
+9. Usage-Costs-Limits and Jobs-Queues modules are live and backed by admin APIs.
+10. Admin cancel/retry/impersonation actions are audited and queryable from admin audit logs.
 
 ## Implementation Notes (2026-02-26)
 
@@ -68,10 +73,24 @@ Out of scope (v1):
   - backend workspace aggregation (owner/members, project/manuscript/data-source counts, storage, exports, run health),
   - admin UI workspace index + detail control plane with queue and project-level visibility,
   - workspaces lane/status promoted to `live` + `now`.
+- Added live Usage-Costs-Limits module infrastructure:
+  - new admin API endpoint `/v1/admin/usage-costs`,
+  - backend usage/cost aggregation by model/tool/org/user plus trend/limits summary,
+  - admin UI section upgraded from placeholder to live telemetry cards and usage tables,
+  - usage-costs lane/status promoted to `live` + `now`.
+- Added live Jobs and Queues module infrastructure:
+  - new admin API endpoint `/v1/admin/jobs`,
+  - internal admin action endpoints `/v1/admin/jobs/{job_id}/cancel` and `/v1/admin/jobs/{job_id}/retry`,
+  - admin UI section upgraded from placeholder to live queue health + searchable jobs table + action controls,
+  - jobs lane/status promoted to `live` + `now`.
+- Added audited admin actions and event visibility:
+  - new admin API endpoint `/v1/admin/organisations/{org_id}/impersonate` (internal ticket + audit trail),
+  - new admin API endpoint `/v1/admin/audit/events`,
+  - backend immutable event persistence via `admin_audit_events`,
+  - security section upgraded with live audit log visibility.
 
 ## Verification
 
 - `npm --prefix frontend run --silent typecheck`
-- `npm --prefix frontend run design:governance`
 - `pytest tests/test_api.py -k "v1_admin_endpoints" -q`
 - `python scripts/verify_change_documentation.py` (base SHA fallback in local mode)

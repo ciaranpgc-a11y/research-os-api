@@ -228,6 +228,37 @@ def create_oauth_connect_url(
     }
 
 
+def _load_oauth_state(*, session, provider: str, state: str) -> AuthOAuthState:
+    state_row = session.scalars(
+        select(AuthOAuthState).where(
+            AuthOAuthState.provider == provider,
+            AuthOAuthState.state_token == state,
+        )
+    ).first()
+    if state_row is None:
+        raise AuthValidationError("OAuth state is invalid.")
+    expires_at = _as_utc(state_row.expires_at)
+    if expires_at and expires_at <= _utcnow():
+        raise AuthValidationError("OAuth state has expired.")
+    return state_row
+
+
+def _claim_oauth_state(*, provider: str, state: str) -> None:
+    create_all_tables()
+    with session_scope() as session:
+        state_row = _load_oauth_state(
+            session=session,
+            provider=provider,
+            state=state,
+        )
+        if state_row.consumed_at is not None:
+            raise AuthValidationError("OAuth state has already been used.")
+        # Claim callback state before token exchange so replayed callbacks
+        # do not burn one-time provider auth codes.
+        state_row.consumed_at = _utcnow()
+        session.flush()
+
+
 def _exchange_oauth_code(
     *, provider: str, config: dict[str, str], code: str
 ) -> dict[str, Any]:
@@ -530,6 +561,7 @@ def complete_oauth_callback(
         raise AuthValidationError("Provider, state, and code are required.")
 
     config = _provider_config(clean_provider, frontend_origin=frontend_origin)
+    _claim_oauth_state(provider=clean_provider, state=clean_state)
     token_payload = _exchange_oauth_code(
         provider=clean_provider, config=config, code=clean_code
     )
@@ -539,23 +571,16 @@ def complete_oauth_callback(
         token_payload=token_payload,
     )
 
-    create_all_tables()
     response_payload: dict[str, object] = {}
     signed_in_user_id = ""
     with session_scope() as session:
-        state_row = session.scalars(
-            select(AuthOAuthState).where(
-                AuthOAuthState.provider == clean_provider,
-                AuthOAuthState.state_token == clean_state,
-            )
-        ).first()
-        if state_row is None:
-            raise AuthValidationError("OAuth state is invalid.")
-        if state_row.consumed_at is not None:
+        state_row = _load_oauth_state(
+            session=session,
+            provider=clean_provider,
+            state=clean_state,
+        )
+        if state_row.user_id:
             raise AuthValidationError("OAuth state has already been used.")
-        expires_at = _as_utc(state_row.expires_at)
-        if expires_at and expires_at <= _utcnow():
-            raise AuthValidationError("OAuth state has expired.")
 
         user, is_new_user = _resolve_user_for_oauth(
             session=session,
@@ -571,7 +596,6 @@ def complete_oauth_callback(
         if user is None:
             raise AuthNotFoundError("User was not resolved for OAuth sign-in.")
         state_row.user_id = user.id
-        state_row.consumed_at = _utcnow()
         session_token, auth_session = _create_session(session=session, user=user)
         session.refresh(user)
 

@@ -2,6 +2,48 @@
 
 ## 2026-02-26
 
+### Admin Usage-Costs + Jobs + Audited Actions (Live Operations Control Plane v2)
+
+- **Area:** Admin console scale/operations/security modules (backend API + frontend admin surface).
+- **What changed:**
+- Promoted `Usage, Costs, and Limits` from planned placeholder to live module with real telemetry.
+- Added admin API endpoint `GET /v1/admin/usage-costs` with model/tool/org/user usage and monthly trend payloads.
+- Promoted `Jobs & Queues` from planned placeholder to live module with queue health and internal controls.
+- Added admin API endpoint `GET /v1/admin/jobs` and action endpoints:
+  - `POST /v1/admin/jobs/{job_id}/cancel`
+  - `POST /v1/admin/jobs/{job_id}/retry`
+- Added audited admin action infrastructure:
+  - admin audit persistence model `admin_audit_events`,
+  - `POST /v1/admin/organisations/{org_id}/impersonate` (internal impersonation ticket, audited),
+  - `GET /v1/admin/audit/events` for immutable admin event visibility.
+- Upgraded admin UI:
+  - live Usage-Costs section (summary metrics, model/tool usage, org/user usage, monthly trend),
+  - live Jobs section (filters, queue health cards, cancel/retry controls),
+  - live Security audit-log section,
+  - enabled org impersonation action button with audited event trail.
+- Expanded admin endpoint tests for new routes and action flows (auth, role guard, payloads, audited actions).
+- **Why it changed:**
+- Complete the requested three-module upgrade so owner/admin operations can manage margin, queue pressure, and privileged actions from one audited control surface.
+- **Key files touched:**
+- `src/research_os/db.py`
+- `src/research_os/services/admin_service.py`
+- `src/research_os/api/schemas.py`
+- `src/research_os/api/app.py`
+- `tests/test_api.py`
+- `frontend/src/types/impact.ts`
+- `frontend/src/lib/impact-api.ts`
+- `frontend/src/pages/admin-page.tsx`
+- `docs/stories/admin-console-operations-v1.md`
+- `docs/parallel-feature-delivery.md`
+- **Verification performed:**
+- `python -m py_compile src/research_os/services/admin_service.py src/research_os/api/schemas.py src/research_os/api/app.py tests/test_api.py`
+- `pytest tests/test_api.py -k "admin_endpoints" -q`
+- `npm --prefix frontend run --silent typecheck`
+- `python scripts/verify_change_documentation.py`
+- **Follow-up:**
+- Add secure session-handoff flow behind impersonation tickets (currently ticket + audit only).
+- Add richer queue worker/dead-letter telemetry once dedicated queue backend metrics are available.
+
 ### Admin Workspaces Module (Live Operations Control Plane v1)
 
 - **Area:** Admin console workspace/project operations (backend API + frontend admin surface).
