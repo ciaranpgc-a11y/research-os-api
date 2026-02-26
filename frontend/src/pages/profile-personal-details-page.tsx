@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
-import { ChevronRight, GripVertical, Loader2, Plus, SlidersHorizontal, Trash2, Upload } from 'lucide-react'
+import { ChevronRight, GripVertical, Loader2, Plus, ShieldCheck, SlidersHorizontal, Trash2, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -54,6 +54,7 @@ type ProfileBadge = {
   label: string
   tone: 'neutral' | 'accent' | 'positive' | 'gold'
   detail: string
+  variant?: 'standard' | 'admin'
 }
 
 type AffiliationSuggestionItem = {
@@ -515,15 +516,27 @@ function formatAccountAge(createdAt: string | null | undefined): string {
 
 function buildProfileBadges(input: {
   orcidLinked: boolean
+  isAdmin: boolean
 }): ProfileBadge[] {
-  return [
+  const badges: ProfileBadge[] = []
+  if (input.isAdmin) {
+    badges.push({
+      id: 'admin',
+      label: 'Administrator',
+      tone: 'gold',
+      detail: 'Owner-level administration access is enabled for this account.',
+      variant: 'admin',
+    })
+  }
+  badges.push(
     {
       id: input.orcidLinked ? 'member' : 'guest',
       label: input.orcidLinked ? 'Member' : 'Guest',
       tone: input.orcidLinked ? 'accent' : 'neutral',
       detail: input.orcidLinked ? 'Member account' : 'Guest account',
     },
-  ]
+  )
+  return badges
 }
 
 function badgeToneClass(tone: ProfileBadge['tone']): string {
@@ -534,7 +547,7 @@ function badgeToneClass(tone: ProfileBadge['tone']): string {
     return 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))]'
   }
   if (tone === 'gold') {
-    return 'border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] text-[hsl(var(--tone-warning-900))]'
+    return 'border-[hsl(var(--tone-warning-400))] bg-[linear-gradient(135deg,hsl(var(--tone-warning-100)),hsl(var(--tone-warning-200)))] text-[hsl(var(--tone-warning-900))] shadow-[0_4px_14px_hsl(var(--tone-warning-200)/0.6)]'
   }
   return 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
 }
@@ -1190,8 +1203,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
     () =>
       buildProfileBadges({
         orcidLinked,
+        isAdmin: user?.role === 'admin',
       }),
-    [orcidLinked],
+    [orcidLinked, user?.role],
   )
 
   const onFieldChange = (field: PersonalDetailsStringField, value: string) => {
@@ -2015,9 +2029,14 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               {badges.map((badge) => (
                 <span
                   key={badge.id}
-                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${badgeToneClass(badge.tone)}`}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${badgeToneClass(badge.tone)} ${
+                    badge.variant === 'admin'
+                      ? 'ring-1 ring-[hsl(var(--tone-warning-300)/0.75)]'
+                      : ''
+                  }`}
                   title={badge.detail}
                 >
+                  {badge.variant === 'admin' ? <ShieldCheck className="h-3.5 w-3.5" /> : null}
                   {badge.label}
                 </span>
               ))}

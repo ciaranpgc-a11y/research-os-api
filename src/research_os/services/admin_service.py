@@ -32,6 +32,8 @@ def get_admin_overview() -> dict[str, object]:
     create_all_tables()
     now = _utcnow()
     recent_threshold = now - timedelta(hours=24)
+    active_7d_threshold = now - timedelta(days=7)
+    active_30d_threshold = now - timedelta(days=30)
     with session_scope() as session:
         total_users = int(session.scalar(select(func.count()).select_from(User)) or 0)
         active_users = int(
@@ -57,10 +59,38 @@ def get_admin_overview() -> dict[str, object]:
             )
             or 0
         )
+        active_users_7d = int(
+            session.scalar(
+                select(func.count())
+                .select_from(User)
+                .where(
+                    User.last_sign_in_at.is_not(None),
+                    User.last_sign_in_at >= active_7d_threshold,
+                )
+            )
+            or 0
+        )
+        active_users_30d = int(
+            session.scalar(
+                select(func.count())
+                .select_from(User)
+                .where(
+                    User.last_sign_in_at.is_not(None),
+                    User.last_sign_in_at >= active_30d_threshold,
+                )
+            )
+            or 0
+        )
 
+    denominator = max(1, total_users)
     return {
         "total_users": total_users,
         "active_users": active_users,
+        "active_users_24h": recent_signins_24h,
+        "active_users_7d": active_users_7d,
+        "active_users_30d": active_users_30d,
+        "retention_7d_pct": round((active_users_7d / denominator) * 100.0, 2),
+        "retention_30d_pct": round((active_users_30d / denominator) * 100.0, 2),
         "inactive_users": max(0, total_users - active_users),
         "admin_users": admin_users,
         "recent_signins_24h": recent_signins_24h,

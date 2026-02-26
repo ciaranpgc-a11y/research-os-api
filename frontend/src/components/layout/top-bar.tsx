@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Loader2, Menu, Moon, Search, Sun } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
-import { logoutAuth } from '@/lib/impact-api'
+import { fetchMe, logoutAuth } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
 import { useAaweStore } from '@/store/use-aawe-store'
 
@@ -42,8 +42,35 @@ export function TopBar({
   const setSearchQuery = useAaweStore((state) => state.setSearchQuery)
 
   const [isSigningOut, setIsSigningOut] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const sessionToken = getAuthSessionToken()
   const isGuest = !sessionToken
+
+  useEffect(() => {
+    let cancelled = false
+    if (!sessionToken) {
+      setIsAdmin(false)
+      return () => {
+        cancelled = true
+      }
+    }
+    void fetchMe(sessionToken)
+      .then((user) => {
+        if (cancelled) {
+          return
+        }
+        setIsAdmin(user.role === 'admin')
+      })
+      .catch(() => {
+        if (cancelled) {
+          return
+        }
+        setIsAdmin(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [sessionToken])
 
   const onSignOut = async () => {
     const token = getAuthSessionToken()
@@ -145,16 +172,28 @@ export function TopBar({
               Sign in
             </Button>
           ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              className={cn(utilityButtonClass, 'px-3 text-label font-semibold')}
-              onClick={() => void onSignOut()}
-              disabled={isSigningOut}
-            >
-              {isSigningOut ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
-              {isSigningOut ? 'Signing out...' : 'Sign out'}
-            </Button>
+            <>
+              {isAdmin ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={cn(utilityButtonClass, 'px-3 text-label font-semibold')}
+                  onClick={() => navigate('/admin')}
+                >
+                  Admin
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                variant="outline"
+                className={cn(utilityButtonClass, 'px-3 text-label font-semibold')}
+                onClick={() => void onSignOut()}
+                disabled={isSigningOut}
+              >
+                {isSigningOut ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+                {isSigningOut ? 'Signing out...' : 'Sign out'}
+              </Button>
+            </>
           )}
 
           <TooltipProvider delayDuration={100}>

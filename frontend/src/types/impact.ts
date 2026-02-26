@@ -21,6 +21,11 @@ export type AuthSessionPayload = {
 export type AdminOverviewPayload = {
   total_users: number
   active_users: number
+  active_users_24h: number
+  active_users_7d: number
+  active_users_30d: number
+  retention_7d_pct: number
+  retention_30d_pct: number
   inactive_users: number
   admin_users: number
   recent_signins_24h: number

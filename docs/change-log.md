@@ -23,6 +23,46 @@
 - `pytest tests/test_open_access_service.py -k "library_assets_skips_entries_with_missing_storage or migrates_legacy_storage_to_stable_root" -q`
 - `pytest tests/test_api.py -k "library_asset" -q`
 
+### Database Path Hardening (Build-Safe Persistence)
+
+- **Area:** Core database storage path resolution.
+- **What changed:**
+- Replaced fallback DB URL default from relative `sqlite+pysqlite:///./research_os.db` to a stable absolute per-user app-data path (derived alongside stable data-library root).
+- Added legacy DB migration copy from prior relative locations (current working directory and repo-root `research_os.db`) into stable path when stable DB is absent.
+- Added sidecar copy support for SQLite `-wal` / `-shm` files during migration.
+- Preserved explicit `DATABASE_URL` behavior (no override when user/env provides one).
+- Added targeted regression tests for:
+  - stable absolute default DB path
+  - legacy relative DB copy into stable DB path
+- **Why it changed:**
+- Prevent apparent data disappearance across builds/restarts caused by process working-directory changes creating/reading different relative SQLite files.
+- **Key files touched:**
+- `src/research_os/db.py`
+- `tests/test_db_storage_stability.py`
+- **Verification performed:**
+- `python -m py_compile src/research_os/db.py tests/test_db_storage_stability.py`
+- `pytest tests/test_db_storage_stability.py -q`
+- `pytest tests/test_api.py -k "library_asset" -q`
+
+### Legacy DB Auto-Recovery When Stable DB Is Empty
+
+- **Area:** SQLite default-path migration resilience.
+- **What changed:**
+- Added an additional recovery path:
+  - if stable DB exists but is effectively empty,
+  - and a legacy DB path contains recoverable data,
+  - automatically promote legacy DB into stable path (with pre-recovery backup of stable DB).
+- Added test coverage to validate this behavior.
+- **Why it changed:**
+- Prevent "files/data gone after build" scenarios where path migration already created an empty stable DB before legacy content could be copied.
+- **Key files touched:**
+- `src/research_os/db.py`
+- `tests/test_db_storage_stability.py`
+- **Verification performed:**
+- `python -m py_compile src/research_os/db.py tests/test_db_storage_stability.py`
+- `pytest tests/test_db_storage_stability.py -q`
+- `pytest tests/test_api.py -k "library_asset" -q`
+
 ### Workspace Data Panel Simplification (Personal Library Only)
 
 - **Area:** Individual workspace Data right panel.

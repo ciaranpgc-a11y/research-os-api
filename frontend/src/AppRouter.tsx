@@ -133,9 +133,7 @@ export function AppRouter() {
         <Route path="/workspaces" element={<WorkspacesPage />} />
 
         <Route element={<RequireAdmin />}>
-          <Route element={<AccountLayout />}>
-            <Route path="/admin" element={<AdminPage />} />
-          </Route>
+          <Route path="/admin" element={<AdminPage />} />
         </Route>
 
         <Route element={<AccountLayout />}>

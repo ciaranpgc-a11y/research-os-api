@@ -826,6 +826,11 @@ class AdminUsersListResponse(BaseModel):
 class AdminOverviewResponse(BaseModel):
     total_users: int = 0
     active_users: int = 0
+    active_users_24h: int = 0
+    active_users_7d: int = 0
+    active_users_30d: int = 0
+    retention_7d_pct: float = 0.0
+    retention_30d_pct: float = 0.0
     inactive_users: int = 0
     admin_users: int = 0
     recent_signins_24h: int = 0

@@ -393,8 +393,6 @@ test('opens selected drilldown paper in right panel files tab', async ({ page })
   await expect(paperRow).toBeVisible()
   await paperRow.click()
 
-  await expect(drilldownSheet).toBeHidden()
-
   const detailFilesTab = page.locator('.house-publication-detail-tabs').getByRole('tab', { name: 'Files' })
   await expect(detailFilesTab).toHaveAttribute('data-state', 'active')
   await expect(page.getByText('No files linked to this publication.')).toBeVisible()

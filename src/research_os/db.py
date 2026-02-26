@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import os
+import sqlite3
+import shutil
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -47,9 +50,101 @@ def _normalize_database_url(database_url: str) -> str:
     return clean
 
 
+def _stable_default_sqlite_path() -> Path:
+    from research_os.config import get_data_library_root
+
+    stable_root = get_data_library_root().parent
+    stable_root.mkdir(parents=True, exist_ok=True)
+    return (stable_root / "research_os.db").resolve()
+
+
+def _legacy_sqlite_candidates(stable_path: Path) -> list[Path]:
+    candidates: list[Path] = []
+    cwd_candidate = (Path.cwd() / "research_os.db").resolve()
+    repo_candidate = (Path(__file__).resolve().parents[2] / "research_os.db").resolve()
+    for candidate in [cwd_candidate, repo_candidate]:
+        if candidate == stable_path:
+            continue
+        if candidate not in candidates:
+            candidates.append(candidate)
+    return candidates
+
+
+def _copy_legacy_sqlite_if_needed(stable_path: Path) -> None:
+    def _row_count(path: Path, table: str) -> int | None:
+        try:
+            connection = sqlite3.connect(str(path))
+        except Exception:
+            return None
+        try:
+            cursor = connection.cursor()
+            cursor.execute(f"SELECT COUNT(*) FROM {table}")
+            row = cursor.fetchone()
+            if not row:
+                return 0
+            return int(row[0] or 0)
+        except Exception:
+            return None
+        finally:
+            connection.close()
+
+    def _has_recoverable_data(path: Path) -> bool:
+        users_count = _row_count(path, "users")
+        projects_count = _row_count(path, "projects")
+        assets_count = _row_count(path, "data_library_assets")
+        values = [users_count, projects_count, assets_count]
+        return any(value is not None and value > 0 for value in values)
+
+    def _is_effectively_empty(path: Path) -> bool:
+        users_count = _row_count(path, "users")
+        projects_count = _row_count(path, "projects")
+        assets_count = _row_count(path, "data_library_assets")
+        values = [users_count, projects_count, assets_count]
+        known = [value for value in values if value is not None]
+        return bool(known) and all(value == 0 for value in known)
+
+    def _replace_with_legacy(legacy_path: Path) -> None:
+        backup_path = stable_path.with_name(f"{stable_path.stem}.pre-legacy-recovery{stable_path.suffix}")
+        try:
+            shutil.copy2(stable_path, backup_path)
+        except Exception:
+            pass
+        shutil.copy2(legacy_path, stable_path)
+        for suffix in ("-wal", "-shm"):
+            legacy_sidecar = Path(f"{legacy_path}{suffix}")
+            stable_sidecar = Path(f"{stable_path}{suffix}")
+            if legacy_sidecar.exists() and legacy_sidecar.is_file():
+                shutil.copy2(legacy_sidecar, stable_sidecar)
+
+    if stable_path.exists():
+        if _is_effectively_empty(stable_path):
+            for legacy_path in _legacy_sqlite_candidates(stable_path):
+                if not legacy_path.exists() or not legacy_path.is_file():
+                    continue
+                if _has_recoverable_data(legacy_path):
+                    _replace_with_legacy(legacy_path)
+                    return
+        return
+    for legacy_path in _legacy_sqlite_candidates(stable_path):
+        if not legacy_path.exists() or not legacy_path.is_file():
+            continue
+        stable_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(legacy_path, stable_path)
+        for suffix in ("-wal", "-shm"):
+            legacy_sidecar = Path(f"{legacy_path}{suffix}")
+            stable_sidecar = Path(f"{stable_path}{suffix}")
+            if legacy_sidecar.exists() and legacy_sidecar.is_file():
+                shutil.copy2(legacy_sidecar, stable_sidecar)
+        return
+
+
 def get_database_url() -> str:
-    raw_database_url = os.getenv("DATABASE_URL", "sqlite+pysqlite:///./research_os.db")
-    return _normalize_database_url(raw_database_url)
+    explicit_database_url = os.getenv("DATABASE_URL")
+    if explicit_database_url:
+        return _normalize_database_url(explicit_database_url)
+    stable_path = _stable_default_sqlite_path()
+    _copy_legacy_sqlite_if_needed(stable_path)
+    return _normalize_database_url(f"sqlite+pysqlite:///{stable_path.as_posix()}")
 
 
 class Base(DeclarativeBase):
