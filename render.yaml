@@ -5,11 +5,17 @@ services:
     branch: main
     autoDeployTrigger: checksPass
     healthCheckPath: /v1/health/ready
+    disk:
+      name: research-os-api-data
+      mountPath: /var/data
+      sizeGB: 10
     envVars:
       - key: OPENAI_API_KEY
         sync: false
       - key: DATABASE_URL
         sync: false
+      - key: DATA_LIBRARY_ROOT
+        value: /var/data/data_library_store
       - key: CORS_ALLOW_ORIGINS
         value: http://localhost:5173,https://app.axiomos.studio
       - key: AAWE_BOOTSTRAP_EMAIL

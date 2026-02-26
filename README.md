@@ -126,6 +126,7 @@ Recommended API environment variables:
 - `CORS_ALLOW_ORIGINS` (comma-separated origins for frontend access)
 - `FRONTEND_BASE_URL=https://app.axiomos.studio` (production)
 - `DATABASE_URL` (defaults to local SQLite when absent)
+- `DATA_LIBRARY_ROOT` (directory for uploaded library files; set to a persistent mount path in production)
 - `AAWE_BOOTSTRAP_EMAIL` (optional stable seeded login for rebuilds)
 - `AAWE_BOOTSTRAP_PASSWORD` (password for seeded login)
 - `AAWE_BOOTSTRAP_NAME` (optional; default `AAWE Test User`)
@@ -151,7 +152,12 @@ If you redeploy often, use both:
 - Set `DATABASE_URL` to a managed Postgres instance (recommended on Render).
 - Without this, container-local SQLite is reset on deploy.
 
-2. Bootstrap test account
+2. Persistent data-library storage
+- Attach a Render disk to the API service and mount it (for example at `/var/data`).
+- Set `DATA_LIBRARY_ROOT=/var/data/data_library_store`.
+- Without this, uploaded files can disappear on restart/deploy even if metadata rows still exist.
+
+3. Bootstrap test account
 - Set on API service:
   - `AAWE_BOOTSTRAP_EMAIL`
   - `AAWE_BOOTSTRAP_PASSWORD`
