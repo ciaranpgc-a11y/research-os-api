@@ -324,6 +324,160 @@ export async function fetchAdminWorkspaces(
   )
 }
 
+export async function fetchAdminUsageCosts(
+  token: string,
+  options?: {
+    query?: string
+  },
+): Promise<AdminUsageCostsPayload> {
+  const params = new URLSearchParams()
+  if (String(options?.query || '').trim()) {
+    params.set('query', String(options?.query || '').trim())
+  }
+  const queryString = params.toString()
+  const suffix = queryString ? `?${queryString}` : ''
+  return requestJson<AdminUsageCostsPayload>(
+    `${API_BASE_URL}/v1/admin/usage-costs${suffix}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Admin usage and costs lookup failed',
+  )
+}
+
+export async function fetchAdminJobs(
+  token: string,
+  options?: {
+    query?: string
+    status?: string
+    workspaceId?: string
+    projectId?: string
+    ownerUserId?: string
+    limit?: number
+    offset?: number
+  },
+): Promise<AdminJobsListPayload> {
+  const params = new URLSearchParams()
+  if (String(options?.query || '').trim()) {
+    params.set('query', String(options?.query || '').trim())
+  }
+  if (String(options?.status || '').trim()) {
+    params.set('status', String(options?.status || '').trim())
+  }
+  if (String(options?.workspaceId || '').trim()) {
+    params.set('workspace_id', String(options?.workspaceId || '').trim())
+  }
+  if (String(options?.projectId || '').trim()) {
+    params.set('project_id', String(options?.projectId || '').trim())
+  }
+  if (String(options?.ownerUserId || '').trim()) {
+    params.set('owner_user_id', String(options?.ownerUserId || '').trim())
+  }
+  params.set('limit', String(Math.max(1, Math.min(200, Number(options?.limit || 50)))))
+  params.set('offset', String(Math.max(0, Number(options?.offset || 0))))
+  return requestJson<AdminJobsListPayload>(
+    `${API_BASE_URL}/v1/admin/jobs?${params.toString()}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Admin jobs lookup failed',
+  )
+}
+
+export async function cancelAdminJob(
+  token: string,
+  jobId: string,
+  input?: { reason?: string },
+): Promise<AdminJobActionPayload> {
+  return requestJson<AdminJobActionPayload>(
+    `${API_BASE_URL}/v1/admin/jobs/${encodeURIComponent(jobId)}/cancel`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reason: String(input?.reason || ''),
+      }),
+    },
+    'Admin job cancel failed',
+  )
+}
+
+export async function retryAdminJob(
+  token: string,
+  jobId: string,
+  input?: {
+    reason?: string
+    maxEstimatedCostUsd?: number
+    projectDailyBudgetUsd?: number
+  },
+): Promise<AdminJobActionPayload> {
+  return requestJson<AdminJobActionPayload>(
+    `${API_BASE_URL}/v1/admin/jobs/${encodeURIComponent(jobId)}/retry`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reason: String(input?.reason || ''),
+        max_estimated_cost_usd: input?.maxEstimatedCostUsd ?? null,
+        project_daily_budget_usd: input?.projectDailyBudgetUsd ?? null,
+      }),
+    },
+    'Admin job retry failed',
+  )
+}
+
+export async function impersonateAdminOrganisation(
+  token: string,
+  orgId: string,
+  input?: { reason?: string },
+): Promise<AdminOrganisationImpersonationStartPayload> {
+  return requestJson<AdminOrganisationImpersonationStartPayload>(
+    `${API_BASE_URL}/v1/admin/organisations/${encodeURIComponent(orgId)}/impersonate`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reason: String(input?.reason || ''),
+      }),
+    },
+    'Admin organisation impersonation failed',
+  )
+}
+
+export async function fetchAdminAuditEvents(
+  token: string,
+  options?: {
+    query?: string
+    action?: string
+    targetType?: string
+    limit?: number
+    offset?: number
+  },
+): Promise<AdminAuditEventsListPayload> {
+  const params = new URLSearchParams()
+  if (String(options?.query || '').trim()) {
+    params.set('query', String(options?.query || '').trim())
+  }
+  if (String(options?.action || '').trim()) {
+    params.set('action', String(options?.action || '').trim())
+  }
+  if (String(options?.targetType || '').trim()) {
+    params.set('target_type', String(options?.targetType || '').trim())
+  }
+  params.set('limit', String(Math.max(1, Math.min(200, Number(options?.limit || 100)))))
+  params.set('offset', String(Math.max(0, Number(options?.offset || 0))))
+  return requestJson<AdminAuditEventsListPayload>(
+    `${API_BASE_URL}/v1/admin/audit/events?${params.toString()}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Admin audit events lookup failed',
+  )
+}
+
 export async function fetchAffiliationSuggestionsForMe(
   token: string,
   input: { query: string; limit?: number },
