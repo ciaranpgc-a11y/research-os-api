@@ -169,6 +169,7 @@ export function ResultsPage() {
   const params = useParams<{ workspaceId: string }>()
   const workspaceId = (params.workspaceId || '').trim()
   const addDataAsset = useDataWorkspaceStore((state) => state.addDataAsset)
+  const dataAssets = useDataWorkspaceStore((state) => state.dataAssets)
 
   const [persistSyncError, setPersistSyncError] = useState('')
   const [uploadError, setUploadError] = useState('')
@@ -518,7 +519,53 @@ export function ResultsPage() {
           )}
           data-house-role="data-page-layout"
         >
-          <div data-house-role="data-main-column" className="nav:pr-3" />
+          <div data-house-role="data-main-column" className="space-y-3 nav:pr-3">
+            <section data-house-role="available-datasets-section" className="space-y-3">
+              <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, HOUSE_LEFT_BORDER_DATA_CLASS)}>
+                <h2 className={houseTypography.sectionTitle}>Data</h2>
+                <p className={houseTypography.fieldHelper}>Available datasets</p>
+              </div>
+              <div className={houseSurfaces.tableShell}>
+                <table className="w-full min-w-sz-760 text-sm">
+                  <thead className={cn('text-left', houseSurfaces.tableHead)}>
+                    <tr>
+                      <th className={cn('px-3 py-2', houseTypography.tableHead)}>Dataset</th>
+                      <th className={cn('px-3 py-2', houseTypography.tableHead)}>Type</th>
+                      <th className={cn('px-3 py-2', houseTypography.tableHead)}>Sheets</th>
+                      <th className={cn('px-3 py-2', houseTypography.tableHead)}>Rows</th>
+                      <th className={cn('px-3 py-2', houseTypography.tableHead)}>Added</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dataAssets.length === 0 ? (
+                      <tr className={houseSurfaces.tableRow}>
+                        <td colSpan={5} className={cn('px-3 py-3 text-muted-foreground', houseTypography.tableCell)}>
+                          No datasets in this workspace yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      dataAssets.map((asset) => {
+                        const sheetCount = asset.sheets.length
+                        const rowCount = asset.sheets.reduce((total, sheet) => total + sheet.rows.length, 0)
+                        const addedAt = new Date(asset.uploadedAt)
+                        return (
+                          <tr key={asset.id} className={houseSurfaces.tableRow}>
+                            <td className={cn('px-3 py-2 font-medium', houseTypography.tableCell)}>{asset.name}</td>
+                            <td className={cn('px-3 py-2 uppercase', houseTypography.tableCell)}>{asset.kind}</td>
+                            <td className={cn('px-3 py-2', houseTypography.tableCell)}>{sheetCount}</td>
+                            <td className={cn('px-3 py-2', houseTypography.tableCell)}>{rowCount}</td>
+                            <td className={cn('px-3 py-2 text-muted-foreground', houseTypography.tableCell)}>
+                              {Number.isNaN(addedAt.getTime()) ? '-' : addedAt.toLocaleString()}
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
 
           <aside
             className={cn('border-border nav:border-l', rightPanelCollapsed && 'bg-card')}

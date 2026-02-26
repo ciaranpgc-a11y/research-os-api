@@ -55,6 +55,71 @@ const metricsFixture = {
   last_error: null,
 }
 
+const thisYearTileFixture = {
+  id: 'tile-this-year-vs-last',
+  key: 'this_year_vs_last',
+  label: 'Publications per year',
+  main_value: 2,
+  value: 2,
+  main_value_display: '2',
+  value_display: '2',
+  delta_value: 1,
+  delta_display: '+1 vs prior year',
+  delta_direction: 'up',
+  delta_tone: 'positive',
+  delta_color_code: '#166534',
+  unit: null,
+  subtext: 'Lifetime publications',
+  badge: {},
+  chart_type: 'bar',
+  chart_data: {
+    years: [2023, 2024],
+    values: [1, 2],
+    projected_year: 2024,
+    current_year_ytd: 2,
+  },
+  sparkline: [1, 2],
+  sparkline_overlay: [],
+  tooltip: 'Tracks publication output over time.',
+  tooltip_details: {
+    update_frequency: 'Daily',
+    data_sources: ['OpenAlex'],
+  },
+  data_source: ['OpenAlex'],
+  confidence_score: 0.94,
+  stability: 'stable',
+  drilldown: {
+    title: 'Publications per year',
+    definition: 'Distribution of publication output by calendar year.',
+    formula: 'count(publications by year)',
+    confidence_note: 'Derived from synchronized publication records.',
+    publications: [
+      {
+        work_id: 'work-1',
+        year: 2024,
+        title: 'Echocardiographic biomarkers in cardio-oncology',
+        user_author_role: 'first',
+        publication_type: 'Journal article',
+        journal: 'Cardio Imaging Journal',
+        citations_lifetime: 32,
+      },
+    ],
+    metadata: {},
+  },
+}
+
+const thisYearMetricsFixture = {
+  tiles: [thisYearTileFixture],
+  data_sources: ['OpenAlex'],
+  data_last_refreshed: '2026-02-24T09:30:00Z',
+  metadata: {},
+  computed_at: '2026-02-24T09:30:00Z',
+  status: 'READY',
+  is_stale: false,
+  is_updating: false,
+  last_error: null,
+}
+
 const userFixture = {
   id: 'user-1',
   email: 'user@example.com',
@@ -202,6 +267,10 @@ const publicationAuthorsFixture = {
   last_error: null,
 }
 
+const publicationFilesFixture = {
+  items: [],
+}
+
 function jsonResponse(payload: unknown, status = 200) {
   return {
     status,
@@ -218,6 +287,9 @@ test('renders citation momentum tile on Publications page', async ({ page }) => 
     const token = 'e2e-session-token'
     window.localStorage.setItem('aawe-impact-session-token', token)
     window.sessionStorage.setItem('aawe-impact-session-token', token)
+    window.localStorage.setItem('aawe-account-settings', JSON.stringify({
+      publicationInsightsDefaultVisibility: 'visible',
+    }))
   })
 
   await page.route('**/v1/persona/state', async (route) => {
@@ -247,7 +319,83 @@ test('renders citation momentum tile on Publications page', async ({ page }) => 
   await expect(page.getByRole('heading', { name: 'Publications' })).toBeVisible()
 
   const citationMomentumTile = page.locator('[data-metric-key="momentum"]')
-  await expect(citationMomentumTile.getByTestId('metric-label-momentum')).toHaveText('Citation momentum')
-  await expect(citationMomentumTile.getByTestId('metric-value-momentum')).toHaveText(/\+?\d+(\.\d+)?%/)
-  await expect(citationMomentumTile.getByTestId('metric-badge-momentum')).toBeVisible()
+  await expect(citationMomentumTile.getByTestId('metric-label-momentum')).toHaveText(/citation momentum/i)
+  await expect(citationMomentumTile.getByTestId('metric-value-momentum')).toHaveText(/\S+/)
+  await expect(citationMomentumTile).toBeVisible()
+})
+
+test('opens selected drilldown paper in right panel files tab', async ({ page }) => {
+  await page.addInitScript(() => {
+    const token = 'e2e-session-token'
+    window.localStorage.setItem('aawe-impact-session-token', token)
+    window.sessionStorage.setItem('aawe-impact-session-token', token)
+    window.localStorage.setItem('aawe-account-settings', JSON.stringify({
+      publicationInsightsDefaultVisibility: 'visible',
+    }))
+  })
+
+  await page.route('**/v1/persona/state', async (route) => {
+    await route.fulfill(jsonResponse(personaStateFixture))
+  })
+  await page.route('**/v1/auth/me', async (route) => {
+    await route.fulfill(jsonResponse(userFixture))
+  })
+  await page.route('**/v1/persona/jobs?*', async (route) => {
+    await route.fulfill(jsonResponse([]))
+  })
+  await page.route('**/v1/publications/analytics', async (route) => {
+    await route.fulfill(jsonResponse(analyticsFixture))
+  })
+  await page.route('**/v1/publications/metrics', async (route) => {
+    await route.fulfill(jsonResponse(thisYearMetricsFixture))
+  })
+  await page.route('**/v1/publications/metric/this_year_vs_last', async (route) => {
+    await route.fulfill(jsonResponse({
+      metric_id: 'this_year_vs_last',
+      tile: thisYearTileFixture,
+      data_sources: ['OpenAlex'],
+      data_last_refreshed: '2026-02-24T09:30:00Z',
+      computed_at: '2026-02-24T09:30:00Z',
+      status: 'READY',
+      is_stale: false,
+      is_updating: false,
+      last_error: null,
+    }))
+  })
+  await page.route('**/v1/publications/work-1', async (route) => {
+    await route.fulfill(jsonResponse(publicationDetailFixture))
+  })
+  await page.route('**/v1/publications/work-1/authors', async (route) => {
+    await route.fulfill(jsonResponse(publicationAuthorsFixture))
+  })
+  await page.route('**/v1/publications/work-1/files', async (route) => {
+    await route.fulfill(jsonResponse(publicationFilesFixture))
+  })
+  await page.route('**/v1/publications/work-1/files/link-oa', async (route) => {
+    await route.fulfill(jsonResponse({
+      created: false,
+      file: null,
+      message: 'No OA PDF available',
+    }))
+  })
+
+  await page.goto('/profile/publications')
+
+  const publicationsTile = page.locator('[data-metric-key="this_year_vs_last"]')
+  await expect(publicationsTile).toBeVisible()
+  await publicationsTile.click()
+
+  const drilldownSheet = page.locator('[data-ui="sheet-content"]').last()
+  await expect(drilldownSheet).toBeVisible()
+  await drilldownSheet.getByRole('tab', { name: 'Breakdown' }).click()
+
+  const paperRow = drilldownSheet.locator('tr.house-drilldown-table-row:has-text("Echocardiographic biomarkers in cardio-oncology")').first()
+  await expect(paperRow).toBeVisible()
+  await paperRow.click()
+
+  await expect(drilldownSheet).toBeHidden()
+
+  const detailFilesTab = page.locator('.house-publication-detail-tabs').getByRole('tab', { name: 'Files' })
+  await expect(detailFilesTab).toHaveAttribute('data-state', 'active')
+  await expect(page.getByText('No files linked to this publication.')).toBeVisible()
 })

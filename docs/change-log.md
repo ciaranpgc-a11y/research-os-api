@@ -2,6 +2,27 @@
 
 ## 2026-02-26
 
+### Data Library Storage Hardening (Build-Safe Persistence)
+
+- **Area:** Backend data-library file persistence and recovery.
+- **What changed:**
+- Switched default data-library storage root from repo-relative (`./data_library_store`) to an OS user-data location outside build/repo directories via `get_data_library_root()`.
+- Added legacy-file migration behavior that copies discoverable files from prior legacy roots into the stable storage root.
+- Added on-read storage healing: when an asset resolves from legacy/non-primary location, it is copied into stable root and DB `storage_path` is updated.
+- Added atomic writes for uploads (`.tmp` + `os.replace`) to reduce partial-write risk.
+- Added coverage to verify legacy storage migration and canonical-path healing.
+- **Why it changed:**
+- Prevent data loss/disappearance across local builds, clean operations, and working-directory changes.
+- Ensure file assets remain durable and recoverable even when prior relative storage locations are used.
+- **Key files touched:**
+- `src/research_os/config.py`
+- `src/research_os/services/data_planner_service.py`
+- `tests/test_open_access_service.py`
+- **Verification performed:**
+- `python -m py_compile src/research_os/config.py src/research_os/services/data_planner_service.py tests/test_open_access_service.py`
+- `pytest tests/test_open_access_service.py -k "library_assets_skips_entries_with_missing_storage or migrates_legacy_storage_to_stable_root" -q`
+- `pytest tests/test_api.py -k "library_asset" -q`
+
 ### Workspace Data Panel Simplification (Personal Library Only)
 
 - **Area:** Individual workspace Data right panel.
@@ -97,6 +118,28 @@
   - bulk `Pull selected`
 - **Why it changed:**
 - Prevent false parser failures (`asset.bin: only .csv and .xlsx are supported.`) when download headers do not include a usable data filename.
+- **Key files touched:**
+- `frontend/src/pages/results-page.tsx`
+- **Verification performed:**
+- `npx eslint src/pages/results-page.tsx` (run from `frontend/`)
+
+### Workspace Data Main-Column Dataset Table
+
+- **Area:** Individual workspace Data page center column.
+- **What changed:**
+- Added a top center section with house-token heading treatment:
+  - Title: `Data`
+  - Subtitle line: `Available datasets`
+- Added a token-style table to list datasets currently in the workspace.
+- Table columns:
+  - `Dataset`
+  - `Type`
+  - `Sheets`
+  - `Rows`
+  - `Added`
+- Added empty-state row when no workspace datasets are present.
+- **Why it changed:**
+- Provide a scalable, auditable central workspace dataset inventory while keeping right rail focused on library access/upload actions.
 - **Key files touched:**
 - `frontend/src/pages/results-page.tsx`
 - **Verification performed:**
