@@ -6,7 +6,6 @@ import { Download, Loader2, UploadCloud, UserPlus, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { getAuthSessionToken } from '@/lib/auth-session'
@@ -179,7 +178,6 @@ export function ResultsPage() {
   const workspaces = useWorkspaceStore((state) => state.workspaces)
   const addDataAsset = useDataWorkspaceStore((state) => state.addDataAsset)
 
-  const [libraryFilterQuery, setLibraryFilterQuery] = useState('')
   const [persistSyncError, setPersistSyncError] = useState('')
   const [uploadError, setUploadError] = useState('')
   const [uploadStatus, setUploadStatus] = useState('')
@@ -192,7 +190,6 @@ export function ResultsPage() {
   const [libraryActionBusyAssetId, setLibraryActionBusyAssetId] = useState<string | null>(null)
   const [accessDraftByAssetId, setAccessDraftByAssetId] = useState<Record<string, string>>({})
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false)
-  const [libraryPickerQuery, setLibraryPickerQuery] = useState('')
   const [libraryPickerSelection, setLibraryPickerSelection] = useState<string[]>([])
   const [libraryPickerPulling, setLibraryPickerPulling] = useState(false)
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
@@ -245,38 +242,38 @@ export function ResultsPage() {
     void refreshPersistedAssets()
   }, [refreshPersistedAssets])
 
-  const normalizedLibraryFilterQuery = libraryFilterQuery.trim().toLowerCase()
-  const normalizedLibraryPickerQuery = libraryPickerQuery.trim().toLowerCase()
-
-  const filteredPersistedAssets = useMemo(() => {
-    if (!normalizedLibraryFilterQuery) {
-      return persistedAssets
-    }
-    return persistedAssets.filter((asset) => {
-      const sharedNames = libraryAssetAccessMembers(asset).map((item) => item.name).join(' ')
-      const haystack = `${asset.filename} ${asset.kind} ${asset.mime_type || ''} ${asset.owner_name || ''} ${sharedNames}`.toLowerCase()
-      return haystack.includes(normalizedLibraryFilterQuery)
-    })
-  }, [normalizedLibraryFilterQuery, persistedAssets])
-
-  const pickerFilteredPersistedAssets = useMemo(() => {
-    if (!normalizedLibraryPickerQuery) {
-      return persistedAssets
-    }
-    return persistedAssets.filter((asset) => {
-      const sharedNames = libraryAssetAccessMembers(asset).map((item) => item.name).join(' ')
-      const haystack = `${asset.filename} ${asset.kind} ${asset.mime_type || ''} ${asset.owner_name || ''} ${sharedNames}`.toLowerCase()
-      return haystack.includes(normalizedLibraryPickerQuery)
-    })
-  }, [normalizedLibraryPickerQuery, persistedAssets])
+  const currentProjectId = useMemo(
+    () => String(persistedProjectId || '').trim(),
+    [persistedProjectId],
+  )
+  const isAssetInCurrentWorkspace = useCallback(
+    (asset: LibraryAssetRecord): boolean => {
+      if (!currentProjectId) {
+        return false
+      }
+      return String(asset.project_id || '').trim() === currentProjectId
+    },
+    [currentProjectId],
+  )
 
   const selectedLibraryAssetSet = useMemo(() => new Set(libraryPickerSelection), [libraryPickerSelection])
-  const allPickerFilteredSelected = useMemo(() => {
-    if (pickerFilteredPersistedAssets.length === 0) {
+  const selectablePickerAssets = useMemo(
+    () => persistedAssets.filter((asset) => !isAssetInCurrentWorkspace(asset)),
+    [persistedAssets, isAssetInCurrentWorkspace],
+  )
+  const allPickerSelectableSelected = useMemo(() => {
+    if (selectablePickerAssets.length === 0) {
       return false
     }
-    return pickerFilteredPersistedAssets.every((asset) => selectedLibraryAssetSet.has(asset.id))
-  }, [pickerFilteredPersistedAssets, selectedLibraryAssetSet])
+    return selectablePickerAssets.every((asset) => selectedLibraryAssetSet.has(asset.id))
+  }, [selectablePickerAssets, selectedLibraryAssetSet])
+  const selectedPullableCount = useMemo(
+    () =>
+      persistedAssets.filter(
+        (asset) => selectedLibraryAssetSet.has(asset.id) && !isAssetInCurrentWorkspace(asset),
+      ).length,
+    [persistedAssets, selectedLibraryAssetSet, isAssetInCurrentWorkspace],
+  )
 
   const onUploadFilesToAccount = useCallback(
     async (files: File[]) => {
@@ -470,7 +467,6 @@ export function ResultsPage() {
   const onLibraryPickerOpenChange = useCallback((nextOpen: boolean) => {
     setLibraryPickerOpen(nextOpen)
     if (!nextOpen) {
-      setLibraryPickerQuery('')
       setLibraryPickerSelection([])
     }
   }, [])
@@ -492,17 +488,17 @@ export function ResultsPage() {
       if (checked) {
         setLibraryPickerSelection((current) => {
           const nextSet = new Set(current)
-          pickerFilteredPersistedAssets.forEach((asset) => {
+          selectablePickerAssets.forEach((asset) => {
             nextSet.add(asset.id)
           })
           return Array.from(nextSet)
         })
         return
       }
-      const visibleIds = new Set(pickerFilteredPersistedAssets.map((asset) => asset.id))
+      const visibleIds = new Set(selectablePickerAssets.map((asset) => asset.id))
       setLibraryPickerSelection((current) => current.filter((assetId) => !visibleIds.has(assetId)))
     },
-    [pickerFilteredPersistedAssets],
+    [selectablePickerAssets],
   )
 
   const onPullSelectedLibraryAssets = useCallback(async () => {
@@ -511,9 +507,11 @@ export function ResultsPage() {
       setLibraryActionError('Sign in to pull files into this workspace.')
       return
     }
-    const selectedAssets = persistedAssets.filter((asset) => selectedLibraryAssetSet.has(asset.id))
+    const selectedAssets = persistedAssets.filter(
+      (asset) => selectedLibraryAssetSet.has(asset.id) && !isAssetInCurrentWorkspace(asset),
+    )
     if (selectedAssets.length === 0) {
-      setLibraryActionError('Select at least one dataset to pull.')
+      setLibraryActionError('No pullable datasets selected.')
       return
     }
 
@@ -544,14 +542,13 @@ export function ResultsPage() {
     if (pulledCount > 0) {
       setLibraryActionStatus(`Pulled ${pulledCount} dataset${pulledCount === 1 ? '' : 's'} into workspace files.`)
       setLibraryPickerSelection([])
-      setLibraryPickerQuery('')
       setLibraryPickerOpen(false)
     }
     if (errors.length > 0) {
       setLibraryActionError(errors.join(' '))
     }
     setLibraryPickerPulling(false)
-  }, [addDataAsset, persistedAssets, selectedLibraryAssetSet])
+  }, [addDataAsset, isAssetInCurrentWorkspace, persistedAssets, selectedLibraryAssetSet])
 
   return (
     <>
@@ -631,18 +628,6 @@ export function ResultsPage() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-2">
-                    <div data-house-role="library-filter-group" className="space-y-1">
-                      <label data-house-role="field-label" htmlFor="library-filter" className={houseTypography.fieldLabel}>Search library</label>
-                      <Input
-                        id="library-filter"
-                        value={libraryFilterQuery}
-                        onChange={(event) => setLibraryFilterQuery(event.target.value)}
-                        placeholder="File name or type"
-                        className={houseForms.input}
-                        disabled={!hasSessionToken}
-                      />
-                    </div>
-
                     {!hasSessionToken ? (
                       <p data-house-role="library-empty-state" className="text-xs text-muted-foreground">Sign in to access your personal library.</p>
                     ) : persistSyncBusy ? (
@@ -650,12 +635,12 @@ export function ResultsPage() {
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         Loading...
                       </p>
-                    ) : filteredPersistedAssets.length === 0 ? (
+                    ) : persistedAssets.length === 0 ? (
                       <p data-house-role="library-empty-state" className="text-xs text-muted-foreground">No assets.</p>
                     ) : (
                       <ScrollArea className="h-sz-280 rounded-md border border-border/70 p-2">
                         <div data-house-role="library-list" className="space-y-2">
-                          {filteredPersistedAssets.map((asset) => {
+                          {persistedAssets.map((asset) => {
                             const accessMembers = libraryAssetAccessMembers(asset)
                             const canManageAccess = Boolean(asset.can_manage_access)
                             const accessMemberIds = new Set(accessMembers.map((item) => String(item.user_id || '').trim()))
@@ -665,6 +650,7 @@ export function ResultsPage() {
                             })
                             const selectedDraftCollaborator = accessDraftByAssetId[asset.id] || ''
                             const isBusy = libraryActionBusyAssetId === asset.id
+                            const isInWorkspace = isAssetInCurrentWorkspace(asset)
 
                             return (
                               <div data-house-role="library-list-item" key={asset.id} className="rounded-md border border-border/70 px-2 py-2 text-xs">
@@ -716,9 +702,9 @@ export function ResultsPage() {
                                     variant="outline"
                                     size="sm"
                                     onClick={() => void onPullLibraryAssetIntoWorkspace(asset)}
-                                    disabled={isBusy}
+                                    disabled={isBusy || isInWorkspace}
                                   >
-                                    Pull to workspace
+                                    {isInWorkspace ? 'In workspace' : 'Pull to workspace'}
                                   </Button>
                                 </div>
                                 {canManageAccess ? (
@@ -835,26 +821,15 @@ export function ResultsPage() {
                   Select datasets to pull into this workspace.
                 </p>
               </div>
-              <div className="space-y-1">
-                <label htmlFor="library-picker-search" className={houseTypography.fieldLabel}>Search library</label>
-                <Input
-                  id="library-picker-search"
-                  value={libraryPickerQuery}
-                  onChange={(event) => setLibraryPickerQuery(event.target.value)}
-                  placeholder="File name, owner, or type"
-                  className={houseForms.input}
-                  disabled={!hasSessionToken || persistSyncBusy || libraryPickerPulling}
-                />
-              </div>
               <label className={cn('flex items-center gap-2', houseTypography.fieldHelper)}>
                 <input
                   type="checkbox"
                   className="h-4 w-4 rounded border border-border"
-                  checked={allPickerFilteredSelected}
+                  checked={allPickerSelectableSelected}
                   onChange={(event) => onToggleLibraryPickerSelectAll(event.target.checked)}
-                  disabled={!hasSessionToken || pickerFilteredPersistedAssets.length === 0 || libraryPickerPulling}
+                  disabled={!hasSessionToken || selectablePickerAssets.length === 0 || libraryPickerPulling}
                 />
-                Select all shown ({pickerFilteredPersistedAssets.length})
+                Select all available ({selectablePickerAssets.length})
               </label>
             </div>
             <ScrollArea className="flex-1 px-4 py-3">
@@ -865,13 +840,14 @@ export function ResultsPage() {
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   Loading...
                 </p>
-              ) : pickerFilteredPersistedAssets.length === 0 ? (
-                <p className={houseTypography.fieldHelper}>No datasets match this search.</p>
+              ) : persistedAssets.length === 0 ? (
+                <p className={houseTypography.fieldHelper}>No datasets available.</p>
               ) : (
                 <div className="space-y-2">
-                  {pickerFilteredPersistedAssets.map((asset) => {
+                  {persistedAssets.map((asset) => {
                     const checked = selectedLibraryAssetSet.has(asset.id)
                     const isBusy = libraryPickerPulling || libraryActionBusyAssetId === asset.id
+                    const isInWorkspace = isAssetInCurrentWorkspace(asset)
                     return (
                       <div key={asset.id} className="rounded-md border border-border/70 p-2">
                         <div className="flex items-start gap-2">
@@ -880,13 +856,16 @@ export function ResultsPage() {
                             className="mt-1 h-4 w-4 rounded border border-border"
                             checked={checked}
                             onChange={(event) => onToggleLibraryPickerAsset(asset.id, event.target.checked)}
-                            disabled={isBusy}
+                            disabled={isBusy || isInWorkspace}
                             aria-label={`Select ${asset.filename}`}
                           />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center justify-between gap-2">
                               <p className="truncate text-sm font-medium">{asset.filename}</p>
-                              <Badge variant="outline">{asset.kind}</Badge>
+                              <div className="flex items-center gap-1">
+                                <Badge variant="outline">{asset.kind}</Badge>
+                                {isInWorkspace ? <Badge variant="outline">In workspace</Badge> : null}
+                              </div>
                             </div>
                             <p className="text-xs text-muted-foreground">
                               {formatBytes(asset.byte_size)} | {new Date(asset.uploaded_at).toLocaleString()}
@@ -910,9 +889,9 @@ export function ResultsPage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => void onPullLibraryAssetIntoWorkspace(asset)}
-                                disabled={isBusy}
+                                disabled={isBusy || isInWorkspace}
                               >
-                                Pull now
+                                {isInWorkspace ? 'In workspace' : 'Pull now'}
                               </Button>
                             </div>
                           </div>
