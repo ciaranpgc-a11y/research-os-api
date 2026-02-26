@@ -118,6 +118,45 @@ def _resolve_user_ids_by_names(
     return deduped_ids
 
 
+def _related_user_ids_for_user(*, session, user_id: str | None) -> set[str]:
+    clean_user_id = _trim(user_id)
+    if not clean_user_id:
+        return set()
+
+    related_ids: set[str] = {clean_user_id}
+    current_user = session.get(User, clean_user_id)
+    if current_user is None:
+        return related_ids
+
+    account_key = _trim(current_user.account_key)
+    normalized_email = _trim(current_user.email).lower()
+    orcid_id = _trim(current_user.orcid_id)
+    google_sub = _trim(current_user.google_sub)
+    microsoft_sub = _trim(current_user.microsoft_sub)
+
+    identity_predicates = []
+    if account_key:
+        identity_predicates.append(User.account_key == account_key)
+    if normalized_email:
+        identity_predicates.append(func.lower(User.email) == normalized_email)
+    if orcid_id:
+        identity_predicates.append(User.orcid_id == orcid_id)
+    if google_sub:
+        identity_predicates.append(User.google_sub == google_sub)
+    if microsoft_sub:
+        identity_predicates.append(User.microsoft_sub == microsoft_sub)
+
+    if not identity_predicates:
+        return related_ids
+
+    rows = session.scalars(select(User.id).where(or_(*identity_predicates))).all()
+    for row in rows:
+        related_id = _trim(row)
+        if related_id:
+            related_ids.add(related_id)
+    return related_ids
+
+
 def _project_allows_user(project: Project, user_id: str | None) -> bool:
     clean_user_id = _trim(user_id)
     if not clean_user_id:
@@ -161,7 +200,13 @@ def _asset_accessible_for_user(
     clean_user_id = _trim(user_id)
     if not clean_user_id:
         return False
-    if _trim(asset.owner_user_id) == clean_user_id:
+    related_user_ids = _related_user_ids_for_user(
+        session=session,
+        user_id=clean_user_id,
+    )
+    if clean_user_id not in related_user_ids:
+        related_user_ids.add(clean_user_id)
+    if _trim(asset.owner_user_id) in related_user_ids:
         return True
     shared_ids_raw = asset.shared_with_user_ids
     if shared_ids_raw is not None:
@@ -998,6 +1043,13 @@ def list_library_assets(
             }
         clean_project_id = _normalize_optional_id(project_id)
         storage_root = _storage_root()
+        related_user_ids = _related_user_ids_for_user(
+            session=session,
+            user_id=clean_user_id,
+        )
+        if clean_user_id not in related_user_ids:
+            related_user_ids.add(clean_user_id)
+        related_user_id_list = sorted(related_user_ids)
         needs_metadata_repair = (
             _legacy_asset_owner_repair_candidates_count(session=session) > 0
         )
@@ -1021,7 +1073,7 @@ def list_library_assets(
             session=session,
             user_id=clean_user_id,
         )
-        owner_expr = DataLibraryAsset.owner_user_id == clean_user_id
+        owner_expr = DataLibraryAsset.owner_user_id.in_(related_user_id_list)
         shared_hint_expr = _shared_access_hint_expression(clean_user_id)
         legacy_project_fallback_expr = DataLibraryAsset.shared_with_user_ids.is_(None)
         legacy_ownerless_personal_expr = and_(
@@ -1046,7 +1098,7 @@ def list_library_assets(
                 and_(
                     or_(
                         DataLibraryAsset.owner_user_id.is_(None),
-                        DataLibraryAsset.owner_user_id != clean_user_id,
+                        ~DataLibraryAsset.owner_user_id.in_(related_user_id_list),
                     ),
                     or_(shared_hint_expr, legacy_project_fallback_expr),
                 )
@@ -1072,6 +1124,13 @@ def list_library_assets(
                 rows = session.scalars(stmt).all()
         fallback_single_owner_user_id = _single_user_owner_id(session=session)
         for row in rows:
+            row_owner_user_id = _trim(row.owner_user_id)
+            if (
+                row_owner_user_id
+                and row_owner_user_id in related_user_ids
+                and row_owner_user_id != clean_user_id
+            ):
+                row.owner_user_id = clean_user_id
             if (
                 not _trim(row.owner_user_id)
                 and fallback_single_owner_user_id
@@ -1204,6 +1263,12 @@ def update_library_asset_access(
 
     with session_scope() as session:
         storage_root = _storage_root()
+        related_user_ids = _related_user_ids_for_user(
+            session=session,
+            user_id=clean_user_id,
+        )
+        if clean_user_id not in related_user_ids:
+            related_user_ids.add(clean_user_id)
         asset = session.get(DataLibraryAsset, clean_asset_id)
         if asset is None:
             _restore_asset_row_from_metadata(
@@ -1229,8 +1294,11 @@ def update_library_asset_access(
                 raise DataAssetNotFoundError(
                     f"Data asset '{clean_asset_id}' was not found."
                 )
-        if _trim(asset.owner_user_id) != clean_user_id:
+        owner_user_id = _trim(asset.owner_user_id)
+        if owner_user_id not in related_user_ids:
             raise PlannerValidationError("Only the asset owner can manage file access.")
+        if owner_user_id and owner_user_id != clean_user_id:
+            asset.owner_user_id = clean_user_id
 
         requested_ids = _normalize_user_ids(collaborator_user_ids or [])
         resolved_name_ids = _resolve_user_ids_by_names(
@@ -1285,6 +1353,12 @@ def download_library_asset(
 
     with session_scope() as session:
         storage_root = _storage_root()
+        related_user_ids = _related_user_ids_for_user(
+            session=session,
+            user_id=clean_user_id,
+        )
+        if clean_user_id not in related_user_ids:
+            related_user_ids.add(clean_user_id)
         asset = session.get(DataLibraryAsset, clean_asset_id)
         if asset is None:
             _restore_asset_row_from_metadata(
@@ -1306,6 +1380,9 @@ def download_library_asset(
             session=session, asset=asset, user_id=clean_user_id
         ):
             raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
+        owner_user_id = _trim(asset.owner_user_id)
+        if owner_user_id and owner_user_id in related_user_ids and owner_user_id != clean_user_id:
+            asset.owner_user_id = clean_user_id
 
         storage_path = _resolve_existing_asset_path(asset, storage_root)
         if storage_path is None:

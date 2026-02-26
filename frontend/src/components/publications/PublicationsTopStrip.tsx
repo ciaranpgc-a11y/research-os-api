@@ -274,7 +274,6 @@ const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label:
 const HOUSE_HEADING_TITLE_CLASS = publicationsHouseHeadings.title
 const HOUSE_HEADING_SECTION_TITLE_CLASS = publicationsHouseHeadings.sectionTitle
 const HOUSE_HEADING_H2_CLASS = publicationsHouseHeadings.h2
-const HOUSE_HEADING_H3_CLASS = publicationsHouseHeadings.h3
 const HOUSE_TEXT_CLASS = publicationsHouseHeadings.text
 const HOUSE_TEXT_SOFT_CLASS = publicationsHouseHeadings.textSoft
 const HOUSE_HEADING_LABEL_CLASS = publicationsHouseHeadings.label
@@ -287,9 +286,9 @@ const HOUSE_TOGGLE_BUTTON_CLASS = publicationsHouseMotion.toggleButton
 const HOUSE_TOGGLE_CHART_BAR_CLASS = publicationsHouseMotion.toggleChartBar
 const HOUSE_TOGGLE_CHART_SWAP_CLASS = publicationsHouseMotion.toggleChartSwap
 const HOUSE_TOGGLE_CHART_LABEL_CLASS = publicationsHouseMotion.toggleChartLabel
-const HOUSE_SURFACE_TOP_PANEL_CLASS = publicationsHouseSurfaces.topPanel
 const HOUSE_SURFACE_SECTION_PANEL_CLASS = publicationsHouseSurfaces.sectionPanel
 const HOUSE_SURFACE_SOFT_PANEL_CLASS = publicationsHouseSurfaces.softPanel
+const HOUSE_SURFACE_STRONG_PANEL_CLASS = publicationsHouseSurfaces.strongPanel
 const HOUSE_SURFACE_PANEL_BARE_CLASS = publicationsHouseSurfaces.panelBare
 const HOUSE_SURFACE_BANNER_CLASS = publicationsHouseSurfaces.banner
 const HOUSE_SURFACE_BANNER_WARNING_CLASS = publicationsHouseSurfaces.bannerWarning
@@ -309,7 +308,6 @@ const HOUSE_DRILLDOWN_SHEET_CLASS = publicationsHouseDrilldown.sheet
 const HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS = publicationsHouseDrilldown.tabTrigger
 const HOUSE_DRILLDOWN_PLACEHOLDER_CLASS = publicationsHouseDrilldown.placeholder
 const HOUSE_DRILLDOWN_ALERT_CLASS = publicationsHouseDrilldown.alert
-const HOUSE_DRILLDOWN_MICRO_VALUE_CLASS = publicationsHouseDrilldown.microValue
 const HOUSE_DRILLDOWN_HINT_CLASS = publicationsHouseDrilldown.hint
 const HOUSE_DRILLDOWN_CAPTION_CLASS = publicationsHouseDrilldown.caption
 const HOUSE_DRILLDOWN_CHIP_CLASS = publicationsHouseDrilldown.chip
@@ -675,29 +673,6 @@ function formatPublicationYearLabel(startYear: number, endYear: number, fullYear
   const startLabel = fullYear ? String(startYear) : String(startYear).slice(-2)
   const endLabel = fullYear ? String(endYear) : String(endYear).slice(-2)
   return `${startLabel}-${endLabel}`
-}
-
-type RollingMonthPoint = {
-  year: number
-  month: number
-  value: number
-}
-
-function buildRollingMonthWindow(months: number, now: Date): Array<{ year: number; month: number }> {
-  const output: Array<{ year: number; month: number }> = []
-  const endYear = now.getUTCFullYear()
-  const endMonth = now.getUTCMonth() + 1
-  for (let index = months - 1; index >= 0; index -= 1) {
-    const serial = (endYear * 12 + (endMonth - 1)) - index
-    const year = Math.floor(serial / 12)
-    const month = (serial % 12) + 1
-    output.push({ year, month })
-  }
-  return output
-}
-
-function formatMonthYearLabel(year: number, month: number): string {
-  return `${MONTH_SHORT[Math.max(0, Math.min(11, month - 1))]} ${year}`
 }
 
 function shortYearLabel(year: number): string {
@@ -1533,7 +1508,6 @@ function PublicationsPerYearChart({
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [windowMode, setWindowMode] = useState<PublicationsWindowMode>('5y')
-  const nowUtc = useMemo(() => new Date(), [])
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
@@ -1572,14 +1546,17 @@ function PublicationsPerYearChart({
 
   const isCompactTileMode = !showAxes && !enableWindowToggle
   const effectiveWindowMode: PublicationsWindowMode = enableWindowToggle ? windowMode : 'all'
-  const useCompactAllRangeLabels = enableWindowToggle && effectiveWindowMode === 'all' && historyBars.length > MAX_PUBLICATION_CHART_BARS
-  const monthlyWindowMonths = effectiveWindowMode === '1y'
-    ? 12
+  const yearlyWindowYears = effectiveWindowMode === '1y'
+    ? 1
     : effectiveWindowMode === '3y'
-      ? 36
+      ? 3
       : effectiveWindowMode === '5y'
-        ? 60
+        ? 5
         : null
+  const windowedHistoryBars = yearlyWindowYears === null
+    ? historyBars
+    : historyBars.slice(-yearlyWindowYears)
+  const useCompactAllRangeLabels = enableWindowToggle && effectiveWindowMode === 'all' && windowedHistoryBars.length > MAX_PUBLICATION_CHART_BARS
 
   type PublicationChartBar = {
     key: string
@@ -1602,13 +1579,13 @@ function PublicationsPerYearChart({
   ), [historyBars])
 
   const groupedYearBars = useMemo(() => {
-    if (!historyBars.length) {
+    if (!windowedHistoryBars.length) {
       return { bars: [] as PublicationChartBar[], bucketSize: 1 }
     }
-    const bucketSize = selectPublicationBucketSize(historyBars.length)
+    const bucketSize = selectPublicationBucketSize(windowedHistoryBars.length)
     const grouped: PublicationChartBar[] = []
-    for (let index = 0; index < historyBars.length; index += bucketSize) {
-      const chunk = historyBars.slice(index, index + bucketSize)
+    for (let index = 0; index < windowedHistoryBars.length; index += bucketSize) {
+      const chunk = windowedHistoryBars.slice(index, index + bucketSize)
       if (!chunk.length) {
         continue
       }
@@ -1628,81 +1605,10 @@ function PublicationsPerYearChart({
       })
     }
     return { bars: grouped.slice(-MAX_PUBLICATION_CHART_BARS), bucketSize }
-  }, [fullYearLabels, historyBars, useCompactAllRangeLabels])
+  }, [fullYearLabels, useCompactAllRangeLabels, windowedHistoryBars])
 
-  const monthlyWindowSeries = useMemo(() => {
-    if (monthlyWindowMonths === null || !historyBars.length) {
-      return [] as RollingMonthPoint[]
-    }
-    const totalsByYear = new Map<number, number>()
-    historyBars.forEach((bar) => {
-      totalsByYear.set(bar.year, Math.max(0, bar.value))
-    })
-    const currentYear = nowUtc.getUTCFullYear()
-    const currentMonth = nowUtc.getUTCMonth() + 1
-    return buildRollingMonthWindow(monthlyWindowMonths, nowUtc).map(({ year, month }) => {
-      const annualTotal = Math.max(0, totalsByYear.get(year) ?? 0)
-      const denominator = year === currentYear ? Math.max(1, currentMonth) : 12
-      return {
-        year,
-        month,
-        value: denominator > 0 ? annualTotal / denominator : 0,
-      }
-    })
-  }, [historyBars, monthlyWindowMonths, nowUtc])
-
-  const groupedMonthBars = useMemo(() => {
-    if (!monthlyWindowSeries.length) {
-      return { bars: [] as PublicationChartBar[], bucketSize: 1, rangeLabel: null as string | null }
-    }
-    let bucketSize = 1
-    if (monthlyWindowMonths === 12) {
-      bucketSize = 1
-    } else if (monthlyWindowMonths === 36 || monthlyWindowMonths === 60) {
-      bucketSize = 12
-    } else {
-      bucketSize = Math.max(1, Math.ceil(monthlyWindowSeries.length / MAX_PUBLICATION_CHART_BARS))
-    }
-    const grouped: PublicationChartBar[] = []
-    for (let index = 0; index < monthlyWindowSeries.length; index += bucketSize) {
-      const chunk = monthlyWindowSeries.slice(index, index + bucketSize)
-      if (!chunk.length) {
-        continue
-      }
-      const start = chunk[0]
-      const end = chunk[chunk.length - 1]
-      const isLatestChunk = index + bucketSize >= monthlyWindowSeries.length
-      grouped.push({
-        key: `${start.year}-${start.month}-${end.year}-${end.month}`,
-        value: chunk.reduce((sum, item) => sum + Math.max(0, item.value), 0),
-        current: isLatestChunk && bucketSize === 1,
-        axisLabel: bucketSize === 1
-          ? MONTH_SHORT[Math.max(0, Math.min(11, start.month - 1))]
-          : `${MONTH_SHORT[Math.max(0, Math.min(11, start.month - 1))]}-${MONTH_SHORT[Math.max(0, Math.min(11, end.month - 1))]}`,
-        axisSubLabel: bucketSize === 1
-          ? String(start.year)
-          : start.year === end.year
-            ? String(start.year)
-            : `${start.year}-${end.year}`,
-      })
-    }
-    const start = monthlyWindowSeries[0]
-    const end = monthlyWindowSeries[monthlyWindowSeries.length - 1]
-    const rangeLabel = `${formatMonthYearLabel(start.year, start.month)}-${formatMonthYearLabel(end.year, end.month)}`
-    return { bars: grouped, bucketSize, rangeLabel }
-  }, [monthlyWindowMonths, monthlyWindowSeries])
-
-  const usingMonthlyBars = monthlyWindowMonths !== null
-  const activeBars = isCompactTileMode
-    ? compactTileBars
-    : usingMonthlyBars
-      ? groupedMonthBars.bars
-      : groupedYearBars.bars
-  const activeBucketSize = isCompactTileMode
-    ? 1
-    : usingMonthlyBars
-      ? groupedMonthBars.bucketSize
-      : groupedYearBars.bucketSize
+  const activeBars = isCompactTileMode ? compactTileBars : groupedYearBars.bars
+  const activeBucketSize = isCompactTileMode ? 1 : groupedYearBars.bucketSize
   const meanValue = isCompactTileMode && Number.isFinite(meanValueRaw) && meanValueRaw >= 0
     ? meanValueRaw
     : activeBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0) / Math.max(1, activeBars.length)
@@ -1749,13 +1655,13 @@ function PublicationsPerYearChart({
     ? axisScale.ticks
     : [0, axisMax * 0.25, axisMax * 0.5, axisMax * 0.75, axisMax]
   const gridTickValues = yAxisTickValues.slice(1, -1)
-  const resolvedXAxisLabel = usingMonthlyBars ? 'Publication month' : xAxisLabel
+  const resolvedXAxisLabel = xAxisLabel
   const xAxisLabelLayout = buildChartAxisLayout({
     axisLabels: renderBars.map((bar) => bar.axisLabel),
     axisSubLabels: renderBars.map((bar) => bar.axisSubLabel || null),
     showXAxisName: showAxes,
     xAxisName: showAxes ? resolvedXAxisLabel : null,
-    dense: renderBars.length >= 7 || usingMonthlyBars,
+    dense: renderBars.length >= 7,
     maxLabelLines: 2,
     maxSubLabelLines: 2,
     maxAxisNameLines: 2,
@@ -1788,18 +1694,19 @@ function PublicationsPerYearChart({
   }
   const yAxisTickOffsetRem = 0.4
   const activeWindowIndex = PUBLICATIONS_WINDOW_OPTIONS.findIndex((option) => option.value === windowMode)
-  const windowRangeLabel = usingMonthlyBars ? groupedMonthBars.rangeLabel : null
-  const allRangeLabel = !usingMonthlyBars && historyBars.length
+  const yearRangeLabel = windowedHistoryBars.length
     ? (() => {
-      const startYear = historyBars[0].year
-      const endBar = historyBars[historyBars.length - 1]
-      const endYear = endBar.year
-      const endMonth = endBar.current ? (nowUtc.getUTCMonth() + 1) : 12
-      return `${formatMonthYearLabel(startYear, 1)}-${formatMonthYearLabel(endYear, endMonth)}`
+      const startYear = windowedHistoryBars[0].year
+      const endBar = windowedHistoryBars[windowedHistoryBars.length - 1]
+      const suffix = endBar.current ? ' YTD' : ''
+      if (startYear === endBar.year) {
+        return `${startYear}${suffix}`
+      }
+      return `${startYear}-${endBar.year}${suffix}`
     })()
     : null
-  const periodHintText = windowRangeLabel || allRangeLabel || '\u00A0'
-  const periodHintVisible = Boolean(windowRangeLabel || allRangeLabel)
+  const periodHintText = yearRangeLabel || '\u00A0'
+  const periodHintVisible = Boolean(yearRangeLabel)
   return (
     <div
       className="flex h-full min-h-0 w-full flex-col"
@@ -3125,10 +3032,9 @@ function TotalPublicationsDrilldownWorkspace({
   const ytdCountRaw = Number((tile.chart_data || {}).current_year_ytd)
   const ytdCount = Number.isFinite(ytdCountRaw) ? Math.max(0, Math.round(ytdCountRaw)) : 0
   const workspaceSectionClass = HOUSE_SURFACE_SECTION_PANEL_CLASS
-  const workspacePanelClass = cn(HOUSE_SURFACE_SOFT_PANEL_CLASS, 'px-3 py-2.5')
   const workspacePanelCompactClass = cn(HOUSE_SURFACE_SOFT_PANEL_CLASS, 'p-2')
   const workspaceHeadingClass = HOUSE_HEADING_H2_CLASS
-  const workspaceSubheadingClass = HOUSE_HEADING_H2_CLASS
+  const workspaceSubheadingClass = HOUSE_TEXT_CLASS
 
   const availableTypes = useMemo(
     () => Array.from(new Set(publications.map((record) => record.type))).sort((left, right) => left.localeCompare(right)),
@@ -3305,42 +3211,44 @@ function TotalPublicationsDrilldownWorkspace({
     const rollingMean5yDisplay = Number.isInteger(rollingMean5yRounded)
       ? String(Math.round(rollingMean5yRounded))
       : rollingMean5yRounded.toFixed(1)
-    const microValueClass = HOUSE_DRILLDOWN_MICRO_VALUE_CLASS
+    const summaryStatCardClass = cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'px-3 py-2.5')
+    const summaryStatTitleClass = cn(HOUSE_DRILLDOWN_STAT_TITLE_CLASS, 'leading-[1.2]')
+    const microValueClass = cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'mt-0')
     return (
       <div className="space-y-3">
         <div className={workspaceSectionClass}>
           <p className={workspaceSubheadingClass}>Headline results</p>
           <div className="mt-2 grid gap-2 lg:grid-cols-[9rem_minmax(0,1fr)]">
-            <div className={cn(workspacePanelClass, 'flex min-h-[4.5rem] flex-col justify-center text-center')}>
-              <p className={HOUSE_HEADING_H3_CLASS}>
+            <div className={cn(summaryStatCardClass, 'flex min-h-[4.75rem] flex-col justify-center text-center')}>
+              <p className={summaryStatTitleClass}>
                 Total publications
               </p>
-              <p className="mt-2 text-2xl font-bold leading-none tracking-tight text-foreground">{headlineValue}</p>
+              <p className={cn(HOUSE_DRILLDOWN_STAT_VALUE_CLASS, 'mt-2 text-[1.7rem] leading-none tracking-tight')}>{headlineValue}</p>
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
-              <div className={cn(workspacePanelClass, 'grid min-h-[4.5rem] grid-rows-[2rem_auto] py-2 text-center')}>
-                <p className={cn(HOUSE_HEADING_H3_CLASS, 'leading-[1.1]')}>Active years</p>
+              <div className={cn(summaryStatCardClass, 'flex min-h-[4.75rem] flex-col items-center justify-center gap-1 text-center')}>
+                <p className={summaryStatTitleClass}>Active years</p>
                 <p className={microValueClass}>{formatInt(activeYears)}</p>
               </div>
-              <div className={cn(workspacePanelClass, 'grid min-h-[4.5rem] grid-rows-[2rem_auto] py-2 text-center')}>
-                <p className={cn(HOUSE_HEADING_H3_CLASS, 'leading-[1.1]')}>Median per year</p>
+              <div className={cn(summaryStatCardClass, 'flex min-h-[4.75rem] flex-col items-center justify-center gap-1 text-center')}>
+                <p className={summaryStatTitleClass}>Median per year</p>
                 <p className={microValueClass}>{formatInt(Math.round(medianPerActiveYear))}</p>
               </div>
-              <div className={cn(workspacePanelClass, 'grid min-h-[4.5rem] grid-rows-[2rem_auto] py-2 text-center')}>
-                <p className={cn(HOUSE_HEADING_H3_CLASS, 'leading-[1.1]')}>Current year to date</p>
+              <div className={cn(summaryStatCardClass, 'flex min-h-[4.75rem] flex-col items-center justify-center gap-1 text-center')}>
+                <p className={summaryStatTitleClass}>Current year to date</p>
                 <p className={microValueClass}>{formatInt(ytdCount)}</p>
               </div>
             </div>
           </div>
 
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            <div className={cn(workspacePanelClass, 'py-2')}>
-              <p className={HOUSE_HEADING_H3_CLASS}>5-year rolling mean</p>
-              <p className={HOUSE_DRILLDOWN_MICRO_VALUE_CLASS}>{rollingMean5yDisplay}</p>
+            <div className={summaryStatCardClass}>
+              <p className={summaryStatTitleClass}>5-year rolling mean</p>
+              <p className={microValueClass}>{rollingMean5yDisplay}</p>
             </div>
-            <div className={cn(workspacePanelClass, 'py-2')}>
-              <p className={HOUSE_HEADING_H3_CLASS}>Career peak</p>
-              <p className={HOUSE_DRILLDOWN_MICRO_VALUE_CLASS}>{`${formatInt(peakYearData.count)} (${peakYearData.year})`}</p>
+            <div className={summaryStatCardClass}>
+              <p className={summaryStatTitleClass}>Career peak</p>
+              <p className={microValueClass}>{`${formatInt(peakYearData.count)} (${peakYearData.year})`}</p>
             </div>
           </div>
 
@@ -4843,12 +4751,18 @@ export function PublicationsTopStrip({
                 onValueChange={(value) => setActiveDrilldownTab(value as DrilldownTab)}
                 className="w-full"
               >
-                <TabsList className={cn(HOUSE_SURFACE_TOP_PANEL_CLASS, 'grid h-auto w-full grid-cols-5 gap-1 rounded-md p-1')}>
+                <TabsList
+                  className={cn(
+                    HOUSE_ACTIONS_SECTION_TOOLS_CLASS,
+                    HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS,
+                    'grid h-auto w-full grid-cols-5 gap-1 rounded-lg p-1',
+                  )}
+                >
                   {DRILLDOWN_TABS.map((tab) => (
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className={HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS}
+                      className={cn(HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS, HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS)}
                     >
                       {tab.label}
                     </TabsTrigger>

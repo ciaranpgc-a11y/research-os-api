@@ -2,6 +2,36 @@
 
 ## 2026-02-26
 
+### Data Library Durability Hardening (Build/Restart Resilience)
+
+- **Area:** Personal data library storage durability and cross-build survivability.
+- **What changed:**
+- Added DB-backed file-content persistence on `data_library_assets` via new `content_blob` column.
+- Updated upload flow to persist uploaded bytes into `content_blob` in addition to filesystem storage.
+- Added automatic storage self-heal: when file paths are missing, library operations can materialize files back from `content_blob`.
+- Updated list/download flows to continue serving assets when filesystem copies are missing, provided DB content is present.
+- Extended schema compatibility repair paths (SQLite + PostgreSQL) to add `content_blob` for legacy deployments.
+- Added resilience tests for missing-storage recovery from DB blob and updated missing-storage behavior tests to explicitly cover true no-content cases.
+- Hardened metadata restore flow to merge index IDs with direct `*.meta.json` sidecar discovery on every recovery pass.
+- Added metadata-index self-repair so partial/stale index files are rewritten from merged sidecar + indexed IDs instead of hiding valid assets.
+- Added identity-linked owner recovery in library access checks using stable identity fields (`account_key`, normalized email, ORCID, Google subject, Microsoft subject) so assets remain visible when user IDs drift.
+- Added owner canonicalization on list/download/access-update paths to rebind linked legacy owner IDs to the current signed-in user.
+- Added resilience tests for linked-identity owner recovery (shared ORCID identity) and index-partial recovery.
+- **Why it changed:**
+- Prevent personal library files from appearing to disappear after rebuilds/restarts when local file paths or stale owner IDs break normal lookup.
+- Ensure users retain access to uploaded datasets across sign-out/sign-in and deployment cycles.
+- **Key files touched:**
+- `src/research_os/db.py`
+- `src/research_os/services/data_planner_service.py`
+- `tests/test_data_library_resilience.py`
+- `tests/test_open_access_service.py`
+- `tests/test_db_storage_stability.py`
+- **Verification performed:**
+- `pytest tests/test_data_library_resilience.py -q`
+- `pytest tests/test_open_access_service.py -q`
+- `pytest tests/test_db_storage_stability.py -q`
+- `pytest tests/test_api.py -k "library_assets_persist_across_logout_and_login or library_asset_access_controls_and_download" -q`
+
 ### Admin Usage-Costs + Jobs + Audited Actions (Live Operations Control Plane v2)
 
 - **Area:** Admin console scale/operations/security modules (backend API + frontend admin surface).

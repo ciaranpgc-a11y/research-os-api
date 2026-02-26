@@ -27,7 +27,13 @@ def _set_test_environment(monkeypatch, tmp_path) -> None:
 
 
 def _create_user(
-    *, email: str, name: str = "Resilience User", account_key: str | None = None
+    *,
+    email: str,
+    name: str = "Resilience User",
+    account_key: str | None = None,
+    orcid_id: str | None = None,
+    google_sub: str | None = None,
+    microsoft_sub: str | None = None,
 ) -> str:
     create_all_tables()
     with session_scope() as session:
@@ -38,6 +44,12 @@ def _create_user(
         }
         if account_key:
             payload["account_key"] = account_key
+        if orcid_id:
+            payload["orcid_id"] = orcid_id
+        if google_sub:
+            payload["google_sub"] = google_sub
+        if microsoft_sub:
+            payload["microsoft_sub"] = microsoft_sub
         user = User(
             **payload,
         )
@@ -176,6 +188,44 @@ def test_list_library_assets_rebinds_owner_by_account_key_when_metadata_ids_stal
         item for item in payload.get("items", []) if str(item.get("id")) == asset_id
     )
     assert str(listed_row.get("owner_user_id") or "") == second_user_id
+
+
+def test_list_library_assets_rebinds_owner_for_linked_orcid_identity(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    shared_orcid = "0000-0002-1825-0097"
+    first_user_id = _create_user(
+        email="library-orcid-first@example.com",
+        name="Owner First",
+        orcid_id=shared_orcid,
+    )
+
+    asset_id = upload_library_assets(
+        files=[("orcid-linked.csv", "text/csv", b"col_a,col_b\n55,66\n")],
+        project_id=None,
+        user_id=first_user_id,
+    )[0]
+
+    second_user_id = _create_user(
+        email="library-orcid-second@example.com",
+        name="Owner Second",
+        orcid_id=shared_orcid,
+    )
+    assert second_user_id != first_user_id
+
+    payload = list_library_assets(project_id=None, user_id=second_user_id)
+    listed_ids = [str(item.get("id")) for item in payload.get("items", [])]
+    assert asset_id in listed_ids
+
+    listed_row = next(
+        item for item in payload.get("items", []) if str(item.get("id")) == asset_id
+    )
+    assert str(listed_row.get("owner_user_id") or "") == second_user_id
+
+    downloaded = download_library_asset(asset_id=asset_id, user_id=second_user_id)
+    assert downloaded["file_name"] == "orcid-linked.csv"
+    assert downloaded["content"] == b"col_a,col_b\n55,66\n"
 
 
 def test_list_library_assets_recovers_when_metadata_index_is_corrupt(
