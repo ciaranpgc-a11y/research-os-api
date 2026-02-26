@@ -283,6 +283,8 @@ class OpenAlexMetricsProvider(MetricsProvider):
                 "pmid": pmid_value,
                 "journal_2yr_mean_citedness": journal_2yr_mean_citedness,
                 "journal_name": source.get("display_name"),
+                "type": candidate.get("type"),
+                "type_crossref": candidate.get("type_crossref"),
                 "abstract": abstract,
                 "counts_by_year": counts_by_year,
             },

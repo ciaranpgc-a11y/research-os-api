@@ -1491,6 +1491,7 @@ class PersonaWorkResponse(BaseModel):
     year: int | None = None
     doi: str | None = None
     work_type: str
+    publication_type: str = ""
     venue_name: str
     publisher: str
     abstract: str | None = None

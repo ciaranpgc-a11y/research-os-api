@@ -56,6 +56,86 @@ PMID_PATTERNS = [
     re.compile(r"/pubmed/(\d+)", re.IGNORECASE),
     re.compile(r"pmid[:\s]+(\d+)", re.IGNORECASE),
 ]
+ARTICLE_TYPE_REVIEW_PATTERN = re.compile(
+    r"\b(systematic review|meta[-\s]?analysis|scoping review|narrative review|literature review|umbrella review|rapid review|review)\b",
+    re.IGNORECASE,
+)
+ARTICLE_TYPE_EDITORIAL_PATTERN = re.compile(
+    r"\b(editorial|commentary|perspective|viewpoint|opinion)\b",
+    re.IGNORECASE,
+)
+ARTICLE_TYPE_CASE_PATTERN = re.compile(
+    r"\b(case report|case series)\b", re.IGNORECASE
+)
+ARTICLE_TYPE_PROTOCOL_PATTERN = re.compile(
+    r"\b(protocol|study protocol)\b", re.IGNORECASE
+)
+ARTICLE_TYPE_LETTER_PATTERN = re.compile(
+    r"\b(letter|correspondence)\b", re.IGNORECASE
+)
+
+
+def _normalize_publication_type_hint(value: Any) -> str:
+    return re.sub(r"[\s_]+", "-", str(value or "").strip().lower())
+
+
+def _infer_journal_article_type_from_title(title: str) -> str:
+    clean_title = re.sub(r"\s+", " ", str(title or "").strip())
+    if not clean_title:
+        return "Original"
+    if ARTICLE_TYPE_REVIEW_PATTERN.search(clean_title):
+        return "Review"
+    if ARTICLE_TYPE_EDITORIAL_PATTERN.search(clean_title):
+        return "Editorial"
+    if ARTICLE_TYPE_CASE_PATTERN.search(clean_title):
+        return "Case report"
+    if ARTICLE_TYPE_PROTOCOL_PATTERN.search(clean_title):
+        return "Protocol"
+    if ARTICLE_TYPE_LETTER_PATTERN.search(clean_title):
+        return "Letter"
+    return "Original"
+
+
+def _infer_article_type_for_work(
+    *,
+    work_payload: dict[str, Any],
+    metric_payload: dict[str, Any],
+) -> str | None:
+    title = re.sub(r"\s+", " ", str(work_payload.get("title", "")).strip())
+    work_type = _normalize_publication_type_hint(work_payload.get("work_type"))
+    source_type = _normalize_publication_type_hint(metric_payload.get("type"))
+    source_type_crossref = _normalize_publication_type_hint(
+        metric_payload.get("type_crossref")
+    )
+
+    hints = [
+        source_type_crossref,
+        source_type,
+        work_type,
+    ]
+
+    for hint in hints:
+        if hint in {"review", "review-article"}:
+            return "Review"
+        if hint in {"editorial", "commentary", "perspective", "opinion"}:
+            return "Editorial"
+        if hint in {"letter", "correspondence"}:
+            return "Letter"
+        if hint in {"case-report", "case-series"}:
+            return "Case report"
+        if hint in {"protocol", "study-protocol"}:
+            return "Protocol"
+
+    journal_like_hints = {
+        "journal-article",
+        "article",
+        "research-article",
+        "original-article",
+        "original-research",
+    }
+    if any(hint in journal_like_hints for hint in hints):
+        return _infer_journal_article_type_from_title(title)
+    return None
 
 
 class PersonaValidationError(RuntimeError):
@@ -456,6 +536,7 @@ def list_works(*, user_id: str) -> list[dict[str, Any]]:
                     "year": work.year,
                     "doi": work.doi,
                     "work_type": work.work_type,
+                    "publication_type": str(work.publication_type or "").strip(),
                     "venue_name": work.venue_name,
                     "publisher": work.publisher,
                     "abstract": work.abstract,
@@ -789,6 +870,7 @@ def sync_metrics(
 
     target_ids = {str(item).strip() for item in (work_ids or []) if str(item).strip()}
     work_rows: list[tuple[str, dict[str, Any]]] = []
+    work_payload_by_id: dict[str, dict[str, Any]] = {}
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
         work_query = select(Work).where(Work.user_id == user_id)
@@ -810,6 +892,7 @@ def sync_metrics(
             )
             for work in works
         ]
+        work_payload_by_id = {work_id: payload for work_id, payload in work_rows}
 
     metric_rows: list[dict[str, Any]] = []
     if work_rows:
@@ -869,16 +952,27 @@ def sync_metrics(
                 )
 
     best_abstract_by_work: dict[str, tuple[int, str]] = {}
+    best_article_type_by_work: dict[str, tuple[int, str]] = {}
     for row in metric_rows:
         work_id = str(row.get("work_id", "")).strip()
         if not work_id:
             continue
         payload = dict(row.get("metric_payload") or {})
+        work_payload = work_payload_by_id.get(work_id) or {}
+        provider_name = str(row.get("provider", "")).strip().lower()
+        priority = METRICS_PROVIDER_PRIORITY.get(provider_name, 0)
+        article_type = _infer_article_type_for_work(
+            work_payload=work_payload,
+            metric_payload=payload,
+        )
+        if article_type:
+            existing_type = best_article_type_by_work.get(work_id)
+            if existing_type is None or priority > existing_type[0]:
+                best_article_type_by_work[work_id] = (priority, article_type)
+
         abstract = re.sub(r"\s+", " ", str(payload.get("abstract", "")).strip())
         if not abstract:
             continue
-        provider_name = str(row.get("provider", "")).strip().lower()
-        priority = METRICS_PROVIDER_PRIORITY.get(provider_name, 0)
         existing = best_abstract_by_work.get(work_id)
         if existing is None or priority > existing[0]:
             best_abstract_by_work[work_id] = (priority, abstract)
@@ -888,11 +982,14 @@ def sync_metrics(
     with session_scope() as session:
         _resolve_user_or_raise(session, user_id)
         works_by_id: dict[str, Work] = {}
-        if best_abstract_by_work:
+        hydrated_work_ids = list(
+            set(best_abstract_by_work.keys()) | set(best_article_type_by_work.keys())
+        )
+        if hydrated_work_ids:
             works = session.scalars(
                 select(Work).where(
                     Work.user_id == user_id,
-                    Work.id.in_(list(best_abstract_by_work.keys())),
+                    Work.id.in_(hydrated_work_ids),
                 )
             ).all()
             works_by_id = {str(work.id): work for work in works}
@@ -918,6 +1015,15 @@ def sync_metrics(
             if re.sub(r"\s+", " ", str(work.abstract or "").strip()):
                 continue
             work.abstract = abstract
+        for work_id, (_, article_type) in best_article_type_by_work.items():
+            work = works_by_id.get(work_id)
+            if work is None:
+                continue
+            if work.user_edited and str(work.publication_type or "").strip():
+                continue
+            if str(work.publication_type or "").strip() == article_type:
+                continue
+            work.publication_type = article_type
         session.flush()
 
     collaboration = recompute_collaborator_edges(user_id=user_id)

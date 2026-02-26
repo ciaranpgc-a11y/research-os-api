@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { getAuthSessionToken } from '@/lib/auth-session'
-import { houseForms, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseCollaborators, houseForms, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { listCollaborators } from '@/lib/impact-api'
 import {
   downloadLibraryAsset,
@@ -33,6 +33,14 @@ const HOUSE_INPUT_CLASS = houseForms.input
 const HOUSE_SELECT_CLASS = houseForms.select
 const HOUSE_ACTION_BUTTON_CLASS = houseForms.actionButton
 const HOUSE_PRIMARY_ACTION_BUTTON_CLASS = houseForms.actionButtonPrimary
+const HOUSE_COLLABORATOR_LIST_SHELL_CLASS = houseCollaborators.listShell
+const HOUSE_COLLABORATOR_LIST_VIEWPORT_COMPACT_CLASS = houseCollaborators.listViewportCompact
+const HOUSE_COLLABORATOR_LIST_BODY_CLASS = houseCollaborators.listBody
+const HOUSE_COLLABORATOR_CANDIDATE_CLASS = houseCollaborators.candidate
+const HOUSE_COLLABORATOR_CANDIDATE_SELECTED_CLASS = houseCollaborators.candidateSelected
+const HOUSE_COLLABORATOR_CANDIDATE_IDLE_CLASS = houseCollaborators.candidateIdle
+const HOUSE_COLLABORATOR_CANDIDATE_META_CLASS = houseCollaborators.candidateMeta
+const HOUSE_COLLABORATOR_CANDIDATE_SOURCE_CLASS = houseCollaborators.candidateSource
 
 function normalizeName(value: string | null | undefined): string {
   return (value || '').trim().replace(/\s+/g, ' ')
@@ -272,17 +280,25 @@ export function WorkspacesDataLibraryView() {
           page: 1,
           pageSize: 25,
         })
-        const existingIds = new Set((asset.shared_with_user_ids || []).map((value) => String(value || '').trim()))
-        const ownerId = String(asset.owner_user_id || '').trim()
+        const existingAccessNames = new Set(
+          libraryAssetAccessMembers(asset).map((member) => normalizeName(member.name).toLowerCase()),
+        )
+        const ownerName = normalizeName(asset.owner_name || '').toLowerCase()
+        const seenNames = new Set<string>()
         const filtered = (payload.items || []).filter((candidate) => {
-          const candidateId = String(candidate.id || '').trim()
-          if (!candidateId) {
+          const candidateName = normalizeName(candidate.full_name)
+          if (!candidateName) {
             return false
           }
-          if (candidateId === ownerId) {
+          const nameKey = candidateName.toLowerCase()
+          if (seenNames.has(nameKey)) {
             return false
           }
-          if (existingIds.has(candidateId)) {
+          seenNames.add(nameKey)
+          if (nameKey === ownerName) {
+            return false
+          }
+          if (existingAccessNames.has(nameKey)) {
             return false
           }
           return true
@@ -323,17 +339,26 @@ export function WorkspacesDataLibraryView() {
       }
 
       const selected = selectedCandidateByAssetIdValue(selectedCollaboratorByAssetId, asset.id)
-      if (!selected || !String(selected.id || '').trim()) {
+      if (!selected) {
         setError('Select a collaborator from directory results first.')
         return
       }
 
-      const selectedId = String(selected.id || '').trim()
-      const currentIds = (asset.shared_with_user_ids || []).map((value) => String(value || '').trim()).filter(Boolean)
-      if (currentIds.includes(selectedId)) {
-        setError(`${selected.full_name} already has access.`)
+      const selectedName = normalizeName(selected.full_name)
+      if (!selectedName) {
+        setError('Selected collaborator is missing a name.')
         return
       }
+
+      const existingAccessNames = new Set(
+        libraryAssetAccessMembers(asset).map((member) => normalizeName(member.name).toLowerCase()),
+      )
+      if (existingAccessNames.has(selectedName.toLowerCase())) {
+        setError(`${selectedName} already has access.`)
+        return
+      }
+
+      const currentIds = (asset.shared_with_user_ids || []).map((value) => String(value || '').trim()).filter(Boolean)
 
       setError('')
       setStatus('')
@@ -342,15 +367,15 @@ export function WorkspacesDataLibraryView() {
         const updated = await updateLibraryAssetAccess({
           token,
           assetId: asset.id,
-          collaboratorUserIds: [...currentIds, selectedId],
-          collaboratorNames: [],
+          collaboratorUserIds: currentIds,
+          collaboratorNames: [selectedName],
         })
         updateAssetInState(updated)
         setCollaboratorLookupByAssetId((current) => ({ ...current, [asset.id]: [] }))
         setSelectedCollaboratorByAssetId((current) => ({ ...current, [asset.id]: null }))
         setCollaboratorQueryByAssetId((current) => ({ ...current, [asset.id]: '' }))
         setLookupErrorByAssetId((current) => ({ ...current, [asset.id]: '' }))
-        setStatus(`Granted access to ${selected.full_name}.`)
+        setStatus(`Granted access to ${selectedName}.`)
       } catch (updateError) {
         setError(updateError instanceof Error ? updateError.message : 'Could not update permissions.')
       } finally {
@@ -595,59 +620,79 @@ export function WorkspacesDataLibraryView() {
                       <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
                         {asset.can_manage_access ? (
                           <div className="min-w-sz-320 space-y-1.5">
-                            <div className="flex items-center gap-1.5">
-                              <Input
-                                value={searchQuery}
-                                onChange={(event) => {
-                                  const nextValue = event.target.value
-                                  setCollaboratorQueryByAssetId((current) => ({
-                                    ...current,
-                                    [asset.id]: nextValue,
-                                  }))
-                                }}
-                                placeholder="Search collaborator directory"
-                                className={cn('h-8', HOUSE_INPUT_CLASS)}
-                                disabled={isBusy}
-                              />
-                              <Button
-                                type="button"
-                                size="sm"
-                                className={HOUSE_ACTION_BUTTON_CLASS}
-                                onClick={() => void onSearchCollaborators(asset)}
-                                disabled={isBusy || lookupBusy || normalizeName(searchQuery).length < 2}
-                              >
-                                {lookupBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
-                              </Button>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5">
+                                <Input
+                                  value={searchQuery}
+                                  onChange={(event) => {
+                                    const nextValue = event.target.value
+                                    setCollaboratorQueryByAssetId((current) => ({
+                                      ...current,
+                                      [asset.id]: nextValue,
+                                    }))
+                                    setSelectedCollaboratorByAssetId((current) => ({
+                                      ...current,
+                                      [asset.id]: null,
+                                    }))
+                                    setLookupErrorByAssetId((current) => ({
+                                      ...current,
+                                      [asset.id]: '',
+                                    }))
+                                  }}
+                                  placeholder="Search by name or email"
+                                  className={cn('h-8', HOUSE_INPUT_CLASS)}
+                                  disabled={isBusy}
+                                />
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className={HOUSE_ACTION_BUTTON_CLASS}
+                                  onClick={() => void onSearchCollaborators(asset)}
+                                  disabled={isBusy || lookupBusy || normalizeName(searchQuery).length < 2}
+                                >
+                                  {lookupBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                                </Button>
+                              </div>
+                              <p className={HOUSE_FIELD_HELPER_CLASS}>
+                                Type at least 2 characters. Access updates are enforced server-side.
+                              </p>
                             </div>
                             {lookupError ? <p className="text-xs text-amber-700">{lookupError}</p> : null}
                             {matches.length > 0 ? (
-                              <div className="max-h-24 space-y-1 overflow-y-auto rounded border border-border bg-background p-1">
-                                {matches.map((candidate) => {
-                                  const isSelected = selectedCandidate?.id === candidate.id
-                                  return (
-                                    <button
-                                      key={`${asset.id}-${candidate.id}`}
-                                      type="button"
-                                      onClick={() => {
-                                        setSelectedCollaboratorByAssetId((current) => ({
-                                          ...current,
-                                          [asset.id]: candidate,
-                                        }))
-                                      }}
-                                      className={cn(
-                                        'w-full rounded border px-2 py-1 text-left text-xs',
-                                        isSelected
-                                          ? 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))]'
-                                          : 'border-transparent hover:border-border hover:bg-accent/30',
-                                      )}
-                                    >
-                                      <p className="font-medium">{candidate.full_name}</p>
-                                      <p className="text-muted-foreground">
-                                        {[candidate.email || '', candidate.primary_institution || ''].filter(Boolean).join(' | ') || 'Directory match'}
-                                      </p>
-                                    </button>
-                                  )
-                                })}
+                              <div className={HOUSE_COLLABORATOR_LIST_SHELL_CLASS}>
+                                <ScrollArea className={HOUSE_COLLABORATOR_LIST_VIEWPORT_COMPACT_CLASS}>
+                                  <div className={HOUSE_COLLABORATOR_LIST_BODY_CLASS}>
+                                    {matches.map((candidate) => {
+                                      const isSelected = selectedCandidate?.id === candidate.id
+                                      return (
+                                        <button
+                                          key={`${asset.id}-${candidate.id}`}
+                                          type="button"
+                                          onClick={() => {
+                                            setSelectedCollaboratorByAssetId((current) => ({
+                                              ...current,
+                                              [asset.id]: candidate,
+                                            }))
+                                          }}
+                                          className={cn(
+                                            HOUSE_COLLABORATOR_CANDIDATE_CLASS,
+                                            isSelected
+                                              ? HOUSE_COLLABORATOR_CANDIDATE_SELECTED_CLASS
+                                              : HOUSE_COLLABORATOR_CANDIDATE_IDLE_CLASS,
+                                          )}
+                                        >
+                                          <p className={houseTypography.text}>{candidate.full_name}</p>
+                                          <div className={HOUSE_COLLABORATOR_CANDIDATE_META_CLASS}>
+                                            <p className={houseTypography.fieldHelper}>
+                                              {[candidate.email || '', candidate.primary_institution || ''].filter(Boolean).join(' | ') || 'Directory match'}
+                                            </p>
+                                            <span className={HOUSE_COLLABORATOR_CANDIDATE_SOURCE_CLASS}>Directory</span>
+                                          </div>
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                </ScrollArea>
                               </div>
                             ) : null}
                             <div className="flex items-center justify-between gap-2">

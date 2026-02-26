@@ -113,6 +113,18 @@ export const houseForms = {
   actionButtonGhost: 'house-button-action-ghost',
 } as const
 
+export const houseCollaborators = {
+  listShell: 'house-collaborator-list-shell',
+  listViewport: 'house-collaborator-list-viewport',
+  listViewportCompact: 'house-collaborator-list-viewport-compact',
+  listBody: 'house-collaborator-list-body',
+  candidate: 'house-collaborator-candidate',
+  candidateSelected: 'house-collaborator-candidate-selected',
+  candidateIdle: 'house-collaborator-candidate-idle',
+  candidateMeta: 'house-collaborator-candidate-meta',
+  candidateSource: 'house-collaborator-candidate-source',
+} as const
+
 export const houseChartColors = {
   accentBar: 'house-chart-bar-accent',
   positiveBar: 'house-chart-bar-positive',
@@ -219,6 +231,15 @@ export const houseElements = {
   actionButton: houseForms.actionButton,
   actionButtonPrimary: houseForms.actionButtonPrimary,
   actionButtonGhost: houseForms.actionButtonGhost,
+  collaboratorListShell: houseCollaborators.listShell,
+  collaboratorListViewport: houseCollaborators.listViewport,
+  collaboratorListViewportCompact: houseCollaborators.listViewportCompact,
+  collaboratorListBody: houseCollaborators.listBody,
+  collaboratorCandidate: houseCollaborators.candidate,
+  collaboratorCandidateSelected: houseCollaborators.candidateSelected,
+  collaboratorCandidateIdle: houseCollaborators.candidateIdle,
+  collaboratorCandidateMeta: houseCollaborators.candidateMeta,
+  collaboratorCandidateSource: houseCollaborators.candidateSource,
   topPanel: houseSurfaces.topPanel,
   sectionPanel: houseSurfaces.sectionPanel,
   softPanel: houseSurfaces.softPanel,

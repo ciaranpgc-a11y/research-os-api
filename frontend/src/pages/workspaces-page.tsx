@@ -16,7 +16,7 @@ import {
   WORKSPACE_OWNER_REQUIRED_MESSAGE,
   readWorkspaceOwnerNameFromProfile,
 } from '@/lib/workspace-owner'
-import { houseDrilldown, houseForms, houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseCollaborators, houseDrilldown, houseForms, houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { getHouseLeftBorderToneClass, getHouseNavToneClass } from '@/lib/section-tone'
 import { matchesScopedStorageEventKey } from '@/lib/user-scoped-storage'
 import { cn } from '@/lib/utils'
@@ -73,6 +73,14 @@ const HOUSE_INPUT_CLASS = houseForms.input
 const HOUSE_SELECT_CLASS = houseForms.select
 const HOUSE_ACTION_BUTTON_CLASS = houseForms.actionButton
 const HOUSE_PRIMARY_ACTION_BUTTON_CLASS = houseForms.actionButtonPrimary
+const HOUSE_COLLABORATOR_LIST_SHELL_CLASS = houseCollaborators.listShell
+const HOUSE_COLLABORATOR_LIST_VIEWPORT_CLASS = houseCollaborators.listViewport
+const HOUSE_COLLABORATOR_LIST_BODY_CLASS = houseCollaborators.listBody
+const HOUSE_COLLABORATOR_CANDIDATE_CLASS = houseCollaborators.candidate
+const HOUSE_COLLABORATOR_CANDIDATE_SELECTED_CLASS = houseCollaborators.candidateSelected
+const HOUSE_COLLABORATOR_CANDIDATE_IDLE_CLASS = houseCollaborators.candidateIdle
+const HOUSE_COLLABORATOR_CANDIDATE_META_CLASS = houseCollaborators.candidateMeta
+const HOUSE_COLLABORATOR_CANDIDATE_SOURCE_CLASS = houseCollaborators.candidateSource
 const HOUSE_NAV_SECTION_LABEL_CLASS = houseNavigation.sectionLabel
 const HOUSE_NAV_ITEM_CLASS = houseNavigation.item
 const HOUSE_NAV_ITEM_ACTIVE_CLASS = houseNavigation.itemActive
@@ -1929,9 +1937,9 @@ export function WorkspacesPage() {
                 <p className="text-sm text-amber-700">{collaboratorLookupError}</p>
               ) : null}
 
-              <div className={cn('rounded-md border border-border', HOUSE_TABLE_SHELL_CLASS)}>
-                <ScrollArea className="h-64">
-                  <div className="space-y-1 p-2">
+              <div className={HOUSE_COLLABORATOR_LIST_SHELL_CLASS}>
+                <ScrollArea className={HOUSE_COLLABORATOR_LIST_VIEWPORT_CLASS}>
+                  <div className={HOUSE_COLLABORATOR_LIST_BODY_CLASS}>
                     {collaboratorCandidates.length === 0 ? (
                       <p className={cn('px-2 py-1', HOUSE_FIELD_HELPER_CLASS)}>No matches yet.</p>
                     ) : (
@@ -1948,16 +1956,16 @@ export function WorkspacesPage() {
                               setCollaboratorQuery(candidate.name)
                             }}
                             className={cn(
-                              'w-full rounded border px-2 py-1.5 text-left',
+                              HOUSE_COLLABORATOR_CANDIDATE_CLASS,
                               isSelected
-                                ? 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-accent-50))]'
-                                : 'border-transparent bg-background hover:border-border hover:bg-accent/30',
+                                ? HOUSE_COLLABORATOR_CANDIDATE_SELECTED_CLASS
+                                : HOUSE_COLLABORATOR_CANDIDATE_IDLE_CLASS,
                             )}
                           >
                             <p className={houseTypography.text}>{candidate.name}</p>
-                            <div className="mt-0.5 flex items-center justify-between gap-2" data-ui="collaborator-candidate-meta">
+                            <div className={HOUSE_COLLABORATOR_CANDIDATE_META_CLASS} data-ui="collaborator-candidate-meta">
                               <p className={houseTypography.fieldHelper} data-ui="collaborator-candidate-subtitle">{candidate.subtitle}</p>
-                              <span className="text-micro text-muted-foreground" data-ui="collaborator-candidate-source">
+                              <span className={HOUSE_COLLABORATOR_CANDIDATE_SOURCE_CLASS} data-ui="collaborator-candidate-source">
                                 {candidate.source === 'directory' ? 'Directory' : 'Workspace network'}
                               </span>
                             </div>

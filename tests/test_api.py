@@ -456,10 +456,13 @@ def test_v1_library_asset_access_controls_and_download(monkeypatch, tmp_path) ->
 
         owner_me = client.get("/v1/auth/me", headers=owner_headers)
         collaborator_me = client.get("/v1/auth/me", headers=collaborator_headers)
+        outsider_me = client.get("/v1/auth/me", headers=outsider_headers)
         assert owner_me.status_code == 200
         assert collaborator_me.status_code == 200
+        assert outsider_me.status_code == 200
         owner_user_id = owner_me.json()["id"]
         collaborator_user_id = collaborator_me.json()["id"]
+        outsider_user_id = outsider_me.json()["id"]
 
         create_project = client.post(
             "/v1/projects",
@@ -524,6 +527,17 @@ def test_v1_library_asset_access_controls_and_download(monkeypatch, tmp_path) ->
             in collaborator_patch_attempt.json()["error"]["detail"]
         )
 
+        owner_patch_outsider_attempt = client.patch(
+            f"/v1/library/assets/{asset_id}/access",
+            headers=owner_headers,
+            json={"collaborator_user_ids": [outsider_user_id]},
+        )
+        assert owner_patch_outsider_attempt.status_code == 400
+        assert (
+            "Access can only be granted to workspace collaborators."
+            in owner_patch_outsider_attempt.json()["error"]["detail"]
+        )
+
         collaborator_download_before = client.get(
             f"/v1/library/assets/{asset_id}/download",
             headers=collaborator_headers,
@@ -564,6 +578,15 @@ def test_v1_library_asset_access_controls_and_download(monkeypatch, tmp_path) ->
         )
         assert add_access_by_name.status_code == 200
         assert collaborator_user_id in add_access_by_name.json()["shared_with_user_ids"]
+
+        collaborator_assets_after_add = client.get(
+            "/v1/library/assets",
+            headers=collaborator_headers,
+            params={"project_id": project_id},
+        )
+        assert collaborator_assets_after_add.status_code == 200
+        assert collaborator_assets_after_add.json()["total"] == 1
+        assert collaborator_assets_after_add.json()["items"][0]["id"] == asset_id
 
         collaborator_download_after_add = client.get(
             f"/v1/library/assets/{asset_id}/download",

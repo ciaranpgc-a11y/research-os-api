@@ -1079,6 +1079,63 @@
     color: hsl(var(--tone-neutral-900));
   }
 
+  .house-collaborator-list-shell {
+    border: 1px solid hsl(var(--stroke-strong) / 0.94);
+    border-radius: 0.375rem;
+    background-color: hsl(var(--card));
+  }
+
+  .house-collaborator-list-viewport {
+    height: 16rem;
+  }
+
+  .house-collaborator-list-viewport-compact {
+    height: 9rem;
+  }
+
+  .house-collaborator-list-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.5rem;
+  }
+
+  .house-collaborator-candidate {
+    width: 100%;
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+    background-color: hsl(var(--background));
+    padding: 0.375rem 0.5rem;
+    text-align: left;
+    transition-property: border-color, background-color, color;
+    transition-duration: var(--motion-duration-ui);
+    transition-timing-function: ease-out;
+  }
+
+  .house-collaborator-candidate-idle:hover {
+    border-color: hsl(var(--stroke-strong) / 0.92);
+    background-color: hsl(var(--tone-neutral-100) / 0.56);
+  }
+
+  .house-collaborator-candidate-selected {
+    border-color: hsl(var(--tone-accent-300));
+    background-color: hsl(var(--tone-accent-50));
+  }
+
+  .house-collaborator-candidate-meta {
+    margin-top: 0.125rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .house-collaborator-candidate-source {
+    font-size: 0.6875rem;
+    line-height: 0.95rem;
+    color: hsl(var(--tone-neutral-500));
+  }
+
   .house-panel-top {
     border: 0;
     border-radius: 0.375rem;

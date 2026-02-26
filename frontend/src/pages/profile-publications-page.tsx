@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp, ChevronsUpDown, Loader2, Paperclip, SlidersHorizontal } from 'lucide-react'
+import { ChevronDown, ChevronUp, ChevronsUpDown, Loader2, Paperclip } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
@@ -191,9 +191,14 @@ function derivePublicationTypeLabel(work: {
 
 function deriveArticleTypeLabel(work: {
   work_type?: string | null
+  publication_type?: string | null
   title?: string | null
   venue_name?: string | null
 }): string {
+  const classification = String(work.publication_type || '').trim()
+  if (classification) {
+    return classification
+  }
   const publicationType = derivePublicationTypeLabel(work)
   return publicationType === 'Journal article' ? 'Unspecified' : 'n/a'
 }
@@ -454,7 +459,8 @@ function loadPublicationTableColumnPreferences(userId: string): Record<Publicati
       const payload = candidate as Record<string, unknown>
       const parsedAlign = parsePublicationTableColumnAlign(payload.align)
       defaults[key] = {
-        visible: payload.visible !== false,
+        // Keep all columns visible now that the column-controls UI is removed.
+        visible: true,
         // Migrate prior centered defaults to left alignment for visual consistency.
         align: parsedAlign === 'center' ? 'left' : parsedAlign,
         width: clampPublicationTableColumnWidth(
@@ -706,7 +712,7 @@ function autoFitPublicationTableColumns(input: {
 
   // Minimize sampled row height by balancing widths across wrapping columns.
   const optimizeColumns = visibleColumns.filter((column) => (
-    column === 'title' || column === 'venue' || column === 'work_type'
+    column === 'title' || column === 'venue' || column === 'work_type' || column === 'article_type'
   ))
   if (optimizeColumns.length >= 2) {
     const optimizeColumnSet = new Set<PublicationTableColumnKey>(optimizeColumns)
@@ -722,62 +728,111 @@ function autoFitPublicationTableColumns(input: {
       ),
     )
     if (optimizeWidthBudget > 0) {
-      const venueStep = optimizeColumns.includes('venue') ? 12 : 1
-      const typeStep = optimizeColumns.includes('work_type') ? 12 : 1
-      const titleLimit = columnLimits.title
-      const venueLimit = columnLimits.venue
-      const typeLimit = columnLimits.work_type
-      let best: { title: number; venue: number; work_type: number; score: number } | null = null
-      const venueStart = optimizeColumns.includes('venue') ? venueLimit.min : 0
-      const venueEnd = optimizeColumns.includes('venue') ? venueLimit.max : 0
-      const typeStart = optimizeColumns.includes('work_type') ? typeLimit.min : 0
-      const typeEnd = optimizeColumns.includes('work_type') ? typeLimit.max : 0
-      for (
-        let venueWidth = venueStart;
-        venueWidth <= venueEnd;
-        venueWidth += venueStep
-      ) {
-        for (
-          let typeWidth = typeStart;
-          typeWidth <= typeEnd;
-          typeWidth += typeStep
+      const widthStepByColumn: Record<PublicationTableColumnKey, number> = {
+        title: 1,
+        year: 1,
+        venue: 12,
+        work_type: 12,
+        article_type: 10,
+        citations: 1,
+      }
+      const nonTitleOptimizeColumns = optimizeColumns.filter((column) => column !== 'title')
+      const optimizeWidthCandidates = nonTitleOptimizeColumns.map((column) => {
+        const limit = columnLimits[column]
+        const step = Math.max(1, widthStepByColumn[column] || 1)
+        const values: number[] = []
+        for (let width = limit.min; width <= limit.max; width += step) {
+          values.push(width)
+        }
+        if (values.length === 0 || values[values.length - 1] !== limit.max) {
+          values.push(limit.max)
+        }
+        return { column, values }
+      })
+      const remainingMinByIndex = new Array(optimizeWidthCandidates.length + 1).fill(0)
+      const remainingMaxByIndex = new Array(optimizeWidthCandidates.length + 1).fill(0)
+      for (let index = optimizeWidthCandidates.length - 1; index >= 0; index -= 1) {
+        const column = optimizeWidthCandidates[index].column
+        remainingMinByIndex[index] = remainingMinByIndex[index + 1] + columnLimits[column].min
+        remainingMaxByIndex[index] = remainingMaxByIndex[index + 1] + columnLimits[column].max
+      }
+      let bestScore = Number.POSITIVE_INFINITY
+      let bestTitleWidth = 0
+      let bestWidths: Partial<Record<PublicationTableColumnKey, number>> | null = null
+      const selectedWidths: Partial<Record<PublicationTableColumnKey, number>> = {}
+
+      const scoreCandidate = () => {
+        const candidateWidths: Partial<Record<PublicationTableColumnKey, number>> = { ...selectedWidths }
+        const nonTitleTotal = nonTitleOptimizeColumns.reduce((sum, column) => sum + (candidateWidths[column] || 0), 0)
+        if (optimizeColumns.includes('title')) {
+          const titleWidth = optimizeWidthBudget - nonTitleTotal
+          if (titleWidth < columnLimits.title.min || titleWidth > columnLimits.title.max) {
+            return
+          }
+          candidateWidths.title = titleWidth
+        } else if (nonTitleTotal !== optimizeWidthBudget) {
+          return
+        }
+
+        let score = 0
+        for (let index = 0; index < sample.length; index += 1) {
+          let rowLines = 1
+          for (const column of optimizeColumns) {
+            const width = candidateWidths[column] || measured[column]
+            const text = valuesByColumn[column][index] || ''
+            rowLines = Math.max(rowLines, estimateWrappedLineCount(text, width))
+          }
+          score += rowLines
+        }
+
+        const titleWidth = candidateWidths.title || measured.title
+        score += Math.max(0, Math.ceil((520 - titleWidth) / 16))
+
+        const articleTypeWidth = candidateWidths.article_type || measured.article_type
+        score += Math.max(0, Math.ceil((176 - articleTypeWidth) / 20))
+
+        if (
+          score < bestScore ||
+          (score === bestScore && titleWidth > bestTitleWidth)
         ) {
-          const titleWidth = optimizeWidthBudget - venueWidth - typeWidth
-          if (titleWidth < titleLimit.min || titleWidth > titleLimit.max) {
-            continue
-          }
-          let score = 0
-          for (let index = 0; index < sample.length; index += 1) {
-            const titleText = valuesByColumn.title[index] || ''
-            const venueText = valuesByColumn.venue[index] || ''
-            const typeText = valuesByColumn.work_type[index] || ''
-            const rowLines = Math.max(
-              estimateWrappedLineCount(titleText, titleWidth),
-              estimateWrappedLineCount(venueText, venueWidth),
-              estimateWrappedLineCount(typeText, typeWidth),
-            )
-            score += rowLines
-          }
-          score += Math.max(0, Math.ceil((480 - titleWidth) / 14))
-          if (best === null || score < best.score || (score === best.score && titleWidth > best.title)) {
-            best = {
-              title: titleWidth,
-              venue: venueWidth,
-              work_type: typeWidth,
-              score,
-            }
-          }
+          bestScore = score
+          bestTitleWidth = titleWidth
+          bestWidths = candidateWidths
         }
       }
-      if (best) {
-        if (optimizeColumns.includes('title')) {
-          measured.title = best.title
+
+      const searchWidths = (index: number, usedWidth: number) => {
+        if (index >= optimizeWidthCandidates.length) {
+          scoreCandidate()
+          return
         }
-        if (optimizeColumns.includes('venue')) {
-          measured.venue = best.venue
+        const entry = optimizeWidthCandidates[index]
+        const remainingMin = remainingMinByIndex[index + 1]
+        const remainingMax = remainingMaxByIndex[index + 1]
+        for (const width of entry.values) {
+          const nextUsed = usedWidth + width
+          if (nextUsed + remainingMin > optimizeWidthBudget) {
+            continue
+          }
+          if (nextUsed + remainingMax < optimizeWidthBudget) {
+            continue
+          }
+          selectedWidths[entry.column] = width
+          searchWidths(index + 1, nextUsed)
         }
-        if (optimizeColumns.includes('work_type')) {
-          measured.work_type = best.work_type
+      }
+
+      if (optimizeWidthCandidates.length > 0) {
+        searchWidths(0, 0)
+      } else {
+        scoreCandidate()
+      }
+      if (bestWidths) {
+        for (const column of optimizeColumns) {
+          const nextWidth = bestWidths[column]
+          if (typeof nextWidth === 'number' && Number.isFinite(nextWidth)) {
+            measured[column] = Math.round(nextWidth)
+          }
         }
       }
     }
@@ -1187,7 +1242,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [publicationTableColumns, setPublicationTableColumns] = useState<Record<PublicationTableColumnKey, PublicationTableColumnPreference>>(
     () => createDefaultPublicationTableColumnPreferences(),
   )
-  const [columnSettingsOpen, setColumnSettingsOpen] = useState(false)
   const [sortField, setSortField] = useState<PublicationSortField>('year')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null)
@@ -1224,7 +1278,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const filesWarmupCompletedRef = useRef<Set<string>>(new Set())
   const autoOaStatusClearTimerRef = useRef<number | null>(null)
   const publicationTableLayoutRef = useRef<HTMLDivElement | null>(null)
-  const columnSettingsRef = useRef<HTMLDivElement | null>(null)
   const filePickerRef = useRef<HTMLInputElement | null>(null)
 
   const loadData = useCallback(async (
@@ -1359,25 +1412,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     savePublicationsOaStatus(user.id, oaPdfStatusByWorkId)
   }, [oaPdfStatusByWorkId, user?.id])
-
-  useEffect(() => {
-    if (!columnSettingsOpen) {
-      return
-    }
-    const onWindowMouseDown = (event: MouseEvent) => {
-      const root = columnSettingsRef.current
-      if (!root) {
-        return
-      }
-      if (event.target instanceof Node && !root.contains(event.target)) {
-        setColumnSettingsOpen(false)
-      }
-    }
-    window.addEventListener('mousedown', onWindowMouseDown)
-    return () => {
-      window.removeEventListener('mousedown', onWindowMouseDown)
-    }
-  }, [columnSettingsOpen])
 
   useEffect(() => {
     const node = publicationTableLayoutRef.current
@@ -1808,8 +1842,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     PUBLICATION_TABLE_COLUMN_ORDER.filter((key) => publicationTableColumns[key].visible)
   ), [publicationTableColumns])
 
-  const visiblePublicationTableColumnCount = visiblePublicationTableColumns.length
-
   useEffect(() => {
     const sortColumn = sortField as PublicationTableColumnKey
     if (publicationTableColumns[sortColumn]?.visible) {
@@ -1823,53 +1855,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     setSortField(PUBLICATION_TABLE_COLUMN_DEFINITIONS[fallbackColumn].sortField)
   }, [publicationTableColumns, sortField])
-
-  const onTogglePublicationTableColumnVisibility = (column: PublicationTableColumnKey) => {
-    setPublicationTableColumns((current) => {
-      const visibleCount = PUBLICATION_TABLE_COLUMN_ORDER.filter((key) => current[key].visible).length
-      if (current[column].visible && visibleCount <= 1) {
-        return current
-      }
-      return {
-        ...current,
-        [column]: {
-          ...current[column],
-          visible: !current[column].visible,
-        },
-      }
-    })
-  }
-
-  const onPublicationTableColumnAlignChange = (
-    column: PublicationTableColumnKey,
-    align: PublicationTableColumnAlign,
-  ) => {
-    setPublicationTableColumns((current) => ({
-      ...current,
-      [column]: {
-        ...current[column],
-        align,
-      },
-    }))
-  }
-
-  const onPublicationTableColumnWidthChange = (column: PublicationTableColumnKey, value: string) => {
-    const numeric = Number(value)
-    setPublicationTableColumns((current) => ({
-      ...current,
-      [column]: {
-        ...current[column],
-        width: clampPublicationTableColumnWidth(
-          numeric,
-          current[column].width,
-        ),
-      },
-    }))
-  }
-
-  const onResetPublicationTableColumns = () => {
-    setPublicationTableColumns(createDefaultPublicationTableColumnPreferences())
-  }
 
   useEffect(() => {
     if (filteredWorks.length === 0) {
@@ -2491,67 +2476,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 </div>
               ) : (
                 <div ref={publicationTableLayoutRef} className="relative w-full">
-                  <div ref={columnSettingsRef} className="absolute right-0 -top-9 z-20">
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="outline"
-                      aria-label="Column settings"
-                      title="Columns"
-                      onClick={() => setColumnSettingsOpen((current) => !current)}
-                    >
-                      <SlidersHorizontal className="h-4 w-4" />
-                    </Button>
-                    {columnSettingsOpen ? (
-                      <div className="absolute right-0 mt-2 w-sz-360 max-w-[calc(100vw-3rem)] rounded-md border border-[hsl(var(--stroke-strong)/0.96)] bg-background p-3 shadow-sm">
-                        <div className="mb-2 flex items-center justify-between">
-                          <p className="text-xs font-semibold uppercase tracking-[0.05em] text-muted-foreground">Table columns</p>
-                          <Button type="button" size="sm" variant="outline" onClick={onResetPublicationTableColumns}>Reset</Button>
-                        </div>
-                        <div className="space-y-1">
-                          {PUBLICATION_TABLE_COLUMN_ORDER.map((columnKey) => {
-                            const definition = PUBLICATION_TABLE_COLUMN_DEFINITIONS[columnKey]
-                            const preference = publicationTableColumns[columnKey]
-                            const disableHide = preference.visible && visiblePublicationTableColumnCount <= 1
-                            return (
-                              <div key={`table-column-setting-${columnKey}`} className="grid grid-cols-[minmax(0,1fr)_96px_88px] items-center gap-2">
-                                <label className="inline-flex items-center gap-2 text-xs font-medium text-foreground">
-                                  <input
-                                    type="checkbox"
-                                    checked={preference.visible}
-                                    onChange={() => onTogglePublicationTableColumnVisibility(columnKey)}
-                                    disabled={disableHide}
-                                    className="h-4 w-4 rounded border-border accent-[hsl(var(--tone-accent-700))]"
-                                  />
-                                  <span>{definition.label}</span>
-                                </label>
-                                <select
-                                  value={preference.align}
-                                  onChange={(event) => onPublicationTableColumnAlignChange(columnKey, parsePublicationTableColumnAlign(event.target.value))}
-                                  className={`h-8 rounded-md px-2 text-xs ${HOUSE_SELECT_CLASS}`}
-                                >
-                                  <option value="left">Left</option>
-                                  <option value="center">Center</option>
-                                  <option value="right">Right</option>
-                                </select>
-                                <Input
-                                  type="number"
-                                  min={PUBLICATION_TABLE_COLUMN_WIDTH_MIN}
-                                  max={PUBLICATION_TABLE_COLUMN_WIDTH_MAX}
-                                  step={8}
-                                  value={preference.width}
-                                  onChange={(event) => onPublicationTableColumnWidthChange(columnKey, event.target.value)}
-                                  className="h-8 text-xs"
-                                />
-                              </div>
-                            )
-                          })}
-                        </div>
-                        <p className="mt-2 text-[11px] text-muted-foreground">At least one column stays visible.</p>
-                      </div>
-                    ) : null}
-                  </div>
-                  <Table className="min-w-sz-760 table-fixed">
+                  <Table
+                    className="min-w-sz-760 table-fixed"
+                    data-house-no-column-resize="true"
+                    data-house-no-column-controls="true"
+                  >
                     <colgroup>
                       {visiblePublicationTableColumns.map((columnKey) => {
                         const width = publicationTableColumns[columnKey].width
@@ -2609,7 +2538,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               const alignClass = publicationTableColumnAlignClass(preference.align)
                               if (columnKey === 'title') {
                                 return (
-                                  <TableCell key={`${work.id}-${columnKey}`} className={`font-medium ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
+                                  <TableCell key={`${work.id}-${columnKey}`} className={`align-top font-medium ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
                                     <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-1.5">
                                       {oaVisualStatus === 'available' && oaDownloadUrl ? (
                                         <button
@@ -2632,35 +2561,35 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                           )}
                                         </span>
                                       )}
-                                      <span className="min-w-0 whitespace-normal break-words leading-snug">{work.title}</span>
+                                      <span className="min-w-0 whitespace-normal break-words leading-tight">{work.title}</span>
                                     </div>
                                   </TableCell>
                                 )
                               }
                               if (columnKey === 'year') {
                                 return (
-                                  <TableCell key={`${work.id}-${columnKey}`} className={`font-semibold ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
+                                  <TableCell key={`${work.id}-${columnKey}`} className={`align-top font-semibold whitespace-normal break-words leading-tight ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
                                     {work.year ?? 'n/a'}
                                   </TableCell>
                                 )
                               }
                               if (columnKey === 'venue') {
                                 return (
-                                  <TableCell key={`${work.id}-${columnKey}`} className={`font-medium ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
+                                  <TableCell key={`${work.id}-${columnKey}`} className={`align-top font-medium whitespace-normal break-words leading-tight ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
                                     {formatJournalName(work.venue_name) || 'n/a'}
                                   </TableCell>
                                 )
                               }
                               if (columnKey === 'work_type') {
                                 return (
-                                  <TableCell key={`${work.id}-${columnKey}`} className={`${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
+                                  <TableCell key={`${work.id}-${columnKey}`} className={`align-top whitespace-normal break-words leading-tight ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
                                     {derivePublicationTypeLabel(work)}
                                   </TableCell>
                                 )
                               }
                               if (columnKey === 'article_type') {
                                 return (
-                                  <TableCell key={`${work.id}-${columnKey}`} className={`${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
+                                  <TableCell key={`${work.id}-${columnKey}`} className={`align-top whitespace-normal break-words leading-tight ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
                                     {deriveArticleTypeLabel(work)}
                                   </TableCell>
                                 )
@@ -2668,7 +2597,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               return (
                                 <TableCell
                                   key={`${work.id}-${columnKey}`}
-                                  className={`${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass} transition-colors ${citationCellTone(
+                                  className={`align-top whitespace-normal break-words leading-tight ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass} transition-colors ${citationCellTone(
                                     metrics?.citations ?? 0,
                                     hIndex,
                                   )}`}

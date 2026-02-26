@@ -465,6 +465,51 @@ const dataLibraryFixture: WorkspacesPageFixture = {
   initialRoute: '/workspaces?view=data-library',
 }
 
+const dataLibraryWithCollaboratorsFixture: WorkspacesPageFixture = {
+  ...dataRichFixture,
+  initialRoute: '/workspaces?view=data-library',
+  libraryAssets: [
+    ...dataRichFixture.libraryAssets,
+    {
+      id: 'lib-asset-06',
+      owner_user_id: STORYBOOK_USER_ID,
+      owner_name: 'Ciaran Clarke',
+      project_id: 'project-4d-flow-rhc-paper',
+      filename: 'rhc_quality_flags_v3.csv',
+      kind: 'csv',
+      mime_type: 'text/csv',
+      byte_size: 164338,
+      uploaded_at: '2026-02-25T21:42:00Z',
+      shared_with_user_ids: ['user-j-meyer', 'user-n-brooks', 'user-a-patel'],
+      shared_with: [
+        { user_id: 'user-j-meyer', name: 'J. Meyer' },
+        { user_id: 'user-n-brooks', name: 'N. Brooks' },
+        { user_id: 'user-a-patel', name: 'A. Patel' },
+      ],
+      can_manage_access: true,
+    },
+    {
+      id: 'lib-asset-07',
+      owner_user_id: STORYBOOK_USER_ID,
+      owner_name: 'Ciaran Clarke',
+      project_id: 'project-echo-ai-validation',
+      filename: 'echo_validation_subset.tsv',
+      kind: 'tsv',
+      mime_type: 'text/tab-separated-values',
+      byte_size: 487521,
+      uploaded_at: '2026-02-25T20:11:00Z',
+      shared_with_user_ids: ['user-s-wong', 'user-p-green', 'user-k-allen', 'user-i-ahmed'],
+      shared_with: [
+        { user_id: 'user-s-wong', name: 'S. Wong' },
+        { user_id: 'user-p-green', name: 'P. Green' },
+        { user_id: 'user-k-allen', name: 'K. Allen' },
+        { user_id: 'user-i-ahmed', name: 'I. Ahmed' },
+      ],
+      can_manage_access: true,
+    },
+  ],
+}
+
 function cloneLibraryAsset(asset: LibraryAssetRecord): LibraryAssetRecord {
   return {
     ...asset,
@@ -935,6 +980,12 @@ export const DataRichPortfolio: Story = {
 export const DataLibrary: Story = {
   args: {
     fixture: dataLibraryFixture,
+  },
+}
+
+export const DataLibraryWithCollaboratorsFullPage: Story = {
+  args: {
+    fixture: dataLibraryWithCollaboratorsFixture,
   },
 }
 
