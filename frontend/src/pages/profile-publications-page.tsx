@@ -74,11 +74,11 @@ const PUBLICATION_TABLE_COLUMN_DEFINITIONS: Record<PublicationTableColumnKey, { 
   citations: { label: 'Citations', sortField: 'citations' },
 }
 const PUBLICATION_TABLE_COLUMN_DEFAULTS: Record<PublicationTableColumnKey, PublicationTableColumnPreference> = {
-  title: { visible: true, align: 'center', width: 360 },
-  year: { visible: true, align: 'center', width: 92 },
-  venue: { visible: true, align: 'center', width: 280 },
-  work_type: { visible: true, align: 'center', width: 200 },
-  citations: { visible: true, align: 'center', width: 120 },
+  title: { visible: true, align: 'left', width: 360 },
+  year: { visible: true, align: 'left', width: 92 },
+  venue: { visible: true, align: 'left', width: 280 },
+  work_type: { visible: true, align: 'left', width: 200 },
+  citations: { visible: true, align: 'left', width: 120 },
 }
 const PUBLICATION_TABLE_COLUMN_WIDTH_MIN = 80
 const PUBLICATION_TABLE_COLUMN_WIDTH_MAX = 640
@@ -399,7 +399,7 @@ function parsePublicationTableColumnAlign(value: unknown): PublicationTableColum
   if (clean === 'center' || clean === 'right' || clean === 'left') {
     return clean
   }
-  return 'center'
+  return 'left'
 }
 
 function createDefaultPublicationTableColumnPreferences(): Record<PublicationTableColumnKey, PublicationTableColumnPreference> {
@@ -429,9 +429,11 @@ function loadPublicationTableColumnPreferences(userId: string): Record<Publicati
         continue
       }
       const payload = candidate as Record<string, unknown>
+      const parsedAlign = parsePublicationTableColumnAlign(payload.align)
       defaults[key] = {
         visible: payload.visible !== false,
-        align: parsePublicationTableColumnAlign(payload.align),
+        // Migrate prior centered defaults to left alignment for visual consistency.
+        align: parsedAlign === 'center' ? 'left' : parsedAlign,
         width: clampPublicationTableColumnWidth(
           Number(payload.width || PUBLICATION_TABLE_COLUMN_DEFAULTS[key].width),
           PUBLICATION_TABLE_COLUMN_DEFAULTS[key].width,
@@ -1046,7 +1048,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [impactCacheByWorkId, setImpactCacheByWorkId] = useState<Record<string, PublicationImpactResponsePayload>>({})
   const [aiCacheByWorkId, setAiCacheByWorkId] = useState<Record<string, PublicationAiInsightsResponsePayload>>({})
   const [filesCacheByWorkId, setFilesCacheByWorkId] = useState<Record<string, PublicationFilesListPayload>>({})
-  const [paneLoadingByKey, setPaneLoadingByKey] = useState<Record<string, boolean>>({})
+  const [, setPaneLoadingByKey] = useState<Record<string, boolean>>({})
   const [paneErrorByKey, setPaneErrorByKey] = useState<Record<string, string>>({})
   const [expandedAbstractByWorkId, setExpandedAbstractByWorkId] = useState<Record<string, boolean>>({})
   const [contentModeByWorkId, setContentModeByWorkId] = useState<Record<string, 'plain' | 'highlighted'>>({})
@@ -1058,6 +1060,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null)
   const [filesDragOver, setFilesDragOver] = useState(false)
   const autoOaInFlightRef = useRef(false)
+  const filesWarmupInFlightRef = useRef<Set<string>>(new Set())
+  const filesWarmupCompletedRef = useRef<Set<string>>(new Set())
   const autoOaStatusClearTimerRef = useRef<number | null>(null)
   const publicationTableLayoutRef = useRef<HTMLDivElement | null>(null)
   const columnSettingsRef = useRef<HTMLDivElement | null>(null)
@@ -1855,6 +1859,61 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
   }, [isFixtureMode, personaState?.works, token, user?.id])
 
+  useEffect(() => {
+    if (isFixtureMode || !token) {
+      return
+    }
+    const works = personaState?.works ?? []
+    if (works.length === 0) {
+      return
+    }
+
+    let cancelled = false
+    const warmFilesInBackground = async () => {
+      for (const work of works) {
+        if (cancelled) {
+          break
+        }
+        const workId = String(work.id || '').trim()
+        if (!workId) {
+          continue
+        }
+        if (
+          filesCacheByWorkId[workId] ||
+          filesWarmupCompletedRef.current.has(workId) ||
+          filesWarmupInFlightRef.current.has(workId)
+        ) {
+          if (filesCacheByWorkId[workId]) {
+            filesWarmupCompletedRef.current.add(workId)
+          }
+          continue
+        }
+
+        filesWarmupInFlightRef.current.add(workId)
+        try {
+          await loadPublicationFilesData(workId)
+        } catch {
+          // Ignore warmup errors; explicit tab loads will still surface errors.
+        } finally {
+          filesWarmupInFlightRef.current.delete(workId)
+          filesWarmupCompletedRef.current.add(workId)
+        }
+
+        if (cancelled) {
+          break
+        }
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 120)
+        })
+      }
+    }
+
+    void warmFilesInBackground()
+    return () => {
+      cancelled = true
+    }
+  }, [filesCacheByWorkId, isFixtureMode, loadPublicationFilesData, personaState?.works, token])
+
   const selectedWork = useMemo(() => {
     if (!selectedWorkId) {
       return null
@@ -1983,9 +2042,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setSortDirection('desc')
   }
 
-  const activePaneLoading = selectedWorkId
-    ? Boolean(paneLoadingByKey[publicationPaneKey(selectedWorkId, activeDetailTab)])
-    : false
   const activePaneError = selectedWorkId
     ? paneErrorByKey[publicationPaneKey(selectedWorkId, activeDetailTab)] || ''
     : ''
@@ -2210,7 +2266,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         <CardHeader className="pb-2">
           <h2 className={publicationsHouseHeadings.sectionTitle}>Publication library</h2>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <Input
               value={query}
@@ -2242,73 +2298,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               ))}
             </select>
           </div>
-          {filteredWorks.length > 0 ? (
-            <div className="flex justify-end">
-              <div ref={columnSettingsRef} className="relative">
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="outline"
-                  aria-label="Column settings"
-                  title="Column settings"
-                  onClick={() => setColumnSettingsOpen((current) => !current)}
-                >
-                  <SlidersHorizontal className="h-4 w-4" />
-                </Button>
-                {columnSettingsOpen ? (
-                  <div className="absolute right-0 mt-2 w-sz-360 max-w-[calc(100vw-3rem)] rounded-md border border-[hsl(var(--stroke-strong)/0.96)] bg-background p-3 shadow-sm">
-                    <div className="mb-2 flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-[0.05em] text-muted-foreground">Table columns</p>
-                      <Button type="button" size="sm" variant="outline" onClick={onResetPublicationTableColumns}>Reset</Button>
-                    </div>
-                    <div className="space-y-1">
-                      {PUBLICATION_TABLE_COLUMN_ORDER.map((columnKey) => {
-                        const definition = PUBLICATION_TABLE_COLUMN_DEFINITIONS[columnKey]
-                        const preference = publicationTableColumns[columnKey]
-                        const disableHide = preference.visible && visiblePublicationTableColumnCount <= 1
-                        return (
-                          <div key={`table-column-setting-${columnKey}`} className="grid grid-cols-[minmax(0,1fr)_96px_88px] items-center gap-2">
-                            <label className="inline-flex items-center gap-2 text-xs font-medium text-foreground">
-                              <input
-                                type="checkbox"
-                                checked={preference.visible}
-                                onChange={() => onTogglePublicationTableColumnVisibility(columnKey)}
-                                disabled={disableHide}
-                                className="h-4 w-4 rounded border-border accent-[hsl(var(--tone-accent-700))]"
-                              />
-                              <span>{definition.label}</span>
-                            </label>
-                            <select
-                              value={preference.align}
-                              onChange={(event) => onPublicationTableColumnAlignChange(columnKey, parsePublicationTableColumnAlign(event.target.value))}
-                              className={`h-8 rounded-md px-2 text-xs ${HOUSE_SELECT_CLASS}`}
-                            >
-                              <option value="left">Left</option>
-                              <option value="center">Center</option>
-                              <option value="right">Right</option>
-                            </select>
-                            <Input
-                              type="number"
-                              min={PUBLICATION_TABLE_COLUMN_WIDTH_MIN}
-                              max={PUBLICATION_TABLE_COLUMN_WIDTH_MAX}
-                              step={8}
-                              value={preference.width}
-                              onChange={(event) => onPublicationTableColumnWidthChange(columnKey, event.target.value)}
-                              className="h-8 text-xs"
-                            />
-                          </div>
-                        )
-                      })}
-                    </div>
-                    <p className="mt-2 text-[11px] text-muted-foreground">At least one column stays visible.</p>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
-            <div className="space-y-3">
+          <div className="grid items-start gap-2 xl:grid-cols-[minmax(0,2.45fr)_minmax(360px,1fr)]">
+            <div className="space-y-2">
 
               {filteredWorks.length === 0 ? (
                 <div className="rounded border border-dashed border-border p-4 text-sm text-muted-foreground">
@@ -2320,7 +2311,67 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   </ol>
                 </div>
               ) : (
-                <div ref={publicationTableLayoutRef} className="space-y-2">
+                <div ref={publicationTableLayoutRef} className="relative">
+                  <div ref={columnSettingsRef} className="absolute right-0 -top-10 z-20">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      aria-label="Column settings"
+                      title="Column settings"
+                      onClick={() => setColumnSettingsOpen((current) => !current)}
+                    >
+                      <SlidersHorizontal className="h-4 w-4" />
+                    </Button>
+                    {columnSettingsOpen ? (
+                      <div className="absolute right-0 mt-2 w-sz-360 max-w-[calc(100vw-3rem)] rounded-md border border-[hsl(var(--stroke-strong)/0.96)] bg-background p-3 shadow-sm">
+                        <div className="mb-2 flex items-center justify-between">
+                          <p className="text-xs font-semibold uppercase tracking-[0.05em] text-muted-foreground">Table columns</p>
+                          <Button type="button" size="sm" variant="outline" onClick={onResetPublicationTableColumns}>Reset</Button>
+                        </div>
+                        <div className="space-y-1">
+                          {PUBLICATION_TABLE_COLUMN_ORDER.map((columnKey) => {
+                            const definition = PUBLICATION_TABLE_COLUMN_DEFINITIONS[columnKey]
+                            const preference = publicationTableColumns[columnKey]
+                            const disableHide = preference.visible && visiblePublicationTableColumnCount <= 1
+                            return (
+                              <div key={`table-column-setting-${columnKey}`} className="grid grid-cols-[minmax(0,1fr)_96px_88px] items-center gap-2">
+                                <label className="inline-flex items-center gap-2 text-xs font-medium text-foreground">
+                                  <input
+                                    type="checkbox"
+                                    checked={preference.visible}
+                                    onChange={() => onTogglePublicationTableColumnVisibility(columnKey)}
+                                    disabled={disableHide}
+                                    className="h-4 w-4 rounded border-border accent-[hsl(var(--tone-accent-700))]"
+                                  />
+                                  <span>{definition.label}</span>
+                                </label>
+                                <select
+                                  value={preference.align}
+                                  onChange={(event) => onPublicationTableColumnAlignChange(columnKey, parsePublicationTableColumnAlign(event.target.value))}
+                                  className={`h-8 rounded-md px-2 text-xs ${HOUSE_SELECT_CLASS}`}
+                                >
+                                  <option value="left">Left</option>
+                                  <option value="center">Center</option>
+                                  <option value="right">Right</option>
+                                </select>
+                                <Input
+                                  type="number"
+                                  min={PUBLICATION_TABLE_COLUMN_WIDTH_MIN}
+                                  max={PUBLICATION_TABLE_COLUMN_WIDTH_MAX}
+                                  step={8}
+                                  value={preference.width}
+                                  onChange={(event) => onPublicationTableColumnWidthChange(columnKey, event.target.value)}
+                                  className="h-8 text-xs"
+                                />
+                              </div>
+                            )
+                          })}
+                        </div>
+                        <p className="mt-2 text-[11px] text-muted-foreground">At least one column stays visible.</p>
+                      </div>
+                    ) : null}
+                  </div>
                   <Table className="min-w-sz-760 table-fixed">
                     <colgroup>
                       {visiblePublicationTableColumns.map((columnKey) => {
@@ -2343,14 +2394,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           return (
                             <TableHead
                               key={`table-head-${columnKey}`}
-                              className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-center`}
+                              className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}
                             >
                               <SortHeader
                                 label={definition.label}
                                 column={definition.sortField}
                                 sortField={sortField}
                                 sortDirection={sortDirection}
-                                align="center"
+                                align="left"
                                 onSort={onSortColumn}
                               />
                             </TableHead>
@@ -2371,7 +2422,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         return (
                           <TableRow
                             key={work.id}
-                            onClick={() => setSelectedWorkId(work.id)}
+                            onClick={() => {
+                              if (activeDetailTab === 'files') {
+                                void loadPublicationFilesData(work.id)
+                              }
+                              setSelectedWorkId(work.id)
+                            }}
                             className={`cursor-pointer ${isSelected ? 'bg-emerald-50/70' : 'hover:bg-accent/30'}`}
                           >
                             {visiblePublicationTableColumns.map((columnKey) => {
@@ -2473,9 +2529,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       <div className={`space-y-3 ${HOUSE_PUBLICATION_DETAIL_BODY_CLASS}`}>
                         {activePaneError ? (
                           <p className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-700">{activePaneError}</p>
-                        ) : null}
-                        {activePaneLoading ? (
-                          <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_PUBLICATIONS_CLASS} text-xs`}>Loading...</p>
                         ) : null}
 
                         <TabsContent value="overview" className="space-y-3">
