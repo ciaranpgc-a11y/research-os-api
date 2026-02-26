@@ -2,6 +2,34 @@
 
 ## 2026-02-26
 
+### Admin Reconcile Error Tracker + Diagnostic Audit Detail
+
+- **Area:** Admin troubleshooting for user-library reconcile failures.
+- **What changed:**
+- Hardened `admin_reconcile_user_library(...)` to always write an audit event on failure (`user_library_reconcile`, `status=failure`) with structured error metadata (`error_type`, `error_detail`, traceback tail, and pre-reconcile diagnostics snapshot).
+- Added new diagnostics collector `collect_library_reconcile_diagnostics(...)` in `data_planner_service` so reconcile actions capture and expose:
+  - storage root resolution and presence,
+  - metadata index/sidecar counts,
+  - DB asset ownership counts (owned/related/ownerless/shared).
+- Extended reconcile success events and API responses with diagnostics payload (`before`, `after`, `no_changes_detected`) so admin can distinguish real recovery from no-op runs.
+- Upgraded admin UI with:
+  - a **Reconcile tracker** table in Users,
+  - richer **Audit log** details column that surfaces reconcile error reasons and success counters.
+- Added integration coverage for reconcile failure auditing (`RuntimeError` path) to prevent silent regressions.
+- **Why it changed:**
+- Provide a direct admin-visible reason when reconcile fails or performs no changes, instead of opaque success/failure states.
+- **Key files touched:**
+- `src/research_os/services/data_planner_service.py`
+- `src/research_os/services/admin_service.py`
+- `src/research_os/api/schemas.py`
+- `frontend/src/pages/admin-page.tsx`
+- `frontend/src/types/impact.ts`
+- `tests/test_api.py`
+- **Verification performed:**
+- `python -m py_compile src/research_os/services/data_planner_service.py src/research_os/services/admin_service.py src/research_os/api/schemas.py tests/test_api.py`
+- `pytest tests/test_api.py -k "admin_endpoints or admin_user_library_reconcile_failure_is_audited" -q`
+- `npm --prefix frontend run --silent typecheck`
+
 ### Admin User Library Recovery Controls + Identity Visibility
 
 - **Area:** Admin diagnostics for account-linked data recovery and identity consistency.

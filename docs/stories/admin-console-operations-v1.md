@@ -94,6 +94,10 @@ Out of scope (v1):
   - per-user `Reconcile library` control in Users table with status feedback,
   - per-user `Delete account` control in Users table for duplicate/invalid account cleanup,
   - Users table now surfaces `User ID` and `Account key` for identity-link diagnostics.
+- Added reconcile error tracker instrumentation:
+  - reconcile failures now persist structured audit metadata (`error_type`, `error_detail`, traceback tail, diagnostics-before snapshot),
+  - reconcile success payload includes diagnostics (`before`, `after`, `no_changes_detected`),
+  - Users section now includes a `Reconcile tracker` table and Security audit table now surfaces metadata details.
 - Updated bootstrap seed behavior so startup bootstrap no longer overwrites an existing user name unless explicitly enabled via `AAWE_BOOTSTRAP_SYNC_NAME=1`.
 
 ## Verification
