@@ -110,7 +110,6 @@ const HOUSE_PUBLICATION_DETAIL_TAB_CLASS = publicationsHouseDetail.tab
 const HOUSE_PUBLICATION_DETAIL_BODY_CLASS = publicationsHouseDetail.body
 const HOUSE_PUBLICATION_DETAIL_SECTION_CLASS = publicationsHouseDetail.section
 const HOUSE_PUBLICATION_DETAIL_LABEL_CLASS = publicationsHouseDetail.sectionLabel
-const HOUSE_PUBLICATION_DETAIL_META_CHIP_CLASS = publicationsHouseDetail.metaChip
 const HOUSE_PUBLICATION_DETAIL_INFO_CLASS = publicationsHouseDetail.info
 
 const WORK_TYPE_LABELS: Record<string, string> = {
@@ -2243,11 +2242,69 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               ))}
             </select>
           </div>
-          {autoOaStatus ? (
-            <p className="text-xs text-muted-foreground">
-              {autoOaStatus}
-              {autoOaFinding ? ' (running in background)' : ''}
-            </p>
+          {filteredWorks.length > 0 ? (
+            <div className="flex justify-end">
+              <div ref={columnSettingsRef} className="relative">
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  aria-label="Column settings"
+                  title="Column settings"
+                  onClick={() => setColumnSettingsOpen((current) => !current)}
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                </Button>
+                {columnSettingsOpen ? (
+                  <div className="absolute right-0 mt-2 w-sz-360 max-w-[calc(100vw-3rem)] rounded-md border border-[hsl(var(--stroke-strong)/0.96)] bg-background p-3 shadow-sm">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-xs font-semibold uppercase tracking-[0.05em] text-muted-foreground">Table columns</p>
+                      <Button type="button" size="sm" variant="outline" onClick={onResetPublicationTableColumns}>Reset</Button>
+                    </div>
+                    <div className="space-y-1">
+                      {PUBLICATION_TABLE_COLUMN_ORDER.map((columnKey) => {
+                        const definition = PUBLICATION_TABLE_COLUMN_DEFINITIONS[columnKey]
+                        const preference = publicationTableColumns[columnKey]
+                        const disableHide = preference.visible && visiblePublicationTableColumnCount <= 1
+                        return (
+                          <div key={`table-column-setting-${columnKey}`} className="grid grid-cols-[minmax(0,1fr)_96px_88px] items-center gap-2">
+                            <label className="inline-flex items-center gap-2 text-xs font-medium text-foreground">
+                              <input
+                                type="checkbox"
+                                checked={preference.visible}
+                                onChange={() => onTogglePublicationTableColumnVisibility(columnKey)}
+                                disabled={disableHide}
+                                className="h-4 w-4 rounded border-border accent-[hsl(var(--tone-accent-700))]"
+                              />
+                              <span>{definition.label}</span>
+                            </label>
+                            <select
+                              value={preference.align}
+                              onChange={(event) => onPublicationTableColumnAlignChange(columnKey, parsePublicationTableColumnAlign(event.target.value))}
+                              className={`h-8 rounded-md px-2 text-xs ${HOUSE_SELECT_CLASS}`}
+                            >
+                              <option value="left">Left</option>
+                              <option value="center">Center</option>
+                              <option value="right">Right</option>
+                            </select>
+                            <Input
+                              type="number"
+                              min={PUBLICATION_TABLE_COLUMN_WIDTH_MIN}
+                              max={PUBLICATION_TABLE_COLUMN_WIDTH_MAX}
+                              step={8}
+                              value={preference.width}
+                              onChange={(event) => onPublicationTableColumnWidthChange(columnKey, event.target.value)}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <p className="mt-2 text-[11px] text-muted-foreground">At least one column stays visible.</p>
+                  </div>
+                ) : null}
+              </div>
+            </div>
           ) : null}
 
           <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
@@ -2264,68 +2321,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 </div>
               ) : (
                 <div ref={publicationTableLayoutRef} className="space-y-2">
-                  <div className="sticky top-2 z-20 flex justify-end">
-                    <div ref={columnSettingsRef} className="relative">
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="outline"
-                        aria-label="Column settings"
-                        title="Column settings"
-                        onClick={() => setColumnSettingsOpen((current) => !current)}
-                      >
-                        <SlidersHorizontal className="h-4 w-4" />
-                      </Button>
-                      {columnSettingsOpen ? (
-                        <div className="absolute right-0 mt-2 w-sz-360 max-w-[calc(100vw-3rem)] rounded-md border border-[hsl(var(--stroke-strong)/0.96)] bg-background p-3 shadow-sm">
-                          <div className="mb-2 flex items-center justify-between">
-                            <p className="text-xs font-semibold uppercase tracking-[0.05em] text-muted-foreground">Table columns</p>
-                            <Button type="button" size="sm" variant="outline" onClick={onResetPublicationTableColumns}>Reset</Button>
-                          </div>
-                          <div className="space-y-1">
-                            {PUBLICATION_TABLE_COLUMN_ORDER.map((columnKey) => {
-                              const definition = PUBLICATION_TABLE_COLUMN_DEFINITIONS[columnKey]
-                              const preference = publicationTableColumns[columnKey]
-                              const disableHide = preference.visible && visiblePublicationTableColumnCount <= 1
-                              return (
-                                <div key={`table-column-setting-${columnKey}`} className="grid grid-cols-[minmax(0,1fr)_96px_88px] items-center gap-2">
-                                  <label className="inline-flex items-center gap-2 text-xs font-medium text-foreground">
-                                    <input
-                                      type="checkbox"
-                                      checked={preference.visible}
-                                      onChange={() => onTogglePublicationTableColumnVisibility(columnKey)}
-                                      disabled={disableHide}
-                                      className="h-4 w-4 rounded border-border accent-[hsl(var(--tone-accent-700))]"
-                                    />
-                                    <span>{definition.label}</span>
-                                  </label>
-                                  <select
-                                    value={preference.align}
-                                    onChange={(event) => onPublicationTableColumnAlignChange(columnKey, parsePublicationTableColumnAlign(event.target.value))}
-                                    className={`h-8 rounded-md px-2 text-xs ${HOUSE_SELECT_CLASS}`}
-                                  >
-                                    <option value="left">Left</option>
-                                    <option value="center">Center</option>
-                                    <option value="right">Right</option>
-                                  </select>
-                                  <Input
-                                    type="number"
-                                    min={PUBLICATION_TABLE_COLUMN_WIDTH_MIN}
-                                    max={PUBLICATION_TABLE_COLUMN_WIDTH_MAX}
-                                    step={8}
-                                    value={preference.width}
-                                    onChange={(event) => onPublicationTableColumnWidthChange(columnKey, event.target.value)}
-                                    className="h-8 text-xs"
-                                  />
-                                </div>
-                              )
-                            })}
-                          </div>
-                          <p className="mt-2 text-[11px] text-muted-foreground">At least one column stays visible.</p>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
                   <Table className="min-w-sz-760 table-fixed">
                     <colgroup>
                       {visiblePublicationTableColumns.map((columnKey) => {
@@ -2466,17 +2461,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         <p className={HOUSE_PUBLICATION_DETAIL_TITLE_CLASS}>
                           {selectedDetail?.title || selectedWork.title}
                         </p>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                          <span className={HOUSE_PUBLICATION_DETAIL_META_CHIP_CLASS}>
-                            {detailYear ?? 'Year n/a'}
-                          </span>
-                          <span className={HOUSE_PUBLICATION_DETAIL_META_CHIP_CLASS}>
-                            {detailPublicationType || 'Type n/a'}
-                          </span>
-                          <span className={HOUSE_PUBLICATION_DETAIL_META_CHIP_CLASS}>
-                            {detailCitations} citations
-                          </span>
-                        </div>
                         <TabsList className={`mt-2 grid h-auto w-full grid-cols-5 gap-1 ${HOUSE_PUBLICATION_DETAIL_TABS_CLASS}`}>
                           <TabsTrigger value="overview" className={`text-micro ${HOUSE_PUBLICATION_DETAIL_TAB_CLASS}`}>Overview</TabsTrigger>
                           <TabsTrigger value="content" className={`text-micro ${HOUSE_PUBLICATION_DETAIL_TAB_CLASS}`}>Content</TabsTrigger>
@@ -2669,6 +2653,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       {error ? <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_DANGER_CLASS}`}>{error}</p> : null}
       {(loading || richImporting || syncing || fullSyncing) ? (
         <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_PUBLICATIONS_CLASS}`}>Working...</p>
+      ) : null}
+      {autoOaStatus ? (
+        <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_PUBLICATIONS_CLASS}`}>
+          {autoOaStatus}
+          {autoOaFinding ? ' (running in background)' : ''}
+        </p>
       ) : null}
     </section>
   )
