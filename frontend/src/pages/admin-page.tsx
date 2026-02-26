@@ -1427,6 +1427,371 @@ export function AdminPage() {
               </Card>
             ) : null}
 
+            {activeCapability.id === 'usage-costs' ? (
+              <>
+                <Card className="border-[hsl(var(--tone-neutral-200))]">
+                  <CardHeader className="pb-2">
+                    <CardTitle>Margin and limits snapshot</CardTitle>
+                    <CardDescription>Live token, call, cost, quota, and run-health telemetry.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <form className="flex flex-wrap items-center gap-2" onSubmit={onUsageSearch}>
+                      <div className="relative w-full max-w-md">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={usageQuery}
+                          onChange={(event) => setUsageQuery(event.target.value)}
+                          placeholder="Filter by org, plan, domain, or user"
+                          className="pl-9"
+                        />
+                      </div>
+                      <Button type="submit" disabled={loading}>
+                        {loading ? 'Loading...' : 'Apply filter'}
+                      </Button>
+                    </form>
+
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                      <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-muted-foreground">Tokens (month)</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                          {formatInteger(usageSummary?.tokens_current_month || 0)}
+                        </p>
+                      </div>
+                      <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-muted-foreground">Tool calls (month)</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                          {formatInteger(usageSummary?.tool_calls_current_month || 0)}
+                        </p>
+                      </div>
+                      <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-muted-foreground">Cost (month)</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                          {formatCurrency(usageSummary?.cost_usd_current_month || 0)}
+                        </p>
+                      </div>
+                      <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-muted-foreground">Quota breaches</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                          {formatInteger(usageSummary?.quota_breaches_current_month || 0)}
+                        </p>
+                      </div>
+                      <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-muted-foreground">Budget alerts</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                          {formatInteger(usageSummary?.budget_alerts_current_month || 0)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      <Card className="border-[hsl(var(--tone-neutral-200))]">
+                        <CardHeader className="pb-2">
+                          <CardTitle>Model and tool usage</CardTitle>
+                          <CardDescription>Top drivers for token and cost volume.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
+                            <table className="w-full min-w-full text-left text-sm">
+                              <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
+                                <tr>
+                                  <th className="px-3 py-2">Model</th>
+                                  <th className="px-3 py-2">Tokens</th>
+                                  <th className="px-3 py-2">Calls</th>
+                                  <th className="px-3 py-2">Cost</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {usageModelItems.slice(0, 8).map((item) => (
+                                  <tr key={item.model} className="border-t border-[hsl(var(--tone-neutral-200))]">
+                                    <td className="px-3 py-2 text-[hsl(var(--tone-neutral-900))]">{item.model}</td>
+                                    <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(item.tokens_current_month)}</td>
+                                    <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(item.tool_calls_current_month)}</td>
+                                    <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatCurrency(item.cost_usd_current_month)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Tool classes</p>
+                            <div className="mt-1 space-y-1 text-sm text-[hsl(var(--tone-neutral-700))]">
+                              {usageToolItems.map((item) => (
+                                <p key={item.tool_type}>
+                                  {item.tool_type}: {formatInteger(item.calls_current_month)} calls | {formatCurrency(item.cost_usd_current_month)}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="border-[hsl(var(--tone-neutral-200))]">
+                        <CardHeader className="pb-2">
+                          <CardTitle>Trend and pressure</CardTitle>
+                          <CardDescription>Month-over-month token/cost trend and runtime pressure.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-2 text-sm">
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Storage footprint</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">
+                              {formatBytes(usageSummary?.storage_bytes_total || 0)}
+                            </p>
+                          </div>
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Failed / running runs</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">
+                              {formatInteger(usageSummary?.failed_runs_current_month || 0)} / {formatInteger(usageSummary?.running_runs_current || 0)}
+                            </p>
+                          </div>
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">Average chain length</p>
+                            <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">
+                              {(usageSummary?.avg_chain_length || 0).toFixed(2)}
+                            </p>
+                          </div>
+                          <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] px-3 py-2">
+                            <p className="text-sm uppercase tracking-wide text-muted-foreground">6-month trend</p>
+                            <div className="mt-1 space-y-1 text-[hsl(var(--tone-neutral-700))]">
+                              {usageTrendItems.map((item) => (
+                                <p key={item.month}>
+                                  {item.month}: {formatInteger(item.tokens)} tokens | {formatInteger(item.tool_calls)} calls | {formatCurrency(item.cost_usd)}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      <Card className="border-[hsl(var(--tone-neutral-200))]">
+                        <CardHeader className="pb-2">
+                          <CardTitle>Organisation usage</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          {usageOrganisationItems.length ? (
+                            <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
+                              <table className="w-full min-w-full text-left text-sm">
+                                <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
+                                  <tr>
+                                    <th className="px-3 py-2">Org</th>
+                                    <th className="px-3 py-2">Plan</th>
+                                    <th className="px-3 py-2">Tokens</th>
+                                    <th className="px-3 py-2">Cost</th>
+                                    <th className="px-3 py-2">Quota used</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {usageOrganisationItems.slice(0, 10).map((item) => (
+                                    <tr key={item.org_id} className="border-t border-[hsl(var(--tone-neutral-200))]">
+                                      <td className="px-3 py-2">
+                                        <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{item.org_name}</p>
+                                        <p className="text-xs text-muted-foreground">{item.domain}</p>
+                                      </td>
+                                      <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{item.plan}</td>
+                                      <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(item.tokens_current_month)}</td>
+                                      <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatCurrency(item.cost_usd_current_month)}</td>
+                                      <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatPercent(item.quota_used_pct)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No organisation usage matched the current filter.</p>
+                          )}
+                        </CardContent>
+                      </Card>
+
+                      <Card className="border-[hsl(var(--tone-neutral-200))]">
+                        <CardHeader className="pb-2">
+                          <CardTitle>User usage</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          {usageUserItems.length ? (
+                            <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
+                              <table className="w-full min-w-full text-left text-sm">
+                                <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
+                                  <tr>
+                                    <th className="px-3 py-2">User</th>
+                                    <th className="px-3 py-2">Tokens</th>
+                                    <th className="px-3 py-2">Calls</th>
+                                    <th className="px-3 py-2">Cost</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {usageUserItems.slice(0, 10).map((item) => (
+                                    <tr key={item.user_id} className="border-t border-[hsl(var(--tone-neutral-200))]">
+                                      <td className="px-3 py-2">
+                                        <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{item.name}</p>
+                                        <p className="text-xs text-muted-foreground">{item.email}</p>
+                                      </td>
+                                      <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(item.tokens_current_month)}</td>
+                                      <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(item.tool_calls_current_month)}</td>
+                                      <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatCurrency(item.cost_usd_current_month)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No user usage matched the current filter.</p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            ) : null}
+
+            {activeCapability.id === 'jobs' ? (
+              <>
+                <Card className="border-[hsl(var(--tone-neutral-200))]">
+                  <CardHeader className="pb-2">
+                    <CardTitle>Queue health and controls</CardTitle>
+                    <CardDescription>Live queue backlog, status split, and internal retry/cancel controls.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <form className="flex flex-wrap items-center gap-2" onSubmit={onJobsSearch}>
+                      <div className="relative w-full max-w-sm">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={jobsQuery}
+                          onChange={(event) => setJobsQuery(event.target.value)}
+                          placeholder="Search by job, project, workspace, owner"
+                          className="pl-9"
+                        />
+                      </div>
+                      <select
+                        value={jobStatus}
+                        onChange={(event) => setJobStatus(event.target.value)}
+                        className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      >
+                        <option value="all">All statuses</option>
+                        <option value="queued">queued</option>
+                        <option value="running">running</option>
+                        <option value="cancel_requested">cancel_requested</option>
+                        <option value="completed">completed</option>
+                        <option value="failed">failed</option>
+                        <option value="cancelled">cancelled</option>
+                      </select>
+                      <Button type="submit" disabled={loading}>
+                        {loading ? 'Loading...' : 'Apply filter'}
+                      </Button>
+                    </form>
+
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                      <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-muted-foreground">Total</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                          {formatInteger(jobs?.queue_health.total_jobs || 0)}
+                        </p>
+                      </div>
+                      <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-muted-foreground">Active</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                          {formatInteger(jobs?.queue_health.active_jobs || 0)}
+                        </p>
+                      </div>
+                      <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-muted-foreground">Backlog</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                          {formatInteger(jobs?.queue_health.backlog_jobs || 0)}
+                        </p>
+                      </div>
+                      <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-muted-foreground">Retryable</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                          {formatInteger(jobs?.queue_health.retryable_jobs || 0)}
+                        </p>
+                      </div>
+                      <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                        <p className="text-sm uppercase tracking-wide text-muted-foreground">Failed</p>
+                        <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                          {formatInteger(jobs?.queue_health.failed_jobs || 0)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {jobsItems.length ? (
+                      <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
+                        <table className="w-full min-w-full text-left text-sm">
+                          <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
+                            <tr>
+                              <th className="px-3 py-2">Job</th>
+                              <th className="px-3 py-2">Workspace / Project</th>
+                              <th className="px-3 py-2">Owner</th>
+                              <th className="px-3 py-2">Status</th>
+                              <th className="px-3 py-2">Run</th>
+                              <th className="px-3 py-2">Estimates</th>
+                              <th className="px-3 py-2">Created</th>
+                              <th className="px-3 py-2">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {jobsItems.map((job) => {
+                              const canCancel = ['queued', 'running', 'cancel_requested'].includes(job.status)
+                              const canRetry = ['failed', 'cancelled'].includes(job.status)
+                              return (
+                                <tr key={job.id} className="border-t border-[hsl(var(--tone-neutral-200))]">
+                                  <td className="px-3 py-2">
+                                    <p className="font-medium text-[hsl(var(--tone-neutral-900))]">{job.id}</p>
+                                    <p className="text-xs text-muted-foreground">{job.manuscript_id}</p>
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <p className="text-[hsl(var(--tone-neutral-900))]">{job.workspace_name}</p>
+                                    <p className="text-xs text-muted-foreground">{job.project_title || job.project_id}</p>
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <p className="text-[hsl(var(--tone-neutral-900))]">{job.owner_name || 'Unknown owner'}</p>
+                                    <p className="text-xs text-muted-foreground">{job.owner_email || 'No email'}</p>
+                                  </td>
+                                  <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{job.status}</td>
+                                  <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">
+                                    #{formatInteger(job.run_count)} ({formatInteger(job.retry_count)} retries)
+                                  </td>
+                                  <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">
+                                    {formatInteger(job.estimated_tokens)} tokens | {formatCurrency(job.estimated_cost_usd_high)}
+                                  </td>
+                                  <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatTimestamp(job.created_at)}</td>
+                                  <td className="px-3 py-2">
+                                    <div className="flex flex-wrap gap-1.5">
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={loading || actingJobId === job.id || !canCancel}
+                                        onClick={() => void onCancelJob(job.id)}
+                                      >
+                                        {actingJobId === job.id && canCancel ? 'Cancelling...' : 'Cancel'}
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={loading || actingJobId === job.id || !canRetry}
+                                        onClick={() => void onRetryJob(job.id)}
+                                      >
+                                        {actingJobId === job.id && canRetry ? 'Retrying...' : 'Retry'}
+                                      </Button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No jobs matched the current filter.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            ) : null}
+
             {activeCapability.id !== 'overview' &&
             activeCapability.id !== 'organisations' &&
             activeCapability.id !== 'workspaces' &&

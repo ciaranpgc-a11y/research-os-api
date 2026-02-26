@@ -931,3 +931,24 @@
 - `docs/change-log.md`
 - **Verification performed:**
 - `npm --prefix frontend run typecheck`
+
+### OAuth Outage Fix (Duplicate Admin Audit Index)
+
+- **Area:** Production auth availability and schema safety.
+- **What changed:**
+- Removed duplicate index declaration conflict on `admin_audit_events.created_at`:
+  - kept explicit table-level index `ix_admin_audit_events_created_at`,
+  - removed redundant column-level `index=True` that generated the same index name.
+- Added metadata integrity test that fails if any SQLAlchemy index name is duplicated across schema definitions.
+- **Why it changed:**
+- `/v1/auth/oauth/connect` was returning `500` with:
+  - `relation "ix_admin_audit_events_created_at" already exists`
+- That blocked OAuth startup and surfaced in browser as CORS/network failures (`Failed to fetch`) because the 500 response lacked expected CORS headers.
+- **Key files touched:**
+- `src/research_os/db.py`
+- `tests/test_db_schema_integrity.py`
+- `docs/change-log.md`
+- **Verification performed:**
+- `python -m py_compile src/research_os/db.py tests/test_db_schema_integrity.py`
+- `pytest tests/test_db_schema_integrity.py -q`
+- `pytest tests/test_api.py -k "auth_oauth_connect_and_callback_endpoints" -q`

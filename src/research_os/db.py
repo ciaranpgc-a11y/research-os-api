@@ -1374,7 +1374,7 @@ class AdminAuditEvent(Base):
     status: Mapped[str] = mapped_column(String(24), index=True, default="success")
     metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, index=True
+        DateTime(timezone=True), default=_utcnow
     )
 
     actor_user: Mapped[User | None] = relationship(back_populates="admin_audit_events")
