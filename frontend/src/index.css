@@ -710,6 +710,54 @@
     background-color: hsl(var(--tone-positive-300) / 0.96);
   }
 
+  .house-publications-actions {
+    border-radius: 0.75rem;
+    border-color: hsl(var(--tone-positive-300) / 0.92);
+    background-color: hsl(var(--tone-positive-50) / 0.86);
+    padding: 0.2rem;
+    gap: 0.2rem;
+  }
+
+  .house-publications-action-primary {
+    border-radius: 9999px;
+    border-color: transparent;
+    background-color: transparent;
+    color: hsl(var(--tone-positive-800));
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  .house-publications-action-primary:hover {
+    border-color: hsl(var(--tone-positive-300) / 0.92);
+    background-color: hsl(var(--tone-positive-100) / 0.85);
+    color: hsl(var(--tone-positive-900));
+  }
+
+  .house-publications-action-icons {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0 0.15rem;
+  }
+
+  .house-publications-action-icon {
+    border-radius: 9999px;
+    border-color: transparent;
+    background-color: transparent;
+    color: hsl(var(--tone-positive-800));
+  }
+
+  .house-publications-action-icon:hover {
+    border-color: hsl(var(--tone-positive-300) / 0.92);
+    background-color: hsl(var(--tone-positive-100) / 0.82);
+    color: hsl(var(--tone-positive-900));
+  }
+
+  .house-publications-action-eye {
+    border-color: hsl(var(--tone-positive-300) / 0.92);
+    background-color: hsl(var(--tone-positive-100) / 0.92);
+  }
+
   .house-input {
     border: 1px solid hsl(var(--stroke-strong) / 0.94);
     background-color: hsl(var(--tone-neutral-50));
