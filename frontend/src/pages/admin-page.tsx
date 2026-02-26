@@ -450,17 +450,22 @@ export function AdminPage() {
   )
 
   useEffect(() => {
-    void loadData('', '')
+    void loadData('', '', '')
   }, [loadData])
 
   const onUsersSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    void loadData(userQuery, organisationQuery)
+    void loadData(userQuery, organisationQuery, workspaceQuery)
   }
 
   const onOrganisationsSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    void loadData(userQuery, organisationQuery)
+    void loadData(userQuery, organisationQuery, workspaceQuery)
+  }
+
+  const onWorkspacesSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    void loadData(userQuery, organisationQuery, workspaceQuery)
   }
 
   const usersItems = users?.items || []
@@ -548,7 +553,12 @@ export function AdminPage() {
                 <ArrowLeft className="mr-1.5 h-4 w-4" />
                 Return to main site
               </Button>
-              <Button type="button" variant="outline" onClick={() => void loadData(userQuery, organisationQuery)} disabled={loading}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void loadData(userQuery, organisationQuery, workspaceQuery)}
+                disabled={loading}
+              >
                 {loading ? 'Refreshing...' : 'Refresh'}
               </Button>
             </div>
