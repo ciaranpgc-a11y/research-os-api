@@ -68,14 +68,19 @@ export const houseDividers = {
 
 export const houseLayout = {
   pageHeader: 'house-page-header',
+  sidebarFrame: 'house-sidebar-frame',
   sidebar: 'house-sidebar-shell',
+  sidebarScroll: 'house-sidebar-scroll',
   sidebarHeader: 'house-sidebar-header',
+  sidebarBody: 'house-sidebar-body',
   sidebarSection: 'house-sidebar-section',
 } as const
 
 export const houseNavigation = {
   sectionLabel: 'house-nav-section-label',
+  list: 'house-nav-list',
   item: 'house-nav-item',
+  itemLabel: 'house-nav-item-label',
   itemActive: 'house-nav-item-active',
   itemOverview: 'house-nav-item-overview',
   itemResearch: 'house-nav-item-research',
@@ -84,6 +89,7 @@ export const houseNavigation = {
   itemData: 'house-nav-item-data',
   itemManuscript: 'house-nav-item-manuscript',
   itemGovernance: 'house-nav-item-governance',
+  itemMetaGroup: 'house-nav-item-meta-group',
   itemMeta: 'house-nav-item-meta',
   itemCount: 'house-nav-item-count',
 } as const
@@ -321,11 +327,16 @@ export const houseElements = {
   dividerFillSoft: houseDividers.fillSoft,
   dividerStrong: houseDividers.strong,
   pageHeader: houseLayout.pageHeader,
+  sidebarFrame: houseLayout.sidebarFrame,
   sidebar: houseLayout.sidebar,
+  sidebarScroll: houseLayout.sidebarScroll,
   sidebarHeader: houseLayout.sidebarHeader,
+  sidebarBody: houseLayout.sidebarBody,
   sidebarSection: houseLayout.sidebarSection,
   navSectionLabel: houseNavigation.sectionLabel,
+  navList: houseNavigation.list,
   navItem: houseNavigation.item,
+  navItemLabel: houseNavigation.itemLabel,
   navItemActive: houseNavigation.itemActive,
   navItemOverview: houseNavigation.itemOverview,
   navItemResearch: houseNavigation.itemResearch,
@@ -334,6 +345,7 @@ export const houseElements = {
   navItemData: houseNavigation.itemData,
   navItemManuscript: houseNavigation.itemManuscript,
   navItemGovernance: houseNavigation.itemGovernance,
+  navItemMetaGroup: houseNavigation.itemMetaGroup,
   navItemMeta: houseNavigation.itemMeta,
   navItemCount: houseNavigation.itemCount,
   tableShell: houseSurfaces.tableShell,

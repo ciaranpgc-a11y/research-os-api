@@ -57,8 +57,11 @@ const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
 const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
 const HOUSE_SECTION_SUBTITLE_CLASS = houseTypography.sectionSubtitle
 const HOUSE_PAGE_HEADER_CLASS = houseLayout.pageHeader
+const HOUSE_SIDEBAR_FRAME_CLASS = houseLayout.sidebarFrame
 const HOUSE_SIDEBAR_CLASS = houseLayout.sidebar
+const HOUSE_SIDEBAR_SCROLL_CLASS = houseLayout.sidebarScroll
 const HOUSE_SIDEBAR_HEADER_CLASS = houseLayout.sidebarHeader
+const HOUSE_SIDEBAR_BODY_CLASS = houseLayout.sidebarBody
 const HOUSE_SIDEBAR_SECTION_CLASS = houseLayout.sidebarSection
 const HOUSE_FIELD_HELPER_CLASS = houseTypography.fieldHelper
 const HOUSE_BUTTON_TEXT_CLASS = houseTypography.buttonText
@@ -92,34 +95,17 @@ const HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS = houseCollaborators.chipRemoved
 const HOUSE_COLLABORATOR_CHIP_MANAGEABLE_CLASS = houseCollaborators.chipManageable
 const HOUSE_COLLABORATOR_CHIP_READONLY_CLASS = houseCollaborators.chipReadOnly
 const HOUSE_NAV_SECTION_LABEL_CLASS = houseNavigation.sectionLabel
+const HOUSE_NAV_LIST_CLASS = houseNavigation.list
 const HOUSE_NAV_ITEM_CLASS = houseNavigation.item
 const HOUSE_NAV_ITEM_ACTIVE_CLASS = houseNavigation.itemActive
 const HOUSE_NAV_ITEM_WORKSPACE_CLASS = getHouseNavToneClass('workspace')
-const HOUSE_NAV_ITEM_GOVERNANCE_CLASS = getHouseNavToneClass('governance')
+const HOUSE_NAV_ITEM_LABEL_CLASS = houseNavigation.itemLabel
+const HOUSE_NAV_ITEM_META_GROUP_CLASS = houseNavigation.itemMetaGroup
 const HOUSE_NAV_ITEM_META_CLASS = houseNavigation.itemMeta
 const HOUSE_NAV_ITEM_COUNT_CLASS = houseNavigation.itemCount
 const HOUSE_DRILLDOWN_SHEET_CLASS = houseDrilldown.sheet
 const HOUSE_DRILLDOWN_SHEET_BODY_CLASS = houseDrilldown.sheetBody
 const HOUSE_DRILLDOWN_ACTION_CLASS = houseDrilldown.action
-const HOUSE_DRILLDOWN_ROW_CLASS = houseDrilldown.row
-const HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS = houseDrilldown.progressTrack
-const HOUSE_DRILLDOWN_PROGRESS_FILL_CLASS = houseDrilldown.progressFill
-const HOUSE_DRILLDOWN_STAT_CARD_CLASS = houseDrilldown.statCard
-const HOUSE_DRILLDOWN_STAT_TITLE_CLASS = houseDrilldown.statTitle
-const HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS = houseDrilldown.summaryStatCard
-const HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS = houseDrilldown.summaryStatTitle
-const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS = houseDrilldown.summaryStatValue
-const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS = houseDrilldown.summaryStatValueWrap
-const HOUSE_DRILLDOWN_HINT_CLASS = houseDrilldown.hint
-const HOUSE_DRILLDOWN_CAPTION_CLASS = houseDrilldown.caption
-const HOUSE_DRILLDOWN_MICRO_VALUE_CLASS = houseDrilldown.microValue
-const HOUSE_DRILLDOWN_BADGE_CLASS = houseDrilldown.badge
-const HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS = houseDrilldown.badgeNeutral
-const HOUSE_DRILLDOWN_NOTE_CLASS = houseDrilldown.note
-const HOUSE_DRILLDOWN_NOTE_SOFT_CLASS = houseDrilldown.noteSoft
-const HOUSE_DRILLDOWN_SECTION_SEPARATOR_CLASS = houseDrilldown.sectionSeparator
-const HOUSE_DRILLDOWN_TABLE_ROW_CLASS = houseDrilldown.tableRow
-const HOUSE_DRILLDOWN_TABLE_EMPTY_CLASS = houseDrilldown.tableEmpty
 const WORKSPACE_ICON_BUTTON_DIMENSION_CLASS = 'h-8 w-8 p-0'
 const HOUSE_SECTION_TOOLS_CLASS = houseActions.sectionTools
 const HOUSE_SECTION_TOOLS_WORKSPACE_CLASS = houseActions.sectionToolsWorkspace
@@ -342,131 +328,9 @@ function sortWorkspaces(
   return next
 }
 
-function WorkspacesDrilldownPanel({
-  filteredWorkspaces,
-  filterCounts,
-  filterKey,
-  workspaceInboxSignals,
-}: {
-  filteredWorkspaces: WorkspaceRecord[]
-  filterCounts: Record<FilterKey, number>
-  filterKey: FilterKey
-  workspaceInboxSignals: Record<string, WorkspaceInboxSignal>
-}) {
-  const stageBuckets: Array<{ label: string; count: number }> = [
-    { label: 'Plan', count: 0 },
-    { label: 'Draft', count: 0 },
-    { label: 'QC', count: 0 },
-    { label: 'Archived', count: 0 },
-  ]
-  let unreadVisibleCount = 0
-  for (const workspace of filteredWorkspaces) {
-    const stage = workspaceStage(workspace)
-    const bucket = stageBuckets.find((item) => item.label === stage)
-    if (bucket) {
-      bucket.count += 1
-    }
-    unreadVisibleCount += workspaceInboxSignals[workspace.id]?.unreadCount || 0
-  }
-  const stageMax = Math.max(1, ...stageBuckets.map((item) => item.count))
-  const activeFilterLabel = FILTER_OPTIONS.find((option) => option.key === filterKey)?.label || 'All'
-  const summaryStatCardClass = HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS
-  const summaryStatTitleClass = cn(
-    HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS,
-    HOUSE_DRILLDOWN_STAT_TITLE_CLASS,
-  )
-  const summaryStatValueWrapClass = HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS
-  const summaryStatValueClass = cn(
-    HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS,
-    'tabular-nums whitespace-nowrap leading-none',
-  )
-  const recentWorkspaces = [...filteredWorkspaces]
-    .sort((left, right) => {
-      const leftValue = Date.parse(workspaceInboxSignals[left.id]?.lastActivityAt || left.updatedAt)
-      const rightValue = Date.parse(workspaceInboxSignals[right.id]?.lastActivityAt || right.updatedAt)
-      return rightValue - leftValue
-    })
-    .slice(0, 6)
-
+function WorkspacesDrilldownPanel() {
   return (
-    <div className={HOUSE_DRILLDOWN_SHEET_BODY_CLASS}>
-      <div className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
-        <h2 className={HOUSE_SECTION_TITLE_CLASS}>Workspace drilldown</h2>
-        <p className={HOUSE_SECTION_SUBTITLE_CLASS}>Workspace status and recent activity.</p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2">
-        <div className={summaryStatCardClass}>
-          <p className={summaryStatTitleClass}>Visible</p>
-          <div className={summaryStatValueWrapClass}>
-            <p className={summaryStatValueClass}>{filteredWorkspaces.length}</p>
-          </div>
-        </div>
-        <div className={summaryStatCardClass}>
-          <p className={summaryStatTitleClass}>Unread</p>
-          <div className={summaryStatValueWrapClass}>
-            <p className={summaryStatValueClass}>{unreadVisibleCount}</p>
-          </div>
-        </div>
-        <div className={summaryStatCardClass}>
-          <p className={summaryStatTitleClass}>Active</p>
-          <div className={summaryStatValueWrapClass}>
-            <p className={summaryStatValueClass}>{filterCounts.active}</p>
-          </div>
-        </div>
-        <div className={summaryStatCardClass}>
-          <p className={summaryStatTitleClass}>Archived</p>
-          <div className={summaryStatValueWrapClass}>
-            <p className={summaryStatValueClass}>{filterCounts.archived}</p>
-          </div>
-        </div>
-      </div>
-
-      <div className={cn('space-y-2 px-3 py-2.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
-        <div className="flex items-center justify-between gap-2">
-          <p className={cn(HOUSE_DRILLDOWN_CAPTION_CLASS, 'uppercase')}>Stage mix</p>
-          <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS)}>
-            {activeFilterLabel}
-          </span>
-        </div>
-        {stageBuckets.map((bucket) => (
-          <div key={bucket.label} className={HOUSE_DRILLDOWN_ROW_CLASS}>
-            <div className={cn('mb-1 flex items-center justify-between gap-2', HOUSE_DRILLDOWN_NOTE_CLASS)}>
-              <p className={HOUSE_DRILLDOWN_HINT_CLASS}>{bucket.label}</p>
-              <p className={HOUSE_DRILLDOWN_MICRO_VALUE_CLASS}>{bucket.count}</p>
-            </div>
-            <div className={HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS}>
-              <span
-                className={HOUSE_DRILLDOWN_PROGRESS_FILL_CLASS}
-                style={{ width: `${Math.max(6, (bucket.count / stageMax) * 100)}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className={cn('space-y-2 px-3 py-2.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS, HOUSE_DRILLDOWN_SECTION_SEPARATOR_CLASS)}>
-        <p className={cn(HOUSE_DRILLDOWN_CAPTION_CLASS, 'uppercase')}>Recent activity</p>
-        {recentWorkspaces.length === 0 ? (
-          <p className={HOUSE_DRILLDOWN_TABLE_EMPTY_CLASS}>No workspaces in this filter.</p>
-        ) : (
-          recentWorkspaces.map((workspace) => {
-            const signal = workspaceInboxSignals[workspace.id]
-            return (
-              <div key={workspace.id} className={cn('space-y-1 rounded-md px-2 py-1.5', HOUSE_DRILLDOWN_ROW_CLASS, HOUSE_DRILLDOWN_TABLE_ROW_CLASS)}>
-                <div className={cn('flex items-center justify-between gap-2', HOUSE_DRILLDOWN_NOTE_CLASS)}>
-                  <p className="truncate font-medium">{workspace.name}</p>
-                  <span className={HOUSE_DRILLDOWN_HINT_CLASS}>{signal?.unreadCount || 0} unread</span>
-                </div>
-                <p className={HOUSE_DRILLDOWN_NOTE_SOFT_CLASS}>
-                  Last activity {formatTimestamp(signal?.lastActivityAt || workspace.updatedAt)}
-                </p>
-              </div>
-            )
-          })
-        )}
-      </div>
-    </div>
+    <div className={HOUSE_DRILLDOWN_SHEET_BODY_CLASS} />
   )
 }
 
@@ -539,9 +403,6 @@ function WorkspaceMenuTrigger({
 function WorkspacesHomeSidebar({
   centerView,
   onSelectCenterView,
-  filterKey,
-  counts,
-  onFilterChange,
   onOpenInbox,
   incomingInvitationCount,
   outgoingInvitationCount,
@@ -550,9 +411,6 @@ function WorkspacesHomeSidebar({
 }: {
   centerView: CenterView
   onSelectCenterView: (next: CenterView) => void
-  filterKey: FilterKey
-  counts: Record<FilterKey, number>
-  onFilterChange: (next: FilterKey) => void
   onOpenInbox: () => void
   incomingInvitationCount: number
   outgoingInvitationCount: number
@@ -561,19 +419,19 @@ function WorkspacesHomeSidebar({
 }) {
   const totalInvitationCount = incomingInvitationCount + outgoingInvitationCount
   return (
-    <aside className={cn('flex h-full flex-col', HOUSE_SIDEBAR_CLASS)} data-house-role="left-nav-shell">
+    <aside className={cn(HOUSE_SIDEBAR_FRAME_CLASS, HOUSE_SIDEBAR_CLASS)} data-house-role="left-nav-shell">
       <div className={HOUSE_SIDEBAR_HEADER_CLASS}>
         <div className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
           <h1 data-house-role="section-title" className={HOUSE_SECTION_TITLE_CLASS}>Workspaces home</h1>
         </div>
       </div>
-      <ScrollArea className="flex-1">
-        <div className="space-y-4 p-3">
+      <ScrollArea className={HOUSE_SIDEBAR_SCROLL_CLASS}>
+        <div className={HOUSE_SIDEBAR_BODY_CLASS}>
           <section className={HOUSE_SIDEBAR_SECTION_CLASS}>
             <p className={HOUSE_NAV_SECTION_LABEL_CLASS}>
               Views
             </p>
-            <div className="space-y-1">
+            <div className={HOUSE_NAV_LIST_CLASS}>
               <button
                 type="button"
                 onClick={() => {
@@ -586,7 +444,7 @@ function WorkspacesHomeSidebar({
                   centerView === 'workspaces' && HOUSE_NAV_ITEM_ACTIVE_CLASS,
                 )}
               >
-                <span className="truncate pl-2">Workspaces</span>
+                <span className={HOUSE_NAV_ITEM_LABEL_CLASS}>Workspaces</span>
               </button>
               <button
                 type="button"
@@ -600,8 +458,8 @@ function WorkspacesHomeSidebar({
                   centerView === 'invitations' && HOUSE_NAV_ITEM_ACTIVE_CLASS,
                 )}
               >
-                <span className="truncate pl-2">Invitations</span>
-                <div className={cn('ml-2 flex items-center gap-1.5', HOUSE_NAV_ITEM_META_CLASS)}>
+                <span className={HOUSE_NAV_ITEM_LABEL_CLASS}>Invitations</span>
+                <div className={cn(HOUSE_NAV_ITEM_META_GROUP_CLASS, HOUSE_NAV_ITEM_META_CLASS)}>
                   <span className={cn(HOUSE_NAV_ITEM_COUNT_CLASS, 'gap-1')}>
                     <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
                     {incomingInvitationCount}
@@ -627,7 +485,7 @@ function WorkspacesHomeSidebar({
                   centerView === 'data-library' && HOUSE_NAV_ITEM_ACTIVE_CLASS,
                 )}
               >
-                <span className="truncate pl-2 text-left">Data library</span>
+                <span className={HOUSE_NAV_ITEM_LABEL_CLASS}>Data library</span>
               </button>
               <button
                 type="button"
@@ -642,40 +500,10 @@ function WorkspacesHomeSidebar({
                 )}
                 disabled={!canOpenInbox}
               >
-                <span className="truncate pl-2 text-left">Inbox</span>
+                <span className={HOUSE_NAV_ITEM_LABEL_CLASS}>Inbox</span>
               </button>
             </div>
           </section>
-
-          {centerView === 'workspaces' ? (
-            <section className={HOUSE_SIDEBAR_SECTION_CLASS}>
-              <p className={HOUSE_NAV_SECTION_LABEL_CLASS}>
-                States
-              </p>
-              <div className="space-y-1">
-                {FILTER_OPTIONS.map((option) => (
-                  <button
-                    key={option.key}
-                    type="button"
-                    onClick={() => {
-                      onFilterChange(option.key)
-                      onNavigate?.()
-                    }}
-                    className={cn(
-                      HOUSE_NAV_ITEM_CLASS,
-                      HOUSE_NAV_ITEM_GOVERNANCE_CLASS,
-                      filterKey === option.key && HOUSE_NAV_ITEM_ACTIVE_CLASS,
-                    )}
-                  >
-                    <span className="truncate pl-2 text-left">{option.label}</span>
-                    <span className={cn(HOUSE_NAV_ITEM_COUNT_CLASS, 'ml-2')}>
-                      {counts[option.key]}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          ) : null}
         </div>
       </ScrollArea>
     </aside>
@@ -857,16 +685,6 @@ export function WorkspacesPage() {
     })
     return sortWorkspaces(next, sortColumn, sortDirection)
   }, [filterKey, query, sortColumn, sortDirection, workspaces])
-  const filterCounts = useMemo<Record<FilterKey, number>>(
-    () => ({
-      all: workspaces.length,
-      active: workspaces.filter((workspace) => !workspace.archived).length,
-      pinned: workspaces.filter((workspace) => workspace.pinned).length,
-      archived: workspaces.filter((workspace) => workspace.archived).length,
-      recent: workspaces.filter((workspace) => isRecentWorkspace(workspace.updatedAt)).length,
-    }),
-    [workspaces],
-  )
   const workspaceInboxSignals = useMemo<Record<string, WorkspaceInboxSignal>>(() => {
     const readerKey = normalizePerson(currentReaderName)
     const signalByWorkspaceId: Record<string, WorkspaceInboxSignal> = {}
@@ -1458,9 +1276,6 @@ export function WorkspacesPage() {
           <WorkspacesHomeSidebar
             centerView={centerView}
             onSelectCenterView={setCenterView}
-            filterKey={filterKey}
-            counts={filterCounts}
-            onFilterChange={setFilterKey}
             onOpenInbox={onOpenWorkspaceInbox}
             incomingInvitationCount={incomingInvitationCount}
             outgoingInvitationCount={outgoingInvitationCount}
@@ -1994,12 +1809,7 @@ export function WorkspacesPage() {
                       <PanelRightClose className="h-4 w-4" />
                     </button>
                   </div>
-                  <WorkspacesDrilldownPanel
-                    filteredWorkspaces={filteredWorkspaces}
-                    filterCounts={filterCounts}
-                    filterKey={filterKey}
-                    workspaceInboxSignals={workspaceInboxSignals}
-                  />
+                  <WorkspacesDrilldownPanel />
                 </div>
               </ScrollArea>
             ) : (
@@ -2027,12 +1837,7 @@ export function WorkspacesPage() {
 
       <Sheet open={workspaceDrilldownMobileOpen} onOpenChange={setWorkspaceDrilldownMobileOpen}>
         <SheetContent side="right" className={HOUSE_DRILLDOWN_SHEET_CLASS}>
-          <WorkspacesDrilldownPanel
-            filteredWorkspaces={filteredWorkspaces}
-            filterCounts={filterCounts}
-            filterKey={filterKey}
-            workspaceInboxSignals={workspaceInboxSignals}
-          />
+          <WorkspacesDrilldownPanel />
         </SheetContent>
       </Sheet>
 
@@ -2153,9 +1958,6 @@ export function WorkspacesPage() {
           <WorkspacesHomeSidebar
             centerView={centerView}
             onSelectCenterView={setCenterView}
-            filterKey={filterKey}
-            counts={filterCounts}
-            onFilterChange={setFilterKey}
             onOpenInbox={onOpenWorkspaceInbox}
             incomingInvitationCount={incomingInvitationCount}
             outgoingInvitationCount={outgoingInvitationCount}

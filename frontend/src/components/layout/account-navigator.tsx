@@ -101,20 +101,20 @@ export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
   }, [])
 
   return (
-    <aside className={cn('flex h-full flex-col', houseLayout.sidebar)}>
+    <aside className={cn(houseLayout.sidebarFrame, houseLayout.sidebar)}>
       <div className={houseLayout.sidebarHeader}>
         <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, getHouseLeftBorderToneClass('overview'))}>
           <h1 className={houseTypography.sectionTitle}>Profile</h1>
         </div>
       </div>
-      <ScrollArea className="flex-1">
-        <nav className="space-y-3 p-3">
+      <ScrollArea className={houseLayout.sidebarScroll}>
+        <nav className={houseLayout.sidebarBody}>
           {ACCOUNT_SECTIONS.map((section) => (
             <section key={section.label} className={houseLayout.sidebarSection}>
               <p className={houseNavigation.sectionLabel}>
                 {section.label}
               </p>
-              <div className="space-y-1">
+              <div className={houseNavigation.list}>
                 {section.items.map((item) => (
                   <NavLink
                     key={item.path}
@@ -135,7 +135,7 @@ export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
                       cn(houseNavigation.item, getHouseNavToneClass(section.tone), isActive && houseNavigation.itemActive)
                     }
                   >
-                    <span className="truncate pl-2">{item.label}</span>
+                    <span className={houseNavigation.itemLabel}>{item.label}</span>
                   </NavLink>
                 ))}
               </div>

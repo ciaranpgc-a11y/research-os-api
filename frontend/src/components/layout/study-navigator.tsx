@@ -72,7 +72,7 @@ function Group({ group, qcCounts, onNavigate }: { group: NavGroup; qcCounts: QcC
   return (
     <section className={houseLayout.sidebarSection}>
       <p className={houseNavigation.sectionLabel}>{group.title}</p>
-      <nav className="space-y-1">
+      <nav className={houseNavigation.list}>
         {group.items.map((item: NavItem) => {
           const itemBadgeVariant = getBadgeVariant(item.path, qcCounts)
           return (
@@ -90,7 +90,7 @@ function Group({ group, qcCounts, onNavigate }: { group: NavGroup; qcCounts: QcC
                   )
                 }
               >
-                <span className="truncate pl-2">{item.label}</span>
+                <span className={houseNavigation.itemLabel}>{item.label}</span>
                 {item.badge ? (
                   <Badge variant="outline" className={cn('h-5 min-w-5 px-1 text-caption font-medium', badgeClass(itemBadgeVariant))}>
                     {item.badge}
@@ -130,7 +130,7 @@ export function StudyNavigator({ onNavigate }: StudyNavigatorProps) {
   const projectHealth = getProjectHealth(qcCounts)
 
   return (
-    <aside className={cn('flex h-full flex-col', houseLayout.sidebar)}>
+    <aside className={cn(houseLayout.sidebarFrame, houseLayout.sidebar)}>
       <div className={houseLayout.sidebarHeader}>
         <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, getHouseLeftBorderToneClass('workspace'))}>
           <div className="flex items-center gap-2">
@@ -145,7 +145,7 @@ export function StudyNavigator({ onNavigate }: StudyNavigatorProps) {
           <p className={houseTypography.fieldHelper}>Version 0.1</p>
         </div>
       </div>
-      <ScrollArea className="flex-1">
+      <ScrollArea className={houseLayout.sidebarScroll}>
         <div className="space-y-5 p-3">
           {NAV_GROUPS.map((group, index) => (
             <div key={group.title} className="space-y-3">
