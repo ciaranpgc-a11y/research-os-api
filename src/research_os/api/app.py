@@ -25,6 +25,8 @@ from sqlalchemy import text
 from research_os.config import get_openai_api_key
 from research_os.db import session_scope
 from research_os.api.schemas import (
+    AdminOverviewResponse,
+    AdminUsersListResponse,
     AnalysisScaffoldRequest,
     AnalysisScaffoldResponse,
     AffiliationAddressResolutionResponse,
@@ -210,6 +212,10 @@ from research_os.api.schemas import (
     WizardBootstrapResponse,
     WizardInferRequest,
     WizardInferResponse,
+)
+from research_os.services.admin_service import (
+    get_admin_overview,
+    list_admin_users,
 )
 from research_os.services.affiliation_suggestion_service import (
     AffiliationSuggestionValidationError,
@@ -486,6 +492,10 @@ BAD_REQUEST_RESPONSES = {
 
 UNAUTHORIZED_RESPONSES = {
     401: {"model": ErrorResponse},
+}
+
+FORBIDDEN_RESPONSES = {
+    403: {"model": ErrorResponse},
 }
 
 RATE_LIMIT_RESPONSES = {
@@ -803,6 +813,19 @@ def _build_unauthorized_response(detail: str) -> JSONResponse:
     )
 
 
+def _build_forbidden_response(detail: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=403,
+        content={
+            "error": {
+                "message": "Forbidden",
+                "type": "forbidden",
+                "detail": detail,
+            }
+        },
+    )
+
+
 def _build_rate_limited_response(detail: str, retry_after: int) -> JSONResponse:
     response = JSONResponse(
         status_code=429,
@@ -886,6 +909,22 @@ def _resolve_request_user_required(
     except AuthNotFoundError as exc:
         return None, _build_unauthorized_response(str(exc))
     return str(user["id"]), None
+
+
+def _resolve_request_admin_required(
+    request: Request,
+) -> tuple[dict[str, object] | None, JSONResponse | None]:
+    token = _extract_session_token(request)
+    if not token:
+        return None, _build_unauthorized_response("Session token is required.")
+    try:
+        user = get_user_by_session_token(token)
+    except (AuthValidationError, AuthNotFoundError) as exc:
+        return None, _build_unauthorized_response(str(exc))
+    role = str(user.get("role", "")).strip().lower()
+    if role != "admin":
+        return None, _build_forbidden_response("Admin access is required.")
+    return user, None
 
 
 def _extract_ws_session_token(websocket: WebSocket) -> str:

@@ -804,6 +804,34 @@ class AuthUserResponse(BaseModel):
     updated_at: datetime
 
 
+class AdminUserSummaryResponse(BaseModel):
+    id: str
+    email: str
+    name: str
+    is_active: bool
+    role: Literal["user", "admin"]
+    email_verified_at: datetime | None = None
+    last_sign_in_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminUsersListResponse(BaseModel):
+    items: list[AdminUserSummaryResponse] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
+
+
+class AdminOverviewResponse(BaseModel):
+    total_users: int = 0
+    active_users: int = 0
+    inactive_users: int = 0
+    admin_users: int = 0
+    recent_signins_24h: int = 0
+    generated_at: datetime
+
+
 class AffiliationSuggestionItemResponse(BaseModel):
     name: str
     label: str

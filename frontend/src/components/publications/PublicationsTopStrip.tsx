@@ -28,6 +28,7 @@ type PublicationsTopStripProps = {
   metrics: PublicationsTopMetricsPayload | null
   loading?: boolean
   token?: string | null
+  onOpenPublication?: (workId: string) => void
   fetchMetricDetail?: (token: string, metricId: string) => Promise<PublicationMetricDetailPayload>
 }
 
@@ -2936,9 +2937,11 @@ function median(values: number[]): number {
 function TotalPublicationsDrilldownWorkspace({
   tile,
   activeTab,
+  onOpenPublication,
 }: {
   tile: PublicationMetricTilePayload
   activeTab: DrilldownTab
+  onOpenPublication?: (workId: string) => void
 }) {
   const publications = useMemo(() => {
     const source = Array.isArray(tile.drilldown?.publications)
@@ -3531,20 +3534,38 @@ function TotalPublicationsDrilldownWorkspace({
                 </tr>
               </thead>
               <tbody>
-                {sortedPublications.slice(0, 120).map((record) => (
-                  <tr key={`paper-row-${record.workId}`} className={cn('house-table-row', HOUSE_DRILLDOWN_TABLE_ROW_CLASS)}>
-                    <td className="house-table-cell-text px-3 py-2">{record.year || 'n/a'}</td>
-                    <td className="house-table-cell-text px-3 py-2">
-                      <span className="block max-w-[28rem] break-words leading-snug">{record.title}</span>
-                    </td>
-                    <td className="house-table-cell-text px-3 py-2">{record.role}</td>
-                    <td className="house-table-cell-text px-3 py-2">{record.type}</td>
-                    <td className="house-table-cell-text px-3 py-2">
-                      <span className="block max-w-[18rem] break-words leading-snug">{record.venue}</span>
-                    </td>
-                    <td className="house-table-cell-text px-3 py-2 text-right">{formatInt(record.citations)}</td>
-                  </tr>
-                ))}
+                {sortedPublications.slice(0, 120).map((record) => {
+                  const canOpenPublication = Boolean(onOpenPublication) && !record.workId.startsWith('row-')
+                  return (
+                    <tr
+                      key={`paper-row-${record.workId}`}
+                      className={cn('house-table-row', HOUSE_DRILLDOWN_TABLE_ROW_CLASS, canOpenPublication && 'cursor-pointer')}
+                      role={canOpenPublication ? 'button' : undefined}
+                      tabIndex={canOpenPublication ? 0 : undefined}
+                      onClick={canOpenPublication ? () => onOpenPublication?.(record.workId) : undefined}
+                      onKeyDown={canOpenPublication ? (event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          onOpenPublication?.(record.workId)
+                        }
+                      } : undefined}
+                      title={canOpenPublication ? 'Open publication in right panel' : undefined}
+                    >
+                      <td className="house-table-cell-text px-3 py-2">{record.year || 'n/a'}</td>
+                      <td className="house-table-cell-text px-3 py-2">
+                        <span className={cn('block max-w-[28rem] break-words leading-snug', canOpenPublication && 'underline-offset-2 hover:underline')}>
+                          {record.title}
+                        </span>
+                      </td>
+                      <td className="house-table-cell-text px-3 py-2">{record.role}</td>
+                      <td className="house-table-cell-text px-3 py-2">{record.type}</td>
+                      <td className="house-table-cell-text px-3 py-2">
+                        <span className="block max-w-[18rem] break-words leading-snug">{record.venue}</span>
+                      </td>
+                      <td className="house-table-cell-text px-3 py-2 text-right">{formatInt(record.citations)}</td>
+                    </tr>
+                  )
+                })}
                 {!sortedPublications.length ? (
                   <tr>
                     <td className={cn('house-table-cell-text px-3 py-4 text-center', HOUSE_DRILLDOWN_TABLE_EMPTY_CLASS)} colSpan={6}>
@@ -4272,6 +4293,7 @@ export function PublicationsTopStrip({
   metrics,
   loading = false,
   token = null,
+  onOpenPublication,
   fetchMetricDetail = fetchPublicationMetricDetail,
 }: PublicationsTopStripProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -4356,6 +4378,18 @@ export function PublicationsTopStrip({
       return false
     }
     return Boolean(target.closest('[data-stop-tile-open="true"]'))
+  }
+
+  const onOpenPublicationFromDrilldown = (workId: string) => {
+    if (!onOpenPublication) {
+      return
+    }
+    const normalizedWorkId = String(workId || '').trim()
+    if (!normalizedWorkId) {
+      return
+    }
+    onOpenPublication(normalizedWorkId)
+    setDrawerOpen(false)
   }
 
   return (
@@ -4823,7 +4857,11 @@ export function PublicationsTopStrip({
                 </TabsList>
                 <div className="mt-3">
                   {activeTile.key === 'this_year_vs_last' ? (
-                    <TotalPublicationsDrilldownWorkspace tile={activeTile} activeTab={activeDrilldownTab} />
+                    <TotalPublicationsDrilldownWorkspace
+                      tile={activeTile}
+                      activeTab={activeDrilldownTab}
+                      onOpenPublication={onOpenPublication ? onOpenPublicationFromDrilldown : undefined}
+                    />
                   ) : (
                     <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>
                       Tab scaffold ready.

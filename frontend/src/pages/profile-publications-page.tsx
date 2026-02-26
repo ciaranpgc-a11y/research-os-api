@@ -111,6 +111,8 @@ const HOUSE_PUBLICATION_DETAIL_BODY_CLASS = publicationsHouseDetail.body
 const HOUSE_PUBLICATION_DETAIL_SECTION_CLASS = publicationsHouseDetail.section
 const HOUSE_PUBLICATION_DETAIL_LABEL_CLASS = publicationsHouseDetail.sectionLabel
 const HOUSE_PUBLICATION_DETAIL_INFO_CLASS = publicationsHouseDetail.info
+const HOUSE_PUBLICATION_TEXT_CLASS = publicationsHouseHeadings.text
+const HOUSE_PUBLICATION_TEXT_SOFT_CLASS = publicationsHouseHeadings.textSoft
 
 const WORK_TYPE_LABELS: Record<string, string> = {
   'journal-article': 'Journal article',
@@ -2069,6 +2071,18 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
   }
 
+  const openPublicationInDetailPanel = useCallback((workId: string, tab: PublicationDetailTab = activeDetailTab) => {
+    const normalizedWorkId = String(workId || '').trim()
+    if (!normalizedWorkId) {
+      return
+    }
+    if (tab === 'files') {
+      void loadPublicationFilesData(normalizedWorkId)
+    }
+    setSelectedWorkId(normalizedWorkId)
+    setActiveDetailTab(tab)
+  }, [activeDetailTab, loadPublicationFilesData])
+
   const onToggleAbstractExpanded = () => {
     if (!selectedWorkId) {
       return
@@ -2265,7 +2279,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         </div>
       </header>
 
-      <PublicationsTopStrip metrics={topMetricsResponse} loading={loading || !topMetricsResponse} token={token || null} />
+      <PublicationsTopStrip
+        metrics={topMetricsResponse}
+        loading={loading || !topMetricsResponse}
+        token={token || null}
+        onOpenPublication={(workId) => {
+          openPublicationInDetailPanel(workId, 'files')
+        }}
+      />
       <div className={HOUSE_SECTION_DIVIDER_STRONG_CLASS} />
 
       <Card>
@@ -2428,12 +2449,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         return (
                           <TableRow
                             key={work.id}
-                            onClick={() => {
-                              if (activeDetailTab === 'files') {
-                                void loadPublicationFilesData(work.id)
-                              }
-                              setSelectedWorkId(work.id)
-                            }}
+                            onClick={() => openPublicationInDetailPanel(work.id, activeDetailTab)}
                             className={`cursor-pointer ${isSelected ? 'bg-emerald-50/70' : 'hover:bg-accent/30'}`}
                           >
                             {visiblePublicationTableColumns.map((columnKey) => {
@@ -2444,16 +2460,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                   <TableCell key={`${work.id}-${columnKey}`} className={`font-medium ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
                                     <div className="flex items-center gap-1.5">
                                       {oaVisualStatus === 'available' && oaDownloadUrl ? (
-                                        <a
-                                          href={oaDownloadUrl}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          title={`${oaLabel}. Open PDF.`}
+                                        <button
+                                          type="button"
+                                          title={`${oaLabel}. Open in Files panel.`}
                                           className={`inline-flex items-center ${oaToneClass}`}
-                                          onClick={(event) => event.stopPropagation()}
+                                          onClick={(event) => {
+                                            event.stopPropagation()
+                                            openPublicationInDetailPanel(work.id, 'files')
+                                          }}
                                         >
                                           <Paperclip className="h-3.5 w-3.5" />
-                                        </a>
+                                        </button>
                                       ) : (
                                         <span title={oaLabel} className={`inline-flex items-center ${oaToneClass}`}>
                                           {oaVisualStatus === 'checking' ? (
@@ -2639,8 +2656,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 return (
                                 <div key={file.id} className={`${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS} space-y-2`}>
                                   <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>{fileLabel}</p>
-                                  <p className="truncate text-sm text-[hsl(var(--tone-neutral-700))]" title={file.file_name}>{file.file_name}</p>
-                                  <p className="text-micro text-muted-foreground">{file.file_type} | {sourceLabel} | {formatShortDate(file.created_at)}</p>
+                                  <p className={`truncate ${HOUSE_PUBLICATION_TEXT_CLASS}`} title={file.file_name}>{file.file_name}</p>
+                                  <p className={`text-micro ${HOUSE_PUBLICATION_TEXT_SOFT_CLASS}`}>{file.file_type} | {sourceLabel} | {formatShortDate(file.created_at)}</p>
                                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                     {file.source === 'OA_LINK' && file.download_url ? (
                                       <Button type="button" size="sm" variant="housePrimary" asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
@@ -2658,7 +2675,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           )}
                           <div data-house-role="files-tab-divider" className={HOUSE_SECTION_DIVIDER_STRONG_CLASS} />
                           <div
-                            className={`rounded-md border border-dashed p-3 ${filesDragOver ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50)/0.55)]' : 'border-[hsl(var(--stroke-soft)/0.95)] bg-[hsl(var(--tone-neutral-50)/0.55)]'}`}
+                            className={`${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS} border-dashed p-3 ${filesDragOver ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50)/0.55)]' : 'bg-[hsl(var(--tone-neutral-50)/0.55)]'}`}
                             onDragOver={(event) => {
                               event.preventDefault()
                               setFilesDragOver(true)
@@ -2673,7 +2690,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                               <div className="space-y-0.5">
                                 <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Add files</p>
-                                <p className="text-xs text-muted-foreground">Drag and drop files here, or use upload.</p>
+                                <p className={`text-xs ${HOUSE_PUBLICATION_TEXT_SOFT_CLASS}`}>Drag and drop files here, or use upload.</p>
                               </div>
                               <div className="flex items-start">
                                 <Button type="button" size="sm" variant="outline" onClick={() => filePickerRef.current?.click()} disabled={uploadingFile}>{uploadingFile ? 'Uploading...' : 'Upload file'}</Button>
