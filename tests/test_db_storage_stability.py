@@ -275,6 +275,17 @@ def test_create_all_tables_repairs_legacy_asset_and_project_columns(
     profile_columns = {str(row[1]) for row in verify_cursor.fetchall()}
     assert "owner_user_id" in profile_columns
 
+    verify_cursor.execute("PRAGMA table_info(users)")
+    user_columns = {str(row[1]) for row in verify_cursor.fetchall()}
+    assert "account_key" in user_columns
+    verify_cursor.execute(
+        "SELECT account_key FROM users WHERE id = ?",
+        (user_id,),
+    )
+    account_key_row = verify_cursor.fetchone()
+    assert account_key_row is not None
+    assert str(account_key_row[0] or "").strip() != ""
+
     verify_cursor.execute(
         "SELECT owner_user_id FROM data_library_assets WHERE id = ?",
         (asset_id,),

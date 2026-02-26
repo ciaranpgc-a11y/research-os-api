@@ -112,6 +112,71 @@ export type AdminOrganisationsListPayload = {
   generated_at: string
 }
 
+export type AdminWorkspaceMemberPayload = {
+  id: string
+  name: string
+  email: string
+  platform_role: 'user' | 'admin'
+  workspace_role: 'owner' | 'admin' | 'collaborator'
+  last_active_at: string | null
+}
+
+export type AdminWorkspaceProjectSummaryPayload = {
+  id: string
+  title: string
+  owner_user_id: string | null
+  owner_name: string
+  collaborator_count: number
+  manuscript_count: number
+  data_sources_count: number
+  job_runs: number
+  last_run_status: string
+  last_activity_at: string | null
+}
+
+export type AdminWorkspaceJobHealthPayload = {
+  total_runs: number
+  active_runs: number
+  queued_runs: number
+  running_runs: number
+  completed_runs: number
+  failed_runs: number
+  cancelled_runs: number
+  retry_runs_7d: number
+  failed_runs_7d: number
+  avg_tokens_per_run: number
+  avg_cost_usd_per_run: number
+  last_job_at: string | null
+}
+
+export type AdminWorkspaceSummaryPayload = {
+  id: string
+  display_name: string
+  owner_user_id: string | null
+  owner_name: string
+  owner_email: string
+  member_count: number
+  active_members_30d: number
+  project_count: number
+  manuscript_count: number
+  data_sources_count: number
+  storage_bytes: number
+  export_history_count: number
+  collaboration_density_pct: number
+  last_activity_at: string | null
+  members: AdminWorkspaceMemberPayload[]
+  projects: AdminWorkspaceProjectSummaryPayload[]
+  job_health: AdminWorkspaceJobHealthPayload
+}
+
+export type AdminWorkspacesListPayload = {
+  items: AdminWorkspaceSummaryPayload[]
+  total: number
+  limit: number
+  offset: number
+  generated_at: string
+}
+
 export type AffiliationSuggestionItemPayload = {
   name: string
   label: string

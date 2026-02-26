@@ -27,9 +27,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
-import { fetchAdminOrganisations, fetchAdminOverview, fetchAdminUsers } from '@/lib/impact-api'
+import { fetchAdminOrganisations, fetchAdminOverview, fetchAdminUsers, fetchAdminWorkspaces } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
-import type { AdminOrganisationsListPayload, AdminOverviewPayload, AdminUsersListPayload } from '@/types/impact'
+import type { AdminOrganisationsListPayload, AdminOverviewPayload, AdminUsersListPayload, AdminWorkspacesListPayload } from '@/types/impact'
 
 type AdminCapabilitySection = {
   id: string
@@ -94,14 +94,14 @@ const CAPABILITY_SECTIONS: AdminCapabilitySection[] = [
     id: 'workspaces',
     title: 'Workspaces / Projects',
     icon: Workflow,
-    status: 'planned',
-    lane: 'next',
-    summary: 'Workspace operations for ownership, data attachments, runs, retries, and exports.',
+    status: 'live',
+    lane: 'now',
+    summary: 'Workspace operations for ownership, data attachments, runs, retries, exports, and collaboration pressure.',
     items: [
       'Workspace owner/members and status',
       'Data source attachments and storage footprint',
-      'Run history with failures/retries',
-      'Exports history and collaboration graph',
+      'Run history with failures/retries and active workload',
+      'Snapshot/export history and project-level activity',
     ],
   },
   {
@@ -347,9 +347,12 @@ export function AdminPage() {
   const [overview, setOverview] = useState<AdminOverviewPayload | null>(null)
   const [users, setUsers] = useState<AdminUsersListPayload | null>(null)
   const [organisations, setOrganisations] = useState<AdminOrganisationsListPayload | null>(null)
+  const [workspaces, setWorkspaces] = useState<AdminWorkspacesListPayload | null>(null)
   const [userQuery, setUserQuery] = useState('')
   const [organisationQuery, setOrganisationQuery] = useState('')
+  const [workspaceQuery, setWorkspaceQuery] = useState('')
   const [selectedOrganisationId, setSelectedOrganisationId] = useState('')
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
@@ -373,7 +376,11 @@ export function AdminPage() {
   )
 
   const loadData = useCallback(
-    async (nextUsersQuery: string, nextOrganisationsQuery: string) => {
+    async (
+      nextUsersQuery: string,
+      nextOrganisationsQuery: string,
+      nextWorkspacesQuery: string,
+    ) => {
       const token = getAuthSessionToken()
       if (!token) {
         navigate('/auth', { replace: true })
@@ -383,7 +390,7 @@ export function AdminPage() {
       setError('')
       setStatus('')
       try {
-        const [overviewPayload, usersPayload, organisationsPayload] = await Promise.all([
+        const [overviewPayload, usersPayload, organisationsPayload, workspacesPayload] = await Promise.all([
           fetchAdminOverview(token),
           fetchAdminUsers(token, {
             query: nextUsersQuery,
@@ -395,10 +402,16 @@ export function AdminPage() {
             limit: 50,
             offset: 0,
           }),
+          fetchAdminWorkspaces(token, {
+            query: nextWorkspacesQuery,
+            limit: 50,
+            offset: 0,
+          }),
         ])
         setOverview(overviewPayload)
         setUsers(usersPayload)
         setOrganisations(organisationsPayload)
+        setWorkspaces(workspacesPayload)
         setSelectedOrganisationId((current) => {
           if (!current) {
             return organisationsPayload.items[0]?.id || ''
@@ -406,8 +419,15 @@ export function AdminPage() {
           const exists = organisationsPayload.items.some((item) => item.id === current)
           return exists ? current : organisationsPayload.items[0]?.id || ''
         })
+        setSelectedWorkspaceId((current) => {
+          if (!current) {
+            return workspacesPayload.items[0]?.id || ''
+          }
+          const exists = workspacesPayload.items.some((item) => item.id === current)
+          return exists ? current : workspacesPayload.items[0]?.id || ''
+        })
         setStatus(
-          `Loaded ${usersPayload.items.length}/${usersPayload.total} users and ${organisationsPayload.items.length}/${organisationsPayload.total} organisations.`,
+          `Loaded ${usersPayload.items.length}/${usersPayload.total} users, ${organisationsPayload.items.length}/${organisationsPayload.total} organisations, and ${workspacesPayload.items.length}/${workspacesPayload.total} workspaces.`,
         )
       } catch (loadError) {
         const detail = loadError instanceof Error ? loadError.message : 'Could not load admin data.'

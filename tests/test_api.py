@@ -2669,6 +2669,7 @@ def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> Non
         overview_response = client.get("/v1/admin/overview")
         users_response = client.get("/v1/admin/users")
         organisations_response = client.get("/v1/admin/organisations")
+        workspaces_response = client.get("/v1/admin/workspaces")
 
     assert overview_response.status_code == 401
     assert overview_response.json()["error"]["type"] == "unauthorized"
@@ -2676,6 +2677,8 @@ def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> Non
     assert users_response.json()["error"]["type"] == "unauthorized"
     assert organisations_response.status_code == 401
     assert organisations_response.json()["error"]["type"] == "unauthorized"
+    assert workspaces_response.status_code == 401
+    assert workspaces_response.json()["error"]["type"] == "unauthorized"
 
 
 def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
@@ -2699,6 +2702,10 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
             "/v1/admin/organisations",
             headers=_auth_headers(token),
         )
+        workspaces_response = client.get(
+            "/v1/admin/workspaces",
+            headers=_auth_headers(token),
+        )
 
     assert overview_response.status_code == 403
     assert overview_response.json()["error"]["type"] == "forbidden"
@@ -2706,6 +2713,8 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
     assert users_response.json()["error"]["type"] == "forbidden"
     assert organisations_response.status_code == 403
     assert organisations_response.json()["error"]["type"] == "forbidden"
+    assert workspaces_response.status_code == 403
+    assert workspaces_response.json()["error"]["type"] == "forbidden"
 
 
 def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None:
@@ -2748,6 +2757,19 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
         )
         assert project_response.status_code == 200
         project_id = project_response.json()["id"]
+        manuscript_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts",
+            headers=_auth_headers(viewer_token),
+            json={"branch_name": "main", "sections": ["introduction"]},
+        )
+        assert manuscript_response.status_code == 200
+        manuscript_id = manuscript_response.json()["id"]
+        snapshot_response = client.post(
+            f"/v1/projects/{project_id}/manuscripts/{manuscript_id}/snapshots",
+            headers=_auth_headers(viewer_token),
+            json={},
+        )
+        assert snapshot_response.status_code == 200
 
         upload_response = client.post(
             "/v1/library/assets/upload",
@@ -2778,6 +2800,11 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
             "/v1/admin/organisations",
             headers=_auth_headers(admin_token),
             params={"query": "example.com", "limit": 20, "offset": 0},
+        )
+        workspaces_response = client.get(
+            "/v1/admin/workspaces",
+            headers=_auth_headers(admin_token),
+            params={"query": "org-workspace-1", "limit": 20, "offset": 0},
         )
 
     assert overview_response.status_code == 200
@@ -2816,6 +2843,24 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
     assert len(organisation["integrations"]) >= 3
     assert organisation["impersonation"]["available"] is True
     assert organisation["impersonation"]["audited"] is True
+
+    assert workspaces_response.status_code == 200
+    workspaces_payload = workspaces_response.json()
+    assert workspaces_payload["limit"] == 20
+    assert workspaces_payload["offset"] == 0
+    assert workspaces_payload["total"] >= 1
+    assert len(workspaces_payload["items"]) >= 1
+    workspace = workspaces_payload["items"][0]
+    assert workspace["id"] == "org-workspace-1"
+    assert workspace["project_count"] >= 1
+    assert workspace["manuscript_count"] >= 1
+    assert workspace["data_sources_count"] >= 1
+    assert workspace["storage_bytes"] > 0
+    assert workspace["export_history_count"] >= 1
+    assert workspace["member_count"] >= 1
+    assert isinstance(workspace["members"], list)
+    assert isinstance(workspace["projects"], list)
+    assert "job_health" in workspace
 
 
 def test_v1_workspace_state_round_trip_persists_for_authenticated_user(

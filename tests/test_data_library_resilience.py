@@ -26,13 +26,20 @@ def _set_test_environment(monkeypatch, tmp_path) -> None:
     reset_database_state()
 
 
-def _create_user(*, email: str, name: str = "Resilience User") -> str:
+def _create_user(
+    *, email: str, name: str = "Resilience User", account_key: str | None = None
+) -> str:
     create_all_tables()
     with session_scope() as session:
+        payload = {
+            "email": email,
+            "password_hash": "pbkdf2_sha256$390000$test$test",
+            "name": name,
+        }
+        if account_key:
+            payload["account_key"] = account_key
         user = User(
-            email=email,
-            password_hash="pbkdf2_sha256$390000$test$test",
-            name=name,
+            **payload,
         )
         session.add(user)
         session.flush()

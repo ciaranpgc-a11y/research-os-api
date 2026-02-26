@@ -488,6 +488,15 @@ def _write_asset_metadata(*, root: Path, payload: dict[str, Any]) -> None:
 
 
 def _resolve_owner_user_id_from_metadata(*, session, payload: dict[str, Any]) -> str | None:
+    owner_account_key = _trim(payload.get("owner_account_key"))
+    if owner_account_key:
+        owner_user = session.scalars(
+            select(User).where(User.account_key == owner_account_key)
+        ).first()
+        if owner_user is not None:
+            resolved_owner_user_id = _trim(owner_user.id)
+            if resolved_owner_user_id:
+                return resolved_owner_user_id
     owner_user_id = _trim(payload.get("owner_user_id"))
     if owner_user_id:
         owner_user = session.get(User, owner_user_id)
@@ -704,9 +713,12 @@ def _build_asset_metadata_payload(
 ) -> dict[str, Any]:
     owner_user_id = _trim(asset.owner_user_id) or None
     owner_email = ""
+    owner_account_key = ""
     if owner_user_id:
         owner_user = session.get(User, owner_user_id)
-        owner_email = _trim(owner_user.email).lower() if owner_user is not None else ""
+        if owner_user is not None:
+            owner_email = _trim(owner_user.email).lower()
+            owner_account_key = _trim(owner_user.account_key)
     uploaded_at = asset.uploaded_at
     uploaded_at_str = ""
     if isinstance(uploaded_at, datetime):
@@ -718,6 +730,7 @@ def _build_asset_metadata_payload(
     shared_with_user_ids = _asset_shared_user_ids(asset)
     return {
         "id": asset.id,
+        "owner_account_key": owner_account_key,
         "owner_user_id": owner_user_id,
         "owner_email": owner_email,
         "project_id": _trim(asset.project_id) or None,

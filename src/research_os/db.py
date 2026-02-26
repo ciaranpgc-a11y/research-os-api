@@ -260,6 +260,9 @@ class User(Base):
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid4())
     )
+    account_key: Mapped[str] = mapped_column(
+        String(36), unique=True, index=True, default=lambda: str(uuid4())
+    )
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(512))
     name: Mapped[str] = mapped_column(String(255), default="")
@@ -1455,6 +1458,38 @@ def _ensure_sqlite_schema_compatibility(engine) -> None:
     if engine.dialect.name != "sqlite":
         return
     with engine.begin() as connection:
+        if _sqlite_table_exists(connection, "users"):
+            _sqlite_add_column_if_missing(
+                connection,
+                table_name="users",
+                column_name="account_key",
+                column_sql="VARCHAR(36)",
+            )
+            missing_rows = connection.execute(
+                text(
+                    "SELECT id FROM users "
+                    "WHERE account_key IS NULL OR TRIM(account_key) = ''"
+                )
+            ).all()
+            for row in missing_rows:
+                user_id = str(row[0] or "").strip()
+                if not user_id:
+                    continue
+                connection.execute(
+                    text(
+                        "UPDATE users "
+                        "SET account_key = :account_key "
+                        "WHERE id = :user_id"
+                    ),
+                    {"account_key": str(uuid4()), "user_id": user_id},
+                )
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_account_key "
+                    "ON users (account_key)"
+                )
+            )
+
         if _sqlite_table_exists(connection, "projects"):
             _sqlite_add_column_if_missing(
                 connection,

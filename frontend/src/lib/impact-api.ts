@@ -7,6 +7,7 @@ import type {
   AdminOrganisationsListPayload,
   AdminOverviewPayload,
   AdminUsersListPayload,
+  AdminWorkspacesListPayload,
   AuthEmailVerificationRequestPayload,
   AuthLoginChallengePayload,
   AuthOAuthProviderStatusesPayload,
@@ -291,6 +292,30 @@ export async function fetchAdminOrganisations(
       headers: authHeaders(token),
     },
     'Admin organisations lookup failed',
+  )
+}
+
+export async function fetchAdminWorkspaces(
+  token: string,
+  options?: {
+    query?: string
+    limit?: number
+    offset?: number
+  },
+): Promise<AdminWorkspacesListPayload> {
+  const params = new URLSearchParams()
+  if (String(options?.query || '').trim()) {
+    params.set('query', String(options?.query || '').trim())
+  }
+  params.set('limit', String(Math.max(1, Math.min(200, Number(options?.limit || 50)))))
+  params.set('offset', String(Math.max(0, Number(options?.offset || 0))))
+  return requestJson<AdminWorkspacesListPayload>(
+    `${API_BASE_URL}/v1/admin/workspaces?${params.toString()}`,
+    {
+      method: 'GET',
+      headers: authHeaders(token),
+    },
+    'Admin workspaces lookup failed',
   )
 }
 
