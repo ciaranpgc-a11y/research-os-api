@@ -2061,7 +2061,6 @@ function PublicationsPerYearChart({
 
 function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload }) {
   const [chartVisible, setChartVisible] = useState(false)
-  const [hoveredSegment, setHoveredSegment] = useState<'top3' | 'rest' | null>(null)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const top3 = values[0] || 0
@@ -2096,19 +2095,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const effectiveTopPapersCount = totalPublications === null
     ? topPapersCount
     : Math.max(0, Math.min(topPapersCount, totalPublications))
-  const remainingPapersCount = Number.isFinite(explicitRemainingRaw) && explicitRemainingRaw >= 0
-    ? Math.max(0, Math.round(explicitRemainingRaw))
-    : totalPublications === null
-      ? null
-      : Math.max(0, totalPublications - effectiveTopPapersCount)
   const ringStrokeWidth = HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH
-  const ringHitHalfWidth = (ringStrokeWidth / 2) + 3
-  const top3ArcSpan = (top3PctRounded / 100) * 360
-  const top3ArcStart = 270 - (top3ArcSpan / 2)
-  const isAngleInArc = (angle: number, start: number, span: number): boolean => {
-    if (span <= 0) {
-      return false
-    }
     if (span >= 360) {
       return true
     }
@@ -2146,43 +2133,10 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
       >
         {total > 0 ? (
           <div className={HOUSE_CHART_RING_PANEL_CLASS}>
-            {hoveredSegment ? (
-              <div
-                className={cn(
-                  HOUSE_DRILLDOWN_TOOLTIP_WIDE_CLASS,
-                  hoveredSegment === 'top3' ? 'top-0.5' : 'bottom-0.5',
-                )}
-              >
-                {hoveredSegment === 'top3'
-                  ? `Top 3: ${top3PctRounded}% · ${formatInt(top3)} citations`
-                  : remainingPapersCount === null
-                    ? `Remaining: ${restPctRounded}% · ${formatInt(rest)} citations`
-                    : `Remaining ${formatInt(remainingPapersCount)} papers: ${restPctRounded}% · ${formatInt(rest)} citations`}
-              </div>
-            ) : null}
             <svg
               viewBox="0 0 100 100"
               className={HOUSE_CHART_RING_SIZE_CLASS}
               data-stop-tile-open="true"
-              onMouseMove={(event) => {
-                const bounds = event.currentTarget.getBoundingClientRect()
-                const x = ((event.clientX - bounds.left) / Math.max(1, bounds.width)) * 100
-                const y = ((event.clientY - bounds.top) / Math.max(1, bounds.height)) * 100
-                const dx = x - 50
-                const dy = y - 50
-                const distance = Math.sqrt((dx * dx) + (dy * dy))
-                if (Math.abs(distance - ringRadius) > ringHitHalfWidth) {
-                  setHoveredSegment(null)
-                  return
-                }
-                const angleDeg = ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360
-                if (isAngleInArc(angleDeg, top3ArcStart, top3ArcSpan)) {
-                  setHoveredSegment('top3')
-                  return
-                }
-                setHoveredSegment('rest')
-              }}
-              onMouseLeave={() => setHoveredSegment(null)}
             >
               <circle
                 cx="50"
@@ -2559,13 +2513,8 @@ function FieldPercentilePanel({
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div className="h-full pb-2 pt-2.5">
+      <div className="h-full">
         <div className={HOUSE_CHART_RING_TOGGLE_LAYOUT_CLASS}>
-          {toggleControl ? (
-            <div className={HOUSE_CHART_RING_TOGGLE_CONTROL_CLASS}>
-              {toggleControl}
-            </div>
-          ) : null}
           <div
             className={cn(
               HOUSE_CHART_RING_PANEL_CLASS,
@@ -2574,40 +2523,54 @@ function FieldPercentilePanel({
               chartVisible ? HOUSE_CHART_RING_ENTERED_CLASS : HOUSE_CHART_RING_EXITED_CLASS,
             )}
           >
-            <svg
-              viewBox="0 0 100 100"
-              className={HOUSE_CHART_RING_SIZE_CLASS}
-              data-stop-tile-open="true"
+            <div
+              className="grid h-full w-full items-stretch"
+              style={{
+                gridTemplateColumns: 'calc((100% - 2.5rem - 8.47rem) / 3) 2.5rem calc((100% - 2.5rem - 8.47rem) / 3) 8.47rem calc((100% - 2.5rem - 8.47rem) / 3)',
+              }}
             >
-              <circle
-                cx="50"
-                cy="50"
-                r={ringRadius}
-                fill="none"
-                className={HOUSE_CHART_RING_REMAINDER_SVG_CLASS}
-                strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
-                strokeLinecap="round"
-                transform="rotate(-90 50 50)"
-              />
-              <circle
-                cx="50"
-                cy="50"
-                r={ringRadius}
-                fill="none"
-                className={ringShareToneClass}
-                strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
-                strokeLinecap="round"
-                transform="rotate(-90 50 50)"
-                style={{
-                  strokeDasharray: `${ringAnimatedDash} ${ringCircumference}`,
-                  strokeDashoffset: 0,
-                  transition: `${HOUSE_RING_ARC_TRANSITION}, ${HOUSE_RING_COLOR_TRANSITION}`,
-                }}
-              />
-              <text x="50" y="50" textAnchor="middle" dominantBaseline="central" className={HOUSE_CHART_RING_CENTER_LABEL_CLASS}>
-                {papersAtThresholdLabel}
-              </text>
-            </svg>
+              <div className="col-start-2 flex h-full items-center justify-center">
+                <div className={cn(HOUSE_CHART_RING_TOGGLE_CONTROL_CLASS, '-translate-y-[0.5rem]')}>
+                  {toggleControl}
+                </div>
+              </div>
+              <div className="col-start-4 flex h-full min-w-0 items-center justify-center">
+                <svg
+                  viewBox="0 0 100 100"
+                  className={cn(HOUSE_CHART_RING_SIZE_CLASS, 'shrink-0')}
+                  data-stop-tile-open="true"
+                >
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r={ringRadius}
+                    fill="none"
+                    className={HOUSE_CHART_RING_REMAINDER_SVG_CLASS}
+                    strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
+                    strokeLinecap="round"
+                    transform="rotate(-90 50 50)"
+                  />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r={ringRadius}
+                    fill="none"
+                    className={ringShareToneClass}
+                    strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
+                    strokeLinecap="round"
+                    transform="rotate(-90 50 50)"
+                    style={{
+                      strokeDasharray: `${ringAnimatedDash} ${ringCircumference}`,
+                      strokeDashoffset: 0,
+                      transition: `${HOUSE_RING_ARC_TRANSITION}, ${HOUSE_RING_COLOR_TRANSITION}`,
+                    }}
+                  />
+                  <text x="50" y="50" textAnchor="middle" dominantBaseline="central" className={HOUSE_CHART_RING_CENTER_LABEL_CLASS}>
+                    {papersAtThresholdLabel}
+                  </text>
+                </svg>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -5013,6 +4976,7 @@ export function PublicationsTopStrip({
     </>
   )
 }
+
 
 
 
