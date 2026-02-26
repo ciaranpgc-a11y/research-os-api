@@ -588,11 +588,15 @@ def _claim_legacy_ownerless_assets_for_user(*, session, user_id: str | None) -> 
 
     claimed_count = 0
     for row in candidate_rows:
+        row_owner_user_id = _trim(row.owner_user_id)
+        row_owner_missing = bool(row_owner_user_id) and session.get(User, row_owner_user_id) is None
         if _asset_shared_user_ids(row):
             continue
         project_id = _trim(row.project_id)
         if not project_id:
-            if global_claim_allowed:
+            # Rows with stale owner references are invisible to users and should be
+            # claimed by the first authenticated requester even in multi-user DBs.
+            if global_claim_allowed or row_owner_missing:
                 row.owner_user_id = clean_user_id
                 claimed_count += 1
             continue
@@ -1357,7 +1361,7 @@ def attach_assets_to_manuscript(
                 asset_id=asset_id,
                 claimant_user_id=clean_user_id,
             )
-        manuscript = _resolve_manuscript_for_user(
+        _resolve_manuscript_for_user(
             session=session, manuscript_id=manuscript_id, user_id=clean_user_id
         )
         found = session.scalars(
