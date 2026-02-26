@@ -182,6 +182,8 @@ export function ResultsPage() {
   const [uploadError, setUploadError] = useState('')
   const [uploadStatus, setUploadStatus] = useState('')
   const [uploadBusy, setUploadBusy] = useState(false)
+  const [recentlyUploadedAssets, setRecentlyUploadedAssets] = useState<Array<{ assetId: string; filename: string }>>([])
+  const [workspaceImportedAssetIds, setWorkspaceImportedAssetIds] = useState<string[]>([])
   const [persistedProjectId, setPersistedProjectId] = useState<string | null>(null)
   const [persistedAssets, setPersistedAssets] = useState<LibraryAssetRecord[]>([])
   const [persistSyncBusy, setPersistSyncBusy] = useState(false)
@@ -242,6 +244,11 @@ export function ResultsPage() {
     void refreshPersistedAssets()
   }, [refreshPersistedAssets])
 
+  useEffect(() => {
+    setRecentlyUploadedAssets([])
+    setWorkspaceImportedAssetIds([])
+  }, [workspaceId])
+
   const currentProjectId = useMemo(
     () => String(persistedProjectId || '').trim(),
     [persistedProjectId],
@@ -249,11 +256,11 @@ export function ResultsPage() {
   const isAssetInCurrentWorkspace = useCallback(
     (asset: LibraryAssetRecord): boolean => {
       if (!currentProjectId) {
-        return false
+        return workspaceImportedAssetIds.includes(asset.id)
       }
-      return String(asset.project_id || '').trim() === currentProjectId
+      return String(asset.project_id || '').trim() === currentProjectId || workspaceImportedAssetIds.includes(asset.id)
     },
-    [currentProjectId],
+    [currentProjectId, workspaceImportedAssetIds],
   )
 
   const selectedLibraryAssetSet = useMemo(() => new Set(libraryPickerSelection), [libraryPickerSelection])
@@ -294,8 +301,7 @@ export function ResultsPage() {
       const validFiles: File[] = []
       for (const file of files) {
         try {
-          const parsed = await parseDataAsset(file)
-          addDataAsset(parsed)
+          await parseDataAsset(file)
           validFiles.push(file)
         } catch (error) {
           parseErrors.push(error instanceof Error ? error.message : `Could not parse ${file.name}.`)
@@ -314,6 +320,11 @@ export function ResultsPage() {
           files: validFiles,
           projectId: persistedProjectId || undefined,
         })
+        const uploadedMeta = payload.asset_ids.map((assetId, index) => ({
+          assetId,
+          filename: validFiles[index]?.name || `Uploaded file ${index + 1}`,
+        }))
+        setRecentlyUploadedAssets(uploadedMeta)
         await refreshPersistedAssets()
         const skipped = parseErrors.length
         setUploadStatus(
@@ -330,7 +341,7 @@ export function ResultsPage() {
         setUploadBusy(false)
       }
     },
-    [addDataAsset, persistedProjectId, refreshPersistedAssets],
+    [persistedProjectId, refreshPersistedAssets],
   )
 
   const updatePersistedAssetInState = useCallback((nextAsset: LibraryAssetRecord) => {
@@ -390,6 +401,7 @@ export function ResultsPage() {
         })
         const parsed = await parseDataAsset(file)
         addDataAsset(parsed)
+        setWorkspaceImportedAssetIds((current) => (current.includes(asset.id) ? current : [asset.id, ...current]))
         setLibraryActionStatus(`Pulled ${parsed.name} into workspace files.`)
       } catch (error) {
         setLibraryActionError(error instanceof Error ? error.message : 'Could not pull file into workspace.')
