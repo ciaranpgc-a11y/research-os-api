@@ -89,3 +89,35 @@ def test_get_database_url_recovers_legacy_db_when_stable_is_empty(monkeypatch, t
     recovered_users = int(verify_cursor.fetchone()[0] or 0)
     verify_conn.close()
     assert recovered_users == 1
+
+
+def test_get_database_url_stabilizes_explicit_relative_sqlite_url(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local_appdata"))
+    monkeypatch.delenv("APPDATA", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DATABASE_URL", "sqlite+pysqlite:///./research_os.db")
+
+    legacy_path = tmp_path / "research_os.db"
+    legacy_bytes = b"relative-explicit-db"
+    legacy_path.write_bytes(legacy_bytes)
+
+    url = get_database_url()
+    stable_path = _sqlite_url_to_path(url)
+
+    assert stable_path.is_absolute()
+    assert "ResearchOS" in str(stable_path.parent)
+    assert stable_path.exists()
+    assert stable_path.read_bytes() == legacy_bytes
+
+
+def test_get_database_url_keeps_explicit_absolute_sqlite_url(monkeypatch, tmp_path) -> None:
+    explicit_path = (tmp_path / "explicit_absolute.db").resolve()
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{explicit_path.as_posix()}")
+
+    url = get_database_url()
+    resolved = _sqlite_url_to_path(url)
+
+    assert resolved == explicit_path

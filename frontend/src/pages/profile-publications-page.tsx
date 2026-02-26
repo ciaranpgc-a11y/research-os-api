@@ -2335,7 +2335,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               ))}
             </select>
           </div>
-          <div className="grid items-start gap-4">
+          <div className="grid grid-cols-1 items-start gap-4">
             <div className="space-y-1">
 
               {filteredWorks.length === 0 ? (
@@ -2348,7 +2348,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   </ol>
                 </div>
               ) : (
-                <div ref={publicationTableLayoutRef} className="relative">
+                <div ref={publicationTableLayoutRef} className="relative w-full">
                   <div ref={columnSettingsRef} className="absolute right-0 -top-9 z-20">
                     <Button
                       type="button"

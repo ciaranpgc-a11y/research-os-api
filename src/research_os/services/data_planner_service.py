@@ -201,6 +201,8 @@ def _candidate_asset_paths(asset: DataLibraryAsset, primary_root: Path) -> list[
     candidates.append(primary_root / f"{asset.id}.bin")
 
     for match in primary_root.glob(f"{asset.id}.*"):
+        if match.name.endswith(".meta.json"):
+            continue
         candidates.append(match)
 
     raw_storage_path = _trim(asset.storage_path)
@@ -213,6 +215,8 @@ def _candidate_asset_paths(asset: DataLibraryAsset, primary_root: Path) -> list[
         candidates.append(legacy_root / f"{asset.id}.bin")
         if legacy_root.exists():
             for match in legacy_root.glob(f"{asset.id}.*"):
+                if match.name.endswith(".meta.json"):
+                    continue
                 candidates.append(match)
 
     deduped: list[Path] = []
@@ -984,6 +988,13 @@ def attach_assets_to_manuscript(
 
     with session_scope() as session:
         clean_user_id = _trim(user_id) or None
+        storage_root = _storage_root()
+        for asset_id in clean_ids:
+            _restore_asset_row_from_metadata(
+                session=session,
+                primary_root=storage_root,
+                asset_id=asset_id,
+            )
         manuscript = _resolve_manuscript_for_user(
             session=session, manuscript_id=manuscript_id, user_id=clean_user_id
         )
@@ -1097,6 +1108,13 @@ def create_data_profile(
 
     with session_scope() as session:
         clean_user_id = _trim(user_id) or None
+        storage_root = _storage_root()
+        for asset_id in ids:
+            _restore_asset_row_from_metadata(
+                session=session,
+                primary_root=storage_root,
+                asset_id=asset_id,
+            )
         assets = session.scalars(
             select(DataLibraryAsset).where(DataLibraryAsset.id.in_(ids))
         ).all()
@@ -1119,7 +1137,6 @@ def create_data_profile(
         warnings: list[str] = []
         rows_sampled = 0
         previews: list[dict[str, object]] = []
-        storage_root = _storage_root()
 
         for asset in assets:
             storage_path = _resolve_existing_asset_path(asset, storage_root)
@@ -1131,6 +1148,11 @@ def create_data_profile(
             if _trim(asset.storage_path) != resolved_storage_str:
                 asset.storage_path = resolved_storage_str
                 session.flush()
+            _sync_asset_metadata_for_row(
+                session=session,
+                asset=asset,
+                primary_root=storage_root,
+            )
             content = storage_path.read_bytes()
             sample = _decode_sample(content, max_chars=max_chars)
             if asset.kind in {"csv", "tsv", "txt"}:

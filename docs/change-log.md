@@ -611,3 +611,53 @@
 - **Follow-up:**
 - Add backend index strategy and SQL-level access filtering optimizations for very large libraries.
 - Optionally add cursor-based paging if offset paging becomes expensive at high page numbers.
+
+### Data Library Durability Hardening (Metadata Sidecar + Auto-Reconciliation)
+
+- **Area:** Data-library persistence resilience across restarts/build path churn and DB row loss recovery.
+- **What changed:**
+- Added per-asset metadata sidecars (`<asset_id>.meta.json`) written to stable library storage on upload.
+- Added service-level reconciliation that restores missing `data_library_assets` rows from sidecars when files still exist.
+- Added owner rebind logic: if stored owner user id is stale/missing, ownership is reattached by matching sidecar `owner_email` to current account.
+- Added point-recovery for direct access operations (`download` and access updates) so single assets can be restored by id.
+- Ensured storage resolution ignores metadata sidecars as file candidates (`*.meta.json` no longer treated as datasets).
+- Kept sidecar metadata synchronized during list/download/profile flows after storage-path healing.
+- **Why it changed:**
+- Prevent uploaded datasets from appearing to disappear when DB rows are lost/reset while durable files remain in stable storage.
+- Preserve safe recovery behavior across builds and account-id churn while maintaining access constraints.
+- **Key files touched:**
+- `src/research_os/services/data_planner_service.py`
+- `tests/test_data_library_resilience.py`
+- `docs/change-log.md`
+- **Verification performed:**
+- `python -m py_compile src/research_os/services/data_planner_service.py tests/test_data_library_resilience.py`
+- `pytest tests/test_data_library_resilience.py -q`
+- `pytest tests/test_open_access_service.py -q`
+- `pytest tests/test_api.py -k "library_asset" -q`
+- **Follow-up:**
+- Add periodic integrity checks that emit explicit warnings when sidecar metadata exists without a recoverable file.
+- Consider encrypting sidecar metadata-at-rest when deployment threat model requires it.
+
+### Library Visibility After Re-Login (Database URL Stabilization)
+
+- **Area:** Authentication session lifecycle and post-login data-library continuity.
+- **What changed:**
+- Hardened `get_database_url()` handling for explicit SQLite `DATABASE_URL` values that use relative paths.
+- Relative explicit SQLite URLs are now stabilized into the same durable app-data location used by default DB storage, with one-time copy of legacy DB + sidecars when needed.
+- Added regression coverage for the exact scenario: upload file -> logout -> login -> list library still includes the file.
+- Added DB URL tests to verify:
+  - explicit relative SQLite URLs are stabilized to absolute durable storage,
+  - explicit absolute SQLite URLs remain unchanged.
+- **Why it changed:**
+- Prevent environment/path drift from making existing assets appear missing after sign-out/sign-in cycles.
+- **Key files touched:**
+- `src/research_os/db.py`
+- `tests/test_api.py`
+- `tests/test_db_storage_stability.py`
+- `docs/change-log.md`
+- **Verification performed:**
+- `python -m py_compile src/research_os/db.py tests/test_db_storage_stability.py tests/test_api.py`
+- `pytest tests/test_db_storage_stability.py -q`
+- `pytest tests/test_api.py -k "library_asset or persist_across_logout" -q`
+- **Follow-up:**
+- Add startup diagnostics endpoint that reports active DB path and storage root to simplify support triage in production.

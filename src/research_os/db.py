@@ -138,10 +138,76 @@ def _copy_legacy_sqlite_if_needed(stable_path: Path) -> None:
         return
 
 
+def _copy_sqlite_database_with_sidecars(*, source_path: Path, target_path: Path) -> None:
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source_path, target_path)
+    for suffix in ("-wal", "-shm"):
+        source_sidecar = Path(f"{source_path}{suffix}")
+        target_sidecar = Path(f"{target_path}{suffix}")
+        if source_sidecar.exists() and source_sidecar.is_file():
+            shutil.copy2(source_sidecar, target_sidecar)
+
+
+def _is_probably_absolute_sqlite_path(raw_path: str) -> bool:
+    path = raw_path.strip()
+    if not path:
+        return False
+    if Path(path).is_absolute():
+        return True
+    # Windows absolute path may be encoded as "/C:/path" in sqlite URL form.
+    return (
+        len(path) >= 4
+        and path[0] == "/"
+        and path[1].isalpha()
+        and path[2] == ":"
+        and path[3] in {"/", "\\"}
+    )
+
+
+def _resolve_explicit_database_url(database_url: str) -> str:
+    clean = _normalize_database_url(database_url)
+    lowered = clean.lower()
+    if not lowered.startswith("sqlite"):
+        return clean
+    if ":memory:" in lowered:
+        return clean
+
+    sqlite_prefixes = ("sqlite+pysqlite:///", "sqlite:///")
+    prefix = next((candidate for candidate in sqlite_prefixes if clean.startswith(candidate)), "")
+    if not prefix:
+        return clean
+
+    raw_path = clean[len(prefix) :].split("?", 1)[0].split("#", 1)[0].strip()
+    if not raw_path:
+        return clean
+    if raw_path.lower().startswith("file:"):
+        return clean
+    if _is_probably_absolute_sqlite_path(raw_path):
+        return clean
+
+    source_path = (Path.cwd() / Path(raw_path).expanduser()).resolve()
+    stable_dir = _stable_default_sqlite_path().parent
+    target_name = Path(raw_path).name or "research_os.db"
+    target_path = (stable_dir / target_name).resolve()
+
+    if (
+        source_path.exists()
+        and source_path.is_file()
+        and source_path != target_path
+        and not target_path.exists()
+    ):
+        _copy_sqlite_database_with_sidecars(
+            source_path=source_path, target_path=target_path
+        )
+
+    _copy_legacy_sqlite_if_needed(target_path)
+    return _normalize_database_url(f"sqlite+pysqlite:///{target_path.as_posix()}")
+
+
 def get_database_url() -> str:
     explicit_database_url = os.getenv("DATABASE_URL")
     if explicit_database_url:
-        return _normalize_database_url(explicit_database_url)
+        return _resolve_explicit_database_url(explicit_database_url)
     stable_path = _stable_default_sqlite_path()
     _copy_legacy_sqlite_if_needed(stable_path)
     return _normalize_database_url(f"sqlite+pysqlite:///{stable_path.as_posix()}")

@@ -738,6 +738,59 @@ def test_v1_library_assets_support_server_pagination_sort_and_filters(
         assert collaborator_owned.json()["items"] == []
 
 
+def test_v1_library_assets_persist_across_logout_and_login(monkeypatch, tmp_path) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    encoded = base64.b64encode(b"col_a,col_b\n1,2\n").decode("ascii")
+    email = "library-persist-user@example.com"
+    password = "StrongPassword123"
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": email,
+                "password": password,
+                "name": "Library Persist User",
+            },
+        )
+        assert register_response.status_code == 200
+        first_token = register_response.json()["session_token"]
+        first_headers = _auth_headers(first_token)
+
+        upload_response = client.post(
+            "/v1/library/assets/upload",
+            headers=first_headers,
+            json={
+                "files": [
+                    {
+                        "filename": "persist-after-login.csv",
+                        "mime_type": "text/csv",
+                        "content_base64": encoded,
+                    }
+                ]
+            },
+        )
+        assert upload_response.status_code == 200
+        uploaded_asset_id = upload_response.json()["asset_ids"][0]
+
+        logout_response = client.post("/v1/auth/logout", headers=first_headers)
+        assert logout_response.status_code == 200
+
+        login_response = client.post(
+            "/v1/auth/login",
+            json={"email": email, "password": password},
+        )
+        assert login_response.status_code == 200
+        second_token = login_response.json()["session_token"]
+        second_headers = _auth_headers(second_token)
+
+        list_response = client.get("/v1/library/assets", headers=second_headers)
+        assert list_response.status_code == 200
+        payload = list_response.json()
+        listed_ids = [item["id"] for item in payload["items"]]
+        assert uploaded_asset_id in listed_ids
+
+
 def test_v1_aawe_selection_insight_returns_claim_payload(monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
