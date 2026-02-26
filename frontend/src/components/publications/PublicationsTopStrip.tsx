@@ -4491,7 +4491,20 @@ export function PublicationsTopStrip({
                 aria-label={insightsVisible ? 'Set publication insights not visible' : 'Set publication insights visible'}
                 title={insightsVisible ? 'Publication insights visible' : 'Publication insights hidden'}
               >
-                {insightsVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                <span className="relative block h-3.5 w-3.5" aria-hidden="true">
+                  <Eye
+                    className={cn(
+                      'absolute inset-0 h-3.5 w-3.5 transition-opacity duration-150',
+                      insightsVisible ? 'opacity-100' : 'opacity-0',
+                    )}
+                  />
+                  <EyeOff
+                    className={cn(
+                      'absolute inset-0 h-3.5 w-3.5 transition-opacity duration-150',
+                      insightsVisible ? 'opacity-0' : 'opacity-100',
+                    )}
+                  />
+                </span>
               </Button>
               {metrics?.status === 'FAILED' ? (
                 <p className={cn('mt-1', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>Last update failed</p>
@@ -4505,45 +4518,43 @@ export function PublicationsTopStrip({
               )}
               data-stop-tile-open="true"
             >
-              {insightsVisible ? (
-                <>
+              <div className={cn('flex items-center', !insightsVisible && 'invisible pointer-events-none')} aria-hidden={!insightsVisible}>
+                <Button
+                  type="button"
+                  data-stop-tile-open="true"
+                  variant="house"
+                  size="sm"
+                  className={cn('h-8 gap-1.5 px-3 house-publications-action-primary', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
+                  aria-label="Generate publication insights report"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>Generate report</span>
+                </Button>
+                <div className="house-publications-action-icons">
                   <Button
                     type="button"
                     data-stop-tile-open="true"
                     variant="house"
-                    size="sm"
-                    className={cn('h-8 gap-1.5 px-3 house-publications-action-primary', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
-                    aria-label="Generate publication insights report"
+                    size="icon"
+                    className={cn('h-8 w-8 house-publications-action-icon', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
+                    aria-label="Download"
+                    title="Download"
                   >
-                    <FileText className="h-3.5 w-3.5" />
-                    <span>Generate report</span>
+                    <Download className="h-3.5 w-3.5" />
                   </Button>
-                  <div className="house-publications-action-icons">
-                    <Button
-                      type="button"
-                      data-stop-tile-open="true"
-                      variant="house"
-                      size="icon"
-                      className={cn('h-8 w-8 house-publications-action-icon', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
-                      aria-label="Download"
-                      title="Download"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      type="button"
-                      data-stop-tile-open="true"
-                      variant="house"
-                      size="icon"
-                      className={cn('h-8 w-8 house-publications-action-icon', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
-                      aria-label="Share"
-                      title="Share"
-                    >
-                      <Share2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </>
-              ) : null}
+                  <Button
+                    type="button"
+                    data-stop-tile-open="true"
+                    variant="house"
+                    size="icon"
+                    className={cn('h-8 w-8 house-publications-action-icon', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
+                    aria-label="Share"
+                    title="Share"
+                  >
+                    <Share2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
 
