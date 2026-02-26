@@ -1146,6 +1146,133 @@ def reconcile_library_for_user(
         }
 
 
+def recover_library_storage_for_user(
+    *,
+    user_id: str | None,
+    account_key_hint: str | None = None,
+) -> dict[str, object]:
+    """Rebind asset storage paths for a user by scanning current + legacy roots."""
+    create_all_tables()
+    clean_user_id = _trim(user_id)
+    summary: dict[str, object] = {
+        "scanned_assets": 0,
+        "storage_rebound_rows": 0,
+        "available_assets_before": 0,
+        "available_assets_after": 0,
+        "missing_assets_after": 0,
+        "missing_asset_ids_sample": [],
+    }
+    if not clean_user_id:
+        return summary
+
+    with session_scope() as session:
+        if session.get(User, clean_user_id) is None:
+            return summary
+
+        storage_root = _storage_root()
+        pre_related_user_ids = _related_user_ids_for_user(
+            session=session,
+            user_id=clean_user_id,
+            account_key_hint=account_key_hint,
+        )
+        if clean_user_id not in pre_related_user_ids:
+            pre_related_user_ids.add(clean_user_id)
+        pre_storage_by_asset_id: dict[str, str] = {}
+        if pre_related_user_ids:
+            pre_rows = session.execute(
+                select(DataLibraryAsset.id, DataLibraryAsset.storage_path).where(
+                    DataLibraryAsset.owner_user_id.in_(sorted(pre_related_user_ids))
+                )
+            ).all()
+            for asset_id, storage_path in pre_rows:
+                clean_asset_id = _trim(asset_id)
+                if not clean_asset_id:
+                    continue
+                pre_storage_by_asset_id[clean_asset_id] = _trim(storage_path)
+
+        # Prime ownership and metadata recovery before attempting path rebind.
+        _restore_asset_row_from_metadata(
+            session=session,
+            primary_root=storage_root,
+            claimant_user_id=clean_user_id,
+        )
+        _claim_legacy_ownerless_assets_for_user(
+            session=session,
+            user_id=clean_user_id,
+        )
+        _recover_assets_for_user_from_identity_metadata(
+            session=session,
+            primary_root=storage_root,
+            user_id=clean_user_id,
+            account_key_hint=account_key_hint,
+        )
+
+        related_user_ids = _related_user_ids_for_user(
+            session=session,
+            user_id=clean_user_id,
+            account_key_hint=account_key_hint,
+        )
+        if clean_user_id not in related_user_ids:
+            related_user_ids.add(clean_user_id)
+        related_user_id_list = sorted(related_user_ids)
+        owned_rows = session.scalars(
+            select(DataLibraryAsset).where(
+                DataLibraryAsset.owner_user_id.in_(related_user_id_list)
+            )
+        ).all()
+
+        scanned_assets = 0
+        rebound_asset_ids: set[str] = set()
+        available_assets_before = 0
+        available_assets_after = 0
+        missing_asset_ids_sample: list[str] = []
+
+        for row in owned_rows:
+            scanned_assets += 1
+            row_id = _trim(row.id)
+            stored_path = _trim(row.storage_path)
+            if stored_path:
+                try:
+                    if Path(stored_path).exists() and Path(stored_path).is_file():
+                        available_assets_before += 1
+                except OSError:
+                    pass
+
+            resolved_storage_path = _resolve_existing_asset_path(row, storage_root)
+            if resolved_storage_path is None:
+                if len(missing_asset_ids_sample) < 20:
+                    missing_asset_ids_sample.append(_trim(row.id))
+                continue
+
+            available_assets_after += 1
+            resolved_storage_path_str = str(resolved_storage_path)
+            if _trim(row.storage_path) != resolved_storage_path_str:
+                row.storage_path = resolved_storage_path_str
+                if row_id:
+                    rebound_asset_ids.add(row_id)
+            _sync_asset_metadata_for_row(
+                session=session,
+                asset=row,
+                primary_root=storage_root,
+            )
+
+            if row_id:
+                pre_storage_path = pre_storage_by_asset_id.get(row_id)
+                if pre_storage_path and pre_storage_path != _trim(row.storage_path):
+                    rebound_asset_ids.add(row_id)
+
+        session.flush()
+        missing_assets_after = max(0, scanned_assets - available_assets_after)
+        return {
+            "scanned_assets": int(scanned_assets),
+            "storage_rebound_rows": int(len(rebound_asset_ids)),
+            "available_assets_before": int(available_assets_before),
+            "available_assets_after": int(available_assets_after),
+            "missing_assets_after": int(missing_assets_after),
+            "missing_asset_ids_sample": missing_asset_ids_sample,
+        }
+
+
 def collect_library_reconcile_diagnostics(
     *,
     user_id: str | None,

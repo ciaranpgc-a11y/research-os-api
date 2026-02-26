@@ -38,6 +38,7 @@ import {
   fetchAdminUsers,
   fetchAdminWorkspaces,
   impersonateAdminOrganisation,
+  recoverAdminUserLibraryStorage,
   reconcileAdminUserLibrary,
   retryAdminJob,
 } from '@/lib/impact-api'
@@ -389,6 +390,20 @@ function readBoolean(value: unknown): boolean {
 
 function summarizeAuditDetails(item: AdminAuditEventPayload): string {
   const metadata = readMetadataRecord(item.metadata)
+  if (item.action === 'user_library_storage_recover') {
+    const summary = readMetadataRecord(metadata.recover_summary)
+    const scanned = readNumber(summary.scanned_assets)
+    const rebound = readNumber(summary.storage_rebound_rows)
+    const availableBefore = readNumber(summary.available_assets_before)
+    const availableAfter = readNumber(summary.available_assets_after)
+    const missingAfter = readNumber(summary.missing_assets_after)
+    if (item.status !== 'success') {
+      const errorType = readText(metadata.error_type) || 'StorageRecoverError'
+      const errorDetail = readText(metadata.error_detail) || readText(metadata.failure) || 'Unknown failure'
+      return `${errorType}: ${errorDetail}`
+    }
+    return `Scanned ${scanned}; rebound ${rebound}; available ${availableBefore} -> ${availableAfter}; missing ${missingAfter}.`
+  }
   if (item.action === 'user_library_reconcile') {
     const summary = readMetadataRecord(metadata.reconcile_summary)
     const diagnosticsAfter = readMetadataRecord(metadata.diagnostics_after)
@@ -452,6 +467,7 @@ export function AdminPage() {
   const [impersonatingOrganisationId, setImpersonatingOrganisationId] = useState('')
   const [actingJobId, setActingJobId] = useState('')
   const [reconcilingUserId, setReconcilingUserId] = useState('')
+  const [recoveringStorageUserId, setRecoveringStorageUserId] = useState('')
   const [deletingUserId, setDeletingUserId] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
@@ -708,6 +724,35 @@ export function AdminPage() {
     }
   }
 
+  const onRecoverUserLibraryStorage = async (userId: string) => {
+    const token = getAuthSessionToken()
+    if (!token) {
+      navigate('/auth', { replace: true })
+      return
+    }
+    setRecoveringStorageUserId(userId)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await recoverAdminUserLibraryStorage(token, userId, {
+        reason: 'Admin console storage recovery action.',
+      })
+      const summary = readMetadataRecord(payload.recover_summary)
+      const rebound = readNumber(summary.storage_rebound_rows)
+      const availableBefore = readNumber(summary.available_assets_before)
+      const availableAfter = readNumber(summary.available_assets_after)
+      const missingAfter = readNumber(summary.missing_assets_after)
+      setStatus(
+        `${payload.message} Rebound: ${rebound}. Available: ${availableBefore} -> ${availableAfter}. Missing: ${missingAfter}.`,
+      )
+      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Could not recover user storage paths.')
+    } finally {
+      setRecoveringStorageUserId('')
+    }
+  }
+
   const onDeleteUserAccount = async (userId: string, userLabel: string) => {
     const confirmation = window.prompt(`Type DELETE to permanently remove "${userLabel}"`)
     if (String(confirmation || '').trim().toUpperCase() !== 'DELETE') {
@@ -752,7 +797,14 @@ export function AdminPage() {
   const jobsItems = jobs?.items || []
   const auditItems = auditEvents?.items || []
   const reconcileAuditItems = useMemo(
-    () => auditItems.filter((item) => item.action === 'user_library_reconcile').slice(0, 12),
+    () =>
+      auditItems
+        .filter(
+          (item) =>
+            item.action === 'user_library_reconcile' ||
+            item.action === 'user_library_storage_recover',
+        )
+        .slice(0, 12),
     [auditItems],
   )
 
@@ -1569,16 +1621,37 @@ export function AdminPage() {
                                       size="sm"
                                       variant="outline"
                                       onClick={() => void onReconcileUserLibrary(item.id)}
-                                      disabled={reconcilingUserId === item.id || deletingUserId === item.id}
+                                      disabled={
+                                        reconcilingUserId === item.id ||
+                                        recoveringStorageUserId === item.id ||
+                                        deletingUserId === item.id
+                                      }
                                     >
                                       {reconcilingUserId === item.id ? 'Reconciling...' : 'Reconcile library'}
                                     </Button>
                                     <Button
                                       type="button"
                                       size="sm"
+                                      variant="outline"
+                                      onClick={() => void onRecoverUserLibraryStorage(item.id)}
+                                      disabled={
+                                        recoveringStorageUserId === item.id ||
+                                        reconcilingUserId === item.id ||
+                                        deletingUserId === item.id
+                                      }
+                                    >
+                                      {recoveringStorageUserId === item.id ? 'Recovering...' : 'Recover storage'}
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="sm"
                                       variant="destructive"
                                       onClick={() => void onDeleteUserAccount(item.id, item.name || item.email || item.id)}
-                                      disabled={deletingUserId === item.id || reconcilingUserId === item.id}
+                                      disabled={
+                                        deletingUserId === item.id ||
+                                        reconcilingUserId === item.id ||
+                                        recoveringStorageUserId === item.id
+                                      }
                                     >
                                       {deletingUserId === item.id ? 'Deleting...' : 'Delete account'}
                                     </Button>

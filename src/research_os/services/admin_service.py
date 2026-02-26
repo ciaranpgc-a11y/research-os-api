@@ -1890,6 +1890,159 @@ def admin_reconcile_user_library(
     }
 
 
+def admin_recover_user_library_storage(
+    *,
+    actor_user_id: str,
+    user_id: str,
+    reason: str = "",
+) -> dict[str, object]:
+    create_all_tables()
+    clean_actor_user_id = str(actor_user_id or "").strip()
+    clean_user_id = str(user_id or "").strip()
+    clean_reason = str(reason or "").strip()
+    if not clean_user_id:
+        raise AdminValidationError("user_id is required.")
+
+    user_email = ""
+    user_name = ""
+    user_account_key: str | None = None
+    diagnostics_before: dict[str, object] = {}
+    diagnostics_after: dict[str, object] = {}
+    recover_summary: dict[str, object] = {
+        "scanned_assets": 0,
+        "storage_rebound_rows": 0,
+        "available_assets_before": 0,
+        "available_assets_after": 0,
+        "missing_assets_after": 0,
+        "missing_asset_ids_sample": [],
+    }
+
+    try:
+        with session_scope() as session:
+            user = session.get(User, clean_user_id)
+            if user is None:
+                raise AdminNotFoundError(f"User '{clean_user_id}' was not found.")
+            user_email = str(user.email or "").strip()
+            user_name = str(user.name or "").strip() or user_email or clean_user_id
+            user_account_key = str(user.account_key or "").strip() or None
+
+        from research_os.services.data_planner_service import (
+            collect_library_reconcile_diagnostics,
+            recover_library_storage_for_user,
+        )
+
+        diagnostics_before = collect_library_reconcile_diagnostics(
+            user_id=clean_user_id,
+            account_key_hint=user_account_key,
+        )
+        recover_summary = recover_library_storage_for_user(
+            user_id=clean_user_id,
+            account_key_hint=user_account_key,
+        )
+        diagnostics_after = collect_library_reconcile_diagnostics(
+            user_id=clean_user_id,
+            account_key_hint=user_account_key,
+        )
+    except (AdminValidationError, AdminNotFoundError):
+        _record_admin_audit_event(
+            actor_user_id=clean_actor_user_id or None,
+            action="user_library_storage_recover",
+            target_type="user",
+            target_id=clean_user_id,
+            status="failure",
+            metadata={
+                "target_email": user_email,
+                "target_account_key": user_account_key or "",
+                "reason": clean_reason,
+                "diagnostics_before": diagnostics_before,
+                "error_type": "validation_or_not_found",
+            },
+        )
+        raise
+    except Exception as exc:
+        _record_admin_audit_event(
+            actor_user_id=clean_actor_user_id or None,
+            action="user_library_storage_recover",
+            target_type="user",
+            target_id=clean_user_id,
+            status="failure",
+            metadata={
+                "target_email": user_email,
+                "target_account_key": user_account_key or "",
+                "reason": clean_reason,
+                "diagnostics_before": diagnostics_before,
+                "error_type": exc.__class__.__name__,
+                "error_detail": str(exc),
+                "traceback_tail": traceback.format_exc(limit=10),
+            },
+        )
+        raise AdminValidationError(
+            "Library storage recovery failed. Review admin audit log details for this user."
+        )
+
+    scanned_assets = int(recover_summary.get("scanned_assets") or 0)
+    storage_rebound_rows = int(recover_summary.get("storage_rebound_rows") or 0)
+    available_assets_before = int(recover_summary.get("available_assets_before") or 0)
+    available_assets_after = int(recover_summary.get("available_assets_after") or 0)
+    missing_assets_after = int(recover_summary.get("missing_assets_after") or 0)
+    missing_asset_ids_sample = [
+        str(item or "").strip()
+        for item in list(recover_summary.get("missing_asset_ids_sample") or [])
+        if str(item or "").strip()
+    ][:20]
+
+    summary_text = (
+        f"Recovered storage for {user_name}: "
+        f"{storage_rebound_rows} path rebind(s), "
+        f"available {available_assets_before} -> {available_assets_after}, "
+        f"missing now {missing_assets_after}."
+    )
+    audit_event = _record_admin_audit_event(
+        actor_user_id=clean_actor_user_id or None,
+        action="user_library_storage_recover",
+        target_type="user",
+        target_id=clean_user_id,
+        status="success",
+        metadata={
+            "target_email": user_email,
+            "target_account_key": user_account_key or "",
+            "reason": clean_reason,
+            "recover_summary": {
+                "scanned_assets": scanned_assets,
+                "storage_rebound_rows": storage_rebound_rows,
+                "available_assets_before": available_assets_before,
+                "available_assets_after": available_assets_after,
+                "missing_assets_after": missing_assets_after,
+                "missing_asset_ids_sample": missing_asset_ids_sample,
+            },
+            "diagnostics_before": diagnostics_before,
+            "diagnostics_after": diagnostics_after,
+        },
+    )
+
+    return {
+        "message": summary_text,
+        "user_id": clean_user_id,
+        "user_email": user_email,
+        "user_name": user_name,
+        "account_key": user_account_key,
+        "recover_summary": {
+            "scanned_assets": scanned_assets,
+            "storage_rebound_rows": storage_rebound_rows,
+            "available_assets_before": available_assets_before,
+            "available_assets_after": available_assets_after,
+            "missing_assets_after": missing_assets_after,
+            "missing_asset_ids_sample": missing_asset_ids_sample,
+        },
+        "diagnostics": {
+            "before": diagnostics_before,
+            "after": diagnostics_after,
+        },
+        "generated_at": _utcnow(),
+        "audit_event": audit_event,
+    }
+
+
 def _serialize_admin_job_row(
     *,
     job: GenerationJob,

@@ -26,6 +26,8 @@ from sqlalchemy import text
 from research_os.config import get_openai_api_key
 from research_os.db import session_scope
 from research_os.api.schemas import (
+    AdminUserLibraryStorageRecoverRequest,
+    AdminUserLibraryStorageRecoverResponse,
     AdminUserLibraryReconcileResponse,
     AdminAuditEventsListResponse,
     AdminJobActionResponse,
@@ -233,6 +235,7 @@ from research_os.services.admin_service import (
     AdminValidationError,
     admin_cancel_job,
     admin_delete_user_account,
+    admin_recover_user_library_storage,
     admin_reconcile_user_library,
     admin_retry_job,
     create_admin_org_impersonation,
@@ -1440,6 +1443,36 @@ def v1_admin_reconcile_user_library(
             user_id=user_id,
         )
         return AdminUserLibraryReconcileResponse(**payload)
+    except AdminNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except AdminValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/admin/users/{user_id}/library/recover-storage",
+    response_model=AdminUserLibraryStorageRecoverResponse,
+    responses=UNAUTHORIZED_RESPONSES
+    | FORBIDDEN_RESPONSES
+    | BAD_REQUEST_RESPONSES
+    | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_recover_user_library_storage(
+    request: Request,
+    user_id: str,
+    payload: AdminUserLibraryStorageRecoverRequest,
+) -> AdminUserLibraryStorageRecoverResponse | JSONResponse:
+    admin_user, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    try:
+        result = admin_recover_user_library_storage(
+            actor_user_id=str((admin_user or {}).get("id") or ""),
+            user_id=user_id,
+            reason=payload.reason,
+        )
+        return AdminUserLibraryStorageRecoverResponse(**result)
     except AdminNotFoundError as exc:
         return _build_not_found_response(str(exc))
     except AdminValidationError as exc:

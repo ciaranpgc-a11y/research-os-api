@@ -78,6 +78,27 @@ export type AdminUserLibraryReconcilePayload = {
   audit_event: AdminAuditEventPayload
 }
 
+export type AdminUserLibraryStorageRecoverSummaryPayload = {
+  scanned_assets: number
+  storage_rebound_rows: number
+  available_assets_before: number
+  available_assets_after: number
+  missing_assets_after: number
+  missing_asset_ids_sample: string[]
+}
+
+export type AdminUserLibraryStorageRecoverPayload = {
+  message: string
+  user_id: string
+  user_email: string
+  user_name: string
+  account_key: string | null
+  recover_summary: AdminUserLibraryStorageRecoverSummaryPayload
+  diagnostics: Record<string, unknown>
+  generated_at: string
+  audit_event: AdminAuditEventPayload
+}
+
 export type AdminUserDeletePayload = {
   success: boolean
   message: string

@@ -4474,7 +4474,7 @@ export function PublicationsTopStrip({
                 variant="house"
                 size="icon"
                 className={cn(
-                  'h-9 w-9 house-publications-action-icon house-publications-action-eye',
+                  'h-8 w-8 house-publications-action-icon house-publications-action-eye',
                   HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS,
                   insightsVisible
                     ? 'house-publications-action-eye-on'
@@ -4483,35 +4483,27 @@ export function PublicationsTopStrip({
                 onClick={() => setInsightsVisible((current) => !current)}
                 aria-pressed={insightsVisible}
                 aria-label={insightsVisible ? 'Set publication insights not visible' : 'Set publication insights visible'}
-                title={insightsVisible ? 'Publication insights visible' : 'Publication insights hidden'}
               >
-                <span className="relative block h-4 w-4" aria-hidden="true">
-                  <Eye
-                    className={cn(
-                      'absolute inset-0 h-4 w-4 transition-opacity duration-150',
-                      insightsVisible ? 'opacity-100' : 'opacity-0',
-                    )}
-                  />
-                  <EyeOff
-                    className={cn(
-                      'absolute inset-0 h-4 w-4 transition-opacity duration-150',
-                      insightsVisible ? 'opacity-0' : 'opacity-100',
-                    )}
-                  />
-                </span>
+                {insightsVisible ? (
+                  <Eye className="house-publications-eye-glyph h-[1.09rem] w-[1.09rem]" strokeWidth={2.3} />
+                ) : (
+                  <EyeOff className="house-publications-eye-glyph h-[1.09rem] w-[1.09rem]" strokeWidth={2.3} />
+                )}
               </Button>
               {metrics?.status === 'FAILED' ? (
                 <p className={cn('mt-1', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>Last update failed</p>
               ) : null}
             </div>
-            {insightsVisible ? (
+            <div className="ml-auto min-h-8 min-w-[16.5rem]">
               <div
                 className={cn(
-                  'ml-auto flex flex-wrap items-center house-publications-actions',
+                  'flex flex-wrap items-center house-publications-actions',
                   HOUSE_ACTIONS_SECTION_TOOLS_CLASS,
                   HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS,
+                  !insightsVisible && 'invisible pointer-events-none',
                 )}
                 data-stop-tile-open="true"
+                aria-hidden={!insightsVisible}
               >
                 <Button
                   type="button"
@@ -4532,7 +4524,6 @@ export function PublicationsTopStrip({
                     size="icon"
                     className={cn('h-8 w-8 house-publications-action-icon', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
                     aria-label="Download"
-                    title="Download"
                   >
                     <Download className="h-3.5 w-3.5" />
                   </Button>
@@ -4543,13 +4534,12 @@ export function PublicationsTopStrip({
                     size="icon"
                     className={cn('h-8 w-8 house-publications-action-icon', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
                     aria-label="Share"
-                    title="Share"
                   >
                     <Share2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               </div>
-            ) : null}
+            </div>
           </div>
 
           {insightsVisible && loading && tiles.length === 0 ? (

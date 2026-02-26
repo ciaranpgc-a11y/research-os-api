@@ -6,6 +6,7 @@ import type {
   AdminJobActionPayload,
   AdminJobsListPayload,
   AdminUserDeletePayload,
+  AdminUserLibraryStorageRecoverPayload,
   AdminUserLibraryReconcilePayload,
   AffiliationAddressResolutionPayload,
   AffiliationSuggestionsPayload,
@@ -303,6 +304,25 @@ export async function reconcileAdminUserLibrary(
       headers: authHeaders(token),
     },
     'Admin user library reconcile failed',
+    { timeoutMs: 120_000, retryCount: 0 },
+  )
+}
+
+export async function recoverAdminUserLibraryStorage(
+  token: string,
+  userId: string,
+  input?: { reason?: string },
+): Promise<AdminUserLibraryStorageRecoverPayload> {
+  return requestJson<AdminUserLibraryStorageRecoverPayload>(
+    `${API_BASE_URL}/v1/admin/users/${encodeURIComponent(userId)}/library/recover-storage`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reason: String(input?.reason || ''),
+      }),
+    },
+    'Admin user library storage recovery failed',
     { timeoutMs: 120_000, retryCount: 0 },
   )
 }

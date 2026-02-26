@@ -4,7 +4,13 @@ import time
 from fastapi.testclient import TestClient
 
 from research_os.api.app import app
-from research_os.db import GenerationJob, User, reset_database_state, session_scope
+from research_os.db import (
+    DataLibraryAsset,
+    GenerationJob,
+    User,
+    reset_database_state,
+    session_scope,
+)
 from research_os.services.persona_service import upsert_work
 
 
@@ -2677,6 +2683,10 @@ def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> Non
             "/v1/admin/users/user-unknown",
             json={"confirm_phrase": "DELETE", "reason": "test"},
         )
+        recover_storage_response = client.post(
+            "/v1/admin/users/user-unknown/library/recover-storage",
+            json={"reason": "test"},
+        )
         reconcile_library_response = client.post(
             "/v1/admin/users/user-unknown/library/reconcile"
         )
@@ -2702,6 +2712,8 @@ def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> Non
     assert jobs_response.json()["error"]["type"] == "unauthorized"
     assert delete_user_response.status_code == 401
     assert delete_user_response.json()["error"]["type"] == "unauthorized"
+    assert recover_storage_response.status_code == 401
+    assert recover_storage_response.json()["error"]["type"] == "unauthorized"
     assert reconcile_library_response.status_code == 401
     assert reconcile_library_response.json()["error"]["type"] == "unauthorized"
     assert cancel_job_response.status_code == 401
@@ -2753,6 +2765,11 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
             headers=_auth_headers(token),
             json={"confirm_phrase": "DELETE", "reason": "test"},
         )
+        recover_storage_response = client.post(
+            "/v1/admin/users/user-unknown/library/recover-storage",
+            headers=_auth_headers(token),
+            json={"reason": "test"},
+        )
         reconcile_library_response = client.post(
             "/v1/admin/users/user-unknown/library/reconcile",
             headers=_auth_headers(token),
@@ -2791,6 +2808,8 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
     assert jobs_response.json()["error"]["type"] == "forbidden"
     assert delete_user_response.status_code == 403
     assert delete_user_response.json()["error"]["type"] == "forbidden"
+    assert recover_storage_response.status_code == 403
+    assert recover_storage_response.json()["error"]["type"] == "forbidden"
     assert reconcile_library_response.status_code == 403
     assert reconcile_library_response.json()["error"]["type"] == "forbidden"
     assert cancel_job_response.status_code == 403
@@ -2909,6 +2928,8 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
             },
         )
         assert upload_response.status_code == 200
+        uploaded_asset_ids = list(upload_response.json().get("asset_ids") or [])
+        assert len(uploaded_asset_ids) >= 1
 
         overview_response = client.get(
             "/v1/admin/overview",
@@ -2942,6 +2963,17 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
         reconcile_library_response = client.post(
             f"/v1/admin/users/{viewer_register_response.json()['user']['id']}/library/reconcile",
             headers=_auth_headers(admin_token),
+        )
+        with session_scope() as session:
+            stale_asset = session.get(DataLibraryAsset, str(uploaded_asset_ids[0]))
+            assert stale_asset is not None
+            stale_asset.storage_path = str(
+                (tmp_path / "missing-storage" / f"{uploaded_asset_ids[0]}.csv").resolve()
+            )
+        recover_storage_response = client.post(
+            f"/v1/admin/users/{viewer_register_response.json()['user']['id']}/library/recover-storage",
+            headers=_auth_headers(admin_token),
+            json={"reason": "Repair stale storage path from admin console test"},
         )
         delete_user_response = client.request(
             "DELETE",
@@ -3056,6 +3088,16 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
     assert "restored_rows" in reconcile_payload["reconcile_summary"]
     assert "audit_event" in reconcile_payload
 
+    assert recover_storage_response.status_code == 200
+    recover_payload = recover_storage_response.json()
+    assert recover_payload["user_id"] == viewer_register_response.json()["user"]["id"]
+    assert recover_payload["recover_summary"]["scanned_assets"] >= 1
+    assert recover_payload["recover_summary"]["storage_rebound_rows"] >= 1
+    assert recover_payload["recover_summary"]["available_assets_after"] >= 1
+    assert recover_payload["recover_summary"]["missing_assets_after"] >= 0
+    assert recover_payload["audit_event"]["action"] == "user_library_storage_recover"
+    assert recover_payload["audit_event"]["status"] == "success"
+
     assert delete_user_response.status_code == 200
     delete_payload = delete_user_response.json()
     assert delete_payload["success"] is True
@@ -3095,6 +3137,7 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
     assert isinstance(audit_payload["summary"]["action_totals"], list)
     actions = {item["action"] for item in audit_payload["items"]}
     assert "admin_user_delete" in actions
+    assert "user_library_storage_recover" in actions
     assert "admin_job_cancel" in actions
     assert "admin_job_retry" in actions
     assert "admin_org_impersonation_start" in actions

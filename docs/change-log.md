@@ -1232,3 +1232,33 @@
 - `python -m py_compile src/research_os/db.py tests/test_db_storage_stability.py`
 - `pytest tests/test_db_storage_stability.py -q`
 - `pytest tests/test_api.py -k "auth_oauth_connect" -q`
+
+### Admin Library Storage Recovery Action + Availability Surfacing
+
+- **Area:** Admin remediation and library data durability diagnostics.
+- **What changed:**
+- Added admin recovery endpoint `POST /v1/admin/users/{user_id}/library/recover-storage` with audit logging.
+- Added per-user `Recover storage` action in Admin Users UI and audit summary formatting.
+- Recovery summary now counts net storage-path rebinds across the full routine (including prerequisite metadata repair), preventing false `0` rebind reports when path correction happened upstream in the same run.
+- Library asset payloads now surface `is_available` and list unavailable rows instead of silently dropping them.
+- Workspace and personal-library UI now show missing-storage state and disable unavailable download/pull actions.
+- **Why it changed:**
+- Users reported library rows disappearing or appearing empty across sessions; admins needed a direct repair action and truthful diagnostics when metadata existed but backing storage path was stale/missing.
+- **Key files touched:**
+- `src/research_os/services/data_planner_service.py`
+- `src/research_os/services/admin_service.py`
+- `src/research_os/api/schemas.py`
+- `src/research_os/api/app.py`
+- `frontend/src/lib/impact-api.ts`
+- `frontend/src/types/impact.ts`
+- `frontend/src/types/study-core.ts`
+- `frontend/src/pages/admin-page.tsx`
+- `frontend/src/pages/workspaces-data-library-view.tsx`
+- `frontend/src/pages/results-page.tsx`
+- `tests/test_api.py`
+- `tests/test_open_access_service.py`
+- `docs/change-log.md`
+- **Verification performed:**
+- `pytest tests/test_api.py -k "admin_endpoints" -q`
+- `pytest tests/test_open_access_service.py -k "missing_storage" -q`
+- `npm --prefix frontend run --silent typecheck`

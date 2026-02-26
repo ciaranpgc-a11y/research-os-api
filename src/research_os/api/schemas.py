@@ -1126,6 +1126,19 @@ class AdminUserLibraryReconcileSummaryResponse(BaseModel):
     canonicalized_owner_rows: int = 0
 
 
+class AdminUserLibraryStorageRecoverRequest(BaseModel):
+    reason: str = ""
+
+
+class AdminUserLibraryStorageRecoverSummaryResponse(BaseModel):
+    scanned_assets: int = 0
+    storage_rebound_rows: int = 0
+    available_assets_before: int = 0
+    available_assets_after: int = 0
+    missing_assets_after: int = 0
+    missing_asset_ids_sample: list[str] = Field(default_factory=list)
+
+
 class AdminUserLibraryReconcileResponse(BaseModel):
     message: str
     user_id: str
@@ -1140,6 +1153,20 @@ class AdminUserLibraryReconcileResponse(BaseModel):
     owned_project_after: int = 0
     reconcile_summary: AdminUserLibraryReconcileSummaryResponse = Field(
         default_factory=AdminUserLibraryReconcileSummaryResponse
+    )
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
+    generated_at: datetime
+    audit_event: AdminAuditEventResponse
+
+
+class AdminUserLibraryStorageRecoverResponse(BaseModel):
+    message: str
+    user_id: str
+    user_email: str
+    user_name: str
+    account_key: str | None = None
+    recover_summary: AdminUserLibraryStorageRecoverSummaryResponse = Field(
+        default_factory=AdminUserLibraryStorageRecoverSummaryResponse
     )
     diagnostics: dict[str, Any] = Field(default_factory=dict)
     generated_at: datetime

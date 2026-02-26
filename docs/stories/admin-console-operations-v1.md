@@ -99,6 +99,11 @@ Out of scope (v1):
   - reconcile success payload includes diagnostics (`before`, `after`, `no_changes_detected`),
   - Users section now includes a `Reconcile tracker` table and Security audit table now surfaces metadata details.
   - reconcile diagnostics now include storage-health counters (`db_owned_assets_with_storage`, `db_owned_assets_missing_storage`, sample missing IDs) so no-op reconciles can be attributed to storage loss vs identity mismatch.
+- Added storage rebind remediation for user libraries:
+  - new admin API endpoint `/v1/admin/users/{user_id}/library/recover-storage`,
+  - per-user `Recover storage` action in Admin Users table,
+  - immutable audit event action `user_library_storage_recover`,
+  - recovery summary now reports net rebind count across full workflow (including prerequisite metadata-driven path fixes).
 - Updated bootstrap seed behavior so startup bootstrap no longer overwrites an existing user name unless explicitly enabled via `AAWE_BOOTSTRAP_SYNC_NAME=1`.
 
 ## Verification
