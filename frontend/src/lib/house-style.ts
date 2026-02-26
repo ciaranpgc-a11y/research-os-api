@@ -16,6 +16,8 @@ export const houseTypography = {
   // Standard text styles.
   text: 'house-text',
   textSoft: 'house-text-soft',
+  metricSubtitle: 'house-metric-subtitle',
+  metricDetail: 'house-metric-detail',
   label: 'house-label',
   fieldLabel: 'house-field-label',
   fieldLabelInline: 'house-field-label-inline',
@@ -205,6 +207,8 @@ export const houseElements = {
   formHelper: houseTypography.fieldHelper,
   bodyText: houseTypography.text,
   bodyTextSoft: houseTypography.textSoft,
+  metricSubtitle: houseTypography.metricSubtitle,
+  metricDetail: houseTypography.metricDetail,
   buttonText: houseTypography.buttonText,
   formInput: houseForms.input,
   formSelect: houseForms.select,

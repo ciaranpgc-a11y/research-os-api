@@ -29,6 +29,7 @@ import { Input } from '@/components/ui/input'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
 import {
   cancelAdminJob,
+  deleteAdminUserAccount,
   fetchAdminAuditEvents,
   fetchAdminJobs,
   fetchAdminOrganisations,
@@ -382,6 +383,7 @@ export function AdminPage() {
   const [impersonatingOrganisationId, setImpersonatingOrganisationId] = useState('')
   const [actingJobId, setActingJobId] = useState('')
   const [reconcilingUserId, setReconcilingUserId] = useState('')
+  const [deletingUserId, setDeletingUserId] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
@@ -624,6 +626,34 @@ export function AdminPage() {
       setError(actionError instanceof Error ? actionError.message : 'Could not reconcile user library.')
     } finally {
       setReconcilingUserId('')
+    }
+  }
+
+  const onDeleteUserAccount = async (userId: string, userLabel: string) => {
+    const confirmation = window.prompt(`Type DELETE to permanently remove "${userLabel}"`)
+    if (String(confirmation || '').trim().toUpperCase() !== 'DELETE') {
+      setError('Deletion cancelled. Type DELETE to confirm account deletion.')
+      return
+    }
+    const token = getAuthSessionToken()
+    if (!token) {
+      navigate('/auth', { replace: true })
+      return
+    }
+    setDeletingUserId(userId)
+    setError('')
+    setStatus('')
+    try {
+      const payload = await deleteAdminUserAccount(token, userId, {
+        confirmPhrase: 'DELETE',
+        reason: 'Admin console account deletion action.',
+      })
+      setStatus(payload.message)
+      await loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Could not delete user account.')
+    } finally {
+      setDeletingUserId('')
     }
   }
 
@@ -1386,7 +1416,7 @@ export function AdminPage() {
                       <Input
                         value={userQuery}
                         onChange={(event) => setUserQuery(event.target.value)}
-                        placeholder="Search by name or email"
+                        placeholder="Search by name, email, user ID, or account key"
                         className="pl-9"
                       />
                     </div>
@@ -1449,15 +1479,26 @@ export function AdminPage() {
                               <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatTimestamp(item.last_sign_in_at)}</td>
                               <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatTimestamp(item.created_at)}</td>
                               <td className="px-3 py-2 text-right">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => void onReconcileUserLibrary(item.id)}
-                                  disabled={reconcilingUserId === item.id}
-                                >
-                                  {reconcilingUserId === item.id ? 'Reconciling...' : 'Reconcile library'}
-                                </Button>
+                                <div className="flex items-center justify-end gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => void onReconcileUserLibrary(item.id)}
+                                    disabled={reconcilingUserId === item.id || deletingUserId === item.id}
+                                  >
+                                    {reconcilingUserId === item.id ? 'Reconciling...' : 'Reconcile library'}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => void onDeleteUserAccount(item.id, item.name || item.email || item.id)}
+                                    disabled={deletingUserId === item.id || reconcilingUserId === item.id}
+                                  >
+                                    {deletingUserId === item.id ? 'Deleting...' : 'Delete account'}
+                                  </Button>
+                                </div>
                               </td>
                             </tr>
                           ))}

@@ -5,6 +5,7 @@ import type {
   AdminAuditEventsListPayload,
   AdminJobActionPayload,
   AdminJobsListPayload,
+  AdminUserDeletePayload,
   AdminUserLibraryReconcilePayload,
   AffiliationAddressResolutionPayload,
   AffiliationSuggestionsPayload,
@@ -302,6 +303,29 @@ export async function reconcileAdminUserLibrary(
       headers: authHeaders(token),
     },
     'Admin user library reconcile failed',
+    { timeoutMs: 120_000, retryCount: 0 },
+  )
+}
+
+export async function deleteAdminUserAccount(
+  token: string,
+  userId: string,
+  input: {
+    confirmPhrase: string
+    reason?: string
+  },
+): Promise<AdminUserDeletePayload> {
+  return requestJson<AdminUserDeletePayload>(
+    `${API_BASE_URL}/v1/admin/users/${encodeURIComponent(userId)}`,
+    {
+      method: 'DELETE',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        confirm_phrase: String(input.confirmPhrase || ''),
+        reason: String(input.reason || ''),
+      }),
+    },
+    'Admin user delete failed',
     { timeoutMs: 120_000, retryCount: 0 },
   )
 }

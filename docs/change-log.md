@@ -7,12 +7,14 @@
 - **Area:** Admin diagnostics for account-linked data recovery and identity consistency.
 - **What changed:**
 - Added admin endpoint `POST /v1/admin/users/{user_id}/library/reconcile` to trigger server-side personal-library reconciliation for a target user and return before/after ownership counts plus recovery summary.
-- Added audit logging for this action (`user_library_reconcile`) in the immutable admin audit event stream.
+- Added admin endpoint `DELETE /v1/admin/users/{user_id}` with required `confirm_phrase=DELETE` guard so admins can remove problematic duplicate/invalid accounts.
+- Added audit logging for both actions (`user_library_reconcile`, `admin_user_delete`) in the immutable admin audit event stream.
 - Extended admin user directory payloads with `account_key` and search support across `email`, `name`, `id`, and `account_key`.
-- Updated admin user table UI to show `User ID`, `Account key`, and a per-user `Reconcile library` action button.
+- Updated admin user table UI to show `User ID`, `Account key`, and per-user actions for both `Reconcile library` and `Delete account`.
 - Updated bootstrap-account behavior so seeded bootstrap startup no longer overwrites an existing user display name by default; name syncing now requires explicit `AAWE_BOOTSTRAP_SYNC_NAME=1`.
 - **Why it changed:**
 - Give admin a direct, visible recovery control when account libraries appear empty and make identity linkage diagnosable from the directory.
+- Give operations a controlled fallback to remove broken/duplicate accounts when reconciliation cannot restore continuity.
 - Prevent profile/admin name drift caused by startup bootstrap name overwrite.
 - **Key files touched:**
 - `src/research_os/services/admin_service.py`

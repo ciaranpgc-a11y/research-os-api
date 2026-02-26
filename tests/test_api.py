@@ -2672,6 +2672,11 @@ def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> Non
         workspaces_response = client.get("/v1/admin/workspaces")
         usage_costs_response = client.get("/v1/admin/usage-costs")
         jobs_response = client.get("/v1/admin/jobs")
+        delete_user_response = client.request(
+            "DELETE",
+            "/v1/admin/users/user-unknown",
+            json={"confirm_phrase": "DELETE", "reason": "test"},
+        )
         reconcile_library_response = client.post(
             "/v1/admin/users/user-unknown/library/reconcile"
         )
@@ -2695,6 +2700,8 @@ def test_v1_admin_endpoints_require_authentication(monkeypatch, tmp_path) -> Non
     assert usage_costs_response.json()["error"]["type"] == "unauthorized"
     assert jobs_response.status_code == 401
     assert jobs_response.json()["error"]["type"] == "unauthorized"
+    assert delete_user_response.status_code == 401
+    assert delete_user_response.json()["error"]["type"] == "unauthorized"
     assert reconcile_library_response.status_code == 401
     assert reconcile_library_response.json()["error"]["type"] == "unauthorized"
     assert cancel_job_response.status_code == 401
@@ -2740,6 +2747,12 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
             "/v1/admin/jobs",
             headers=_auth_headers(token),
         )
+        delete_user_response = client.request(
+            "DELETE",
+            "/v1/admin/users/user-unknown",
+            headers=_auth_headers(token),
+            json={"confirm_phrase": "DELETE", "reason": "test"},
+        )
         reconcile_library_response = client.post(
             "/v1/admin/users/user-unknown/library/reconcile",
             headers=_auth_headers(token),
@@ -2776,6 +2789,8 @@ def test_v1_admin_endpoints_require_admin_role(monkeypatch, tmp_path) -> None:
     assert usage_costs_response.json()["error"]["type"] == "forbidden"
     assert jobs_response.status_code == 403
     assert jobs_response.json()["error"]["type"] == "forbidden"
+    assert delete_user_response.status_code == 403
+    assert delete_user_response.json()["error"]["type"] == "forbidden"
     assert reconcile_library_response.status_code == 403
     assert reconcile_library_response.json()["error"]["type"] == "forbidden"
     assert cancel_job_response.status_code == 403
@@ -2816,6 +2831,16 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
         )
         assert viewer_register_response.status_code == 200
         viewer_token = viewer_register_response.json()["session_token"]
+        delete_target_register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "delete-target@example.com",
+                "password": "StrongPassword123",
+                "name": "Delete Target",
+            },
+        )
+        assert delete_target_register_response.status_code == 200
+        delete_target_user_id = delete_target_register_response.json()["user"]["id"]
 
         project_response = client.post(
             "/v1/projects",
@@ -2917,6 +2942,15 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
         reconcile_library_response = client.post(
             f"/v1/admin/users/{viewer_register_response.json()['user']['id']}/library/reconcile",
             headers=_auth_headers(admin_token),
+        )
+        delete_user_response = client.request(
+            "DELETE",
+            f"/v1/admin/users/{delete_target_user_id}",
+            headers=_auth_headers(admin_token),
+            json={
+                "confirm_phrase": "DELETE",
+                "reason": "Duplicate account cleanup test",
+            },
         )
         cancel_job_response = client.post(
             f"/v1/admin/jobs/{queued_job_id}/cancel",
@@ -3022,6 +3056,16 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
     assert "restored_rows" in reconcile_payload["reconcile_summary"]
     assert "audit_event" in reconcile_payload
 
+    assert delete_user_response.status_code == 200
+    delete_payload = delete_user_response.json()
+    assert delete_payload["success"] is True
+    assert delete_payload["deleted_user_id"] == delete_target_user_id
+    assert delete_payload["deleted_user_email"] == "delete-target@example.com"
+    assert delete_payload["audit_event"]["action"] == "admin_user_delete"
+    assert delete_payload["audit_event"]["status"] == "success"
+    with session_scope() as session:
+        assert session.get(User, delete_target_user_id) is None
+
     assert cancel_job_response.status_code == 200
     cancel_payload = cancel_job_response.json()
     assert cancel_payload["action"] == "cancel"
@@ -3046,10 +3090,11 @@ def test_v1_admin_endpoints_return_admin_payloads(monkeypatch, tmp_path) -> None
 
     assert audit_response.status_code == 200
     audit_payload = audit_response.json()
-    assert audit_payload["total"] >= 3
-    assert audit_payload["summary"]["success_count"] >= 3
+    assert audit_payload["total"] >= 4
+    assert audit_payload["summary"]["success_count"] >= 4
     assert isinstance(audit_payload["summary"]["action_totals"], list)
     actions = {item["action"] for item in audit_payload["items"]}
+    assert "admin_user_delete" in actions
     assert "admin_job_cancel" in actions
     assert "admin_job_retry" in actions
     assert "admin_org_impersonation_start" in actions

@@ -31,6 +31,8 @@ from research_os.api.schemas import (
     AdminJobActionResponse,
     AdminJobCancelRequest,
     AdminJobRetryRequest,
+    AdminUserDeleteRequest,
+    AdminUserDeleteResponse,
     AdminJobsListResponse,
     AdminOrganisationImpersonationRequest,
     AdminOrganisationImpersonationStartResponse,
@@ -230,6 +232,7 @@ from research_os.services.admin_service import (
     AdminStateError,
     AdminValidationError,
     admin_cancel_job,
+    admin_delete_user_account,
     admin_reconcile_user_library,
     admin_retry_job,
     create_admin_org_impersonation,
@@ -1437,6 +1440,37 @@ def v1_admin_reconcile_user_library(
             user_id=user_id,
         )
         return AdminUserLibraryReconcileResponse(**payload)
+    except AdminNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except AdminValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.delete(
+    "/v1/admin/users/{user_id}",
+    response_model=AdminUserDeleteResponse,
+    responses=UNAUTHORIZED_RESPONSES
+    | FORBIDDEN_RESPONSES
+    | BAD_REQUEST_RESPONSES
+    | NOT_FOUND_RESPONSES,
+    tags=["v1"],
+)
+def v1_admin_delete_user(
+    request: Request,
+    user_id: str,
+    payload: AdminUserDeleteRequest,
+) -> AdminUserDeleteResponse | JSONResponse:
+    admin_user, auth_error = _resolve_request_admin_required(request)
+    if auth_error:
+        return auth_error
+    try:
+        result = admin_delete_user_account(
+            actor_user_id=str((admin_user or {}).get("id") or ""),
+            user_id=user_id,
+            confirm_phrase=payload.confirm_phrase,
+            reason=payload.reason,
+        )
+        return AdminUserDeleteResponse(**result)
     except AdminNotFoundError as exc:
         return _build_not_found_response(str(exc))
     except AdminValidationError as exc:

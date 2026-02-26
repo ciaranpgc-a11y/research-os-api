@@ -77,6 +77,16 @@ export type AdminUserLibraryReconcilePayload = {
   audit_event: AdminAuditEventPayload
 }
 
+export type AdminUserDeletePayload = {
+  success: boolean
+  message: string
+  deleted_user_id: string
+  deleted_user_email: string
+  deleted_user_name: string
+  deleted_at: string
+  audit_event: AdminAuditEventPayload
+}
+
 export type AdminOrganisationIntegrationPayload = {
   key: string
   status: 'connected' | 'degraded' | 'not_configured'

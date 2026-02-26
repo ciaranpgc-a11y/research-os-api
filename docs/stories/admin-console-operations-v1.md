@@ -90,7 +90,9 @@ Out of scope (v1):
   - security section upgraded with live audit log visibility.
 - Added admin user-library recovery diagnostics and actioning:
   - new admin API endpoint `/v1/admin/users/{user_id}/library/reconcile`,
+  - new admin API endpoint `DELETE /v1/admin/users/{user_id}` with `confirm_phrase=DELETE`,
   - per-user `Reconcile library` control in Users table with status feedback,
+  - per-user `Delete account` control in Users table for duplicate/invalid account cleanup,
   - Users table now surfaces `User ID` and `Account key` for identity-link diagnostics.
 - Updated bootstrap seed behavior so startup bootstrap no longer overwrites an existing user name unless explicitly enabled via `AAWE_BOOTSTRAP_SYNC_NAME=1`.
 

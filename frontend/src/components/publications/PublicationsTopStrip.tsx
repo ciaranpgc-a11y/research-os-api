@@ -277,8 +277,10 @@ const HOUSE_HEADING_SECTION_TITLE_CLASS = publicationsHouseHeadings.sectionTitle
 const HOUSE_HEADING_H2_CLASS = publicationsHouseHeadings.h2
 const HOUSE_TEXT_CLASS = publicationsHouseHeadings.text
 const HOUSE_TEXT_SOFT_CLASS = publicationsHouseHeadings.textSoft
-const HOUSE_TILE_SUBTITLE_CLASS = cn('mt-0.5 min-h-[2.5rem] leading-snug', HOUSE_TEXT_CLASS)
-const HOUSE_TILE_DETAIL_CLASS = cn('min-h-[2.3rem] leading-snug', HOUSE_TEXT_SOFT_CLASS)
+const HOUSE_METRIC_SUBTITLE_CLASS = publicationsHouseHeadings.metricSubtitle
+const HOUSE_METRIC_DETAIL_CLASS = publicationsHouseHeadings.metricDetail
+const HOUSE_TILE_SUBTITLE_CLASS = cn('house-metric-subtitle-row', HOUSE_METRIC_SUBTITLE_CLASS)
+const HOUSE_TILE_DETAIL_CLASS = cn('mt-0.5 min-h-[2.4rem]', HOUSE_METRIC_DETAIL_CLASS)
 const HOUSE_HEADING_LABEL_CLASS = publicationsHouseHeadings.label
 const HOUSE_CHART_TRANSITION_CLASS = publicationsHouseMotion.chartPanel
 const HOUSE_CHART_ENTERED_CLASS = publicationsHouseMotion.chartEnter
@@ -406,6 +408,13 @@ const FIELD_PERCENTILE_RING_CLASS_BY_THRESHOLD: Record<FieldPercentileThreshold,
   90: HOUSE_CHART_RING_THRESHOLD_90_SVG_CLASS,
   95: HOUSE_CHART_RING_THRESHOLD_95_SVG_CLASS,
   99: HOUSE_CHART_RING_THRESHOLD_99_SVG_CLASS,
+}
+const FIELD_PERCENTILE_EMPHASIS_TONE_VAR_BY_THRESHOLD: Record<FieldPercentileThreshold, string> = {
+  50: '--tone-accent-400',
+  75: '--tone-accent-500',
+  90: '--tone-accent-600',
+  95: '--tone-accent-700',
+  99: '--tone-accent-800',
 }
 const HOUSE_DRILLDOWN_TOOLTIP_CLASS =
   cn(
@@ -1285,7 +1294,7 @@ function TotalCitationsTile({
             className={HOUSE_HEADING_H2_CLASS}
             data-testid={`metric-label-${tile.key}`}
           >
-            TOTAL CITATIONS
+            CITATIONS
           </p>
           <p
             className="mt-2.5 text-display font-semibold leading-[1] tracking-tight text-foreground"
@@ -1316,6 +1325,7 @@ function StructuredMetricTile({
   detail,
   visual,
   contentGridClassName,
+  rightPaneClassName,
   onOpen,
   shouldIgnoreTileOpen,
 }: {
@@ -1329,6 +1339,7 @@ function StructuredMetricTile({
   detail?: ReactNode
   visual: ReactNode
   contentGridClassName?: string
+  rightPaneClassName?: string
   onOpen: () => void
   shouldIgnoreTileOpen: (target: EventTarget | null) => boolean
 }) {
@@ -1367,7 +1378,15 @@ function StructuredMetricTile({
             className={HOUSE_HEADING_H2_CLASS}
             data-testid={`metric-label-${tile.key}`}
           >
-            {String(tile.label || '').toUpperCase()}
+            {tile.key === 'impact_concentration'
+              ? (
+                <>
+                  IMPACT
+                  <br />
+                  CONCENTRATION
+                </>
+              )
+              : String(tile.label || '').toUpperCase()}
           </p>
           <p
             className="mt-2.5 text-display font-semibold leading-[1] tracking-tight text-foreground"
@@ -1395,6 +1414,7 @@ function StructuredMetricTile({
             : isFloatingBadge
               ? 'relative items-stretch pl-3'
             : 'items-center pl-3',
+          rightPaneClassName,
         )}>
           {badge && isTopRightBadge ? (
             <div className="pointer-events-none absolute right-2 top-0 z-10 flex w-full justify-end">
@@ -4569,6 +4589,7 @@ export function PublicationsTopStrip({
                 let secondaryText: ReactNode = subtitle || '\u2014'
                 let detailText: ReactNode | undefined = effectiveDeltaDisplay || undefined
                 let contentGridClassName: string | undefined
+                let rightPaneClassName: string | undefined
                 let visual: ReactNode = (
                   <div className={cn('flex h-full min-h-0 items-center p-1', HOUSE_SURFACE_STRONG_PANEL_CLASS)}>
                     <MiniChart tile={tile} />
@@ -4704,8 +4725,10 @@ export function PublicationsTopStrip({
                     impactBadgeData.label ?? impactChartData.gini_profile_label ?? '',
                   ).trim()
                   primaryValue = mainValueDisplay
-                  secondaryText = `Top 3 cited papers account for ${impactTop3PctRounded}% of total citations`
+                  secondaryText = `Top 3 cited publications account for ${impactTop3PctRounded}% of total citations`
                   detailText = undefined
+                  contentGridClassName = 'grid-cols-[minmax(0,1.2fr)_minmax(0,0.98fr)]'
+                  rightPaneClassName = 'justify-end pl-4'
                   if (impactBadgeLabel) {
                     badgeNode = (
                       <span className={cn(
@@ -4749,7 +4772,16 @@ export function PublicationsTopStrip({
                     : mainValueDisplay
                   secondaryText = (
                     <>
-                      Papers at or above <span className="font-semibold">{activeThreshold}%</span> percentile
+                      Papers at or above{' '}
+                      <span
+                        className="font-bold text-foreground underline decoration-2 underline-offset-[3px]"
+                        style={{
+                          textDecorationColor: `hsl(var(${FIELD_PERCENTILE_EMPHASIS_TONE_VAR_BY_THRESHOLD[activeThreshold]}))`,
+                        }}
+                      >
+                        {activeThreshold}%
+                      </span>{' '}
+                      percentile
                     </>
                   )
                   detailText = undefined
@@ -4881,6 +4913,7 @@ export function PublicationsTopStrip({
                     subtitle={secondaryText}
                     detail={detailText}
                     contentGridClassName={contentGridClassName}
+                    rightPaneClassName={rightPaneClassName}
                     visual={visual}
                   />
                 )

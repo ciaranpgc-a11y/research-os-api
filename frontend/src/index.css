@@ -342,6 +342,31 @@
     color: hsl(var(--tone-neutral-600));
   }
 
+  .house-metric-subtitle {
+    font-size: 0.875rem;
+    line-height: 1.3rem;
+    font-weight: 500;
+    color: hsl(var(--tone-neutral-800));
+  }
+
+  .house-metric-detail {
+    font-size: 0.8125rem;
+    line-height: 1.2rem;
+    color: hsl(var(--tone-neutral-600));
+  }
+
+  .house-metric-subtitle-row {
+    margin-top: 0.125rem;
+    min-height: 2.6rem;
+    max-height: 2.6rem;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    text-wrap: pretty;
+  }
+
+
   .house-label {
     font-size: 0.75rem;
     line-height: 1rem;

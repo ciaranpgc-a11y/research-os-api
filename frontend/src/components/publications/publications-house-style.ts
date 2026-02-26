@@ -10,6 +10,8 @@ export const publicationsHouseHeadings = {
   label: houseTypography.label,
   text: houseTypography.text,
   textSoft: houseTypography.textSoft,
+  metricSubtitle: houseTypography.metricSubtitle,
+  metricDetail: houseTypography.metricDetail,
 } as const
 
 export const publicationsHouseSurfaces = {

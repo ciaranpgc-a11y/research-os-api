@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+import os
+from pathlib import Path
+import shutil
 from typing import Any
 from uuid import uuid4
 
@@ -13,6 +16,7 @@ from research_os.db import (
     GenerationJob,
     Manuscript,
     ManuscriptSnapshot,
+    PublicationFile,
     Project,
     User,
     Work,
@@ -84,6 +88,18 @@ class AdminStateError(RuntimeError):
 
 class AdminValidationError(RuntimeError):
     """Raised when admin action input is invalid."""
+
+
+def _remove_publication_file_path(path_value: str | None) -> None:
+    clean = str(path_value or "").strip()
+    if not clean:
+        return
+    try:
+        path = Path(clean)
+        if path.exists() and path.is_file():
+            path.unlink(missing_ok=True)
+    except Exception:
+        return
 
 
 def _utcnow() -> datetime:
@@ -1532,6 +1548,146 @@ def list_admin_users(
         "total": total,
         "limit": normalized_limit,
         "offset": normalized_offset,
+    }
+
+
+def admin_delete_user_account(
+    *,
+    actor_user_id: str,
+    user_id: str,
+    confirm_phrase: str,
+    reason: str = "",
+) -> dict[str, object]:
+    create_all_tables()
+    clean_actor_user_id = str(actor_user_id or "").strip()
+    clean_user_id = str(user_id or "").strip()
+    clean_reason = str(reason or "").strip()
+    clean_confirm_phrase = str(confirm_phrase or "").strip().upper()
+    if not clean_user_id:
+        raise AdminValidationError("user_id is required.")
+    if clean_confirm_phrase != "DELETE":
+        _record_admin_audit_event(
+            actor_user_id=clean_actor_user_id or None,
+            action="admin_user_delete",
+            target_type="user",
+            target_id=clean_user_id,
+            status="failure",
+            metadata={
+                "reason": clean_reason,
+                "failure": "invalid_confirm_phrase",
+            },
+        )
+        raise AdminValidationError("Type DELETE to confirm account deletion.")
+    if clean_actor_user_id and clean_actor_user_id == clean_user_id:
+        _record_admin_audit_event(
+            actor_user_id=clean_actor_user_id or None,
+            action="admin_user_delete",
+            target_type="user",
+            target_id=clean_user_id,
+            status="failure",
+            metadata={
+                "reason": clean_reason,
+                "failure": "self_delete_forbidden",
+            },
+        )
+        raise AdminValidationError(
+            "Admin cannot delete their own account from this endpoint."
+        )
+
+    deleted_user_email = ""
+    deleted_user_name = ""
+    deleted_at = _utcnow()
+    stored_upload_paths: list[str] = []
+    owned_assets_count = 0
+    owned_projects_count = 0
+    owned_works_count = 0
+    try:
+        with session_scope() as session:
+            user = session.get(User, clean_user_id)
+            if user is None:
+                raise AdminNotFoundError(f"User '{clean_user_id}' was not found.")
+            deleted_user_email = str(user.email or "").strip()
+            deleted_user_name = (
+                str(user.name or "").strip() or deleted_user_email or clean_user_id
+            )
+            owned_assets_count = _count_owned_assets(
+                session=session,
+                user_id=clean_user_id,
+            )
+            owned_projects_count = int(
+                session.scalar(
+                    select(func.count())
+                    .select_from(Project)
+                    .where(Project.owner_user_id == clean_user_id)
+                )
+                or 0
+            )
+            owned_works_count = int(
+                session.scalar(
+                    select(func.count())
+                    .select_from(Work)
+                    .where(Work.user_id == clean_user_id)
+                )
+                or 0
+            )
+            file_rows = session.scalars(
+                select(PublicationFile).where(PublicationFile.owner_user_id == clean_user_id)
+            ).all()
+            for row in file_rows:
+                source = str(row.source or "").strip().upper()
+                storage_key = str(row.storage_key or "").strip()
+                if source == "USER_UPLOAD" and storage_key:
+                    stored_upload_paths.append(storage_key)
+
+            session.delete(user)
+            session.flush()
+    except (AdminValidationError, AdminNotFoundError):
+        _record_admin_audit_event(
+            actor_user_id=clean_actor_user_id or None,
+            action="admin_user_delete",
+            target_type="user",
+            target_id=clean_user_id,
+            status="failure",
+            metadata={
+                "reason": clean_reason,
+                "target_email": deleted_user_email,
+            },
+        )
+        raise
+
+    for path_value in stored_upload_paths:
+        _remove_publication_file_path(path_value)
+    try:
+        storage_root = Path(
+            os.getenv("PUBLICATION_FILES_ROOT", "./publication_files_store")
+        )
+        shutil.rmtree(storage_root / clean_user_id, ignore_errors=True)
+    except Exception:
+        pass
+
+    event = _record_admin_audit_event(
+        actor_user_id=clean_actor_user_id or None,
+        action="admin_user_delete",
+        target_type="user",
+        target_id=clean_user_id,
+        status="success",
+        metadata={
+            "reason": clean_reason,
+            "target_email": deleted_user_email,
+            "target_name": deleted_user_name,
+            "owned_assets_count": owned_assets_count,
+            "owned_projects_count": owned_projects_count,
+            "owned_works_count": owned_works_count,
+        },
+    )
+    return {
+        "success": True,
+        "message": f"Deleted account '{deleted_user_name}'.",
+        "deleted_user_id": clean_user_id,
+        "deleted_user_email": deleted_user_email,
+        "deleted_user_name": deleted_user_name,
+        "deleted_at": deleted_at,
+        "audit_event": event,
     }
 
 

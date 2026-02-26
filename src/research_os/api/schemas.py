@@ -1162,6 +1162,21 @@ class AdminJobRetryRequest(BaseModel):
     project_daily_budget_usd: float | None = None
 
 
+class AdminUserDeleteRequest(BaseModel):
+    confirm_phrase: str
+    reason: str = ""
+
+
+class AdminUserDeleteResponse(BaseModel):
+    success: bool = True
+    message: str
+    deleted_user_id: str
+    deleted_user_email: str
+    deleted_user_name: str
+    deleted_at: datetime
+    audit_event: AdminAuditEventResponse
+
+
 class AdminOrganisationImpersonationRequest(BaseModel):
     reason: str = ""
 
