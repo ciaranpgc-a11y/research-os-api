@@ -23,6 +23,7 @@ from research_os.services.generation_job_service import (
     GenerationJobConflictError,
     GenerationJobStateError,
     enqueue_generation_job,
+    serialize_generation_job,
 )
 
 PERSONAL_EMAIL_DOMAINS = {
@@ -412,6 +413,12 @@ def list_admin_organisations(
             select(DataLibraryAsset.owner_user_id, DataLibraryAsset.byte_size)
         ).all()
         work_rows = session.execute(select(Work.user_id, Work.provenance)).all()
+        impersonation_rows = session.execute(
+            select(AdminAuditEvent.target_id, AdminAuditEvent.created_at).where(
+                AdminAuditEvent.action == "admin_org_impersonation_start",
+                AdminAuditEvent.target_type == "organisation",
+            )
+        ).all()
 
     users_by_domain: dict[str, list[dict[str, object]]] = defaultdict(list)
     domain_by_user_id: dict[str, str] = {}
@@ -502,6 +509,16 @@ def list_admin_organisations(
         clean_provenance = str(provenance or "").strip().lower()
         if clean_provenance:
             provenances_by_user[clean_user_id].add(clean_provenance)
+
+    impersonation_last_event_by_org_id: dict[str, datetime] = {}
+    for target_id, created_at in impersonation_rows:
+        clean_target_id = str(target_id or "").strip()
+        created_utc = _coerce_utc(created_at)
+        if not clean_target_id or created_utc is None:
+            continue
+        current_last = impersonation_last_event_by_org_id.get(clean_target_id)
+        if current_last is None or created_utc > current_last:
+            impersonation_last_event_by_org_id[clean_target_id] = created_utc
 
     items: list[dict[str, object]] = []
     for domain, domain_users in users_by_domain.items():
@@ -652,7 +669,9 @@ def list_admin_organisations(
             "impersonation": {
                 "available": True,
                 "audited": True,
-                "last_event_at": None,
+                "last_event_at": impersonation_last_event_by_org_id.get(
+                    f"org-{domain}"
+                ),
                 "note": "Internal-only control. All impersonation events must be audited.",
             },
         }
@@ -1138,6 +1157,291 @@ def list_admin_workspaces(
         "limit": normalized_limit,
         "offset": normalized_offset,
         "generated_at": now,
+    }
+
+
+def get_admin_usage_costs(*, query: str = "") -> dict[str, object]:
+    create_all_tables()
+    now = _utcnow()
+    month_current = _month_start(now, months_ago=0)
+    month_previous = _month_start(now, months_ago=1)
+    trend_months = [_month_start(now, months_ago=index) for index in range(5, -1, -1)]
+    trend_keys = [f"{item.year:04d}-{item.month:02d}" for item in trend_months]
+    normalized_query = str(query or "").strip().lower()
+
+    with session_scope() as session:
+        user_rows = session.execute(select(User.id, User.name, User.email)).all()
+        project_rows = session.execute(select(Project.id, Project.owner_user_id)).all()
+        job_rows = session.execute(
+            select(
+                GenerationJob.project_id,
+                GenerationJob.pricing_model,
+                GenerationJob.estimated_input_tokens,
+                GenerationJob.estimated_output_tokens_high,
+                GenerationJob.estimated_cost_usd_high,
+                GenerationJob.status,
+                GenerationJob.run_count,
+                GenerationJob.created_at,
+            )
+        ).all()
+        asset_rows = session.execute(
+            select(
+                DataLibraryAsset.owner_user_id,
+                DataLibraryAsset.byte_size,
+                DataLibraryAsset.uploaded_at,
+            )
+        ).all()
+        snapshot_rows = session.execute(
+            select(ManuscriptSnapshot.project_id, ManuscriptSnapshot.created_at)
+        ).all()
+
+    domain_by_user_id: dict[str, str] = {}
+    user_by_id: dict[str, dict[str, str]] = {}
+    for user_id, name, email in user_rows:
+        clean_user_id = str(user_id or "").strip()
+        if not clean_user_id:
+            continue
+        clean_email = str(email or "").strip()
+        domain_by_user_id[clean_user_id] = _extract_email_domain(clean_email)
+        user_by_id[clean_user_id] = {
+            "name": str(name or "").strip() or clean_email or clean_user_id,
+            "email": clean_email,
+        }
+
+    owner_by_project_id: dict[str, str] = {}
+    for project_id, owner_user_id in project_rows:
+        clean_project_id = str(project_id or "").strip()
+        if clean_project_id:
+            owner_by_project_id[clean_project_id] = str(owner_user_id or "").strip()
+
+    model_usage: dict[str, dict[str, float | int]] = defaultdict(
+        lambda: {"tokens": 0, "cost_usd": 0.0, "tool_calls": 0}
+    )
+    org_usage: dict[str, dict[str, float | int]] = defaultdict(
+        lambda: {
+            "tokens": 0,
+            "cost_usd": 0.0,
+            "tool_calls": 0,
+            "storage_bytes": 0,
+            "previous_tokens": 0,
+            "previous_cost_usd": 0.0,
+        }
+    )
+    user_usage: dict[str, dict[str, float | int]] = defaultdict(
+        lambda: {"tokens": 0, "cost_usd": 0.0, "tool_calls": 0, "storage_bytes": 0}
+    )
+    trend_usage: dict[str, dict[str, float | int]] = defaultdict(
+        lambda: {"tokens": 0, "cost_usd": 0.0, "tool_calls": 0}
+    )
+
+    month_jobs = 0
+    month_tokens = 0
+    month_cost = 0.0
+    month_calls = 0
+    month_chain_length = 0.0
+    month_cancel_requested = 0
+    month_failed = 0
+    month_running = 0
+
+    for (
+        project_id,
+        pricing_model,
+        estimated_input_tokens,
+        estimated_output_tokens_high,
+        estimated_cost_usd_high,
+        status,
+        run_count,
+        created_at,
+    ) in job_rows:
+        created_utc = _coerce_utc(created_at)
+        if created_utc is None:
+            continue
+        owner_user_id = owner_by_project_id.get(str(project_id or "").strip(), "")
+        domain = domain_by_user_id.get(owner_user_id, "unknown.local")
+        model_name = str(pricing_model or "").strip() or "unknown-model"
+        job_status = str(status or "").strip().lower()
+        tokens = int(max(0, int(estimated_input_tokens or 0)) + max(0, int(estimated_output_tokens_high or 0)))
+        cost_usd = max(0.0, _safe_float(estimated_cost_usd_high))
+        month_key = f"{created_utc.year:04d}-{created_utc.month:02d}"
+        if month_key in trend_keys:
+            trend_bucket = trend_usage[month_key]
+            trend_bucket["tokens"] = int(trend_bucket["tokens"]) + tokens
+            trend_bucket["tool_calls"] = int(trend_bucket["tool_calls"]) + 1
+            trend_bucket["cost_usd"] = _safe_float(trend_bucket["cost_usd"]) + cost_usd
+
+        if created_utc >= month_current:
+            month_jobs += 1
+            month_tokens += tokens
+            month_cost += cost_usd
+            month_calls += 1
+            month_chain_length += max(1.0, _safe_float(run_count))
+            if job_status == "cancel_requested":
+                month_cancel_requested += 1
+            if job_status == "failed":
+                month_failed += 1
+            if job_status == "running":
+                month_running += 1
+
+            model_bucket = model_usage[model_name]
+            model_bucket["tokens"] = int(model_bucket["tokens"]) + tokens
+            model_bucket["tool_calls"] = int(model_bucket["tool_calls"]) + 1
+            model_bucket["cost_usd"] = _safe_float(model_bucket["cost_usd"]) + cost_usd
+
+            org_bucket = org_usage[domain]
+            org_bucket["tokens"] = int(org_bucket["tokens"]) + tokens
+            org_bucket["tool_calls"] = int(org_bucket["tool_calls"]) + 1
+            org_bucket["cost_usd"] = _safe_float(org_bucket["cost_usd"]) + cost_usd
+            if owner_user_id:
+                user_bucket = user_usage[owner_user_id]
+                user_bucket["tokens"] = int(user_bucket["tokens"]) + tokens
+                user_bucket["tool_calls"] = int(user_bucket["tool_calls"]) + 1
+                user_bucket["cost_usd"] = _safe_float(user_bucket["cost_usd"]) + cost_usd
+        elif created_utc >= month_previous:
+            org_bucket = org_usage[domain]
+            org_bucket["previous_tokens"] = int(org_bucket["previous_tokens"]) + tokens
+            org_bucket["previous_cost_usd"] = _safe_float(org_bucket["previous_cost_usd"]) + cost_usd
+
+    storage_total = 0
+    current_month_uploads = 0
+    for owner_user_id, byte_size, uploaded_at in asset_rows:
+        owner_id = str(owner_user_id or "").strip()
+        domain = domain_by_user_id.get(owner_id, "unknown.local")
+        bytes_value = max(0, int(byte_size or 0))
+        storage_total += bytes_value
+        org_usage[domain]["storage_bytes"] = int(org_usage[domain]["storage_bytes"]) + bytes_value
+        if owner_id:
+            user_usage[owner_id]["storage_bytes"] = int(user_usage[owner_id]["storage_bytes"]) + bytes_value
+        uploaded_utc = _coerce_utc(uploaded_at)
+        if uploaded_utc and uploaded_utc >= month_current:
+            current_month_uploads += 1
+
+    current_month_exports = 0
+    for _, created_at in snapshot_rows:
+        created_utc = _coerce_utc(created_at)
+        if created_utc and created_utc >= month_current:
+            current_month_exports += 1
+
+    model_items = []
+    for model_name, bucket in model_usage.items():
+        tool_calls = int(bucket["tool_calls"])
+        total_cost = round(_safe_float(bucket["cost_usd"]), 4)
+        model_items.append(
+            {
+                "model": model_name,
+                "tokens_current_month": int(bucket["tokens"]),
+                "tool_calls_current_month": tool_calls,
+                "cost_usd_current_month": total_cost,
+                "avg_cost_usd_per_call": round(total_cost / max(1, tool_calls), 6),
+            }
+        )
+    model_items.sort(key=lambda item: (-_safe_float(item["cost_usd_current_month"]), str(item["model"])))
+
+    org_items = []
+    quota_breaches = 0
+    budget_alerts = 0
+    for domain, bucket in org_usage.items():
+        member_count = sum(1 for item in domain_by_user_id.values() if item == domain)
+        plan = _resolve_plan(domain=domain, member_count=member_count, project_count=0)
+        quota_tokens = int(PLAN_LIMITS.get(plan, PLAN_LIMITS["growth"])["monthly_token_quota"])
+        tokens_current = int(bucket["tokens"])
+        cost_current = round(_safe_float(bucket["cost_usd"]), 4)
+        cost_previous = round(_safe_float(bucket["previous_cost_usd"]), 4)
+        if tokens_current > quota_tokens:
+            quota_breaches += 1
+        if cost_previous > 0 and cost_current > cost_previous * 1.35:
+            budget_alerts += 1
+        item = {
+            "org_id": f"org-{domain}",
+            "org_name": _derive_org_name(domain),
+            "domain": domain,
+            "plan": plan,
+            "tokens_current_month": tokens_current,
+            "tokens_previous_month": int(bucket["previous_tokens"]),
+            "tokens_trend_pct": _percent_change(tokens_current, int(bucket["previous_tokens"])),
+            "tool_calls_current_month": int(bucket["tool_calls"]),
+            "cost_usd_current_month": cost_current,
+            "cost_usd_previous_month": cost_previous,
+            "cost_trend_pct": _percent_change(cost_current, cost_previous),
+            "storage_bytes": int(bucket["storage_bytes"]),
+            "token_quota_monthly": quota_tokens,
+            "quota_used_pct": round((tokens_current / max(1, quota_tokens)) * 100.0, 2),
+        }
+        if normalized_query:
+            searchable = " ".join([item["org_name"], item["domain"], item["plan"]]).lower()
+            if normalized_query not in searchable:
+                continue
+        org_items.append(item)
+    org_items.sort(key=lambda item: (-_safe_float(item["cost_usd_current_month"]), str(item["domain"])))
+
+    user_items = []
+    for user_id, bucket in user_usage.items():
+        user_meta = user_by_id.get(user_id)
+        if not user_meta:
+            continue
+        item = {
+            "user_id": user_id,
+            "name": user_meta["name"],
+            "email": user_meta["email"],
+            "tokens_current_month": int(bucket["tokens"]),
+            "tool_calls_current_month": int(bucket["tool_calls"]),
+            "cost_usd_current_month": round(_safe_float(bucket["cost_usd"]), 4),
+            "storage_bytes": int(bucket["storage_bytes"]),
+        }
+        if normalized_query:
+            searchable = " ".join([item["name"], item["email"]]).lower()
+            if normalized_query not in searchable:
+                continue
+        user_items.append(item)
+    user_items.sort(key=lambda item: (-_safe_float(item["cost_usd_current_month"]), str(item["email"])))
+
+    trend_items = []
+    for month_key in trend_keys:
+        bucket = trend_usage[month_key]
+        trend_items.append(
+            {
+                "month": month_key,
+                "tokens": int(bucket["tokens"]),
+                "tool_calls": int(bucket["tool_calls"]),
+                "cost_usd": round(_safe_float(bucket["cost_usd"]), 4),
+            }
+        )
+
+    return {
+        "generated_at": now,
+        "summary": {
+            "tokens_current_month": month_tokens,
+            "tool_calls_current_month": month_calls,
+            "cost_usd_current_month": round(month_cost, 4),
+            "storage_bytes_total": storage_total,
+            "avg_chain_length": round(month_chain_length / max(1, month_jobs), 3),
+            "cache_hit_rate_pct": 0.0,
+            "rate_limit_events_current_month": month_cancel_requested,
+            "quota_breaches_current_month": quota_breaches,
+            "budget_alerts_current_month": budget_alerts,
+            "failed_runs_current_month": month_failed,
+            "running_runs_current": month_running,
+        },
+        "model_usage": model_items[:20],
+        "tool_usage": [
+            {
+                "tool_type": "manuscript_generation",
+                "calls_current_month": month_calls,
+                "cost_usd_current_month": round(month_cost, 4),
+            },
+            {
+                "tool_type": "data_upload",
+                "calls_current_month": current_month_uploads,
+                "cost_usd_current_month": 0.0,
+            },
+            {
+                "tool_type": "snapshot_export",
+                "calls_current_month": current_month_exports,
+                "cost_usd_current_month": 0.0,
+            },
+        ],
+        "organisation_usage": org_items[:50],
+        "user_usage": user_items[:50],
+        "monthly_trend": trend_items,
     }
 
 
