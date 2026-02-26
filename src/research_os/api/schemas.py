@@ -971,6 +971,209 @@ class AdminWorkspacesListResponse(BaseModel):
     generated_at: datetime
 
 
+class AdminUsageCostsSummaryResponse(BaseModel):
+    tokens_current_month: int = 0
+    tool_calls_current_month: int = 0
+    cost_usd_current_month: float = 0.0
+    storage_bytes_total: int = 0
+    avg_chain_length: float = 0.0
+    cache_hit_rate_pct: float = 0.0
+    rate_limit_events_current_month: int = 0
+    quota_breaches_current_month: int = 0
+    budget_alerts_current_month: int = 0
+    failed_runs_current_month: int = 0
+    running_runs_current: int = 0
+
+
+class AdminUsageCostsModelUsageResponse(BaseModel):
+    model: str
+    tokens_current_month: int = 0
+    tool_calls_current_month: int = 0
+    cost_usd_current_month: float = 0.0
+    avg_cost_usd_per_call: float = 0.0
+
+
+class AdminUsageCostsToolUsageResponse(BaseModel):
+    tool_type: str
+    calls_current_month: int = 0
+    cost_usd_current_month: float = 0.0
+
+
+class AdminUsageCostsOrganisationUsageResponse(BaseModel):
+    org_id: str
+    org_name: str
+    domain: str
+    plan: str
+    tokens_current_month: int = 0
+    tokens_previous_month: int = 0
+    tokens_trend_pct: float = 0.0
+    tool_calls_current_month: int = 0
+    cost_usd_current_month: float = 0.0
+    cost_usd_previous_month: float = 0.0
+    cost_trend_pct: float = 0.0
+    storage_bytes: int = 0
+    token_quota_monthly: int = 0
+    quota_used_pct: float = 0.0
+
+
+class AdminUsageCostsUserUsageResponse(BaseModel):
+    user_id: str
+    name: str
+    email: str
+    tokens_current_month: int = 0
+    tool_calls_current_month: int = 0
+    cost_usd_current_month: float = 0.0
+    storage_bytes: int = 0
+
+
+class AdminUsageCostsMonthlyTrendPointResponse(BaseModel):
+    month: str
+    tokens: int = 0
+    tool_calls: int = 0
+    cost_usd: float = 0.0
+
+
+class AdminUsageCostsResponse(BaseModel):
+    generated_at: datetime
+    summary: AdminUsageCostsSummaryResponse = Field(
+        default_factory=AdminUsageCostsSummaryResponse
+    )
+    model_usage: list[AdminUsageCostsModelUsageResponse] = Field(default_factory=list)
+    tool_usage: list[AdminUsageCostsToolUsageResponse] = Field(default_factory=list)
+    organisation_usage: list[AdminUsageCostsOrganisationUsageResponse] = Field(
+        default_factory=list
+    )
+    user_usage: list[AdminUsageCostsUserUsageResponse] = Field(default_factory=list)
+    monthly_trend: list[AdminUsageCostsMonthlyTrendPointResponse] = Field(
+        default_factory=list
+    )
+
+
+class AdminJobSummaryResponse(BaseModel):
+    id: str
+    status: str
+    cancel_requested: bool = False
+    run_count: int = 1
+    retry_count: int = 0
+    parent_job_id: str | None = None
+    project_id: str
+    project_title: str = ""
+    workspace_id: str = ""
+    workspace_name: str = ""
+    manuscript_id: str
+    owner_user_id: str | None = None
+    owner_name: str = ""
+    owner_email: str = ""
+    pricing_model: str
+    estimated_tokens: int = 0
+    estimated_cost_usd_high: float = 0.0
+    sections_count: int = 0
+    progress_percent: int = 0
+    current_section: str | None = None
+    error_detail: str | None = None
+    created_at: datetime | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    updated_at: datetime | None = None
+    duration_seconds: int | None = None
+
+
+class AdminJobsQueueHealthResponse(BaseModel):
+    total_jobs: int = 0
+    active_jobs: int = 0
+    terminal_jobs: int = 0
+    queued_jobs: int = 0
+    running_jobs: int = 0
+    cancel_requested_jobs: int = 0
+    failed_jobs: int = 0
+    completed_jobs: int = 0
+    cancelled_jobs: int = 0
+    retryable_jobs: int = 0
+    backlog_jobs: int = 0
+
+
+class AdminJobsListResponse(BaseModel):
+    items: list[AdminJobSummaryResponse] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
+    generated_at: datetime
+    queue_health: AdminJobsQueueHealthResponse = Field(
+        default_factory=AdminJobsQueueHealthResponse
+    )
+
+
+class AdminAuditEventResponse(BaseModel):
+    id: str
+    action: str
+    target_type: str
+    target_id: str
+    status: str
+    actor_user_id: str | None = None
+    actor_name: str
+    actor_email: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
+class AdminJobActionResponse(BaseModel):
+    action: Literal["cancel", "retry"]
+    message: str
+    source_job_id: str
+    job: AdminJobSummaryResponse
+    audit_event: AdminAuditEventResponse
+
+
+class AdminJobCancelRequest(BaseModel):
+    reason: str = ""
+
+
+class AdminJobRetryRequest(BaseModel):
+    reason: str = ""
+    max_estimated_cost_usd: float | None = None
+    project_daily_budget_usd: float | None = None
+
+
+class AdminOrganisationImpersonationRequest(BaseModel):
+    reason: str = ""
+
+
+class AdminOrganisationImpersonationStartResponse(BaseModel):
+    org_id: str
+    org_name: str
+    domain: str
+    target_user_id: str
+    target_user_name: str
+    target_user_email: str
+    impersonation_ticket: str
+    started_at: datetime
+    expires_at: datetime
+    audited: bool = True
+    audit_event: AdminAuditEventResponse
+
+
+class AdminAuditActionTotalResponse(BaseModel):
+    action: str
+    count: int = 0
+
+
+class AdminAuditEventsSummaryResponse(BaseModel):
+    success_count: int = 0
+    failure_count: int = 0
+    action_totals: list[AdminAuditActionTotalResponse] = Field(default_factory=list)
+
+
+class AdminAuditEventsListResponse(BaseModel):
+    items: list[AdminAuditEventResponse] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 100
+    offset: int = 0
+    generated_at: datetime
+    summary: AdminAuditEventsSummaryResponse = Field(
+        default_factory=AdminAuditEventsSummaryResponse
+    )
+
+
 class AffiliationSuggestionItemResponse(BaseModel):
     name: str
     label: str

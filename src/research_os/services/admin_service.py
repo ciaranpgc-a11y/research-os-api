@@ -23,7 +23,6 @@ from research_os.services.generation_job_service import (
     GenerationJobConflictError,
     GenerationJobStateError,
     enqueue_generation_job,
-    serialize_generation_job,
 )
 
 PERSONAL_EMAIL_DOMAINS = {
@@ -1482,4 +1481,585 @@ def list_admin_users(
         "total": total,
         "limit": normalized_limit,
         "offset": normalized_offset,
+    }
+
+
+def _serialize_admin_job_row(
+    *,
+    job: GenerationJob,
+    project: Project | None,
+    owner: User | None,
+) -> dict[str, object]:
+    workspace_id = _workspace_token(project.workspace_id if project is not None else "")
+    started_at = _coerce_utc(job.started_at)
+    completed_at = _coerce_utc(job.completed_at)
+    created_at = _coerce_utc(job.created_at)
+    updated_at = _coerce_utc(job.updated_at)
+    duration_seconds: int | None = None
+    if started_at is not None and completed_at is not None and completed_at >= started_at:
+        duration_seconds = int((completed_at - started_at).total_seconds())
+
+    estimated_tokens = int(
+        max(0, int(job.estimated_input_tokens or 0))
+        + max(0, int(job.estimated_output_tokens_high or 0))
+    )
+
+    owner_user_id = str(project.owner_user_id or "").strip() if project is not None else ""
+    owner_name = str(owner.name or "").strip() if owner is not None else ""
+    owner_email = str(owner.email or "").strip() if owner is not None else ""
+
+    return {
+        "id": job.id,
+        "status": str(job.status or "").strip().lower(),
+        "cancel_requested": bool(job.cancel_requested),
+        "run_count": max(1, int(job.run_count or 1)),
+        "retry_count": max(0, int(job.run_count or 1) - 1),
+        "parent_job_id": job.parent_job_id,
+        "project_id": job.project_id,
+        "project_title": str(project.title or "").strip() if project is not None else "",
+        "workspace_id": workspace_id,
+        "workspace_name": _workspace_display_name(workspace_id),
+        "manuscript_id": job.manuscript_id,
+        "owner_user_id": owner_user_id or None,
+        "owner_name": owner_name,
+        "owner_email": owner_email,
+        "pricing_model": str(job.pricing_model or "").strip() or "unknown-model",
+        "estimated_tokens": estimated_tokens,
+        "estimated_cost_usd_high": round(float(job.estimated_cost_usd_high or 0.0), 6),
+        "sections_count": len(list(job.sections or [])),
+        "progress_percent": max(0, min(100, int(job.progress_percent or 0))),
+        "current_section": str(job.current_section or "").strip() or None,
+        "error_detail": str(job.error_detail or "").strip() or None,
+        "created_at": created_at,
+        "started_at": started_at,
+        "completed_at": completed_at,
+        "updated_at": updated_at,
+        "duration_seconds": duration_seconds,
+    }
+
+
+def list_admin_jobs(
+    *,
+    query: str = "",
+    status: str = "",
+    workspace_id: str = "",
+    project_id: str = "",
+    owner_user_id: str = "",
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, object]:
+    create_all_tables()
+    now = _utcnow()
+    normalized_query = str(query or "").strip().lower()
+    normalized_status = str(status or "").strip().lower()
+    normalized_workspace_id = _workspace_token(workspace_id)
+    normalized_project_id = str(project_id or "").strip()
+    normalized_owner_user_id = str(owner_user_id or "").strip()
+    normalized_limit = max(1, min(200, int(limit)))
+    normalized_offset = max(0, int(offset))
+
+    with session_scope() as session:
+        jobs = session.scalars(
+            select(GenerationJob).order_by(GenerationJob.created_at.desc())
+        ).all()
+        project_rows = session.scalars(select(Project)).all()
+        user_rows = session.scalars(select(User)).all()
+
+    project_by_id = {
+        str(project.id): project for project in project_rows if str(project.id or "").strip()
+    }
+    user_by_id = {
+        str(user.id): user for user in user_rows if str(user.id or "").strip()
+    }
+
+    status_counts: dict[str, int] = defaultdict(int)
+    active_count = 0
+    terminal_count = 0
+    items: list[dict[str, object]] = []
+
+    for job in jobs:
+        clean_status = str(job.status or "").strip().lower()
+        if normalized_status and normalized_status not in {"all", "any"}:
+            if clean_status != normalized_status:
+                continue
+
+        project = project_by_id.get(str(job.project_id or "").strip())
+        workspace_token = _workspace_token(
+            project.workspace_id if project is not None else ""
+        )
+        if normalized_workspace_id and workspace_token != normalized_workspace_id:
+            continue
+
+        clean_project_id = str(job.project_id or "").strip()
+        if normalized_project_id and clean_project_id != normalized_project_id:
+            continue
+
+        clean_owner_user_id = (
+            str(project.owner_user_id or "").strip() if project is not None else ""
+        )
+        if normalized_owner_user_id and clean_owner_user_id != normalized_owner_user_id:
+            continue
+
+        owner = user_by_id.get(clean_owner_user_id)
+        item = _serialize_admin_job_row(job=job, project=project, owner=owner)
+        if normalized_query:
+            searchable = " ".join(
+                [
+                    str(item["id"]),
+                    str(item["status"]),
+                    str(item["project_id"]),
+                    str(item["project_title"]),
+                    str(item["workspace_id"]),
+                    str(item["owner_name"]),
+                    str(item["owner_email"]),
+                    str(item["pricing_model"]),
+                    str(item["error_detail"] or ""),
+                ]
+            ).lower()
+            if normalized_query not in searchable:
+                continue
+
+        status_counts[str(item["status"])] += 1
+        if str(item["status"]) in ADMIN_JOB_ACTIVE_STATUSES:
+            active_count += 1
+        if str(item["status"]) in ADMIN_JOB_TERMINAL_STATUSES:
+            terminal_count += 1
+        items.append(item)
+
+    total = len(items)
+    paged_items = items[normalized_offset : normalized_offset + normalized_limit]
+
+    queued_count = int(status_counts.get("queued", 0))
+    running_count = int(status_counts.get("running", 0))
+    cancel_requested_count = int(status_counts.get("cancel_requested", 0))
+
+    return {
+        "items": paged_items,
+        "total": total,
+        "limit": normalized_limit,
+        "offset": normalized_offset,
+        "generated_at": now,
+        "queue_health": {
+            "total_jobs": total,
+            "active_jobs": active_count,
+            "terminal_jobs": terminal_count,
+            "queued_jobs": queued_count,
+            "running_jobs": running_count,
+            "cancel_requested_jobs": cancel_requested_count,
+            "failed_jobs": int(status_counts.get("failed", 0)),
+            "completed_jobs": int(status_counts.get("completed", 0)),
+            "cancelled_jobs": int(status_counts.get("cancelled", 0)),
+            "retryable_jobs": int(status_counts.get("failed", 0))
+            + int(status_counts.get("cancelled", 0)),
+            "backlog_jobs": queued_count + cancel_requested_count,
+        },
+    }
+
+
+def _normalize_org_domain(org_id: str) -> str:
+    clean_org_id = str(org_id or "").strip().lower()
+    if clean_org_id.startswith("org-"):
+        clean_org_id = clean_org_id[4:]
+    clean_org_id = clean_org_id.replace(" ", "")
+    if not clean_org_id or "." not in clean_org_id:
+        raise AdminValidationError("A valid organisation id is required.")
+    return clean_org_id
+
+
+def admin_cancel_job(
+    *,
+    job_id: str,
+    actor_user_id: str | None,
+    reason: str = "",
+) -> dict[str, object]:
+    create_all_tables()
+    clean_job_id = str(job_id or "").strip()
+    clean_reason = str(reason or "").strip()
+    clean_actor_user_id = str(actor_user_id or "").strip() or None
+    if not clean_job_id:
+        raise AdminValidationError("A valid generation job id is required.")
+
+    previous_status = "unknown"
+    payload: dict[str, object] | None = None
+    try:
+        with session_scope() as session:
+            job = session.get(GenerationJob, clean_job_id)
+            if job is None:
+                raise AdminNotFoundError(
+                    f"Generation job '{clean_job_id}' was not found."
+                )
+
+            previous_status = str(job.status or "").strip().lower()
+            if previous_status not in ADMIN_JOB_ACTIVE_STATUSES:
+                raise AdminStateError(
+                    (
+                        f"Generation job '{clean_job_id}' cannot be cancelled from "
+                        f"status '{previous_status}'."
+                    )
+                )
+
+            if previous_status == "queued":
+                job.status = "cancelled"
+                job.cancel_requested = True
+                if _coerce_utc(job.completed_at) is None:
+                    job.completed_at = _utcnow()
+            else:
+                job.status = "cancel_requested"
+                job.cancel_requested = True
+
+            job.updated_at = _utcnow()
+            session.flush()
+
+            project = session.get(Project, job.project_id)
+            owner = None
+            if project is not None and str(project.owner_user_id or "").strip():
+                owner = session.get(User, str(project.owner_user_id))
+            payload = _serialize_admin_job_row(job=job, project=project, owner=owner)
+    except (AdminValidationError, AdminNotFoundError, AdminStateError):
+        _record_admin_audit_event(
+            actor_user_id=clean_actor_user_id,
+            action="admin_job_cancel",
+            target_type="generation_job",
+            target_id=clean_job_id,
+            status="failure",
+            metadata={
+                "reason": clean_reason,
+                "previous_status": previous_status,
+            },
+        )
+        raise
+
+    if payload is None:
+        raise AdminStateError("Generation job cancellation did not produce a payload.")
+
+    event = _record_admin_audit_event(
+        actor_user_id=clean_actor_user_id,
+        action="admin_job_cancel",
+        target_type="generation_job",
+        target_id=clean_job_id,
+        status="success",
+        metadata={
+            "reason": clean_reason,
+            "previous_status": previous_status,
+            "new_status": str(payload["status"]),
+            "workspace_id": str(payload["workspace_id"]),
+            "project_id": str(payload["project_id"]),
+        },
+    )
+    return {
+        "action": "cancel",
+        "message": f"Generation job '{clean_job_id}' cancellation request applied.",
+        "source_job_id": clean_job_id,
+        "job": payload,
+        "audit_event": event,
+    }
+
+
+def admin_retry_job(
+    *,
+    job_id: str,
+    actor_user_id: str | None,
+    reason: str = "",
+    max_estimated_cost_usd: float | None = None,
+    project_daily_budget_usd: float | None = None,
+) -> dict[str, object]:
+    create_all_tables()
+    clean_job_id = str(job_id or "").strip()
+    clean_reason = str(reason or "").strip()
+    clean_actor_user_id = str(actor_user_id or "").strip() or None
+    if not clean_job_id:
+        raise AdminValidationError("A valid generation job id is required.")
+
+    source_status = "unknown"
+    source_project_id = ""
+    source_workspace_id = ""
+    source_run_count = 1
+    enqueue_payload: dict[str, object] | None = None
+    try:
+        with session_scope() as session:
+            source_job = session.get(GenerationJob, clean_job_id)
+            if source_job is None:
+                raise AdminNotFoundError(
+                    f"Generation job '{clean_job_id}' was not found."
+                )
+
+            source_status = str(source_job.status or "").strip().lower()
+            if source_status not in ADMIN_JOB_RETRYABLE_STATUSES:
+                raise AdminStateError(
+                    (
+                        f"Generation job '{clean_job_id}' cannot be retried from "
+                        f"status '{source_status}'."
+                    )
+                )
+
+            source_project_id = str(source_job.project_id or "").strip()
+            source_run_count = max(1, int(source_job.run_count or 1))
+            source_project = session.get(Project, source_job.project_id)
+            source_workspace_id = _workspace_token(
+                source_project.workspace_id if source_project is not None else ""
+            )
+            enqueue_payload = {
+                "project_id": source_job.project_id,
+                "manuscript_id": source_job.manuscript_id,
+                "sections": list(source_job.sections or []),
+                "notes_context": source_job.notes_context,
+                "parent_job_id": source_job.id,
+                "run_count": source_run_count + 1,
+            }
+    except (AdminValidationError, AdminNotFoundError, AdminStateError):
+        _record_admin_audit_event(
+            actor_user_id=clean_actor_user_id,
+            action="admin_job_retry",
+            target_type="generation_job",
+            target_id=clean_job_id,
+            status="failure",
+            metadata={
+                "reason": clean_reason,
+                "source_status": source_status,
+            },
+        )
+        raise
+
+    if enqueue_payload is None:
+        raise AdminStateError("Generation job retry payload was not prepared.")
+
+    try:
+        retried_job = enqueue_generation_job(
+            project_id=str(enqueue_payload["project_id"]),
+            manuscript_id=str(enqueue_payload["manuscript_id"]),
+            sections=list(enqueue_payload["sections"]),
+            notes_context=str(enqueue_payload["notes_context"]),
+            max_estimated_cost_usd=max_estimated_cost_usd,
+            project_daily_budget_usd=project_daily_budget_usd,
+            parent_job_id=str(enqueue_payload["parent_job_id"]),
+            run_count=int(enqueue_payload["run_count"]),
+        )
+    except (GenerationJobConflictError, GenerationJobStateError) as exc:
+        _record_admin_audit_event(
+            actor_user_id=clean_actor_user_id,
+            action="admin_job_retry",
+            target_type="generation_job",
+            target_id=clean_job_id,
+            status="failure",
+            metadata={
+                "reason": clean_reason,
+                "source_status": source_status,
+                "error": str(exc),
+            },
+        )
+        raise AdminStateError(str(exc)) from exc
+
+    with session_scope() as session:
+        refreshed_job = session.get(GenerationJob, str(retried_job.id))
+        if refreshed_job is None:
+            raise AdminNotFoundError(
+                f"Retried generation job '{retried_job.id}' was not found."
+            )
+        project = session.get(Project, refreshed_job.project_id)
+        owner = None
+        if project is not None and str(project.owner_user_id or "").strip():
+            owner = session.get(User, str(project.owner_user_id))
+        payload = _serialize_admin_job_row(job=refreshed_job, project=project, owner=owner)
+
+    event = _record_admin_audit_event(
+        actor_user_id=clean_actor_user_id,
+        action="admin_job_retry",
+        target_type="generation_job",
+        target_id=clean_job_id,
+        status="success",
+        metadata={
+            "reason": clean_reason,
+            "source_status": source_status,
+            "source_project_id": source_project_id,
+            "source_workspace_id": source_workspace_id,
+            "source_run_count": source_run_count,
+            "retried_job_id": str(payload["id"]),
+            "max_estimated_cost_usd": max_estimated_cost_usd,
+            "project_daily_budget_usd": project_daily_budget_usd,
+        },
+    )
+    return {
+        "action": "retry",
+        "message": (
+            f"Generation job '{clean_job_id}' retried as '{payload['id']}'."
+        ),
+        "source_job_id": clean_job_id,
+        "job": payload,
+        "audit_event": event,
+    }
+
+
+def create_admin_org_impersonation(
+    *,
+    org_id: str,
+    actor_user_id: str | None,
+    reason: str = "",
+) -> dict[str, object]:
+    create_all_tables()
+    clean_actor_user_id = str(actor_user_id or "").strip() or None
+    clean_reason = str(reason or "").strip()
+    domain = _normalize_org_domain(org_id)
+    normalized_org_id = f"org-{domain}"
+
+    try:
+        with session_scope() as session:
+            org_users = session.scalars(
+                select(User).where(func.lower(User.email).like(f"%@{domain}"))
+            ).all()
+    except Exception as exc:  # pragma: no cover - defensive guard
+        raise AdminStateError("Could not query organisation users.") from exc
+
+    if not org_users:
+        _record_admin_audit_event(
+            actor_user_id=clean_actor_user_id,
+            action="admin_org_impersonation_start",
+            target_type="organisation",
+            target_id=normalized_org_id,
+            status="failure",
+            metadata={"reason": clean_reason, "error": "organisation_not_found"},
+        )
+        raise AdminNotFoundError(
+            f"Organisation '{normalized_org_id}' was not found."
+        )
+
+    def _priority(user: User) -> tuple[int, int, float]:
+        role = str(user.role or "").strip().lower()
+        last_sign_in = _coerce_utc(user.last_sign_in_at)
+        return (
+            0 if role == "admin" else 1,
+            0 if bool(user.is_active) else 1,
+            -(last_sign_in.timestamp() if last_sign_in is not None else 0.0),
+        )
+
+    target_user = sorted(org_users, key=_priority)[0]
+    started_at = _utcnow()
+    expires_at = started_at + timedelta(minutes=20)
+    impersonation_ticket = f"imp-{uuid4()}"
+
+    event = _record_admin_audit_event(
+        actor_user_id=clean_actor_user_id,
+        action="admin_org_impersonation_start",
+        target_type="organisation",
+        target_id=normalized_org_id,
+        status="success",
+        metadata={
+            "reason": clean_reason,
+            "organisation_domain": domain,
+            "target_user_id": str(target_user.id),
+            "target_user_email": str(target_user.email or "").strip(),
+            "impersonation_ticket": impersonation_ticket,
+            "expires_at": expires_at.isoformat(),
+        },
+    )
+    return {
+        "org_id": normalized_org_id,
+        "org_name": _derive_org_name(domain),
+        "domain": domain,
+        "target_user_id": str(target_user.id),
+        "target_user_name": str(target_user.name or "").strip() or "Unknown user",
+        "target_user_email": str(target_user.email or "").strip(),
+        "impersonation_ticket": impersonation_ticket,
+        "started_at": started_at,
+        "expires_at": expires_at,
+        "audited": True,
+        "audit_event": event,
+    }
+
+
+def list_admin_audit_events(
+    *,
+    query: str = "",
+    action: str = "",
+    target_type: str = "",
+    limit: int = 100,
+    offset: int = 0,
+) -> dict[str, object]:
+    create_all_tables()
+    now = _utcnow()
+    normalized_query = str(query or "").strip().lower()
+    normalized_action = str(action or "").strip().lower()
+    normalized_target_type = str(target_type or "").strip().lower()
+    normalized_limit = max(1, min(200, int(limit)))
+    normalized_offset = max(0, int(offset))
+
+    with session_scope() as session:
+        events = session.scalars(
+            select(AdminAuditEvent).order_by(AdminAuditEvent.created_at.desc())
+        ).all()
+        users = session.scalars(select(User)).all()
+
+    user_meta_by_id: dict[str, tuple[str, str]] = {}
+    for user in users:
+        clean_user_id = str(user.id or "").strip()
+        if not clean_user_id:
+            continue
+        user_meta_by_id[clean_user_id] = (
+            str(user.name or "").strip() or "Unknown user",
+            str(user.email or "").strip(),
+        )
+
+    items: list[dict[str, object]] = []
+    status_counts: dict[str, int] = defaultdict(int)
+    action_counts: dict[str, int] = defaultdict(int)
+    for event in events:
+        event_action = str(event.action or "").strip().lower()
+        event_target_type = str(event.target_type or "").strip().lower()
+        if normalized_action and normalized_action not in {"all", "any"}:
+            if event_action != normalized_action:
+                continue
+        if normalized_target_type and normalized_target_type not in {"all", "any"}:
+            if event_target_type != normalized_target_type:
+                continue
+
+        actor_user_id = str(event.actor_user_id or "").strip()
+        actor_name, actor_email = user_meta_by_id.get(
+            actor_user_id,
+            ("System", ""),
+        )
+        item = _serialize_admin_audit_event(
+            event,
+            actor_name=actor_name,
+            actor_email=actor_email,
+        )
+        if normalized_query:
+            metadata_blob = str(item["metadata"])
+            searchable = " ".join(
+                [
+                    str(item["action"]),
+                    str(item["target_type"]),
+                    str(item["target_id"]),
+                    str(item["status"]),
+                    str(item["actor_name"]),
+                    str(item["actor_email"]),
+                    metadata_blob,
+                ]
+            ).lower()
+            if normalized_query not in searchable:
+                continue
+
+        status_counts[str(item["status"])] += 1
+        action_counts[str(item["action"])] += 1
+        items.append(item)
+
+    total = len(items)
+    paged_items = items[normalized_offset : normalized_offset + normalized_limit]
+    action_totals = [
+        {"action": key, "count": value}
+        for key, value in sorted(
+            action_counts.items(),
+            key=lambda row: (-int(row[1]), str(row[0])),
+        )
+    ]
+
+    return {
+        "items": paged_items,
+        "total": total,
+        "limit": normalized_limit,
+        "offset": normalized_offset,
+        "generated_at": now,
+        "summary": {
+            "success_count": int(status_counts.get("success", 0)),
+            "failure_count": int(status_counts.get("failure", 0)),
+            "action_totals": action_totals[:12],
+        },
     }

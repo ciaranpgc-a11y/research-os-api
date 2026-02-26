@@ -917,3 +917,17 @@
 - **Verification performed:**
 - `python -m py_compile src/research_os/services/social_auth_service.py`
 - `pytest tests/test_api.py -k "auth_oauth_connect_and_callback_endpoints or auth/login or login_challenge" -q`
+
+### Auth Form Validation UX Fix (Prevent Disabled-Button Dead End)
+
+- **Area:** Sign-in ergonomics and error clarity on auth screen.
+- **What changed:**
+- Updated sign-in button behavior to disable only during active request loading.
+- Removed validation-based disable state so users can click and receive explicit validation feedback (e.g., missing password) instead of a silent disabled state.
+- **Why it changed:**
+- Prevent confusion where users interpreted a disabled sign-in button as an API outage while required fields were incomplete.
+- **Key files touched:**
+- `frontend/src/pages/auth-page.tsx`
+- `docs/change-log.md`
+- **Verification performed:**
+- `npm --prefix frontend run typecheck`

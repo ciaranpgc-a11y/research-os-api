@@ -809,7 +809,7 @@ export function AuthPage() {
             <Button
               type="button"
               className={authPrimaryButtonClass}
-              disabled={loading || !!loginValidationMessage}
+              disabled={loading}
               onClick={() => void onSignIn()}
             >
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
