@@ -51,7 +51,7 @@ type PublicationFilterKey = 'all' | 'cited' | 'with_doi' | 'with_abstract' | 'wi
 type PublicationSortField = 'citations' | 'year' | 'title' | 'venue' | 'work_type'
 type SortDirection = 'asc' | 'desc'
 type PublicationDetailTab = 'overview' | 'content' | 'impact' | 'files' | 'ai'
-type PublicationTableColumnKey = 'title' | 'year' | 'venue' | 'work_type' | 'citations'
+type PublicationTableColumnKey = 'title' | 'year' | 'venue' | 'work_type' | 'article_type' | 'citations'
 type PublicationTableColumnAlign = 'left' | 'center' | 'right'
 type PublicationTableColumnPreference = {
   visible: boolean
@@ -66,12 +66,13 @@ type PublicationOaPdfStatusRecord = {
   updatedAt: string
 }
 
-const PUBLICATION_TABLE_COLUMN_ORDER: PublicationTableColumnKey[] = ['title', 'year', 'venue', 'work_type', 'citations']
+const PUBLICATION_TABLE_COLUMN_ORDER: PublicationTableColumnKey[] = ['title', 'year', 'venue', 'work_type', 'article_type', 'citations']
 const PUBLICATION_TABLE_COLUMN_DEFINITIONS: Record<PublicationTableColumnKey, { label: string; sortField: PublicationSortField }> = {
   title: { label: 'Title', sortField: 'title' },
   year: { label: 'Year', sortField: 'year' },
   venue: { label: 'Journal', sortField: 'venue' },
   work_type: { label: 'Publication type', sortField: 'work_type' },
+  article_type: { label: 'Article type', sortField: 'work_type' },
   citations: { label: 'Citations', sortField: 'citations' },
 }
 const PUBLICATION_TABLE_COLUMN_DEFAULTS: Record<PublicationTableColumnKey, PublicationTableColumnPreference> = {
@@ -79,6 +80,7 @@ const PUBLICATION_TABLE_COLUMN_DEFAULTS: Record<PublicationTableColumnKey, Publi
   year: { visible: true, align: 'left', width: 92 },
   venue: { visible: true, align: 'left', width: 280 },
   work_type: { visible: true, align: 'left', width: 200 },
+  article_type: { visible: true, align: 'left', width: 168 },
   citations: { visible: true, align: 'left', width: 120 },
 }
 const PUBLICATION_TABLE_COLUMN_WIDTH_MIN = 80
@@ -112,7 +114,6 @@ const HOUSE_PUBLICATION_DETAIL_SECTION_CLASS = publicationsHouseDetail.section
 const HOUSE_PUBLICATION_DETAIL_LABEL_CLASS = publicationsHouseDetail.sectionLabel
 const HOUSE_PUBLICATION_DETAIL_INFO_CLASS = publicationsHouseDetail.info
 const HOUSE_PUBLICATION_TEXT_CLASS = publicationsHouseHeadings.text
-const HOUSE_PUBLICATION_TEXT_SOFT_CLASS = publicationsHouseHeadings.textSoft
 const HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS = publicationsHouseDrilldown.statCard
 const HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS = publicationsHouseDrilldown.statTitle
 const HOUSE_PUBLICATION_DRILLDOWN_CAPTION_CLASS = publicationsHouseDrilldown.caption
@@ -186,6 +187,15 @@ function derivePublicationTypeLabel(work: {
     return 'Other'
   }
   return text.replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function deriveArticleTypeLabel(work: {
+  work_type?: string | null
+  title?: string | null
+  venue_name?: string | null
+}): string {
+  const publicationType = derivePublicationTypeLabel(work)
+  return publicationType === 'Journal article' ? 'Unspecified' : 'n/a'
 }
 
 function formatShortDate(value: string | null | undefined): string {
@@ -420,6 +430,7 @@ function createDefaultPublicationTableColumnPreferences(): Record<PublicationTab
     year: { ...PUBLICATION_TABLE_COLUMN_DEFAULTS.year },
     venue: { ...PUBLICATION_TABLE_COLUMN_DEFAULTS.venue },
     work_type: { ...PUBLICATION_TABLE_COLUMN_DEFAULTS.work_type },
+    article_type: { ...PUBLICATION_TABLE_COLUMN_DEFAULTS.article_type },
     citations: { ...PUBLICATION_TABLE_COLUMN_DEFAULTS.citations },
   }
 }
@@ -502,6 +513,9 @@ function publicationTableColumnTextForWork(
   if (column === 'work_type') {
     return derivePublicationTypeLabel(work)
   }
+  if (column === 'article_type') {
+    return deriveArticleTypeLabel(work)
+  }
   return String(metricsByWorkId.get(work.id)?.citations ?? 0)
 }
 
@@ -575,6 +589,7 @@ function autoFitPublicationTableColumns(input: {
     year: { ...input.current.year },
     venue: { ...input.current.venue },
     work_type: { ...input.current.work_type },
+    article_type: { ...input.current.article_type },
     citations: { ...input.current.citations },
   }
   const columnLimits: Record<PublicationTableColumnKey, { min: number; max: number; growWeight: number }> = {
@@ -582,6 +597,7 @@ function autoFitPublicationTableColumns(input: {
     year: { min: 96, max: 124, growWeight: 0.6 },
     venue: { min: 180, max: 340, growWeight: 2.1 },
     work_type: { min: 170, max: 260, growWeight: 1.6 },
+    article_type: { min: 140, max: 220, growWeight: 1.2 },
     citations: { min: 96, max: 132, growWeight: 0.7 },
   }
   const safeAvailableWidth = Math.max(760, Math.round(input.availableWidth))
@@ -598,6 +614,7 @@ function autoFitPublicationTableColumns(input: {
       year: [],
       venue: [],
       work_type: [],
+      article_type: [],
       citations: [],
     },
   )
@@ -616,6 +633,7 @@ function autoFitPublicationTableColumns(input: {
       year: next.year.width,
       venue: next.venue.width,
       work_type: next.work_type.width,
+      article_type: next.article_type.width,
       citations: next.citations.width,
     },
   )
@@ -2637,6 +2655,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 return (
                                   <TableCell key={`${work.id}-${columnKey}`} className={`${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
                                     {derivePublicationTypeLabel(work)}
+                                  </TableCell>
+                                )
+                              }
+                              if (columnKey === 'article_type') {
+                                return (
+                                  <TableCell key={`${work.id}-${columnKey}`} className={`${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
+                                    {deriveArticleTypeLabel(work)}
                                   </TableCell>
                                 )
                               }
