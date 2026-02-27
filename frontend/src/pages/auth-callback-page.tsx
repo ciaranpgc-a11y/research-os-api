@@ -2,7 +2,7 @@ import { useMemo, useRef, useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { CardPrimitive, CardContent, CardHeader, CardTitle } from '@/components/primitives/CardPrimitive'
 import { setAuthSessionToken } from '@/lib/auth-session'
 import { completeOAuthCallback } from '@/lib/impact-api'
 
@@ -104,7 +104,7 @@ export function AuthCallbackPage() {
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-10">
       <div className="mx-auto w-full max-w-md">
-        <Card>
+        <CardPrimitive>
           <CardHeader>
             <CardTitle>Sign-in callback</CardTitle>
           </CardHeader>
@@ -117,8 +117,9 @@ export function AuthCallbackPage() {
               </p>
             ) : null}
           </CardContent>
-        </Card>
+        </CardPrimitive>
       </div>
     </div>
   )
 }
+
