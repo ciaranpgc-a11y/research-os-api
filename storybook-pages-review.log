@@ -27,3 +27,22 @@ Re-optimizing dependencies because vite config has changed
 ╰─────────────────────────────────────────────────────────────────────╯
 [2m18:19:08[22m [36m[1m[vite][22m[39m [32m✨ new dependencies optimized: [33mmsw/browser, msw[32m[39m
 [2m18:19:08[22m [36m[1m[vite][22m[39m [32m✨ optimized dependencies changed. reloading[39m
+[2m18:24:36[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/publications/PublicationsTopStrip.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:24:39[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/workspaces-page.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:24:43[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/stories/design-system/_helpers/StoryFrame.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:25:00[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/iframe.html[22m
+[2m18:25:00[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/index.html[22m
+[2m18:25:01[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/index.html[22m
+[2m18:25:17[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/iframe.html[22m
+[2m18:26:36[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/index.html[22m
+[2m18:26:36[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/iframe.html[22m
+[2m18:26:37[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/index.html[22m
+[2m18:26:53[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/iframe.html[22m
+[2m18:27:37[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/iframe.html[22m
+[2m18:27:37[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/index.html[22m
+[2m18:27:38[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/index.html[22m
+[2m18:27:55[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/iframe.html[22m
+[2m18:28:24[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/index.html[22m
+[2m18:28:24[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/iframe.html[22m
+[2m18:28:25[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/index.html[22m
+[2m18:28:44[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/iframe.html[22m
