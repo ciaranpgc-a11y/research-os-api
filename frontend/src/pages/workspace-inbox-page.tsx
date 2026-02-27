@@ -1384,8 +1384,8 @@ export function WorkspaceInboxPage() {
         className={cn(
           'grid min-h-0 flex-1 grid-cols-1',
           rightNavCollapsed
-            ? 'nav:grid-cols-[280px_minmax(0,1fr)_56px]'
-            : 'nav:grid-cols-[280px_minmax(0,1fr)_280px]',
+            ? 'nav:grid-cols-[17.5rem_minmax(0,1fr)_3.5rem]'
+            : 'nav:grid-cols-[17.5rem_minmax(0,1fr)_17.5rem]',
         )}
       >
         <aside className="hidden border-r border-border nav:block">

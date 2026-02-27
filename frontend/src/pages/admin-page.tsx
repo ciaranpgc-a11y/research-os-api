@@ -1227,7 +1227,7 @@ export function AdminPage() {
                           <p className="text-sm uppercase tracking-wide text-muted-foreground">3-month usage trend</p>
                           <div className="mt-2 space-y-1">
                             {selectedOrganisation.monthly_usage_trend.map((point) => (
-                              <div key={point.month} className="grid grid-cols-[88px_minmax(0,1fr)] gap-2 text-sm text-[hsl(var(--tone-neutral-700))]">
+                              <div key={point.month} className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-2 text-sm text-[hsl(var(--tone-neutral-700))]">
                                 <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{point.month}</span>
                                 <span>
                                   {formatInteger(point.tokens)} tokens | {formatInteger(point.tool_calls)} calls | {formatCurrency(point.cost_usd)}
