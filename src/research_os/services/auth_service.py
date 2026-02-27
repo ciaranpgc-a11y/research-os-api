@@ -51,6 +51,9 @@ EXPOSE_AUTH_CODES_IN_RESPONSE = os.getenv("AUTH_EXPOSE_DEBUG_CODES", "0").strip(
     "yes",
     "on",
 }
+REQUIRE_EMAIL_VERIFICATION = os.getenv(
+    "AUTH_REQUIRE_EMAIL_VERIFICATION", "1"
+).strip().lower() in {"1", "true", "yes", "on"}
 _DUMMY_PASSWORD_HASH = hash_password("AaweDummyPassword123")
 
 
@@ -120,6 +123,13 @@ def _serialize_user(user: User) -> dict[str, object]:
         "created_at": user.created_at,
         "updated_at": user.updated_at,
     }
+
+
+def _auto_verify_email_if_disabled(*, user: User) -> None:
+    if REQUIRE_EMAIL_VERIFICATION:
+        return
+    if user.email_verified_at is None:
+        user.email_verified_at = _utcnow()
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -495,6 +505,7 @@ def register_user(*, email: str, password: str, name: str) -> dict[str, object]:
             is_active=True,
             role="user",
         )
+        _auto_verify_email_if_disabled(user=user)
         session.add(user)
         try:
             session.flush()
@@ -535,6 +546,7 @@ def login_user(*, email: str, password: str) -> dict[str, object]:
             raise AuthValidationError(
                 "Two-factor authentication is required; use login challenge."
             )
+        _auto_verify_email_if_disabled(user=user)
         token, auth_session = _create_session(session=session, user=user)
         session.refresh(user)
         response_payload = _serialize_session_payload(
@@ -561,6 +573,8 @@ def get_user_by_session_token(token: str) -> dict[str, object]:
     create_all_tables()
     with session_scope() as session:
         user, _ = _resolve_user_from_session_token(session=session, token=token)
+        _auto_verify_email_if_disabled(user=user)
+        session.flush()
         return _serialize_user(user)
 
 
@@ -609,6 +623,7 @@ def update_current_user(
                 user.email = normalized_email
                 user.email_verified_at = None
                 identity_changed = True
+        _auto_verify_email_if_disabled(user=user)
         if password is not None:
             normalized_password = _normalize_password_input(password)
             try:
@@ -710,6 +725,7 @@ def start_login_challenge(*, email: str, password: str) -> dict[str, object]:
     signed_in_account_key = ""
     with session_scope() as session:
         user = _get_user_by_credentials(session=session, email=email, password=password)
+        _auto_verify_email_if_disabled(user=user)
         if not user.two_factor_enabled:
             token, auth_session = _create_session(session=session, user=user)
             session.refresh(user)
@@ -793,6 +809,7 @@ def complete_login_challenge(*, challenge_token: str, code: str) -> dict[str, ob
         if not _verify_two_factor_code(user=user, code=code):
             raise AuthValidationError("Two-factor code is invalid.")
 
+        _auto_verify_email_if_disabled(user=user)
         challenge.consumed_at = now
         token, auth_session = _create_session(session=session, user=user)
         session.flush()
@@ -821,6 +838,7 @@ def request_email_verification(*, session_token: str) -> dict[str, object]:
     create_all_tables()
     with session_scope() as session:
         user, _ = _resolve_user_from_session_token(session=session, token=session_token)
+        _auto_verify_email_if_disabled(user=user)
         if user.email_verified_at is not None:
             return {
                 "requested": False,
@@ -868,6 +886,7 @@ def confirm_email_verification(*, session_token: str, code: str) -> dict[str, ob
         raise AuthValidationError("Verification code is required.")
     with session_scope() as session:
         user, _ = _resolve_user_from_session_token(session=session, token=session_token)
+        _auto_verify_email_if_disabled(user=user)
         if user.email_verified_at is not None:
             return _serialize_user(user)
 
@@ -1054,4 +1073,3 @@ def disable_two_factor(*, session_token: str, code: str) -> dict[str, object]:
             "backup_codes_remaining": 0,
             "confirmed_at": None,
         }
-
