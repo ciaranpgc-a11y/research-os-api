@@ -105,6 +105,11 @@
     --brand-microsoft-yellow: 43 100% 52%;
 
     --radius: 0.5rem;
+    --radius-xs: 0.25rem;
+    --radius-sm: 0.375rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 0.625rem;
+    --radius-full: 9999px;
 
     --font-family-base:
       "IBM Plex Sans",
@@ -128,6 +133,14 @@
     --text-body-line: 1.375rem;
     --text-display-size: 2rem;
     --text-display-line: 2.25rem;
+    --text-display-xl-size: 2.5rem;
+    --text-display-xl-line: 2.875rem;
+    --text-heading-size: 1.25rem;
+    --text-heading-line: 1.625rem;
+    --text-body-strong-size: 1rem;
+    --text-body-strong-line: 1.5rem;
+    --text-body-secondary-size: 0.875rem;
+    --text-body-secondary-line: 1.25rem;
 
     --motion-duration-fast: 150ms;
     --motion-duration-ui: 180ms;
@@ -138,6 +151,48 @@
     --motion-duration-emphasis: 500ms;
     --motion-duration-long: 700ms;
     --motion-duration-chart-ring-fill: var(--motion-duration-slower);
+    --motion-duration-chart-toggle: 540ms;
+    --motion-duration-chart-refresh: 1200ms;
+    --motion-ease-default: ease-out;
+    --motion-ease-elastic: cubic-bezier(0.22, 1, 0.36, 1);
+    --motion-ease-chart-series: cubic-bezier(0.2, 0.68, 0.16, 1);
+    --motion-choreo-page-load: var(--motion-duration-base);
+    --motion-choreo-tile-load: var(--motion-duration-slow);
+    --motion-choreo-chart-load: var(--motion-duration-chart-refresh);
+    --motion-choreo-toggle-same: var(--motion-duration-base);
+    --motion-choreo-toggle-different: var(--motion-duration-slower);
+    --motion-stagger-tight: 18ms;
+    --motion-stagger-loose: 45ms;
+
+    --elevation-none: none;
+    --elevation-xs: 0 1px 2px hsl(var(--tone-neutral-900) / 0.07);
+    --elevation-sm: 0 2px 4px hsl(var(--tone-neutral-900) / 0.08);
+    --elevation-md: 0 4px 8px hsl(var(--tone-neutral-900) / 0.1);
+    --elevation-lg: 0 8px 22px hsl(var(--tone-neutral-900) / 0.12);
+    --ring-focus: 0 0 0 2px hsl(var(--tone-accent-200) / 0.82);
+    --ring-positive: inset 0 0 0 1px hsl(var(--tone-positive-300) / 0.62);
+    --ring-danger: inset 0 0 0 1px hsl(var(--tone-danger-300) / 0.62);
+    --ring-error: 0 0 0 2px hsl(var(--tone-danger-300) / 0.78);
+
+    --space-0: 0rem;
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.5rem;
+    --space-6: 2rem;
+    --space-7: 3rem;
+    --space-8: 4rem;
+
+    --chart-series-1: var(--tone-accent-600);
+    --chart-series-2: var(--tone-positive-600);
+    --chart-series-3: var(--tone-warning-600);
+    --chart-series-4: var(--tone-danger-600);
+    --chart-series-5: var(--tone-neutral-600);
+    --chart-grid-line: var(--stroke-soft);
+    --chart-grid-line-strong: var(--stroke-strong);
+    --chart-label: var(--tone-neutral-600);
+    --chart-label-strong: var(--tone-neutral-800);
 
     --top-nav-rail-width: 3px;
     --top-nav-rail-height: 18px;

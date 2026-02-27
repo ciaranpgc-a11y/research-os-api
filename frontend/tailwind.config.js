@@ -42,8 +42,10 @@ export default {
         300: '300ms',
         320: 'var(--motion-duration-slow)',
         420: 'var(--motion-duration-slower)',
+        540: 'var(--motion-duration-chart-toggle)',
         500: 'var(--motion-duration-emphasis)',
         700: 'var(--motion-duration-long)',
+        1200: 'var(--motion-duration-chart-refresh)',
       },
       spacing: {
         'sz-7': '0.4375rem',
@@ -132,9 +134,11 @@ export default {
         cyan: toneScale('tone-accent'),
       },
       borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
+        lg: 'var(--radius-lg)',
+        md: 'var(--radius-md)',
+        sm: 'var(--radius-sm)',
+        xs: 'var(--radius-xs)',
+        full: 'var(--radius-full)',
       },
       borderWidth: {
         3: '3px',

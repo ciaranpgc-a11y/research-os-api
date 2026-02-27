@@ -10,19 +10,22 @@ export default meta
 type Story = StoryObj
 
 const SHADOWS = [
-  { label: 'None', shadow: 'none' },
-  { label: 'Soft', shadow: '0 1px 2px hsl(var(--tone-neutral-900)/0.12)' },
-  { label: 'Raised', shadow: '0 8px 24px hsl(var(--tone-neutral-900)/0.16)' },
+  { label: 'None', token: '--elevation-none', shadow: 'var(--elevation-none)' },
+  { label: 'XS', token: '--elevation-xs', shadow: 'var(--elevation-xs)' },
+  { label: 'SM', token: '--elevation-sm', shadow: 'var(--elevation-sm)' },
+  { label: 'MD', token: '--elevation-md', shadow: 'var(--elevation-md)' },
+  { label: 'LG', token: '--elevation-lg', shadow: 'var(--elevation-lg)' },
 ]
 
 export const Elevation: Story = {
   render: () => (
     <StoryFrame title="Shadow and elevation">
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {SHADOWS.map((item) => (
           <div key={item.label} className="rounded-md border border-border bg-card p-4" style={{ boxShadow: item.shadow }}>
             <p className="text-label font-semibold">{item.label}</p>
-            <p className="text-caption text-muted-foreground mt-1">{item.shadow}</p>
+            <p className="mt-1 text-caption text-muted-foreground">{item.token}</p>
+            <p data-ui="shadow-value" className="text-caption text-muted-foreground">{item.shadow}</p>
           </div>
         ))}
       </div>
