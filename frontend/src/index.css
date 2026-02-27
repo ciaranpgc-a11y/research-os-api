@@ -1375,6 +1375,82 @@
     opacity: 0.6;
   }
 
+  .house-collaborator-action-icon {
+    display: inline-flex;
+    height: 2rem;
+    width: 2rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.375rem;
+    background-color: hsl(var(--background));
+    color: hsl(var(--muted-foreground));
+    transition-property: color, background-color;
+    transition-duration: var(--motion-duration-ui);
+    transition-timing-function: ease-out;
+  }
+
+  .house-collaborator-action-icon:hover {
+    color: hsl(var(--foreground));
+  }
+
+  .house-collaborator-action-icon:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .house-collaborator-action-icon-add {
+    border-color: hsl(var(--tone-positive-300) / 0.92);
+    background-color: hsl(var(--tone-positive-50) / 0.9);
+    color: hsl(var(--tone-positive-800));
+    box-shadow: inset 0 0 0 1px hsl(var(--tone-positive-200) / 0.52);
+  }
+
+  .house-collaborator-action-icon-add:hover {
+    border-color: hsl(var(--tone-positive-500) / 0.9);
+    background-color: hsl(var(--tone-positive-100) / 0.95);
+    color: hsl(var(--tone-positive-900));
+  }
+
+  .house-collaborator-action-icon-edit {
+    border-color: hsl(var(--tone-accent-300) / 0.92);
+    background-color: hsl(var(--tone-accent-50) / 0.9);
+    color: hsl(var(--tone-accent-800));
+    box-shadow: inset 0 0 0 1px hsl(var(--tone-accent-200) / 0.52);
+  }
+
+  .house-collaborator-action-icon-edit:hover {
+    border-color: hsl(var(--tone-accent-500) / 0.88);
+    background-color: hsl(var(--tone-accent-100) / 0.94);
+    color: hsl(var(--tone-accent-900));
+  }
+
+  .house-collaborator-action-icon-remove {
+    border-color: hsl(var(--tone-danger-300) / 0.92);
+    background-color: hsl(var(--tone-danger-50) / 0.92);
+    color: hsl(var(--tone-danger-800));
+    box-shadow: inset 0 0 0 1px hsl(var(--tone-danger-200) / 0.52);
+  }
+
+  .house-collaborator-action-icon-remove:hover {
+    border-color: hsl(var(--tone-danger-500) / 0.88);
+    background-color: hsl(var(--tone-danger-100) / 0.95);
+    color: hsl(var(--tone-danger-900));
+  }
+
+  .house-collaborator-action-icon-restore {
+    border-color: hsl(var(--tone-positive-300) / 0.92);
+    background-color: hsl(var(--tone-positive-50) / 0.9);
+    color: hsl(var(--tone-positive-800));
+    box-shadow: inset 0 0 0 1px hsl(var(--tone-positive-200) / 0.52);
+  }
+
+  .house-collaborator-action-icon-restore:hover {
+    border-color: hsl(var(--tone-positive-500) / 0.9);
+    background-color: hsl(var(--tone-positive-100) / 0.95);
+    color: hsl(var(--tone-positive-900));
+  }
+
   .house-panel-top {
     border: 0;
     border-radius: 0.375rem;
@@ -1608,6 +1684,48 @@
     opacity: 1;
     transform: none;
     filter: none;
+  }
+
+  .house-chart-scale-layer {
+    transition-property: bottom;
+    transition-duration: var(--motion-duration-slow);
+    transition-timing-function: cubic-bezier(0.2, 0.68, 0.16, 1);
+    will-change: bottom;
+  }
+
+  .house-chart-scale-tick {
+    transition-property: bottom, opacity;
+    transition-duration: var(--motion-duration-slow);
+    transition-timing-function: cubic-bezier(0.2, 0.68, 0.16, 1);
+    will-change: bottom;
+  }
+
+  .house-chart-scale-axis-title {
+    transition-property: left;
+    transition-duration: var(--motion-duration-slow);
+    transition-timing-function: cubic-bezier(0.2, 0.68, 0.16, 1);
+  }
+
+  .house-chart-scale-mean-line {
+    transition-property: bottom, opacity;
+    transition-duration: var(--motion-duration-slow);
+    transition-timing-function: cubic-bezier(0.2, 0.68, 0.16, 1);
+    transition-delay: 0ms;
+    will-change: bottom;
+  }
+
+  .house-chart-scale-mean-line-delayed {
+    transition-delay: var(--motion-duration-fast);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .house-chart-scale-layer,
+    .house-chart-scale-tick,
+    .house-chart-scale-axis-title,
+    .house-chart-scale-mean-line,
+    .house-chart-scale-mean-line-delayed {
+      transition: none;
+    }
   }
 
   .house-ring-float-enter {

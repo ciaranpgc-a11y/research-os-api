@@ -218,17 +218,18 @@ function buildChartAxisLayout({
   }
 }
 
-function buildYAxisPanelWidthRem(ticks: number[], showAxisName: boolean): number {
+function buildYAxisPanelWidthRem(ticks: number[], showAxisName: boolean, extraTickChars = 0): number {
   const maxTickChars = Math.max(
     1,
     ...ticks.map((tick) => formatInt(Math.max(0, Math.round(Number.isFinite(tick) ? tick : 0))).length),
-  )
-  // Keep y-axis label spacing stable across 1-4 digit ranges while still allowing larger values.
-  const tickColumnWidthRem = 1.3 + (maxTickChars * 0.28)
-  const axisNameAllowanceRem = showAxisName ? 0.68 : 0
+  ) + Math.max(0, Math.round(extraTickChars))
+  // Add extra gutter spacing once tick labels reach 3+ digits so title/ticks do not crowd.
+  const hasLargeTicks = maxTickChars >= 3
+  const tickColumnWidthRem = 1.3 + (maxTickChars * 0.28) + (hasLargeTicks ? 0.24 : 0)
+  const axisNameAllowanceRem = showAxisName ? (hasLargeTicks ? 1.02 : 0.68) : 0
   const preferredWidthRem = tickColumnWidthRem + axisNameAllowanceRem
-  const minWidthRem = showAxisName ? 3.1 : 2.65
-  const maxWidthRem = showAxisName ? 3.95 : 3.3
+  const minWidthRem = showAxisName ? (hasLargeTicks ? 3.65 : 3.1) : 2.65
+  const maxWidthRem = showAxisName ? (hasLargeTicks ? 4.7 : 3.95) : 3.3
   return Math.min(maxWidthRem, Math.max(minWidthRem, preferredWidthRem))
 }
 
@@ -300,6 +301,11 @@ const HOUSE_CHART_ENTERED_CLASS = publicationsHouseMotion.chartEnter
 const HOUSE_CHART_EXITED_CLASS = publicationsHouseMotion.chartExit
 const HOUSE_CHART_RING_ENTERED_CLASS = publicationsHouseMotion.ringChartEnter
 const HOUSE_CHART_RING_EXITED_CLASS = publicationsHouseMotion.ringChartExit
+const HOUSE_CHART_SCALE_LAYER_CLASS = publicationsHouseMotion.chartScaleLayer
+const HOUSE_CHART_SCALE_TICK_CLASS = publicationsHouseMotion.chartScaleTick
+const HOUSE_CHART_SCALE_AXIS_TITLE_CLASS = publicationsHouseMotion.chartScaleAxisTitle
+const HOUSE_CHART_SCALE_MEAN_LINE_CLASS = publicationsHouseMotion.chartScaleMeanLine
+const HOUSE_CHART_SCALE_MEAN_LINE_DELAYED_CLASS = publicationsHouseMotion.chartScaleMeanLineDelayed
 const HOUSE_TOGGLE_TRACK_CLASS = publicationsHouseMotion.toggleTrack
 const HOUSE_TOGGLE_THUMB_CLASS = publicationsHouseMotion.toggleThumb
 const HOUSE_TOGGLE_BUTTON_CLASS = publicationsHouseMotion.toggleButton
@@ -488,52 +494,120 @@ function useHouseBarSetTransition<T extends { key: string }>({
   animationKey,
   enabled,
   collapseMs = 200,
+  structureSwap = 'collapse',
+  crossfadeMs = 220,
 }: {
   bars: T[]
   animationKey: string
   enabled: boolean
   collapseMs?: number
+  structureSwap?: 'collapse' | 'crossfade'
+  crossfadeMs?: number
 }): {
   renderBars: T[]
+  outgoingBars: T[]
+  isCrossfading: boolean
+  pendingBars: T[]
+  isSwappingStructure: boolean
   barsExpanded: boolean
 } {
   const [renderBars, setRenderBars] = useState<T[]>(bars)
+  const [outgoingBars, setOutgoingBars] = useState<T[]>([])
+  const [isCrossfading, setIsCrossfading] = useState(false)
+  const [pendingBars, setPendingBars] = useState<T[]>([])
+  const [isSwappingStructure, setIsSwappingStructure] = useState(false)
   const [barsExpanded, setBarsExpanded] = useState(enabled)
   const renderBarsRef = useRef(renderBars)
+  const barsRef = useRef(bars)
+  const barsStructureKey = useMemo(
+    () => bars.map((bar) => bar.key).join('|'),
+    [bars],
+  )
 
   useEffect(() => {
     renderBarsRef.current = renderBars
   }, [renderBars])
 
   useEffect(() => {
+    barsRef.current = bars
+  }, [bars])
+
+  useEffect(() => {
+    const nextBars = barsRef.current
     if (!enabled) {
-      setRenderBars(bars)
+      setRenderBars(nextBars)
+      setOutgoingBars((current) => (current.length ? [] : current))
+      setIsCrossfading(false)
+      setPendingBars((current) => (current.length ? [] : current))
+      setIsSwappingStructure(false)
       setBarsExpanded(false)
       return
     }
     if (prefersReducedMotion()) {
-      setRenderBars(bars)
+      setRenderBars(nextBars)
+      setOutgoingBars((current) => (current.length ? [] : current))
+      setIsCrossfading(false)
+      setPendingBars((current) => (current.length ? [] : current))
+      setIsSwappingStructure(false)
       setBarsExpanded(true)
       return
     }
 
     const previousBars = renderBarsRef.current
-    const barCountChanged = previousBars.length !== bars.length
-    if (!barCountChanged) {
-      setRenderBars(bars)
+    const barStructureChanged =
+      previousBars.length !== nextBars.length
+      || previousBars.some((bar, index) => bar.key !== nextBars[index]?.key)
+    if (!barStructureChanged) {
+      setRenderBars(nextBars)
+      setOutgoingBars((current) => (current.length ? [] : current))
+      setIsCrossfading(false)
+      setPendingBars((current) => (current.length ? [] : current))
+      setIsSwappingStructure(false)
       setBarsExpanded(true)
       return
     }
 
+    setIsSwappingStructure(true)
+    if (structureSwap === 'crossfade') {
+      setOutgoingBars(previousBars)
+      setIsCrossfading(true)
+      setPendingBars((current) => (current.length ? [] : current))
+      setRenderBars(nextBars)
+      setBarsExpanded(false)
+      let rafOne = 0
+      let rafTwo = 0
+      let fadeTimer = 0
+      rafOne = window.requestAnimationFrame(() => {
+        rafTwo = window.requestAnimationFrame(() => {
+          setBarsExpanded(true)
+        })
+      })
+      fadeTimer = window.setTimeout(() => {
+        setIsCrossfading(false)
+        setOutgoingBars([])
+        setIsSwappingStructure(false)
+      }, Math.max(120, crossfadeMs))
+      return () => {
+        window.cancelAnimationFrame(rafOne)
+        window.cancelAnimationFrame(rafTwo)
+        window.clearTimeout(fadeTimer)
+      }
+    }
+
     setBarsExpanded(false)
+    setOutgoingBars((current) => (current.length ? [] : current))
+    setIsCrossfading(false)
+    setPendingBars(nextBars)
     let timeoutId = 0
     let rafOne = 0
     let rafTwo = 0
     timeoutId = window.setTimeout(() => {
-      setRenderBars(bars)
+      setRenderBars(nextBars)
+      setPendingBars((current) => (current.length ? [] : current))
       rafOne = window.requestAnimationFrame(() => {
         rafTwo = window.requestAnimationFrame(() => {
           setBarsExpanded(true)
+          setIsSwappingStructure(false)
         })
       })
     }, Math.max(0, collapseMs))
@@ -543,10 +617,14 @@ function useHouseBarSetTransition<T extends { key: string }>({
       window.cancelAnimationFrame(rafOne)
       window.cancelAnimationFrame(rafTwo)
     }
-  }, [animationKey, bars, collapseMs, enabled])
+  }, [animationKey, barsStructureKey, collapseMs, crossfadeMs, enabled, structureSwap])
 
   return {
     renderBars,
+    outgoingBars,
+    isCrossfading,
+    pendingBars,
+    isSwappingStructure,
     barsExpanded,
   }
 }
@@ -1897,6 +1975,8 @@ function PublicationsPerYearChart({
     enabled: hasBars,
   })
   const renderBars = enableWindowToggle ? swapTransition.renderBars : activeBars
+  const pendingBars = enableWindowToggle ? swapTransition.pendingBars : []
+  const isStructureSwapActive = enableWindowToggle && swapTransition.isSwappingStructure
   const barsExpanded = enableWindowToggle ? swapTransition.barsExpanded : legacyBarsExpanded
   const renderedValuesTarget = useMemo(
     () => renderBars.map((bar) => Math.max(0, bar.value)),
@@ -1927,26 +2007,39 @@ function PublicationsPerYearChart({
     setHoveredIndex(null)
   }, [animationKey])
 
-  if (!hasBars) {
-    return <div className={dashboardTileStyles.emptyChart}>No publication timeline</div>
-  }
-
-  const maxValue = Math.max(1, ...renderedValuesTarget)
+  const maxValue = Math.max(
+    1,
+    ...renderedValuesTarget,
+    ...pendingBars.map((bar) => Math.max(0, bar.value)),
+  )
   const maxYearlyValue = Math.max(1, ...historyBars.map((bar) => Math.max(0, bar.value)))
   const maxMonthlyValue = Math.max(0, ...groupedMonthBars.bars.map((bar) => Math.max(0, bar.value)))
   const maxWindowValue = Math.max(maxYearlyValue, maxMonthlyValue)
   const stableAxisScale = enableWindowToggle && !autoScaleByWindow ? buildNiceAxis(maxWindowValue) : null
-  const axisScale = showAxes
+  const targetAxisScale = showAxes
     ? stableAxisScale || buildNiceAxis(maxValue)
     : null
-  const axisMax = axisScale
-    ? axisScale.axisMax
+  const targetAxisMax = targetAxisScale
+    ? targetAxisScale.axisMax
     : Math.max(1, maxValue * (isCompactTileMode ? 1.06 : 1.1), Math.max(0, meanValue) * 1.1)
-  const yAxisTickValues = axisScale
-    ? axisScale.ticks
-    : [0, axisMax * 0.25, axisMax * 0.5, axisMax * 0.75, axisMax]
+  const [hasAxisAnimationPrimed, setHasAxisAnimationPrimed] = useState(false)
+  useEffect(() => {
+    setHasAxisAnimationPrimed(true)
+  }, [])
+  const axisAnimationEnabled = hasBars && enableWindowToggle && autoScaleByWindow && showAxes && hasAxisAnimationPrimed
+  const animatedAxisMax = useEasedValue(
+    targetAxisMax,
+    `${animationKey}|axis-max|${autoScaleByWindow ? 'auto' : 'fixed'}`,
+    axisAnimationEnabled,
+    360,
+  )
+  const axisMax = axisAnimationEnabled ? Math.max(1, animatedAxisMax) : targetAxisMax
+  const yAxisTickRatios = targetAxisScale
+    ? targetAxisScale.ticks.map((tickValue) => (targetAxisScale.axisMax <= 0 ? 0 : tickValue / targetAxisScale.axisMax))
+    : [0, 0.25, 0.5, 0.75, 1]
+  const yAxisTickValues = yAxisTickRatios.map((ratio) => ratio * axisMax)
   const stableToggleTickValues = enableWindowToggle ? buildNiceAxis(maxWindowValue).ticks : yAxisTickValues
-  const gridTickValues = yAxisTickValues.slice(1)
+  const gridTickRatios = yAxisTickRatios.slice(1)
   const resolvedXAxisLabel = usingMonthlyBars ? 'Publication month' : xAxisLabel
   const xAxisLabelLayout = enableWindowToggle
     ? mergeChartAxisLayouts(
@@ -2004,6 +2097,22 @@ function PublicationsPerYearChart({
   }
   const yAxisTickOffsetRem = 0.4
   const gridLineToneClass = subtleGrid ? HOUSE_CHART_GRID_LINE_SUBTLE_CLASS : HOUSE_CHART_GRID_LINE_CLASS
+  const computeBarHeightPct = (value: number): number => (
+    value <= 0 ? 3 : Math.min(100, Math.max(6, (value / axisMax) * 100))
+  )
+  const resolveBarToneClass = (barValue: number, isCurrentPeriod: boolean): string => {
+    const relative = barValue >= meanValue * 1.1 ? 'above' : barValue <= meanValue * 0.9 ? 'below' : 'near'
+    if (isCurrentPeriod && showCurrentPeriodSemantic) {
+      return HOUSE_CHART_BAR_CURRENT_CLASS
+    }
+    if (relative === 'above') {
+      return HOUSE_CHART_BAR_POSITIVE_CLASS
+    }
+    if (relative === 'below') {
+      return HOUSE_CHART_BAR_WARNING_CLASS
+    }
+    return HOUSE_CHART_BAR_ACCENT_CLASS
+  }
   const activeWindowIndex = PUBLICATIONS_WINDOW_OPTIONS.findIndex((option) => option.value === effectiveWindowMode)
   const monthRangeLabel = usingMonthlyBars ? groupedMonthBars.rangeLabel : null
   const yearRangeLabel = usingMonthlyBars ? null : activeWindowBars.rangeLabel
@@ -2012,6 +2121,11 @@ function PublicationsPerYearChart({
   const rightMetaVisible = showPeriodHint
   const rightMetaText = periodHintText
   const rightMetaOpaque = periodHintVisible
+
+  if (!hasBars) {
+    return <div className={dashboardTileStyles.emptyChart}>No publication timeline</div>
+  }
+
   return (
     <div
       className="flex h-full min-h-0 w-full flex-col"
@@ -2094,17 +2208,22 @@ function PublicationsPerYearChart({
         data-house-role="chart-frame"
       >
         <div className="absolute" style={plotAreaStyle}>
-          {gridTickValues.map((tickValue) => (
+          {gridTickRatios.map((ratio, index) => (
             <div
-              key={`pub-grid-${tickValue}`}
-              className={cn('pointer-events-none absolute inset-x-0', gridLineToneClass)}
-              style={{ bottom: `${(tickValue / axisMax) * 100}%` }}
+              key={`pub-grid-${index}`}
+              className={cn('pointer-events-none absolute inset-x-0', gridLineToneClass, HOUSE_CHART_SCALE_LAYER_CLASS)}
+              style={{ bottom: `${Math.max(0, Math.min(100, ratio * 100))}%` }}
               aria-hidden="true"
             />
           ))}
           {showMeanLine ? (
             <div
-              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_MEAN_LINE_CLASS)}
+              className={cn(
+                'pointer-events-none absolute inset-x-0',
+                HOUSE_CHART_MEAN_LINE_CLASS,
+                HOUSE_CHART_SCALE_MEAN_LINE_CLASS,
+                isStructureSwapActive && HOUSE_CHART_SCALE_MEAN_LINE_DELAYED_CLASS,
+              )}
               style={{ bottom: `${Math.max(0, Math.min(100, (Math.max(0, meanValue) / axisMax) * 100))}%` }}
               aria-hidden="true"
             />
@@ -2112,16 +2231,9 @@ function PublicationsPerYearChart({
           <div className="absolute inset-0 flex items-end gap-1" data-ui="chart-bars" data-house-role="chart-bars">
             {renderBars.map((bar, index) => {
               const animatedValue = Math.max(0, renderedValuesAnimated[index] ?? bar.value)
-              const heightPct = animatedValue <= 0 ? 3 : Math.max(6, (animatedValue / axisMax) * 100)
+              const heightPct = computeBarHeightPct(animatedValue)
               const isActive = hoveredIndex === index
-              const relative = bar.value >= meanValue * 1.1 ? 'above' : bar.value <= meanValue * 0.9 ? 'below' : 'near'
-              const toneClass = bar.current && showCurrentPeriodSemantic
-                ? HOUSE_CHART_BAR_CURRENT_CLASS
-                : relative === 'above'
-                  ? HOUSE_CHART_BAR_POSITIVE_CLASS
-                  : relative === 'below'
-                    ? HOUSE_CHART_BAR_WARNING_CLASS
-                    : HOUSE_CHART_BAR_ACCENT_CLASS
+              const toneClass = resolveBarToneClass(bar.value, bar.current)
               return (
                 <div
                   key={`${bar.key}-${index}`}
@@ -2151,7 +2263,7 @@ function PublicationsPerYearChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: barsExpanded ? `${Math.min(220, index * 18)}ms` : '0ms',
+                      transitionDelay: barsExpanded && !isStructureSwapActive ? `${Math.min(220, index * 18)}ms` : '0ms',
                     }}
                   />
                 </div>
@@ -2162,19 +2274,19 @@ function PublicationsPerYearChart({
 
         {showAxes ? (
           <div className="pointer-events-none absolute" style={yAxisPanelStyle} aria-hidden="true">
-            {yAxisTickValues.map((tickValue) => {
-              const pct = axisMax <= 0 ? 0 : (tickValue / axisMax) * 100
+            {yAxisTickValues.map((tickValue, index) => {
+              const pct = Math.max(0, Math.min(100, (yAxisTickRatios[index] || 0) * 100))
                 return (
                   <p
-                    key={`pub-y-axis-${tickValue}`}
-                    className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS)}
+                    key={`pub-y-axis-${index}`}
+                    className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS, HOUSE_CHART_SCALE_TICK_CLASS)}
                     style={{ bottom: `calc(${pct}% - ${yAxisTickOffsetRem}rem)` }}
                   >
                     {formatInt(tickValue)}
                   </p>
                 )
               })}
-            <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}>
+            <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}>
               {yAxisLabel}
             </p>
           </div>
@@ -3058,6 +3170,59 @@ type PublicationDrilldownRecord = {
   citations: number
 }
 
+const PUBLICATION_TYPE_LABEL_OVERRIDES: Record<string, string> = {
+  article: 'Journal article',
+  'journal-article': 'Journal article',
+  'journal-paper': 'Journal article',
+  preprint: 'Other',
+  'pre-print': 'Other',
+  'posted-content': 'Other',
+  'conference-abstract': 'Conference abstract',
+  'meeting-abstract': 'Conference abstract',
+  'conference-paper': 'Conference abstract',
+  'conference-poster': 'Conference abstract',
+  'conference-presentation': 'Conference abstract',
+  'proceedings-article': 'Conference abstract',
+  proceedings: 'Conference abstract',
+  review: 'Review article',
+  'review-article': 'Review article',
+  'book-chapter': 'Book chapter',
+  book: 'Book chapter',
+  dissertation: 'Other',
+  dataset: 'Dataset',
+  'data-set': 'Dataset',
+  'published-dataset': 'Dataset',
+  'published-data-set': 'Dataset',
+}
+
+function normalizePublicationCategoryKey(value: string | null | undefined): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function toSentenceCaseLabel(value: string): string {
+  const clean = String(value || '')
+    .trim()
+    .replace(/[-_/]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+  if (!clean) {
+    return 'Unspecified'
+  }
+  return clean.charAt(0).toUpperCase() + clean.slice(1)
+}
+
+function formatPublicationCategoryLabel(value: string | null | undefined): string {
+  const normalized = normalizePublicationCategoryKey(value)
+  if (!normalized) {
+    return 'Unspecified'
+  }
+  return PUBLICATION_TYPE_LABEL_OVERRIDES[normalized] || toSentenceCaseLabel(value || '')
+}
+
 function normalizeRoleLabel(value: string): string {
   const clean = String(value || '').trim().toLowerCase()
   if (clean === 'first') {
@@ -3100,9 +3265,20 @@ function categoryLabelFromPublication(
   dimension: PublicationCategoryDimension,
 ): string {
   if (dimension === 'article') {
-    return String(record.articleType || record.type || '').trim() || 'Unspecified'
+    return formatPublicationCategoryLabel(record.articleType || record.type || '')
   }
-  return String(record.publicationType || record.type || '').trim() || 'Unspecified'
+  const label = formatPublicationCategoryLabel(record.publicationType || record.type || '')
+  const normalized = normalizePublicationCategoryKey(label)
+  if (normalized === 'conference-abstract') {
+    return 'Abstract'
+  }
+  if (normalized === 'book' || normalized === 'book-chapter') {
+    return 'Book chapter'
+  }
+  if (normalized === 'dissertation') {
+    return 'Other'
+  }
+  return label
 }
 
 function PublicationCategoryDistributionChart({
@@ -3121,12 +3297,44 @@ function PublicationCategoryDistributionChart({
   const [windowMode, setWindowMode] = useState<PublicationsWindowMode>('5y')
   const [valueMode, setValueMode] = useState<PublicationCategoryValueMode>('absolute')
   const [displayMode, setDisplayMode] = useState<PublicationCategoryDisplayMode>('chart')
+  const [renderDisplayMode, setRenderDisplayMode] = useState<PublicationCategoryDisplayMode>('chart')
+  const [displayPanelVisible, setDisplayPanelVisible] = useState(true)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const displayModeSwapMs = 220
   useEffect(() => {
     setWindowMode('5y')
     setValueMode('absolute')
     setDisplayMode('chart')
+    setRenderDisplayMode('chart')
+    setDisplayPanelVisible(true)
   }, [dimension, publications.length])
+
+  useEffect(() => {
+    if (displayMode === renderDisplayMode) {
+      setDisplayPanelVisible(true)
+      return
+    }
+    if (prefersReducedMotion()) {
+      setRenderDisplayMode(displayMode)
+      setDisplayPanelVisible(true)
+      return
+    }
+
+    setDisplayPanelVisible(false)
+    let swapTimer = 0
+    let raf = 0
+    swapTimer = window.setTimeout(() => {
+      setRenderDisplayMode(displayMode)
+      raf = window.requestAnimationFrame(() => {
+        setDisplayPanelVisible(true)
+      })
+    }, Math.round(displayModeSwapMs * 0.55))
+
+    return () => {
+      window.clearTimeout(swapTimer)
+      window.cancelAnimationFrame(raf)
+    }
+  }, [displayMode, displayModeSwapMs, renderDisplayMode])
 
   const yearsWithData = useMemo(() => {
     const values = publications
@@ -3292,7 +3500,7 @@ function PublicationCategoryDistributionChart({
   const renderBars = swapTransition.renderBars
   const barsExpanded = swapTransition.barsExpanded
   const renderedValuesTarget = useMemo(
-    () => renderBars.map((bar) => renderValueForBar(bar)),
+    () => renderBars.map((bar) => (showPercentageMode ? Math.max(0, bar.percentage) : Math.max(0, bar.count))),
     [renderBars, showPercentageMode],
   )
   const renderedValuesAnimated = useEasedSeries(
@@ -3305,22 +3513,45 @@ function PublicationCategoryDistributionChart({
     setHoveredIndex(null)
   }, [animationKey])
 
-  if (!hasBars) {
-    return <div className={dashboardTileStyles.emptyChart}>{emptyLabel}</div>
-  }
-
+  const maxAbsoluteWindowValue = Math.max(
+    1,
+    ...Object.values(barsByWindowMode).flatMap((windowBars) =>
+      windowBars.bars.map((bar) => Math.max(0, bar.count)),
+    ),
+    ...[...activeBars, ...renderBars].map((bar) => Math.max(0, bar.count)),
+  )
+  const absoluteAxisScale = buildNiceAxis(maxAbsoluteWindowValue)
   const maxWindowValue = showPercentageMode
     ? 100
     : Math.max(
       1,
       ...[...activeBars, ...renderBars].map((bar) => Math.max(0, bar.count)),
     )
-  const axisScale = showPercentageMode
+  const targetAxisScale = showPercentageMode
     ? { axisMax: 100, ticks: [0, 25, 50, 75, 100] }
     : buildNiceAxis(maxWindowValue)
-  const axisMax = axisScale.axisMax
-  const yAxisTickValues = axisScale.ticks
-  const gridTickValues = yAxisTickValues.slice(1)
+  const targetAxisMax = targetAxisScale.axisMax
+  const [hasAxisAnimationPrimed, setHasAxisAnimationPrimed] = useState(false)
+  useEffect(() => {
+    setHasAxisAnimationPrimed(true)
+  }, [])
+  const axisAnimationEnabled = hasBars && hasAxisAnimationPrimed
+  const animatedAxisMax = useEasedValue(
+    targetAxisMax,
+    `${animationKey}|axis-max|${showPercentageMode ? 'percentage' : 'absolute'}`,
+    axisAnimationEnabled,
+    360,
+  )
+  const axisMax = axisAnimationEnabled ? Math.max(1, animatedAxisMax) : targetAxisMax
+  const yAxisTickRatios = targetAxisScale.ticks.map((tickValue) => (
+    targetAxisScale.axisMax <= 0 ? 0 : tickValue / targetAxisScale.axisMax
+  ))
+  const yAxisTickValues = yAxisTickRatios.map((ratio) => ratio * axisMax)
+  const gridTickRatios = yAxisTickRatios.slice(1)
+
+  if (!hasBars) {
+    return <div className={dashboardTileStyles.emptyChart}>{emptyLabel}</div>
+  }
   const xAxisLabelLayout = mergeChartAxisLayouts(
     PUBLICATIONS_WINDOW_OPTIONS.map((option) =>
       buildChartAxisLayout({
@@ -3333,7 +3564,15 @@ function PublicationCategoryDistributionChart({
         maxAxisNameLines: 2,
       })),
   )
-  const yAxisPanelWidthRem = buildYAxisPanelWidthRem(yAxisTickValues, true)
+  const fixedToggleYAxisTicks = enableValueModeToggle
+    ? Array.from(new Set<number>([...absoluteAxisScale.ticks, 0, 25, 50, 75, 100])).sort((left, right) => left - right)
+    : yAxisTickValues
+  const yAxisPanelWidthRem = buildYAxisPanelWidthRem(
+    fixedToggleYAxisTicks,
+    true,
+    enableValueModeToggle ? 1 : 0,
+  )
+  const yAxisTitleLeft = enableValueModeToggle ? '44%' : '50%'
   const chartLeftInset = `${yAxisPanelWidthRem + 0.55}rem`
   const plotAreaStyle = {
     left: chartLeftInset,
@@ -3360,14 +3599,12 @@ function PublicationCategoryDistributionChart({
   const activeWindowIndex = PUBLICATIONS_WINDOW_OPTIONS.findIndex((option) => option.value === windowMode)
   const activeValueModeIndex = PUBLICATION_VALUE_MODE_OPTIONS.findIndex((option) => option.value === valueMode)
   const activeDisplayModeIndex = PUBLICATION_DISPLAY_MODE_OPTIONS.findIndex((option) => option.value === displayMode)
-  const periodHintText = activeWindowBars.rangeLabel || '\u00A0'
-  const periodHintVisible = Boolean(activeWindowBars.rangeLabel)
   const tableHeadingLabel = dimension === 'article' ? 'Article type' : 'Publication type'
   const tableTotalCount = tableRows.reduce((sum, row) => sum + row.count, 0)
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'justify-between')}>
+      <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS}>
         <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
           <div
             className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
@@ -3489,25 +3726,16 @@ function PublicationCategoryDistributionChart({
             ))}
           </div>
         </div>
-        <p
-          className={cn(
-            HOUSE_DRILLDOWN_CHART_META_CLASS,
-            HOUSE_HEADING_LABEL_CLASS,
-            HOUSE_TOGGLE_CHART_LABEL_CLASS,
-            periodHintVisible ? 'opacity-100' : 'opacity-0',
-          )}
-          aria-live="polite"
-        >
-          {periodHintText}
-        </p>
       </div>
-      {displayMode === 'table' ? (
+      {renderDisplayMode === 'table' ? (
         <div
           className={cn(
             HOUSE_CHART_TRANSITION_CLASS,
-            HOUSE_CHART_ENTERED_CLASS,
+            displayPanelVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
+            !displayPanelVisible && 'pointer-events-none',
             'min-h-0 overflow-auto',
           )}
+          style={{ transitionDuration: `${displayModeSwapMs}ms` }}
           data-ui={`${dimension}-distribution-table-frame`}
           data-house-role="chart-frame"
         >
@@ -3558,25 +3786,26 @@ function PublicationCategoryDistributionChart({
         <div
           className={cn(
             HOUSE_CHART_TRANSITION_CLASS,
-            HOUSE_CHART_ENTERED_CLASS,
+            displayPanelVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
+            !displayPanelVisible && 'pointer-events-none',
           )}
-          style={chartFrameStyle}
+          style={{ ...chartFrameStyle, transitionDuration: `${displayModeSwapMs}ms` }}
           data-ui={`${dimension}-distribution-chart-frame`}
           data-house-role="chart-frame"
         >
         <div className="absolute" style={plotAreaStyle}>
-          {gridTickValues.map((tickValue) => (
+          {gridTickRatios.map((ratio, index) => (
             <div
-              key={`${dimension}-grid-${tickValue}`}
-              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
-              style={{ bottom: `${(tickValue / axisMax) * 100}%` }}
+              key={`${dimension}-grid-${index}`}
+              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+              style={{ bottom: `${Math.max(0, Math.min(100, ratio * 100))}%` }}
               aria-hidden="true"
             />
           ))}
           <div className="absolute inset-0 flex items-end gap-1">
             {renderBars.map((bar, index) => {
               const animatedValue = Math.max(0, renderedValuesAnimated[index] ?? renderValueForBar(bar))
-              const heightPct = animatedValue <= 0 ? 3 : Math.max(6, (animatedValue / axisMax) * 100)
+              const heightPct = animatedValue <= 0 ? 3 : Math.min(100, Math.max(6, (animatedValue / axisMax) * 100))
               const isActive = hoveredIndex === index
               return (
                 <div
@@ -3616,20 +3845,23 @@ function PublicationCategoryDistributionChart({
           </div>
         </div>
         <div className="pointer-events-none absolute" style={yAxisPanelStyle} aria-hidden="true">
-          {yAxisTickValues.map((tickValue) => {
-            const pct = axisMax <= 0 ? 0 : (tickValue / axisMax) * 100
+          {yAxisTickValues.map((tickValue, index) => {
+            const pct = Math.max(0, Math.min(100, (yAxisTickRatios[index] || 0) * 100))
             return (
               <p
-                key={`${dimension}-y-axis-${tickValue}`}
-                className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS)}
+                key={`${dimension}-y-axis-${index}`}
+                className={cn('absolute right-0 whitespace-nowrap tabular-nums leading-none', HOUSE_CHART_AXIS_TEXT_TREND_CLASS, HOUSE_CHART_SCALE_TICK_CLASS)}
                 style={{ bottom: `calc(${pct}% - ${yAxisTickOffsetRem}rem)` }}
               >
                 {showPercentageMode ? `${Math.round(tickValue)}%` : formatInt(tickValue)}
               </p>
             )
           })}
-          <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}>
-            {showPercentageMode ? 'Share of publications' : 'Publications'}
+          <p
+            className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'absolute top-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap')}
+            style={{ left: yAxisTitleLeft }}
+          >
+            {showPercentageMode ? 'Share (%)' : 'Publications'}
           </p>
         </div>
         <div className={cn('pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1', HOUSE_TOGGLE_CHART_LABEL_CLASS)} style={xAxisTicksStyle}>
@@ -3681,14 +3913,17 @@ function TotalPublicationsDrilldownWorkspace({
       const publicationTypeFromData = String(row.work_type || row.publication_type || '').trim()
       const articleTypeFromData = String(row.article_type || row.publication_type || '').trim()
       const typeFromData = publicationTypeFromData || articleTypeFromData
+      const publicationType = formatPublicationCategoryLabel(publicationTypeFromData)
+      const articleType = formatPublicationCategoryLabel(articleTypeFromData)
+      const type = formatPublicationCategoryLabel(typeFromData)
       return {
         workId: String(row.work_id || `row-${index}`),
         year,
         title: String(row.title || 'Untitled').trim() || 'Untitled',
         role: normalizeRoleLabel(String(row.user_author_role || 'Unknown')),
-        type: typeFromData || 'Unspecified',
-        publicationType: publicationTypeFromData || 'Unspecified',
-        articleType: articleTypeFromData || 'Unspecified',
+        type,
+        publicationType,
+        articleType,
         venue: String(row.journal || 'Unknown venue').trim() || 'Unknown venue',
         citations: Number.isFinite(citationsRaw) ? Math.max(0, Math.round(citationsRaw)) : 0,
       }
