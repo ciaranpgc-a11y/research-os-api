@@ -1,0 +1,253 @@
+
+> frontend@0.0.0 storybook
+> storybook dev -p 6006 --port 6006 --ci
+
+[1m@storybook/core v8.6.14[22m[0m
+[0m
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+info => Starting manager..
+info => Starting preview..
+info Using tsconfig paths for react-docgen
+Re-optimizing dependencies because vite config has changed
+╭─────────────────────────────────────────────────────────────────────╮
+│                                                                     │
+│   [38;2;162;224;94mStorybook [1m8.6.14[22m for [1mreact-vite[22m started[39m                           │
+│   [90m[4m397 ms[24m for manager and [4m1.31 s[24m for preview[39m                         │
+│                                                                     │
+│   Local:            [36mhttp://localhost:6006/[39m                          │
+│   On your network:  [36mhttp://100.83.52.43:6006/[39m                       │
+│                                                                     │
+│   [38;2;243;173;56mA new version ([1m10.2.13[22m) is available![39m                             │
+│                                                                     │
+│   [90mUpgrade now:[39m [38;2;162;224;94mnpx storybook@latest upgrade[39m                         │
+│                                                                     │
+│   [90mRead full changelog:[39m                                              │
+│   [90m[4mhttps://github.com/storybookjs/storybook/blob/main/CHANGELOG.md[24m[39m   │
+│                                                                     │
+╰─────────────────────────────────────────────────────────────────────╯
+[2m18:19:08[22m [36m[1m[vite][22m[39m [32m✨ new dependencies optimized: [33mmsw/browser, msw[32m[39m
+[2m18:19:08[22m [36m[1m[vite][22m[39m [32m✨ optimized dependencies changed. reloading[39m
+[2m18:24:36[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/publications/PublicationsTopStrip.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:24:39[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/workspaces-page.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:24:43[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/stories/design-system/_helpers/StoryFrame.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:25:00[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/iframe.html[22m
+[2m18:25:00[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/index.html[22m
+[2m18:25:01[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/index.html[22m
+[2m18:25:17[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/iframe.html[22m
+[2m18:26:36[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/index.html[22m
+[2m18:26:36[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/iframe.html[22m
+[2m18:26:37[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/index.html[22m
+[2m18:26:53[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/iframe.html[22m
+[2m18:27:37[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/iframe.html[22m
+[2m18:27:37[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/index.html[22m
+[2m18:27:38[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/index.html[22m
+[2m18:27:55[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/iframe.html[22m
+[2m18:28:24[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/index.html[22m
+[2m18:28:24[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/iframe.html[22m
+[2m18:28:25[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/index.html[22m
+[2m18:28:44[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mstorybook-static/iframe.html[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/ui/select.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/mocks/fixtures/pages-review.ts[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/ui/textarea.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/stories/pages-review/Manuscript.stories.tsx[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/stories/pages-review/_helpers/page-review-shells.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/stories/pages-review/ResultsData.stories.tsx[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/stories/pages-review/StudyCoreWizard.stories.tsx[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/stories/pages-review/ProfilePublications.stories.tsx[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/stories/pages-review/WorkspacesList.stories.tsx[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/stories/pages-review/PagesReviewIndex.stories.tsx[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/stories/pages-review/WorkspacesDataLibrary.stories.tsx[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/stories/pages-review/ManuscriptTables.stories.tsx[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/stories/pages-review/ProfileCollaboration.stories.tsx[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/stories/pages-review/_helpers/pages-review-fixtures.ts[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/stories/pages-review/_helpers/profile-publications-fixture.ts[22m
+[2m18:33:28[22m [31m[1m[vite][22m[39m [31mInternal server error: [postcss] ENOENT: no such file or directory, stat 'c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/components/layout/app-error-boundary.tsx'[39m
+  Plugin: [35mvite:css[39m
+  File: [36mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[39m:undefined:NaN
+      at Object.statSync (node:fs:1688:3)
+      at resolveChangedFiles (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\content.js:236:36)
+      at resolvedChangedContent (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\content.js:147:42)
+      at c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\setupTrackingContext.js:133:99
+      at c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\processTailwindFeatures.js:46:11
+      at plugins (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\plugin.js:38:69)
+      at LazyResult.runOnRoot (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\postcss\lib\lazy-result.js:329:16)
+      at LazyResult.runAsync (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\postcss\lib\lazy-result.js:258:26)
+      at async compileCSS (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36898:21)
+      at async TransformPluginContext.transform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36171:11)
+      at async PluginContainer.transform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+[2m18:33:28[22m [31m[1m[vite][22m[39m [31mInternal server error: [postcss] ENOENT: no such file or directory, stat 'c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/components/layout/app-error-boundary.tsx'[39m
+  Plugin: [35mvite:css[39m
+  File: [36mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[39m:undefined:NaN
+      at Object.statSync (node:fs:1688:3)
+      at resolveChangedFiles (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\content.js:236:36)
+      at resolvedChangedContent (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\content.js:147:42)
+      at c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\setupTrackingContext.js:133:99
+      at c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\processTailwindFeatures.js:46:11
+      at plugins (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\plugin.js:38:69)
+      at LazyResult.runOnRoot (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\postcss\lib\lazy-result.js:329:16)
+      at LazyResult.runAsync (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\postcss\lib\lazy-result.js:258:26)
+      at async compileCSS (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36898:21)
+      at async TransformPluginContext.transform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36171:11)
+      at async PluginContainer.transform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+[2m18:33:28[22m [31m[1m[vite][22m[39m [31mInternal server error: [postcss] ENOENT: no such file or directory, stat 'c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/components/layout/app-error-boundary.tsx'[39m
+  Plugin: [35mvite:css[39m
+  File: [36mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[39m:undefined:NaN
+      at Object.statSync (node:fs:1688:3)
+      at resolveChangedFiles (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\content.js:236:36)
+      at resolvedChangedContent (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\content.js:147:42)
+      at c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\setupTrackingContext.js:133:99
+      at c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\processTailwindFeatures.js:46:11
+      at plugins (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\plugin.js:38:69)
+      at LazyResult.runOnRoot (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\postcss\lib\lazy-result.js:329:16)
+      at LazyResult.runAsync (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\postcss\lib\lazy-result.js:258:26)
+      at async compileCSS (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36898:21)
+      at async TransformPluginContext.transform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36171:11)
+      at async PluginContainer.transform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+[2m18:33:28[22m [31m[1m[vite][22m[39m [31mInternal server error: [postcss] ENOENT: no such file or directory, stat 'c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/components/layout/app-error-boundary.tsx'[39m
+  Plugin: [35mvite:css[39m
+  File: [36mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[39m:undefined:NaN
+      at Object.statSync (node:fs:1688:3)
+      at resolveChangedFiles (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\content.js:236:36)
+      at resolvedChangedContent (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\content.js:147:42)
+      at c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\setupTrackingContext.js:133:99
+      at c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\processTailwindFeatures.js:46:11
+      at plugins (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\plugin.js:38:69)
+      at LazyResult.runOnRoot (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\postcss\lib\lazy-result.js:329:16)
+      at LazyResult.runAsync (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\postcss\lib\lazy-result.js:258:26)
+      at async compileCSS (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36898:21)
+      at async TransformPluginContext.transform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36171:11)
+      at async PluginContainer.transform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+[2m18:33:28[22m [31m[1m[vite][22m[39m [31mInternal server error: [postcss] ENOENT: no such file or directory, stat 'c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/components/layout/app-error-boundary.tsx'[39m
+  Plugin: [35mvite:css[39m
+  File: [36mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[39m:undefined:NaN
+      at Object.statSync (node:fs:1688:3)
+      at resolveChangedFiles (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\content.js:236:36)
+      at resolvedChangedContent (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\content.js:147:42)
+      at c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\setupTrackingContext.js:133:99
+      at c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\processTailwindFeatures.js:46:11
+      at plugins (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\plugin.js:38:69)
+      at LazyResult.runOnRoot (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\postcss\lib\lazy-result.js:329:16)
+      at LazyResult.runAsync (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\postcss\lib\lazy-result.js:258:26)
+      at async compileCSS (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36898:21)
+      at async TransformPluginContext.transform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36171:11)
+      at async PluginContainer.transform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/components/layout/app-error-boundary.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/.storybook/preview.ts[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/publications/PublicationsTopStrip.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/study-core/Step1Panel.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/layout/top-bar.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/layout/workspace-navigator.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css, /src/pages/profile-publications-page.tsx, /src/components/publications/PublicationsTopStrip.tsx[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/study-core/Step2Panel.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/study-core/StepContext.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/study-core/StepDraftReview.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:29[22m [31m[1m[vite][22m[39m [31mInternal server error: [postcss] ENOENT: no such file or directory, stat 'c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/pages/workspaces-page.tsx'[39m
+  Plugin: [35mvite:css[39m
+  File: [36mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[39m:undefined:NaN
+      at Object.statSync (node:fs:1688:3)
+      at resolveChangedFiles (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\content.js:236:36)
+      at resolvedChangedContent (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\content.js:147:42)
+      at c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\setupTrackingContext.js:133:99
+      at c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\processTailwindFeatures.js:46:11
+      at plugins (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\plugin.js:38:69)
+      at LazyResult.runOnRoot (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\postcss\lib\lazy-result.js:329:16)
+      at LazyResult.runAsync (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\postcss\lib\lazy-result.js:258:26)
+      at async compileCSS (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36898:21)
+      at async TransformPluginContext.transform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36171:11)
+      at async PluginContainer.transform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+[2m18:33:29[22m [31m[1m[vite][22m[39m [31mInternal server error: [postcss] ENOENT: no such file or directory, stat 'c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/pages/workspaces-page.tsx'[39m
+  Plugin: [35mvite:css[39m
+  File: [36mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[39m:undefined:NaN
+      at Object.statSync (node:fs:1688:3)
+      at resolveChangedFiles (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\content.js:236:36)
+      at resolvedChangedContent (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\content.js:147:42)
+      at c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\setupTrackingContext.js:133:99
+      at c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\processTailwindFeatures.js:46:11
+      at plugins (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\plugin.js:38:69)
+      at LazyResult.runOnRoot (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\postcss\lib\lazy-result.js:329:16)
+      at LazyResult.runAsync (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\postcss\lib\lazy-result.js:258:26)
+      at async compileCSS (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36898:21)
+      at async TransformPluginContext.transform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36171:11)
+      at async PluginContainer.transform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+[2m18:33:29[22m [31m[1m[vite][22m[39m [31mInternal server error: [postcss] ENOENT: no such file or directory, stat 'c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/pages/workspaces-page.tsx'[39m
+  Plugin: [35mvite:css[39m
+  File: [36mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[39m:undefined:NaN
+      at Object.statSync (node:fs:1688:3)
+      at resolveChangedFiles (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\content.js:236:36)
+      at resolvedChangedContent (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\content.js:147:42)
+      at c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\lib\setupTrackingContext.js:133:99
+      at c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\processTailwindFeatures.js:46:11
+      at plugins (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\tailwindcss\lib\plugin.js:38:69)
+      at LazyResult.runOnRoot (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\postcss\lib\lazy-result.js:329:16)
+      at LazyResult.runAsync (c:\Users\Ciaran\Documents\GitHub\research-os-api\frontend\node_modules\postcss\lib\lazy-result.js:258:26)
+      at async compileCSS (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36898:21)
+      at async TransformPluginContext.transform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:36171:11)
+      at async PluginContainer.transform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///c:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+[2m18:33:29[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/study-core/StepLinkQcExport.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:29[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/study-core/StepPlan.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:29[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/study-core/StudyCoreStepper.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:29[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/study-core/StepRun.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:29[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/components/ui/button.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:30[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/lib/house-style.ts[22m
+[2m18:33:30[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/mocks/handlers.ts[22m
+[2m18:33:30[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/ui/sheet.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:30[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/ui/input.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:30[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:30[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/stories/design-system/_helpers/StoryFrame.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:30[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/stories/design-system/composites/FiltersBarPattern.stories.tsx[22m
+[2m18:33:30[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css, /src/pages/results-page.tsx, /src/pages/study-core-page.tsx, /src/components/study-core/StepLinkQcExport.tsx, /src/components/study-core/StepDraftReview.tsx, /src/components/study-core/StepContext.tsx, /src/components/study-core/Step2Panel.tsx, /src/components/study-core/StepRun.tsx, /src/components/study-core/Step1Panel.tsx, /src/components/study-core/StepPlan.tsx, /src/pages/workspaces-data-library-view.tsx[22m
+[2m18:33:30[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/results-page.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:30[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/profile-publications-page.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:30[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/workspaces-page.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:30[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/workspaces-data-library-view.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:30[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/manuscript-page.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:30[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/manuscript-tables-page.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:30[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/profile-collaboration-page.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:30[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/stories/design-system/composites/RoleManagementRow.stories.tsx[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/stories/design-system/_helpers/StoryFrame.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/components/layout/app-error-boundary.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/layout/top-bar.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2m virtual:/@storybook/builder-vite/storybook-stories.js[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2m virtual:/@storybook/builder-vite/storybook-stories.js[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2m virtual:/@storybook/builder-vite/storybook-stories.js[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/study-core/Step1Panel.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/components/ui/button.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css, /src/pages/results-page.tsx, /src/components/layout/workspace-layout.tsx, /src/pages/workspaces-page.tsx, /src/components/layout/workspace-navigator.tsx, /src/pages/study-core-page.tsx, /src/components/study-core/StepLinkQcExport.tsx, /src/components/study-core/StepDraftReview.tsx, /src/components/study-core/StepContext.tsx, /src/components/study-core/Step2Panel.tsx, /src/components/study-core/StepRun.tsx, /src/components/study-core/Step1Panel.tsx, /src/components/study-core/StepPlan.tsx, /src/pages/workspaces-data-library-view.tsx, /src/components/layout/account-navigator.tsx, /src/components/layout/top-bar.tsx, /src/pages/profile-publications-page.tsx, /src/components/publications/PublicationsTopStrip.tsx, /src/pages/profile-collaboration-page.tsx[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css, /src/pages/profile-publications-page.tsx, /src/components/publications/PublicationsTopStrip.tsx[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/publications/PublicationsTopStrip.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2m virtual:/@storybook/builder-vite/storybook-stories.js[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/study-core/StepContext.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/study-core/Step2Panel.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/study-core/StepDraftReview.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/study-core/StepLinkQcExport.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/study-core/StudyCoreStepper.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/study-core/StepPlan.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/study-core/StepRun.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mC:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/lib/house-style.ts[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css, /src/pages/results-page.tsx, /src/pages/study-core-page.tsx, /src/components/study-core/StepLinkQcExport.tsx, /src/components/study-core/StepDraftReview.tsx, /src/components/study-core/StepContext.tsx, /src/components/study-core/Step2Panel.tsx, /src/components/study-core/StepRun.tsx, /src/components/study-core/Step1Panel.tsx, /src/components/study-core/StepPlan.tsx, /src/pages/workspaces-data-library-view.tsx[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css, /src/pages/workspaces-page.tsx, /src/components/layout/workspace-layout.tsx, /src/components/layout/workspace-navigator.tsx, /src/pages/study-core-page.tsx[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/profile-publications-page.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/manuscript-page.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/manuscript-tables-page.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/profile-collaboration-page.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2m virtual:/@storybook/builder-vite/storybook-stories.js[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2m virtual:/@storybook/builder-vite/storybook-stories.js[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2m virtual:/@storybook/builder-vite/storybook-stories.js[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css, /src/pages/workspaces-page.tsx[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/results-page.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/workspaces-page.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/workspaces-data-library-view.tsx, /@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/@fs/C:/Users/Ciaran/Documents/GitHub/research-os-api/frontend/src/index.css, /src/components/layout/workspace-layout.tsx, /src/pages/workspaces-page.tsx, /src/components/layout/workspace-navigator.tsx, /src/pages/study-core-page.tsx[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2m virtual:/@storybook/builder-vite/storybook-stories.js[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2m virtual:/@storybook/builder-vite/storybook-stories.js[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2m virtual:/@storybook/builder-vite/storybook-stories.js[22m
+[2m18:33:38[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2m virtual:/@storybook/builder-vite/storybook-stories.js[22m
