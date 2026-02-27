@@ -147,10 +147,13 @@ const HOUSE_NAV_ITEM_META_CLASS = houseNavigation.itemMeta
 const HOUSE_NAV_ITEM_COUNT_CLASS = houseNavigation.itemCount
 const HOUSE_DRILLDOWN_SHEET_CLASS = houseDrilldown.sheet
 const HOUSE_DRILLDOWN_SHEET_BODY_CLASS = houseDrilldown.sheetBody
+const HOUSE_WORKSPACE_TONE_CLASS = getHouseLeftBorderToneClass('workspace')
 const HOUSE_DRILLDOWN_ACTION_CLASS = houseDrilldown.action
 const HOUSE_DRILLDOWN_SECTION_LABEL_CLASS = houseDrilldown.sectionLabel
 const HOUSE_DRILLDOWN_TAB_LIST_CLASS = houseDrilldown.tabList
 const HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS = houseDrilldown.tabTrigger
+const HOUSE_DRILLDOWN_COLLAPSIBLE_SECTION_CLASS = houseDrilldown.collapsibleSection
+const HOUSE_DRILLDOWN_COLLAPSIBLE_ENTITY_CLASS = houseDrilldown.collapsibleEntity
 const WORKSPACE_ICON_BUTTON_DIMENSION_CLASS = 'h-8 w-8 p-0'
 const HOUSE_SECTION_TOOLS_CLASS = houseActions.sectionTools
 const HOUSE_SECTION_TOOLS_WORKSPACE_CLASS = houseActions.sectionToolsWorkspace
@@ -189,6 +192,23 @@ function formatTimestamp(value: string): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function formatAuditCompactTimestamp(value: string): string {
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) {
+    return 'Not available'
+  }
+  return new Date(parsed)
+    .toLocaleString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+    .replace(',', '')
 }
 
 function isRecentWorkspace(value: string): boolean {
@@ -411,19 +431,55 @@ function parseActorNameFromAuditMessage(message: string): string {
   return 'System'
 }
 
+function parseCollaboratorNameFromAuditMessage(message: string): string | null {
+  const cleanMessage = normalizeCollaboratorName(message)
+  if (!cleanMessage) {
+    return null
+  }
+  const collaboratorMatch = cleanMessage.match(/^(.*?) collaborator(?:\s|$)/i)
+  if (!collaboratorMatch) {
+    return null
+  }
+  const collaboratorName = normalizeCollaboratorName(collaboratorMatch[1])
+  return collaboratorName || null
+}
+
+function formatAuditActorHeaderName(actorName: string): string {
+  const clean = normalizeCollaboratorName(actorName)
+  if (!clean) {
+    return 'System'
+  }
+  return clean.replace(/\s+\(owner\)$/i, '')
+}
+
+function auditActorKey(actorName: string): string {
+  return normalizeCollaboratorName(actorName).toLowerCase() || 'system'
+}
+
 function formatAuditTransitionDisplayValue(
   transition: ParsedAuditTransition,
   rawValue: string,
   displayValue: string,
 ): string {
+  void transition
   const raw = rawValue.trim().toLowerCase()
-  if (transition.transitionKind === 'access_status') {
-    const statusLabel = raw || displayValue.trim().toLowerCase() || 'unknown'
-    return `Access (${statusLabel})`
+  if (raw === 'accepted') {
+    return 'Active'
   }
-  if (transition.transitionKind === 'invitation_status') {
-    const statusLabel = raw || displayValue.trim().toLowerCase() || 'unknown'
-    return `Invite (${statusLabel})`
+  if (raw === 'cancelled') {
+    return 'Cancelled'
+  }
+  return displayValue
+}
+
+function roleAwareStatusLabel(
+  rawValue: string,
+  displayValue: string,
+  roleDetail: string | null,
+): string {
+  const raw = rawValue.trim().toLowerCase()
+  if (roleDetail && (raw === 'pending' || raw === 'active' || raw === 'accepted')) {
+    return roleDetail
   }
   return displayValue
 }
@@ -436,21 +492,13 @@ type AuditTransitionPillPresentation = {
   showArrow: boolean
 }
 
-function normalizeRoleStatusValue(value: string): string {
-  const clean = value.trim().toLowerCase()
-  if (clean === 'accepted') {
-    return 'active'
-  }
-  return clean || 'unknown'
-}
-
 function buildAuditTransitionPillPresentation(
   transition: ParsedAuditTransition,
 ): AuditTransitionPillPresentation {
   if (transition.transitionKind === 'pending_role') {
     return {
-      fromLabel: `Role (pending): ${transition.fromValue}`,
-      toLabel: `Role (pending): ${transition.toValue}`,
+      fromLabel: transition.fromValue,
+      toLabel: transition.toValue,
       fromRawValue: 'pending',
       toRawValue: 'pending',
       showArrow: true,
@@ -459,8 +507,8 @@ function buildAuditTransitionPillPresentation(
 
   if (transition.transitionKind === 'role') {
     return {
-      fromLabel: `Role (active): ${transition.fromValue}`,
-      toLabel: `Role (active): ${transition.toValue}`,
+      fromLabel: transition.fromValue,
+      toLabel: transition.toValue,
       fromRawValue: 'active',
       toRawValue: 'active',
       showArrow: true,
@@ -468,10 +516,26 @@ function buildAuditTransitionPillPresentation(
   }
 
   if (transition.roleDetail) {
-    const fromStatus = normalizeRoleStatusValue(transition.fromRawValue)
-    const toStatus = normalizeRoleStatusValue(transition.toRawValue)
-    const fromLabel = `Role (${fromStatus}): ${transition.roleDetail}`
-    const toLabel = `Role (${toStatus}): ${transition.roleDetail}`
+    const fromBaseLabel = formatAuditTransitionDisplayValue(
+      transition,
+      transition.fromRawValue,
+      transition.fromValue,
+    )
+    const toBaseLabel = formatAuditTransitionDisplayValue(
+      transition,
+      transition.toRawValue,
+      transition.toValue,
+    )
+    const fromLabel = roleAwareStatusLabel(
+      transition.fromRawValue,
+      fromBaseLabel,
+      transition.roleDetail,
+    )
+    const toLabel = roleAwareStatusLabel(
+      transition.toRawValue,
+      toBaseLabel,
+      transition.roleDetail,
+    )
 
     if (transition.fromRawValue === 'none' && transition.toRawValue === 'pending') {
       return {
@@ -483,7 +547,7 @@ function buildAuditTransitionPillPresentation(
       }
     }
 
-    if (fromStatus === toStatus) {
+    if (transition.fromRawValue === transition.toRawValue && fromLabel === toLabel) {
       return {
         fromLabel: null,
         toLabel,
@@ -754,6 +818,24 @@ function workspaceCollaboratorChips(workspace: WorkspaceRecord): CollaboratorChi
     })
   }
 
+  for (const collaborator of workspace.removedCollaborators || []) {
+    const clean = normalizeCollaboratorName(collaborator)
+    if (!clean) {
+      continue
+    }
+    const key = clean.toLowerCase()
+    if (seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    chips.push({
+      key,
+      name: clean,
+      state: 'removed',
+      role: activeRoleByKey.get(key) || pendingRoleByKey.get(key) || 'editor',
+    })
+  }
+
   return chips
 }
 
@@ -871,8 +953,9 @@ function WorkspacesDrilldownPanel({
   const [collaboratorActivityCollapsed, setCollaboratorActivityCollapsed] = useState(true)
   const [conversationActivityCollapsed, setConversationActivityCollapsed] = useState(true)
   const [removalConfirmKey, setRemovalConfirmKey] = useState<string | null>(null)
+  const [collaboratorActorExpanded, setCollaboratorActorExpanded] = useState<Record<string, boolean>>({})
   const sortedAuditEntries = [...workspaceAuditEntries]
-    .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+    .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
   const collaboratorActivityEntries = sortedAuditEntries
     .filter((entry) => !isConversationAuditEntry(entry))
     .filter((entry) =>
@@ -885,10 +968,13 @@ function WorkspacesDrilldownPanel({
     const groups = new Map<string, CollaboratorAuditActorGroup>()
     collaboratorActivityEntries.forEach((entry) => {
       const parsedTransition = parseAuditTransition(entry.message)
-      const actorName = parsedTransition?.actorName || parseActorNameFromAuditMessage(entry.message)
-      const actorKey = normalizeCollaboratorName(actorName).toLowerCase() || 'system'
+      const collaboratorName =
+        parsedTransition?.subject ||
+        parseCollaboratorNameFromAuditMessage(entry.message) ||
+        'General'
+      const actorKey = normalizeCollaboratorName(collaboratorName).toLowerCase() || 'general'
       const item: CollaboratorAuditPresentationEntry = {
-        actorName,
+        actorName: collaboratorName,
         entry,
         parsedTransition,
         timestampMs: auditTimestampMs(entry.createdAt),
@@ -899,7 +985,7 @@ function WorkspacesDrilldownPanel({
         return
       }
       groups.set(actorKey, {
-        actorName,
+        actorName: collaboratorName,
         entries: [item],
       })
     })
@@ -908,7 +994,7 @@ function WorkspacesDrilldownPanel({
         ...group,
         entries: [...group.entries].sort(
           (left, right) =>
-            right.timestampMs - left.timestampMs || right.entry.id.localeCompare(left.entry.id),
+            left.timestampMs - right.timestampMs || left.entry.id.localeCompare(right.entry.id),
         ),
       }))
       .sort((left, right) => compareAuditActorNames(left.actorName, right.actorName))
@@ -945,6 +1031,7 @@ function WorkspacesDrilldownPanel({
       }))
       .sort((left, right) => compareAuditActorNames(left.actorName, right.actorName))
   }, [conversationActivityEntries])
+  const showConversationActorHeaders = conversationActivityGroups.length > 1
   const clampCollaboratorActivityList = collaboratorActivityEntries.length > 6
   const clampConversationActivityList = conversationActivityEntries.length > 6
 
@@ -957,10 +1044,29 @@ function WorkspacesDrilldownPanel({
     setCollaboratorActivityCollapsed(true)
     setConversationActivityCollapsed(true)
     setRemovalConfirmKey(null)
+    setCollaboratorActorExpanded({})
   }, [selectedWorkspaceId])
 
+  const onToggleCollaboratorActivitySection = () => {
+    if (collaboratorActivityCollapsed) {
+      setCollaboratorActivityCollapsed(false)
+      setConversationActivityCollapsed(true)
+      return
+    }
+    setCollaboratorActivityCollapsed(true)
+  }
+
+  const onToggleConversationActivitySection = () => {
+    if (conversationActivityCollapsed) {
+      setConversationActivityCollapsed(false)
+      setCollaboratorActivityCollapsed(true)
+      return
+    }
+    setConversationActivityCollapsed(true)
+  }
+
   return (
-    <div className={HOUSE_DRILLDOWN_SHEET_BODY_CLASS}>
+    <div className={cn(HOUSE_DRILLDOWN_SHEET_BODY_CLASS, HOUSE_WORKSPACE_TONE_CLASS)}>
       <div className={HOUSE_LEFT_BORDER_CLASS}>
         <h2 className={HOUSE_SECTION_TITLE_CLASS}>Manage workspace</h2>
       </div>
@@ -1429,8 +1535,12 @@ function WorkspacesDrilldownPanel({
           <div className="space-y-2">
             <button
               type="button"
-              onClick={() => setCollaboratorActivityCollapsed((current) => !current)}
-              className="flex w-full items-center justify-between rounded-md border border-border bg-background/70 px-2 py-1.5 text-left"
+              onClick={onToggleCollaboratorActivitySection}
+              className={cn(
+                'flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left',
+                HOUSE_DRILLDOWN_COLLAPSIBLE_SECTION_CLASS,
+              )}
+              data-state={collaboratorActivityCollapsed ? 'closed' : 'open'}
               aria-expanded={!collaboratorActivityCollapsed}
               aria-label="Toggle collaborator access and roles audit logs"
               title={
@@ -1452,10 +1562,7 @@ function WorkspacesDrilldownPanel({
             {!collaboratorActivityCollapsed ? (
               <div className="space-y-2">
                 <div
-                  className={cn(
-                    HOUSE_DRILLDOWN_TAB_LIST_CLASS,
-                    'rounded-md border border-border bg-background/70',
-                  )}
+                  className={HOUSE_DRILLDOWN_TAB_LIST_CLASS}
                   style={{ gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' }}
                 >
                   {COLLABORATOR_AUDIT_FILTER_OPTIONS.map((option) => {
@@ -1475,95 +1582,118 @@ function WorkspacesDrilldownPanel({
                     )
                   })}
                 </div>
-                <p className={HOUSE_FIELD_HELPER_CLASS}>
-                  Grouped by user. Newest events appear first within each user.
-                </p>
                 {collaboratorActivityEntries.length === 0 ? (
                   <p className={HOUSE_FIELD_HELPER_CLASS}>
                     No collaborator access or role events logged yet.
                   </p>
                 ) : (
-                  <div className="rounded-md border border-border bg-background/70">
-                    <div className={cn(clampCollaboratorActivityList ? 'max-h-72 overflow-y-auto' : '')}>
-                      <div className="space-y-1.5 p-2">
-                        {collaboratorActivityGroups.map((group, groupIndex) => (
-                          <div
-                            key={`${normalizeCollaboratorName(group.actorName).toLowerCase()}-${groupIndex}`}
-                            className="rounded border border-border/70 bg-background/60"
-                          >
-                            <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-background/80 px-2 py-1.5">
-                              <p className={cn(houseTypography.text, 'font-medium')}>
-                                {group.actorName}
-                              </p>
-                              <span className={HOUSE_FIELD_HELPER_CLASS}>
-                                {group.entries.length} event{group.entries.length === 1 ? '' : 's'}
-                              </span>
-                            </div>
-                            <div className="space-y-1.5 p-2">
-                              {group.entries.map((item) => {
-                                const { entry, parsedTransition } = item
-                                if (!parsedTransition) {
-                                  return (
-                                    <div key={entry.id} className="rounded border border-border/60 bg-muted/30 px-2 py-1.5">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <span className="rounded border border-border bg-background/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                                          Other
-                                        </span>
-                                        <span className={HOUSE_FIELD_HELPER_CLASS}>{formatTimestamp(entry.createdAt)}</span>
-                                      </div>
-                                      <p className={cn(houseTypography.text, 'mt-1')}>{entry.message}</p>
-                                    </div>
-                                  )
+                  <div className={cn(clampCollaboratorActivityList ? 'max-h-72 overflow-y-auto pr-1' : '', 'space-y-2')}>
+                        {collaboratorActivityGroups.map((group, groupIndex) => {
+                          const actorKey = auditActorKey(group.actorName)
+                          const isExpanded = collaboratorActorExpanded[actorKey] ?? false
+                          return (
+                            <div
+                              key={`${actorKey}-${groupIndex}`}
+                              className={cn(
+                                'rounded-md border border-border/60 bg-background/70',
+                                HOUSE_DRILLDOWN_COLLAPSIBLE_ENTITY_CLASS,
+                              )}
+                              data-state={isExpanded ? 'open' : 'closed'}
+                            >
+                              <button
+                                type="button"
+                                className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left"
+                                onClick={() =>
+                                  setCollaboratorActorExpanded((current) => ({
+                                    ...current,
+                                    [actorKey]: !isExpanded,
+                                  }))
                                 }
-                                const transitionPills = buildAuditTransitionPillPresentation(parsedTransition)
-                                const fromValueClass =
-                                  transitionPills.fromRawValue && transitionPills.fromLabel
-                                    ? auditTransitionStatePillClassName(
-                                        parsedTransition,
-                                        transitionPills.fromRawValue,
+                                aria-expanded={isExpanded}
+                                aria-label={`Toggle ${formatAuditActorHeaderName(group.actorName)} collaborator log entries`}
+                              >
+                                <p className={cn(houseTypography.text, 'font-medium')}>
+                                  {formatAuditActorHeaderName(group.actorName)}
+                                </p>
+                                <span className="inline-flex items-center gap-1.5">
+                                  <span className={HOUSE_FIELD_HELPER_CLASS}>
+                                    {group.entries.length}
+                                  </span>
+                                  {isExpanded ? (
+                                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                                  ) : (
+                                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                  )}
+                                </span>
+                              </button>
+                              {isExpanded ? (
+                                <div className="border-t border-border/50">
+                                  {group.entries.map((item, entryIndex) => {
+                                    const { entry, parsedTransition } = item
+                                    if (!parsedTransition) {
+                                      return (
+                                        <div
+                                          key={entry.id}
+                                          className={cn(
+                                            'px-2 py-1.5',
+                                            entryIndex > 0 ? 'border-t border-border/50' : '',
+                                          )}
+                                        >
+                                          <div className="flex items-center justify-between gap-2">
+                                            <p className={houseTypography.text}>{entry.message}</p>
+                                            <span className={HOUSE_FIELD_HELPER_CLASS}>
+                                              {formatAuditCompactTimestamp(entry.createdAt)}
+                                            </span>
+                                          </div>
+                                        </div>
                                       )
-                                    : ''
-                                const toValueClass = auditTransitionStatePillClassName(
-                                  parsedTransition,
-                                  transitionPills.toRawValue,
-                                )
-                                return (
-                                  <div key={entry.id} className="rounded border border-border/60 bg-muted/30 px-2 py-1.5">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="rounded border border-border bg-background/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                                        {parsedTransition.sectionLabel}
-                                      </span>
-                                      <span className={HOUSE_FIELD_HELPER_CLASS}>{formatTimestamp(entry.createdAt)}</span>
-                                    </div>
-                                    <p className={cn(houseTypography.text, 'mt-1 font-medium')}>
-                                      {parsedTransition.subject}
-                                    </p>
-                                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
-                                      {transitionPills.fromLabel && transitionPills.fromRawValue ? (
-                                        <span className={fromValueClass}>
-                                          {transitionPills.fromLabel}
-                                        </span>
-                                      ) : null}
-                                      {transitionPills.showArrow && transitionPills.fromLabel ? (
-                                        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
-                                      ) : null}
-                                      <span className={toValueClass}>
-                                        {transitionPills.toLabel}
-                                      </span>
-                                    </div>
-                                  </div>
-                                )
-                              })}
+                                    }
+                                    const transitionPills = buildAuditTransitionPillPresentation(parsedTransition)
+                                    const fromValueClass =
+                                      transitionPills.fromRawValue && transitionPills.fromLabel
+                                        ? auditTransitionStatePillClassName(
+                                            parsedTransition,
+                                            transitionPills.fromRawValue,
+                                          )
+                                        : ''
+                                    const toValueClass = auditTransitionStatePillClassName(
+                                      parsedTransition,
+                                      transitionPills.toRawValue,
+                                    )
+                                    return (
+                                      <div
+                                        key={entry.id}
+                                        className={cn(
+                                          'px-2 py-1.5',
+                                          entryIndex > 0 ? 'border-t border-border/50' : '',
+                                        )}
+                                      >
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                                            {transitionPills.fromLabel && transitionPills.fromRawValue ? (
+                                              <span className={fromValueClass}>
+                                                {transitionPills.fromLabel}
+                                              </span>
+                                            ) : null}
+                                            {transitionPills.showArrow && transitionPills.fromLabel ? (
+                                              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+                                            ) : null}
+                                            <span className={toValueClass}>
+                                              {transitionPills.toLabel}
+                                            </span>
+                                          </div>
+                                          <span className={HOUSE_FIELD_HELPER_CLASS}>
+                                            {formatAuditCompactTimestamp(entry.createdAt)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              ) : null}
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    {clampCollaboratorActivityList ? (
-                      <p className={cn(HOUSE_FIELD_HELPER_CLASS, 'px-2 pb-2')}>
-                        Scroll to view older collaborator entries.
-                      </p>
-                    ) : null}
+                          )
+                        })}
                   </div>
                 )}
               </div>
@@ -1571,8 +1701,12 @@ function WorkspacesDrilldownPanel({
 
             <button
               type="button"
-              onClick={() => setConversationActivityCollapsed((current) => !current)}
-              className="flex w-full items-center justify-between rounded-md border border-border bg-background/70 px-2 py-1.5 text-left"
+              onClick={onToggleConversationActivitySection}
+              className={cn(
+                'flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left',
+                HOUSE_DRILLDOWN_COLLAPSIBLE_SECTION_CLASS,
+              )}
+              data-state={conversationActivityCollapsed ? 'closed' : 'open'}
               aria-expanded={!conversationActivityCollapsed}
               aria-label="Toggle conversation log audit logs"
               title={
@@ -1598,31 +1732,31 @@ function WorkspacesDrilldownPanel({
                 </p>
               ) : (
                 <div className="space-y-2">
-                  <p className={HOUSE_FIELD_HELPER_CLASS}>
-                    Grouped by user. Newest messages appear first within each user.
-                  </p>
                   <div className="rounded-md border border-border bg-background/70">
                     <div className={cn(clampConversationActivityList ? 'max-h-72 overflow-y-auto' : '')}>
-                      <div className="space-y-1.5 p-2">
+                      <div className="space-y-2 p-2">
                         {conversationActivityGroups.map((group, groupIndex) => (
                           <div
                             key={`${normalizeCollaboratorName(group.actorName).toLowerCase()}-${groupIndex}`}
-                            className="rounded border border-border/70 bg-background/60"
+                            className="space-y-1"
                           >
-                            <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-background/80 px-2 py-1.5">
-                              <p className={cn(houseTypography.text, 'font-medium')}>
-                                {group.actorName}
+                            {showConversationActorHeaders ? (
+                              <p className={cn(HOUSE_FIELD_HELPER_CLASS, 'px-1 pt-0.5 font-medium')}>
+                                {formatAuditActorHeaderName(group.actorName)}
                               </p>
-                              <span className={HOUSE_FIELD_HELPER_CLASS}>
-                                {group.entries.length} message{group.entries.length === 1 ? '' : 's'}
-                              </span>
-                            </div>
-                            <div className="space-y-1.5 p-2">
-                              {group.entries.map((item) => {
+                            ) : null}
+                            <div className="rounded border border-border/60 bg-background/60">
+                              {group.entries.map((item, entryIndex) => {
                                 const { entry, parsedEvent } = item
                                 if (!parsedEvent) {
                                   return (
-                                    <div key={entry.id} className="rounded border border-border/60 bg-muted/30 px-2 py-1.5">
+                                    <div
+                                      key={entry.id}
+                                      className={cn(
+                                        'px-2 py-1.5',
+                                        entryIndex > 0 ? 'border-t border-border/50' : '',
+                                      )}
+                                    >
                                       <div className="flex items-center justify-between gap-2">
                                         <span className="rounded border border-border bg-background/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
                                           Other
@@ -1634,7 +1768,13 @@ function WorkspacesDrilldownPanel({
                                   )
                                 }
                                 return (
-                                  <div key={entry.id} className="rounded border border-border/60 bg-muted/30 px-2 py-1.5">
+                                  <div
+                                    key={entry.id}
+                                    className={cn(
+                                      'px-2 py-1.5',
+                                      entryIndex > 0 ? 'border-t border-border/50' : '',
+                                    )}
+                                  >
                                     <div className="flex items-center justify-between gap-2">
                                       <span className="rounded border border-border bg-background/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
                                         Message
@@ -2683,6 +2823,12 @@ export function WorkspacesPage() {
         return
       }
     }
+    const matchedActiveName =
+      workspace.collaborators.find(
+        (value) => normalizeCollaboratorName(value).toLowerCase() === collaboratorKey,
+      ) || collaboratorName
+    const matchedActiveRole =
+      workspace.collaboratorRoles?.[matchedActiveName] || 'editor'
     updateWorkspace(workspace.id, {
       removedCollaborators: [...(workspace.removedCollaborators || []), collaboratorName],
       updatedAt: new Date().toISOString(),
@@ -2695,6 +2841,7 @@ export function WorkspacesPage() {
         fromStatus: 'active',
         toStatus: 'removed',
         actorName: currentAuditActorName,
+        role: matchedActiveRole,
       }),
     )
   }

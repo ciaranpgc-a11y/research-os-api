@@ -1714,16 +1714,11 @@
     will-change: bottom;
   }
 
-  .house-chart-scale-mean-line-delayed {
-    transition-delay: var(--motion-duration-fast);
-  }
-
   @media (prefers-reduced-motion: reduce) {
     .house-chart-scale-layer,
     .house-chart-scale-tick,
     .house-chart-scale-axis-title,
-    .house-chart-scale-mean-line,
-    .house-chart-scale-mean-line-delayed {
+    .house-chart-scale-mean-line {
       transition: none;
     }
   }
@@ -1789,10 +1784,20 @@
   }
 
   .house-toggle-chart-swap {
-    transition-property: opacity, transform;
+    transition-property: opacity;
     transition-duration: var(--motion-duration-base);
     transition-timing-function: cubic-bezier(0.2, 0.68, 0.16, 1);
-    will-change: transform, opacity;
+    will-change: opacity;
+  }
+
+  .house-chart-series-by-key .house-toggle-chart-swap {
+    transition-property: opacity;
+  }
+
+  .house-chart-series-by-slot .house-toggle-chart-swap {
+    transition-property: opacity, filter;
+    transition-duration: var(--motion-duration-fast);
+    will-change: opacity, filter;
   }
 
   .house-toggle-chart-label {
@@ -2375,6 +2380,8 @@
   }
 
   .house-drilldown-tab-trigger {
+    display: inline-flex;
+    align-items: center;
     min-height: 2rem;
     border: 1px solid transparent;
     border-radius: 9999px;
@@ -2795,6 +2802,46 @@
 
   .house-drilldown-toggle-button-muted:hover {
     color: hsl(var(--tone-neutral-900));
+  }
+
+  .house-drilldown-collapsible-section {
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--background) / 0.7);
+    transition: background-color var(--motion-duration-ui) ease-out, border-color var(--motion-duration-ui) ease-out;
+  }
+
+  .house-drilldown-collapsible-section:hover {
+    border-color: hsl(var(--border));
+    background-color: hsl(var(--background) / 0.76);
+  }
+
+  .house-drilldown-collapsible-section[data-state='open'] {
+    border-color: hsl(var(--border));
+    background-color: hsl(var(--background) / 0.78);
+    box-shadow: none;
+  }
+
+  .house-drilldown-collapsible-entity {
+    margin-left: 0.75rem;
+    margin-right: 0.5rem;
+    padding-left: 0.5rem;
+    border: 1px solid hsl(var(--stroke-strong) / 0.7);
+    border-left: 3px solid hsl(var(--house-rail-color, var(--tone-accent-500)) / 0.86);
+    border-radius: 0.5rem;
+    background-color: hsl(var(--background) / 0.72);
+    transition: border-left-color var(--motion-duration-ui) ease-out, border-color var(--motion-duration-ui) ease-out, background-color var(--motion-duration-ui) ease-out;
+  }
+
+  .house-drilldown-collapsible-entity:hover {
+    border-color: hsl(var(--stroke-strong) / 0.86);
+    border-left-color: hsl(var(--house-rail-color, var(--tone-accent-600)) / 0.96);
+    background-color: hsl(var(--background) / 0.8);
+  }
+
+  .house-drilldown-collapsible-entity[data-state='open'] {
+    border-color: hsl(var(--stroke-strong) / 0.92);
+    border-left-color: hsl(var(--house-rail-color, var(--tone-accent-700)) / 0.98);
+    background-color: hsl(var(--background) / 0.88);
   }
 
   .house-drilldown-tab-list {
