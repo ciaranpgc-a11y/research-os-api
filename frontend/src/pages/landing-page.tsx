@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 
 import { AxiomosMark } from '@/components/auth/AxiomosMark'
-import { Button } from '@/components/ui/button'
+import { ButtonPrimitive } from '@/components/primitives/ButtonPrimitive'
 import { houseSurfaces, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 
@@ -23,9 +23,9 @@ export function LandingPage() {
               </span>
             </div>
           </div>
-          <Button type="button" variant="house" onClick={() => navigate('/auth')}>
+          <ButtonPrimitive type="button" variant="secondary" onClick={() => navigate('/auth')}>
             Sign in
-          </Button>
+          </ButtonPrimitive>
         </header>
 
         <main className={cn('rounded-xl border border-border p-8 md:p-10', houseSurfaces.card)}>
@@ -41,12 +41,12 @@ export function LandingPage() {
               produce draft-ready sections with transparent guardrails.
             </p>
             <div className="flex flex-wrap gap-3">
-              <Button type="button" variant="housePrimary" onClick={() => navigate('/auth')}>
+              <ButtonPrimitive type="button" variant="primary" onClick={() => navigate('/auth')}>
                 Get started
-              </Button>
-              <Button type="button" variant="house" onClick={() => navigate('/auth')}>
+              </ButtonPrimitive>
+              <ButtonPrimitive type="button" variant="secondary" onClick={() => navigate('/auth')}>
                 Create account
-              </Button>
+              </ButtonPrimitive>
             </div>
           </div>
 
@@ -75,4 +75,6 @@ export function LandingPage() {
     </div>
   )
 }
+
+
 
