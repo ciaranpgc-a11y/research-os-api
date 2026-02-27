@@ -29,6 +29,7 @@ export default {
       fontSize: {
         caption: ['var(--text-caption-size)', { lineHeight: 'var(--text-caption-line)' }],
         micro: ['var(--text-micro-size)', { lineHeight: 'var(--text-micro-line)' }],
+        tiny: ['0.625rem', { lineHeight: '0.875rem' }],
         label: ['var(--text-label-size)', { lineHeight: 'var(--text-label-line)' }],
         body: ['var(--text-body-size)', { lineHeight: 'var(--text-body-line)' }],
         display: ['var(--text-display-size)', { lineHeight: 'var(--text-display-line)', letterSpacing: '-0.02em' }],
@@ -67,9 +68,13 @@ export default {
         'sz-580': '36.25rem',
         'sz-720': '45rem',
         'sz-760': '47.5rem',
+        'sz-1200': '75rem',
         'sz-1320': '82.5rem',
         'sz-1360': '85rem',
         'sz-1380': '86.25rem',
+      },
+      textUnderlineOffset: {
+        3: '3px',
       },
       colors: {
         background: 'hsl(var(--background) / <alpha-value>)',

@@ -1757,7 +1757,7 @@ function WorkspacesDrilldownPanel({
                                       )}
                                     >
                                       <div className="flex items-center justify-between gap-2">
-                                        <span className="rounded border border-border bg-background/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                        <span className="rounded border border-border bg-background/80 px-1.5 py-0.5 text-tiny text-muted-foreground">
                                           Other
                                         </span>
                                         <span className={HOUSE_FIELD_HELPER_CLASS}>{formatTimestamp(entry.createdAt)}</span>
@@ -1775,7 +1775,7 @@ function WorkspacesDrilldownPanel({
                                     )}
                                   >
                                     <div className="flex items-center justify-between gap-2">
-                                      <span className="rounded border border-border bg-background/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                      <span className="rounded border border-border bg-background/80 px-1.5 py-0.5 text-tiny text-muted-foreground">
                                         Message
                                       </span>
                                       <span className={HOUSE_FIELD_HELPER_CLASS}>

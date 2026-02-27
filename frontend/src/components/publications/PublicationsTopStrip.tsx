@@ -5798,7 +5798,7 @@ export function PublicationsTopStrip({
                     <>
                       Papers at or above{' '}
                       <span
-                        className="font-bold text-foreground underline decoration-2 underline-offset-[3px]"
+                        className="font-bold text-foreground underline decoration-2 underline-offset-3"
                         style={{
                           textDecorationColor: `hsl(var(${FIELD_PERCENTILE_EMPHASIS_TONE_VAR_BY_THRESHOLD[activeThreshold]}))`,
                         }}
