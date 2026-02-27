@@ -2,10 +2,16 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent 
 import { ChevronRight, GripVertical, Loader2, Plus, ShieldCheck, SlidersHorizontal, Trash2, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
+import { CardPrimitive as Card, CardContent, CardHeader, CardTitle } from '@/components/primitives/CardPrimitive'
+import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
+import {
+  SelectPrimitive,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/primitives/SelectPrimitive'
 import { clearAuthSessionToken, getAuthSessionToken, getCachedAuthRole } from '@/lib/auth-session'
 import { houseDividers, houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
@@ -547,7 +553,7 @@ function badgeToneClass(tone: ProfileBadge['tone']): string {
     return 'border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] text-[hsl(var(--tone-accent-800))]'
   }
   if (tone === 'gold') {
-    return 'border-[hsl(var(--tone-warning-400))] bg-[linear-gradient(135deg,hsl(var(--tone-warning-100)),hsl(var(--tone-warning-200)))] text-[hsl(var(--tone-warning-900))] shadow-[0_4px_14px_hsl(var(--tone-warning-200)/0.6)]'
+    return 'border-[hsl(var(--tone-warning-400))] bg-[linear-gradient(135deg,hsl(var(--tone-warning-100)),hsl(var(--tone-warning-200)))] text-[hsl(var(--tone-warning-900))] shadow-[var(--elevation-2)]'
   }
   return 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-700))]'
 }
@@ -2048,7 +2054,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             <div className={HOUSE_PROFILE_PHOTO_PANEL_CLASS}>
               {draft.profilePhotoDataUrl ? (
                 <div
-                  className="relative h-20 w-20 shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))] shadow-[0_0_0_1px_hsl(var(--tone-neutral-400))]"
+                  className="relative h-20 w-20 shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-200))] shadow-[var(--elevation-1)]"
                 >
                   <img
                     src={draft.profilePhotoDataUrl}
@@ -2061,7 +2067,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   />
                 </div>
               ) : (
-                <div className="inline-flex h-20 w-20 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] text-xl font-semibold text-[hsl(var(--tone-neutral-700))] shadow-[0_0_0_1px_hsl(var(--tone-neutral-400))]">
+                <div className="inline-flex h-20 w-20 items-center justify-center rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] text-xl font-semibold text-[hsl(var(--tone-neutral-700))] shadow-[var(--elevation-1)]">
                   {profileInitials}
                 </div>
               )}
@@ -2078,7 +2084,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   <Button
                     type="button"
                     size="sm"
-                    variant="house"
+                    variant="secondary"
                     className={HOUSE_ACTION_BUTTON_CLASS}
                     onClick={() => profilePhotoInputRef.current?.click()}
                   >
@@ -2090,14 +2096,14 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       <Button
                         type="button"
                         size="sm"
-                        variant="house"
+                        variant="secondary"
                         className={HOUSE_ACTION_BUTTON_CLASS}
                         onClick={() => setProfilePhotoEditorOpen((current) => !current)}
                       >
                         <SlidersHorizontal className="mr-1.5 h-4 w-4" />
                         {profilePhotoEditorOpen ? 'Close editor' : 'Adjust framing'}
                       </Button>
-                      <Button type="button" size="sm" variant="house" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onRemoveProfilePhoto}>
+                      <Button type="button" size="sm" variant="secondary" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onRemoveProfilePhoto}>
                         <Trash2 className="mr-1.5 h-4 w-4" />
                         Remove
                       </Button>
@@ -2108,7 +2114,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   <div className={HOUSE_PROFILE_PHOTO_EDITOR_CLASS}>
                     <p className="house-field-label">Mini photo editor</p>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                      <div className="mx-auto h-24 w-24 shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] shadow-[0_0_0_1px_hsl(var(--tone-neutral-400))] sm:mx-0">
+                      <div className="mx-auto h-24 w-24 shrink-0 overflow-hidden rounded-full border border-[hsl(var(--tone-neutral-500))] bg-[hsl(var(--tone-neutral-100))] shadow-[var(--elevation-1)] sm:mx-0">
                         <img
                           src={draft.profilePhotoDataUrl}
                           alt="Profile photo editor preview"
@@ -2145,10 +2151,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                           />
                         </label>
                         <div className="flex flex-wrap gap-2">
-                          <Button type="button" size="sm" variant="house" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onResetProfilePhotoPosition}>
+                          <Button type="button" size="sm" variant="secondary" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onResetProfilePhotoPosition}>
                             Reset
                           </Button>
-                          <Button type="button" size="sm" variant="housePrimary" className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS} onClick={() => setProfilePhotoEditorOpen(false)}>
+                          <Button type="button" size="sm" variant="primary" className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS} onClick={() => setProfilePhotoEditorOpen(false)}>
                             Done
                           </Button>
                         </div>
@@ -2174,7 +2180,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   <Button
                     type="button"
                     size="sm"
-                    variant="house"
+                    variant="secondary"
                     className={HOUSE_ACTION_BUTTON_CLASS}
                     onClick={() => navigate('/profile/manage-account')}
                   >
@@ -2198,18 +2204,22 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             <div className="grid gap-3 sm:col-span-2 sm:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1fr)]">
               <label className="space-y-1">
                 <span className="house-field-label">Salutation</span>
-                <Select
-                  value={draft.salutation}
-                  onChange={(event) => onFieldChange('salutation', event.target.value)}
-                  autoComplete="honorific-prefix"
+                <SelectPrimitive
+                  value={draft.salutation || '__none__'}
+                  onValueChange={(value) => onFieldChange('salutation', value === '__none__' ? '' : value)}
                 >
-                  <option value="">Select</option>
-                  {SALUTATION_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </Select>
+                  <SelectTrigger aria-label="Salutation">
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Select</SelectItem>
+                    {SALUTATION_OPTIONS.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </SelectPrimitive>
               </label>
 
               <label className="space-y-1">
@@ -2316,7 +2326,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             <Button
               type="button"
               size="sm"
-              variant="house"
+              variant="secondary"
               className={HOUSE_ACTION_BUTTON_CLASS}
               onClick={onOpenAffiliationEditor}
             >
@@ -2329,9 +2339,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
           <div
             className={cn(
-              'rounded-md border border-[hsl(var(--tone-neutral-200))] transition-[background-color,border-color,box-shadow] duration-700 ease-out',
+              'rounded-md border border-[hsl(var(--tone-neutral-200))] transition-[background-color,border-color,box-shadow] duration-[var(--motion-duration-long)] ease-[var(--motion-ease-default)]',
               affiliationSaveFlashActive
-                ? 'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] shadow-[0_0_0_1px_hsl(var(--tone-positive-200)/0.55)]'
+                ? 'border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] shadow-[var(--elevation-1)]'
                 : 'bg-[hsl(var(--tone-neutral-50))]',
             )}
           >
@@ -2352,7 +2362,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 <span className="flex min-w-0 items-center gap-2">
                   <ChevronRight
                     className={cn(
-                      'h-4 w-4 text-[hsl(var(--tone-neutral-500))] transition-transform duration-200',
+                      'h-4 w-4 text-[hsl(var(--tone-neutral-500))] transition-transform duration-[var(--motion-duration-ui)]',
                       affiliationEditorOpen
                         ? 'translate-x-0.5 rotate-90 text-[hsl(var(--tone-neutral-700))]'
                         : '',
@@ -2361,7 +2371,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   />
                   <p
                     className={cn(
-                      'truncate text-sm font-medium text-[hsl(var(--tone-neutral-900))] transition-transform duration-200',
+                      'truncate text-sm font-medium text-[hsl(var(--tone-neutral-900))] transition-transform duration-[var(--motion-duration-ui)]',
                       affiliationEditorOpen ? 'translate-x-0.5' : '',
                     )}
                   >
@@ -2422,9 +2432,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                               setJobRoleDropTargetIndex(null)
                             }}
                             className={cn(
-                              'group w-full flex flex-wrap items-center gap-2 rounded-md border border-transparent px-2 py-1.5 transition-all duration-200 ease-out will-change-transform',
+                              'group w-full flex flex-wrap items-center gap-2 rounded-md border border-transparent px-2 py-1.5 transition-[transform,background-color,border-color,box-shadow,opacity] duration-[var(--motion-duration-ui)] ease-[var(--motion-ease-default)] will-change-transform',
                               draggingJobRoleIndex === index
-                                ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50))] shadow-[0_10px_24px_hsl(var(--tone-accent-300)/0.28)] scale-[1.015] -translate-y-0.5 opacity-95'
+                                ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50))] shadow-[var(--elevation-3)] scale-[1.015] -translate-y-0.5 opacity-95'
                                 : 'bg-background hover:bg-[hsl(var(--tone-neutral-50)/0.7)]',
                               jobRoleDropTargetIndex === index && draggingJobRoleIndex !== index
                                 ? 'border-dashed border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50)/0.8)] shadow-[inset_0_0_0_1px_hsl(var(--tone-accent-300)/0.45)] translate-x-0.5'
@@ -2436,7 +2446,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                           >
                             <span
                               className={cn(
-                                'inline-flex items-center text-[hsl(var(--tone-neutral-500))] transition-transform duration-150',
+                                'inline-flex items-center text-[hsl(var(--tone-neutral-500))] transition-transform duration-[var(--motion-duration-fast)]',
                                 hasRoleRows
                                   ? 'cursor-grab active:cursor-grabbing'
                                   : 'cursor-default opacity-45',
@@ -2494,7 +2504,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       <div className="flex justify-start md:justify-center md:self-start">
                         <Button
                           type="button"
-                          variant="house"
+                          variant="secondary"
                           size="sm"
                           className={HOUSE_ACTION_BUTTON_CLASS}
                           onClick={onAddJobRole}
@@ -2626,7 +2636,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     <Button
                       type="button"
                       size="sm"
-                      variant="housePrimary"
+                      variant="primary"
                       className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS}
                       onClick={onApplyAffiliationEditorChanges}
                     >
@@ -2649,7 +2659,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             </CardTitle>
             <Button
               type="button"
-              variant="house"
+              variant="secondary"
               size="sm"
               className={HOUSE_ACTION_BUTTON_CLASS}
               onClick={onTogglePublicationAffiliationComposer}
@@ -2679,7 +2689,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 />
                 <Button
                   type="button"
-                  variant="house"
+                  variant="secondary"
                   size="sm"
                   className={HOUSE_ACTION_BUTTON_CLASS}
                   onClick={() => onAddPublicationAffiliation(publicationAffiliationInput)}
@@ -2734,9 +2744,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       setPublicationAffiliationDropTargetIndex(null)
                     }}
                     className={cn(
-                      'group flex flex-wrap items-center gap-2 rounded-md border px-2 py-1.5 transition-all duration-200 ease-out will-change-transform',
+                      'group flex flex-wrap items-center gap-2 rounded-md border px-2 py-1.5 transition-[transform,background-color,border-color,box-shadow,opacity] duration-[var(--motion-duration-ui)] ease-[var(--motion-ease-default)] will-change-transform',
                       draggingPublicationAffiliationIndex === index
-                        ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50))] shadow-[0_10px_24px_hsl(var(--tone-accent-300)/0.28)] scale-[1.015] -translate-y-0.5 opacity-95'
+                        ? 'border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50))] shadow-[var(--elevation-3)] scale-[1.015] -translate-y-0.5 opacity-95'
                         : 'border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] hover:bg-[hsl(var(--tone-neutral-100)/0.55)]',
                       publicationAffiliationDropTargetIndex === index && draggingPublicationAffiliationIndex !== index
                         ? 'border-dashed border-[hsl(var(--tone-accent-400))] bg-[hsl(var(--tone-accent-50)/0.8)] shadow-[inset_0_0_0_1px_hsl(var(--tone-accent-300)/0.45)] translate-x-0.5'
@@ -2748,7 +2758,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   >
                     <span
                       className={cn(
-                        'inline-flex cursor-grab items-center text-[hsl(var(--tone-neutral-500))] transition-transform duration-150 active:cursor-grabbing',
+                        'inline-flex cursor-grab items-center text-[hsl(var(--tone-neutral-500))] transition-transform duration-[var(--motion-duration-fast)] active:cursor-grabbing',
                         draggingPublicationAffiliationIndex === index ? 'scale-110 text-[hsl(var(--tone-accent-700))]' : 'group-hover:scale-105',
                       )}
                       title="Drag to reorder"
@@ -2794,7 +2804,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
-            variant="housePrimary"
+            variant="primary"
             className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS}
             onClick={() => void onSave()}
             disabled={!user || saving || loading}
