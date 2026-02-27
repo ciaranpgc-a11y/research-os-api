@@ -19,12 +19,18 @@ import {
 } from 'lucide-react'
 
 import { TopBar } from '@/components/layout/top-bar'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
+import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Select } from '@/components/ui/select'
+import {
+  SelectPrimitive,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/primitives/SelectPrimitive'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { TooltipPrimitive as Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/primitives/TooltipPrimitive'
 import { WorkspacesDataLibraryView } from '@/pages/workspaces-data-library-view'
 import {
   WORKSPACE_OWNER_REQUIRED_MESSAGE,
@@ -1072,7 +1078,7 @@ function WorkspacesDrilldownPanel({
       <div className="w-full">
         <Button
           type="button"
-          variant="housePrimary"
+          variant="primary"
           onClick={() => {
             if (!selectedWorkspaceId || !canOpenSelectedWorkspace) {
               return
@@ -1157,23 +1163,27 @@ function WorkspacesDrilldownPanel({
                       <div className="flex items-center gap-1.5">
                         {isRoleEditorOpen ? (
                           <div className="flex items-center gap-1">
-                            <Select
+                            <SelectPrimitive
                               value={roleEditorCurrentRole}
-                              onChange={(event) => {
-                                const nextRole = normalizeCollaboratorRoleValue(event.target.value)
+                              onValueChange={(value) => {
+                                const nextRole = normalizeCollaboratorRoleValue(value)
                                 if (!nextRole) {
                                   return
                                 }
                                 setRoleEditorDraftRole(nextRole)
                               }}
-                              className="h-8 w-auto min-w-sz-110 px-2 text-xs"
                             >
-                              {COLLABORATOR_ROLE_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </Select>
+                              <SelectTrigger className="h-8 w-auto min-w-sz-110 px-2 text-xs">
+                                <SelectValue placeholder="Select role" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {COLLABORATOR_ROLE_OPTIONS.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </SelectPrimitive>
                             <button
                               type="button"
                               className={cn(
@@ -1226,21 +1236,25 @@ function WorkspacesDrilldownPanel({
                           </div>
                         ) : isRestoreEditorOpen ? (
                           <div className="flex items-center gap-1">
-                            <Select
-                              value={restoreEditorRole || ''}
-                              onChange={(event) => {
-                                const nextRole = normalizeCollaboratorRoleValue(event.target.value)
+                            <SelectPrimitive
+                              value={restoreEditorRole || '__none__'}
+                              onValueChange={(value) => {
+                                const nextRole = normalizeCollaboratorRoleValue(value)
                                 setRestoreEditorRole(nextRole)
                               }}
-                              className="h-8 w-auto min-w-sz-110 px-2 text-xs"
                             >
-                              <option value="">Select role</option>
-                              {COLLABORATOR_ROLE_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </Select>
+                              <SelectTrigger className="h-8 w-auto min-w-sz-110 px-2 text-xs">
+                                <SelectValue placeholder="Select role" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">Select role</SelectItem>
+                                {COLLABORATOR_ROLE_OPTIONS.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </SelectPrimitive>
                             <button
                               type="button"
                               className={cn(
@@ -1491,23 +1505,27 @@ function WorkspacesDrilldownPanel({
 
                 <div className="space-y-1">
                   <p className={HOUSE_FIELD_HELPER_CLASS}>Role</p>
-                  <Select
+                  <SelectPrimitive
                     value={collaboratorInviteRole}
-                    onChange={(event) => {
-                      const nextRole = normalizeCollaboratorRoleValue(event.target.value)
+                    onValueChange={(value) => {
+                      const nextRole = normalizeCollaboratorRoleValue(value)
                       if (!nextRole) {
                         return
                       }
                       onCollaboratorInviteRoleChange(nextRole)
                     }}
-                    className="h-8 w-auto min-w-sz-120 px-2 text-xs"
                   >
-                    {COLLABORATOR_ROLE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
+                    <SelectTrigger className="h-8 w-auto min-w-sz-120 px-2 text-xs">
+                      <SelectValue placeholder="Select role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {COLLABORATOR_ROLE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </SelectPrimitive>
                 </div>
 
                 <div className="flex justify-end">
@@ -3084,28 +3102,30 @@ export function WorkspacesPage() {
                       placeholder="Filter workspaces"
                       className={cn('w-sz-260', HOUSE_INPUT_CLASS, HOUSE_TABLE_FILTER_INPUT_CLASS)}
                     />
-                    <Select
-                      value={filterKey}
-                      onChange={(event) => setFilterKey(event.target.value as FilterKey)}
-                      className={HOUSE_WORKSPACE_FILTER_SELECT_CLASS}
-                    >
-                      {FILTER_OPTIONS.map((option) => (
-                        <option key={option.key} value={option.key}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </Select>
+                    <SelectPrimitive value={filterKey} onValueChange={(value) => setFilterKey(value as FilterKey)}>
+                      <SelectTrigger className={HOUSE_WORKSPACE_FILTER_SELECT_CLASS}>
+                        <SelectValue placeholder="Filter" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FILTER_OPTIONS.map((option) => (
+                          <SelectItem key={option.key} value={option.key}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </SelectPrimitive>
                     {viewMode === 'cards' ? (
-                      <Select
-                        value={sortColumn}
-                        onChange={(event) => onSort(event.target.value as SortColumn)}
-                        className={HOUSE_WORKSPACE_FILTER_SELECT_CLASS}
-                      >
-                        <option value="updatedAt">Sort: Updated</option>
-                        <option value="name">Sort: Name</option>
-                        <option value="stage">Sort: Stage</option>
-                        <option value="status">Sort: Status</option>
-                      </Select>
+                      <SelectPrimitive value={sortColumn} onValueChange={(value) => onSort(value as SortColumn)}>
+                        <SelectTrigger className={HOUSE_WORKSPACE_FILTER_SELECT_CLASS}>
+                          <SelectValue placeholder="Sort" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="updatedAt">Sort: Updated</SelectItem>
+                          <SelectItem value="name">Sort: Name</SelectItem>
+                          <SelectItem value="stage">Sort: Stage</SelectItem>
+                          <SelectItem value="status">Sort: Status</SelectItem>
+                        </SelectContent>
+                      </SelectPrimitive>
                     ) : null}
                     {viewMode === 'cards' ? (
                       <Button
