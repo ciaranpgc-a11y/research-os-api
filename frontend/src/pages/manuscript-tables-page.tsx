@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { BadgePrimitive as Badge } from '@/components/primitives/BadgePrimitive'
+import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
+import { CardPrimitive as Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/primitives/CardPrimitive'
+import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { PageFrame } from '@/pages/page-frame'
 import { useDataWorkspaceStore } from '@/store/use-data-workspace-store'
@@ -182,7 +182,7 @@ export function ManuscriptTablesPage() {
               {selectedTable ? (
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   onClick={() => removeManuscriptTable(selectedTable.id)}
                 >
                   <Trash2 className="mr-1 h-4 w-4" />
@@ -220,10 +220,10 @@ export function ManuscriptTablesPage() {
                     onChange={(event) => setNewColumnName(event.target.value)}
                     placeholder="New column name"
                   />
-                  <Button variant="outline" onClick={onAddColumn}>
+                  <Button variant="secondary" onClick={onAddColumn}>
                     Add column
                   </Button>
-                  <Button variant="outline" onClick={onAddRow}>
+                  <Button variant="secondary" onClick={onAddRow}>
                     Add row
                   </Button>
                 </div>
