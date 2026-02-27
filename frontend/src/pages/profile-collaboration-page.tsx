@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { Download, Lightbulb, Plus, RefreshCcw, Sparkles, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Textarea } from '@/components/ui/textarea'
+import { BadgePrimitive as Badge } from '@/components/primitives/BadgePrimitive'
+import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
+import { CardPrimitive as Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/primitives/CardPrimitive'
+import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
+import { SelectPrimitive, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/primitives/SelectPrimitive'
+import { TablePrimitive as Table, TableBody, TableCell, TableHead as TableHeader, TableHeaderCell as TableHead, TableRow } from '@/components/primitives/TablePrimitive'
+import { TextareaPrimitive as Textarea } from '@/components/primitives/TextareaPrimitive'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import {
@@ -618,19 +618,19 @@ export function ProfileCollaborationPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle>Collaborators</CardTitle>
               <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" size="sm" variant="outline" onClick={onAddCollaborator}>
+                <Button type="button" size="sm" variant="secondary" onClick={onAddCollaborator}>
                   <Plus className="mr-1 h-3.5 w-3.5" />
                   Add collaborator
                 </Button>
-                <Button type="button" size="sm" variant="outline" onClick={onImport} disabled={saving}>
+                <Button type="button" size="sm" variant="secondary" onClick={onImport} disabled={saving}>
                   <Upload className="mr-1 h-3.5 w-3.5" />
                   Import from publications
                 </Button>
-                <Button type="button" size="sm" variant="outline" onClick={onEnrichCoverage} disabled={saving}>
+                <Button type="button" size="sm" variant="secondary" onClick={onEnrichCoverage} disabled={saving}>
                   <RefreshCcw className="mr-1 h-3.5 w-3.5" />
                   Enrich missing fields
                 </Button>
-                <Button type="button" size="sm" variant="outline" onClick={onExport}>
+                <Button type="button" size="sm" variant="secondary" onClick={onExport}>
                   <Download className="mr-1 h-3.5 w-3.5" />
                   Export
                 </Button>
@@ -652,17 +652,18 @@ export function ProfileCollaborationPage() {
                 placeholder="Search name, email, ORCID, institution..."
                 className="max-w-md"
               />
-              <Select
-                value={sort}
-                onChange={(event) => setSort(event.target.value)}
-                className="h-9 w-auto px-3 text-sm"
-              >
-                <option value="name">Sort: Name</option>
-                <option value="works">Sort: Coauthored works</option>
-                <option value="last_collaboration_year">Sort: Last collaboration</option>
-                <option value="strength">Sort: Strength score</option>
-              </Select>
-              <Button type="button" size="sm" variant="outline" onClick={onSearch}>
+              <SelectPrimitive value={sort} onValueChange={setSort}>
+                <SelectTrigger className="h-9 w-auto min-w-sz-200 px-3 text-sm">
+                  <SelectValue placeholder="Sort" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name">Sort: Name</SelectItem>
+                  <SelectItem value="works">Sort: Coauthored works</SelectItem>
+                  <SelectItem value="last_collaboration_year">Sort: Last collaboration</SelectItem>
+                  <SelectItem value="strength">Sort: Strength score</SelectItem>
+                </SelectContent>
+              </SelectPrimitive>
+              <Button type="button" size="sm" variant="secondary" onClick={onSearch}>
                 <RefreshCcw className="mr-1 h-3.5 w-3.5" />
                 Search
               </Button>
@@ -743,7 +744,7 @@ export function ProfileCollaborationPage() {
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   disabled={page <= 1}
                   onClick={() => setPage((current) => Math.max(1, current - 1))}
                 >
@@ -753,7 +754,7 @@ export function ProfileCollaborationPage() {
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   disabled={!listing?.has_more}
                   onClick={() => setPage((current) => current + 1)}
                 >
@@ -849,7 +850,7 @@ export function ProfileCollaborationPage() {
                 {isCreating ? 'Create collaborator' : 'Save changes'}
               </Button>
               {!isCreating && selectedId ? (
-                <Button type="button" size="sm" variant="outline" onClick={onDelete} disabled={saving}>
+                <Button type="button" size="sm" variant="secondary" onClick={onDelete} disabled={saving}>
                   Delete
                 </Button>
               ) : null}
@@ -932,7 +933,7 @@ export function ProfileCollaborationPage() {
               <Button
                 type="button"
                 size="sm"
-                variant={heatmapMode === 'country' ? 'default' : 'outline'}
+                variant={heatmapMode === 'country' ? 'primary' : 'secondary'}
                 onClick={() => setHeatmapMode('country')}
               >
                 Geographic
@@ -940,7 +941,7 @@ export function ProfileCollaborationPage() {
               <Button
                 type="button"
                 size="sm"
-                variant={heatmapMode === 'institution' ? 'default' : 'outline'}
+                variant={heatmapMode === 'institution' ? 'primary' : 'secondary'}
                 onClick={() => setHeatmapMode('institution')}
               >
                 Institutional
@@ -948,7 +949,7 @@ export function ProfileCollaborationPage() {
               <Button
                 type="button"
                 size="sm"
-                variant={heatmapMode === 'domain' ? 'default' : 'outline'}
+                variant={heatmapMode === 'domain' ? 'primary' : 'secondary'}
                 onClick={() => setHeatmapMode('domain')}
               >
                 Domain
@@ -995,7 +996,7 @@ export function ProfileCollaborationPage() {
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   onClick={onGenerateAiInsights}
                   disabled={aiLoading !== null}
                 >
@@ -1028,7 +1029,7 @@ export function ProfileCollaborationPage() {
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   onClick={onGenerateAiAuthorSuggestions}
                   disabled={aiLoading !== null}
                 >
@@ -1071,7 +1072,7 @@ export function ProfileCollaborationPage() {
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   onClick={onGenerateAiContributionDraft}
                   disabled={aiLoading !== null}
                 >
@@ -1096,7 +1097,7 @@ export function ProfileCollaborationPage() {
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   onClick={onGenerateAiAffiliationsDraft}
                   disabled={aiLoading !== null}
                 >
