@@ -489,7 +489,7 @@ export function ManuscriptPage() {
                               )}
                             </Button>
                             {citation.url ? (
-                              <Button asChild size="sm" variant="ghost">
+                              <Button asChild size="sm" variant="tertiary">
                                 <a href={citation.url} target="_blank" rel="noreferrer">
                                   <ExternalLink className="mr-1 h-3 w-3" />
                                   Source

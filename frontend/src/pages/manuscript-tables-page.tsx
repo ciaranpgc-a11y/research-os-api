@@ -243,7 +243,7 @@ export function ManuscriptTablesPage() {
                               />
                               <Button
                                 size="sm"
-                                variant="ghost"
+                                variant="tertiary"
                                 onClick={() => onRemoveColumn(columnIndex)}
                                 disabled={selectedTable.columns.length <= 1}
                               >
@@ -269,7 +269,7 @@ export function ManuscriptTablesPage() {
                             </td>
                           ))}
                           <td className="house-table-cell-text border-b border-border/70 px-2 py-1 text-right">
-                            <Button size="sm" variant="ghost" onClick={() => onRemoveRow(rowIndex)}>
+                            <Button size="sm" variant="tertiary" onClick={() => onRemoveRow(rowIndex)}>
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </td>

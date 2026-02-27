@@ -42,7 +42,7 @@ export function StudyCoreStepper({
           return (
             <Button
               key={step.id}
-              variant="ghost"
+              variant="tertiary"
               className={cn(
                 'h-auto w-full items-start justify-start whitespace-normal rounded-md border px-3 py-2 text-left',
                 isActive && 'border-border bg-accent',

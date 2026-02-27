@@ -160,3 +160,21 @@ Method: AST scan of JSX elements named `Button` imported from `ui/button`; count
 - `frontend/src/pages/manuscript-page.tsx`
 - `frontend/src/pages/manuscript-tables-page.tsx`
 - `frontend/src/pages/profile-collaboration-page.tsx`
+
+## Pass C — Ghost Migration + Alias Removal
+
+### Ghost counts
+- Before: `9`
+- After: `0`
+
+### Files changed for ghost migration
+- `frontend/src/components/data-workspace/TableTabs.tsx`
+- `frontend/src/components/study-core/StepRun.tsx`
+- `frontend/src/components/study-core/StudyCoreStepper.tsx`
+- `frontend/src/pages/manuscript-page.tsx`
+- `frontend/src/pages/manuscript-tables-page.tsx`
+- `frontend/src/pages/profile-collaboration-page.tsx`
+
+### Canonical API status after Pass C
+- `Button` variants are now restricted to: `primary`, `secondary`, `tertiary`, `destructive`.
+- Legacy Button variants removed from `button.tsx`: `default`, `housePrimary`, `house`, `outline`, `ghost`.

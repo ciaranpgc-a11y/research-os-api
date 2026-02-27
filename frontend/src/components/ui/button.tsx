@@ -14,12 +14,6 @@ const buttonVariants = cva(
         secondary: `${houseTypography.buttonText} border border-border bg-secondary text-secondary-foreground shadow-none hover:bg-secondary/90`,
         tertiary: `${houseTypography.buttonText} border border-border bg-background text-foreground hover:bg-muted hover:border-ring/30 active:bg-muted`,
         destructive: `${houseTypography.buttonText} bg-destructive text-destructive-foreground`,
-        default: `${houseTypography.buttonText} bg-primary text-primary-foreground`,
-        housePrimary: `${houseTypography.buttonText} bg-primary text-primary-foreground`,
-        house: `${houseTypography.buttonText} border border-border bg-secondary text-secondary-foreground shadow-none hover:bg-secondary/90`,
-        outline: `${houseTypography.buttonText} border border-border bg-background text-foreground hover:bg-muted hover:border-ring/30 active:bg-muted`,
-        // DEPRECATED: alias to tertiary for backward compatibility.
-        ghost: `${houseTypography.buttonText} border border-border bg-background text-foreground hover:bg-muted hover:border-ring/30 active:bg-muted`,
       },
       size: {
         default: `h-9 px-3 ${houseTypography.buttonText}`,
@@ -29,7 +23,7 @@ const buttonVariants = cva(
       },
     },
     defaultVariants: {
-      variant: 'default',
+      variant: 'primary',
       size: 'default',
     },
   },
@@ -44,7 +38,7 @@ export interface ButtonProps
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : 'button'
-    const resolvedVariant = variant ?? 'default'
+    const resolvedVariant = variant ?? 'primary'
     const resolvedSize = size ?? 'default'
     return (
       <Comp

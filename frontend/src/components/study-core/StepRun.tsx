@@ -616,7 +616,7 @@ export function StepRun({
                   />
                   External author
                 </label>
-                <Button type="button" size="sm" variant="ghost" onClick={() => removeAuthor(index)}>
+                <Button type="button" size="sm" variant="tertiary" onClick={() => removeAuthor(index)}>
                   Remove
                 </Button>
               </div>
@@ -684,7 +684,7 @@ export function StepRun({
                 >
                   Use suggested brief
                 </Button>
-                <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => onGenerationBriefChange('')}>
+                <Button size="sm" variant="tertiary" className="text-muted-foreground hover:text-foreground" onClick={() => onGenerationBriefChange('')}>
                   Clear
                 </Button>
               </div>

@@ -855,7 +855,7 @@ export function ProfileCollaborationPage() {
                 <Button
                   type="button"
                   size="sm"
-                  variant="ghost"
+                  variant="tertiary"
                   onClick={() => {
                     setIsCreating(false)
                     if (selectedCollaborator) {

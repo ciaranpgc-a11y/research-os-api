@@ -401,7 +401,7 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
                   value={footnote}
                   onChange={(event) => onUpdateFootnote(index, event.target.value)}
                 />
-                <Button size="sm" variant="ghost" onClick={() => onRemoveFootnote(index)}>
+                <Button size="sm" variant="tertiary" onClick={() => onRemoveFootnote(index)}>
                   <Trash2 className="mr-1 h-3.5 w-3.5" />
                   Remove
                 </Button>
@@ -430,7 +430,7 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
                   onChange={(event) => onUpdateAbbreviation(index, { long: event.target.value })}
                   placeholder="Meaning"
                 />
-                <Button size="sm" variant="ghost" onClick={() => onRemoveAbbreviation(index)}>
+                <Button size="sm" variant="tertiary" onClick={() => onRemoveAbbreviation(index)}>
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>
