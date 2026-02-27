@@ -117,6 +117,7 @@ export function AuthPage() {
   const [verificationDeliveryHint, setVerificationDeliveryHint] = useState('')
   const [verificationToken, setVerificationToken] = useState('')
   const [oauthPending, setOauthPending] = useState(false)
+  const oauthPendingRef = useRef(false)
   const oauthPopupRef = useRef<Window | null>(null)
   const oauthPopupMonitorRef = useRef<number | null>(null)
   const oauthPopupClosedAtRef = useRef<number | null>(null)
@@ -137,6 +138,7 @@ export function AuthPage() {
     }
     oauthPopupRef.current = null
     oauthPopupClosedAtRef.current = null
+    oauthPendingRef.current = false
     setOauthPending(false)
   }
 
@@ -241,6 +243,10 @@ export function AuthPage() {
   }, [navigate])
 
   useEffect(() => {
+    oauthPendingRef.current = oauthPending
+  }, [oauthPending])
+
+  useEffect(() => {
     const handler = (event: MessageEvent<OAuthSuccessMessagePayload | OAuthErrorMessagePayload>) => {
       if (event.origin !== window.location.origin) {
         return
@@ -252,7 +258,7 @@ export function AuthPage() {
       if (payload.type === 'aawe-oauth-error') {
         // Ignore stale OAuth error events unless this page currently has
         // an active OAuth attempt in flight.
-        if (!oauthPending) {
+        if (!oauthPendingRef.current) {
           return
         }
         clearOAuthTransientState()
@@ -289,7 +295,7 @@ export function AuthPage() {
     }
     window.addEventListener('message', handler)
     return () => window.removeEventListener('message', handler)
-  }, [navigate, oauthPending])
+  }, [navigate])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -583,6 +589,7 @@ export function AuthPage() {
         return
       }
       oauthPopupRef.current = popup
+      oauthPendingRef.current = true
       setOauthPending(true)
       setLoading(false)
       setStatus(`${providerLabel(provider)} sign-in window opened. Complete sign-in to continue.`)
@@ -595,6 +602,7 @@ export function AuthPage() {
         oauthPopupMonitorRef.current = null
         oauthPopupRef.current = null
         oauthPopupClosedAtRef.current = Date.now()
+        oauthPendingRef.current = false
         setOauthPending(false)
         setLoading(false)
         if (Date.now() - startedAt < 2500) {

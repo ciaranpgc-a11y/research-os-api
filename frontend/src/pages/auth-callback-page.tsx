@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useMemo, useRef, useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { setAuthSessionToken } from '@/lib/auth-session'
@@ -16,16 +16,19 @@ const processedCallbackKeys = new Set<string>()
 
 export function AuthCallbackPage() {
   const navigate = useNavigate()
-  const [params] = useSearchParams()
+  const location = useLocation()
   const [status, setStatus] = useState('Completing sign-in...')
   const [error, setError] = useState('')
+  const inFlightKeyRef = useRef<string | null>(null)
+
+  const query = useMemo(() => new URLSearchParams(location.search), [location.search])
+  const providerRaw = (query.get('provider') || '').toLowerCase()
+  const state = query.get('state') || ''
+  const code = query.get('code') || ''
+  const oauthError = query.get('error') || ''
+  const callbackKey = `${providerRaw}:${state}:${code}`
 
   useEffect(() => {
-    const providerRaw = (params.get('provider') || '').toLowerCase()
-    const state = params.get('state') || ''
-    const code = params.get('code') || ''
-    const oauthError = params.get('error') || ''
-
     if (oauthError) {
       setError(`OAuth provider returned an error: ${oauthError}`)
       return
@@ -34,7 +37,9 @@ export function AuthCallbackPage() {
       setError('OAuth callback is missing provider, state, or code.')
       return
     }
-    const callbackKey = `${providerRaw}:${state}:${code}`
+    if (inFlightKeyRef.current === callbackKey) {
+      return
+    }
     if (processedCallbackKeys.has(callbackKey)) {
       // Ignore duplicate effect/callback executions without notifying opener as an error.
       // A duplicate run can occur in development/re-render scenarios while the first run
@@ -42,6 +47,7 @@ export function AuthCallbackPage() {
       setStatus('Sign-in callback already processing. You can close this window.')
       return
     }
+    inFlightKeyRef.current = callbackKey
     processedCallbackKeys.add(callbackKey)
 
     void (async () => {
@@ -69,8 +75,12 @@ export function AuthCallbackPage() {
         navigate('/profile', { replace: true })
       } catch (callbackError) {
         const detail = callbackError instanceof Error ? callbackError.message : 'OAuth callback failed.'
+        const normalizedDetail = detail.toLowerCase()
+        const staleState =
+          normalizedDetail.includes('oauth state has already been used') ||
+          normalizedDetail.includes('oauth state has expired')
         const hasOpener = typeof window !== 'undefined' && window.opener && !window.opener.closed
-        if (hasOpener) {
+        if (hasOpener && !staleState) {
           window.opener.postMessage(
             {
               type: 'aawe-oauth-error',
@@ -80,10 +90,16 @@ export function AuthCallbackPage() {
             window.location.origin,
           )
         }
+        if (staleState) {
+          setStatus('Sign-in session expired. Start ORCID sign-in again from the main window.')
+          return
+        }
         setError(detail)
+      } finally {
+        inFlightKeyRef.current = null
       }
     })()
-  }, [navigate, params])
+  }, [callbackKey, code, navigate, oauthError, providerRaw, state])
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-10">
