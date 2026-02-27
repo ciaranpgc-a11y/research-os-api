@@ -4,6 +4,10 @@ Research OS provides:
 - A FastAPI backend for manuscript drafting + project/manuscript state.
 - A React frontend for section drafting, manuscript editing, and project bootstrap wizard flows.
 
+## Codex Contributors
+
+Codex contributors: follow `.codex/INSTRUCTIONS.md` for tool usage, verification, and security rules.
+
 ## Local Development
 
 Backend install:
