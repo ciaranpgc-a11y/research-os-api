@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { houseForms, houseTypography } from '@/lib/house-style'
 import type { WorkingTableColumnMeta, WorkingTableColumnType } from '@/types/data-workspace'
@@ -86,10 +87,9 @@ export function AddColumnModal({ open, onOpenChange, existingColumns, onAddColum
 
           <div className="space-y-1" data-house-role="field-group">
             <Label htmlFor="add-column-type">Data type</Label>
-            <select
+            <Select
               id="add-column-type"
-              data-house-role="form-select"
-              className={`h-9 w-full rounded-md px-3 text-sm ${houseForms.select}`}
+              className="w-full"
               value={dataType}
               onChange={(event) => setDataType(event.target.value as WorkingTableColumnType)}
             >
@@ -98,7 +98,7 @@ export function AddColumnModal({ open, onOpenChange, existingColumns, onAddColum
                   {option.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div className="space-y-1" data-house-role="field-group">

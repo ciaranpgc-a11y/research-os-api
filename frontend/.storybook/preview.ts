@@ -7,6 +7,22 @@ import '../src/index.css'
 import { useAaweStore } from '../src/store/use-aawe-store'
 import type { UiTheme } from '../src/store/use-aawe-store'
 
+declare global {
+  interface Window {
+    __aaweStorybookMswReady?: Promise<void>
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.__aaweStorybookMswReady ??= import('../src/mocks/browser')
+    .then(({ worker }) =>
+      worker.start({
+        onUnhandledRequest: 'bypass',
+      }),
+    )
+    .catch(() => undefined)
+}
+
 function getStoredTheme(): UiTheme {
   if (typeof window === 'undefined') {
     return 'light'

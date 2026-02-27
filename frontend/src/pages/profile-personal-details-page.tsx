@@ -5,8 +5,9 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { clearAuthSessionToken, getAuthSessionToken, getCachedAuthRole } from '@/lib/auth-session'
-import { houseDividers, houseForms, houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseDividers, houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import {
   fetchAffiliationAddressForMe,
@@ -126,7 +127,6 @@ const HOUSE_ACTION_BUTTON_PRIMARY_CLASS = `h-9 rounded-md border border-[hsl(var
 const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
 const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
 const HOUSE_LEFT_BORDER_CLASS = `${houseSurfaces.leftBorder} ${houseSurfaces.leftBorderAccount}`
-const HOUSE_SELECT_CLASS = `h-9 w-full rounded-md px-3 py-1 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${houseForms.select}`
 const HOUSE_PROFILE_PHOTO_PANEL_CLASS = `sm:col-span-2 flex items-start gap-3 px-3 py-2.5 ${houseSurfaces.softPanel}`
 const HOUSE_PROFILE_PHOTO_EDITOR_CLASS = 'space-y-2 rounded-md border border-[hsl(var(--stroke-strong)/0.92)] bg-[hsl(var(--tone-neutral-50))] p-2.5'
 const HOUSE_ACCOUNT_PANEL_CLASS = 'rounded-md border border-[hsl(var(--stroke-strong)/0.98)] bg-card px-3 py-2.5'
@@ -2198,10 +2198,9 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             <div className="grid gap-3 sm:col-span-2 sm:grid-cols-[12rem_minmax(0,1fr)_minmax(0,1fr)]">
               <label className="space-y-1">
                 <span className="house-field-label">Salutation</span>
-                <select
+                <Select
                   value={draft.salutation}
                   onChange={(event) => onFieldChange('salutation', event.target.value)}
-                  className={HOUSE_SELECT_CLASS}
                   autoComplete="honorific-prefix"
                 >
                   <option value="">Select</option>
@@ -2210,7 +2209,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       {option}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
 
               <label className="space-y-1">

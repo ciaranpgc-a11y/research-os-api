@@ -4,8 +4,9 @@ import { useMemo } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { houseForms, houseTypography } from '@/lib/house-style'
+import { houseTypography } from '@/lib/house-style'
 import type { WorkingTable, WorkingTableAbbreviation, WorkingTableColumnMeta } from '@/types/data-workspace'
 
 type TableTabsProps = {
@@ -395,9 +396,9 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
             {footnotes.map((footnote, index) => (
               <div key={`footnote-${index}`} className="space-y-1 rounded border border-border/60 p-2">
                 <p className="text-xs font-medium">{alphabetLabel(index)})</p>
-                <textarea
-                  data-house-role="form-textarea"
-                  className={`min-h-16 w-full rounded-md px-2 py-1.5 text-xs ${houseForms.textarea}`}
+                <Textarea
+                  size="sm"
+                  className="min-h-16 px-2 py-1.5 text-xs"
                   value={footnote}
                   onChange={(event) => onUpdateFootnote(index, event.target.value)}
                 />

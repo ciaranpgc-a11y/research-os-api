@@ -6,9 +6,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
 import { getAuthSessionToken } from '@/lib/auth-session'
-import { houseForms, houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import {
   createCollaborator,
   deleteCollaborator,
@@ -650,16 +652,16 @@ export function ProfileCollaborationPage() {
                 placeholder="Search name, email, ORCID, institution..."
                 className="max-w-md"
               />
-              <select
+              <Select
                 value={sort}
                 onChange={(event) => setSort(event.target.value)}
-                className={`h-9 rounded-md px-3 text-sm ${houseForms.select}`}
+                className="h-9 w-auto px-3 text-sm"
               >
                 <option value="name">Sort: Name</option>
                 <option value="works">Sort: Coauthored works</option>
                 <option value="last_collaboration_year">Sort: Last collaboration</option>
                 <option value="strength">Sort: Strength score</option>
-              </select>
+              </Select>
               <Button type="button" size="sm" variant="outline" onClick={onSearch}>
                 <RefreshCcw className="mr-1 h-3.5 w-3.5" />
                 Search
@@ -829,11 +831,11 @@ export function ProfileCollaborationPage() {
                 placeholder="Domains (comma-separated)"
               />
             </div>
-            <textarea
+            <Textarea
               value={form.notes}
               onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
               placeholder="Notes"
-              className="min-h-24 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              className="min-h-24 px-3 py-2 text-sm"
             />
             {duplicateWarnings.length > 0 ? (
               <div className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">

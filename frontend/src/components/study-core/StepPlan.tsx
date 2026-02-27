@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { getJournalQualityScore, getJournalQualityStars } from '@/lib/research-frame-options'
 import { type PlanSectionKey } from '@/lib/plan-section-readiness'
 import {
@@ -891,7 +892,7 @@ export function StepPlan(props: StepPlanProps) {
                 <Button type="button" size="sm" variant={answer === 'yes' ? 'default' : 'outline'} onClick={() => setAnswer('yes')}>Yes</Button>
                 <Button type="button" size="sm" variant={answer === 'no' ? 'default' : 'outline'} onClick={() => setAnswer('no')}>No</Button>
               </div>
-              <textarea className="min-h-20 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm" placeholder="Optional comment" value={comment} onChange={(e) => setComment(e.target.value)} />
+              <Textarea className="min-h-20 px-2 py-1.5 text-sm" placeholder="Optional comment" value={comment} onChange={(e) => setComment(e.target.value)} />
               <div className="flex gap-2">
                 <Button type="button" className="house-button-action-primary text-sm font-semibold" onClick={() => void saveAnswerAndNext()} disabled={answer !== 'yes' && answer !== 'no'}>Save answer and continue</Button>
                 <Button type="button" variant="outline" onClick={() => void askNext(responses, true)} disabled={questionBusy}>Ask another targeted question</Button>
@@ -1098,7 +1099,7 @@ export function StepPlan(props: StepPlanProps) {
                           Add subheading
                         </Button>
                       </div>
-                      <textarea className="min-h-44 w-full rounded-md border border-border bg-background px-3 py-2 text-sm" value={section.content} onChange={(e) => updatePlan((current) => ({ ...current, sections: current.sections.map((item) => item.key === section.key ? { ...item, content: e.target.value, summary: firstLine(e.target.value, item.summary) } : item) }), false)} onBlur={() => { pushCore(section.key as Key, section.content, 'manual'); if (planJson) void savePlan(planJson) }} onSelect={(e) => { const core = toCore(section.key as Key); if (!core) return; const t = e.currentTarget; onAiPlanSectionSelectionChange(core, { start: t.selectionStart || 0, end: t.selectionEnd || 0, text: t.value.slice(t.selectionStart || 0, t.selectionEnd || 0) }) }} />
+                      <Textarea className="min-h-44 px-3 py-2 text-sm" value={section.content} onChange={(e) => updatePlan((current) => ({ ...current, sections: current.sections.map((item) => item.key === section.key ? { ...item, content: e.target.value, summary: firstLine(e.target.value, item.summary) } : item) }), false)} onBlur={() => { pushCore(section.key as Key, section.content, 'manual'); if (planJson) void savePlan(planJson) }} onSelect={(e) => { const core = toCore(section.key as Key); if (!core) return; const t = e.currentTarget; onAiPlanSectionSelectionChange(core, { start: t.selectionStart || 0, end: t.selectionEnd || 0, text: t.value.slice(t.selectionStart || 0, t.selectionEnd || 0) }) }} />
                       <div className="rounded-md border border-border/70 bg-muted/20 p-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">To confirm</p>
                         {section.to_confirm.length ? (

@@ -7,6 +7,7 @@ import { publicationsHouseDetail, publicationsHouseDrilldown, publicationsHouseH
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -99,7 +100,6 @@ const PUBLICATIONS_OA_AUTO_STATUS_CLEAR_DELAY_MS = 9000
 const PUBLICATION_DETAIL_ACTIVE_TAB_STORAGE_KEY = 'aawe.pubDetail.activeTab'
 const HOUSE_SECTION_DIVIDER_STRONG_CLASS = houseDividers.strong
 const HOUSE_INPUT_CLASS = houseForms.input
-const HOUSE_SELECT_CLASS = houseForms.select
 const HOUSE_TABLE_FILTER_INPUT_CLASS = houseTables.filterInput
 const HOUSE_TABLE_FILTER_SELECT_CLASS = houseTables.filterSelect
 const HOUSE_TABLE_SORT_TRIGGER_CLASS = houseTables.sortTrigger
@@ -2542,21 +2542,21 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               placeholder="Filter by title, journal, DOI, PMID, author"
               className={`w-sz-280 ${HOUSE_INPUT_CLASS} ${HOUSE_TABLE_FILTER_INPUT_CLASS}`}
             />
-            <select
+            <Select
               value={filterKey}
               onChange={(event) => setFilterKey(event.target.value as PublicationFilterKey)}
-              className={`h-9 rounded-md px-2 ${HOUSE_SELECT_CLASS} ${HOUSE_TABLE_FILTER_SELECT_CLASS}`}
+              className={`h-9 w-auto rounded-md px-2 ${HOUSE_TABLE_FILTER_SELECT_CLASS}`}
             >
               <option value="all">All works</option>
               <option value="cited">Cited only</option>
               <option value="with_doi">With DOI</option>
               <option value="with_abstract">With abstract</option>
               <option value="with_pmid">With PMID</option>
-            </select>
-            <select
+            </Select>
+            <Select
               value={typeFilter}
               onChange={(event) => setTypeFilter(event.target.value)}
-              className={`h-9 rounded-md px-2 ${HOUSE_SELECT_CLASS} ${HOUSE_TABLE_FILTER_SELECT_CLASS}`}
+              className={`h-9 w-auto rounded-md px-2 ${HOUSE_TABLE_FILTER_SELECT_CLASS}`}
             >
               <option value="all">All types</option>
               {typeFilterOptions.map((value) => (
@@ -2564,7 +2564,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   {value}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div className="grid grid-cols-1 items-start gap-4">
             <div className="space-y-1">

@@ -45,6 +45,8 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof DialogPrimitive.Co
         )}
         {...props}
       >
+        <DialogPrimitive.Title className="sr-only">Panel</DialogPrimitive.Title>
+        <DialogPrimitive.Description className="sr-only">Panel content</DialogPrimitive.Description>
         <SheetClose
           data-ui="sheet-close"
           data-house-role="sheet-close"

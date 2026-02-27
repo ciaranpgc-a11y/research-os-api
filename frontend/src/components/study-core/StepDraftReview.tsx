@@ -2,9 +2,10 @@ import { Check, Loader2, RefreshCcw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { getAuthSessionToken } from '@/lib/auth-session'
-import { houseForms } from '@/lib/house-style'
 import { fetchManuscript, generateGroundedDraft, updateManuscriptSections } from '@/lib/study-core-api'
 import { manuscriptParagraphs } from '@/mock/manuscript'
 import type { ClaimLinkSuggestion } from '@/types/study-core'
@@ -195,8 +196,8 @@ export function StepDraftReview({
                   </Button>
                 </div>
               </div>
-              <textarea
-                className="min-h-60 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              <Textarea
+                className="min-h-60"
                 value={draftsBySection[section] ?? ''}
                 onChange={(event) => onDraftChange(section, event.target.value)}
               />
@@ -209,15 +210,15 @@ export function StepDraftReview({
         <summary className="cursor-pointer text-sm font-medium">Details</summary>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <label className="text-xs font-medium text-muted-foreground">Style profile</label>
-          <select
-            className={`h-9 rounded-md px-3 text-sm ${houseForms.select}`}
+          <Select
+            className="w-auto"
             value={styleProfile}
             onChange={(event) => onStyleProfileChange(event.target.value as 'technical' | 'concise' | 'narrative_review')}
           >
             <option value="technical">technical</option>
             <option value="narrative_review">clinical</option>
             <option value="concise">concise</option>
-          </select>
+          </Select>
           <p className="text-xs text-muted-foreground">Accepted sections: {acceptedSectionKeys.length}</p>
           <p className="text-xs text-muted-foreground">Evidence links for active section: {evidenceCountForSection(activeSection, links)}</p>
         </div>

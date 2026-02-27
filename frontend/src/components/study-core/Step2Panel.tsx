@@ -2,6 +2,7 @@ import { Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import { applyRecommendedSectionFix, assessPlanSection, type PlanSectionKey } from '@/lib/plan-section-readiness'
 import { editPlanManuscriptSection, fetchNextPlanClarificationQuestion } from '@/lib/study-core-api'
 import type { PlanClarificationQuestion, Step2ClarificationResponse } from '@/types/study-core'
@@ -401,8 +402,8 @@ export function Step2Panel({
             </Button>
           </div>
 
-          <textarea
-            className="min-h-16 w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs"
+          <Textarea
+            className="min-h-16 px-2 py-1.5 text-xs"
             placeholder="Optional comment"
             value={draftComment}
             onChange={(event) => setDraftComment(event.target.value)}
@@ -487,8 +488,8 @@ export function Step2Panel({
             </Button>
           ) : null}
 
-          <textarea
-            className="min-h-16 w-full rounded-md border border-emerald-200 bg-background px-2 py-1.5 text-xs"
+          <Textarea
+            className="min-h-16 border-emerald-200 px-2 py-1.5 text-xs"
             placeholder={`Edit instruction for ${titleCase(activeSection)}...`}
             value={editInstruction}
             onChange={(event) => setEditInstruction(event.target.value)}

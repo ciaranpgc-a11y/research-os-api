@@ -22,6 +22,7 @@ import { TopBar } from '@/components/layout/top-bar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Select } from '@/components/ui/select'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { WorkspacesDataLibraryView } from '@/pages/workspaces-data-library-view'
@@ -119,7 +120,6 @@ const HOUSE_TABLE_FILTER_INPUT_CLASS = houseTables.filterInput
 const HOUSE_TABLE_FILTER_SELECT_CLASS = houseTables.filterSelect
 const HOUSE_TABLE_SORT_TRIGGER_CLASS = houseTables.sortTrigger
 const HOUSE_INPUT_CLASS = houseForms.input
-const HOUSE_SELECT_CLASS = houseForms.select
 const HOUSE_ACTION_BUTTON_CLASS = houseForms.actionButton
 const HOUSE_PRIMARY_ACTION_BUTTON_CLASS = houseForms.actionButtonPrimary
 const HOUSE_SUCCESS_ACTION_BUTTON_CLASS = houseForms.actionButtonSuccess
@@ -169,8 +169,7 @@ const HOUSE_ACTIONS_PILL_ICON_GROUP_CLASS = houseActions.actionPillIconGroup
 const HOUSE_ACTIONS_PILL_ICON_CLASS = houseActions.actionPillIcon
 const HOUSE_WORKSPACE_TABLE_SHELL_CLASS = 'house-workspaces-table-shell'
 const HOUSE_WORKSPACE_FILTER_SELECT_CLASS = cn(
-  'h-9 rounded-md px-2',
-  HOUSE_SELECT_CLASS,
+  'h-9 w-auto rounded-md px-2',
   HOUSE_TABLE_FILTER_SELECT_CLASS,
 )
 
@@ -1158,7 +1157,7 @@ function WorkspacesDrilldownPanel({
                       <div className="flex items-center gap-1.5">
                         {isRoleEditorOpen ? (
                           <div className="flex items-center gap-1">
-                            <select
+                            <Select
                               value={roleEditorCurrentRole}
                               onChange={(event) => {
                                 const nextRole = normalizeCollaboratorRoleValue(event.target.value)
@@ -1167,14 +1166,14 @@ function WorkspacesDrilldownPanel({
                                 }
                                 setRoleEditorDraftRole(nextRole)
                               }}
-                              className={cn('h-8 min-w-sz-110 rounded-md px-2 text-xs', HOUSE_SELECT_CLASS)}
+                              className="h-8 w-auto min-w-sz-110 px-2 text-xs"
                             >
                               {COLLABORATOR_ROLE_OPTIONS.map((option) => (
                                 <option key={option.value} value={option.value}>
                                   {option.label}
                                 </option>
                               ))}
-                            </select>
+                            </Select>
                             <button
                               type="button"
                               className={cn(
@@ -1227,13 +1226,13 @@ function WorkspacesDrilldownPanel({
                           </div>
                         ) : isRestoreEditorOpen ? (
                           <div className="flex items-center gap-1">
-                            <select
+                            <Select
                               value={restoreEditorRole || ''}
                               onChange={(event) => {
                                 const nextRole = normalizeCollaboratorRoleValue(event.target.value)
                                 setRestoreEditorRole(nextRole)
                               }}
-                              className={cn('h-8 min-w-sz-110 rounded-md px-2 text-xs', HOUSE_SELECT_CLASS)}
+                              className="h-8 w-auto min-w-sz-110 px-2 text-xs"
                             >
                               <option value="">Select role</option>
                               {COLLABORATOR_ROLE_OPTIONS.map((option) => (
@@ -1241,7 +1240,7 @@ function WorkspacesDrilldownPanel({
                                   {option.label}
                                 </option>
                               ))}
-                            </select>
+                            </Select>
                             <button
                               type="button"
                               className={cn(
@@ -1492,7 +1491,7 @@ function WorkspacesDrilldownPanel({
 
                 <div className="space-y-1">
                   <p className={HOUSE_FIELD_HELPER_CLASS}>Role</p>
-                  <select
+                  <Select
                     value={collaboratorInviteRole}
                     onChange={(event) => {
                       const nextRole = normalizeCollaboratorRoleValue(event.target.value)
@@ -1501,14 +1500,14 @@ function WorkspacesDrilldownPanel({
                       }
                       onCollaboratorInviteRoleChange(nextRole)
                     }}
-                    className={cn('h-8 min-w-sz-120 rounded-md px-2 text-xs', HOUSE_SELECT_CLASS)}
+                    className="h-8 w-auto min-w-sz-120 px-2 text-xs"
                   >
                     {COLLABORATOR_ROLE_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
 
                 <div className="flex justify-end">
@@ -3085,7 +3084,7 @@ export function WorkspacesPage() {
                       placeholder="Filter workspaces"
                       className={cn('w-sz-260', HOUSE_INPUT_CLASS, HOUSE_TABLE_FILTER_INPUT_CLASS)}
                     />
-                    <select
+                    <Select
                       value={filterKey}
                       onChange={(event) => setFilterKey(event.target.value as FilterKey)}
                       className={HOUSE_WORKSPACE_FILTER_SELECT_CLASS}
@@ -3095,9 +3094,9 @@ export function WorkspacesPage() {
                           {option.label}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                     {viewMode === 'cards' ? (
-                      <select
+                      <Select
                         value={sortColumn}
                         onChange={(event) => onSort(event.target.value as SortColumn)}
                         className={HOUSE_WORKSPACE_FILTER_SELECT_CLASS}
@@ -3106,7 +3105,7 @@ export function WorkspacesPage() {
                         <option value="name">Sort: Name</option>
                         <option value="stage">Sort: Stage</option>
                         <option value="status">Sort: Status</option>
-                      </select>
+                      </Select>
                     ) : null}
                     {viewMode === 'cards' ? (
                       <Button

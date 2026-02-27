@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { TopBar } from '@/components/layout/top-bar'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 import { API_BASE_URL } from '@/lib/api'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { decryptWorkspaceInboxText } from '@/lib/workspace-inbox-crypto'
@@ -1674,14 +1675,14 @@ export function WorkspaceInboxPage() {
 
                   <footer data-house-role="inbox-composer-footer" className="space-y-2 border-t border-border p-3">
                     <label data-house-role="inbox-composer-label" htmlFor="workspace-inbox-message" className={houseTypography.fieldLabel}>Compose message</label>
-                    <textarea
+                    <Textarea
                       data-house-role="inbox-composer-textarea"
                       id="workspace-inbox-message"
                       ref={composerRef}
                       value={draft}
                       onChange={(event) => setDraft(event.target.value)}
                       placeholder={canContributeToWorkspaceInbox ? 'Write an inbox message...' : INBOX_READ_ONLY_MESSAGE}
-                      className={cn('min-h-24 w-full rounded-md px-3 py-2 text-sm', houseForms.textarea)}
+                      className="min-h-24"
                       disabled={sending || !canContributeToWorkspaceInbox}
                     />
                     <div data-house-role="inbox-composer-actions" className="flex flex-wrap items-center justify-between gap-2">

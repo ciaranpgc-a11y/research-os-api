@@ -2,8 +2,8 @@ import { Download, Loader2, ShieldCheck } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Select } from '@/components/ui/select'
 import { getAuthSessionToken } from '@/lib/auth-session'
-import { houseForms } from '@/lib/house-style'
 import {
   exportManuscriptMarkdownWithWarnings,
   exportQcGatedMarkdown,
@@ -249,15 +249,15 @@ export function StepLinkQcExport({
           <div className="space-y-2 rounded-md border border-border bg-background p-3">
             <p className="text-sm font-medium">Linking diagnostics</p>
             <div className="flex flex-wrap items-center gap-2">
-              <select
-                className={`h-9 rounded-md px-3 text-sm ${houseForms.select}`}
+              <Select
+                className="w-auto"
                 value={minConfidence}
                 onChange={(event) => setMinConfidence(event.target.value as 'high' | 'medium' | 'low')}
               >
                 <option value="high">high</option>
                 <option value="medium">medium+</option>
                 <option value="low">all</option>
-              </select>
+              </Select>
               <Button variant="outline" onClick={onRunLinker} disabled={busy === 'link'}>
                 {busy === 'link' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
                 Run Linker
@@ -267,14 +267,14 @@ export function StepLinkQcExport({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              className={`h-9 rounded-md px-3 text-sm ${houseForms.select}`}
+            <Select
+              className="w-auto"
               value={referenceStyle}
               onChange={(event) => setReferenceStyle(event.target.value as 'vancouver' | 'ama')}
             >
               <option value="vancouver">Vancouver</option>
               <option value="ama">AMA</option>
-            </select>
+            </Select>
             <Button variant="outline" onClick={onExportReferences} disabled={busy === 'refs'}>
               {busy === 'refs' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
               Export Reference Pack

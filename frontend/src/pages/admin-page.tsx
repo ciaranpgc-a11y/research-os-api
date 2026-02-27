@@ -26,6 +26,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
 import {
   cancelAdminJob,
@@ -1955,10 +1956,11 @@ export function AdminPage() {
                           className="pl-9"
                         />
                       </div>
-                      <select
+                      <Select
+                        size="lg"
                         value={jobStatus}
                         onChange={(event) => setJobStatus(event.target.value)}
-                        className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        className="w-auto"
                       >
                         <option value="all">All statuses</option>
                         <option value="queued">queued</option>
@@ -1967,7 +1969,7 @@ export function AdminPage() {
                         <option value="completed">completed</option>
                         <option value="failed">failed</option>
                         <option value="cancelled">cancelled</option>
-                      </select>
+                      </Select>
                       <Button type="submit" disabled={loading}>
                         {loading ? 'Loading...' : 'Apply filter'}
                       </Button>

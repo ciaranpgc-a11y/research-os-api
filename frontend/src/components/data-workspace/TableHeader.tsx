@@ -3,7 +3,9 @@ import { MoreHorizontal, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { houseForms, houseTypography } from '@/lib/house-style'
+import { Select } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+import { houseTypography } from '@/lib/house-style'
 import type { WorkingTable, WorkingTableMetadata } from '@/types/data-workspace'
 
 type TableHeaderProps = {
@@ -118,10 +120,9 @@ export function TableHeader({
       <div className="grid gap-2 md:grid-cols-2" data-house-role="metadata-grid">
         <div className="space-y-1" data-house-role="field-group">
           <Label htmlFor={`table-type-${table.id}`}>Table type</Label>
-          <select
+          <Select
             id={`table-type-${table.id}`}
-            data-house-role="form-select"
-            className={`h-9 w-full rounded-md px-3 text-sm ${houseForms.select}`}
+            className="w-full"
             value={metadata.tableType}
             onChange={(event) => onUpdateTable(updateMetadata(table, { tableType: event.target.value }))}
           >
@@ -130,7 +131,7 @@ export function TableHeader({
                 {option}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className="space-y-1" data-house-role="field-group">
@@ -145,10 +146,9 @@ export function TableHeader({
 
         <div className="space-y-1 md:col-span-2" data-house-role="field-group">
           <Label htmlFor={`table-description-${table.id}`}>Description</Label>
-          <textarea
+          <Textarea
             id={`table-description-${table.id}`}
-            data-house-role="form-textarea"
-            className={`min-h-20 w-full rounded-md px-3 py-2 text-sm ${houseForms.textarea}`}
+            className="min-h-20"
             value={metadata.description}
             onChange={(event) => onUpdateTable(updateMetadata(table, { description: event.target.value }))}
             placeholder="Describe table purpose and scope."

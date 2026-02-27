@@ -4,6 +4,7 @@ import { Download, Loader2, PanelRightOpen, RefreshCw, Save, Search, UserPlus, X
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Select } from '@/components/ui/select'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { houseActions, houseCollaborators, houseForms, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import { listCollaborators } from '@/lib/impact-api'
@@ -34,7 +35,6 @@ const HOUSE_TABLE_CELL_TEXT_CLASS = houseTypography.tableCell
 const HOUSE_TABLE_FILTER_INPUT_CLASS = houseTables.filterInput
 const HOUSE_TABLE_FILTER_SELECT_CLASS = houseTables.filterSelect
 const HOUSE_INPUT_CLASS = houseForms.input
-const HOUSE_SELECT_CLASS = houseForms.select
 const HOUSE_ACTION_BUTTON_CLASS = houseForms.actionButton
 const HOUSE_PRIMARY_ACTION_BUTTON_CLASS = houseForms.actionButtonPrimary
 const HOUSE_SUCCESS_ACTION_BUTTON_CLASS = houseForms.actionButtonSuccess
@@ -59,8 +59,7 @@ const HOUSE_COLLABORATOR_CHIP_READONLY_CLASS = houseCollaborators.chipReadOnly
 const HOUSE_COLLABORATOR_CHIP_ACTION_CLASS = houseCollaborators.chipAction
 const DATA_LIBRARY_ICON_BUTTON_DIMENSION_CLASS = 'h-8 w-8 p-0'
 const HOUSE_DATA_LIBRARY_FILTER_SELECT_CLASS = cn(
-  'h-9 rounded-md px-2',
-  HOUSE_SELECT_CLASS,
+  'h-9 w-auto rounded-md px-2',
   HOUSE_TABLE_FILTER_SELECT_CLASS,
 )
 
@@ -627,7 +626,7 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
           className={cn('w-sz-280', HOUSE_INPUT_CLASS, HOUSE_TABLE_FILTER_INPUT_CLASS)}
           disabled={!hasSessionToken}
         />
-        <select
+        <Select
           value={ownershipFilter}
           onChange={(event) => {
             setOwnershipFilter(event.target.value as LibraryAssetOwnership)
@@ -639,8 +638,8 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
           <option value="all">All files</option>
           <option value="owned">Owned by me</option>
           <option value="shared">Shared with me</option>
-        </select>
-        <select
+        </Select>
+        <Select
           value={sortBy}
           onChange={(event) => {
             setSortBy(event.target.value as LibraryAssetSortBy)
@@ -654,8 +653,8 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
           <option value="byte_size">Sort: Size</option>
           <option value="kind">Sort: Type</option>
           <option value="owner_name">Sort: Owner</option>
-        </select>
-        <select
+        </Select>
+        <Select
           value={sortDirection}
           onChange={(event) => {
             setSortDirection(event.target.value as LibraryAssetSortDirection)
@@ -666,7 +665,7 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
         >
           <option value="desc">Descending</option>
           <option value="asc">Ascending</option>
-        </select>
+        </Select>
       </div>
 
       {!hasSessionToken ? (
@@ -969,21 +968,21 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
               Showing {visibleStart}-{visibleEnd} of {total}
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <select
+              <Select
                 value={String(pageSize)}
                 onChange={(event) => {
                   const nextPageSize = Math.max(10, Math.min(100, Number(event.target.value || 25)))
                   setPageSize(nextPageSize)
                   setPage(1)
                 }}
-                className={cn('h-8 rounded-md px-2 text-xs', HOUSE_SELECT_CLASS, HOUSE_TABLE_FILTER_SELECT_CLASS)}
+                className={cn('h-8 w-auto rounded-md px-2 text-xs', HOUSE_TABLE_FILTER_SELECT_CLASS)}
                 disabled={!hasSessionToken || isLoading}
               >
                 <option value="10">10 / page</option>
                 <option value="25">25 / page</option>
                 <option value="50">50 / page</option>
                 <option value="100">100 / page</option>
-              </select>
+              </Select>
               <Button
                 type="button"
                 size="sm"

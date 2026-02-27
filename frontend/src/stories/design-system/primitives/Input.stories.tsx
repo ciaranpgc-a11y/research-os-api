@@ -1,9 +1,70 @@
-﻿import type { Meta, StoryObj } from '@storybook/react';
-import { Input } from '@/components/ui/input';
-import { StoryFrame } from '../_helpers/StoryFrame';
+import type { Meta, StoryObj } from '@storybook/react'
+import { expect, userEvent, within } from '@storybook/test'
 
-const meta: Meta<typeof Input> = { title: 'Design System/Primitives/Input', component: Input, parameters: { layout: 'fullscreen' } };
-export default meta;
-type Story = StoryObj<typeof meta>;
+import { Input } from '@/components/ui/input'
 
-export const States: Story = { render: () => <StoryFrame title="Input"><div className="grid max-w-xl gap-3"><Input value="Default value" readOnly /><Input placeholder="Placeholder" /><Input aria-invalid className="border-[hsl(var(--tone-danger-500))]" value="Invalid value" readOnly /><Input disabled value="Disabled" readOnly /><Input className="ring-2 ring-ring" value="Focus simulated" readOnly /></div></StoryFrame> };
+import { StoryFrame } from '../_helpers/StoryFrame'
+
+const meta = {
+  title: 'Design System/Primitives/Input',
+  component: Input,
+  parameters: {
+    layout: 'fullscreen',
+  },
+} satisfies Meta<typeof Input>
+
+export default meta
+
+type Story = StoryObj<typeof meta>
+
+export const States: Story = {
+  render: () => (
+    <StoryFrame title="Input">
+      <div data-ui="input-story" className="max-w-xl space-y-5">
+        <section data-ui="input-story-sizes" className="space-y-2">
+          <div data-ui="input-story-sizes-label" className="text-label text-muted-foreground">
+            Sizes
+          </div>
+          <div data-ui="input-story-sizes-grid" className="grid gap-2">
+            <Input data-ui="input-story-size-sm" size="sm" defaultValue="Small" readOnly />
+            <Input data-ui="input-story-size-default" size="default" defaultValue="Default" readOnly />
+            <Input data-ui="input-story-size-lg" size="lg" defaultValue="Large" readOnly />
+          </div>
+        </section>
+
+        <section data-ui="input-story-states" className="space-y-2">
+          <div data-ui="input-story-states-label" className="text-label text-muted-foreground">
+            States
+          </div>
+          <div data-ui="input-story-states-grid" className="grid gap-2">
+            <Input data-ui="input-story-default" placeholder="Default" />
+            <Input data-ui="input-story-invalid" aria-invalid="true" defaultValue="Invalid" readOnly />
+            <Input data-ui="input-story-disabled" disabled defaultValue="Disabled" readOnly />
+          </div>
+        </section>
+
+        <section data-ui="input-story-focus" className="space-y-2">
+          <div data-ui="input-story-focus-label" className="text-label text-muted-foreground">
+            Focus Visible
+          </div>
+          <div data-ui="input-story-focus-grid" className="grid gap-2">
+            <Input data-ui="input-story-focus-before" aria-label="Input focus before" defaultValue="Before" readOnly />
+            <Input
+              data-ui="input-story-focus-target"
+              aria-label="Input focus target"
+              defaultValue="Focus target"
+              readOnly
+            />
+          </div>
+        </section>
+      </div>
+    </StoryFrame>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const before = canvas.getByLabelText('Input focus before')
+    before.focus()
+    await userEvent.tab()
+    await expect(canvas.getByLabelText('Input focus target')).toHaveFocus()
+  },
+}

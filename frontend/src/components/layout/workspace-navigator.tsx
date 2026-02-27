@@ -1,8 +1,9 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Select } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { houseForms, houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { getHouseLeftBorderToneClass, getHouseNavToneClass, type HouseSectionTone } from '@/lib/section-tone'
 import { cn } from '@/lib/utils'
 import { useWorkspaceStore, type WorkspaceHealth } from '@/store/use-workspace-store'
@@ -110,17 +111,17 @@ export function WorkspaceNavigator({ workspaceId, onNavigate }: WorkspaceNavigat
         </div>
         <div className={houseLayout.sidebarSection}>
           <label className={houseNavigation.sectionLabel}>Workspace</label>
-          <select
+          <Select
+            size="sm"
             value={workspaceId}
             onChange={(event) => onWorkspaceChange(event.target.value)}
-            className={cn('h-9 w-full rounded-md px-2 text-sm', houseForms.select)}
           >
             {workspaces.map((workspace) => (
               <option key={workspace.id} value={workspace.id}>
                 {workspace.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
       <ScrollArea className={houseLayout.sidebarScroll}>

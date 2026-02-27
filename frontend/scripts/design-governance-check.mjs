@@ -6,10 +6,17 @@ const TARGET_DIRS = [path.join(ROOT, 'src'), path.join(ROOT, '.storybook')]
 const ALLOWED_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.css'])
 const JSX_EXTENSIONS = new Set(['.tsx', '.jsx'])
 const HOUSE_ROLE_BASELINE_PATH = path.join(ROOT, 'scripts', 'house-role-baseline.json')
+const RAW_FORM_CONTROLS_BASELINE_PATH = path.join(ROOT, 'scripts', 'raw-form-controls-baseline.json')
 const APP_ENTRY_FILE = path.join(ROOT, 'src', 'App.tsx')
 const ALLOWED_DURATION_TOKENS = new Set(['150', '200', '220', '300', '320', '420', '500', '700'])
 const ALLOWED_NAV_LEFT_WIDTHS = new Set(['250', '280'])
 const ALLOWED_NAV_RIGHT_WIDTHS = new Set(['', '280', '320', '340'])
+const RAW_FORM_CONTROL_ALLOWLIST = new Set([
+  'src/components/ui/textarea.tsx',
+  'src/components/ui/select.tsx',
+  'src/stories/design-system/primitives/Textarea.stories.tsx',
+  'src/stories/design-system/primitives/SelectDropdown.stories.tsx',
+])
 
 const RULES = [
   {
@@ -154,6 +161,63 @@ function loadHouseRoleBaseline() {
   }
 }
 
+function loadRawFormControlsBaseline() {
+  if (!fs.existsSync(RAW_FORM_CONTROLS_BASELINE_PATH)) {
+    return []
+  }
+  try {
+    const raw = fs.readFileSync(RAW_FORM_CONTROLS_BASELINE_PATH, 'utf8')
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      return parsed
+    }
+    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.entries)) {
+      return parsed.entries
+    }
+    return []
+  } catch {
+    return []
+  }
+}
+
+function buildRawFormControlBaselineCounts(entries) {
+  const counts = new Map()
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') {
+      continue
+    }
+    const file = typeof entry.file === 'string' ? entry.file : ''
+    const tag = typeof entry.tag === 'string' ? entry.tag.toLowerCase() : ''
+    if (!file || !tag) {
+      continue
+    }
+    const key = `${file}::${tag}`
+    counts.set(key, Number(counts.get(key) || 0) + 1)
+  }
+  return counts
+}
+
+function normalizeMatchSnippet(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180)
+}
+
+function collectRawFormControls(source) {
+  const controls = []
+  const rawFormControlPattern = /<(textarea|select)\b[^>]*>/g
+  for (const match of source.matchAll(rawFormControlPattern)) {
+    const tag = String(match[1] || '').toLowerCase()
+    controls.push({
+      index: match.index ?? 0,
+      tag,
+      snippet: normalizeMatchSnippet(match[0]),
+    })
+  }
+  return controls
+}
+
 function collectUntaggedIntrinsicElements(source) {
   const untagged = []
   const openingTagPattern = /<([a-z][a-z0-9-]*)(\s[^<>]*?)?(\/?)>/g
@@ -188,6 +252,9 @@ function collectUntaggedIntrinsicElements(source) {
 const violations = []
 const houseRoleViolations = []
 const houseRoleBaseline = loadHouseRoleBaseline()
+const rawFormControlViolations = []
+const rawFormControlBaselineEntries = loadRawFormControlsBaseline()
+const rawFormControlBaselineCounts = buildRawFormControlBaselineCounts(rawFormControlBaselineEntries)
 
 for (const dir of TARGET_DIRS) {
   const files = listFiles(dir)
@@ -264,6 +331,37 @@ for (const dir of TARGET_DIRS) {
     }
 
     if (JSX_EXTENSIONS.has(extension)) {
+      if (relativePath.startsWith('src/') && !RAW_FORM_CONTROL_ALLOWLIST.has(relativePath)) {
+        const rawFormControls = collectRawFormControls(source)
+        if (rawFormControls.length > 0) {
+          const byTag = new Map()
+          for (const item of rawFormControls) {
+            const list = byTag.get(item.tag) || []
+            list.push(item)
+            byTag.set(item.tag, list)
+          }
+          for (const [tag, items] of byTag.entries()) {
+            const baselineKey = `${relativePath}::${tag}`
+            const baselineCount = Number(rawFormControlBaselineCounts.get(baselineKey) || 0)
+            if (items.length > baselineCount) {
+              const overflow = items.slice(baselineCount)
+              for (const item of overflow) {
+                const { line, col } = getLineAndCol(source, item.index)
+                rawFormControlViolations.push({
+                  file: relativePath,
+                  line,
+                  col,
+                  tag,
+                  snippet: item.snippet,
+                  message:
+                    `Raw <${tag}> usage is not allowed in app code. Use the canonical \`${tag === 'select' ? 'Select' : 'Textarea'}\` primitive.`,
+                })
+              }
+            }
+          }
+        }
+      }
+
       const untagged = collectUntaggedIntrinsicElements(source)
       const baselineCount = Number(houseRoleBaseline[relativePath] || 0)
       if (untagged.length > baselineCount) {
@@ -319,12 +417,17 @@ if (!fs.existsSync(APP_ENTRY_FILE)) {
   }
 }
 
-if (violations.length > 0 || houseRoleViolations.length > 0) {
-  const total = violations.length + houseRoleViolations.length
+if (violations.length > 0 || houseRoleViolations.length > 0 || rawFormControlViolations.length > 0) {
+  const total = violations.length + houseRoleViolations.length + rawFormControlViolations.length
   console.error(`Design governance check failed with ${total} violation(s).`)
   for (const violation of violations) {
     console.error(
       `${violation.file}:${violation.line}:${violation.col} [${violation.rule}] ${violation.message} -> ${violation.snippet}`,
+    )
+  }
+  for (const violation of rawFormControlViolations) {
+    console.error(
+      `${violation.file}:${violation.line}:${violation.col} [raw-form-controls] ${violation.message} -> ${violation.snippet}`,
     )
   }
   for (const violation of houseRoleViolations) {

@@ -3,8 +3,9 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { getAuthSessionToken } from '@/lib/auth-session'
-import { houseForms } from '@/lib/house-style'
 import {
   cancelGeneration,
   enqueueGeneration,
@@ -632,13 +633,7 @@ export function StepRun({
         </div>
         {authorsStatus ? <p className="text-xs text-emerald-700">{authorsStatus}</p> : null}
         {authorsError ? <p className="text-xs text-destructive">{authorsError}</p> : null}
-        {authorsBlock ? (
-          <textarea
-            className="min-h-24 w-full rounded-md border border-border bg-background px-3 py-2 text-xs"
-            value={authorsBlock}
-            readOnly
-          />
-        ) : null}
+        {authorsBlock ? <Textarea className="min-h-24 text-xs" value={authorsBlock} readOnly /> : null}
       </div>
 
       <div className="space-y-2">
@@ -689,8 +684,8 @@ export function StepRun({
                 </Button>
               </div>
             </div>
-            <textarea
-              className="min-h-28 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            <Textarea
+              className="min-h-28"
               value={generationBrief}
               onChange={(event) => onGenerationBriefChange(event.target.value)}
               placeholder={'Objective: ...\nConstraints: ...'}
@@ -716,15 +711,15 @@ export function StepRun({
 
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground">Reasoning effort</p>
-              <select
-                className={`h-9 w-full rounded-md px-3 text-sm ${houseForms.select}`}
+              <Select
+                className="w-full"
                 value={reasoningEffort}
                 onChange={(event) => onReasoningEffortChange(event.target.value as 'low' | 'medium' | 'high')}
               >
                 <option value="low">low</option>
                 <option value="medium">medium</option>
                 <option value="high">high</option>
-              </select>
+              </Select>
             </div>
           </div>
 

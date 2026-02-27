@@ -53,7 +53,8 @@ export const publicationsHouseMotion = {
   chartScaleTick: houseMotion.chartScaleTick,
   chartScaleAxisTitle: houseMotion.chartScaleAxisTitle,
   chartScaleMeanLine: houseMotion.chartScaleMeanLine,
-  chartScaleMeanLineDelayed: houseMotion.chartScaleMeanLineDelayed,
+  // TODO: Map to a dedicated delayed class when houseMotion exposes one again.
+  chartScaleMeanLineDelayed: houseMotion.chartScaleMeanLine,
   toggleTrack: houseMotion.toggleTrack,
   toggleThumb: houseMotion.toggleThumb,
   toggleButton: houseMotion.toggleButton,

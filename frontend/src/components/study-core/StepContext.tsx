@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   INTERPRETATION_MODE_OPTIONS,
@@ -15,7 +17,6 @@ import {
   getStudyTypeDefaults,
   getStudyTypesForCategory,
 } from '@/lib/research-frame-options'
-import { houseForms } from '@/lib/house-style'
 import { bootstrapRunContext } from '@/lib/study-core-api'
 import type { JournalOption } from '@/types/study-core'
 
@@ -546,9 +547,9 @@ export function StepContext({
                 </a>
               ) : null}
             </div>
-            <select
+            <Select
               id="context-target-journal"
-              className={`h-9 w-full rounded-md px-3 text-sm ${houseForms.select}`}
+              className="w-full"
               value={targetJournal}
               onChange={(event) => onTargetJournalChange(event.target.value)}
             >
@@ -558,7 +559,7 @@ export function StepContext({
                   {journal.display_name}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div className="space-y-1">
@@ -567,9 +568,9 @@ export function StepContext({
               label="3. Research category"
               hint="Pick the broad study family first. Example: observational patient datasets usually fit Observational Clinical Cohort or Imaging Biomarker Study; evidence synthesis fits Methodological / Analytical."
             />
-            <select
+            <Select
               id="context-research-category"
-              className={`h-9 w-full rounded-md px-3 text-sm ${houseForms.select}`}
+              className="w-full"
               value={values.researchCategory}
               onChange={(event) => {
                 const nextCategory = event.target.value
@@ -588,7 +589,7 @@ export function StepContext({
                   {option.category}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div className="space-y-1">
@@ -597,9 +598,9 @@ export function StepContext({
               label="Study type"
               hint="Choose the specific design inside the selected category. Examples: Retrospective single-centre cohort, Cross-sectional imaging biomarker study, Narrative literature synthesis study."
             />
-            <select
+            <Select
               id="context-study-architecture"
-              className={`h-9 w-full rounded-md px-3 text-sm ${houseForms.select}`}
+              className="w-full"
               value={values.studyArchitecture}
               onChange={(event) => {
                 const nextStudyType = event.target.value
@@ -624,7 +625,7 @@ export function StepContext({
                   {option}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         </div>
       </section>
@@ -652,9 +653,9 @@ export function StepContext({
               </Button>
             ))}
           </div>
-          <textarea
+          <Textarea
             id="context-research-objective"
-            className="min-h-48 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            className="min-h-48"
             placeholder="Summarise the research in 2-4 sentences. Provide information on the clinical problem, methods used, and the key results from the data (if available)."
             value={values.researchObjective}
             onChange={(event) => onValueChange('researchObjective', event.target.value)}
@@ -696,9 +697,9 @@ export function StepContext({
               </Button>
             ) : null}
           </div>
-          <select
+          <Select
             id="context-interpretation-mode"
-            className={`h-9 w-full rounded-md px-3 text-sm ${houseForms.select}`}
+            className="w-full"
             value={values.interpretationMode}
             onChange={(event) => onValueChange('interpretationMode', event.target.value)}
           >
@@ -708,7 +709,7 @@ export function StepContext({
                 {option}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </section>
 
