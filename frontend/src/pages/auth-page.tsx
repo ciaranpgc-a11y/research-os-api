@@ -3,8 +3,8 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { LoginCard } from '@/components/auth/LoginCard'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { ButtonPrimitive } from '@/components/primitives/ButtonPrimitive'
+import { InputPrimitive } from '@/components/primitives/InputPrimitive'
 import { clearAuthSessionToken, getAuthSessionToken, isAuthBypassEnabled, setAuthSessionToken } from '@/lib/auth-session'
 import {
   confirmEmailVerification,
@@ -762,16 +762,16 @@ export function AuthPage() {
         error={error}
         errorAction={
           error.toLowerCase().includes('could not reach api') ? (
-            <Button
+            <ButtonPrimitive
               type="button"
-              variant="outline"
+              variant="secondary"
               size="sm"
               className="h-8 text-label"
               onClick={() => void onWakeApi()}
               disabled={loading}
             >
               Retry API connection
-            </Button>
+            </ButtonPrimitive>
           ) : null
         }
         oauthActions={oauthActions}
@@ -780,24 +780,24 @@ export function AuthPage() {
           mode === 'signin' ? (
             <p>
               New to Axiomos?{' '}
-              <button
+              <ButtonPrimitive
                 type="button"
                 className={authSubtleActionClass}
                 onClick={() => setMode('register')}
               >
                 Create an account
-              </button>
+              </ButtonPrimitive>
             </p>
           ) : (
             <p>
               Already have an account?{' '}
-              <button
+              <ButtonPrimitive
                 type="button"
                 className={authSubtleActionClass}
                 onClick={() => setMode('signin')}
               >
                 Sign in
-              </button>
+              </ButtonPrimitive>
             </p>
           )
         }
@@ -806,7 +806,7 @@ export function AuthPage() {
           <div className="space-y-3">
             <div className="space-y-1">
               <label htmlFor="signin-email" className={authLabelClass}>Email address</label>
-              <Input
+              <InputPrimitive
                 id="signin-email"
                 autoComplete="email"
                 placeholder="email@address.com"
@@ -819,7 +819,7 @@ export function AuthPage() {
             <div className="space-y-1">
               <label htmlFor="signin-password" className={authLabelClass}>Password</label>
               <div className={authPasswordWrapClass}>
-                <Input
+                <InputPrimitive
                   id="signin-password"
                   autoComplete="current-password"
                   type={showSignInPassword ? 'text' : 'password'}
@@ -828,19 +828,19 @@ export function AuthPage() {
                   onChange={(event) => setSignInPassword(event.target.value)}
                   className="h-10 border-0 bg-transparent shadow-none focus-visible:ring-0"
                 />
-                <button
+                <ButtonPrimitive
                   type="button"
                   className={authPasswordToggleClass}
                   onClick={() => setShowSignInPassword((value) => !value)}
                   aria-label={showSignInPassword ? 'Hide password' : 'Show password'}
                 >
                   {showSignInPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+                </ButtonPrimitive>
               </div>
             </div>
 
             <div className="flex items-center justify-between gap-2">
-              <button
+              <ButtonPrimitive
                 type="button"
                 className={authSubtleActionClass}
                 onClick={() => {
@@ -851,10 +851,10 @@ export function AuthPage() {
                 }}
               >
                 Forgot password?
-              </button>
+              </ButtonPrimitive>
             </div>
 
-            <Button
+            <ButtonPrimitive
               type="button"
               className={authPrimaryButtonClass}
               disabled={loading}
@@ -862,18 +862,18 @@ export function AuthPage() {
             >
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {loading ? 'Please wait...' : 'Sign in'}
-            </Button>
+            </ButtonPrimitive>
 
             {hasTestAccountShortcut ? (
-              <Button
+              <ButtonPrimitive
                 type="button"
-                variant="outline"
+                variant="secondary"
                 className="h-10 w-full border-[hsl(var(--tone-neutral-200))] text-label"
                 onClick={onUseTestAccount}
                 disabled={loading}
               >
                 Use test account
-              </Button>
+              </ButtonPrimitive>
             ) : null}
 
             {attemptedSignIn && loginValidationMessage ? (
@@ -885,7 +885,7 @@ export function AuthPage() {
                 <p className="text-caption font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-accent-700))]">
                   Two-factor challenge
                 </p>
-                <Input
+                <InputPrimitive
                   id="two-factor-code"
                   autoComplete="one-time-code"
                   placeholder="6-digit code or backup code"
@@ -893,15 +893,15 @@ export function AuthPage() {
                   onChange={(event) => setTwoFactorCode(event.target.value)}
                   className={authInputClass}
                 />
-                <Button
+                <ButtonPrimitive
                   type="button"
-                  variant="outline"
+                  variant="secondary"
                   className="h-10 w-full border-[hsl(var(--tone-neutral-200))] text-label"
                   onClick={() => void onVerifyTwoFactor()}
                   disabled={loading || !twoFactorCode.trim()}
                 >
                   Verify 2FA
-                </Button>
+                </ButtonPrimitive>
               </div>
             ) : null}
 
@@ -910,7 +910,7 @@ export function AuthPage() {
                 <p className="text-caption font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-600))]">
                   Reset your password
                 </p>
-                <Input
+                <InputPrimitive
                   id="reset-email"
                   autoComplete="email"
                   placeholder="Account email"
@@ -918,23 +918,23 @@ export function AuthPage() {
                   onChange={(event) => setResetEmail(event.target.value)}
                   className={authInputClass}
                 />
-                <Button
+                <ButtonPrimitive
                   type="button"
-                  variant="outline"
+                  variant="secondary"
                   className="h-10 w-full border-[hsl(var(--tone-neutral-200))] text-label"
                   onClick={() => void onRequestReset()}
                   disabled={loading || !isLikelyEmail(resetEmail)}
                 >
                   Request reset code
-                </Button>
-                <Input
+                </ButtonPrimitive>
+                <InputPrimitive
                   id="reset-code"
                   placeholder="Reset code"
                   value={resetCode}
                   onChange={(event) => setResetCode(event.target.value)}
                   className={authInputClass}
                 />
-                <Input
+                <InputPrimitive
                   id="reset-password"
                   type="password"
                   placeholder="New password"
@@ -942,15 +942,15 @@ export function AuthPage() {
                   onChange={(event) => setResetPassword(event.target.value)}
                   className={authInputClass}
                 />
-                <Button
+                <ButtonPrimitive
                   type="button"
-                  variant="outline"
+                  variant="secondary"
                   className="h-10 w-full border-[hsl(var(--tone-neutral-200))] text-label"
                   onClick={() => void onConfirmReset()}
                   disabled={loading || !resetCode.trim() || !isStrongPassword(resetPassword)}
                 >
                   Confirm password reset
-                </Button>
+                </ButtonPrimitive>
                 {resetValidationMessage ? (
                   <p className="text-sm text-[hsl(var(--tone-danger-700))]">{resetValidationMessage}</p>
                 ) : null}
@@ -966,7 +966,7 @@ export function AuthPage() {
             {verificationDeliveryHint ? (
               <p className="text-sm text-[hsl(var(--tone-neutral-600))]">{verificationDeliveryHint}</p>
             ) : null}
-            <Input
+            <InputPrimitive
               id="verification-code"
               autoComplete="one-time-code"
               placeholder="Enter verification code"
@@ -975,7 +975,7 @@ export function AuthPage() {
               className={authInputClass}
             />
             <div className="flex flex-wrap gap-2">
-              <Button
+              <ButtonPrimitive
                 type="button"
                 className="h-10 bg-[hsl(var(--auth-brand-accent))] text-white hover:bg-[hsl(var(--auth-brand-accent-strong))]"
                 onClick={() => void onConfirmVerification()}
@@ -983,19 +983,19 @@ export function AuthPage() {
               >
                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Verify and continue
-              </Button>
-              <Button
+              </ButtonPrimitive>
+              <ButtonPrimitive
                 type="button"
-                variant="outline"
+                variant="secondary"
                 className="h-10 border-[hsl(var(--tone-neutral-200))] text-label"
                 onClick={() => void onResendVerification()}
                 disabled={loading}
               >
                 Resend code
-              </Button>
-              <Button
+              </ButtonPrimitive>
+              <ButtonPrimitive
                 type="button"
-                variant="outline"
+                variant="secondary"
                 className="h-10 border-[hsl(var(--tone-neutral-200))] text-label"
                 onClick={() => {
                   setAwaitingEmailVerification(false)
@@ -1004,14 +1004,14 @@ export function AuthPage() {
                 disabled={loading}
               >
                 Verify later
-              </Button>
+              </ButtonPrimitive>
             </div>
           </div>
         ) : (
           <div className="space-y-3">
             <div className="space-y-1">
               <label htmlFor="register-name" className={authLabelClass}>Full name</label>
-              <Input
+              <InputPrimitive
                 id="register-name"
                 autoComplete="name"
                 placeholder="Enter your name"
@@ -1022,7 +1022,7 @@ export function AuthPage() {
             </div>
             <div className="space-y-1">
               <label htmlFor="register-email" className={authLabelClass}>Email address</label>
-              <Input
+              <InputPrimitive
                 id="register-email"
                 autoComplete="email"
                 placeholder="email@address.com"
@@ -1034,7 +1034,7 @@ export function AuthPage() {
             <div className="space-y-1">
               <label htmlFor="register-password" className={authLabelClass}>Password</label>
               <div className={authPasswordWrapClass}>
-                <Input
+                <InputPrimitive
                   id="register-password"
                   autoComplete="new-password"
                   type={showRegisterPassword ? 'text' : 'password'}
@@ -1043,20 +1043,20 @@ export function AuthPage() {
                   onChange={(event) => setRegisterPassword(event.target.value)}
                   className="h-10 border-0 bg-transparent shadow-none focus-visible:ring-0"
                 />
-                <button
+                <ButtonPrimitive
                   type="button"
                   className={authPasswordToggleClass}
                   onClick={() => setShowRegisterPassword((value) => !value)}
                   aria-label={showRegisterPassword ? 'Hide password' : 'Show password'}
                 >
                   {showRegisterPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+                </ButtonPrimitive>
               </div>
             </div>
             <div className="space-y-1">
               <label htmlFor="register-confirm-password" className={authLabelClass}>Confirm password</label>
               <div className={authPasswordWrapClass}>
-                <Input
+                <InputPrimitive
                   id="register-confirm-password"
                   autoComplete="new-password"
                   type={showRegisterConfirmPassword ? 'text' : 'password'}
@@ -1065,14 +1065,14 @@ export function AuthPage() {
                   onChange={(event) => setRegisterConfirmPassword(event.target.value)}
                   className="h-10 border-0 bg-transparent shadow-none focus-visible:ring-0"
                 />
-                <button
+                <ButtonPrimitive
                   type="button"
                   className={authPasswordToggleClass}
                   onClick={() => setShowRegisterConfirmPassword((value) => !value)}
                   aria-label={showRegisterConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
                 >
                   {showRegisterConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+                </ButtonPrimitive>
               </div>
             </div>
 
@@ -1086,7 +1086,7 @@ export function AuthPage() {
               </p>
             </div>
 
-            <Button
+            <ButtonPrimitive
               type="button"
               className={authPrimaryButtonClass}
               disabled={loading}
@@ -1094,7 +1094,7 @@ export function AuthPage() {
             >
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Create account
-            </Button>
+            </ButtonPrimitive>
             {(attemptedRegister || hasRegisterInput) && registerValidationMessage ? (
               <p className="text-sm text-[hsl(var(--tone-danger-700))]">{registerValidationMessage}</p>
             ) : null}
@@ -1104,6 +1104,8 @@ export function AuthPage() {
     </div>
   )
 }
+
+
 
 
 
