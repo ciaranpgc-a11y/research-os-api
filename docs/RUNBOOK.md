@@ -1,15 +1,49 @@
 # Runbook
 
-## Frontend commands
+## Backend
 
-Run frontend Node commands from `frontend/` or with `--prefix frontend`.
+- Install backend deps:
+  - `python -m pip install -e ".[dev]"`
+- Start backend:
+  - `python -m uvicorn research_os.api.app:app --reload`
+- Run backend tests:
+  - `python -m pytest -q`
 
-Recommended:
-- `npm ci --prefix frontend`
-- `npm run lint --prefix frontend`
-- `npm run typecheck --prefix frontend`
-- `npm run test --prefix frontend`
-- `npm run build --prefix frontend`
-- `npm run storybook --prefix frontend`
+## Frontend (from repo root)
 
-Avoid running plain `npm` commands from the repository root unless a command is explicitly added to a root-level `package.json`.
+- Install frontend deps:
+  - `npm ci --prefix frontend`
+- Run frontend dev server:
+  - `npm run dev --prefix frontend`
+- Run frontend tests:
+  - `npm run test --prefix frontend`
+- Run frontend lint:
+  - `npm run lint --prefix frontend`
+- Run frontend typecheck:
+  - `npm run typecheck --prefix frontend`
+- Build frontend:
+  - `npm run build --prefix frontend`
+- Run Storybook:
+  - `npm run storybook --prefix frontend`
+
+## Render deployment pointers
+
+- API service: `research-os-api-achk`
+  - Uses Docker runtime.
+  - Deployed from root `Dockerfile`.
+  - Health check: `https://api.axiomos.studio/v1/health/ready`.
+- UI service: `research-os-ui-achk`
+  - Uses static runtime.
+  - Builds from `frontend/` using `npm install && npm run build`.
+  - Publishes output from `frontend/dist`.
+
+## If you feel lost
+
+Use these 3 checks first:
+
+1. Confirm root and branch:
+   - `pwd`
+2. Confirm repo layout:
+   - `git status --short`
+3. Confirm whether you are in frontend vs backend context:
+   - `if (Test-Path frontend/package.json) { "frontend context" } else { "backend root context" }`
