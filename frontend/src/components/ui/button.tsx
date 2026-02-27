@@ -2,21 +2,24 @@ import * as React from 'react'
 import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
 
-import { houseForms, houseTypography } from '@/lib/house-style'
+import { houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-md ring-offset-background transition-[background-color,border-color,color,transform] duration-220 ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center whitespace-nowrap rounded-md ring-offset-background transition-[background-color,border-color,color,transform] duration-ui ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {
-        default: `${houseForms.actionButtonPrimary} ${houseTypography.buttonText}`,
-        secondary: `${houseForms.actionButton} ${houseTypography.buttonText}`,
-        outline: `border border-[hsl(var(--stroke-strong)/0.94)] bg-[hsl(var(--tone-neutral-50))] ${houseTypography.buttonText} text-[hsl(var(--tone-neutral-800))] hover:border-[hsl(var(--tone-accent-400)/0.88)] hover:bg-[hsl(var(--tone-accent-50))] hover:text-[hsl(var(--tone-accent-800))]`,
-        house: `${houseForms.actionButton} ${houseTypography.buttonText}`,
-        housePrimary: `${houseForms.actionButtonPrimary} ${houseTypography.buttonText}`,
-        ghost: `${houseTypography.buttonText} hover:bg-accent hover:text-accent-foreground`,
-        destructive: `${houseTypography.buttonText} bg-destructive text-destructive-foreground hover:bg-destructive/90`,
+        primary: `${houseTypography.buttonText} bg-primary text-primary-foreground`,
+        secondary: `${houseTypography.buttonText} bg-secondary text-secondary-foreground`,
+        tertiary: `${houseTypography.buttonText} border border-border bg-background text-foreground hover:bg-muted`,
+        destructive: `${houseTypography.buttonText} bg-destructive text-destructive-foreground`,
+        default: `${houseTypography.buttonText} bg-primary text-primary-foreground`,
+        housePrimary: `${houseTypography.buttonText} bg-primary text-primary-foreground`,
+        house: `${houseTypography.buttonText} bg-secondary text-secondary-foreground`,
+        outline: `${houseTypography.buttonText} border border-border bg-background text-foreground hover:bg-muted`,
+        // DEPRECATED: alias to tertiary for backward compatibility.
+        ghost: `${houseTypography.buttonText} border border-border bg-background text-foreground hover:bg-muted`,
       },
       size: {
         default: `h-9 px-3 ${houseTypography.buttonText}`,
