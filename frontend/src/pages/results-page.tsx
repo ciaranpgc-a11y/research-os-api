@@ -3,9 +3,9 @@ import { useParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import { Download, Loader2, UploadCloud } from 'lucide-react'
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { BadgePrimitive as Badge } from '@/components/primitives/BadgePrimitive'
+import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
+import { CardPrimitive as Card, CardContent, CardHeader, CardTitle } from '@/components/primitives/CardPrimitive'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { getAuthSessionToken } from '@/lib/auth-session'
@@ -594,7 +594,7 @@ export function ResultsPage() {
                 <Button
                   type="button"
                   size="sm"
-                  variant="house"
+                  variant="secondary"
                   className="h-8 px-2"
                   onClick={() => setRightPanelCollapsed(false)}
                   data-ui="data-right-panel-expand"
@@ -616,7 +616,7 @@ export function ResultsPage() {
                     <Button
                       type="button"
                       size="sm"
-                      variant="house"
+                      variant="secondary"
                       className="h-8 px-2"
                       onClick={() => setRightPanelCollapsed(true)}
                       data-ui="data-right-panel-collapse"
@@ -635,7 +635,7 @@ export function ResultsPage() {
                       </div>
                       <div>
                         <Button
-                          variant="outline"
+                          variant="secondary"
                           size="sm"
                           onClick={() => onLibraryPickerOpenChange(true)}
                           disabled={!hasSessionToken || persistSyncBusy}
@@ -722,7 +722,7 @@ export function ResultsPage() {
                                 <p className="truncate text-xs">{entry.filename}</p>
                                 <Button
                                   type="button"
-                                  variant="outline"
+                                  variant="secondary"
                                   size="sm"
                                   onClick={() => void onBringRecentUploadIntoWorkspace(entry.assetId)}
                                   disabled={!isAvailable || isInWorkspace || uploadBusy || persistSyncBusy}
@@ -796,9 +796,9 @@ export function ResultsPage() {
                             <div className="flex items-center justify-between gap-2">
                               <p className="truncate text-sm font-medium">{asset.filename}</p>
                               <div className="flex items-center gap-1">
-                                <Badge variant="outline">{asset.kind}</Badge>
-                                {isInWorkspace ? <Badge variant="outline">In workspace</Badge> : null}
-                                {!isAvailable ? <Badge variant="outline">Unavailable</Badge> : null}
+                                <Badge variant="secondary">{asset.kind}</Badge>
+                                {isInWorkspace ? <Badge variant="secondary">In workspace</Badge> : null}
+                                {!isAvailable ? <Badge variant="secondary">Unavailable</Badge> : null}
                               </div>
                             </div>
                             <p className="text-xs text-muted-foreground">
@@ -813,7 +813,7 @@ export function ResultsPage() {
                             <div className="flex flex-wrap items-center gap-2 pt-2">
                               <Button
                                 type="button"
-                                variant="outline"
+                                variant="secondary"
                                 size="sm"
                                 onClick={() => void onDownloadLibraryAsset(asset)}
                                 disabled={isBusy || !isAvailable}
@@ -823,7 +823,7 @@ export function ResultsPage() {
                               </Button>
                               <Button
                                 type="button"
-                                variant="outline"
+                                variant="secondary"
                                 size="sm"
                                 onClick={() => void onPullLibraryAssetIntoWorkspace(asset)}
                                 disabled={isBusy || isInWorkspace || !isAvailable}
@@ -851,7 +851,7 @@ export function ResultsPage() {
                 <div className="flex items-center gap-2">
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     onClick={() => onLibraryPickerOpenChange(false)}
                     disabled={libraryPickerPulling}
