@@ -8,7 +8,7 @@ export default meta;
 type Story = StoryObj;
 
 function Demo({ widthClass }: { widthClass: string }) {
-  return <Sheet><SheetTrigger asChild><Button variant="outline">Open {widthClass}</Button></SheetTrigger><SheetContent side="right" className={widthClass}><div className="pt-8"><p className="text-label">Drawer {widthClass}</p></div></SheetContent></Sheet>;
+  return <Sheet><SheetTrigger asChild><Button variant="tertiary">Open {widthClass}</Button></SheetTrigger><SheetContent side="right" className={widthClass}><div className="pt-8"><p className="text-label">Drawer {widthClass}</p></div></SheetContent></Sheet>;
 }
 
 export const Sizes: Story = { render: () => <StoryFrame title="Modal / Sheet / Drawer"><div className="flex gap-2"><Demo widthClass="w-[20rem]" /><Demo widthClass="w-[32rem]" /></div></StoryFrame> };

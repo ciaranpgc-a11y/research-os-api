@@ -100,7 +100,7 @@ export function TopBar({
             <TooltipProvider delayDuration={100}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="outline" size="icon" className={cn('nav:hidden', utilityButtonClass)} onClick={onOpenLeftNav}>
+                  <Button variant="tertiary" size="icon" className={cn('nav:hidden', utilityButtonClass)} onClick={onOpenLeftNav}>
                     <Menu className="h-4 w-4" />
                     <span className="sr-only">Open navigator</span>
                   </Button>
@@ -166,7 +166,7 @@ export function TopBar({
           {isGuest ? (
             <Button
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className={cn(utilityButtonClass, 'px-3 text-label font-semibold')}
               onClick={() => navigate('/auth')}
             >
@@ -177,7 +177,7 @@ export function TopBar({
               {isAdmin ? (
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="tertiary"
                   className={cn(utilityButtonClass, 'px-3 text-label font-semibold')}
                   onClick={() => navigate('/admin/overview')}
                 >
@@ -186,7 +186,7 @@ export function TopBar({
               ) : null}
               <Button
                 size="sm"
-                variant="outline"
+                variant="tertiary"
                 className={cn(utilityButtonClass, 'px-3 text-label font-semibold')}
                 onClick={() => void onSignOut()}
                 disabled={isSigningOut}
@@ -200,7 +200,7 @@ export function TopBar({
           <TooltipProvider delayDuration={100}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="outline" size="icon" className={utilityButtonClass} onClick={toggleTheme}>
+                <Button variant="tertiary" size="icon" className={utilityButtonClass} onClick={toggleTheme}>
                   {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                   <span className="sr-only">Toggle theme</span>
                 </Button>

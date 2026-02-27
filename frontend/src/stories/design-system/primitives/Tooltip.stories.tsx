@@ -9,6 +9,6 @@ type Story = StoryObj;
 
 export const States: Story = {
   render: () => (
-    <StoryFrame title="Tooltip"><TooltipProvider><div className="flex gap-3"><Tooltip open><TooltipTrigger asChild><Button variant="outline">Visible tooltip</Button></TooltipTrigger><TooltipContent>Tooltip content</TooltipContent></Tooltip><Tooltip><TooltipTrigger asChild><Button variant="outline" disabled>Disabled trigger</Button></TooltipTrigger><TooltipContent>Disabled</TooltipContent></Tooltip></div></TooltipProvider></StoryFrame>
+    <StoryFrame title="Tooltip"><TooltipProvider><div className="flex gap-3"><Tooltip open><TooltipTrigger asChild><Button variant="tertiary">Visible tooltip</Button></TooltipTrigger><TooltipContent>Tooltip content</TooltipContent></Tooltip><Tooltip><TooltipTrigger asChild><Button variant="tertiary" disabled>Disabled trigger</Button></TooltipTrigger><TooltipContent>Disabled</TooltipContent></Tooltip></div></TooltipProvider></StoryFrame>
   ),
 };

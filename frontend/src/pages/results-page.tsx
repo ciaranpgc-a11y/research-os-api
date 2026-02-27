@@ -594,7 +594,7 @@ export function ResultsPage() {
                 <Button
                   type="button"
                   size="sm"
-                  variant="house"
+                  variant="secondary"
                   className="h-8 px-2"
                   onClick={() => setRightPanelCollapsed(false)}
                   data-ui="data-right-panel-expand"
@@ -616,7 +616,7 @@ export function ResultsPage() {
                     <Button
                       type="button"
                       size="sm"
-                      variant="house"
+                      variant="secondary"
                       className="h-8 px-2"
                       onClick={() => setRightPanelCollapsed(true)}
                       data-ui="data-right-panel-collapse"
@@ -635,7 +635,7 @@ export function ResultsPage() {
                       </div>
                       <div>
                         <Button
-                          variant="outline"
+                          variant="tertiary"
                           size="sm"
                           onClick={() => onLibraryPickerOpenChange(true)}
                           disabled={!hasSessionToken || persistSyncBusy}
@@ -722,7 +722,7 @@ export function ResultsPage() {
                                 <p className="truncate text-xs">{entry.filename}</p>
                                 <Button
                                   type="button"
-                                  variant="outline"
+                                  variant="tertiary"
                                   size="sm"
                                   onClick={() => void onBringRecentUploadIntoWorkspace(entry.assetId)}
                                   disabled={!isAvailable || isInWorkspace || uploadBusy || persistSyncBusy}
@@ -813,7 +813,7 @@ export function ResultsPage() {
                             <div className="flex flex-wrap items-center gap-2 pt-2">
                               <Button
                                 type="button"
-                                variant="outline"
+                                variant="tertiary"
                                 size="sm"
                                 onClick={() => void onDownloadLibraryAsset(asset)}
                                 disabled={isBusy || !isAvailable}
@@ -823,7 +823,7 @@ export function ResultsPage() {
                               </Button>
                               <Button
                                 type="button"
-                                variant="outline"
+                                variant="tertiary"
                                 size="sm"
                                 onClick={() => void onPullLibraryAssetIntoWorkspace(asset)}
                                 disabled={isBusy || isInWorkspace || !isAvailable}
@@ -851,7 +851,7 @@ export function ResultsPage() {
                 <div className="flex items-center gap-2">
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="tertiary"
                     size="sm"
                     onClick={() => onLibraryPickerOpenChange(false)}
                     disabled={libraryPickerPulling}

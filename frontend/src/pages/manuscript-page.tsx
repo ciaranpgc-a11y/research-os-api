@@ -262,7 +262,7 @@ export function ManuscriptPage() {
               Click a card to inspect evidence and citation metadata in the Insight panel.
             </p>
           </div>
-          <Button variant={claimMapView ? 'default' : 'outline'} size="sm" onClick={toggleClaimMapView}>
+          <Button variant={claimMapView ? 'primary' : 'tertiary'} size="sm" onClick={toggleClaimMapView}>
             {claimMapView ? 'Claim Map View On' : 'Claim Map View Off'}
           </Button>
         </div>
@@ -352,7 +352,7 @@ export function ManuscriptPage() {
                         </div>
                       </div>
                       <Button
-                        variant="outline"
+                        variant="tertiary"
                         size="sm"
                         onClick={(event) => {
                           event.stopPropagation()
@@ -474,7 +474,7 @@ export function ManuscriptPage() {
                           <div className="flex flex-wrap items-center gap-2">
                             <Button
                               size="sm"
-                              variant={isAttached ? 'secondary' : 'outline'}
+                              variant={isAttached ? 'secondary' : 'tertiary'}
                               disabled={!activeClaim || savingClaimCitations || loadingClaimCitations}
                               onClick={() => onToggleCitation(citation.id)}
                             >
@@ -507,7 +507,7 @@ export function ManuscriptPage() {
 
             <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
               <Button
-                variant="outline"
+                variant="tertiary"
                 size="sm"
                 onClick={onExportClaimCitations}
                 disabled={!activeClaim || exportingClaimCitations || loadingClaimCitations}

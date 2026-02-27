@@ -898,13 +898,13 @@ export function AdminPage() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" variant="outline" onClick={() => navigate('/workspaces')}>
+              <Button type="button" variant="tertiary" onClick={() => navigate('/workspaces')}>
                 <ArrowLeft className="mr-1.5 h-4 w-4" />
                 Return to main site
               </Button>
               <Button
                 type="button"
-                variant="outline"
+                variant="tertiary"
                 onClick={() => void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)}
                 disabled={loading}
               >
@@ -1300,7 +1300,7 @@ export function AdminPage() {
                           </p>
                           <Button
                             type="button"
-                            variant="outline"
+                            variant="tertiary"
                             className="mt-3 w-full"
                             disabled={loading || impersonatingOrganisationId === selectedOrganisation.id}
                             onClick={() => void onImpersonateOrganisation()}
@@ -1619,7 +1619,7 @@ export function AdminPage() {
                                     <Button
                                       type="button"
                                       size="sm"
-                                      variant="outline"
+                                      variant="tertiary"
                                       onClick={() => void onReconcileUserLibrary(item.id)}
                                       disabled={
                                         reconcilingUserId === item.id ||
@@ -1632,7 +1632,7 @@ export function AdminPage() {
                                     <Button
                                       type="button"
                                       size="sm"
-                                      variant="outline"
+                                      variant="tertiary"
                                       onClick={() => void onRecoverUserLibraryStorage(item.id)}
                                       disabled={
                                         recoveringStorageUserId === item.id ||
@@ -2051,7 +2051,7 @@ export function AdminPage() {
                                     <div className="flex flex-wrap gap-1.5">
                                       <Button
                                         type="button"
-                                        variant="outline"
+                                        variant="tertiary"
                                         size="sm"
                                         disabled={loading || actingJobId === job.id || !canCancel}
                                         onClick={() => void onCancelJob(job.id)}
@@ -2060,7 +2060,7 @@ export function AdminPage() {
                                       </Button>
                                       <Button
                                         type="button"
-                                        variant="outline"
+                                        variant="tertiary"
                                         size="sm"
                                         disabled={loading || actingJobId === job.id || !canRetry}
                                         onClick={() => void onRetryJob(job.id)}

@@ -43,7 +43,7 @@ export class AppErrorBoundary extends Component<Props, State> {
             <p className="mt-2 text-sm text-[hsl(var(--tone-neutral-700))]">{this.state.message}</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <Button onClick={this.onReload}>Reload page</Button>
-              <Button variant="outline" onClick={() => (window.location.href = '/auth')}>
+              <Button variant="tertiary" onClick={() => (window.location.href = '/auth')}>
                 Open sign-in
               </Button>
             </div>

@@ -184,7 +184,7 @@ export function NextBestActionPanel() {
                 <CardDescription className="text-xs">{action.reason}</CardDescription>
               </CardHeader>
               <CardContent>
-                <Button size="sm" variant="outline" onClick={() => navigate(action.href)}>
+                <Button size="sm" variant="tertiary" onClick={() => navigate(action.href)}>
                   {action.cta}
                 </Button>
               </CardContent>
@@ -202,7 +202,7 @@ export function NextBestActionPanel() {
               <p>Citation coverage: {contextCitationCoverage}</p>
               <p>Metrics sync: {formatTimestamp(syncStatus.metrics_last_synced_at)}</p>
               <p>Impact snapshot: {formatTimestamp(syncStatus.impact_last_computed_at)}</p>
-              <Button size="sm" variant="outline" onClick={() => void refresh()} disabled={loading}>
+              <Button size="sm" variant="tertiary" onClick={() => void refresh()} disabled={loading}>
                 {loading ? 'Refreshing...' : 'Refresh'}
               </Button>
             </CardContent>

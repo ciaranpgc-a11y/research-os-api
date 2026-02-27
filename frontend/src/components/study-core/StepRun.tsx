@@ -539,7 +539,7 @@ export function StepRun({
       <div className="space-y-3 rounded-md border border-border/70 bg-muted/20 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-medium">Authors</p>
-          <Button type="button" size="sm" variant="outline" onClick={addExternalAuthor}>
+          <Button type="button" size="sm" variant="tertiary" onClick={addExternalAuthor}>
             Add external author
           </Button>
         </div>
@@ -559,7 +559,7 @@ export function StepRun({
                 key={suggestion.collaborator_id}
                 type="button"
                 size="sm"
-                variant="outline"
+                variant="tertiary"
                 onClick={() => addSuggestedAuthor(suggestion)}
               >
                 {suggestion.full_name}
@@ -648,7 +648,7 @@ export function StepRun({
             <Button
               key={section}
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className={
                 selectedSections.includes(section)
                   ? 'border-border bg-muted text-foreground hover:bg-muted/80'
@@ -678,7 +678,7 @@ export function StepRun({
               <div className="flex gap-2">
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="tertiary"
                   className="text-muted-foreground hover:text-foreground"
                   onClick={() => onGenerationBriefChange(suggestedBrief)}
                 >
@@ -735,7 +735,7 @@ export function StepRun({
 
           <div className="flex flex-wrap items-center gap-2">
             <Button
-              variant="outline"
+              variant="tertiary"
               className="text-muted-foreground hover:text-foreground"
               onClick={onEstimateCost}
               disabled={busy === 'estimate' || selectedSections.length === 0}
@@ -769,13 +769,13 @@ export function StepRun({
 
             {activeJob ? (
               <div className="mt-2 flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={onCancel} disabled={!isActive(activeJob) || busy === 'cancel'}>
+                <Button size="sm" variant="tertiary" onClick={onCancel} disabled={!isActive(activeJob) || busy === 'cancel'}>
                   {busy === 'cancel' ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Square className="mr-1 h-3.5 w-3.5" />}
                   Cancel
                 </Button>
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="tertiary"
                   onClick={onRetry}
                   disabled={(activeJob.status !== 'failed' && activeJob.status !== 'cancelled') || busy === 'retry'}
                 >

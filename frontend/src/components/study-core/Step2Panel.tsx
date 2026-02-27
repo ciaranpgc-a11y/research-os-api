@@ -310,7 +310,7 @@ export function Step2Panel({
         <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
-            variant="outline"
+            variant="tertiary"
             className="border-emerald-300 text-emerald-800 hover:bg-emerald-50"
             onClick={() => void loadNextQuestion(clarificationResponses)}
             disabled={loadingQuestion}
@@ -356,7 +356,7 @@ export function Step2Panel({
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className="border-emerald-300 text-emerald-800 hover:bg-emerald-100"
               onClick={() => void loadNextQuestion(clarificationResponses, { forceNextQuestion: true })}
               disabled={loadingQuestion}
@@ -385,7 +385,7 @@ export function Step2Panel({
           <div className="flex gap-2">
             <Button
               size="sm"
-              variant={draftAnswer === 'yes' ? 'default' : 'outline'}
+              variant={draftAnswer === 'yes' ? 'primary' : 'tertiary'}
               className={draftAnswer === 'yes' ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
               onClick={() => setDraftAnswer('yes')}
             >
@@ -393,7 +393,7 @@ export function Step2Panel({
             </Button>
             <Button
               size="sm"
-              variant={draftAnswer === 'no' ? 'default' : 'outline'}
+              variant={draftAnswer === 'no' ? 'primary' : 'tertiary'}
               className={draftAnswer === 'no' ? 'bg-slate-700 hover:bg-slate-800' : ''}
               onClick={() => setDraftAnswer('no')}
             >
@@ -419,7 +419,7 @@ export function Step2Panel({
             </Button>
             <Button
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className="border-emerald-300 text-emerald-800 hover:bg-emerald-50"
               onClick={() => onPlanVisibilityChange(true)}
               disabled={!canOpenPlan}
@@ -434,7 +434,7 @@ export function Step2Panel({
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className="border-emerald-300 text-emerald-800 hover:bg-emerald-100"
               onClick={() => void loadNextQuestion(clarificationResponses, { forceNextQuestion: true })}
               disabled={loadingQuestion}
@@ -461,7 +461,7 @@ export function Step2Panel({
               <Button
                 key={section}
                 size="sm"
-                variant={activeSection === section ? 'default' : 'outline'}
+                variant={activeSection === section ? 'primary' : 'tertiary'}
                 className={activeSection === section ? 'bg-emerald-600 hover:bg-emerald-700' : 'border-emerald-300 text-emerald-800 hover:bg-emerald-100'}
                 onClick={() => onActivePlanSectionChange(section)}
               >
@@ -479,7 +479,7 @@ export function Step2Panel({
           {!activeAssessment.ready ? (
             <Button
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className="border-amber-400 text-amber-900 hover:bg-amber-100"
               onClick={onApplyRecommendedFix}
             >
@@ -496,7 +496,7 @@ export function Step2Panel({
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className="border-emerald-300 text-emerald-800 hover:bg-emerald-100"
               onClick={() => void onApplyAiEdit('selection')}
               disabled={editBusy || !activeSelection}
@@ -515,7 +515,7 @@ export function Step2Panel({
             </Button>
             <Button
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className="border-slate-300 text-slate-700 hover:bg-slate-100"
               onClick={() => onRevertAiPlanSection(activeSection)}
               disabled={!canRevertBySection[activeSection]}

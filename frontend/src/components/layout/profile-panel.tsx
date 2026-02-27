@@ -159,7 +159,7 @@ export function ProfilePanel() {
               <p>Last sign-in: {formatTimestamp(user?.last_sign_in_at)}</p>
               <div className="flex flex-wrap gap-2 pt-1">
                 {token ? (
-                  <Button size="sm" variant="outline" onClick={onSignOut}>
+                  <Button size="sm" variant="tertiary" onClick={onSignOut}>
                     Sign out
                   </Button>
                 ) : (
@@ -167,7 +167,7 @@ export function ProfilePanel() {
                     Open sign-in
                   </Button>
                 )}
-                <Button size="sm" variant="outline" onClick={() => void refreshPanel()} disabled={loading}>
+                <Button size="sm" variant="tertiary" onClick={() => void refreshPanel()} disabled={loading}>
                   {loading ? 'Refreshing...' : 'Refresh'}
                 </Button>
               </div>
@@ -203,7 +203,7 @@ export function ProfilePanel() {
                   Open Run Wizard
                 </Button>
               ) : (
-                <Button size="sm" variant="outline" onClick={() => navigate('/profile')}>
+                <Button size="sm" variant="tertiary" onClick={() => navigate('/profile')}>
                   Go to Profile
                 </Button>
               )}

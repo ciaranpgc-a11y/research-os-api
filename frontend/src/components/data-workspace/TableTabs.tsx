@@ -303,7 +303,7 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" data-house-role="status-row">
           <Badge variant="outline">{table.columns.length} columns</Badge>
           <Badge variant="outline">{table.rows.length} rows</Badge>
-          <Button size="sm" variant="outline" onClick={onOpenAddColumn}>
+          <Button size="sm" variant="tertiary" onClick={onOpenAddColumn}>
             <Plus className="mr-1 h-3.5 w-3.5" />
             Add column
           </Button>
@@ -407,7 +407,7 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
                 </Button>
               </div>
             ))}
-            <Button size="sm" variant="outline" onClick={onAddFootnote}>
+            <Button size="sm" variant="tertiary" onClick={onAddFootnote}>
               <Plus className="mr-1 h-3.5 w-3.5" />
               Add footnote
             </Button>
@@ -435,7 +435,7 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
                 </Button>
               </div>
             ))}
-            <Button size="sm" variant="outline" onClick={onAddAbbreviation}>
+            <Button size="sm" variant="tertiary" onClick={onAddAbbreviation}>
               <Plus className="mr-1 h-3.5 w-3.5" />
               Add abbreviation
             </Button>
@@ -490,11 +490,11 @@ export function TableTabs({ table, onUpdateTable, onOpenAddColumn }: TableTabsPr
       <TabsContent value="export" className="space-y-3" data-house-role="tab-content-export">
         <p className={houseTypography.sectionSubtitle} data-house-role="section-subtitle">Export current table state for downstream analysis or documentation.</p>
         <div className="flex flex-wrap gap-2" data-house-role="action-row">
-          <Button variant="outline" onClick={onExportCsv}>
+          <Button variant="tertiary" onClick={onExportCsv}>
             <Download className="mr-1 h-4 w-4" />
             Export CSV
           </Button>
-          <Button variant="outline" onClick={onExportJson}>
+          <Button variant="tertiary" onClick={onExportJson}>
             <Download className="mr-1 h-4 w-4" />
             Export JSON
           </Button>

@@ -211,7 +211,7 @@ export function StepLinkQcExport({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" onClick={onRunQc} disabled={busy === 'qc'}>
+        <Button variant="tertiary" onClick={onRunQc} disabled={busy === 'qc'}>
           {busy === 'qc' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-1 h-4 w-4" />}
           Run QC
         </Button>
@@ -224,7 +224,7 @@ export function StepLinkQcExport({
           Export
         </Button>
         {qcStatus !== 'pass' ? (
-          <Button variant="outline" onClick={() => void onExportWithWarnings()} disabled={busy === 'export-override'}>
+          <Button variant="tertiary" onClick={() => void onExportWithWarnings()} disabled={busy === 'export-override'}>
             {busy === 'export-override' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}
             Export with warnings
           </Button>
@@ -258,7 +258,7 @@ export function StepLinkQcExport({
                 <option value="medium">medium+</option>
                 <option value="low">all</option>
               </select>
-              <Button variant="outline" onClick={onRunLinker} disabled={busy === 'link'}>
+              <Button variant="tertiary" onClick={onRunLinker} disabled={busy === 'link'}>
                 {busy === 'link' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
                 Run Linker
               </Button>
@@ -275,7 +275,7 @@ export function StepLinkQcExport({
               <option value="vancouver">Vancouver</option>
               <option value="ama">AMA</option>
             </select>
-            <Button variant="outline" onClick={onExportReferences} disabled={busy === 'refs'}>
+            <Button variant="tertiary" onClick={onExportReferences} disabled={busy === 'refs'}>
               {busy === 'refs' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
               Export Reference Pack
             </Button>

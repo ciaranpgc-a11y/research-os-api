@@ -100,10 +100,10 @@ export function SettingsPage() {
             Personal identity, ORCID linking, and research profile fields now live in dedicated profile pages.
           </p>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => navigate('/profile/personal-details')}>
+            <Button type="button" variant="tertiary" size="sm" onClick={() => navigate('/profile/personal-details')}>
               Open personal details
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => navigate('/profile/integrations')}>
+            <Button type="button" variant="tertiary" size="sm" onClick={() => navigate('/profile/integrations')}>
               Open integrations
             </Button>
           </div>

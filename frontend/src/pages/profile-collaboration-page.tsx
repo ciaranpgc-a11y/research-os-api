@@ -616,19 +616,19 @@ export function ProfileCollaborationPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle>Collaborators</CardTitle>
               <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" size="sm" variant="outline" onClick={onAddCollaborator}>
+                <Button type="button" size="sm" variant="tertiary" onClick={onAddCollaborator}>
                   <Plus className="mr-1 h-3.5 w-3.5" />
                   Add collaborator
                 </Button>
-                <Button type="button" size="sm" variant="outline" onClick={onImport} disabled={saving}>
+                <Button type="button" size="sm" variant="tertiary" onClick={onImport} disabled={saving}>
                   <Upload className="mr-1 h-3.5 w-3.5" />
                   Import from publications
                 </Button>
-                <Button type="button" size="sm" variant="outline" onClick={onEnrichCoverage} disabled={saving}>
+                <Button type="button" size="sm" variant="tertiary" onClick={onEnrichCoverage} disabled={saving}>
                   <RefreshCcw className="mr-1 h-3.5 w-3.5" />
                   Enrich missing fields
                 </Button>
-                <Button type="button" size="sm" variant="outline" onClick={onExport}>
+                <Button type="button" size="sm" variant="tertiary" onClick={onExport}>
                   <Download className="mr-1 h-3.5 w-3.5" />
                   Export
                 </Button>
@@ -660,7 +660,7 @@ export function ProfileCollaborationPage() {
                 <option value="last_collaboration_year">Sort: Last collaboration</option>
                 <option value="strength">Sort: Strength score</option>
               </select>
-              <Button type="button" size="sm" variant="outline" onClick={onSearch}>
+              <Button type="button" size="sm" variant="tertiary" onClick={onSearch}>
                 <RefreshCcw className="mr-1 h-3.5 w-3.5" />
                 Search
               </Button>
@@ -741,7 +741,7 @@ export function ProfileCollaborationPage() {
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="tertiary"
                   disabled={page <= 1}
                   onClick={() => setPage((current) => Math.max(1, current - 1))}
                 >
@@ -751,7 +751,7 @@ export function ProfileCollaborationPage() {
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="tertiary"
                   disabled={!listing?.has_more}
                   onClick={() => setPage((current) => current + 1)}
                 >
@@ -847,7 +847,7 @@ export function ProfileCollaborationPage() {
                 {isCreating ? 'Create collaborator' : 'Save changes'}
               </Button>
               {!isCreating && selectedId ? (
-                <Button type="button" size="sm" variant="outline" onClick={onDelete} disabled={saving}>
+                <Button type="button" size="sm" variant="tertiary" onClick={onDelete} disabled={saving}>
                   Delete
                 </Button>
               ) : null}
@@ -930,7 +930,7 @@ export function ProfileCollaborationPage() {
               <Button
                 type="button"
                 size="sm"
-                variant={heatmapMode === 'country' ? 'default' : 'outline'}
+                variant={heatmapMode === 'country' ? 'primary' : 'tertiary'}
                 onClick={() => setHeatmapMode('country')}
               >
                 Geographic
@@ -938,7 +938,7 @@ export function ProfileCollaborationPage() {
               <Button
                 type="button"
                 size="sm"
-                variant={heatmapMode === 'institution' ? 'default' : 'outline'}
+                variant={heatmapMode === 'institution' ? 'primary' : 'tertiary'}
                 onClick={() => setHeatmapMode('institution')}
               >
                 Institutional
@@ -946,7 +946,7 @@ export function ProfileCollaborationPage() {
               <Button
                 type="button"
                 size="sm"
-                variant={heatmapMode === 'domain' ? 'default' : 'outline'}
+                variant={heatmapMode === 'domain' ? 'primary' : 'tertiary'}
                 onClick={() => setHeatmapMode('domain')}
               >
                 Domain
@@ -993,7 +993,7 @@ export function ProfileCollaborationPage() {
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="tertiary"
                   onClick={onGenerateAiInsights}
                   disabled={aiLoading !== null}
                 >
@@ -1026,7 +1026,7 @@ export function ProfileCollaborationPage() {
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="tertiary"
                   onClick={onGenerateAiAuthorSuggestions}
                   disabled={aiLoading !== null}
                 >
@@ -1069,7 +1069,7 @@ export function ProfileCollaborationPage() {
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="tertiary"
                   onClick={onGenerateAiContributionDraft}
                   disabled={aiLoading !== null}
                 >
@@ -1094,7 +1094,7 @@ export function ProfileCollaborationPage() {
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="tertiary"
                   onClick={onGenerateAiAffiliationsDraft}
                   disabled={aiLoading !== null}
                 >

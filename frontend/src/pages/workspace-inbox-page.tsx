@@ -1596,7 +1596,7 @@ export function WorkspaceInboxPage() {
                           <Button
                             type="button"
                             size="sm"
-                            variant="house"
+                            variant="secondary"
                             className="h-9 px-2"
                             onClick={() => onMoveSearchResult(-1)}
                             disabled={messageSearchMatchCount === 0}
@@ -1607,7 +1607,7 @@ export function WorkspaceInboxPage() {
                           <Button
                             type="button"
                             size="sm"
-                            variant="house"
+                            variant="secondary"
                             className="h-9 px-2"
                             onClick={() => onMoveSearchResult(1)}
                             disabled={messageSearchMatchCount === 0}
@@ -1725,7 +1725,7 @@ export function WorkspaceInboxPage() {
               <Button
                 type="button"
                 size="sm"
-                variant="house"
+                variant="secondary"
                 className="h-8 px-2"
                 onClick={() => setRightNavCollapsed(false)}
                 data-ui="inbox-right-nav-expand"
@@ -1750,7 +1750,7 @@ export function WorkspaceInboxPage() {
                   <Button
                     type="button"
                     size="sm"
-                    variant="house"
+                    variant="secondary"
                     className="h-8 px-2"
                     onClick={() => setRightNavCollapsed(true)}
                     data-ui="inbox-right-nav-collapse"
@@ -1835,7 +1835,7 @@ export function WorkspaceInboxPage() {
                     <Button
                       type="button"
                       size="sm"
-                      variant={participantFilter === 'all' ? 'housePrimary' : 'house'}
+                      variant={participantFilter === 'all' ? 'primary' : 'secondary'}
                       className="h-8 px-2"
                       onClick={() => setParticipantFilter('all')}
                       data-ui="inbox-right-participants-filter-all"
@@ -1845,7 +1845,7 @@ export function WorkspaceInboxPage() {
                     <Button
                       type="button"
                       size="sm"
-                      variant={participantFilter === 'online' ? 'housePrimary' : 'house'}
+                      variant={participantFilter === 'online' ? 'primary' : 'secondary'}
                       className="h-8 px-2"
                       onClick={() => setParticipantFilter('online')}
                       data-ui="inbox-right-participants-filter-online"

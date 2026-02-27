@@ -185,7 +185,7 @@ export function StepDraftReview({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-medium">{isAccepted ? 'Accepted' : 'Pending'}</p>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => void onRegenerateSection(section)} disabled={busySection === section}>
+                  <Button size="sm" variant="tertiary" onClick={() => void onRegenerateSection(section)} disabled={busySection === section}>
                     {busySection === section ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="mr-1 h-3.5 w-3.5" />}
                     Regenerate
                   </Button>

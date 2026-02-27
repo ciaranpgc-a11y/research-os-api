@@ -130,10 +130,10 @@ export function AddColumnModal({ open, onOpenChange, existingColumns, onAddColum
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-2" data-house-role="action-row">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+            <Button variant="tertiary" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button variant="housePrimary" onClick={onSubmit}>Add column</Button>
+            <Button variant="primary" onClick={onSubmit}>Add column</Button>
           </div>
         </div>
       </SheetContent>

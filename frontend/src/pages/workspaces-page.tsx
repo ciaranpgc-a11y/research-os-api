@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowRight,
@@ -7,31 +6,32 @@ import {
   ChevronDown,
   ChevronUp,
   ChevronsUpDown,
+  Download,
   PanelRightClose,
   PanelRightOpen,
   Pencil,
   Pin,
   RotateCcw,
-  Save,
   UserMinus,
   UserPlus,
   X,
 } from 'lucide-react'
 
 import { TopBar } from '@/components/layout/top-bar'
+import { DataLibraryDrilldownPanel } from '@/components/workspaces/data-library-drilldown-panel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { WorkspacesDataLibraryView } from '@/pages/workspaces-data-library-view'
+import { WorkspacesDataLibraryView, displayAssetFilename, type DataLibraryAssetTableMeta } from '@/pages/workspaces-data-library-view'
 import {
   WORKSPACE_OWNER_REQUIRED_MESSAGE,
   readWorkspaceOwnerNameFromProfile,
 } from '@/lib/workspace-owner'
 import { houseActions, houseCollaborators, houseDrilldown, houseForms, houseLayout, houseNavigation, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import { getHouseLeftBorderToneClass, getHouseNavToneClass } from '@/lib/section-tone'
-import { matchesScopedStorageEventKey } from '@/lib/user-scoped-storage'
+import { matchesScopedStorageEventKey, readScopedStorageItem, writeScopedStorageItem } from '@/lib/user-scoped-storage'
 import { cn } from '@/lib/utils'
 import { useAaweStore } from '@/store/use-aawe-store'
 import {
@@ -46,12 +46,14 @@ import {
   type WorkspaceCollaboratorRole,
   type WorkspaceRecord,
 } from '@/store/use-workspace-store'
+import type { LibraryAssetRecord } from '@/types/study-core'
 
 type ViewMode = 'table' | 'cards'
 type CenterView = 'workspaces' | 'invitations' | 'data-library'
 type FilterKey = 'all' | 'active' | 'pinned' | 'archived' | 'recent'
 type SortColumn = 'name' | 'stage' | 'updatedAt' | 'status'
 type SortDirection = 'asc' | 'desc'
+type WorkspaceDrilldownTab = 'details' | 'users' | 'datas' | 'logs'
 
 type CollaboratorChipState = 'active' | 'removed' | 'pending'
 
@@ -95,6 +97,13 @@ const FILTER_OPTIONS: Array<{ key: FilterKey; label: string }> = [
   { key: 'archived', label: 'Archived' },
 ]
 
+const WORKSPACE_DRILLDOWN_TABS: Array<{ value: WorkspaceDrilldownTab; label: string }> = [
+  { value: 'details', label: 'Details' },
+  { value: 'users', label: 'Users' },
+  { value: 'datas', label: 'Datas' },
+  { value: 'logs', label: 'Logs' },
+]
+
 const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
 const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
 const HOUSE_SECTION_SUBTITLE_CLASS = houseTypography.sectionSubtitle
@@ -108,7 +117,7 @@ const HOUSE_SIDEBAR_SECTION_CLASS = houseLayout.sidebarSection
 const HOUSE_FIELD_HELPER_CLASS = houseTypography.fieldHelper
 const HOUSE_BUTTON_TEXT_CLASS = houseTypography.buttonText
 const HOUSE_LEFT_BORDER_CLASS = cn(houseSurfaces.leftBorder, getHouseLeftBorderToneClass('workspace'))
-const HOUSE_DATA_LEFT_BORDER_CLASS = cn(houseSurfaces.leftBorder, getHouseLeftBorderToneClass('data'))
+const HOUSE_DATA_LEFT_BORDER_CLASS = cn(houseSurfaces.leftBorder, getHouseLeftBorderToneClass('workspace'))
 const HOUSE_CARD_CLASS = houseSurfaces.card
 const HOUSE_TABLE_SHELL_CLASS = houseSurfaces.tableShell
 const HOUSE_TABLE_HEAD_CLASS = houseSurfaces.tableHead
@@ -122,8 +131,6 @@ const HOUSE_INPUT_CLASS = houseForms.input
 const HOUSE_SELECT_CLASS = houseForms.select
 const HOUSE_ACTION_BUTTON_CLASS = houseForms.actionButton
 const HOUSE_PRIMARY_ACTION_BUTTON_CLASS = houseForms.actionButtonPrimary
-const HOUSE_SUCCESS_ACTION_BUTTON_CLASS = houseForms.actionButtonSuccess
-const HOUSE_DANGER_ACTION_BUTTON_CLASS = houseForms.actionButtonDanger
 const HOUSE_COLLABORATOR_CHIP_CLASS = houseCollaborators.chip
 const HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS = houseCollaborators.chipActive
 const HOUSE_COLLABORATOR_CHIP_PENDING_CLASS = houseCollaborators.chipPending
@@ -149,12 +156,12 @@ const HOUSE_DRILLDOWN_SHEET_CLASS = houseDrilldown.sheet
 const HOUSE_DRILLDOWN_SHEET_BODY_CLASS = houseDrilldown.sheetBody
 const HOUSE_WORKSPACE_TONE_CLASS = getHouseLeftBorderToneClass('workspace')
 const HOUSE_DRILLDOWN_ACTION_CLASS = houseDrilldown.action
-const HOUSE_DRILLDOWN_SECTION_LABEL_CLASS = houseDrilldown.sectionLabel
+const HOUSE_DRILLDOWN_NAV_TAB_LIST_CLASS = houseDrilldown.navTabList
+const HOUSE_DRILLDOWN_NAV_TAB_TRIGGER_CLASS = houseDrilldown.navTabTrigger
 const HOUSE_DRILLDOWN_TAB_LIST_CLASS = houseDrilldown.tabList
 const HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS = houseDrilldown.tabTrigger
 const HOUSE_DRILLDOWN_COLLAPSIBLE_SECTION_CLASS = houseDrilldown.collapsibleSection
 const HOUSE_DRILLDOWN_COLLAPSIBLE_ENTITY_CLASS = houseDrilldown.collapsibleEntity
-const WORKSPACE_ICON_BUTTON_DIMENSION_CLASS = 'h-8 w-8 p-0'
 const HOUSE_SECTION_TOOLS_CLASS = houseActions.sectionTools
 const HOUSE_SECTION_TOOLS_WORKSPACE_CLASS = houseActions.sectionToolsWorkspace
 const HOUSE_SECTION_TOOLS_DATA_CLASS = houseActions.sectionToolsData
@@ -173,6 +180,43 @@ const HOUSE_WORKSPACE_FILTER_SELECT_CLASS = cn(
   HOUSE_SELECT_CLASS,
   HOUSE_TABLE_FILTER_SELECT_CLASS,
 )
+const DRILLDOWN_OPEN_GRID_CLASS = 'xl:grid-cols-[280px_minmax(0,1fr)_22rem]'
+const DRILLDOWN_COLLAPSED_GRID_CLASS = 'xl:grid-cols-[280px_minmax(0,1fr)_3rem]'
+const DRILLDOWN_OPEN_WIDTH = '22rem'
+const DRILLDOWN_COLLAPSED_WIDTH = '3rem'
+const DRILLDOWN_OPEN_PANEL_STYLE = {
+  width: DRILLDOWN_OPEN_WIDTH,
+  minWidth: DRILLDOWN_OPEN_WIDTH,
+  maxWidth: DRILLDOWN_OPEN_WIDTH,
+} as const
+const DRILLDOWN_COLLAPSED_PANEL_STYLE = {
+  width: DRILLDOWN_COLLAPSED_WIDTH,
+  minWidth: DRILLDOWN_COLLAPSED_WIDTH,
+  maxWidth: DRILLDOWN_COLLAPSED_WIDTH,
+} as const
+
+const DATA_LIBRARY_DISPLAY_NAME_STORAGE_KEY = 'aawe-data-library-display-names-v1'
+const DATA_LIBRARY_LINKED_WORKSPACES_STORAGE_KEY = 'aawe-data-library-linked-workspaces-v1'
+
+function readScopedJsonValue<T>(baseKey: string, fallback: T): T {
+  const raw = readScopedStorageItem(baseKey)
+  if (!raw) {
+    return fallback
+  }
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
+}
+
+function writeScopedJsonValue(baseKey: string, value: unknown): void {
+  try {
+    writeScopedStorageItem(baseKey, JSON.stringify(value))
+  } catch {
+    // Ignore localStorage write failures.
+  }
+}
 
 type WorkspaceInboxSignal = {
   unreadCount: number
@@ -209,6 +253,36 @@ function formatAuditCompactTimestamp(value: string): string {
       hour12: false,
     })
     .replace(',', '')
+}
+
+function csvValue(value: string): string {
+  const escaped = String(value || '').replace(/"/g, '""')
+  return `"${escaped}"`
+}
+
+function downloadCsv(name: string, rows: string[]): void {
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = window.URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = name
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.URL.revokeObjectURL(url)
+}
+
+function rangeStartMs(range: 'all' | '7d' | '30d' | '90d', nowMs: number): number {
+  if (range === '7d') {
+    return nowMs - 7 * 24 * 60 * 60 * 1000
+  }
+  if (range === '30d') {
+    return nowMs - 30 * 24 * 60 * 60 * 1000
+  }
+  if (range === '90d') {
+    return nowMs - 90 * 24 * 60 * 60 * 1000
+  }
+  return Number.NEGATIVE_INFINITY
 }
 
 function isRecentWorkspace(value: string): boolean {
@@ -323,9 +397,12 @@ function isWorkspaceOwner(workspace: WorkspaceRecord, currentUserName: string | 
   return normalizeCollaboratorName(workspace.ownerName).toLowerCase() === cleanCurrentUser
 }
 
-function workspaceOwnerLabel(workspace: WorkspaceRecord, _currentUserName: string | null): string {
+function workspaceOwnerLabel(workspace: WorkspaceRecord, currentUserName: string | null): string {
+  if (isWorkspaceOwner(workspace, currentUserName)) {
+    return 'You'
+  }
   const ownerName = normalizeCollaboratorName(workspace.ownerName) || 'Unknown'
-  return `${ownerName} (Owner)`
+  return ownerName
 }
 
 function isWorkspaceReadOnlyForCurrentUser(workspace: WorkspaceRecord, currentUserName: string | null): boolean {
@@ -387,6 +464,8 @@ type CollaboratorAuditFilter =
   | 'role_changes'
   | 'invitation_status'
   | 'other'
+
+type WorkspaceAuditExportScope = 'all' | 'collaborator_access' | 'conversation'
 
 const COLLABORATOR_AUDIT_FILTER_OPTIONS: Array<{ value: CollaboratorAuditFilter; label: string }> = [
   { value: 'all', label: 'All' },
@@ -886,7 +965,7 @@ function sortWorkspaces(
   return next
 }
 
-function WorkspacesDrilldownPanel({
+export function WorkspacesDrilldownPanel({
   selectedWorkspaceId,
   selectedWorkspaceName,
   selectedWorkspace,
@@ -944,7 +1023,37 @@ function WorkspacesDrilldownPanel({
   const canAddCollaborator = Boolean(selectedWorkspace && canManageSelectedWorkspace)
   const ownerDisplayName = selectedWorkspace
     ? workspaceOwnerLabel(selectedWorkspace, currentWorkspaceUserName)
-    : 'Unknown owner (Owner)'
+    : 'Unknown'
+  const currentUserRoleLabel = useMemo(() => {
+    if (!selectedWorkspace) {
+      return 'No workspace selected'
+    }
+    if (canManageSelectedWorkspace) {
+      return 'Owner'
+    }
+    if (selectedWorkspaceReadOnly) {
+      return 'Removed collaborator'
+    }
+    const currentUserKey = normalizeCollaboratorName(currentWorkspaceUserName).toLowerCase()
+    const activeRole = Object.entries(selectedWorkspace.collaboratorRoles || {}).find(
+      ([name]) => normalizeCollaboratorName(name).toLowerCase() === currentUserKey,
+    )?.[1]
+    const pendingRole = Object.entries(selectedWorkspace.pendingCollaboratorRoles || {}).find(
+      ([name]) => normalizeCollaboratorName(name).toLowerCase() === currentUserKey,
+    )?.[1]
+    if (activeRole) {
+      return collaboratorRoleLabel(activeRole)
+    }
+    if (pendingRole) {
+      return `${collaboratorRoleLabel(pendingRole)} (pending)`
+    }
+    return 'Viewer'
+  }, [
+    canManageSelectedWorkspace,
+    currentWorkspaceUserName,
+    selectedWorkspace,
+    selectedWorkspaceReadOnly,
+  ])
   const [roleEditorKey, setRoleEditorKey] = useState<string | null>(null)
   const [roleEditorDraftRole, setRoleEditorDraftRole] = useState<WorkspaceCollaboratorRole | null>(null)
   const [restoreEditorKey, setRestoreEditorKey] = useState<string | null>(null)
@@ -954,8 +1063,41 @@ function WorkspacesDrilldownPanel({
   const [conversationActivityCollapsed, setConversationActivityCollapsed] = useState(true)
   const [removalConfirmKey, setRemovalConfirmKey] = useState<string | null>(null)
   const [collaboratorActorExpanded, setCollaboratorActorExpanded] = useState<Record<string, boolean>>({})
-  const sortedAuditEntries = [...workspaceAuditEntries]
-    .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
+  const [activeTab, setActiveTab] = useState<WorkspaceDrilldownTab>('details')
+  const [auditExportScope, setAuditExportScope] = useState<WorkspaceAuditExportScope>('all')
+  const [auditExportRange, setAuditExportRange] = useState<'all' | '7d' | '30d' | '90d' | 'custom'>('all')
+  const [auditExportActorKey, setAuditExportActorKey] = useState('all')
+  const [auditExportFromDate, setAuditExportFromDate] = useState('')
+  const [auditExportToDate, setAuditExportToDate] = useState('')
+  const currentLogViewerKey = normalizeCollaboratorName(currentWorkspaceUserName).toLowerCase()
+  const scopedAuditEntries = useMemo(() => {
+    if (canManageSelectedWorkspace) {
+      return workspaceAuditEntries
+    }
+    if (!currentLogViewerKey) {
+      return []
+    }
+    return workspaceAuditEntries.filter((entry) => {
+      if (isConversationAuditEntry(entry)) {
+        const parsedConversation = parseConversationAuditEvent(entry.message)
+        if (parsedConversation) {
+          return normalizeCollaboratorName(parsedConversation.senderName).toLowerCase() === currentLogViewerKey
+        }
+        return normalizeCollaboratorName(parseActorNameFromAuditMessage(entry.message)).toLowerCase() === currentLogViewerKey
+      }
+      const parsedTransition = parseAuditTransition(entry.message)
+      if (parsedTransition) {
+        return normalizeCollaboratorName(parsedTransition.subject).toLowerCase() === currentLogViewerKey
+      }
+      const parsedCollaborator = parseCollaboratorNameFromAuditMessage(entry.message)
+      if (parsedCollaborator) {
+        return normalizeCollaboratorName(parsedCollaborator).toLowerCase() === currentLogViewerKey
+      }
+      return normalizeCollaboratorName(parseActorNameFromAuditMessage(entry.message)).toLowerCase() === currentLogViewerKey
+    })
+  }, [canManageSelectedWorkspace, currentLogViewerKey, workspaceAuditEntries])
+  const sortedAuditEntries = [...scopedAuditEntries]
+    .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
   const collaboratorActivityEntries = sortedAuditEntries
     .filter((entry) => !isConversationAuditEntry(entry))
     .filter((entry) =>
@@ -994,10 +1136,18 @@ function WorkspacesDrilldownPanel({
         ...group,
         entries: [...group.entries].sort(
           (left, right) =>
-            left.timestampMs - right.timestampMs || left.entry.id.localeCompare(right.entry.id),
+            right.timestampMs - left.timestampMs || right.entry.id.localeCompare(left.entry.id),
         ),
       }))
-      .sort((left, right) => compareAuditActorNames(left.actorName, right.actorName))
+      .sort((left, right) => {
+        const leftLatest = Math.max(...left.entries.map((entry) => entry.timestampMs))
+        const rightLatest = Math.max(...right.entries.map((entry) => entry.timestampMs))
+        const byNewest = rightLatest - leftLatest
+        if (byNewest !== 0) {
+          return byNewest
+        }
+        return compareAuditActorNames(left.actorName, right.actorName)
+      })
   }, [collaboratorActivityEntries])
   const conversationActivityGroups = useMemo<ConversationAuditActorGroup[]>(() => {
     const groups = new Map<string, ConversationAuditActorGroup>()
@@ -1029,11 +1179,87 @@ function WorkspacesDrilldownPanel({
             right.timestampMs - left.timestampMs || right.entry.id.localeCompare(left.entry.id),
         ),
       }))
-      .sort((left, right) => compareAuditActorNames(left.actorName, right.actorName))
+      .sort((left, right) => {
+        const leftLatest = Math.max(...left.entries.map((entry) => entry.timestampMs))
+        const rightLatest = Math.max(...right.entries.map((entry) => entry.timestampMs))
+        const byNewest = rightLatest - leftLatest
+        if (byNewest !== 0) {
+          return byNewest
+        }
+        return compareAuditActorNames(left.actorName, right.actorName)
+      })
   }, [conversationActivityEntries])
   const showConversationActorHeaders = conversationActivityGroups.length > 1
   const clampCollaboratorActivityList = collaboratorActivityEntries.length > 6
   const clampConversationActivityList = conversationActivityEntries.length > 6
+  const auditExportActorOptions = useMemo(() => {
+    const seen = new Set<string>()
+    const options = [{ value: 'all', label: 'All collaborators' }]
+    for (const entry of sortedAuditEntries) {
+      const parsedTransition = parseAuditTransition(entry.message)
+      const parsedConversation = parseConversationAuditEvent(entry.message)
+      const name =
+        parsedTransition?.subject ||
+        parsedConversation?.senderName ||
+        parseCollaboratorNameFromAuditMessage(entry.message) ||
+        parseActorNameFromAuditMessage(entry.message)
+      const key = normalizeCollaboratorName(name).toLowerCase()
+      if (!key || seen.has(key)) {
+        continue
+      }
+      seen.add(key)
+      options.push({
+        value: key,
+        label: normalizeCollaboratorName(name) || 'System',
+      })
+    }
+    return options
+  }, [sortedAuditEntries])
+  const exportReadyAuditEntries = useMemo(() => {
+    const scopedByType = sortedAuditEntries.filter((entry) => {
+      if (auditExportScope === 'all') {
+        return true
+      }
+      if (auditExportScope === 'conversation') {
+        return isConversationAuditEntry(entry)
+      }
+      return !isConversationAuditEntry(entry)
+    })
+    const scopedByActor = scopedByType.filter((entry) => {
+      if (auditExportActorKey === 'all') {
+        return true
+      }
+      const parsedTransition = parseAuditTransition(entry.message)
+      const parsedConversation = parseConversationAuditEvent(entry.message)
+      const subjectName =
+        parsedTransition?.subject ||
+        parsedConversation?.senderName ||
+        parseCollaboratorNameFromAuditMessage(entry.message) ||
+        parseActorNameFromAuditMessage(entry.message)
+      return normalizeCollaboratorName(subjectName).toLowerCase() === auditExportActorKey
+    })
+    if (auditExportRange === 'custom') {
+      const fromMs = auditExportFromDate
+        ? Date.parse(`${auditExportFromDate}T00:00:00`)
+        : Number.NEGATIVE_INFINITY
+      const toMs = auditExportToDate
+        ? Date.parse(`${auditExportToDate}T23:59:59`)
+        : Number.POSITIVE_INFINITY
+      return scopedByActor.filter((entry) => {
+        const entryMs = Date.parse(entry.createdAt)
+        return entryMs >= fromMs && entryMs <= toMs
+      })
+    }
+    const startMs = rangeStartMs(auditExportRange, Date.now())
+    return scopedByActor.filter((entry) => Date.parse(entry.createdAt) >= startMs)
+  }, [
+    auditExportActorKey,
+    auditExportFromDate,
+    auditExportRange,
+    auditExportScope,
+    auditExportToDate,
+    sortedAuditEntries,
+  ])
 
   useEffect(() => {
     setRoleEditorKey(null)
@@ -1045,6 +1271,12 @@ function WorkspacesDrilldownPanel({
     setConversationActivityCollapsed(true)
     setRemovalConfirmKey(null)
     setCollaboratorActorExpanded({})
+    setActiveTab('details')
+    setAuditExportScope('all')
+    setAuditExportRange('all')
+    setAuditExportActorKey('all')
+    setAuditExportFromDate('')
+    setAuditExportToDate('')
   }, [selectedWorkspaceId])
 
   const onToggleCollaboratorActivitySection = () => {
@@ -1065,6 +1297,46 @@ function WorkspacesDrilldownPanel({
     setConversationActivityCollapsed(true)
   }
 
+  const onExportWorkspaceLogs = () => {
+    if (!selectedWorkspace || exportReadyAuditEntries.length === 0) {
+      return
+    }
+    const rows = [
+      ['Timestamp', 'Section', 'Collaborator', 'Category', 'From', 'To', 'Actor', 'Message']
+        .map(csvValue)
+        .join(','),
+      ...exportReadyAuditEntries.map((entry) => {
+        const isConversation = isConversationAuditEntry(entry)
+        const parsedTransition = parseAuditTransition(entry.message)
+        const parsedConversation = parseConversationAuditEvent(entry.message)
+        const transitionPills = parsedTransition ? buildAuditTransitionPillPresentation(parsedTransition) : null
+        const collaboratorName =
+          parsedTransition?.subject ||
+          parsedConversation?.senderName ||
+          parseCollaboratorNameFromAuditMessage(entry.message) ||
+          'System'
+        const actorName = parsedTransition?.actorName || parseActorNameFromAuditMessage(entry.message)
+        const category = isConversation
+          ? 'conversation'
+          : parsedTransition?.transitionKind || 'other'
+        return [
+          entry.createdAt,
+          isConversation ? 'Conversation log' : 'Collaborator access and roles',
+          collaboratorName,
+          category,
+          transitionPills?.fromLabel || '',
+          transitionPills?.toLabel || '',
+          actorName,
+          entry.message,
+        ]
+          .map(csvValue)
+          .join(',')
+      }),
+    ]
+    const dateTag = new Date().toISOString().slice(0, 10)
+    downloadCsv(`${selectedWorkspace.id}-audit-log-${dateTag}.csv`, rows)
+  }
+
   return (
     <div className={cn(HOUSE_DRILLDOWN_SHEET_BODY_CLASS, HOUSE_WORKSPACE_TONE_CLASS)}>
       <div className={HOUSE_LEFT_BORDER_CLASS}>
@@ -1073,7 +1345,7 @@ function WorkspacesDrilldownPanel({
       <div className="w-full">
         <Button
           type="button"
-          variant="housePrimary"
+          variant="primary"
           onClick={() => {
             if (!selectedWorkspaceId || !canOpenSelectedWorkspace) {
               return
@@ -1097,17 +1369,69 @@ function WorkspacesDrilldownPanel({
           </span>
         </Button>
       </div>
-      {selectedWorkspaceReadOnly ? (
-        <p className={HOUSE_FIELD_HELPER_CLASS}>
-          Removed access detected. This workspace is archived and read-only.
-        </p>
-      ) : null}
-      <p className={cn(HOUSE_DRILLDOWN_SECTION_LABEL_CLASS, 'pl-3')}>Workspace data</p>
+      <div className={HOUSE_DRILLDOWN_NAV_TAB_LIST_CLASS}>
+        {WORKSPACE_DRILLDOWN_TABS.map((tab) => {
+          const isActive = activeTab === tab.value
+          return (
+            <button
+              key={tab.value}
+              type="button"
+              className={HOUSE_DRILLDOWN_NAV_TAB_TRIGGER_CLASS}
+              data-state={isActive ? 'active' : 'inactive'}
+              onClick={() => setActiveTab(tab.value)}
+              aria-label={`Show ${tab.label.toLowerCase()} tab`}
+            >
+              {tab.label}
+            </button>
+          )
+        })}
+      </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <p className={cn(HOUSE_DRILLDOWN_SECTION_LABEL_CLASS, 'pl-3')}>Collaborators</p>
+      {activeTab === 'details' ? (
+        <div className="space-y-2">
+          {selectedWorkspace ? (
+            <div className="space-y-2 rounded-md border border-border bg-background/70 p-2">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <p className={HOUSE_FIELD_HELPER_CLASS}>Owner</p>
+                  <p className={houseTypography.text}>{ownerDisplayName}</p>
+                </div>
+                <div>
+                  <p className={HOUSE_FIELD_HELPER_CLASS}>Version</p>
+                  <p className={houseTypography.text}>{selectedWorkspace.version || '0.1'}</p>
+                </div>
+                <div>
+                  <p className={HOUSE_FIELD_HELPER_CLASS}>Stage</p>
+                  <p className={houseTypography.text}>{workspaceStage(selectedWorkspace)}</p>
+                </div>
+                <div>
+                  <p className={HOUSE_FIELD_HELPER_CLASS}>Status</p>
+                  <p className={cn(houseTypography.text, 'inline-flex items-center gap-1.5')}>
+                    <span
+                      className={cn(
+                        'inline-block h-2.5 w-2.5 rounded-full',
+                        selectedWorkspace.archived ? 'bg-amber-500' : 'bg-emerald-500',
+                      )}
+                    />
+                    {workspaceStatus(selectedWorkspace)}
+                  </p>
+                </div>
+                <div className="col-span-2">
+                  <p className={HOUSE_FIELD_HELPER_CLASS}>Your role</p>
+                  <p className={houseTypography.text}>{currentUserRoleLabel}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className={HOUSE_FIELD_HELPER_CLASS}>Last update</p>
+                  <p className={houseTypography.text}>{formatTimestamp(selectedWorkspace.updatedAt)}</p>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
+      ) : null}
+
+      {activeTab === 'users' ? (
+        <div className="space-y-2">
         <div className="min-h-6">
           {selectedWorkspace ? (
             <div className="space-y-1.5">
@@ -1121,7 +1445,10 @@ function WorkspacesDrilldownPanel({
                 >
                   {ownerDisplayName}
                 </span>
-                <span className={HOUSE_FIELD_HELPER_CLASS}>Owner</span>
+                <div className="flex items-center gap-1.5">
+                  <span className={HOUSE_FIELD_HELPER_CLASS}>Owner</span>
+                  <span className="inline-block h-8 w-[4.375rem]" aria-hidden="true" />
+                </div>
               </div>
               {collaboratorChips.map((chip) => (
                 (() => {
@@ -1179,9 +1506,7 @@ function WorkspacesDrilldownPanel({
                               type="button"
                               className={cn(
                                 HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
-                                hasRoleEditorChanges
-                                  ? HOUSE_COLLABORATOR_ACTION_ICON_CONFIRM_CLASS
-                                  : HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS,
+                                HOUSE_COLLABORATOR_ACTION_ICON_CONFIRM_CLASS,
                               )}
                               onClick={() => {
                                 if (hasRoleEditorChanges) {
@@ -1197,12 +1522,7 @@ function WorkspacesDrilldownPanel({
                                 setRestoreEditorRole(null)
                                 setRemovalConfirmKey(null)
                               }}
-                              aria-label={
-                                hasRoleEditorChanges
-                                  ? `Apply role change for ${chip.name}`
-                                  : `Cancel role change for ${chip.name}`
-                              }
-                              title={hasRoleEditorChanges ? 'Apply role change' : 'Cancel role change'}
+                              aria-label={`Apply role change for ${chip.name}`}
                             >
                               <Check className="h-4 w-4" />
                             </button>
@@ -1210,7 +1530,7 @@ function WorkspacesDrilldownPanel({
                               type="button"
                               className={cn(
                                 HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
-                                HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS,
+                                HOUSE_COLLABORATOR_ACTION_ICON_REMOVE_CLASS,
                               )}
                               onClick={() => {
                                 setRoleEditorKey(null)
@@ -1220,7 +1540,6 @@ function WorkspacesDrilldownPanel({
                                 setRemovalConfirmKey(null)
                               }}
                               aria-label={`Cancel role change for ${chip.name}`}
-                              title="Cancel role change"
                             >
                               <X className="h-4 w-4" />
                             </button>
@@ -1246,9 +1565,7 @@ function WorkspacesDrilldownPanel({
                               type="button"
                               className={cn(
                                 HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
-                                restoreEditorRole
-                                  ? HOUSE_COLLABORATOR_ACTION_ICON_CONFIRM_CLASS
-                                  : HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS,
+                                HOUSE_COLLABORATOR_ACTION_ICON_CONFIRM_CLASS,
                               )}
                               onClick={() => {
                                 if (!selectedWorkspace || !restoreEditorRole) {
@@ -1265,11 +1582,6 @@ function WorkspacesDrilldownPanel({
                               }}
                               disabled={!restoreEditorRole}
                               aria-label={`Restore ${chip.name} with selected role`}
-                              title={
-                                restoreEditorRole
-                                  ? `Restore as ${collaboratorRoleLabel(restoreEditorRole)}`
-                                  : 'Select role before restoring'
-                              }
                             >
                               <Check className="h-4 w-4" />
                             </button>
@@ -1277,7 +1589,7 @@ function WorkspacesDrilldownPanel({
                               type="button"
                               className={cn(
                                 HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
-                                HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS,
+                                HOUSE_COLLABORATOR_ACTION_ICON_REMOVE_CLASS,
                               )}
                               onClick={() => {
                                 setRoleEditorKey(null)
@@ -1287,7 +1599,6 @@ function WorkspacesDrilldownPanel({
                                 setRemovalConfirmKey(null)
                               }}
                               aria-label={`Cancel restore for ${chip.name}`}
-                              title="Cancel restore"
                             >
                               <X className="h-4 w-4" />
                             </button>
@@ -1296,8 +1607,20 @@ function WorkspacesDrilldownPanel({
                           <span className={HOUSE_FIELD_HELPER_CLASS}>{collaboratorRoleLabel(chip.role)}</span>
                         )}
                         {canManageSelectedWorkspace ? (
+                          isRoleEditorOpen || isRestoreEditorOpen ? null : (
                           isRemovalAwaitingConfirm ? (
                             <>
+                              <button
+                                type="button"
+                                className={cn(
+                                  HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                                  HOUSE_COLLABORATOR_ACTION_ICON_REMOVE_CLASS,
+                                )}
+                                onClick={() => setRemovalConfirmKey(null)}
+                                aria-label={`Cancel remove ${chip.name}`}
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
                               <button
                                 type="button"
                                 className={cn(
@@ -1320,21 +1643,8 @@ function WorkspacesDrilldownPanel({
                                   setRestoreEditorRole(null)
                                 }}
                                 aria-label={`Confirm remove ${chip.name}`}
-                                title="Confirm remove collaborator"
                               >
                                 <Check className="h-4 w-4" />
-                              </button>
-                              <button
-                                type="button"
-                                className={cn(
-                                  HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
-                                  HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS,
-                                )}
-                                onClick={() => setRemovalConfirmKey(null)}
-                                aria-label={`Cancel remove ${chip.name}`}
-                                title="Cancel remove collaborator"
-                              >
-                                <X className="h-4 w-4" />
                               </button>
                             </>
                           ) : (
@@ -1364,7 +1674,6 @@ function WorkspacesDrilldownPanel({
                                 }}
                                 disabled={chip.state === 'removed'}
                                 aria-label={`Edit role for ${chip.name}`}
-                                title={chip.state === 'removed' ? 'Restore collaborator to edit role.' : 'Edit role'}
                               >
                                 <Pencil className="h-4 w-4" />
                               </button>
@@ -1411,13 +1720,6 @@ function WorkspacesDrilldownPanel({
                                   setRemovalConfirmKey(null)
                                 }}
                                 aria-label={chip.state === 'removed' ? `Restore ${chip.name}` : `Remove ${chip.name}`}
-                                title={
-                                  chip.state === 'pending'
-                                    ? 'Cancel pending invitation'
-                                    : chip.state === 'removed'
-                                      ? 'Restore collaborator'
-                                      : 'Remove collaborator'
-                                }
                               >
                                 {chip.state === 'pending' ? (
                                   <X className="h-4 w-4" />
@@ -1428,14 +1730,14 @@ function WorkspacesDrilldownPanel({
                                 )}
                               </button>
                             </>
-                          )
+                          ))
                         ) : null}
                       </div>
                     </div>
                   )
                 })()
               ))}
-              <div className="pt-0.5">
+              <div className="flex justify-end pt-0.5">
                 <button
                   type="button"
                   className={cn(
@@ -1451,15 +1753,6 @@ function WorkspacesDrilldownPanel({
                         : `Add collaborator to ${selectedWorkspace.name}`
                       : 'Select a workspace to add collaborators'
                   }
-                  title={
-                    !selectedWorkspace
-                      ? 'Select a workspace to manage collaborators.'
-                      : canManageSelectedWorkspace
-                        ? collaboratorComposerOpen
-                          ? 'Cancel add collaborator'
-                          : 'Add collaborator'
-                        : 'Only the workspace owner can add collaborators.'
-                  }
                 >
                   <UserPlus className="h-4 w-4" />
                 </button>
@@ -1467,11 +1760,7 @@ function WorkspacesDrilldownPanel({
             </div>
           ) : null}
         </div>
-        {!selectedWorkspace ? (
-          <p className={HOUSE_FIELD_HELPER_CLASS}>Select a workspace to manage collaborators.</p>
-        ) : !canManageSelectedWorkspace ? (
-          <p className={HOUSE_FIELD_HELPER_CLASS}>Only the workspace owner can add collaborators.</p>
-        ) : (
+        {selectedWorkspace && canManageSelectedWorkspace ? (
           <div className="space-y-2">
             {collaboratorComposerOpen ? (
               <>
@@ -1524,15 +1813,108 @@ function WorkspacesDrilldownPanel({
               </>
             ) : null}
           </div>
-        )}
-      </div>
+        ) : null}
+        </div>
+      ) : null}
 
-      <div className="space-y-2">
-        <p className={cn(HOUSE_DRILLDOWN_SECTION_LABEL_CLASS, 'pl-3')}>Audit logs</p>
-        {!selectedWorkspace ? (
-          <p className={HOUSE_FIELD_HELPER_CLASS}>Select a workspace to view audit logs.</p>
-        ) : (
+      {activeTab === 'datas' ? (
+        <div className="space-y-2">
+          {selectedWorkspace ? (
+            <div className="space-y-2 rounded-md border border-border bg-background/70 p-2">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <p className={HOUSE_FIELD_HELPER_CLASS}>Workspace ID</p>
+                  <p className={houseTypography.text}>{selectedWorkspace.id}</p>
+                </div>
+                <div>
+                  <p className={HOUSE_FIELD_HELPER_CLASS}>Version</p>
+                  <p className={houseTypography.text}>{selectedWorkspace.version || '0.1'}</p>
+                </div>
+                <div>
+                  <p className={HOUSE_FIELD_HELPER_CLASS}>Active collaborators</p>
+                  <p className={houseTypography.text}>
+                    {collaboratorChips.filter((chip) => chip.state === 'active').length}
+                  </p>
+                </div>
+                <div>
+                  <p className={HOUSE_FIELD_HELPER_CLASS}>Pending access</p>
+                  <p className={houseTypography.text}>
+                    {collaboratorChips.filter((chip) => chip.state === 'pending').length}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {activeTab === 'logs' ? (
+        <div className="space-y-2">
+        {selectedWorkspace ? (
           <div className="space-y-2">
+            <div className={cn(HOUSE_SECTION_TOOLS_CLASS, HOUSE_SECTION_TOOLS_WORKSPACE_CLASS, HOUSE_ACTIONS_PILL_CLASS, 'flex-wrap')}>
+              <select
+                value={auditExportScope}
+                onChange={(event) => setAuditExportScope(event.target.value as WorkspaceAuditExportScope)}
+                className={cn('h-8 min-w-sz-120 rounded-md px-2 text-xs', HOUSE_SELECT_CLASS)}
+                aria-label="Select workspace log scope"
+              >
+                <option value="all">All logs</option>
+                <option value="collaborator_access">Collaborator access</option>
+                <option value="conversation">Conversation</option>
+              </select>
+              <select
+                value={auditExportRange}
+                onChange={(event) => setAuditExportRange(event.target.value as 'all' | '7d' | '30d' | '90d' | 'custom')}
+                className={cn('h-8 min-w-sz-110 rounded-md px-2 text-xs', HOUSE_SELECT_CLASS)}
+                aria-label="Select workspace log date range"
+              >
+                <option value="all">All dates</option>
+                <option value="7d">Last 7 days</option>
+                <option value="30d">Last 30 days</option>
+                <option value="90d">Last 90 days</option>
+                <option value="custom">Custom range</option>
+              </select>
+              <select
+                value={auditExportActorKey}
+                onChange={(event) => setAuditExportActorKey(event.target.value)}
+                className={cn('h-8 min-w-sz-130 rounded-md px-2 text-xs', HOUSE_SELECT_CLASS)}
+                aria-label="Select workspace log collaborator"
+              >
+                {auditExportActorOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {auditExportRange === 'custom' ? (
+                <>
+                  <Input
+                    type="date"
+                    value={auditExportFromDate}
+                    onChange={(event) => setAuditExportFromDate(event.target.value)}
+                    className={cn(HOUSE_INPUT_CLASS, 'h-8 min-w-sz-110 text-xs')}
+                    aria-label="Workspace log export start date"
+                  />
+                  <Input
+                    type="date"
+                    value={auditExportToDate}
+                    onChange={(event) => setAuditExportToDate(event.target.value)}
+                    className={cn(HOUSE_INPUT_CLASS, 'h-8 min-w-sz-110 text-xs')}
+                    aria-label="Workspace log export end date"
+                  />
+                </>
+              ) : null}
+              <Button
+                type="button"
+                className={cn('h-8 gap-1.5 px-3', HOUSE_ACTIONS_PILL_PRIMARY_CLASS, HOUSE_SECTION_TOOL_BUTTON_CLASS)}
+                onClick={onExportWorkspaceLogs}
+                disabled={exportReadyAuditEntries.length === 0}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export
+              </Button>
+            </div>
             <button
               type="button"
               onClick={onToggleCollaboratorActivitySection}
@@ -1543,11 +1925,6 @@ function WorkspacesDrilldownPanel({
               data-state={collaboratorActivityCollapsed ? 'closed' : 'open'}
               aria-expanded={!collaboratorActivityCollapsed}
               aria-label="Toggle collaborator access and roles audit logs"
-              title={
-                collaboratorActivityCollapsed
-                  ? 'Expand collaborator access and roles'
-                  : 'Collapse collaborator access and roles'
-              }
             >
               <span className={houseTypography.text}>Collaborator access and roles</span>
               <span className="inline-flex items-center gap-1.5">
@@ -1575,18 +1952,13 @@ function WorkspacesDrilldownPanel({
                         data-state={isActive ? 'active' : 'inactive'}
                         onClick={() => setCollaboratorAuditFilter(option.value)}
                         aria-label={`Filter collaborator access and roles by ${option.label}`}
-                        title={`Show ${option.label.toLowerCase()} events`}
                       >
                         {option.label}
                       </button>
                     )
                   })}
                 </div>
-                {collaboratorActivityEntries.length === 0 ? (
-                  <p className={HOUSE_FIELD_HELPER_CLASS}>
-                    No collaborator access or role events logged yet.
-                  </p>
-                ) : (
+                {collaboratorActivityEntries.length === 0 ? null : (
                   <div className={cn(clampCollaboratorActivityList ? 'max-h-72 overflow-y-auto pr-1' : '', 'space-y-2')}>
                         {collaboratorActivityGroups.map((group, groupIndex) => {
                           const actorKey = auditActorKey(group.actorName)
@@ -1709,11 +2081,6 @@ function WorkspacesDrilldownPanel({
               data-state={conversationActivityCollapsed ? 'closed' : 'open'}
               aria-expanded={!conversationActivityCollapsed}
               aria-label="Toggle conversation log audit logs"
-              title={
-                conversationActivityCollapsed
-                  ? 'Expand conversation log'
-                  : 'Collapse conversation log'
-              }
             >
               <span className={houseTypography.text}>Conversation log</span>
               <span className="inline-flex items-center gap-1.5">
@@ -1726,11 +2093,7 @@ function WorkspacesDrilldownPanel({
               </span>
             </button>
             {!conversationActivityCollapsed ? (
-              conversationActivityEntries.length === 0 ? (
-                <p className={HOUSE_FIELD_HELPER_CLASS}>
-                  No conversation events logged yet.
-                </p>
-              ) : (
+              conversationActivityEntries.length === 0 ? null : (
                 <div className="space-y-2">
                   <div className="rounded-md border border-border bg-background/70">
                     <div className={cn(clampConversationActivityList ? 'max-h-72 overflow-y-auto' : '')}>
@@ -1805,28 +2168,14 @@ function WorkspacesDrilldownPanel({
                         ))}
                       </div>
                     </div>
-                    {clampConversationActivityList ? (
-                      <p className={cn(HOUSE_FIELD_HELPER_CLASS, 'px-2 pb-2')}>
-                        Scroll to view older conversation entries.
-                      </p>
-                    ) : null}
                   </div>
                 </div>
               )
             ) : null}
           </div>
-        )}
-      </div>
-    </div>
-  )
-}
-function DataLibraryDrilldownPanel() {
-  return (
-    <div className={HOUSE_DRILLDOWN_SHEET_BODY_CLASS}>
-      <div className={HOUSE_DATA_LEFT_BORDER_CLASS}>
-        <h2 className={HOUSE_SECTION_TITLE_CLASS}>Manage data</h2>
-      </div>
-      <p className={cn(HOUSE_DRILLDOWN_SECTION_LABEL_CLASS, 'mt-1 pl-3')}>Data library</p>
+        ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -1869,34 +2218,6 @@ function SortableHeader({
       ) : (
         <ChevronsUpDown className="h-3.5 w-3.5" />
       )}
-    </button>
-  )
-}
-
-function WorkspaceMenuTrigger({
-  menuOpen,
-  disabled = false,
-  onToggleMenu,
-}: {
-  menuOpen: boolean
-  disabled?: boolean
-  onToggleMenu: (event: ReactMouseEvent<HTMLButtonElement>) => void
-}) {
-  return (
-    <button
-      type="button"
-      data-workspace-menu="true"
-      onClick={onToggleMenu}
-      disabled={disabled}
-      className={cn(
-        'inline-flex items-center justify-center rounded-md border border-border bg-background text-sm leading-none text-muted-foreground hover:text-foreground',
-        WORKSPACE_ICON_BUTTON_DIMENSION_CLASS,
-        menuOpen && 'border-emerald-400 text-foreground',
-        disabled && 'cursor-not-allowed opacity-60 hover:text-muted-foreground',
-      )}
-      aria-label="Workspace options"
-    >
-      ...
     </button>
   )
 }
@@ -2111,7 +2432,6 @@ export function WorkspacesPage() {
   const setActiveWorkspaceId = useWorkspaceStore((state) => state.setActiveWorkspaceId)
   const createWorkspace = useWorkspaceStore((state) => state.createWorkspace)
   const updateWorkspace = useWorkspaceStore((state) => state.updateWorkspace)
-  const deleteWorkspace = useWorkspaceStore((state) => state.deleteWorkspace)
   const sendWorkspaceInvitation = useWorkspaceStore((state) => state.sendWorkspaceInvitation)
   const acceptAuthorRequest = useWorkspaceStore((state) => state.acceptAuthorRequest)
   const declineAuthorRequest = useWorkspaceStore((state) => state.declineAuthorRequest)
@@ -2135,19 +2455,21 @@ export function WorkspacesPage() {
   const [dataLibraryDrilldownDesktopOpen, setDataLibraryDrilldownDesktopOpen] = useState(false)
   const [dataLibraryDrilldownMobileOpen, setDataLibraryDrilldownMobileOpen] = useState(false)
   const [workspaceDrilldownSelectionId, setWorkspaceDrilldownSelectionId] = useState<string | null>(null)
+  const [dataLibrarySelectionId, setDataLibrarySelectionId] = useState<string | null>(null)
+  const [dataLibraryAssets, setDataLibraryAssets] = useState<LibraryAssetRecord[]>([])
+  const [dataLibraryRefreshToken, setDataLibraryRefreshToken] = useState(0)
+  const [dataLibraryDisplayNameByAssetId, setDataLibraryDisplayNameByAssetId] = useState<Record<string, string>>(() =>
+    readScopedJsonValue<Record<string, string>>(DATA_LIBRARY_DISPLAY_NAME_STORAGE_KEY, {}),
+  )
+  const [dataLibraryLinkedWorkspaceIdsByAssetId, setDataLibraryLinkedWorkspaceIdsByAssetId] = useState<Record<string, string[]>>(() =>
+    readScopedJsonValue<Record<string, string[]>>(DATA_LIBRARY_LINKED_WORKSPACES_STORAGE_KEY, {}),
+  )
   const [newWorkspaceName, setNewWorkspaceName] = useState('')
   const [createError, setCreateError] = useState('')
   const [invitationStatus, setInvitationStatus] = useState('')
-  const [menuState, setMenuState] = useState<{
-    workspaceId: string
-    x: number
-    y: number
-  } | null>(null)
   const [collaboratorQuery, setCollaboratorQuery] = useState('')
   const [collaboratorComposerOpen, setCollaboratorComposerOpen] = useState(false)
   const [collaboratorInviteRole, setCollaboratorInviteRole] = useState<WorkspaceCollaboratorRole>('editor')
-  const [renamingWorkspaceId, setRenamingWorkspaceId] = useState<string | null>(null)
-  const [renameDraft, setRenameDraft] = useState('')
   const [workspaceOwnerName, setWorkspaceOwnerName] = useState<string | null>(() =>
     readWorkspaceOwnerNameFromProfile(),
   )
@@ -2339,41 +2661,44 @@ export function WorkspacesPage() {
   const canConfirmAddCollaborator = Boolean(
     canManageSelectedWorkspace && collaboratorComposerOpen && collaboratorTargetName,
   )
+  const selectedDataLibraryAsset = useMemo(
+    () =>
+      dataLibrarySelectionId
+        ? dataLibraryAssets.find((asset) => asset.id === dataLibrarySelectionId) || null
+        : null,
+    [dataLibraryAssets, dataLibrarySelectionId],
+  )
+  const selectedDataLibraryDisplayName = useMemo(
+    () => {
+      if (!selectedDataLibraryAsset) {
+        return ''
+      }
+      return dataLibraryDisplayNameByAssetId[selectedDataLibraryAsset.id] || displayAssetFilename(selectedDataLibraryAsset.filename)
+    },
+    [dataLibraryDisplayNameByAssetId, selectedDataLibraryAsset],
+  )
+  const selectedDataLibraryLinkedWorkspaceIds = useMemo(
+    () => {
+      if (!selectedDataLibraryAsset) {
+        return []
+      }
+      const existing = dataLibraryLinkedWorkspaceIdsByAssetId[selectedDataLibraryAsset.id]
+      if (Array.isArray(existing)) {
+        return existing
+      }
+      const projectWorkspaceId = String(selectedDataLibraryAsset.project_id || '').trim()
+      if (!projectWorkspaceId) {
+        return []
+      }
+      return workspaces.some((workspace) => workspace.id === projectWorkspaceId) ? [projectWorkspaceId] : []
+    },
+    [dataLibraryLinkedWorkspaceIdsByAssetId, selectedDataLibraryAsset, workspaces],
+  )
 
   useEffect(() => {
     void hydrateWorkspaceStoreFromRemote()
     void hydrateWorkspaceInboxFromRemote()
   }, [hydrateWorkspaceInboxFromRemote, hydrateWorkspaceStoreFromRemote])
-
-  useEffect(() => {
-    if (!menuState) {
-      return
-    }
-    const closeMenu = () => setMenuState(null)
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        closeMenu()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('resize', closeMenu)
-    window.addEventListener('scroll', closeMenu, true)
-    return () => {
-      window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('resize', closeMenu)
-      window.removeEventListener('scroll', closeMenu, true)
-    }
-  }, [menuState])
-
-  useEffect(() => {
-    if (!menuState) {
-      return
-    }
-    const exists = workspaces.some((workspace) => workspace.id === menuState.workspaceId)
-    if (!exists) {
-      setMenuState(null)
-    }
-  }, [menuState, workspaces])
 
   useEffect(() => {
     if (!workspaceDrilldownSelectionId) {
@@ -2429,6 +2754,51 @@ export function WorkspacesPage() {
   }, [centerView])
 
   useEffect(() => {
+    writeScopedJsonValue(DATA_LIBRARY_DISPLAY_NAME_STORAGE_KEY, dataLibraryDisplayNameByAssetId)
+  }, [dataLibraryDisplayNameByAssetId])
+
+  useEffect(() => {
+    writeScopedJsonValue(DATA_LIBRARY_LINKED_WORKSPACES_STORAGE_KEY, dataLibraryLinkedWorkspaceIdsByAssetId)
+  }, [dataLibraryLinkedWorkspaceIdsByAssetId])
+
+  useEffect(() => {
+    if (dataLibraryAssets.length === 0) {
+      if (dataLibrarySelectionId !== null) {
+        setDataLibrarySelectionId(null)
+      }
+      return
+    }
+    if (!dataLibrarySelectionId) {
+      setDataLibrarySelectionId(dataLibraryAssets[0].id)
+      return
+    }
+    const exists = dataLibraryAssets.some((asset) => asset.id === dataLibrarySelectionId)
+    if (!exists) {
+      setDataLibrarySelectionId(dataLibraryAssets[0].id)
+    }
+  }, [dataLibraryAssets, dataLibrarySelectionId])
+
+  useEffect(() => {
+    setDataLibraryLinkedWorkspaceIdsByAssetId((current) => {
+      let changed = false
+      const next: Record<string, string[]> = { ...current }
+      for (const asset of dataLibraryAssets) {
+        const existing = next[asset.id]
+        if (Array.isArray(existing)) {
+          continue
+        }
+        const projectWorkspaceId = String(asset.project_id || '').trim()
+        if (!projectWorkspaceId || !workspaces.some((workspace) => workspace.id === projectWorkspaceId)) {
+          continue
+        }
+        changed = true
+        next[asset.id] = [projectWorkspaceId]
+      }
+      return changed ? next : current
+    })
+  }, [dataLibraryAssets, workspaces])
+
+  useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       if (matchesScopedStorageEventKey(event.key, INBOX_MESSAGES_STORAGE_KEY)) {
         refreshInboxMessagesFromStorage()
@@ -2479,52 +2849,6 @@ export function WorkspacesPage() {
           : WORKSPACE_OWNER_REQUIRED_MESSAGE,
       )
     }
-  }
-
-  const onInviteCollaborator = (workspace: WorkspaceRecord) => {
-    const currentOwner = (workspaceOwnerName || '').trim()
-    if (!currentOwner || workspace.ownerName.toLowerCase() !== currentOwner.toLowerCase()) {
-      setInvitationStatus('Only the workspace author can invite collaborators.')
-      setMenuState(null)
-      return
-    }
-    const invitationTarget = window.prompt(`Invite collaborator to "${workspace.name}"`)
-    if (invitationTarget === null) {
-      setMenuState(null)
-      return
-    }
-    const roleInput = window.prompt(
-      'Assign role before sending invite (editor, reviewer, viewer)',
-      'editor',
-    )
-    if (roleInput === null) {
-      setMenuState(null)
-      return
-    }
-    const inviteRole = normalizeCollaboratorRoleValue(roleInput)
-    if (!inviteRole) {
-      setInvitationStatus('Role must be editor, reviewer, or viewer.')
-      setMenuState(null)
-      return
-    }
-    const sent = sendWorkspaceInvitation(workspace.id, invitationTarget, inviteRole)
-    if (!sent) {
-      setInvitationStatus('Invitation was not sent. Check owner access or duplicate pending invitation.')
-      setMenuState(null)
-      return
-    }
-    setInvitationStatus(`Invitation sent to ${sent.inviteeName} as ${collaboratorRoleLabel(sent.role)}.`)
-    appendWorkspaceAuditLog(
-      workspace.id,
-      collaboratorStatusTransitionAuditMessage({
-        collaboratorName: sent.inviteeName,
-        fromStatus: 'none',
-        toStatus: 'pending',
-        actorName: currentAuditActorName,
-        role: sent.role,
-      }),
-    )
-    setMenuState(null)
   }
 
   const onAddCollaborator = (workspace: WorkspaceRecord) => {
@@ -2921,53 +3245,81 @@ export function WorkspacesPage() {
     onOpenWorkspaceInboxForWorkspace(inboxWorkspace.id, Boolean(signal?.unreadCount))
   }
 
-  const onStartRenameWorkspace = (workspace: WorkspaceRecord) => {
-    setRenamingWorkspaceId(workspace.id)
-    setRenameDraft(workspace.name)
-    setMenuState(null)
+  const onDataLibraryAssetsChange = (
+    assets: LibraryAssetRecord[],
+    _meta: DataLibraryAssetTableMeta,
+  ) => {
+    setDataLibraryAssets(assets)
   }
 
-  const onCancelRenameWorkspace = () => {
-    setRenamingWorkspaceId(null)
-    setRenameDraft('')
+  const onDataLibraryAssetPatched = (updatedAsset: LibraryAssetRecord) => {
+    setDataLibraryAssets((current) => current.map((asset) => (asset.id === updatedAsset.id ? updatedAsset : asset)))
   }
 
-  const onSaveRenameWorkspace = (workspace: WorkspaceRecord) => {
-    const clean = renameDraft.trim()
-    if (!clean || clean === workspace.name) {
-      onCancelRenameWorkspace()
+  const onDataLibraryUpdateDisplayName = (assetId: string, displayName: string) => {
+    const cleanAssetId = normalizeCollaboratorName(assetId)
+    const cleanDisplayName = normalizeCollaboratorName(displayName)
+    if (!cleanAssetId || !cleanDisplayName) {
       return
     }
-    updateWorkspace(workspace.id, {
-      name: clean,
-      updatedAt: new Date().toISOString(),
-    })
-    onCancelRenameWorkspace()
+    setDataLibraryDisplayNameByAssetId((current) => ({
+      ...current,
+      [cleanAssetId]: cleanDisplayName,
+    }))
   }
 
-  const onArchiveToggle = (workspace: WorkspaceRecord) => {
-    updateWorkspace(workspace.id, {
-      archived: !workspace.archived,
-      updatedAt: new Date().toISOString(),
-    })
-    setMenuState(null)
-  }
-
-  const onDeleteWorkspace = (workspace: WorkspaceRecord) => {
-    const confirmed = window.confirm(`Delete workspace "${workspace.name}"?`)
-    if (!confirmed) {
-      setMenuState(null)
+  const onDataLibraryLinkedWorkspaceIdsChange = (assetId: string, nextWorkspaceIds: string[]) => {
+    const cleanAssetId = normalizeCollaboratorName(assetId)
+    if (!cleanAssetId) {
       return
     }
-    deleteWorkspace(workspace.id)
-    setMenuState(null)
+    const sanitized = Array.from(
+      new Set(
+        nextWorkspaceIds
+          .map((workspaceId) => normalizeCollaboratorName(workspaceId))
+          .filter(Boolean),
+      ),
+    )
+    setDataLibraryLinkedWorkspaceIdsByAssetId((current) => ({
+      ...current,
+      [cleanAssetId]: sanitized,
+    }))
   }
 
-  const onTogglePinned = (workspace: WorkspaceRecord) => {
-    updateWorkspace(workspace.id, {
-      pinned: !workspace.pinned,
-      updatedAt: new Date().toISOString(),
-    })
+  const onOpenDataLibraryLinkedWorkspace = (workspaceId: string) => {
+    const cleanWorkspaceId = normalizeCollaboratorName(workspaceId)
+    if (!cleanWorkspaceId) {
+      return
+    }
+    const targetWorkspace = workspaces.find((workspace) => workspace.id === cleanWorkspaceId)
+    if (!targetWorkspace) {
+      return
+    }
+    setCenterView('workspaces')
+    setWorkspaceDrilldownSelectionId(cleanWorkspaceId)
+    resetCollaboratorComposer()
+    setActiveWorkspaceId(cleanWorkspaceId)
+    if (window.matchMedia('(min-width: 1280px)').matches) {
+      setWorkspaceDrilldownDesktopOpen(true)
+      return
+    }
+    navigate(`/w/${cleanWorkspaceId}/overview`)
+  }
+
+  const onRequestDataLibraryRefresh = () => {
+    setDataLibraryRefreshToken((current) => current + 1)
+  }
+
+  const onSelectDataLibraryAsset = (assetId: string | null) => {
+    setDataLibrarySelectionId(assetId)
+    if (!assetId) {
+      return
+    }
+    if (window.matchMedia('(min-width: 1280px)').matches) {
+      setDataLibraryDrilldownDesktopOpen(true)
+      return
+    }
+    setDataLibraryDrilldownMobileOpen(true)
   }
 
   const onSort = (column: SortColumn) => {
@@ -2978,37 +3330,7 @@ export function WorkspacesPage() {
     setSortColumn(column)
     setSortDirection(column === 'updatedAt' ? 'desc' : 'asc')
   }
-
-  const onToggleWorkspaceMenu = (workspaceId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation()
-    const workspace = workspaces.find((item) => item.id === workspaceId)
-    if (workspace && isWorkspaceReadOnlyForCurrentUser(workspace, workspaceOwnerName)) {
-      return
-    }
-    const rect = event.currentTarget.getBoundingClientRect()
-    const menuWidth = 160
-    const menuHeight = 204
-    const gap = 6
-    const rightAlignedX = rect.right - menuWidth
-    const x = Math.max(8, Math.min(rightAlignedX, window.innerWidth - menuWidth - 8))
-    const openUp = window.innerHeight - rect.bottom < menuHeight + gap
-    const y = openUp
-      ? Math.max(8, rect.top - menuHeight - gap)
-      : Math.min(rect.bottom + gap, window.innerHeight - menuHeight - 8)
-    setMenuState((current) => (current?.workspaceId === workspaceId ? null : { workspaceId, x, y }))
-  }
-
-  const menuWorkspace =
-    menuState ? workspaces.find((workspace) => workspace.id === menuState.workspaceId) || null : null
-  const menuWorkspaceReadOnly = Boolean(
-    menuWorkspace && isWorkspaceReadOnlyForCurrentUser(menuWorkspace, workspaceOwnerName),
-  )
-  const canInviteFromMenu = Boolean(
-    menuWorkspace &&
-    !menuWorkspaceReadOnly &&
-    workspaceOwnerName &&
-    menuWorkspace.ownerName.toLowerCase() === workspaceOwnerName.toLowerCase(),
-  )
+  const pageTitle = centerView === 'data-library' ? 'Data library' : 'Workspaces'
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -3019,12 +3341,12 @@ export function WorkspacesPage() {
           'grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[280px_minmax(0,1fr)]',
           centerView === 'workspaces' &&
             (workspaceDrilldownDesktopOpen
-              ? 'xl:grid-cols-[280px_minmax(0,1fr)_22rem]'
-              : 'xl:grid-cols-[280px_minmax(0,1fr)_3rem]'),
+              ? DRILLDOWN_OPEN_GRID_CLASS
+              : DRILLDOWN_COLLAPSED_GRID_CLASS),
           centerView === 'data-library' &&
             (dataLibraryDrilldownDesktopOpen
-              ? 'xl:grid-cols-[280px_minmax(0,1fr)_22rem]'
-              : 'xl:grid-cols-[280px_minmax(0,1fr)_3rem]'),
+              ? DRILLDOWN_OPEN_GRID_CLASS
+              : DRILLDOWN_COLLAPSED_GRID_CLASS),
         )}
       >
         <aside className="hidden border-r border-border nav:block">
@@ -3044,7 +3366,7 @@ export function WorkspacesPage() {
               <section className={cn('rounded-lg border border-border p-4', HOUSE_CARD_CLASS)}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
-                    <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Workspaces</h1>
+                    <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>{pageTitle}</h1>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Input
@@ -3243,60 +3565,11 @@ export function WorkspacesPage() {
                               <td className={cn('px-3 py-2 align-middle font-medium', HOUSE_TABLE_CELL_TEXT_CLASS)}>
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="min-w-0 flex-1">
-                                    {renamingWorkspaceId === workspace.id ? (
-                                      <div className="flex items-center gap-1.5" onClick={(event) => event.stopPropagation()}>
-                                        <Input
-                                          value={renameDraft}
-                                          onChange={(event) => setRenameDraft(event.target.value)}
-                                          onKeyDown={(event) => {
-                                            if (event.key === 'Enter') {
-                                              event.preventDefault()
-                                              onSaveRenameWorkspace(workspace)
-                                            } else if (event.key === 'Escape') {
-                                              event.preventDefault()
-                                              onCancelRenameWorkspace()
-                                            }
-                                          }}
-                                          className={cn('h-8 w-full', HOUSE_INPUT_CLASS)}
-                                          autoFocus
-                                        />
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          className={cn(HOUSE_SUCCESS_ACTION_BUTTON_CLASS, WORKSPACE_ICON_BUTTON_DIMENSION_CLASS)}
-                                          onClick={() => onSaveRenameWorkspace(workspace)}
-                                          disabled={!renameDraft.trim() || renameDraft.trim() === workspace.name.trim()}
-                                          aria-label={`Save rename for ${workspace.name}`}
-                                          title="Save rename"
-                                        >
-                                          <Save className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          className={cn(HOUSE_DANGER_ACTION_BUTTON_CLASS, WORKSPACE_ICON_BUTTON_DIMENSION_CLASS)}
-                                          onClick={onCancelRenameWorkspace}
-                                          aria-label="Cancel rename"
-                                          title="Cancel rename"
-                                        >
-                                          <X className="h-4 w-4" />
-                                        </Button>
-                                      </div>
-                                    ) : (
-                                      <>
-                                        <p className="flex min-w-0 items-center gap-1.5">
-                                          {workspace.pinned ? <Pin size={13} className="shrink-0 text-emerald-600" aria-label="Pinned workspace" /> : null}
-                                          <span className="truncate">{workspace.name}</span>
-                                        </p>
-                                      </>
-                                    )}
+                                    <p className="flex min-w-0 items-center gap-1.5">
+                                      {workspace.pinned ? <Pin size={13} className="shrink-0 text-emerald-600" aria-label="Pinned workspace" /> : null}
+                                      <span className="truncate">{workspace.name}</span>
+                                    </p>
                                   </div>
-
-                                  <WorkspaceMenuTrigger
-                                    menuOpen={menuState?.workspaceId === workspace.id}
-                                    disabled={workspaceReadOnly}
-                                    onToggleMenu={(event) => onToggleWorkspaceMenu(workspace.id, event)}
-                                  />
                                 </div>
                               </td>
                               <td className={cn('px-3 py-2 align-middle text-center text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>{ownerLabel}</td>
@@ -3379,72 +3652,24 @@ export function WorkspacesPage() {
                         >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
-                            {renamingWorkspaceId === workspace.id ? (
-                              <div className="flex items-center gap-1.5" onClick={(event) => event.stopPropagation()}>
-                                <Input
-                                  value={renameDraft}
-                                  onChange={(event) => setRenameDraft(event.target.value)}
-                                  onKeyDown={(event) => {
-                                    if (event.key === 'Enter') {
-                                      event.preventDefault()
-                                      onSaveRenameWorkspace(workspace)
-                                    } else if (event.key === 'Escape') {
-                                      event.preventDefault()
-                                      onCancelRenameWorkspace()
-                                    }
-                                  }}
-                                  className={cn('h-8 w-full', HOUSE_INPUT_CLASS)}
-                                  autoFocus
-                                />
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  className={cn(HOUSE_SUCCESS_ACTION_BUTTON_CLASS, WORKSPACE_ICON_BUTTON_DIMENSION_CLASS)}
-                                  onClick={() => onSaveRenameWorkspace(workspace)}
-                                  disabled={!renameDraft.trim() || renameDraft.trim() === workspace.name.trim()}
-                                  aria-label={`Save rename for ${workspace.name}`}
-                                  title="Save rename"
-                                >
-                                  <Save className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  className={cn(HOUSE_DANGER_ACTION_BUTTON_CLASS, WORKSPACE_ICON_BUTTON_DIMENSION_CLASS)}
-                                  onClick={onCancelRenameWorkspace}
-                                  aria-label="Cancel rename"
-                                  title="Cancel rename"
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <>
-                                <p className="flex min-w-0 items-center gap-1.5 font-medium">
-                                  {workspace.pinned ? <Pin size={13} className="shrink-0 text-emerald-600" aria-label="Pinned workspace" /> : null}
-                                  <span className="truncate">{workspace.name}</span>
-                                </p>
-                                <p className="mt-1 text-xs text-muted-foreground">{ownerLabel}</p>
-                                <div className="mt-2 space-y-1" onClick={(event) => event.stopPropagation()}>
-                                  <p className="text-xs text-muted-foreground">Collaborators</p>
-                                  <CollaboratorBanners
-                                    workspace={workspace}
-                                    canManage={isWorkspaceOwner(workspace, workspaceOwnerName)}
-                                    onAddCollaborator={onAddCollaborator}
-                                    onToggleRemoved={onToggleCollaboratorRemoved}
-                                  />
-                                </div>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  Last activity {formatTimestamp(signal.lastActivityAt)}
-                                </p>
-                              </>
-                            )}
+                            <p className="flex min-w-0 items-center gap-1.5 font-medium">
+                              {workspace.pinned ? <Pin size={13} className="shrink-0 text-emerald-600" aria-label="Pinned workspace" /> : null}
+                              <span className="truncate">{workspace.name}</span>
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">{ownerLabel}</p>
+                            <div className="mt-2 space-y-1" onClick={(event) => event.stopPropagation()}>
+                              <p className="text-xs text-muted-foreground">Collaborators</p>
+                              <CollaboratorBanners
+                                workspace={workspace}
+                                canManage={isWorkspaceOwner(workspace, workspaceOwnerName)}
+                                onAddCollaborator={onAddCollaborator}
+                                onToggleRemoved={onToggleCollaboratorRemoved}
+                              />
+                            </div>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Last activity {formatTimestamp(signal.lastActivityAt)}
+                            </p>
                           </div>
-                          <WorkspaceMenuTrigger
-                            menuOpen={menuState?.workspaceId === workspace.id}
-                            disabled={workspaceReadOnly}
-                            onToggleMenu={(event) => onToggleWorkspaceMenu(workspace.id, event)}
-                          />
                         </div>
                         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
                           <button
@@ -3598,7 +3823,14 @@ export function WorkspacesPage() {
                     )}
                   </>
                 ) : (
-                  <WorkspacesDataLibraryView onOpenDrilldownMobile={() => setDataLibraryDrilldownMobileOpen(true)} />
+                  <WorkspacesDataLibraryView
+                    selectedAssetId={dataLibrarySelectionId}
+                    refreshToken={dataLibraryRefreshToken}
+                    onOpenDrilldownMobile={() => setDataLibraryDrilldownMobileOpen(true)}
+                    onSelectAsset={onSelectDataLibraryAsset}
+                    onAssetsChange={onDataLibraryAssetsChange}
+                    displayNameByAssetId={dataLibraryDisplayNameByAssetId}
+                  />
                 )}
               </section>
             </div>
@@ -3606,10 +3838,13 @@ export function WorkspacesPage() {
         </main>
 
         {centerView === 'workspaces' ? (
-          <aside className="hidden border-l border-border xl:block">
+          <aside
+            className="hidden border-l border-border xl:block"
+            style={workspaceDrilldownDesktopOpen ? DRILLDOWN_OPEN_PANEL_STYLE : DRILLDOWN_COLLAPSED_PANEL_STYLE}
+          >
             {workspaceDrilldownDesktopOpen ? (
               <ScrollArea className="h-full">
-                <div className="space-y-3 p-3">
+                <div className="w-full space-y-3 p-3">
                   <div className="flex justify-end">
                     <button
                       type="button"
@@ -3674,10 +3909,13 @@ export function WorkspacesPage() {
             )}
           </aside>
         ) : centerView === 'data-library' ? (
-          <aside className="hidden border-l border-border xl:block">
+          <aside
+            className="hidden border-l border-border xl:block"
+            style={dataLibraryDrilldownDesktopOpen ? DRILLDOWN_OPEN_PANEL_STYLE : DRILLDOWN_COLLAPSED_PANEL_STYLE}
+          >
             {dataLibraryDrilldownDesktopOpen ? (
               <ScrollArea className="h-full">
-                <div className="space-y-3 p-3">
+                <div className="w-full space-y-3 p-3">
                   <div className="flex justify-end">
                     <button
                       type="button"
@@ -3689,7 +3927,19 @@ export function WorkspacesPage() {
                       <PanelRightClose className="h-4 w-4" />
                     </button>
                   </div>
-                  <DataLibraryDrilldownPanel />
+                  <DataLibraryDrilldownPanel
+                    selectedAsset={selectedDataLibraryAsset}
+                    selectedAssetDisplayName={selectedDataLibraryDisplayName}
+                    workspaces={workspaces}
+                    linkedWorkspaceIds={selectedDataLibraryLinkedWorkspaceIds}
+                    currentUserName={currentReaderName}
+                    onUpdateAssetDisplayName={onDataLibraryUpdateDisplayName}
+                    onLinkedWorkspaceIdsChange={onDataLibraryLinkedWorkspaceIdsChange}
+                    onOpenWorkspace={onOpenDataLibraryLinkedWorkspace}
+                    onRequestAssetRefresh={onRequestDataLibraryRefresh}
+                    onAssetPatched={onDataLibraryAssetPatched}
+                    dataLeftBorderClassName={HOUSE_DATA_LEFT_BORDER_CLASS}
+                  />
                 </div>
               </ScrollArea>
             ) : (
@@ -3748,7 +3998,19 @@ export function WorkspacesPage() {
 
       <Sheet open={dataLibraryDrilldownMobileOpen} onOpenChange={setDataLibraryDrilldownMobileOpen}>
         <SheetContent side="right" className={HOUSE_DRILLDOWN_SHEET_CLASS}>
-          <DataLibraryDrilldownPanel />
+          <DataLibraryDrilldownPanel
+            selectedAsset={selectedDataLibraryAsset}
+            selectedAssetDisplayName={selectedDataLibraryDisplayName}
+            workspaces={workspaces}
+            linkedWorkspaceIds={selectedDataLibraryLinkedWorkspaceIds}
+            currentUserName={currentReaderName}
+            onUpdateAssetDisplayName={onDataLibraryUpdateDisplayName}
+            onLinkedWorkspaceIdsChange={onDataLibraryLinkedWorkspaceIdsChange}
+            onOpenWorkspace={onOpenDataLibraryLinkedWorkspace}
+            onRequestAssetRefresh={onRequestDataLibraryRefresh}
+            onAssetPatched={onDataLibraryAssetPatched}
+            dataLeftBorderClassName={HOUSE_DATA_LEFT_BORDER_CLASS}
+          />
         </SheetContent>
       </Sheet>
 
@@ -3766,120 +4028,6 @@ export function WorkspacesPage() {
         </SheetContent>
       </Sheet>
 
-      {menuState && menuWorkspace
-        ? createPortal(
-            <div className="fixed inset-0 z-50" data-ui="workspace-menu-overlay" onClick={() => setMenuState(null)}>
-              <div
-                data-workspace-menu="true"
-                data-ui="workspace-menu-shell"
-                className="fixed w-40 rounded-md border border-border bg-card p-1 shadow-lg"
-                style={{ left: menuState.x, top: menuState.y }}
-                onClick={(event) => event.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  data-house-role="workspace-menu-item-open"
-                  className={cn(
-                    'block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50',
-                    menuWorkspaceReadOnly && 'cursor-not-allowed text-muted-foreground hover:bg-transparent',
-                  )}
-                  onClick={() => {
-                    if (menuWorkspaceReadOnly) {
-                      return
-                    }
-                    onOpenWorkspace(menuWorkspace.id)
-                    setMenuState(null)
-                  }}
-                  disabled={menuWorkspaceReadOnly}
-                >
-                  Open workspace
-                </button>
-                <button
-                  type="button"
-                  data-house-role="workspace-menu-item-invite"
-                  className={cn(
-                    'block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50',
-                    !canInviteFromMenu && 'cursor-not-allowed text-muted-foreground hover:bg-transparent',
-                  )}
-                  onClick={() => onInviteCollaborator(menuWorkspace)}
-                  disabled={!canInviteFromMenu}
-                >
-                  Invite collaborator
-                </button>
-                <button
-                  type="button"
-                  data-house-role="workspace-menu-item-rename"
-                  className={cn(
-                    'block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50',
-                    menuWorkspaceReadOnly && 'cursor-not-allowed text-muted-foreground hover:bg-transparent',
-                  )}
-                  onClick={() => {
-                    if (menuWorkspaceReadOnly) {
-                      return
-                    }
-                    onStartRenameWorkspace(menuWorkspace)
-                  }}
-                  disabled={menuWorkspaceReadOnly}
-                >
-                  Rename
-                </button>
-                <button
-                  type="button"
-                  data-house-role="workspace-menu-item-pin"
-                  className={cn(
-                    'block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50',
-                    menuWorkspaceReadOnly && 'cursor-not-allowed text-muted-foreground hover:bg-transparent',
-                  )}
-                  onClick={() => {
-                    if (menuWorkspaceReadOnly) {
-                      return
-                    }
-                    onTogglePinned(menuWorkspace)
-                    setMenuState(null)
-                  }}
-                  disabled={menuWorkspaceReadOnly}
-                >
-                  {menuWorkspace.pinned ? 'Unpin' : 'Pin'}
-                </button>
-                <button
-                  type="button"
-                  data-house-role="workspace-menu-item-archive"
-                  className={cn(
-                    'block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50',
-                    menuWorkspaceReadOnly && 'cursor-not-allowed text-muted-foreground hover:bg-transparent',
-                  )}
-                  onClick={() => {
-                    if (menuWorkspaceReadOnly) {
-                      return
-                    }
-                    onArchiveToggle(menuWorkspace)
-                  }}
-                  disabled={menuWorkspaceReadOnly}
-                >
-                  {menuWorkspace.archived ? 'Restore' : 'Archive'}
-                </button>
-                <button
-                  type="button"
-                  data-house-role="workspace-menu-item-delete"
-                  className={cn(
-                    'block w-full rounded px-2 py-1.5 text-left text-sm text-red-700 hover:bg-red-50',
-                    menuWorkspaceReadOnly && 'cursor-not-allowed text-muted-foreground hover:bg-transparent',
-                  )}
-                  onClick={() => {
-                    if (menuWorkspaceReadOnly) {
-                      return
-                    }
-                    onDeleteWorkspace(menuWorkspace)
-                  }}
-                  disabled={menuWorkspaceReadOnly}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
     </div>
   )
 }

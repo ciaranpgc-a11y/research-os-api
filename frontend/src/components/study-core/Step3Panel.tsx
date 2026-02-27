@@ -62,7 +62,7 @@ export function Step3Panel({
         <Button className="w-full" onClick={onRunWithRecommended} disabled={busy}>
           Run with recommended settings
         </Button>
-        <Button variant="outline" className="w-full" onClick={onRunAnyway} disabled={busy}>
+        <Button variant="tertiary" className="w-full" onClick={onRunAnyway} disabled={busy}>
           Run anyway
         </Button>
       </div>

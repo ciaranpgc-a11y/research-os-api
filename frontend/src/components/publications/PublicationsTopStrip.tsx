@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Download, Eye, EyeOff, FileText, Share2 } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui/card'
@@ -297,6 +297,7 @@ const HOUSE_TILE_SUBTITLE_CLASS = cn('house-metric-subtitle-row', HOUSE_METRIC_S
 const HOUSE_TILE_DETAIL_CLASS = cn('mt-0.5 min-h-[2.4rem]', HOUSE_METRIC_DETAIL_CLASS)
 const HOUSE_HEADING_LABEL_CLASS = publicationsHouseHeadings.label
 const HOUSE_CHART_TRANSITION_CLASS = publicationsHouseMotion.chartPanel
+const HOUSE_CHART_SERIES_BY_KEY_CLASS = publicationsHouseMotion.chartSeriesByKey
 const HOUSE_CHART_ENTERED_CLASS = publicationsHouseMotion.chartEnter
 const HOUSE_CHART_EXITED_CLASS = publicationsHouseMotion.chartExit
 const HOUSE_CHART_RING_ENTERED_CLASS = publicationsHouseMotion.ringChartEnter
@@ -305,7 +306,6 @@ const HOUSE_CHART_SCALE_LAYER_CLASS = publicationsHouseMotion.chartScaleLayer
 const HOUSE_CHART_SCALE_TICK_CLASS = publicationsHouseMotion.chartScaleTick
 const HOUSE_CHART_SCALE_AXIS_TITLE_CLASS = publicationsHouseMotion.chartScaleAxisTitle
 const HOUSE_CHART_SCALE_MEAN_LINE_CLASS = publicationsHouseMotion.chartScaleMeanLine
-const HOUSE_CHART_SCALE_MEAN_LINE_DELAYED_CLASS = publicationsHouseMotion.chartScaleMeanLineDelayed
 const HOUSE_TOGGLE_TRACK_CLASS = publicationsHouseMotion.toggleTrack
 const HOUSE_TOGGLE_THUMB_CLASS = publicationsHouseMotion.toggleThumb
 const HOUSE_TOGGLE_BUTTON_CLASS = publicationsHouseMotion.toggleButton
@@ -414,7 +414,7 @@ const HOUSE_CHART_RING_PANEL_CLASS = publicationsHouseCharts.ringPanel
 const HOUSE_CHART_RING_SIZE_CLASS = publicationsHouseCharts.ringSize
 const HOUSE_CHART_MINI_DONUT_CLASS = publicationsHouseCharts.miniDonut
 const HOUSE_METRIC_PROGRESS_PANEL_CLASS =
-  cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'flex flex-1 flex-col gap-2.5 px-2 py-2 transition-[opacity,transform,filter] duration-320 ease-out')
+  cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'flex flex-1 flex-col gap-2.5 px-2 py-2')
 const HOUSE_LINE_CHART_SURFACE_CLASS =
   cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'relative flex-1 px-1.5 pb-1.5 pt-2')
 const HOUSE_FIELD_PERCENTILE_TOGGLE_WIDTH_CLASS = 'w-10'
@@ -429,8 +429,10 @@ const HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_COLUMNS_CLASS = 'grid-cols-[2.5rem_
 const HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_GAP_CLASS = 'gap-2'
 const HOUSE_FIELD_PERCENTILE_LEFT_CHART_PANEL_CLASS = 'h-full min-h-0 min-w-0 w-full'
 const HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH = 14
-const HOUSE_RING_ARC_TRANSITION = 'stroke-dasharray var(--motion-duration-chart-ring-fill) cubic-bezier(0.22, 1, 0.36, 1), stroke-dashoffset var(--motion-duration-chart-ring-fill) cubic-bezier(0.22, 1, 0.36, 1)'
-const HOUSE_RING_COLOR_TRANSITION = 'stroke var(--motion-duration-chart-ring-fill) cubic-bezier(0.22, 1, 0.36, 1)'
+const HOUSE_RING_ARC_REFRESH_TRANSITION = 'stroke-dasharray var(--motion-duration-chart-ring-fill) var(--motion-ease-chart-series), stroke-dashoffset var(--motion-duration-chart-ring-fill) var(--motion-ease-chart-series)'
+const HOUSE_RING_COLOR_REFRESH_TRANSITION = 'stroke var(--motion-duration-chart-ring-fill) var(--motion-ease-chart-series)'
+const HOUSE_RING_ARC_TOGGLE_TRANSITION = 'stroke-dasharray var(--motion-duration-chart-ring-toggle) var(--motion-ease-chart-series), stroke-dashoffset var(--motion-duration-chart-ring-toggle) var(--motion-ease-chart-series)'
+const HOUSE_RING_COLOR_TOGGLE_TRANSITION = 'stroke var(--motion-duration-chart-ring-toggle) var(--motion-ease-chart-series)'
 const FIELD_PERCENTILE_RING_CLASS_BY_THRESHOLD: Record<FieldPercentileThreshold, string> = {
   50: HOUSE_CHART_RING_THRESHOLD_50_SVG_CLASS,
   75: HOUSE_CHART_RING_THRESHOLD_75_SVG_CLASS,
@@ -451,6 +453,8 @@ const HOUSE_DRILLDOWN_TOOLTIP_CLASS =
     'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out',
   )
 const MAX_PUBLICATION_CHART_BARS = 12
+const HOUSE_CHART_SERIES_DURATION_MS = 540
+const HOUSE_CHART_REFRESH_DELAY_MS = 220
 
 function prefersReducedMotion(): boolean {
   return (
@@ -460,7 +464,7 @@ function prefersReducedMotion(): boolean {
   )
 }
 
-function useUnifiedToggleBarAnimation(animationKey: string, enabled: boolean): boolean {
+function useUnifiedToggleBarAnimation(animationKey: string, enabled: boolean, delayMs = 0): boolean {
   const [barsExpanded, setBarsExpanded] = useState(false)
 
   useEffect(() => {
@@ -473,18 +477,27 @@ function useUnifiedToggleBarAnimation(animationKey: string, enabled: boolean): b
       return
     }
     setBarsExpanded(false)
+    let delayTimer = 0
     let rafOne = 0
     let rafTwo = 0
-    rafOne = window.requestAnimationFrame(() => {
-      rafTwo = window.requestAnimationFrame(() => {
-        setBarsExpanded(true)
+    const scheduleExpand = () => {
+      rafOne = window.requestAnimationFrame(() => {
+        rafTwo = window.requestAnimationFrame(() => {
+          setBarsExpanded(true)
+        })
       })
-    })
+    }
+    if (delayMs > 0) {
+      delayTimer = window.setTimeout(scheduleExpand, delayMs)
+    } else {
+      scheduleExpand()
+    }
     return () => {
+      window.clearTimeout(delayTimer)
       window.cancelAnimationFrame(rafOne)
       window.cancelAnimationFrame(rafTwo)
     }
-  }, [animationKey, enabled])
+  }, [animationKey, delayMs, enabled])
 
   return barsExpanded
 }
@@ -629,7 +642,305 @@ function useHouseBarSetTransition<T extends { key: string }>({
   }
 }
 
-function useEasedValue(target: number, animationKey: string, enabled: boolean, durationMs = 420): number {
+function computeToggleAxisMax(values: number[]): number {
+  const safeValues = values.map((value) => Math.max(0, Number.isFinite(value) ? value : 0))
+  const maxValue = Math.max(1, ...safeValues)
+  const minValue = safeValues.length ? Math.min(...safeValues) : 0
+  const spreadRatio = (maxValue - minValue) / Math.max(1, maxValue)
+  const headroomFactor = spreadRatio <= 0.1 ? 1.03 : spreadRatio <= 0.25 ? 1.06 : 1.1
+  return maxValue * headroomFactor
+}
+
+function useEasedSeriesByKey(
+  target: Array<{ key: string; value: number }>,
+  animationKey: string,
+  enabled: boolean,
+  durationMs = HOUSE_CHART_SERIES_DURATION_MS,
+): number[] {
+  const [valuesByKey, setValuesByKey] = useState<Record<string, number>>(() => {
+    const initial: Record<string, number> = {}
+    for (const item of target) {
+      const nextValue = Number.isFinite(item.value) ? item.value : 0
+      initial[item.key] = enabled ? 0 : nextValue
+    }
+    return initial
+  })
+  const valuesByKeyRef = useRef(valuesByKey)
+
+  useEffect(() => {
+    valuesByKeyRef.current = valuesByKey
+  }, [valuesByKey])
+
+  useEffect(() => {
+    if (!target.length) {
+      setValuesByKey({})
+      valuesByKeyRef.current = {}
+      return
+    }
+
+    const toEntries = target.map((item) => [item.key, Number.isFinite(item.value) ? item.value : 0] as const)
+    const toMap: Record<string, number> = {}
+    for (const [key, value] of toEntries) {
+      toMap[key] = value
+    }
+
+    if (!enabled || prefersReducedMotion()) {
+      setValuesByKey(toMap)
+      valuesByKeyRef.current = toMap
+      return
+    }
+
+    const currentMap = valuesByKeyRef.current
+    const fromMap: Record<string, number> = {}
+    let changed = false
+    for (const [key, targetValue] of toEntries) {
+      const currentValue = currentMap[key]
+      const fromValue = Number.isFinite(currentValue) ? currentValue : 0
+      fromMap[key] = fromValue
+      if (Math.abs(fromValue - targetValue) >= 0.0001) {
+        changed = true
+      }
+    }
+    const keysUnchanged = Object.keys(currentMap).length === toEntries.length
+      && toEntries.every(([key]) => Object.hasOwn(currentMap, key))
+    if (!changed && keysUnchanged) {
+      return
+    }
+
+    let raf = 0
+    const startedAt = performance.now()
+    const easeOutCubic = (progress: number) => 1 - ((1 - progress) ** 3)
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / Math.max(1, durationMs))
+      const eased = easeOutCubic(progress)
+      const next: Record<string, number> = {}
+      for (const [key, targetValue] of toEntries) {
+        const fromValue = fromMap[key] ?? 0
+        next[key] = fromValue + ((targetValue - fromValue) * eased)
+      }
+      valuesByKeyRef.current = next
+      setValuesByKey(next)
+      if (progress < 1) {
+        raf = window.requestAnimationFrame(step)
+      }
+    }
+    raf = window.requestAnimationFrame(step)
+    return () => {
+      window.cancelAnimationFrame(raf)
+    }
+  }, [animationKey, durationMs, enabled, target])
+
+  return target.map((item) => {
+    const value = valuesByKey[item.key]
+    return Number.isFinite(value) ? value : 0
+  })
+}
+
+type SlotChartAnimationTarget = {
+  axisMax: number
+  tickRatios: number[]
+  values: number[]
+  yRatios: number[]
+  meanRatio: number
+}
+
+function useQueuedSlotChartTransition({
+  target,
+  transitionKey,
+  enabled,
+  durationMs = HOUSE_CHART_SERIES_DURATION_MS,
+}: {
+  target: SlotChartAnimationTarget
+  transitionKey: string
+  enabled: boolean
+  durationMs?: number
+}): SlotChartAnimationTarget {
+  const normalizedTarget = useMemo<SlotChartAnimationTarget>(() => {
+    const axisMax = Math.max(1, Number.isFinite(target.axisMax) ? target.axisMax : 1)
+    const values = target.values.map((value) => (Number.isFinite(value) ? value : 0))
+    const yRatios = values.map((value, index) => {
+      const candidate = target.yRatios[index]
+      if (Number.isFinite(candidate)) {
+        return Math.max(0, Math.min(1, candidate))
+      }
+      return axisMax <= 0
+        ? 0
+        : Math.max(0, Math.min(1, value / axisMax))
+    })
+    const meanRatio = Number.isFinite(target.meanRatio)
+      ? Math.max(0, Math.min(1, target.meanRatio))
+      : 0
+    return {
+      axisMax,
+      tickRatios: target.tickRatios.length ? target.tickRatios : [0, 0.25, 0.5, 0.75, 1],
+      values,
+      yRatios,
+      meanRatio,
+    }
+  }, [target])
+  const [state, setState] = useState<SlotChartAnimationTarget>(() => {
+    if (!enabled || prefersReducedMotion()) {
+      return normalizedTarget
+    }
+    return {
+      axisMax: normalizedTarget.axisMax,
+      tickRatios: normalizedTarget.tickRatios,
+      values: normalizedTarget.values.map(() => 0),
+      yRatios: normalizedTarget.yRatios.map(() => 0),
+      meanRatio: 0,
+    }
+  })
+  const stateRef = useRef(state)
+  const targetRef = useRef(normalizedTarget)
+  const pendingTargetRef = useRef<SlotChartAnimationTarget | null>(null)
+  const isAnimatingRef = useRef(false)
+  const rafRef = useRef(0)
+
+  useEffect(() => {
+    stateRef.current = state
+  }, [state])
+
+  useEffect(() => {
+    targetRef.current = normalizedTarget
+  }, [normalizedTarget])
+
+  useEffect(() => {
+    return () => {
+      window.cancelAnimationFrame(rafRef.current)
+    }
+  }, [])
+
+  useLayoutEffect(() => {
+    const applyImmediate = (nextTarget: SlotChartAnimationTarget) => {
+      window.cancelAnimationFrame(rafRef.current)
+      pendingTargetRef.current = null
+      isAnimatingRef.current = false
+      stateRef.current = nextTarget
+      setState(nextTarget)
+    }
+
+    const startTransition = (nextTarget: SlotChartAnimationTarget) => {
+      const currentState = stateRef.current
+      const toAxisMax = nextTarget.axisMax
+      // Snap to the next axis immediately; bars should target the new axis from the first frame.
+      const workingAxisMax = toAxisMax
+      const fromValues = nextTarget.values.map((_, index) => {
+        const currentValue = currentState.values[index]
+        return Number.isFinite(currentValue) ? Math.max(0, currentValue) : 0
+      })
+      const fromYRatios = nextTarget.yRatios.map((_, index) => {
+        const currentRatio = currentState.yRatios[index]
+        return Number.isFinite(currentRatio)
+          ? Math.max(0, Math.min(1, currentRatio))
+          : 0
+      })
+      const toValues = nextTarget.values
+      const toYRatios = nextTarget.yRatios
+      const fromMeanRatio = Number.isFinite(currentState.meanRatio)
+        ? Math.max(0, Math.min(1, currentState.meanRatio))
+        : 0
+      const toMeanRatio = Number.isFinite(nextTarget.meanRatio)
+        ? Math.max(0, Math.min(1, nextTarget.meanRatio))
+        : 0
+      const valuesUnchanged = fromValues.length === toValues.length
+        && fromValues.every((value, index) => Math.abs(value - toValues[index]) < 0.0001)
+      const ratiosUnchanged = fromYRatios.length === toYRatios.length
+        && fromYRatios.every((ratio, index) => Math.abs(ratio - toYRatios[index]) < 0.0001)
+      const meanRatioUnchanged = Math.abs(fromMeanRatio - toMeanRatio) < 0.0001
+      const isUnchanged = valuesUnchanged && ratiosUnchanged && meanRatioUnchanged
+      if (isUnchanged) {
+        stateRef.current = nextTarget
+        setState(nextTarget)
+        const queuedTarget = pendingTargetRef.current
+        pendingTargetRef.current = null
+        isAnimatingRef.current = false
+        if (queuedTarget) {
+          startTransition(queuedTarget)
+        }
+        return
+      }
+
+      isAnimatingRef.current = true
+      const startState: SlotChartAnimationTarget = {
+        axisMax: Math.max(1, workingAxisMax),
+        tickRatios: nextTarget.tickRatios,
+        values: fromValues,
+        yRatios: fromYRatios,
+        meanRatio: fromMeanRatio,
+      }
+      // Commit the exact start snapshot before the first animation frame.
+      stateRef.current = startState
+      setState(startState)
+      const startedAt = performance.now()
+      const easeOutCubic = (progress: number) => 1 - ((1 - progress) ** 3)
+
+      const step = (now: number) => {
+        const progress = Math.min(1, (now - startedAt) / Math.max(1, durationMs))
+        const eased = easeOutCubic(progress)
+        const values = toValues.map((targetValue, index) => (
+          fromValues[index] + ((targetValue - fromValues[index]) * eased)
+        ))
+        const yRatios = toYRatios.map((targetRatio, index) => (
+          fromYRatios[index] + ((targetRatio - fromYRatios[index]) * eased)
+        ))
+        const meanRatio = fromMeanRatio + ((toMeanRatio - fromMeanRatio) * eased)
+        const nextState: SlotChartAnimationTarget = {
+          axisMax: Math.max(1, workingAxisMax),
+          tickRatios: nextTarget.tickRatios,
+          values,
+          yRatios,
+          meanRatio,
+        }
+        stateRef.current = nextState
+        setState(nextState)
+        if (progress < 1) {
+          rafRef.current = window.requestAnimationFrame(step)
+          return
+        }
+
+        const finalState: SlotChartAnimationTarget = {
+          axisMax: nextTarget.axisMax,
+          tickRatios: nextTarget.tickRatios,
+          values: nextTarget.values,
+          yRatios: nextTarget.yRatios,
+          meanRatio: nextTarget.meanRatio,
+        }
+        stateRef.current = finalState
+        setState(finalState)
+        const queuedTarget = pendingTargetRef.current
+        pendingTargetRef.current = null
+        isAnimatingRef.current = false
+        if (queuedTarget) {
+          startTransition(queuedTarget)
+        }
+      }
+
+      rafRef.current = window.requestAnimationFrame(step)
+    }
+
+    const nextTarget = targetRef.current
+    if (!enabled || prefersReducedMotion()) {
+      applyImmediate(nextTarget)
+      return
+    }
+
+    if (isAnimatingRef.current) {
+      pendingTargetRef.current = nextTarget
+      return
+    }
+
+    startTransition(nextTarget)
+  }, [durationMs, enabled, transitionKey])
+
+  return state
+}
+
+function useEasedValue(
+  target: number,
+  animationKey: string,
+  enabled: boolean,
+  durationMs = HOUSE_CHART_SERIES_DURATION_MS,
+): number {
   const [value, setValue] = useState<number>(() => (enabled ? 0 : target))
   const valueRef = useRef(value)
 
@@ -680,7 +991,12 @@ function useEasedValue(target: number, animationKey: string, enabled: boolean, d
   return value
 }
 
-function useEasedSeries(target: number[], animationKey: string, enabled: boolean, durationMs = 420): number[] {
+function useEasedSeries(
+  target: number[],
+  animationKey: string,
+  enabled: boolean,
+  durationMs = HOUSE_CHART_SERIES_DURATION_MS,
+): number[] {
   const [values, setValues] = useState<number[]>(() => (enabled ? target.map(() => 0) : target))
   const valuesRef = useRef(values)
 
@@ -1224,25 +1540,30 @@ function buildTotalCitationsChartModel(tile: PublicationMetricTilePayload): Tota
   }
 }
 
-function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload }) {
-  const [chartVisible, setChartVisible] = useState(true)
+function TotalCitationsModeChart({
+  tile,
+  refreshAnimationEpoch = 0,
+}: {
+  tile: PublicationMetricTilePayload
+  refreshAnimationEpoch?: number
+}) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const model = useMemo(() => buildTotalCitationsChartModel(tile), [tile])
   const animationKey = useMemo(
-    () => `year:${model.bars.map((bar) => `${bar.key}-${bar.value}`).join('|')}:${model.meanValue ?? 'none'}`,
-    [model.bars, model.meanValue],
+    () => `year:${model.bars.map((bar) => `${bar.key}-${bar.value}`).join('|')}:${model.meanValue ?? 'none'}:refresh-${refreshAnimationEpoch}`,
+    [model.bars, model.meanValue, refreshAnimationEpoch],
   )
-  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, model.bars.length > 0)
-  useEffect(() => {
-    setChartVisible(false)
-    let rafOne = 0
-    rafOne = window.requestAnimationFrame(() => {
-      setChartVisible(true)
-    })
-    return () => {
-      window.cancelAnimationFrame(rafOne)
-    }
-  }, [animationKey])
+  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, model.bars.length > 0, HOUSE_CHART_REFRESH_DELAY_MS)
+  const renderedValuesTarget = useMemo(
+    () => model.bars.map((bar) => Math.max(0, bar.value)),
+    [model.bars],
+  )
+  const renderedValuesAnimated = useEasedSeries(
+    renderedValuesTarget,
+    `${animationKey}|rendered|${model.bars.length}`,
+    model.bars.length > 0 && barsExpanded,
+    HOUSE_CHART_SERIES_DURATION_MS,
+  )
 
   if (!model.bars.length) {
     return <div className={dashboardTileStyles.emptyChart}>No citation data</div>
@@ -1250,7 +1571,7 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
 
   const maxValue = Math.max(
     1,
-    ...model.bars.map((bar) => Math.max(0, bar.value)),
+    ...renderedValuesTarget,
     model.meanValue !== null ? Math.max(0, model.meanValue) : 0,
   )
   const scaledMax = maxValue * 1.18
@@ -1268,7 +1589,7 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
-          chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
+          HOUSE_CHART_SERIES_BY_KEY_CLASS,
         )}
         style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
       >
@@ -1293,7 +1614,8 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
           ) : null}
           <div className="absolute inset-0 flex items-end gap-1">
             {model.bars.map((bar, index) => {
-              const heightPct = bar.value <= 0 ? 3 : Math.max(6, (Math.max(0, bar.value) / scaledMax) * 100)
+              const animatedValue = Math.max(0, renderedValuesAnimated[index] ?? bar.value)
+              const heightPct = animatedValue <= 0 ? 3 : Math.max(6, (animatedValue / scaledMax) * 100)
               const isActive = hoveredIndex === index
               return (
                 <div
@@ -1310,11 +1632,13 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
                     style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
                     aria-hidden="true"
                   >
-                    {formatInt(bar.value)}
+                    {formatInt(animatedValue)}
                   </span>
                   <span
                     className={cn(
-                      'block w-full rounded transition-[transform,filter,box-shadow] duration-220 ease-out',
+                      'block w-full rounded',
+                      HOUSE_TOGGLE_CHART_BAR_CLASS,
+                      HOUSE_TOGGLE_CHART_SWAP_CLASS,
                       totalCitationsBarToneClass(bar),
                       isActive && 'brightness-[1.08] saturate-[1.14]',
                     )}
@@ -1322,7 +1646,7 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: barsExpanded ? `${Math.min(220, index * 18)}ms` : '0ms',
+                      transitionDelay: '0ms',
                     }}
                   />
                 </div>
@@ -1354,10 +1678,12 @@ function TotalCitationsTile({
   tile,
   onOpen,
   shouldIgnoreTileOpen,
+  refreshAnimationEpoch = 0,
 }: {
   tile: PublicationMetricTilePayload
   onOpen: () => void
   shouldIgnoreTileOpen: (target: EventTarget | null) => boolean
+  refreshAnimationEpoch?: number
 }) {
   const primaryValue = tile.value_display || '\u2014'
 
@@ -1406,7 +1732,7 @@ function TotalCitationsTile({
         </div>
 
         <div className={cn('min-h-0 border-l pl-3', HOUSE_DIVIDER_BORDER_SOFT_CLASS)}>
-          <TotalCitationsModeChart tile={tile} />
+          <TotalCitationsModeChart tile={tile} refreshAnimationEpoch={refreshAnimationEpoch} />
         </div>
       </div>
     </div>
@@ -1546,11 +1872,13 @@ function StructuredMetricTile({
 
 function HIndexYearChart({
   tile,
+  refreshAnimationEpoch = 0,
   showCaption = false,
   animate = true,
   collapse = false,
 }: {
   tile: PublicationMetricTilePayload
+  refreshAnimationEpoch?: number
   showCaption?: boolean
   animate?: boolean
   collapse?: boolean
@@ -1591,7 +1919,9 @@ function HIndexYearChart({
   }
   const animationKey = bars.map((bar) => `${bar.year}-${bar.value}-${bar.current ? 1 : 0}`).join('|')
   const hasBars = bars.length > 0
-  const barsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|hindex-year`, hasBars)
+  const refreshAnimationKey = `${animationKey}|refresh-${refreshAnimationEpoch}`
+  const barsExpanded = useUnifiedToggleBarAnimation(refreshAnimationKey, animate && hasBars, HOUSE_CHART_REFRESH_DELAY_MS)
+  const toggleEasingEnabled = animate && hasBars && barsExpanded
   const rawTargetValues = useMemo(
     () => bars.map((bar) => Math.max(0, bar.value)),
     [bars],
@@ -1600,13 +1930,27 @@ function HIndexYearChart({
     () => (collapse ? rawTargetValues.map(() => 0) : rawTargetValues),
     [collapse, rawTargetValues],
   )
-  const animatedValues = useEasedSeries(
-    targetValues,
-    `${animationKey}|values|${collapse ? 'collapse' : 'expand'}`,
-    animate && hasBars,
+  const targetAxisMax = Math.max(1, ...rawTargetValues) * 1.18
+  const animatedValues = useEasedSeriesByKey(
+    bars.map((bar, index) => ({
+      key: `${bar.year}-${bar.current ? 1 : 0}`,
+      value: targetValues[index] ?? 0,
+    })),
+    `${animationKey}|hindex-year-values|${collapse ? 'collapse' : 'expand'}`,
+    toggleEasingEnabled,
+    HOUSE_CHART_SERIES_DURATION_MS,
   )
-  const targetMax = Math.max(1, ...rawTargetValues) * 1.18
-  const animatedMax = useEasedValue(targetMax, `${animationKey}|max`, animate && hasBars)
+  const animatedYRatios = useEasedSeriesByKey(
+    bars.map((bar, index) => ({
+      key: `${bar.year}-${bar.current ? 1 : 0}`,
+      value: targetAxisMax <= 0
+        ? 0
+        : Math.max(0, Math.min(1, (targetValues[index] ?? 0) / targetAxisMax)),
+    })),
+    `${animationKey}|hindex-year-y|${collapse ? 'collapse' : 'expand'}|${targetAxisMax.toFixed(3)}`,
+    toggleEasingEnabled,
+    HOUSE_CHART_SERIES_DURATION_MS,
+  )
 
   useEffect(() => {
     setHoveredIndex(null)
@@ -1616,7 +1960,7 @@ function HIndexYearChart({
     return <div className={dashboardTileStyles.emptyChart}>No h-index timeline</div>
   }
 
-  const scaledMax = Math.max(1, animatedMax)
+  const axisMax = Math.max(1, targetAxisMax)
   const axisLayout = buildChartAxisLayout({
     axisLabels: bars.map((bar) => String(bar.year).slice(-2)),
     axisSubLabels: bars.map((bar) => (bar.current ? 'YTD' : null)),
@@ -1628,7 +1972,7 @@ function HIndexYearChart({
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
-          HOUSE_CHART_ENTERED_CLASS,
+          HOUSE_CHART_SERIES_BY_KEY_CLASS,
         )}
         style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
       >
@@ -1647,7 +1991,15 @@ function HIndexYearChart({
           <div className="absolute inset-0 flex items-end gap-1">
             {bars.map((bar, index) => {
               const animatedValue = Math.max(0, animatedValues[index] ?? 0)
-              const heightPct = animatedValue <= 0 ? 3 : Math.max(6, (animatedValue / scaledMax) * 100)
+              const animatedYRatio = Math.max(
+                0,
+                Math.min(
+                  1,
+                  animatedYRatios[index]
+                    ?? (axisMax <= 0 ? 0 : animatedValue / axisMax),
+                ),
+              )
+              const heightPct = animatedValue <= 0 ? 3 : Math.max(6, animatedYRatio * 100)
               const isActive = hoveredIndex === index
               const toneClass = bar.current
                 ? HOUSE_CHART_BAR_CURRENT_CLASS
@@ -1673,6 +2025,7 @@ function HIndexYearChart({
                     className={cn(
                       'block w-full rounded',
                       HOUSE_TOGGLE_CHART_BAR_CLASS,
+                      HOUSE_TOGGLE_CHART_SWAP_CLASS,
                       toneClass,
                       isActive && 'brightness-[1.08] saturate-[1.14]',
                     )}
@@ -1680,7 +2033,7 @@ function HIndexYearChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: barsExpanded ? `${Math.min(220, index * 18)}ms` : '0ms',
+                      transitionDelay: '0ms',
                     }}
                   />
                 </div>
@@ -1711,6 +2064,7 @@ function HIndexYearChart({
 
 function PublicationsPerYearChart({
   tile,
+  refreshAnimationEpoch = 0,
   showCaption = false,
   showAxes = false,
   fullYearLabels = false,
@@ -1728,6 +2082,7 @@ function PublicationsPerYearChart({
   onWindowModeChange,
 }: {
   tile: PublicationMetricTilePayload
+  refreshAnimationEpoch?: number
   showCaption?: boolean
   showAxes?: boolean
   fullYearLabels?: boolean
@@ -1964,11 +2319,15 @@ function PublicationsPerYearChart({
     : activeBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0) / Math.max(1, activeBars.length)
 
   const animationKey = useMemo(
-    () => `${effectiveWindowMode}|${activeBucketSize}|${activeBars.map((bar) => `${bar.key}-${bar.value}-${bar.current ? 1 : 0}`).join('|')}`,
-    [activeBars, activeBucketSize, effectiveWindowMode],
+    () => `${effectiveWindowMode}|${activeBucketSize}|${activeBars.map((bar) => `${bar.key}-${bar.value}-${bar.current ? 1 : 0}`).join('|')}|refresh-${refreshAnimationEpoch}`,
+    [activeBars, activeBucketSize, effectiveWindowMode, refreshAnimationEpoch],
   )
   const hasBars = hasValidSeries && historyBars.length > 0 && activeBars.length > 0
-  const legacyBarsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars)
+  const legacyBarsExpanded = useUnifiedToggleBarAnimation(
+    animationKey,
+    hasBars,
+    enableWindowToggle ? 0 : HOUSE_CHART_REFRESH_DELAY_MS,
+  )
   const swapTransition = useHouseBarSetTransition({
     bars: activeBars,
     animationKey,
@@ -2001,6 +2360,7 @@ function PublicationsPerYearChart({
     renderedValuesTarget,
     `${animationKey}|rendered|${renderBars.map((bar) => bar.key).join('|')}`,
     hasBars && barsExpanded && allowInitialValueEasing,
+    HOUSE_CHART_SERIES_DURATION_MS,
   )
 
   useEffect(() => {
@@ -2031,7 +2391,7 @@ function PublicationsPerYearChart({
     targetAxisMax,
     `${animationKey}|axis-max|${autoScaleByWindow ? 'auto' : 'fixed'}`,
     axisAnimationEnabled,
-    360,
+    HOUSE_CHART_SERIES_DURATION_MS,
   )
   const axisMax = axisAnimationEnabled ? Math.max(1, animatedAxisMax) : targetAxisMax
   const yAxisTickRatios = targetAxisScale
@@ -2201,7 +2561,7 @@ function PublicationsPerYearChart({
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
-          HOUSE_CHART_ENTERED_CLASS,
+          HOUSE_CHART_SERIES_BY_KEY_CLASS,
         )}
         style={chartFrameStyle}
         data-ui="publications-chart-frame"
@@ -2222,7 +2582,6 @@ function PublicationsPerYearChart({
                 'pointer-events-none absolute inset-x-0',
                 HOUSE_CHART_MEAN_LINE_CLASS,
                 HOUSE_CHART_SCALE_MEAN_LINE_CLASS,
-                isStructureSwapActive && HOUSE_CHART_SCALE_MEAN_LINE_DELAYED_CLASS,
               )}
               style={{ bottom: `${Math.max(0, Math.min(100, (Math.max(0, meanValue) / axisMax) * 100))}%` }}
               aria-hidden="true"
@@ -2332,8 +2691,13 @@ function PublicationsPerYearChart({
   )
 }
 
-function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload }) {
-  const [chartVisible, setChartVisible] = useState(false)
+function ImpactConcentrationPanel({
+  tile,
+  refreshAnimationEpoch = 0,
+}: {
+  tile: PublicationMetricTilePayload
+  refreshAnimationEpoch?: number
+}) {
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const top3 = values[0] || 0
@@ -2343,45 +2707,13 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const ringCircumference = 2 * Math.PI * ringRadius
   const top3Pct = total > 0 ? (top3 / total) * 100 : 0
   const top3PctRounded = Math.max(0, Math.min(100, Math.round(top3Pct)))
-  const restPctRounded = Math.max(0, 100 - top3PctRounded)
-  const top3AnimatedDash = ((chartVisible ? top3PctRounded : 0) / 100) * ringCircumference
-  const explicitTotalPublicationsCandidates = [
-    Number(chartData.total_publications),
-    Number(chartData.total_publications_count),
-    Number(chartData.total_papers),
-    Number(chartData.paper_count),
-  ]
-  const explicitTotalPublications = explicitTotalPublicationsCandidates.find(
-    (item) => Number.isFinite(item) && item >= 0,
-  )
-  const uncitedCountRaw = Number(chartData.uncited_publications_count)
-  const uncitedPctRaw = Number(chartData.uncited_publications_pct)
-  const inferredTotalPublications = Number.isFinite(uncitedCountRaw) && Number.isFinite(uncitedPctRaw) && uncitedPctRaw > 0
-    ? Math.max(0, Math.round(uncitedCountRaw / (uncitedPctRaw / 100)))
-    : null
-  const totalPublications = explicitTotalPublications !== undefined
-    ? Math.max(0, Math.round(explicitTotalPublications))
-    : inferredTotalPublications
-  const topPapersCountRaw = Number(chartData.top_papers_count ?? chartData.top_paper_count ?? 3)
-  const topPapersCount = Math.max(0, Math.round(Number.isFinite(topPapersCountRaw) ? topPapersCountRaw : 3))
-  const effectiveTopPapersCount = totalPublications === null
-    ? topPapersCount
-    : Math.max(0, Math.min(topPapersCount, totalPublications))
   const ringStrokeWidth = HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH
-  const animationKey = useMemo(
-    () => `${top3PctRounded}-${restPctRounded}-${totalPublications ?? 'na'}-${effectiveTopPapersCount}`,
-    [effectiveTopPapersCount, restPctRounded, top3PctRounded, totalPublications],
+  const refreshAnimationKey = useMemo(
+    () => `impact-concentration-refresh-${refreshAnimationEpoch}`,
+    [refreshAnimationEpoch],
   )
-  useEffect(() => {
-    setChartVisible(false)
-    let rafOne = 0
-    rafOne = window.requestAnimationFrame(() => {
-      setChartVisible(true)
-    })
-    return () => {
-      window.cancelAnimationFrame(rafOne)
-    }
-  }, [animationKey])
+  const chartVisible = useUnifiedToggleBarAnimation(refreshAnimationKey, total > 0, HOUSE_CHART_REFRESH_DELAY_MS)
+  const top3AnimatedDash = ((chartVisible ? top3PctRounded : 0) / 100) * ringCircumference
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -2421,7 +2753,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                 style={{
                   strokeDasharray: `${top3AnimatedDash} ${ringCircumference}`,
                   strokeDashoffset: 0,
-                  transition: `${HOUSE_RING_ARC_TRANSITION}, ${HOUSE_RING_COLOR_TRANSITION}`,
+                  transition: `${HOUSE_RING_ARC_REFRESH_TRANSITION}, ${HOUSE_RING_COLOR_REFRESH_TRANSITION}`,
                 }}
               />
             </svg>
@@ -2438,10 +2770,12 @@ function MomentumTilePanel({
   tile,
   mode,
   yearBreakdown,
+  refreshAnimationEpoch = 0,
 }: {
   tile: PublicationMetricTilePayload
   mode: MomentumWindowMode
   yearBreakdown: MomentumYearBreakdown | null
+  refreshAnimationEpoch?: number
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const monthlyBreakdown = buildMomentumBreakdown(tile)
@@ -2505,79 +2839,41 @@ function MomentumTilePanel({
   const comparisonBars = useYearMode ? yearlyComparisonBars : monthlyComparisonBars
   const emptyLabel = useYearMode ? 'No 5-year citation data' : 'No monthly citation data'
   const barValues = comparisonBars.map((bar) => Math.max(0, bar.value))
-  const maxValue = Math.max(1, ...barValues)
-  const minValue = barValues.length ? Math.min(...barValues) : 0
-  const spreadRatio = (maxValue - minValue) / Math.max(1, maxValue)
-  const headroomFactor = spreadRatio <= 0.1 ? 1.03 : spreadRatio <= 0.25 ? 1.06 : 1.1
-  const scaledMaxTarget = maxValue * headroomFactor
-  const baselineTarget = comparisonBars.find((bar) => bar.key === 'baseline')?.value ?? 0
-  const recentTarget = comparisonBars.find((bar) => bar.key === 'recent')?.value ?? 0
-
-  const [animatedState, setAnimatedState] = useState<{
-    baseline: number
-    recent: number
-    max: number
-  }>(() => ({
-    baseline: baselineTarget,
-    recent: recentTarget,
-    max: Math.max(1, scaledMaxTarget),
-  }))
-  const animationKey = useMemo(
+  const targetAxisMax = computeToggleAxisMax(barValues)
+  const toggleAnimationKey = useMemo(
     () => `${mode}|${comparisonBars.map((bar) => `${bar.key}-${bar.value.toFixed(3)}`).join('|')}`,
     [comparisonBars, mode],
   )
+  const refreshAnimationKey = useMemo(
+    () => `momentum-refresh-${refreshAnimationEpoch}`,
+    [refreshAnimationEpoch],
+  )
   const hasComparisonBars = comparisonBars.length > 0
-  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasComparisonBars)
-  const animatedStateRef = useRef(animatedState)
-  useEffect(() => {
-    animatedStateRef.current = animatedState
-  }, [animatedState])
+  const refreshBarsExpanded = useUnifiedToggleBarAnimation(
+    refreshAnimationKey,
+    hasComparisonBars,
+    HOUSE_CHART_REFRESH_DELAY_MS,
+  )
+  const toggleEasingEnabled = hasComparisonBars && refreshBarsExpanded
+  const slotTransition = useQueuedSlotChartTransition({
+    target: {
+      axisMax: Math.max(1, targetAxisMax),
+      tickRatios: [0, 0.5, 1],
+      values: comparisonBars.map((bar) => Math.max(0, bar.value)),
+      yRatios: comparisonBars.map((bar) => (
+        targetAxisMax <= 0
+          ? 0
+          : Math.max(0, Math.min(1, Math.max(0, bar.value) / targetAxisMax))
+      )),
+      meanRatio: 0,
+    },
+    transitionKey: `${toggleAnimationKey}|momentum-slot|${targetAxisMax.toFixed(3)}`,
+    enabled: toggleEasingEnabled,
+    durationMs: HOUSE_CHART_SERIES_DURATION_MS,
+  })
   useEffect(() => {
     setHoveredIndex(null)
-  }, [animationKey])
-  useEffect(() => {
-    const target = {
-      baseline: baselineTarget,
-      recent: recentTarget,
-      max: Math.max(1, scaledMaxTarget),
-    }
-    const current = animatedStateRef.current
-    if (
-      Math.abs(current.baseline - target.baseline) < 0.001 &&
-      Math.abs(current.recent - target.recent) < 0.001 &&
-      Math.abs(current.max - target.max) < 0.001
-    ) {
-      return
-    }
-    if (prefersReducedMotion()) {
-      animatedStateRef.current = target
-      setAnimatedState(target)
-      return
-    }
-    const from = current
-    let raf = 0
-    const durationMs = 420
-    const startedAt = performance.now()
-    const easeOutCubic = (value: number) => 1 - ((1 - value) ** 3)
-    const step = (now: number) => {
-      const progress = Math.min(1, (now - startedAt) / durationMs)
-      const eased = easeOutCubic(progress)
-      const next = {
-        baseline: from.baseline + (target.baseline - from.baseline) * eased,
-        recent: from.recent + (target.recent - from.recent) * eased,
-        max: from.max + (target.max - from.max) * eased,
-      }
-      animatedStateRef.current = next
-      setAnimatedState(next)
-      if (progress < 1) {
-        raf = window.requestAnimationFrame(step)
-      }
-    }
-    raf = window.requestAnimationFrame(step)
-    return () => {
-      window.cancelAnimationFrame(raf)
-    }
-  }, [baselineTarget, recentTarget, scaledMaxTarget])
+  }, [toggleAnimationKey])
 
   const axisLayout = useMemo(() => {
     const candidates: ChartAxisLayout[] = []
@@ -2611,14 +2907,14 @@ function MomentumTilePanel({
     return <div className={dashboardTileStyles.emptyChart}>{emptyLabel}</div>
   }
 
-  const animatedMax = Math.max(1, animatedState.max)
+  const axisMax = Math.max(1, slotTransition.axisMax)
 
   return (
     <div className="flex h-full min-h-[8.2rem] w-full flex-col">
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
-          HOUSE_CHART_ENTERED_CLASS,
+          HOUSE_CHART_SERIES_BY_KEY_CLASS,
         )}
         style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
       >
@@ -2636,10 +2932,17 @@ function MomentumTilePanel({
           ))}
           <div className="absolute inset-0 flex items-end gap-1">
             {comparisonBars.map((bar, index) => {
-              const animatedValue = bar.key === 'recent' ? animatedState.recent : animatedState.baseline
-              const heightPct = animatedValue <= 0 ? 5 : Math.max(10, (Math.max(0, animatedValue) / animatedMax) * 100)
+              const animatedValue = Math.max(0, slotTransition.values[index] ?? 0)
+              const animatedYRatio = Math.max(
+                0,
+                Math.min(
+                  1,
+                  slotTransition.yRatios[index]
+                    ?? (axisMax <= 0 ? 0 : animatedValue / axisMax),
+                ),
+              )
+              const heightPct = animatedValue <= 0 ? 3 : Math.max(6, animatedYRatio * 100)
               const isActive = hoveredIndex === index
-              const yOffset = isActive ? -1 : 0
               const toneClass = bar.recent ? HOUSE_CHART_BAR_POSITIVE_CLASS : HOUSE_CHART_BAR_ACCENT_CLASS
               return (
                 <div
@@ -2662,15 +2965,15 @@ function MomentumTilePanel({
                     className={cn(
                       'block w-full rounded',
                       HOUSE_TOGGLE_CHART_BAR_CLASS,
+                      HOUSE_TOGGLE_CHART_SWAP_CLASS,
                       toneClass,
                       isActive && 'brightness-[1.08] saturate-[1.14]',
                     )}
                     style={{
                       height: `${heightPct}%`,
-                      transform: `translateY(${yOffset}px) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
-                      opacity: 1,
+                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${refreshBarsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: barsExpanded ? '0ms' : `${Math.min(220, index * 18)}ms`,
+                      transitionDelay: '0ms',
                     }}
                   />
                 </div>
@@ -2723,12 +3026,13 @@ function FieldPercentilePanel({
   tile,
   threshold,
   toggleControl,
+  refreshAnimationEpoch = 0,
 }: {
   tile: PublicationMetricTilePayload
   threshold: FieldPercentileThreshold
   toggleControl?: ReactNode
+  refreshAnimationEpoch?: number
 }) {
-  const [chartVisible, setChartVisible] = useState(false)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const shareMap = parseNumericKeyedMap(chartData.share_by_threshold_pct)
   const countMap = parseNumericKeyedMap(chartData.count_by_threshold)
@@ -2747,27 +3051,21 @@ function FieldPercentilePanel({
     ? Math.max(0, Math.round(papersAtThresholdRaw))
     : Math.max(0, Math.round((shareAbove / 100) * evaluatedPapers))
   const papersAtThresholdLabel = `${formatInt(papersAtThreshold)} ${papersAtThreshold === 1 ? 'paper' : 'papers'}`
-  const animationKey = useMemo(
-    () => `${threshold}-${shareAbove.toFixed(2)}-${evaluatedPapers}`,
-    [evaluatedPapers, shareAbove, threshold],
+  const refreshAnimationKey = useMemo(
+    () => `field-share-refresh-${refreshAnimationEpoch}`,
+    [refreshAnimationEpoch],
   )
   const hasPercentileData = evaluatedPapers > 0
+  const chartVisible = useUnifiedToggleBarAnimation(
+    refreshAnimationKey,
+    hasPercentileData,
+    HOUSE_CHART_REFRESH_DELAY_MS,
+  )
   const shareClamped = Math.max(0, Math.min(100, shareAbove))
   const ringRadius = 38
   const ringCircumference = 2 * Math.PI * ringRadius
   const ringAnimatedDash = ((chartVisible ? shareClamped : 0) / 100) * ringCircumference
   const ringShareToneClass = FIELD_PERCENTILE_RING_CLASS_BY_THRESHOLD[threshold] || HOUSE_CHART_RING_MAIN_SVG_CLASS
-  useEffect(() => {
-    setChartVisible(false)
-    let rafOne = 0
-    rafOne = window.requestAnimationFrame(() => {
-      setChartVisible(true)
-    })
-    return () => {
-      window.cancelAnimationFrame(rafOne)
-    }
-  }, [animationKey])
-
   if (!hasPercentileData) {
     return <div className={dashboardTileStyles.emptyChart}>No field percentile data</div>
   }
@@ -2781,7 +3079,6 @@ function FieldPercentilePanel({
               HOUSE_CHART_RING_PANEL_CLASS,
               HOUSE_CHART_RING_TOGGLE_VISUAL_CLASS,
               HOUSE_CHART_TRANSITION_CLASS,
-              chartVisible ? HOUSE_CHART_RING_ENTERED_CLASS : HOUSE_CHART_RING_EXITED_CLASS,
             )}
           >
             <div
@@ -2823,7 +3120,7 @@ function FieldPercentilePanel({
                     style={{
                       strokeDasharray: `${ringAnimatedDash} ${ringCircumference}`,
                       strokeDashoffset: 0,
-                      transition: `${HOUSE_RING_ARC_TRANSITION}, ${HOUSE_RING_COLOR_TRANSITION}`,
+                      transition: `${HOUSE_RING_ARC_TOGGLE_TRANSITION}, ${HOUSE_RING_COLOR_TOGGLE_TRANSITION}`,
                     }}
                   />
                   <text x="50" y="50" textAnchor="middle" dominantBaseline="central" className={HOUSE_CHART_RING_CENTER_LABEL_CLASS}>
@@ -2839,9 +3136,13 @@ function FieldPercentilePanel({
   )
 }
 
-function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload }) {
-  const [panelVisible, setPanelVisible] = useState(true)
-  const [barsExpanded, setBarsExpanded] = useState(false)
+function AuthorshipStructurePanel({
+  tile,
+  refreshAnimationEpoch = 0,
+}: {
+  tile: PublicationMetricTilePayload
+  refreshAnimationEpoch?: number
+}) {
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const firstAuthorshipRaw = Number(chartData.first_authorship_pct)
   const secondAuthorshipRaw = Number(chartData.second_authorship_pct)
@@ -2862,25 +3163,10 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
   const totalPapersRaw = Number(chartData.total_papers)
   const totalPapers = Number.isFinite(totalPapersRaw) ? Math.max(0, Math.round(totalPapersRaw)) : 0
   const animationKey = useMemo(
-    () => `${Math.round(firstAuthorshipPct)}-${Math.round(secondAuthorshipPct)}-${Math.round(seniorAuthorshipPct)}-${Math.round(leadershipIndexPct)}-${totalPapers}`,
-    [firstAuthorshipPct, leadershipIndexPct, secondAuthorshipPct, seniorAuthorshipPct, totalPapers],
+    () => `${Math.round(firstAuthorshipPct)}-${Math.round(secondAuthorshipPct)}-${Math.round(seniorAuthorshipPct)}-${Math.round(leadershipIndexPct)}-${totalPapers}|refresh-${refreshAnimationEpoch}`,
+    [firstAuthorshipPct, leadershipIndexPct, refreshAnimationEpoch, secondAuthorshipPct, seniorAuthorshipPct, totalPapers],
   )
-  useEffect(() => {
-    setPanelVisible(false)
-    setBarsExpanded(false)
-    let rafOne = 0
-    let rafTwo = 0
-    rafOne = window.requestAnimationFrame(() => {
-      setPanelVisible(true)
-      rafTwo = window.requestAnimationFrame(() => {
-        setBarsExpanded(true)
-      })
-    })
-    return () => {
-      window.cancelAnimationFrame(rafOne)
-      window.cancelAnimationFrame(rafTwo)
-    }
-  }, [animationKey])
+  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, totalPapers > 0, HOUSE_CHART_REFRESH_DELAY_MS)
 
   if (totalPapers <= 0) {
     return <div className={dashboardTileStyles.emptyChart}>No authorship data</div>
@@ -2898,10 +3184,9 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
       <div
         className={cn(
           HOUSE_METRIC_PROGRESS_PANEL_CLASS,
-          panelVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
         )}
       >
-        {rows.map((row, index) => (
+        {rows.map((row) => (
           <div key={row.key} className="space-y-1.5">
             <div className="flex items-center justify-between gap-2 text-caption leading-none">
               <span className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'font-semibold')}>{row.label}</span>
@@ -2910,12 +3195,14 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
             <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[0.44rem]')}>
               <div
                 className={cn(
-                  'h-full rounded-full transition-[width] duration-320 ease-out',
+                  'h-full rounded-full',
                   row.tone,
                 )}
                 style={{
                   width: `${barsExpanded ? row.value : 0}%`,
-                  transitionDelay: `${Math.min(220, index * 45)}ms`,
+                  transitionProperty: 'width',
+                  transitionDuration: 'var(--motion-duration-chart-refresh)',
+                  transitionTimingFunction: 'var(--motion-ease-chart-series)',
                 }}
                 aria-hidden="true"
               />
@@ -2927,9 +3214,13 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
   )
 }
 
-function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayload }) {
-  const [panelVisible, setPanelVisible] = useState(true)
-  const [barsExpanded, setBarsExpanded] = useState(false)
+function CollaborationStructurePanel({
+  tile,
+  refreshAnimationEpoch = 0,
+}: {
+  tile: PublicationMetricTilePayload
+  refreshAnimationEpoch?: number
+}) {
   const chartData = useMemo(
     () => ((tile.chart_data || {}) as Record<string, unknown>),
     [tile.chart_data],
@@ -3075,25 +3366,9 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
   const countries = countriesBase > 0 ? countriesBase : 0
 
   const animationKey = useMemo(
-    () => `${uniqueCollaborators}-${Math.round(repeatRatePct)}-${institutions}-${countries}`,
-    [countries, institutions, repeatRatePct, uniqueCollaborators],
+    () => `${uniqueCollaborators}-${Math.round(repeatRatePct)}-${institutions}-${countries}|refresh-${refreshAnimationEpoch}`,
+    [countries, institutions, refreshAnimationEpoch, repeatRatePct, uniqueCollaborators],
   )
-  useEffect(() => {
-    setPanelVisible(false)
-    setBarsExpanded(false)
-    let rafOne = 0
-    let rafTwo = 0
-    rafOne = window.requestAnimationFrame(() => {
-      setPanelVisible(true)
-      rafTwo = window.requestAnimationFrame(() => {
-        setBarsExpanded(true)
-      })
-    })
-    return () => {
-      window.cancelAnimationFrame(rafOne)
-      window.cancelAnimationFrame(rafTwo)
-    }
-  }, [animationKey])
 
   const rows = [
     { key: 'collaborators', label: 'Unique collaborators', value: uniqueCollaborators, unit: 'count', tone: HOUSE_CHART_BAR_ACCENT_CLASS },
@@ -3104,6 +3379,7 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
 
   const maxCountMetric = Math.max(1, uniqueCollaborators, institutions, countries)
   const totalSignal = uniqueCollaborators + institutions + countries + Math.round(repeatRatePct)
+  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, totalSignal > 0, HOUSE_CHART_REFRESH_DELAY_MS)
   if (totalSignal <= 0) {
     return <div className={dashboardTileStyles.emptyChart}>No collaboration data</div>
   }
@@ -3113,10 +3389,9 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
       <div
         className={cn(
           HOUSE_METRIC_PROGRESS_PANEL_CLASS,
-          panelVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
         )}
       >
-        {rows.map((row, index) => {
+        {rows.map((row) => {
           const isPercent = row.unit === 'percent'
           const clamped = isPercent
             ? Math.max(0, Math.min(100, Number(row.value)))
@@ -3137,12 +3412,14 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
               <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[0.44rem]')}>
                 <div
                   className={cn(
-                    'h-full rounded-full transition-[width] duration-320 ease-out',
+                    'h-full rounded-full',
                     row.tone,
                   )}
                   style={{
                     width: `${barsExpanded ? widthPct : 0}%`,
-                    transitionDelay: `${Math.min(220, index * 45)}ms`,
+                    transitionProperty: 'width',
+                    transitionDuration: 'var(--motion-duration-chart-refresh)',
+                    transitionTimingFunction: 'var(--motion-ease-chart-series)',
                   }}
                   aria-hidden="true"
                 />
@@ -3417,15 +3694,15 @@ function PublicationCategoryDistributionChart({
           otherCount += 1
         }
       }
-      const bars = categoryConfig.primaryLabels.map((label) => ({
-        key: `${mode}-${label}`,
+      const bars = categoryConfig.primaryLabels.map((label, index) => ({
+        key: `category-${normalizePublicationCategoryKey(label) || `slot-${index}`}`,
         label,
         count: Math.max(0, counts.get(label) || 0),
         percentage: 0,
       }))
       if (categoryConfig.hasOtherBucket) {
         bars.push({
-          key: `${mode}-other`,
+          key: 'category-other',
           label: 'Other',
           count: Math.max(0, otherCount),
           percentage: 0,
@@ -3498,15 +3775,14 @@ function PublicationCategoryDistributionChart({
     enabled: hasBars,
   })
   const renderBars = swapTransition.renderBars
-  const barsExpanded = swapTransition.barsExpanded
-  const renderedValuesTarget = useMemo(
-    () => renderBars.map((bar) => (showPercentageMode ? Math.max(0, bar.percentage) : Math.max(0, bar.count))),
-    [renderBars, showPercentageMode],
-  )
-  const renderedValuesAnimated = useEasedSeries(
-    renderedValuesTarget,
+  const renderedValuesAnimated = useEasedSeriesByKey(
+    renderBars.map((bar) => ({
+      key: bar.key,
+      value: showPercentageMode ? Math.max(0, bar.percentage) : Math.max(0, bar.count),
+    })),
     `${animationKey}|category|${renderBars.map((bar) => bar.key).join('|')}`,
-    hasBars && barsExpanded,
+    hasBars,
+    HOUSE_CHART_SERIES_DURATION_MS,
   )
 
   useEffect(() => {
@@ -3521,12 +3797,10 @@ function PublicationCategoryDistributionChart({
     ...[...activeBars, ...renderBars].map((bar) => Math.max(0, bar.count)),
   )
   const absoluteAxisScale = buildNiceAxis(maxAbsoluteWindowValue)
-  const maxWindowValue = showPercentageMode
-    ? 100
-    : Math.max(
-      1,
-      ...[...activeBars, ...renderBars].map((bar) => Math.max(0, bar.count)),
-    )
+  const maxWindowValue = Math.max(
+    1,
+    ...[...activeBars, ...renderBars].map((bar) => Math.max(0, bar.count)),
+  )
   const targetAxisScale = showPercentageMode
     ? { axisMax: 100, ticks: [0, 25, 50, 75, 100] }
     : buildNiceAxis(maxWindowValue)
@@ -3540,9 +3814,20 @@ function PublicationCategoryDistributionChart({
     targetAxisMax,
     `${animationKey}|axis-max|${showPercentageMode ? 'percentage' : 'absolute'}`,
     axisAnimationEnabled,
-    360,
+    HOUSE_CHART_SERIES_DURATION_MS,
   )
   const axisMax = axisAnimationEnabled ? Math.max(1, animatedAxisMax) : targetAxisMax
+  const renderedYRatiosAnimated = useEasedSeriesByKey(
+    renderBars.map((bar) => ({
+      key: bar.key,
+      value: targetAxisMax <= 0
+        ? 0
+        : Math.max(0, Math.min(1, renderValueForBar(bar) / targetAxisMax)),
+    })),
+    `${animationKey}|category-y|${targetAxisMax}|${renderBars.map((bar) => bar.key).join('|')}`,
+    hasBars,
+    HOUSE_CHART_SERIES_DURATION_MS,
+  )
   const yAxisTickRatios = targetAxisScale.ticks.map((tickValue) => (
     targetAxisScale.axisMax <= 0 ? 0 : tickValue / targetAxisScale.axisMax
   ))
@@ -3786,6 +4071,7 @@ function PublicationCategoryDistributionChart({
         <div
           className={cn(
             HOUSE_CHART_TRANSITION_CLASS,
+            HOUSE_CHART_SERIES_BY_KEY_CLASS,
             displayPanelVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
             !displayPanelVisible && 'pointer-events-none',
           )}
@@ -3805,7 +4091,15 @@ function PublicationCategoryDistributionChart({
           <div className="absolute inset-0 flex items-end gap-1">
             {renderBars.map((bar, index) => {
               const animatedValue = Math.max(0, renderedValuesAnimated[index] ?? renderValueForBar(bar))
-              const heightPct = animatedValue <= 0 ? 3 : Math.min(100, Math.max(6, (animatedValue / axisMax) * 100))
+              const animatedYRatio = Math.max(
+                0,
+                Math.min(
+                  1,
+                  renderedYRatiosAnimated[index]
+                    ?? (axisMax <= 0 ? 0 : animatedValue / axisMax),
+                ),
+              )
+              const heightPct = animatedValue <= 0 ? 3 : Math.min(100, Math.max(6, animatedYRatio * 100))
               const isActive = hoveredIndex === index
               return (
                 <div
@@ -3834,9 +4128,9 @@ function PublicationCategoryDistributionChart({
                     )}
                     style={{
                       height: `${heightPct}%`,
-                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: barsExpanded ? `${Math.min(220, index * 18)}ms` : '0ms',
+                      transitionDelay: '0ms',
                     }}
                   />
                 </div>
@@ -4819,13 +5113,16 @@ function TotalPublicationsDrilldownWorkspace({
     </div>
   )
 }
+void HIndexYearChart
 
 function HIndexNeedsChart({
   tile,
+  refreshAnimationEpoch = 0,
   animate = true,
   collapse = false,
 }: {
   tile: PublicationMetricTilePayload
+  refreshAnimationEpoch?: number
   animate?: boolean
   collapse?: boolean
 }) {
@@ -4852,7 +5149,10 @@ function HIndexNeedsChart({
     () => bars.map((bar) => `${bar.key}-${bar.count}`).join('|'),
     [bars],
   )
-  const barsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|hindex-needed`, bars.length > 0)
+  const hasBars = bars.length > 0
+  const refreshAnimationKey = `${animationKey}|refresh-${refreshAnimationEpoch}`
+  const barsExpanded = useUnifiedToggleBarAnimation(refreshAnimationKey, animate && hasBars, HOUSE_CHART_REFRESH_DELAY_MS)
+  const toggleEasingEnabled = animate && hasBars && barsExpanded
   const rawTargetCounts = useMemo(
     () => bars.map((bar) => Math.max(0, bar.count)),
     [bars],
@@ -4861,19 +5161,33 @@ function HIndexNeedsChart({
     () => (collapse ? rawTargetCounts.map(() => 0) : rawTargetCounts),
     [collapse, rawTargetCounts],
   )
-  const animatedCounts = useEasedSeries(
-    targetCounts,
-    `${animationKey}|counts|${collapse ? 'collapse' : 'expand'}`,
-    animate,
+  const targetAxisMax = Math.max(1, ...rawTargetCounts) * 1.18
+  const animatedCounts = useEasedSeriesByKey(
+    bars.map((bar, index) => ({
+      key: bar.key,
+      value: targetCounts[index] ?? 0,
+    })),
+    `${animationKey}|hindex-needed-counts|${collapse ? 'collapse' : 'expand'}`,
+    toggleEasingEnabled,
+    HOUSE_CHART_SERIES_DURATION_MS,
   )
-  const targetMax = Math.max(1, ...rawTargetCounts) * 1.18
-  const animatedMax = useEasedValue(targetMax, `${animationKey}|max`, animate)
+  const animatedYRatios = useEasedSeriesByKey(
+    bars.map((bar, index) => ({
+      key: bar.key,
+      value: targetAxisMax <= 0
+        ? 0
+        : Math.max(0, Math.min(1, (targetCounts[index] ?? 0) / targetAxisMax)),
+    })),
+    `${animationKey}|hindex-needed-y|${collapse ? 'collapse' : 'expand'}|${targetAxisMax.toFixed(3)}`,
+    toggleEasingEnabled,
+    HOUSE_CHART_SERIES_DURATION_MS,
+  )
 
   useEffect(() => {
     setHoveredIndex(null)
   }, [animationKey])
 
-  const scaledMax = Math.max(1, animatedMax)
+  const axisMax = Math.max(1, targetAxisMax)
   const axisLayout = buildChartAxisLayout({
     axisLabels: bars.map((bar) => bar.label),
     showXAxisName: true,
@@ -4886,7 +5200,7 @@ function HIndexNeedsChart({
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
-          HOUSE_CHART_ENTERED_CLASS,
+          HOUSE_CHART_SERIES_BY_KEY_CLASS,
         )}
         style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
       >
@@ -4905,7 +5219,15 @@ function HIndexNeedsChart({
           <div className="absolute inset-0 flex items-end gap-1">
             {bars.map((bar, index) => {
               const animatedCount = Math.max(0, animatedCounts[index] ?? 0)
-              const heightPct = animatedCount <= 0 ? 3 : Math.max(6, (animatedCount / scaledMax) * 100)
+              const animatedYRatio = Math.max(
+                0,
+                Math.min(
+                  1,
+                  animatedYRatios[index]
+                    ?? (axisMax <= 0 ? 0 : animatedCount / axisMax),
+                ),
+              )
+              const heightPct = animatedCount <= 0 ? 3 : Math.max(6, animatedYRatio * 100)
               const isActive = hoveredIndex === index
               const toneClass = bar.needed <= 1
                 ? HOUSE_CHART_BAR_POSITIVE_CLASS
@@ -4933,6 +5255,7 @@ function HIndexNeedsChart({
                     className={cn(
                       'block w-full rounded',
                       HOUSE_TOGGLE_CHART_BAR_CLASS,
+                      HOUSE_TOGGLE_CHART_SWAP_CLASS,
                       toneClass,
                       isActive && 'brightness-[1.08] saturate-[1.14]',
                     )}
@@ -4940,7 +5263,7 @@ function HIndexNeedsChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: barsExpanded ? `${Math.min(220, index * 18)}ms` : '0ms',
+                      transitionDelay: '0ms',
                     }}
                   />
                 </div>
@@ -4974,63 +5297,244 @@ function HIndexNeedsChart({
 function HIndexTrajectoryPanel({
   tile,
   mode,
+  refreshAnimationEpoch = 0,
 }: {
   tile: PublicationMetricTilePayload
   mode: HIndexViewMode
+  refreshAnimationEpoch?: number
 }) {
-  const [renderMode, setRenderMode] = useState<HIndexViewMode>(mode)
-  const [visible, setVisible] = useState(false)
-  const fadeMs = 220
-
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+  const trajectoryBars = useMemo(() => {
+    const years = toNumberArray(chartData.years).map((item) => Math.round(item))
+    const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
+    const projectedYearRaw = Number(chartData.projected_year)
+    const currentHIndexRaw = Number(chartData.current_h_index)
+    const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
+    const hasValidSeries = years.length > 0 && values.length > 0 && years.length === values.length
+    const baseBars: Array<{ year: number; value: number; current: boolean }> = hasValidSeries
+      ? years.map((year, index) => ({
+          year,
+          value: values[index],
+          current: false,
+        }))
+      : []
+    const existingCurrentBar = baseBars.find((item) => item.year === projectedYear)
+    const bars = baseBars.filter((item) => item.year !== projectedYear)
+    const currentValue = Math.max(
+      0,
+      Number.isFinite(currentHIndexRaw)
+        ? currentHIndexRaw
+        : existingCurrentBar
+          ? existingCurrentBar.value
+          : bars.length
+            ? bars[bars.length - 1].value
+            : 0,
+    )
+    if (hasValidSeries) {
+      bars.push({
+        year: projectedYear,
+        value: currentValue,
+        current: true,
+      })
+    }
+    return bars.map((bar, index) => ({
+      slotKey: `slot-${index}`,
+      key: `trajectory-${bar.year}`,
+      label: String(bar.year).slice(-2),
+      subLabel: bar.current ? 'YTD' : null,
+      value: Math.max(0, bar.value),
+      toneClass: bar.current ? HOUSE_CHART_BAR_CURRENT_CLASS : HOUSE_CHART_BAR_ACCENT_CLASS,
+    }))
+  }, [chartData.current_h_index, chartData.projected_year, chartData.values, chartData.years])
+  const needsBars = useMemo(() => {
+    const candidateGaps = toNumberArray(chartData.candidate_gaps)
+      .map((item) => Math.max(0, Math.round(item)))
+    const bars = [
+      {
+        key: 'need-1',
+        label: '+1',
+        subLabel: null,
+        count: candidateGaps.filter((gap) => gap === 1).length,
+        toneClass: HOUSE_CHART_BAR_POSITIVE_CLASS,
+      },
+      {
+        key: 'need-3',
+        label: '+3',
+        subLabel: null,
+        count: candidateGaps.filter((gap) => gap >= 3).length,
+        toneClass: HOUSE_CHART_BAR_ACCENT_CLASS,
+      },
+    ]
+    return bars.map((bar, index) => ({
+      slotKey: `slot-${index}`,
+      key: bar.key,
+      label: bar.label,
+      subLabel: bar.subLabel,
+      value: Math.max(0, bar.count),
+      toneClass: bar.toneClass,
+    }))
+  }, [chartData.candidate_gaps])
+  const activeBars = mode === 'needed' ? needsBars : trajectoryBars
+  const hasBars = activeBars.length > 0
+  const emptyLabel = mode === 'needed' ? 'No h-index needed data' : 'No h-index timeline'
+  const refreshAnimationKey = useMemo(
+    () => `hindex-refresh-${refreshAnimationEpoch}`,
+    [refreshAnimationEpoch],
+  )
+  const refreshBarsExpanded = useUnifiedToggleBarAnimation(
+    refreshAnimationKey,
+    hasBars,
+    HOUSE_CHART_REFRESH_DELAY_MS,
+  )
+  const toggleAnimationKey = useMemo(
+    () => `${mode}|${activeBars.map((bar) => `${bar.key}-${bar.value.toFixed(3)}`).join('|')}`,
+    [activeBars, mode],
+  )
+  const toggleEasingEnabled = hasBars && refreshBarsExpanded
+  const targetValues = useMemo(
+    () => activeBars.map((bar) => Math.max(0, bar.value)),
+    [activeBars],
+  )
+  const targetAxisMax = computeToggleAxisMax(targetValues)
+  const slotTransition = useQueuedSlotChartTransition({
+    target: {
+      axisMax: Math.max(1, targetAxisMax),
+      tickRatios: [0, 0.5, 1],
+      values: activeBars.map((_, index) => Math.max(0, targetValues[index] ?? 0)),
+      yRatios: activeBars.map((_, index) => (
+        targetAxisMax <= 0
+          ? 0
+          : Math.max(0, Math.min(1, (targetValues[index] ?? 0) / targetAxisMax))
+      )),
+      meanRatio: 0,
+    },
+    transitionKey: `${toggleAnimationKey}|hindex-slot|${targetAxisMax.toFixed(3)}`,
+    enabled: toggleEasingEnabled,
+    durationMs: HOUSE_CHART_SERIES_DURATION_MS,
+  })
   useEffect(() => {
-    if (prefersReducedMotion()) {
-      setVisible(true)
-      return
-    }
-    let raf = 0
-    raf = window.requestAnimationFrame(() => {
-      setVisible(true)
-    })
-    return () => {
-      window.cancelAnimationFrame(raf)
-    }
-  }, [])
+    setHoveredIndex(null)
+  }, [toggleAnimationKey])
+  const axisLayout = buildChartAxisLayout({
+    axisLabels: activeBars.map((bar) => bar.label),
+    axisSubLabels: activeBars.map((bar) => bar.subLabel || null),
+    showXAxisName: mode === 'needed',
+    xAxisName: mode === 'needed' ? 'Citations needed' : null,
+    dense: mode !== 'needed' && activeBars.length >= 6,
+  })
 
-  useEffect(() => {
-    if (mode === renderMode) {
-      return
-    }
-    if (prefersReducedMotion()) {
-      setRenderMode(mode)
-      setVisible(true)
-      return
-    }
+  if (!hasBars) {
+    return <div className={dashboardTileStyles.emptyChart}>{emptyLabel}</div>
+  }
 
-    setVisible(false)
-    const timer = window.setTimeout(() => {
-      setRenderMode(mode)
-      setVisible(true)
-    }, fadeMs)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [mode, renderMode])
+  const axisMax = Math.max(1, slotTransition.axisMax)
 
   return (
-    <div
-      className={cn(
-        'h-full w-full transition-opacity ease-out',
-        visible ? 'opacity-100' : 'opacity-0',
-      )}
-      style={{ transitionDuration: `${fadeMs}ms` }}
-    >
-      {renderMode === 'needed'
-        ? <HIndexNeedsChart tile={tile} animate={false} />
-        : <HIndexYearChart tile={tile} showCaption={false} animate={false} />}
+    <div className="h-full w-full">
+      <div className="flex h-full min-h-0 w-full flex-col">
+        <div
+          className={cn(
+            HOUSE_CHART_TRANSITION_CLASS,
+            HOUSE_CHART_SERIES_BY_KEY_CLASS,
+          )}
+          style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
+        >
+          <div
+            className="absolute inset-x-2 top-4"
+            style={{ bottom: `${axisLayout.plotBottomRem}rem` }}
+          >
+            {[50].map((pct) => (
+              <div
+                key={`hindex-grid-${pct}`}
+                className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
+                style={{ bottom: `${pct}%` }}
+                aria-hidden="true"
+              />
+            ))}
+            <div className="absolute inset-0 flex items-end gap-1">
+              {activeBars.map((bar, index) => {
+                const animatedValue = Math.max(0, slotTransition.values[index] ?? 0)
+                const animatedYRatio = Math.max(
+                  0,
+                  Math.min(
+                    1,
+                    slotTransition.yRatios[index]
+                      ?? (axisMax <= 0 ? 0 : animatedValue / axisMax),
+                  ),
+                )
+                const heightPct = animatedValue <= 0 ? 3 : Math.max(6, animatedYRatio * 100)
+                const isActive = hoveredIndex === index
+                return (
+                  <div
+                    key={bar.key}
+                    className="relative flex h-full min-h-0 flex-1 items-end"
+                    onMouseEnter={() => setHoveredIndex(index)}
+                    onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                  >
+                    <span
+                      className={cn(
+                        HOUSE_DRILLDOWN_TOOLTIP_CLASS,
+                        isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
+                      )}
+                      style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
+                      aria-hidden="true"
+                    >
+                      {mode === 'needed'
+                        ? `${formatInt(animatedValue)} ${Math.round(animatedValue) === 1 ? 'paper' : 'papers'}`
+                        : `h ${formatInt(animatedValue)}`}
+                    </span>
+                    <span
+                      className={cn(
+                        'block w-full rounded',
+                        HOUSE_TOGGLE_CHART_BAR_CLASS,
+                        HOUSE_TOGGLE_CHART_SWAP_CLASS,
+                        bar.toneClass,
+                        isActive && 'brightness-[1.08] saturate-[1.14]',
+                      )}
+                      style={{
+                        height: `${heightPct}%`,
+                        transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${refreshBarsExpanded ? 1 : 0})`,
+                        transformOrigin: 'bottom',
+                        transitionDelay: '0ms',
+                      }}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+          <div
+            className="pointer-events-none absolute inset-x-2 grid grid-flow-col auto-cols-fr items-start gap-1"
+            style={{ bottom: `${axisLayout.axisBottomRem}rem`, minHeight: `${axisLayout.axisMinHeightRem}rem` }}
+          >
+            {activeBars.map((bar) => (
+              <div key={`${bar.key}-axis`} className={cn('text-center leading-none', HOUSE_TOGGLE_CHART_LABEL_CLASS)}>
+                <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-0.5 leading-tight')}>{bar.label}</p>
+                {bar.subLabel ? (
+                  <p className={cn(HOUSE_CHART_AXIS_SUBTEXT_CLASS, 'break-words px-0.5')}>
+                    {bar.subLabel}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+          {mode === 'needed' ? (
+            <div
+              className="pointer-events-none absolute inset-x-2 text-center"
+              style={{ bottom: `${axisLayout.xAxisNameBottomRem}rem`, minHeight: `${axisLayout.xAxisNameMinHeightRem}rem` }}
+            >
+              <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words leading-tight')}>
+                Citations needed
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </div>
     </div>
   )
 }
+void HIndexNeedsChart
 
 function HIndexProgressInline({ tile }: { tile: PublicationMetricTilePayload }) {
   const progressMeta = buildHIndexProgressMeta(tile)
@@ -5039,8 +5543,13 @@ function HIndexProgressInline({ tile }: { tile: PublicationMetricTilePayload }) 
       <div className="flex items-center gap-2">
         <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-1.5 flex-1')}>
           <div
-            className={cn('h-full rounded-full transition-[width] duration-500 ease-out', HOUSE_CHART_BAR_POSITIVE_CLASS)}
-            style={{ width: `${progressMeta.progressPct}%` }}
+            className={cn('h-full rounded-full', HOUSE_CHART_BAR_POSITIVE_CLASS)}
+            style={{
+              width: `${progressMeta.progressPct}%`,
+              transitionProperty: 'width',
+              transitionDuration: 'var(--motion-duration-chart-refresh)',
+              transitionTimingFunction: 'var(--motion-ease-chart-series)',
+            }}
             aria-hidden="true"
           />
         </div>
@@ -5117,7 +5626,13 @@ function HIndexViewToggle({
   )
 }
 
-function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload }) {
+function InfluentialTrendPanel({
+  tile,
+  refreshAnimationEpoch = 0,
+}: {
+  tile: PublicationMetricTilePayload
+  refreshAnimationEpoch?: number
+}) {
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const primarySeries = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const fallbackSeries = toNumberArray(tile.sparkline || []).map((item) => Math.max(0, item))
@@ -5134,6 +5649,15 @@ function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload })
     })
     return cumulative
   }, [sourceValues])
+  const refreshAnimationKey = useMemo(
+    () => `influential-citations-refresh-${refreshAnimationEpoch}`,
+    [refreshAnimationEpoch],
+  )
+  const chartVisible = useUnifiedToggleBarAnimation(
+    refreshAnimationKey,
+    values.length > 0,
+    HOUSE_CHART_REFRESH_DELAY_MS,
+  )
   const labels = normalizeSeriesLabels(
     chartData.window_labels || chartData.labels || chartData.years,
     values.length,
@@ -5145,17 +5669,11 @@ function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload })
   const width = 220
   const height = 92
   const points = buildLinePoints(values, width, height, labels, 8)
-  const baselineY = height - 8
-  const areaOffsetY = 0.7
-  const areaPoints = points.map((point) => ({
-    x: point.x,
-    y: Math.min(baselineY, point.y + areaOffsetY),
-  }))
   const path = monotonePathFromPoints(points)
-  const areaCurve = monotonePathFromPoints(areaPoints)
-  const areaPath = areaPoints.length
-    ? `${areaCurve} L ${areaPoints[areaPoints.length - 1].x} ${baselineY} L ${areaPoints[0].x} ${baselineY} Z`
-    : ''
+  const reduceMotion = prefersReducedMotion()
+  const lineTrackTransition = reduceMotion
+    ? 'none'
+    : 'stroke-dashoffset var(--motion-duration-chart-refresh) var(--motion-ease-chart-series)'
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -5163,12 +5681,10 @@ function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload })
         className={cn(
           HOUSE_LINE_CHART_SURFACE_CLASS,
           HOUSE_CHART_TRANSITION_CLASS,
-          HOUSE_CHART_ENTERED_CLASS,
         )}
       >
         <div className="relative h-full w-full">
           <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-full w-full">
-            <path d={areaPath} className={HOUSE_DRILLDOWN_CHART_AREA_SVG_CLASS} fillOpacity={0.68} />
             <path
               d={path}
               fill="none"
@@ -5177,6 +5693,12 @@ function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload })
               strokeLinecap="round"
               strokeLinejoin="round"
               shapeRendering="geometricPrecision"
+              pathLength={1}
+              style={{
+                strokeDasharray: 1,
+                strokeDashoffset: chartVisible ? 0 : 1,
+                transition: lineTrackTransition,
+              }}
             />
           </svg>
         </div>
@@ -5396,6 +5918,15 @@ export function PublicationsTopStrip({
   const [insightsVisible, setInsightsVisible] = useState(
     () => readAccountSettings().publicationInsightsDefaultVisibility !== 'hidden',
   )
+  const [refreshAnimationEpoch, setRefreshAnimationEpoch] = useState(0)
+  const wasLoadingRef = useRef(loading)
+
+  useEffect(() => {
+    if (wasLoadingRef.current && !loading) {
+      setRefreshAnimationEpoch((current) => current + 1)
+    }
+    wasLoadingRef.current = loading
+  }, [loading])
 
   const tiles = useMemo(() => {
     const source = metrics?.tiles ?? []
@@ -5501,7 +6032,7 @@ export function PublicationsTopStrip({
               <Button
                 type="button"
                 data-stop-tile-open="true"
-                variant="house"
+                variant="secondary"
                 size="icon"
                 className={cn(
                   'h-8 w-8 house-publications-action-icon house-publications-action-eye',
@@ -5539,7 +6070,7 @@ export function PublicationsTopStrip({
                 <Button
                   type="button"
                   data-stop-tile-open="true"
-                  variant="house"
+                  variant="secondary"
                   size="sm"
                   className={cn('h-8 gap-1.5 px-3', HOUSE_ACTIONS_PILL_PRIMARY_CLASS, HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
                   aria-label="Generate publication insights report"
@@ -5551,7 +6082,7 @@ export function PublicationsTopStrip({
                   <Button
                     type="button"
                     data-stop-tile-open="true"
-                    variant="house"
+                    variant="secondary"
                     size="icon"
                     className={cn('h-8 w-8', HOUSE_ACTIONS_PILL_ICON_CLASS, HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
                     aria-label="Download"
@@ -5561,7 +6092,7 @@ export function PublicationsTopStrip({
                   <Button
                     type="button"
                     data-stop-tile-open="true"
-                    variant="house"
+                    variant="secondary"
                     size="icon"
                     className={cn('h-8 w-8', HOUSE_ACTIONS_PILL_ICON_CLASS, HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
                     aria-label="Share"
@@ -5594,6 +6125,7 @@ export function PublicationsTopStrip({
                     <TotalCitationsTile
                       key={tile.key}
                       tile={tile}
+                      refreshAnimationEpoch={refreshAnimationEpoch}
                       onOpen={() => {
                         void onSelectTile(tile)
                       }}
@@ -5628,7 +6160,13 @@ export function PublicationsTopStrip({
                   }
                   secondaryText = 'Lifetime publications'
                   detailText = 'Last 5 years shown'
-                  visual = <PublicationsPerYearChart tile={tile} showCaption={false} />
+                  visual = (
+                    <PublicationsPerYearChart
+                      tile={tile}
+                      showCaption={false}
+                      refreshAnimationEpoch={refreshAnimationEpoch}
+                    />
+                  )
                 } else if (tile.key === 'momentum') {
                   const activeLift = momentumWindowMode === '5y'
                     ? momentumYearBreakdown?.liftPct ?? null
@@ -5711,6 +6249,7 @@ export function PublicationsTopStrip({
                       tile={tile}
                       mode={momentumWindowMode}
                       yearBreakdown={momentumYearBreakdown}
+                      refreshAnimationEpoch={refreshAnimationEpoch}
                     />
                   )
                 } else if (tile.key === 'h_index_projection') {
@@ -5733,6 +6272,7 @@ export function PublicationsTopStrip({
                     <HIndexTrajectoryPanel
                       tile={tile}
                       mode={hIndexViewMode}
+                      refreshAnimationEpoch={refreshAnimationEpoch}
                     />
                   )
                 } else if (tile.key === 'impact_concentration') {
@@ -5765,7 +6305,7 @@ export function PublicationsTopStrip({
                       </span>
                     )
                   }
-                  visual = <ImpactConcentrationPanel tile={tile} />
+                  visual = <ImpactConcentrationPanel tile={tile} refreshAnimationEpoch={refreshAnimationEpoch} />
                 } else if (tile.key === 'field_percentile_share') {
                   const fieldPercentileData = (tile.chart_data || {}) as Record<string, unknown>
                   const rawThresholds = toNumberArray(fieldPercentileData.thresholds)
@@ -5866,6 +6406,7 @@ export function PublicationsTopStrip({
                       tile={tile}
                       threshold={activeThreshold}
                       toggleControl={percentileToggleNode}
+                      refreshAnimationEpoch={refreshAnimationEpoch}
                     />
                   )
                 } else if (tile.key === 'authorship_composition') {
@@ -5894,7 +6435,7 @@ export function PublicationsTopStrip({
                       Median author position {medianAuthorPositionDisplay}
                     </span>
                   )
-                  visual = <AuthorshipStructurePanel tile={tile} />
+                  visual = <AuthorshipStructurePanel tile={tile} refreshAnimationEpoch={refreshAnimationEpoch} />
                 } else if (tile.key === 'collaboration_structure') {
                   const collaborationChartData = (tile.chart_data || {}) as Record<string, unknown>
                   const uniqueCollaboratorsRaw = Number(collaborationChartData.unique_collaborators)
@@ -5908,7 +6449,7 @@ export function PublicationsTopStrip({
                   primaryValue = formatInt(uniqueCollaborators)
                   secondaryText = 'Unique collaborators'
                   detailText = undefined
-                  visual = <CollaborationStructurePanel tile={tile} />
+                  visual = <CollaborationStructurePanel tile={tile} refreshAnimationEpoch={refreshAnimationEpoch} />
                 } else if (tile.key === 'influential_citations') {
                   const influentialChartData = (tile.chart_data || {}) as Record<string, unknown>
                   const influentialRatioRaw = Number(influentialChartData.influential_ratio_pct)
@@ -5918,7 +6459,7 @@ export function PublicationsTopStrip({
                   primaryValue = mainValueDisplay
                   secondaryText = 'Influential citations'
                   detailText = influentialRatioWhole === null ? undefined : `${influentialRatioWhole}% of total citations`
-                  visual = <InfluentialTrendPanel tile={tile} />
+                  visual = <InfluentialTrendPanel tile={tile} refreshAnimationEpoch={refreshAnimationEpoch} />
                 }
 
                 return (

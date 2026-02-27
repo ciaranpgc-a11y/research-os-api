@@ -23,7 +23,7 @@ export function LandingPage() {
               </span>
             </div>
           </div>
-          <Button type="button" variant="house" onClick={() => navigate('/auth')}>
+          <Button type="button" variant="secondary" onClick={() => navigate('/auth')}>
             Sign in
           </Button>
         </header>
@@ -41,10 +41,10 @@ export function LandingPage() {
               produce draft-ready sections with transparent guardrails.
             </p>
             <div className="flex flex-wrap gap-3">
-              <Button type="button" variant="housePrimary" onClick={() => navigate('/auth')}>
+              <Button type="button" variant="primary" onClick={() => navigate('/auth')}>
                 Get started
               </Button>
-              <Button type="button" variant="house" onClick={() => navigate('/auth')}>
+              <Button type="button" variant="secondary" onClick={() => navigate('/auth')}>
                 Create account
               </Button>
             </div>

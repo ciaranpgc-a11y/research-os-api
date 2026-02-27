@@ -28,13 +28,13 @@ export function WorkspaceExportsPage() {
           <CardDescription>Run QC first, then export manuscript and supporting evidence.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" onClick={() => navigate(`/w/${workspaceId}/qc`)}>
+          <Button type="button" variant="tertiary" onClick={() => navigate(`/w/${workspaceId}/qc`)}>
             Open quality check
           </Button>
-          <Button type="button" variant="outline" onClick={() => navigate(`/w/${workspaceId}/manuscript/introduction`)}>
+          <Button type="button" variant="tertiary" onClick={() => navigate(`/w/${workspaceId}/manuscript/introduction`)}>
             Open manuscript
           </Button>
-          <Button type="button" variant="outline" onClick={() => navigate(`/w/${workspaceId}/run-wizard`)}>
+          <Button type="button" variant="tertiary" onClick={() => navigate(`/w/${workspaceId}/run-wizard`)}>
             Open run wizard
           </Button>
         </CardContent>

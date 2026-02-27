@@ -994,7 +994,7 @@ export function Step1Panel({
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
               <Button
                 size="sm"
-                variant="outline"
+                variant="tertiary"
                 className={IGNORE_BUTTON_CLASS}
                 onClick={() => setShowSummaryDiff((current) => !current)}
                 disabled={loading}
@@ -1003,7 +1003,7 @@ export function Step1Panel({
               </Button>
               <Button
                 size="sm"
-                variant="outline"
+                variant="tertiary"
                 className={IGNORE_BUTTON_CLASS}
                 onClick={() => onIgnoreSuggestion('summary')}
                 disabled={loading}
@@ -1012,7 +1012,7 @@ export function Step1Panel({
               </Button>
               <Button
                 size="sm"
-                variant="outline"
+                variant="tertiary"
                 className={OUTLINE_ACTION_BUTTON_CLASS}
                 onClick={() => onApplySummary(summarySuggestion)}
                 disabled={applyDisabled}
@@ -1057,7 +1057,7 @@ export function Step1Panel({
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className={IGNORE_BUTTON_CLASS}
               onClick={() => onIgnoreSuggestion('researchCategory')}
               disabled={loading}
@@ -1066,7 +1066,7 @@ export function Step1Panel({
             </Button>
             <Button
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className={OUTLINE_ACTION_BUTTON_CLASS}
               onClick={onApplyResearchCategorySuggestion}
               disabled={applyDisabled}
@@ -1089,7 +1089,7 @@ export function Step1Panel({
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className={IGNORE_BUTTON_CLASS}
               onClick={() => onIgnoreSuggestion('researchType')}
               disabled={loading}
@@ -1098,7 +1098,7 @@ export function Step1Panel({
             </Button>
             <Button
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className={OUTLINE_ACTION_BUTTON_CLASS}
               onClick={onApplyResearchTypeSuggestion}
               disabled={applyDisabled}
@@ -1121,7 +1121,7 @@ export function Step1Panel({
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className={IGNORE_BUTTON_CLASS}
               onClick={() => onIgnoreSuggestion('interpretationMode')}
               disabled={loading}
@@ -1130,7 +1130,7 @@ export function Step1Panel({
             </Button>
             <Button
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className={OUTLINE_ACTION_BUTTON_CLASS}
               onClick={onApplyInterpretationModeSuggestion}
               disabled={applyDisabled}
@@ -1168,7 +1168,7 @@ export function Step1Panel({
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <Button
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className={IGNORE_BUTTON_CLASS}
               onClick={() => onIgnoreSuggestion('journal')}
               disabled={loading}
@@ -1177,7 +1177,7 @@ export function Step1Panel({
             </Button>
             <Button
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className={OUTLINE_ACTION_BUTTON_CLASS}
               onClick={onApplyJournalRecommendation}
               disabled={applyDisabled}
@@ -1197,7 +1197,7 @@ export function Step1Panel({
     const revertControl = hasRevert ? (
       <Button
         size="sm"
-        variant="outline"
+        variant="tertiary"
         className={IGNORE_BUTTON_CLASS}
         onClick={() => onRevertApplied(key)}
         disabled={loading}
@@ -1276,7 +1276,7 @@ export function Step1Panel({
     const restoreControl = (
       <Button
         size="sm"
-        variant="outline"
+        variant="tertiary"
         className={IGNORE_BUTTON_CLASS}
         onClick={() => onRestoreIgnoredSuggestion(key)}
         disabled={loading}
@@ -1381,7 +1381,7 @@ export function Step1Panel({
           {refinementsEnabled ? (
             <Button
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className={OUTLINE_ACTION_BUTTON_CLASS}
               onClick={() => void onToggleRefinements()}
               disabled={loading}
@@ -1391,7 +1391,7 @@ export function Step1Panel({
           ) : null}
           <Button
             size="sm"
-            variant="outline"
+            variant="tertiary"
             className={OUTLINE_ACTION_BUTTON_CLASS}
             onClick={() => void refreshSuggestions()}
             disabled={!summary.trim() || loading}
@@ -1455,7 +1455,7 @@ export function Step1Panel({
               <div className="flex justify-end pt-1">
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="tertiary"
                   className={IGNORE_BUTTON_CLASS}
                   onClick={onRestoreIgnoredSuggestions}
                   disabled={loading}

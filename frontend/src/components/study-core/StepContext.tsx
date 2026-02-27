@@ -471,7 +471,7 @@ export function StepContext({
         <Button
           type="button"
           size="sm"
-          variant="outline"
+          variant="tertiary"
           className="border-slate-300 text-slate-700 hover:bg-slate-100"
           onClick={onResetResearchOverview}
           disabled={saving}
@@ -640,7 +640,7 @@ export function StepContext({
                 key={helper.id}
                 type="button"
                 size="sm"
-                variant="outline"
+                variant="tertiary"
                 className={
                   activeSummaryHelperIds.has(helper.id)
                     ? 'border-emerald-400 bg-emerald-100 text-emerald-900 hover:bg-emerald-200'
@@ -663,7 +663,7 @@ export function StepContext({
             <Button
               type="button"
               size="sm"
-              variant="outline"
+              variant="tertiary"
               className={SECONDARY_ACTION_BUTTON_CLASS}
               onClick={onToggleSpeechToText}
               disabled={!speechSupported}
@@ -688,7 +688,7 @@ export function StepContext({
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
+                variant="tertiary"
                 className="border-cyan-300 text-cyan-800 hover:bg-cyan-50"
                 onClick={onRealignInterpretationMode}
               >

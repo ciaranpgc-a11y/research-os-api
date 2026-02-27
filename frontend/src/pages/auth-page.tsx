@@ -760,7 +760,7 @@ export function AuthPage() {
           error.toLowerCase().includes('could not reach api') ? (
             <Button
               type="button"
-              variant="outline"
+              variant="tertiary"
               size="sm"
               className="h-8 text-label"
               onClick={() => void onWakeApi()}
@@ -863,7 +863,7 @@ export function AuthPage() {
             {hasTestAccountShortcut ? (
               <Button
                 type="button"
-                variant="outline"
+                variant="tertiary"
                 className="h-10 w-full border-[hsl(var(--tone-neutral-200))] text-label"
                 onClick={onUseTestAccount}
                 disabled={loading}
@@ -891,7 +891,7 @@ export function AuthPage() {
                 />
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="tertiary"
                   className="h-10 w-full border-[hsl(var(--tone-neutral-200))] text-label"
                   onClick={() => void onVerifyTwoFactor()}
                   disabled={loading || !twoFactorCode.trim()}
@@ -916,7 +916,7 @@ export function AuthPage() {
                 />
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="tertiary"
                   className="h-10 w-full border-[hsl(var(--tone-neutral-200))] text-label"
                   onClick={() => void onRequestReset()}
                   disabled={loading || !isLikelyEmail(resetEmail)}
@@ -940,7 +940,7 @@ export function AuthPage() {
                 />
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="tertiary"
                   className="h-10 w-full border-[hsl(var(--tone-neutral-200))] text-label"
                   onClick={() => void onConfirmReset()}
                   disabled={loading || !resetCode.trim() || !isStrongPassword(resetPassword)}
@@ -982,7 +982,7 @@ export function AuthPage() {
               </Button>
               <Button
                 type="button"
-                variant="outline"
+                variant="tertiary"
                 className="h-10 border-[hsl(var(--tone-neutral-200))] text-label"
                 onClick={() => void onResendVerification()}
                 disabled={loading}
@@ -991,7 +991,7 @@ export function AuthPage() {
               </Button>
               <Button
                 type="button"
-                variant="outline"
+                variant="tertiary"
                 className="h-10 border-[hsl(var(--tone-neutral-200))] text-label"
                 onClick={() => {
                   setAwaitingEmailVerification(false)

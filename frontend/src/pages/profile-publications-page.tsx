@@ -2780,14 +2780,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           </div>
 
                           <div className="flex flex-wrap gap-2">
-                            <Button type="button" size="sm" variant="outline" disabled={!Boolean(detailDoi)} asChild={Boolean(detailDoi)}>
+                            <Button type="button" size="sm" variant="tertiary" disabled={!Boolean(detailDoi)} asChild={Boolean(detailDoi)}>
                               {detailDoi ? <a href={doiToUrl(detailDoi) || undefined} target="_blank" rel="noreferrer">Open DOI</a> : <span>Open DOI</span>}
                             </Button>
-                            <Button type="button" size="sm" variant="outline" disabled={!Boolean(detailPmid)} asChild={Boolean(detailPmid)}>
+                            <Button type="button" size="sm" variant="tertiary" disabled={!Boolean(detailPmid)} asChild={Boolean(detailPmid)}>
                               {detailPmid ? <a href={`https://pubmed.ncbi.nlm.nih.gov/${detailPmid}/`} target="_blank" rel="noreferrer">Open PubMed</a> : <span>Open PubMed</span>}
                             </Button>
-                            <Button type="button" size="sm" variant="outline" onClick={onCopyVancouverCitation}>Copy citation</Button>
-                            <Button type="button" size="sm" variant="outline" onClick={() => navigate('/workspace')}>Add to manuscript</Button>
+                            <Button type="button" size="sm" variant="tertiary" onClick={onCopyVancouverCitation}>Copy citation</Button>
+                            <Button type="button" size="sm" variant="tertiary" onClick={() => navigate('/workspace')}>Add to manuscript</Button>
                           </div>
 
                           <div className={`${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS} text-xs text-muted-foreground`}>
@@ -2798,13 +2798,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
                         <TabsContent value="content" className="space-y-3">
                           <div className="flex items-center gap-2">
-                            <Button type="button" size="sm" variant={contentMode === 'plain' ? 'default' : 'outline'} onClick={() => void onContentModeChange('plain')}>Plain</Button>
-                            <Button type="button" size="sm" variant={contentMode === 'highlighted' ? 'default' : 'outline'} onClick={() => void onContentModeChange('highlighted')}>Highlighted</Button>
+                            <Button type="button" size="sm" variant={contentMode === 'plain' ? 'primary' : 'tertiary'} onClick={() => void onContentModeChange('plain')}>Plain</Button>
+                            <Button type="button" size="sm" variant={contentMode === 'highlighted' ? 'primary' : 'tertiary'} onClick={() => void onContentModeChange('highlighted')}>Highlighted</Button>
                           </div>
                           <div className={`space-y-2 ${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}`}>
                             <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Abstract</p>
                             <p className="whitespace-pre-wrap text-xs leading-relaxed">{detailAbstract ? abstractPreview : 'No abstract available.'}</p>
-                            {detailAbstract.length > 700 ? <Button type="button" size="sm" variant="outline" onClick={onToggleAbstractExpanded}>{abstractExpanded ? 'Collapse' : 'Expand'}</Button> : null}
+                            {detailAbstract.length > 700 ? <Button type="button" size="sm" variant="tertiary" onClick={onToggleAbstractExpanded}>{abstractExpanded ? 'Collapse' : 'Expand'}</Button> : null}
                           </div>
                           {contentMode === 'highlighted' ? (
                             <div className={`space-y-1 text-xs ${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}`}>
@@ -2856,12 +2856,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                     <p className={HOUSE_PUBLICATION_DRILLDOWN_CAPTION_CLASS}>{file.file_type} | {sourceLabel} | {formatShortDate(file.created_at)}</p>
                                     <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${HOUSE_PUBLICATION_DRILLDOWN_ACTION_CLASS}`}>
                                       {file.source === 'OA_LINK' && file.download_url ? (
-                                        <Button type="button" size="sm" variant="housePrimary" asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
+                                        <Button type="button" size="sm" variant="primary" asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
                                       ) : (
-                                        <Button type="button" size="sm" variant="housePrimary" disabled={downloadingFileId === file.id} onClick={() => void onDownloadPublicationFile(file.id, file.file_name)}>{downloadingFileId === file.id ? 'Downloading...' : 'Download'}</Button>
+                                        <Button type="button" size="sm" variant="primary" disabled={downloadingFileId === file.id} onClick={() => void onDownloadPublicationFile(file.id, file.file_name)}>{downloadingFileId === file.id ? 'Downloading...' : 'Download'}</Button>
                                       )}
-                                      <Button type="button" size="sm" variant="outline" onClick={() => onSharePublicationFileEmail(file)}>Share (email)</Button>
-                                      <Button type="button" size="sm" variant="outline" onClick={() => onSharePublicationFileWithUser(file)}>Share with user</Button>
+                                      <Button type="button" size="sm" variant="tertiary" onClick={() => onSharePublicationFileEmail(file)}>Share (email)</Button>
+                                      <Button type="button" size="sm" variant="tertiary" onClick={() => onSharePublicationFileWithUser(file)}>Share with user</Button>
                                       <Button type="button" size="sm" variant="destructive" className="ml-auto" disabled={deletingFileId === file.id} onClick={() => void onDeletePublicationFile(file.id)}>{deletingFileId === file.id ? 'Deleting...' : 'Delete'}</Button>
                                     </div>
                                   </div>
@@ -2889,7 +2889,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Drag and drop files here, or use upload.</p>
                               </div>
                               <div className="flex items-start">
-                                <Button type="button" size="sm" variant="outline" onClick={() => filePickerRef.current?.click()} disabled={uploadingFile}>{uploadingFile ? 'Uploading...' : 'Upload file'}</Button>
+                                <Button type="button" size="sm" variant="tertiary" onClick={() => filePickerRef.current?.click()} disabled={uploadingFile}>{uploadingFile ? 'Uploading...' : 'Upload file'}</Button>
                                 <input ref={filePickerRef} type="file" multiple className="hidden" onChange={(event) => void onUploadFiles(event.target.files)} />
                               </div>
                             </div>

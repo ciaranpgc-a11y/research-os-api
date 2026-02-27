@@ -182,7 +182,7 @@ export function ManuscriptTablesPage() {
               {selectedTable ? (
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="tertiary"
                   onClick={() => removeManuscriptTable(selectedTable.id)}
                 >
                   <Trash2 className="mr-1 h-4 w-4" />
@@ -220,10 +220,10 @@ export function ManuscriptTablesPage() {
                     onChange={(event) => setNewColumnName(event.target.value)}
                     placeholder="New column name"
                   />
-                  <Button variant="outline" onClick={onAddColumn}>
+                  <Button variant="tertiary" onClick={onAddColumn}>
                     Add column
                   </Button>
-                  <Button variant="outline" onClick={onAddRow}>
+                  <Button variant="tertiary" onClick={onAddRow}>
                     Add row
                   </Button>
                 </div>

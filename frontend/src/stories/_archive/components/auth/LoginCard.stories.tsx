@@ -116,7 +116,7 @@ export const ErrorState: Story = {
   args: {
     error: 'Could not reach API. Check network and retry.',
     errorAction: (
-      <Button type="button" variant="outline" size="sm" className="h-8 text-label">
+      <Button type="button" variant="tertiary" size="sm" className="h-8 text-label">
         Retry API connection
       </Button>
     ),

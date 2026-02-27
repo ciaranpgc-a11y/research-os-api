@@ -823,7 +823,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
             {orcidLinked ? (
               <Button
                 type="button"
-                variant="outline"
+                variant="tertiary"
                 size="sm"
                 onClick={requestDisconnectOrcid}
                 disabled={!canDisconnectOrcid}
@@ -942,7 +942,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
             {orcidLinked ? (
               <Button
                 type="button"
-                variant="outline"
+                variant="tertiary"
                 onClick={onImportOrcid}
                 disabled={!canImportOrcid}
                 className={`relative overflow-hidden ${syncButtonBusy ? 'border-[hsl(var(--tone-accent-300))] bg-[hsl(var(--tone-neutral-100))] text-[hsl(var(--tone-neutral-900))] hover:bg-[hsl(var(--tone-neutral-100))]' : ''}`}
@@ -972,7 +972,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
             <div className={`space-y-2 rounded-md border px-3 py-2 ${statusToneClass}`}>
               <p className="text-sm">{error || status}</p>
               {error && (error.toLowerCase().includes('could not reach api') || error.toLowerCase().includes('failed to fetch')) ? (
-                <Button type="button" variant="outline" size="sm" onClick={() => void onRetryApiConnection()} disabled={refreshing}>
+                <Button type="button" variant="tertiary" size="sm" onClick={() => void onRetryApiConnection()} disabled={refreshing}>
                   {refreshing ? 'Retrying...' : 'Retry API connection'}
                 </Button>
               ) : null}
@@ -1004,7 +1004,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
             <div className="mt-4 flex justify-end gap-2">
               <Button
                 type="button"
-                variant="outline"
+                variant="tertiary"
                 onClick={() => setConfirmDisconnectOpen(false)}
                 disabled={disconnecting}
               >
@@ -1012,7 +1012,7 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
               </Button>
               <Button
                 type="button"
-                variant="outline"
+                variant="tertiary"
                 onClick={() => void onDisconnectOrcid()}
                 disabled={disconnecting}
                 className="border-red-300 text-red-700 hover:border-red-400 hover:bg-red-50 hover:text-red-800"

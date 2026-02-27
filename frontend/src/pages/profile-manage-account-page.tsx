@@ -213,7 +213,7 @@ export function ProfileManageAccountPage() {
           </div>
 
           <div data-house-role="action-row" className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="housePrimary" onClick={() => void onChangePassword()} disabled={passwordBusy || loading}>
+            <Button type="button" variant="primary" onClick={() => void onChangePassword()} disabled={passwordBusy || loading}>
               {passwordBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {passwordBusy ? 'Changing...' : 'Change password'}
             </Button>

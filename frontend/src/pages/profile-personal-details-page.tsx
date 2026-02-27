@@ -2078,7 +2078,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   <Button
                     type="button"
                     size="sm"
-                    variant="house"
+                    variant="secondary"
                     className={HOUSE_ACTION_BUTTON_CLASS}
                     onClick={() => profilePhotoInputRef.current?.click()}
                   >
@@ -2090,14 +2090,14 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       <Button
                         type="button"
                         size="sm"
-                        variant="house"
+                        variant="secondary"
                         className={HOUSE_ACTION_BUTTON_CLASS}
                         onClick={() => setProfilePhotoEditorOpen((current) => !current)}
                       >
                         <SlidersHorizontal className="mr-1.5 h-4 w-4" />
                         {profilePhotoEditorOpen ? 'Close editor' : 'Adjust framing'}
                       </Button>
-                      <Button type="button" size="sm" variant="house" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onRemoveProfilePhoto}>
+                      <Button type="button" size="sm" variant="secondary" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onRemoveProfilePhoto}>
                         <Trash2 className="mr-1.5 h-4 w-4" />
                         Remove
                       </Button>
@@ -2145,10 +2145,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                           />
                         </label>
                         <div className="flex flex-wrap gap-2">
-                          <Button type="button" size="sm" variant="house" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onResetProfilePhotoPosition}>
+                          <Button type="button" size="sm" variant="secondary" className={HOUSE_ACTION_BUTTON_CLASS} onClick={onResetProfilePhotoPosition}>
                             Reset
                           </Button>
-                          <Button type="button" size="sm" variant="housePrimary" className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS} onClick={() => setProfilePhotoEditorOpen(false)}>
+                          <Button type="button" size="sm" variant="primary" className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS} onClick={() => setProfilePhotoEditorOpen(false)}>
                             Done
                           </Button>
                         </div>
@@ -2174,7 +2174,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                   <Button
                     type="button"
                     size="sm"
-                    variant="house"
+                    variant="secondary"
                     className={HOUSE_ACTION_BUTTON_CLASS}
                     onClick={() => navigate('/profile/manage-account')}
                   >
@@ -2317,7 +2317,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             <Button
               type="button"
               size="sm"
-              variant="house"
+              variant="secondary"
               className={HOUSE_ACTION_BUTTON_CLASS}
               onClick={onOpenAffiliationEditor}
             >
@@ -2495,7 +2495,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                       <div className="flex justify-start md:justify-center md:self-start">
                         <Button
                           type="button"
-                          variant="house"
+                          variant="secondary"
                           size="sm"
                           className={HOUSE_ACTION_BUTTON_CLASS}
                           onClick={onAddJobRole}
@@ -2627,7 +2627,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                     <Button
                       type="button"
                       size="sm"
-                      variant="housePrimary"
+                      variant="primary"
                       className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS}
                       onClick={onApplyAffiliationEditorChanges}
                     >
@@ -2650,7 +2650,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             </CardTitle>
             <Button
               type="button"
-              variant="house"
+              variant="secondary"
               size="sm"
               className={HOUSE_ACTION_BUTTON_CLASS}
               onClick={onTogglePublicationAffiliationComposer}
@@ -2680,7 +2680,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
                 />
                 <Button
                   type="button"
-                  variant="house"
+                  variant="secondary"
                   size="sm"
                   className={HOUSE_ACTION_BUTTON_CLASS}
                   onClick={() => onAddPublicationAffiliation(publicationAffiliationInput)}
@@ -2795,7 +2795,7 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
-            variant="housePrimary"
+            variant="primary"
             className={HOUSE_ACTION_BUTTON_PRIMARY_CLASS}
             onClick={() => void onSave()}
             disabled={!user || saving || loading}

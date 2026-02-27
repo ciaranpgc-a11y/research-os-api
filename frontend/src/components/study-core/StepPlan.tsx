@@ -774,15 +774,15 @@ export function StepPlan(props: StepPlanProps) {
       </section>
 
       <section className="grid gap-2 sm:grid-cols-3">
-        <Button type="button" variant={phase === 'data' ? 'default' : 'outline'} onClick={() => setPhase('data')}>Phase 1: Data</Button>
-        <Button type="button" variant={phase === 'questions' ? 'default' : 'outline'} onClick={() => setPhase('questions')}>Phase 2: Questions</Button>
-        <Button type="button" variant={phase === 'editor' ? 'default' : 'outline'} onClick={() => setPhase('editor')} disabled={!planJson}>Phase 3: Plan editor</Button>
+        <Button type="button" variant={phase === 'data' ? 'primary' : 'tertiary'} onClick={() => setPhase('data')}>Phase 1: Data</Button>
+        <Button type="button" variant={phase === 'questions' ? 'primary' : 'tertiary'} onClick={() => setPhase('questions')}>Phase 2: Questions</Button>
+        <Button type="button" variant={phase === 'editor' ? 'primary' : 'tertiary'} onClick={() => setPhase('editor')} disabled={!planJson}>Phase 3: Plan editor</Button>
       </section>
 
       {phase === 'data' ? (
         <section className="space-y-3 rounded-md border border-border/80 p-3">
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={() => void loadAssets()} disabled={assetBusy}>
+            <Button type="button" variant="tertiary" onClick={() => void loadAssets()} disabled={assetBusy}>
               {assetBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Database className="mr-1 h-3.5 w-3.5" />}
               Attach from Data Library
             </Button>
@@ -863,7 +863,7 @@ export function StepPlan(props: StepPlanProps) {
             >
               Continue to questions
             </Button>
-            <Button type="button" variant="outline" onClick={() => setPhase('questions')}>
+            <Button type="button" variant="tertiary" onClick={() => setPhase('questions')}>
               Skip data
             </Button>
           </div>
@@ -874,7 +874,7 @@ export function StepPlan(props: StepPlanProps) {
         <section className="space-y-3 rounded-md border border-border/80 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div><p className="text-sm font-semibold">Minimal questions (data-aware)</p><p className="text-xs text-muted-foreground">One question at a time, prioritising unresolved profile items.</p></div>
-            <Button type="button" variant="outline" onClick={() => void askNext(responses, false)} disabled={questionBusy}>
+            <Button type="button" variant="tertiary" onClick={() => void askNext(responses, false)} disabled={questionBusy}>
               {questionBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Wand2 className="mr-1 h-3.5 w-3.5" />}Next question
             </Button>
           </div>
@@ -888,13 +888,13 @@ export function StepPlan(props: StepPlanProps) {
               <p className="text-sm font-medium">{question.prompt}</p>
               <p className="text-xs text-muted-foreground">{question.rationale}</p>
               <div className="flex gap-2">
-                <Button type="button" size="sm" variant={answer === 'yes' ? 'default' : 'outline'} onClick={() => setAnswer('yes')}>Yes</Button>
-                <Button type="button" size="sm" variant={answer === 'no' ? 'default' : 'outline'} onClick={() => setAnswer('no')}>No</Button>
+                <Button type="button" size="sm" variant={answer === 'yes' ? 'primary' : 'tertiary'} onClick={() => setAnswer('yes')}>Yes</Button>
+                <Button type="button" size="sm" variant={answer === 'no' ? 'primary' : 'tertiary'} onClick={() => setAnswer('no')}>No</Button>
               </div>
               <textarea className="min-h-20 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm" placeholder="Optional comment" value={comment} onChange={(e) => setComment(e.target.value)} />
               <div className="flex gap-2">
                 <Button type="button" className="house-button-action-primary text-sm font-semibold" onClick={() => void saveAnswerAndNext()} disabled={answer !== 'yes' && answer !== 'no'}>Save answer and continue</Button>
-                <Button type="button" variant="outline" onClick={() => void askNext(responses, true)} disabled={questionBusy}>Ask another targeted question</Button>
+                <Button type="button" variant="tertiary" onClick={() => void askNext(responses, true)} disabled={questionBusy}>Ask another targeted question</Button>
               </div>
             </div>
           ) : (
@@ -902,7 +902,7 @@ export function StepPlan(props: StepPlanProps) {
           )}
           {questionError ? <p className="text-xs text-destructive">{questionError}</p> : null}
           <div className="rounded-md border border-border/70 bg-muted/20 p-2"><p className="house-h2 text-muted-foreground">Adaptive summary</p><p className="text-sm">{adaptiveSummary || planningContext.summary}</p></div>
-          <div className="flex gap-2"><Button type="button" className="house-button-action-primary text-sm font-semibold" onClick={() => void generatePlan()} disabled={toolBusy}>{toolBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <FileText className="mr-1 h-3.5 w-3.5" />}Generate manuscript plan</Button><Button type="button" variant="outline" onClick={() => setPhase('data')}>Back to data</Button></div>
+          <div className="flex gap-2"><Button type="button" className="house-button-action-primary text-sm font-semibold" onClick={() => void generatePlan()} disabled={toolBusy}>{toolBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <FileText className="mr-1 h-3.5 w-3.5" />}Generate manuscript plan</Button><Button type="button" variant="tertiary" onClick={() => setPhase('data')}>Back to data</Button></div>
         </section>
       ) : null}
 
@@ -911,7 +911,7 @@ export function StepPlan(props: StepPlanProps) {
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/80 bg-muted/20 p-3">
               <div><p className="text-sm font-semibold">Manuscript plan editor</p><p className="text-xs text-muted-foreground">No duplicate preview. This accordion is the plan editor.</p></div>
-              <Button type="button" variant="outline" onClick={() => planJson && void savePlan(planJson)} disabled={!planJson || saveBusy}>{saveBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}Save plan</Button>
+              <Button type="button" variant="tertiary" onClick={() => planJson && void savePlan(planJson)} disabled={!planJson || saveBusy}>{saveBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}Save plan</Button>
             </div>
 
             {planJson?.sections.map((section) => {
@@ -932,19 +932,19 @@ export function StepPlan(props: StepPlanProps) {
                   {open ? (
                     <div className="space-y-3 border-t border-border/70 px-3 py-3">
                       <div className="flex flex-wrap gap-2">
-                        <Button type="button" size="sm" variant="outline" onClick={() => void runTool('improve')} disabled={toolBusy || section.status === 'locked'}>Improve</Button>
-                        <Button type="button" size="sm" variant="outline" onClick={() => void runTool('subheadings')} disabled={toolBusy}>Suggest subheadings</Button>
-                        <Button type="button" size="sm" variant="outline" onClick={() => void runTool('critique')} disabled={toolBusy}>Critique</Button>
-                        <Button type="button" size="sm" variant="outline" onClick={() => void runTool('alternatives')} disabled={toolBusy}>Generate alternatives</Button>
-                        <Button type="button" size="sm" variant="outline" onClick={() => void runTool('link_to_data')} disabled={toolBusy || !profile || section.status === 'locked'}>Link to data</Button>
-                        <Button type="button" size="sm" variant="outline" onClick={() => void runTool('checklist')} disabled={toolBusy}>Add checklist</Button>
+                        <Button type="button" size="sm" variant="tertiary" onClick={() => void runTool('improve')} disabled={toolBusy || section.status === 'locked'}>Improve</Button>
+                        <Button type="button" size="sm" variant="tertiary" onClick={() => void runTool('subheadings')} disabled={toolBusy}>Suggest subheadings</Button>
+                        <Button type="button" size="sm" variant="tertiary" onClick={() => void runTool('critique')} disabled={toolBusy}>Critique</Button>
+                        <Button type="button" size="sm" variant="tertiary" onClick={() => void runTool('alternatives')} disabled={toolBusy}>Generate alternatives</Button>
+                        <Button type="button" size="sm" variant="tertiary" onClick={() => void runTool('link_to_data')} disabled={toolBusy || !profile || section.status === 'locked'}>Link to data</Button>
+                        <Button type="button" size="sm" variant="tertiary" onClick={() => void runTool('checklist')} disabled={toolBusy}>Add checklist</Button>
                         {section.key === 'TABLES' ? (
                           <>
-                            <Button type="button" size="sm" variant="outline" onClick={() => void regenerateTableShells()} disabled={toolBusy}>Generate table shells</Button>
+                            <Button type="button" size="sm" variant="tertiary" onClick={() => void regenerateTableShells()} disabled={toolBusy}>Generate table shells</Button>
                             <Button
                               type="button"
                               size="sm"
-                              variant="outline"
+                              variant="tertiary"
                               onClick={() =>
                                 updatePlan((current) => ({
                                   ...current,
@@ -958,16 +958,16 @@ export function StepPlan(props: StepPlanProps) {
                             >
                               Insert Table 1/2/3 skeletons
                             </Button>
-                            <Button type="button" size="sm" variant="outline" onClick={() => onStatus('Tables outline export will be added in a subsequent release.')}>Export tables outline</Button>
+                            <Button type="button" size="sm" variant="tertiary" onClick={() => onStatus('Tables outline export will be added in a subsequent release.')}>Export tables outline</Button>
                           </>
                         ) : null}
                         {section.key === 'FIGURES' ? (
                           <>
-                            <Button type="button" size="sm" variant="outline" onClick={() => void regenerateFigureShells()} disabled={toolBusy}>Generate figure placeholders</Button>
+                            <Button type="button" size="sm" variant="tertiary" onClick={() => void regenerateFigureShells()} disabled={toolBusy}>Generate figure placeholders</Button>
                             <Button
                               type="button"
                               size="sm"
-                              variant="outline"
+                              variant="tertiary"
                               onClick={() =>
                                 updatePlan((current) => ({
                                   ...current,
@@ -981,13 +981,13 @@ export function StepPlan(props: StepPlanProps) {
                             >
                               List required inputs
                             </Button>
-                            <Button type="button" size="sm" variant="outline" onClick={() => onStatus('Figures outline export will be added in a subsequent release.')}>Export figures outline</Button>
+                            <Button type="button" size="sm" variant="tertiary" onClick={() => onStatus('Figures outline export will be added in a subsequent release.')}>Export figures outline</Button>
                           </>
                         ) : null}
                         <Button
                           type="button"
                           size="sm"
-                          variant="outline"
+                          variant="tertiary"
                           onClick={() =>
                             updatePlan((current) => ({
                               ...current,
@@ -1030,7 +1030,7 @@ export function StepPlan(props: StepPlanProps) {
                             <Button
                               type="button"
                               size="sm"
-                              variant="outline"
+                              variant="tertiary"
                               onClick={() =>
                                 updatePlan(
                                   (current) => ({
@@ -1054,7 +1054,7 @@ export function StepPlan(props: StepPlanProps) {
                             <Button
                               type="button"
                               size="sm"
-                              variant="outline"
+                              variant="tertiary"
                               onClick={() =>
                                 updatePlan(
                                   (current) => ({
@@ -1080,7 +1080,7 @@ export function StepPlan(props: StepPlanProps) {
                         <Button
                           type="button"
                           size="sm"
-                          variant="outline"
+                          variant="tertiary"
                           onClick={() =>
                             updatePlan(
                               (current) => ({
@@ -1139,7 +1139,7 @@ export function StepPlan(props: StepPlanProps) {
                           )}
                         </div>
                       ) : null}
-                      {fb.alternatives.length ? <div className="space-y-2 rounded-md border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50)/0.42)] p-2">{fb.alternatives.map((alt) => <div key={alt} className="space-y-1 rounded border border-[hsl(var(--tone-accent-200))] bg-card p-2"><p className="text-xs text-[hsl(var(--tone-neutral-700))]">{alt}</p><Button type="button" size="sm" variant="outline" onClick={() => updatePlan((current) => ({ ...current, sections: current.sections.map((item) => item.key === section.key ? { ...item, content: alt, summary: firstLine(alt, item.summary) } : item) }))}>Apply alternative</Button></div>)}</div> : null}
+                      {fb.alternatives.length ? <div className="space-y-2 rounded-md border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50)/0.42)] p-2">{fb.alternatives.map((alt) => <div key={alt} className="space-y-1 rounded border border-[hsl(var(--tone-accent-200))] bg-card p-2"><p className="text-xs text-[hsl(var(--tone-neutral-700))]">{alt}</p><Button type="button" size="sm" variant="tertiary" onClick={() => updatePlan((current) => ({ ...current, sections: current.sections.map((item) => item.key === section.key ? { ...item, content: alt, summary: firstLine(alt, item.summary) } : item) }))}>Apply alternative</Button></div>)}</div> : null}
                     </div>
                   ) : null}
                 </article>
@@ -1159,8 +1159,8 @@ export function StepPlan(props: StepPlanProps) {
                 <div className="rounded-md border border-border/70 bg-background p-2">
                   <p className="house-h2 text-muted-foreground">Upload and attach data</p>
                   <div className="flex flex-wrap gap-2">
-                    <Button type="button" size="sm" variant="outline" onClick={() => sectionInputRef.current?.click()} disabled={sectionUploadBusy}>{sectionUploadBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Paperclip className="mr-1 h-3.5 w-3.5" />}Upload and attach</Button>
-                    <Button type="button" size="sm" variant="outline" onClick={() => void loadAssets()} disabled={assetBusy}>Refresh library</Button>
+                    <Button type="button" size="sm" variant="tertiary" onClick={() => sectionInputRef.current?.click()} disabled={sectionUploadBusy}>{sectionUploadBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Paperclip className="mr-1 h-3.5 w-3.5" />}Upload and attach</Button>
+                    <Button type="button" size="sm" variant="tertiary" onClick={() => void loadAssets()} disabled={assetBusy}>Refresh library</Button>
                   </div>
                   <input ref={sectionInputRef} type="file" className="hidden" multiple onChange={(e) => void uploadToSection(e.target.files)} />
                   <p className="text-micro text-muted-foreground">Uploads always go to Data Library, then attach by asset reference.</p>
