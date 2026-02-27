@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { Check, ExternalLink, Loader2, Search } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { BadgePrimitive as Badge } from '@/components/primitives/BadgePrimitive'
+import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
+import { CardPrimitive as Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/primitives/CardPrimitive'
+import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
@@ -262,7 +262,7 @@ export function ManuscriptPage() {
               Click a card to inspect evidence and citation metadata in the Insight panel.
             </p>
           </div>
-          <Button variant={claimMapView ? 'default' : 'outline'} size="sm" onClick={toggleClaimMapView}>
+          <Button variant={claimMapView ? 'primary' : 'secondary'} size="sm" onClick={toggleClaimMapView}>
             {claimMapView ? 'Claim Map View On' : 'Claim Map View Off'}
           </Button>
         </div>
@@ -352,7 +352,7 @@ export function ManuscriptPage() {
                         </div>
                       </div>
                       <Button
-                        variant="outline"
+                        variant="secondary"
                         size="sm"
                         onClick={(event) => {
                           event.stopPropagation()
@@ -474,7 +474,7 @@ export function ManuscriptPage() {
                           <div className="flex flex-wrap items-center gap-2">
                             <Button
                               size="sm"
-                              variant={isAttached ? 'secondary' : 'outline'}
+                              variant={isAttached ? 'primary' : 'secondary'}
                               disabled={!activeClaim || savingClaimCitations || loadingClaimCitations}
                               onClick={() => onToggleCitation(citation.id)}
                             >
@@ -507,7 +507,7 @@ export function ManuscriptPage() {
 
             <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
               <Button
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={onExportClaimCitations}
                 disabled={!activeClaim || exportingClaimCitations || loadingClaimCitations}
