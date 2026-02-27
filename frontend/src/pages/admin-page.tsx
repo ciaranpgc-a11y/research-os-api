@@ -132,8 +132,8 @@ const CAPABILITY_SECTIONS: AdminCapabilitySection[] = [
     id: 'billing',
     title: 'Billing & Plans',
     icon: BadgeDollarSign,
-    status: 'planned',
-    lane: 'later',
+    status: 'partial',
+    lane: 'next',
     summary: 'Commercial layer for plans, subscriptions, usage metering, and spend controls.',
     items: [
       'Plans, entitlements, quotas, and feature bundles',
@@ -174,8 +174,8 @@ const CAPABILITY_SECTIONS: AdminCapabilitySection[] = [
     id: 'flags',
     title: 'Feature Flags & Experiments',
     icon: Flag,
-    status: 'planned',
-    lane: 'later',
+    status: 'partial',
+    lane: 'next',
     summary: 'Progressive rollout control by environment, org targeting, and experiment auditing.',
     items: [
       'Environment-aware flag management',
@@ -188,8 +188,8 @@ const CAPABILITY_SECTIONS: AdminCapabilitySection[] = [
     id: 'integrations',
     title: 'Integrations',
     icon: CheckCircle2,
-    status: 'planned',
-    lane: 'later',
+    status: 'partial',
+    lane: 'next',
     summary: 'Provider health center for credentials, sync jobs, webhooks, and throttling.',
     items: [
       'Credential/scopes state and expiry',
@@ -216,8 +216,8 @@ const CAPABILITY_SECTIONS: AdminCapabilitySection[] = [
     id: 'support',
     title: 'Support & Moderation',
     icon: LifeBuoy,
-    status: 'planned',
-    lane: 'later',
+    status: 'partial',
+    lane: 'next',
     summary: 'Operational support controls for ticket SLAs, notes, and account freeze workflows.',
     items: [
       'Ticket queue, assignment, and SLA timers',
@@ -230,8 +230,8 @@ const CAPABILITY_SECTIONS: AdminCapabilitySection[] = [
     id: 'system',
     title: 'System Settings (Internal)',
     icon: Clock3,
-    status: 'planned',
-    lane: 'later',
+    status: 'partial',
+    lane: 'next',
     summary: 'Internal environment and release observability with health and deployment history.',
     items: [
       'Read-only environment configuration view',
@@ -862,6 +862,99 @@ export function AdminPage() {
       { label: 'Storage footprint', value: formatBytes(totalStorageBytes), icon: HardDrive },
     ]
   }, [workspaceItems, workspaces?.total])
+
+  const billingPlanMix = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const item of organisationItems) {
+      const key = String(item.plan || 'unknown').trim().toLowerCase() || 'unknown'
+      counts.set(key, (counts.get(key) || 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .map(([plan, count]) => ({ plan, count }))
+      .sort((left, right) => right.count - left.count)
+  }, [organisationItems])
+
+  const billingTopOrgs = useMemo(() => {
+    return [...usageOrganisationItems]
+      .sort((left, right) => right.cost_usd_current_month - left.cost_usd_current_month)
+      .slice(0, 10)
+  }, [usageOrganisationItems])
+
+  const featureFlagCoverage = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const organisation of organisationItems) {
+      for (const flag of organisation.feature_flags_enabled || []) {
+        const key = String(flag || '').trim()
+        if (!key) {
+          continue
+        }
+        counts.set(key, (counts.get(key) || 0) + 1)
+      }
+    }
+    return Array.from(counts.entries())
+      .map(([flag, orgCount]) => ({ flag, orgCount }))
+      .sort((left, right) => right.orgCount - left.orgCount)
+  }, [organisationItems])
+
+  const integrationStatusSummary = useMemo(() => {
+    const summary = {
+      connected: 0,
+      degraded: 0,
+      notConfigured: 0,
+    }
+    const byProvider = new Map<string, { connected: number; degraded: number; notConfigured: number }>()
+    for (const organisation of organisationItems) {
+      for (const integration of organisation.integrations || []) {
+        const provider = String(integration.key || 'unknown').trim() || 'unknown'
+        const current = byProvider.get(provider) || { connected: 0, degraded: 0, notConfigured: 0 }
+        if (integration.status === 'connected') {
+          summary.connected += 1
+          current.connected += 1
+        } else if (integration.status === 'degraded') {
+          summary.degraded += 1
+          current.degraded += 1
+        } else {
+          summary.notConfigured += 1
+          current.notConfigured += 1
+        }
+        byProvider.set(provider, current)
+      }
+    }
+    return {
+      summary,
+      byProvider: Array.from(byProvider.entries())
+        .map(([provider, counts]) => ({ provider, ...counts }))
+        .sort((left, right) => (right.connected + right.degraded + right.notConfigured) - (left.connected + left.degraded + left.notConfigured)),
+    }
+  }, [organisationItems])
+
+  const supportSignals = useMemo(() => {
+    const failedJobs = jobsItems.filter((item) => item.status === 'failed').length
+    const cancelledJobs = jobsItems.filter((item) => item.status === 'cancelled').length
+    const highPriorityEvents = auditItems.filter((item) => item.status !== 'success').length
+    return {
+      failedJobs,
+      cancelledJobs,
+      highPriorityEvents,
+      backlogJobs: jobs?.queue_health.backlog_jobs || 0,
+      recentAuditEvents: auditItems.slice(0, 8),
+    }
+  }, [auditItems, jobs?.queue_health.backlog_jobs, jobsItems])
+
+  const systemSignals = useMemo(() => {
+    const jobsGeneratedAt = jobs?.generated_at || null
+    const usageGeneratedAt = usageCosts?.generated_at || null
+    const auditGeneratedAt = auditEvents?.generated_at || null
+    return {
+      jobsGeneratedAt,
+      usageGeneratedAt,
+      auditGeneratedAt,
+      runningJobs: jobs?.queue_health.running_jobs || 0,
+      failedRunsCurrentMonth: usageSummary?.failed_runs_current_month || 0,
+      cacheHitRate: usageSummary?.cache_hit_rate_pct || 0,
+      rateLimitEvents: usageSummary?.rate_limit_events_current_month || 0,
+    }
+  }, [auditEvents?.generated_at, jobs?.generated_at, jobs?.queue_health.running_jobs, usageCosts?.generated_at, usageSummary?.cache_hit_rate_pct, usageSummary?.failed_runs_current_month, usageSummary?.rate_limit_events_current_month])
 
   const statusCounts = useMemo(() => {
     return {
@@ -2161,13 +2254,270 @@ export function AdminPage() {
               </Card>
             ) : null}
 
+            {activeCapability.id === 'billing' ? (
+              <Card className="border-[hsl(var(--tone-neutral-200))]">
+                <CardHeader className="pb-2">
+                  <CardTitle>Billing and plan controls</CardTitle>
+                  <CardDescription>Derived from live usage-cost and tenant payloads while provider billing integrations are finalized.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Current month cost</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatCurrency(usageSummary?.cost_usd_current_month || 0)}</p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Budget alerts</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(usageSummary?.budget_alerts_current_month || 0)}</p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Quota breaches</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(usageSummary?.quota_breaches_current_month || 0)}</p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Rate limit events</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(usageSummary?.rate_limit_events_current_month || 0)}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <Card className="border-[hsl(var(--tone-neutral-200))]">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Plan mix</CardTitle>
+                        <CardDescription>Active organisations by commercial plan.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-1.5">
+                        {billingPlanMix.length ? billingPlanMix.map((row) => (
+                          <div key={row.plan} className="flex items-center justify-between rounded border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2.5 py-1.5 text-sm">
+                            <span className="font-medium text-[hsl(var(--tone-neutral-900))]">{row.plan}</span>
+                            <span className="text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.count)}</span>
+                          </div>
+                        )) : <p className="text-sm text-muted-foreground">No organisation plan records available.</p>}
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border-[hsl(var(--tone-neutral-200))]">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Highest-cost organisations</CardTitle>
+                        <CardDescription>Top orgs by current month usage cost.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-1.5">
+                        {billingTopOrgs.length ? billingTopOrgs.map((row) => (
+                          <div key={row.org_id} className="flex items-center justify-between rounded border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-2.5 py-1.5 text-sm">
+                            <span className="truncate pr-2 font-medium text-[hsl(var(--tone-neutral-900))]">{row.org_name}</span>
+                            <span className="text-[hsl(var(--tone-neutral-700))]">{formatCurrency(row.cost_usd_current_month)}</span>
+                          </div>
+                        )) : <p className="text-sm text-muted-foreground">No organisation usage rows available.</p>}
+                      </CardContent>
+                    </Card>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {activeCapability.id === 'flags' ? (
+              <Card className="border-[hsl(var(--tone-neutral-200))]">
+                <CardHeader className="pb-2">
+                  <CardTitle>Feature flags and experiments</CardTitle>
+                  <CardDescription>Organisation-level flag inventory sourced from tenant control-plane metadata.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Tracked flags</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(featureFlagCoverage.length)}</p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Organisations with flags</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                        {formatInteger(organisationItems.filter((item) => item.feature_flags_enabled.length > 0).length)}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">No-flag organisations</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">
+                        {formatInteger(organisationItems.filter((item) => item.feature_flags_enabled.length === 0).length)}
+                      </p>
+                    </div>
+                  </div>
+                  {featureFlagCoverage.length ? (
+                    <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
+                      <table className="w-full min-w-full text-left text-sm">
+                        <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2">Flag</th>
+                            <th className="px-3 py-2">Org coverage</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {featureFlagCoverage.map((row) => (
+                            <tr key={row.flag} className="border-t border-[hsl(var(--tone-neutral-200))]">
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-900))]">{row.flag}</td>
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.orgCount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No feature flags are currently recorded.</p>
+                  )}
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {activeCapability.id === 'integrations' ? (
+              <Card className="border-[hsl(var(--tone-neutral-200))]">
+                <CardHeader className="pb-2">
+                  <CardTitle>Integration health center</CardTitle>
+                  <CardDescription>Provider readiness by tenant integration status.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-md border border-[hsl(var(--tone-positive-300))] bg-[hsl(var(--tone-positive-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-[hsl(var(--tone-positive-700))]">Connected</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-positive-700))]">{formatInteger(integrationStatusSummary.summary.connected)}</p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-warning-300))] bg-[hsl(var(--tone-warning-100))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-[hsl(var(--tone-warning-900))]">Degraded</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-warning-900))]">{formatInteger(integrationStatusSummary.summary.degraded)}</p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-[hsl(var(--tone-neutral-700))]">Not configured</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(integrationStatusSummary.summary.notConfigured)}</p>
+                    </div>
+                  </div>
+                  {integrationStatusSummary.byProvider.length ? (
+                    <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
+                      <table className="w-full min-w-full text-left text-sm">
+                        <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2">Provider</th>
+                            <th className="px-3 py-2">Connected</th>
+                            <th className="px-3 py-2">Degraded</th>
+                            <th className="px-3 py-2">Not configured</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {integrationStatusSummary.byProvider.map((row) => (
+                            <tr key={row.provider} className="border-t border-[hsl(var(--tone-neutral-200))]">
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-900))]">{row.provider}</td>
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.connected)}</td>
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.degraded)}</td>
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatInteger(row.notConfigured)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No integration status rows available.</p>
+                  )}
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {activeCapability.id === 'support' ? (
+              <Card className="border-[hsl(var(--tone-neutral-200))]">
+                <CardHeader className="pb-2">
+                  <CardTitle>Support and moderation queue</CardTitle>
+                  <CardDescription>Operational support signals from job failures and audited admin actions.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Failed jobs</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(supportSignals.failedJobs)}</p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Cancelled jobs</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(supportSignals.cancelledJobs)}</p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Backlog jobs</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(supportSignals.backlogJobs)}</p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Non-success audits</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(supportSignals.highPriorityEvents)}</p>
+                    </div>
+                  </div>
+                  {supportSignals.recentAuditEvents.length ? (
+                    <div className="overflow-x-auto rounded-lg border border-[hsl(var(--tone-neutral-200))]">
+                      <table className="w-full min-w-full text-left text-sm">
+                        <thead className="bg-[hsl(var(--tone-neutral-100))] text-sm uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2">When</th>
+                            <th className="px-3 py-2">Action</th>
+                            <th className="px-3 py-2">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {supportSignals.recentAuditEvents.map((row) => (
+                            <tr key={row.id} className="border-t border-[hsl(var(--tone-neutral-200))]">
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{formatTimestamp(row.created_at)}</td>
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-900))]">{row.action}</td>
+                              <td className="px-3 py-2 text-[hsl(var(--tone-neutral-700))]">{row.status}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No recent support-relevant audit events.</p>
+                  )}
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {activeCapability.id === 'system' ? (
+              <Card className="border-[hsl(var(--tone-neutral-200))]">
+                <CardHeader className="pb-2">
+                  <CardTitle>System internal controls</CardTitle>
+                  <CardDescription>Environment-level telemetry and freshness checks from live admin payloads.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Running jobs</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(systemSignals.runningJobs)}</p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Failed runs (month)</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(systemSignals.failedRunsCurrentMonth)}</p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Cache hit rate</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatPercent(systemSignals.cacheHitRate)}</p>
+                    </div>
+                    <div className="rounded-md border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2">
+                      <p className="text-sm uppercase tracking-wide text-muted-foreground">Rate limit events</p>
+                      <p className="text-xl font-semibold text-[hsl(var(--tone-neutral-900))]">{formatInteger(systemSignals.rateLimitEvents)}</p>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-[hsl(var(--tone-neutral-200))] bg-[hsl(var(--tone-neutral-50))] px-3 py-2 text-sm">
+                    <p className="font-semibold text-[hsl(var(--tone-neutral-900))]">Payload freshness</p>
+                    <p className="mt-1 text-[hsl(var(--tone-neutral-700))]">Overview: {formatTimestamp(overview?.generated_at)}</p>
+                    <p className="text-[hsl(var(--tone-neutral-700))]">Usage-costs: {formatTimestamp(systemSignals.usageGeneratedAt)}</p>
+                    <p className="text-[hsl(var(--tone-neutral-700))]">Jobs: {formatTimestamp(systemSignals.jobsGeneratedAt)}</p>
+                    <p className="text-[hsl(var(--tone-neutral-700))]">Audit events: {formatTimestamp(systemSignals.auditGeneratedAt)}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+
             {activeCapability.id !== 'overview' &&
             activeCapability.id !== 'organisations' &&
             activeCapability.id !== 'workspaces' &&
             activeCapability.id !== 'users' &&
             activeCapability.id !== 'usage-costs' &&
             activeCapability.id !== 'jobs' &&
-            activeCapability.id !== 'security' ? (
+            activeCapability.id !== 'security' &&
+            activeCapability.id !== 'billing' &&
+            activeCapability.id !== 'flags' &&
+            activeCapability.id !== 'integrations' &&
+            activeCapability.id !== 'support' &&
+            activeCapability.id !== 'system' ? (
               <Card className="border-[hsl(var(--tone-neutral-200))]">
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between gap-2">

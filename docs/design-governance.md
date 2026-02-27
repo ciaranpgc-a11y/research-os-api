@@ -200,6 +200,12 @@ No other duration tokens are permitted in UI classes.
 - Do not hard-code one-off rail/accent colors in page components.
 - For new routes, update tone resolution rules in one place and let shared components inherit those changes.
 
+### 6.6 Drilldown Sheet Contract
+
+- Record and publication detail drilldowns must use the house edge-aligned `Sheet` pattern, not inline sticky side cards.
+- Preferred side is right (`SheetContent side=\"right\"`) unless a route-specific exception is documented.
+- Drilldown surfaces must keep house spacing and tab treatments via shared drilldown tokens/classes.
+
 ### 6.2 Hover and Tooltip Governance
 
 Hover states must:

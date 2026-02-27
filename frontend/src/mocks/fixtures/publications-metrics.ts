@@ -1,4 +1,8 @@
-import type { PublicationMetricTilePayload, PublicationsTopMetricsPayload } from '@/types/impact'
+import type {
+  PublicationMetricDetailPayload,
+  PublicationMetricTilePayload,
+  PublicationsTopMetricsPayload,
+} from '@/types/impact'
 
 const citationMomentumTile: PublicationMetricTilePayload = {
   id: 'tile-momentum',
@@ -38,6 +42,57 @@ const citationMomentumTile: PublicationMetricTilePayload = {
     definition: 'Relative lift in citation velocity in the most recent period.',
     formula: '(citations_last_12m - citations_previous_12m) / max(citations_previous_12m, 1)',
     confidence_note: 'Derived from normalized citation snapshots.',
+    tile_id: 't3_momentum',
+    as_of_date: '2026-02-24',
+    windows: [
+      {
+        window_id: 'last_12m',
+        label: 'Last 12m',
+        start_date: '2025-03-01',
+        end_date: '2026-02-24',
+        is_default: true,
+      },
+    ],
+    headline_metrics: [
+      {
+        metric_id: 'primary',
+        label: 'Momentum',
+        value: 14.2,
+        value_display: '+14.2%',
+        window_id: 'last_12m',
+      },
+    ],
+    series: [
+      {
+        series_id: 'monthly',
+        label: 'Monthly trend',
+        window_id: 'last_12m',
+        points: [
+          {
+            label: 'Feb 2026',
+            period_start: '2026-02-01',
+            period_end: '2026-02-28',
+            value: 14.2,
+          },
+        ],
+      },
+    ],
+    breakdowns: [],
+    benchmarks: [],
+    methods: {
+      definition: 'Relative lift in citation velocity in the most recent period.',
+      formula: '(recent - prior) / prior',
+      data_sources: ['OpenAlex'],
+      refresh_cadence: 'Daily',
+      last_updated: '2026-02-24T09:30:00Z',
+    },
+    qc_flags: [
+      {
+        code: 'benchmark_unavailable',
+        severity: 'info',
+        message: 'Benchmark data unavailable for this metric.',
+      },
+    ],
     publications: [
       {
         work_id: 'W1001',
@@ -88,4 +143,20 @@ export const publicationsMetricsErrorFixture: PublicationsTopMetricsPayload = {
   is_stale: true,
   is_updating: false,
   last_error: 'Mocked metrics failure',
+}
+
+export function buildPublicationMetricDetailFixture(metricId: string): PublicationMetricDetailPayload {
+  const tile = (publicationsMetricsHappyFixture.tiles.find((item) => item.key === metricId)
+    || publicationsMetricsHappyFixture.tiles[0])
+  return {
+    metric_id: metricId,
+    tile,
+    data_sources: publicationsMetricsHappyFixture.data_sources,
+    data_last_refreshed: publicationsMetricsHappyFixture.data_last_refreshed,
+    computed_at: publicationsMetricsHappyFixture.computed_at,
+    status: publicationsMetricsHappyFixture.status,
+    is_stale: publicationsMetricsHappyFixture.is_stale,
+    is_updating: publicationsMetricsHappyFixture.is_updating,
+    last_error: publicationsMetricsHappyFixture.last_error,
+  }
 }

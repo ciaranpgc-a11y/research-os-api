@@ -1635,6 +1635,15 @@ class PublicationMetricDrilldownResponse(BaseModel):
     definition: str
     formula: str
     confidence_note: str
+    tile_id: str = ""
+    as_of_date: str | None = None
+    windows: list[dict[str, Any]] = Field(default_factory=list)
+    headline_metrics: list[dict[str, Any]] = Field(default_factory=list)
+    series: list[dict[str, Any]] = Field(default_factory=list)
+    breakdowns: list[dict[str, Any]] = Field(default_factory=list)
+    benchmarks: list[dict[str, Any]] = Field(default_factory=list)
+    methods: dict[str, Any] = Field(default_factory=dict)
+    qc_flags: list[dict[str, Any]] = Field(default_factory=list)
     publications: list[dict[str, Any]] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
