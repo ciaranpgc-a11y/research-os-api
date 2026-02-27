@@ -1,0 +1,36 @@
+name: Design Governance
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/src/**'
+      - 'frontend/scripts/design-governance.js'
+
+jobs:
+  governance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci --prefix frontend
+
+      - name: Run design governance
+        run: npm run design:governance --prefix frontend
+
+      - name: Comment on PR if violations found
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ **Design Governance Check Failed**\n\nRun `npm run design:governance --prefix frontend` locally to see violations.\n\nSee [governance rules](https://github.com/${{ github.repository }}/blob/main/docs/design/GOVERNANCE_RULES.md) for details.'
+            })
