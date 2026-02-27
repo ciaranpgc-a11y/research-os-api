@@ -33,3 +33,11 @@ tmp_deploys.json
 research_os.db
 *.db
 tmp_*
+tmp/
+*.log
+
+# Frontend/test artifacts
+storybook-static/
+coverage/
+playwright-report/
+dist/

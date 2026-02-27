@@ -1,5 +1,0 @@
-﻿dataset,variable,issue,severity,rows_affected,notes
-4d_flow_rhc_primary.csv,flow_index,missing_values,medium,0,No missing values in sample fixture
-4d_flow_rhc_primary.csv,patient_id,duplicate_ids,low,0,All identifiers unique
-af_screening_cohort.csv,incident_af,class_imbalance,medium,0,Class ratio balanced for demo only
-af_screening_cohort.csv,bmi,outlier_check,low,0,No outliers in small fixture
