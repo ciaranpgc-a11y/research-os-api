@@ -1,5 +1,6 @@
 import base64
 import time
+from datetime import datetime
 
 from fastapi.testclient import TestClient
 
@@ -827,6 +828,196 @@ def test_v1_library_asset_access_controls_and_download(monkeypatch, tmp_path) ->
         assert outsider_assets.status_code == 200
         assert outsider_assets.json()["items"] == []
         assert outsider_assets.json()["total"] == 0
+
+
+def test_v1_library_asset_audit_logs_are_scoped_append_only_and_persistent(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    file_bytes = b"subject_id,metric\nS001,4\nS002,8\n"
+    encoded = base64.b64encode(file_bytes).decode("ascii")
+
+    with TestClient(app) as client:
+        owner_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "audit-owner@example.com",
+                "password": "StrongPassword123",
+                "name": "Audit Owner",
+            },
+        )
+        collaborator_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "audit-collab@example.com",
+                "password": "StrongPassword123",
+                "name": "Audit Collaborator",
+            },
+        )
+        outsider_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "audit-outsider@example.com",
+                "password": "StrongPassword123",
+                "name": "Audit Outsider",
+            },
+        )
+        assert owner_register.status_code == 200
+        assert collaborator_register.status_code == 200
+        assert outsider_register.status_code == 200
+
+        owner_headers = _auth_headers(owner_register.json()["session_token"])
+        collaborator_headers = _auth_headers(collaborator_register.json()["session_token"])
+        outsider_headers = _auth_headers(outsider_register.json()["session_token"])
+
+        owner_me = client.get("/v1/auth/me", headers=owner_headers)
+        collaborator_me = client.get("/v1/auth/me", headers=collaborator_headers)
+        outsider_me = client.get("/v1/auth/me", headers=outsider_headers)
+        assert owner_me.status_code == 200
+        assert collaborator_me.status_code == 200
+        assert outsider_me.status_code == 200
+        collaborator_user_id = collaborator_me.json()["id"]
+
+        create_project = client.post(
+            "/v1/projects",
+            headers=owner_headers,
+            json={
+                "title": "Audit Logs Project",
+                "target_journal": "ehj",
+                "collaborator_user_ids": [collaborator_user_id],
+            },
+        )
+        assert create_project.status_code == 200
+        project_id = create_project.json()["id"]
+
+        upload_response = client.post(
+            "/v1/library/assets/upload",
+            headers=owner_headers,
+            json={
+                "project_id": project_id,
+                "files": [
+                    {
+                        "filename": "audit-dataset.csv",
+                        "mime_type": "text/csv",
+                        "content_base64": encoded,
+                    }
+                ],
+            },
+        )
+        assert upload_response.status_code == 200
+        asset_id = upload_response.json()["asset_ids"][0]
+
+        owner_append_invite = client.post(
+            f"/v1/library/assets/{asset_id}/audit-logs",
+            headers=owner_headers,
+            json={
+                "collaborator_name": "Audit Collaborator",
+                "collaborator_user_id": collaborator_user_id,
+                "category": "invites",
+                "from_label": None,
+                "to_label": "Reviewer (pending)",
+            },
+        )
+        owner_append_role = client.post(
+            f"/v1/library/assets/{asset_id}/audit-logs",
+            headers=owner_headers,
+            json={
+                "collaborator_name": "Audit Collaborator",
+                "collaborator_user_id": collaborator_user_id,
+                "category": "roles",
+                "from_label": "Reviewer (pending)",
+                "to_label": "Viewer (pending)",
+            },
+        )
+        collaborator_append_activity = client.post(
+            f"/v1/library/assets/{asset_id}/audit-logs",
+            headers=collaborator_headers,
+            json={
+                "collaborator_name": "Audit Collaborator",
+                "collaborator_user_id": collaborator_user_id,
+                "category": "activity",
+                "from_label": None,
+                "to_label": "Viewed",
+            },
+        )
+        assert owner_append_invite.status_code == 200
+        assert owner_append_role.status_code == 200
+        assert collaborator_append_activity.status_code == 200
+
+        collaborator_attempt_permission_log = client.post(
+            f"/v1/library/assets/{asset_id}/audit-logs",
+            headers=collaborator_headers,
+            json={
+                "collaborator_name": "Audit Collaborator",
+                "collaborator_user_id": collaborator_user_id,
+                "category": "roles",
+                "from_label": "Viewer",
+                "to_label": "Editor",
+            },
+        )
+        assert collaborator_attempt_permission_log.status_code == 400
+        assert (
+            "Only the asset owner can append permission and invite audit logs."
+            in collaborator_attempt_permission_log.json()["error"]["detail"]
+        )
+
+        owner_logs = client.get(
+            f"/v1/library/assets/{asset_id}/audit-logs",
+            headers=owner_headers,
+        )
+        assert owner_logs.status_code == 200
+        owner_items = owner_logs.json()["items"]
+        assert len(owner_items) >= 3
+        assert datetime.fromisoformat(owner_items[0]["created_at"].replace("Z", "+00:00")) >= datetime.fromisoformat(
+            owner_items[1]["created_at"].replace("Z", "+00:00")
+        )
+
+        collaborator_logs = client.get(
+            f"/v1/library/assets/{asset_id}/audit-logs",
+            headers=collaborator_headers,
+        )
+        assert collaborator_logs.status_code == 200
+        collaborator_items = collaborator_logs.json()["items"]
+        assert len(collaborator_items) >= 3
+        assert all(
+            item["collaborator_user_id"] in {collaborator_user_id, None}
+            for item in collaborator_items
+        )
+
+        collaborator_activity_logs = client.get(
+            f"/v1/library/assets/{asset_id}/audit-logs",
+            headers=collaborator_headers,
+            params={"category": "activity"},
+        )
+        assert collaborator_activity_logs.status_code == 200
+        activity_items = collaborator_activity_logs.json()["items"]
+        assert len(activity_items) == 1
+        assert activity_items[0]["category"] == "activity"
+        assert activity_items[0]["to_label"] == "Viewed"
+
+        outsider_logs = client.get(
+            f"/v1/library/assets/{asset_id}/audit-logs",
+            headers=outsider_headers,
+        )
+        assert outsider_logs.status_code == 404
+
+    with TestClient(app) as second_client:
+        owner_login = second_client.post(
+            "/v1/auth/login",
+            json={
+                "email": "audit-owner@example.com",
+                "password": "StrongPassword123",
+            },
+        )
+        assert owner_login.status_code == 200
+        owner_headers = _auth_headers(owner_login.json()["session_token"])
+        persisted_owner_logs = second_client.get(
+            f"/v1/library/assets/{asset_id}/audit-logs",
+            headers=owner_headers,
+        )
+        assert persisted_owner_logs.status_code == 200
+        assert len(persisted_owner_logs.json()["items"]) >= 3
 
 
 def test_v1_library_assets_support_server_pagination_sort_and_filters(

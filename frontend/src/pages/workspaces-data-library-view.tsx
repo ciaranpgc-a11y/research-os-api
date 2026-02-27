@@ -1,20 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Download, Loader2, PanelRightOpen, RefreshCw, Save, Search, UserPlus, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Loader2, PanelRightOpen, RefreshCw } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { houseActions, houseCollaborators, houseForms, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
-import { listCollaborators } from '@/lib/impact-api'
-import {
-  downloadLibraryAsset,
-  listLibraryAssets,
-  updateLibraryAssetAccess,
-  updateLibraryAssetMetadata,
-} from '@/lib/study-core-api'
+import { listLibraryAssets } from '@/lib/study-core-api'
+import { matchesScopedStorageEventKey, readScopedStorageItem } from '@/lib/user-scoped-storage'
 import { cn } from '@/lib/utils'
-import type { CollaboratorPayload } from '@/types/impact'
 import type {
   LibraryAssetOwnership,
   LibraryAssetRecord,
@@ -23,7 +17,6 @@ import type {
 } from '@/types/study-core'
 
 const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
-const HOUSE_SECTION_SUBTITLE_CLASS = houseTypography.sectionSubtitle
 const HOUSE_FIELD_HELPER_CLASS = houseTypography.fieldHelper
 const HOUSE_BUTTON_TEXT_CLASS = houseTypography.buttonText
 const HOUSE_TABLE_SHELL_CLASS = houseSurfaces.tableShell
@@ -36,43 +29,105 @@ const HOUSE_TABLE_FILTER_SELECT_CLASS = houseTables.filterSelect
 const HOUSE_INPUT_CLASS = houseForms.input
 const HOUSE_SELECT_CLASS = houseForms.select
 const HOUSE_ACTION_BUTTON_CLASS = houseForms.actionButton
-const HOUSE_PRIMARY_ACTION_BUTTON_CLASS = houseForms.actionButtonPrimary
-const HOUSE_SUCCESS_ACTION_BUTTON_CLASS = houseForms.actionButtonSuccess
-const HOUSE_DANGER_ACTION_BUTTON_CLASS = houseForms.actionButtonDanger
 const HOUSE_SECTION_TOOLS_CLASS = houseActions.sectionTools
 const HOUSE_SECTION_TOOLS_DATA_CLASS = houseActions.sectionToolsData
 const HOUSE_SECTION_TOOL_BUTTON_CLASS = houseActions.sectionToolButton
 const HOUSE_ACTIONS_PILL_CLASS = houseActions.actionPill
 const HOUSE_ACTIONS_PILL_PRIMARY_CLASS = houseActions.actionPillPrimary
-const HOUSE_COLLABORATOR_LIST_SHELL_CLASS = houseCollaborators.listShell
-const HOUSE_COLLABORATOR_LIST_VIEWPORT_COMPACT_CLASS = houseCollaborators.listViewportCompact
-const HOUSE_COLLABORATOR_LIST_BODY_CLASS = houseCollaborators.listBody
-const HOUSE_COLLABORATOR_CANDIDATE_CLASS = houseCollaborators.candidate
-const HOUSE_COLLABORATOR_CANDIDATE_SELECTED_CLASS = houseCollaborators.candidateSelected
-const HOUSE_COLLABORATOR_CANDIDATE_IDLE_CLASS = houseCollaborators.candidateIdle
-const HOUSE_COLLABORATOR_CANDIDATE_META_CLASS = houseCollaborators.candidateMeta
-const HOUSE_COLLABORATOR_CANDIDATE_SOURCE_CLASS = houseCollaborators.candidateSource
 const HOUSE_COLLABORATOR_CHIP_CLASS = houseCollaborators.chip
 const HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS = houseCollaborators.chipActive
-const HOUSE_COLLABORATOR_CHIP_MANAGEABLE_CLASS = houseCollaborators.chipManageable
-const HOUSE_COLLABORATOR_CHIP_READONLY_CLASS = houseCollaborators.chipReadOnly
-const HOUSE_COLLABORATOR_CHIP_ACTION_CLASS = houseCollaborators.chipAction
-const DATA_LIBRARY_ICON_BUTTON_DIMENSION_CLASS = 'h-8 w-8 p-0'
+const HOUSE_COLLABORATOR_CHIP_VIEW_ONLY_CLASS = houseCollaborators.chipViewOnly
 const HOUSE_DATA_LIBRARY_FILTER_SELECT_CLASS = cn(
   'h-9 rounded-md px-2',
   HOUSE_SELECT_CLASS,
   HOUSE_TABLE_FILTER_SELECT_CLASS,
 )
+const DATA_LIBRARY_ACCESS_STATE_STORAGE_KEY = 'aawe-data-library-access-state-v1'
+const DATA_LIBRARY_ACCESS_STATE_UPDATED_EVENT = 'data-library-access-state-updated'
+
+type DataLibraryAccessRole = 'full_access' | 'view_only'
+type DataLibraryAccessStatus = 'active' | 'pending' | 'removed'
+
+type DataLibraryAccessMember = {
+  key: string
+  name: string
+  userId: string | null
+  role: DataLibraryAccessRole
+  status: DataLibraryAccessStatus
+  lastRole: DataLibraryAccessRole
+}
+
+export type DataLibraryAssetTableMeta = {
+  total: number
+  owned: number
+  shared: number
+  unavailable: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
 
 type WorkspacesDataLibraryViewProps = {
+  selectedAssetId?: string | null
+  refreshToken?: number
+  displayNameByAssetId?: Record<string, string>
   onOpenDrilldownMobile?: () => void
+  onSelectAsset?: (assetId: string | null) => void
+  onAssetsChange?: (assets: LibraryAssetRecord[], meta: DataLibraryAssetTableMeta) => void
 }
 
 function normalizeName(value: string | null | undefined): string {
   return (value || '').trim().replace(/\s+/g, ' ')
 }
 
-function displayAssetFilename(filename: string): string {
+function normalizeKey(value: string | null | undefined): string {
+  return normalizeName(value).toLowerCase()
+}
+
+function parseAccessStateMapFromStorage(): Record<string, DataLibraryAccessMember[]> {
+  const raw = readScopedStorageItem(DATA_LIBRARY_ACCESS_STATE_STORAGE_KEY)
+  if (!raw) {
+    return {}
+  }
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const next: Record<string, DataLibraryAccessMember[]> = {}
+    for (const [assetId, value] of Object.entries(parsed || {})) {
+      if (!Array.isArray(value)) {
+        continue
+      }
+      const rows: DataLibraryAccessMember[] = []
+      for (const row of value) {
+        if (!row || typeof row !== 'object') {
+          continue
+        }
+        const record = row as Record<string, unknown>
+        const name = normalizeName(String(record.name || ''))
+        if (!name) {
+          continue
+        }
+        const role = String(record.role || '') === 'view_only' ? 'view_only' : 'full_access'
+        const statusRaw = String(record.status || '')
+        const status: DataLibraryAccessStatus =
+          statusRaw === 'pending' || statusRaw === 'removed' ? statusRaw : 'active'
+        rows.push({
+          key: normalizeKey(name),
+          name,
+          userId: String(record.userId || '').trim() || null,
+          role,
+          status,
+          lastRole: String(record.lastRole || '') === 'view_only' ? 'view_only' : 'full_access',
+        })
+      }
+      next[assetId] = rows
+    }
+    return next
+  } catch {
+    return {}
+  }
+}
+
+export function displayAssetFilename(filename: string): string {
   const clean = String(filename || '').trim()
   if (!clean) {
     return 'Untitled file'
@@ -81,7 +136,7 @@ function displayAssetFilename(filename: string): string {
   return stripped || clean
 }
 
-function formatTimestamp(value: string): string {
+export function formatDataLibraryTimestamp(value: string): string {
   const parsed = Date.parse(value)
   if (Number.isNaN(parsed)) {
     return 'Not available'
@@ -95,7 +150,7 @@ function formatTimestamp(value: string): string {
   })
 }
 
-function formatBytes(bytes: number): string {
+export function formatDataLibraryBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) {
     return '0 B'
   }
@@ -130,14 +185,14 @@ function libraryAssetAccessMembers(asset: LibraryAssetRecord): Array<{ user_id: 
   return []
 }
 
-function selectedCandidateByAssetIdValue(
-  map: Record<string, CollaboratorPayload | null>,
-  assetId: string,
-): CollaboratorPayload | null {
-  return map[assetId] || null
-}
-
-export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesDataLibraryViewProps = {}) {
+export function WorkspacesDataLibraryView({
+  selectedAssetId = null,
+  refreshToken = 0,
+  displayNameByAssetId = {},
+  onOpenDrilldownMobile,
+  onSelectAsset,
+  onAssetsChange,
+}: WorkspacesDataLibraryViewProps = {}) {
   const [assets, setAssets] = useState<LibraryAssetRecord[]>([])
   const [queryInput, setQueryInput] = useState('')
   const [query, setQuery] = useState('')
@@ -148,39 +203,31 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
   const [pageSize, setPageSize] = useState(25)
   const [total, setTotal] = useState(0)
   const [hasMore, setHasMore] = useState(false)
+  const [refreshTick, setRefreshTick] = useState(0)
+  const [accessStateByAssetId, setAccessStateByAssetId] = useState<Record<string, DataLibraryAccessMember[]>>(
+    () => parseAccessStateMapFromStorage(),
+  )
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
-  const [status, setStatus] = useState('')
-  const [busyAssetId, setBusyAssetId] = useState<string | null>(null)
-  const [assetMenuOpenId, setAssetMenuOpenId] = useState<string | null>(null)
-  const [renamingAssetId, setRenamingAssetId] = useState<string | null>(null)
-  const [renameDraft, setRenameDraft] = useState('')
-  const [refreshTick, setRefreshTick] = useState(0)
-
-  const [collaboratorQueryByAssetId, setCollaboratorQueryByAssetId] = useState<Record<string, string>>({})
-  const [collaboratorLookupByAssetId, setCollaboratorLookupByAssetId] = useState<Record<string, CollaboratorPayload[]>>({})
-  const [selectedCollaboratorByAssetId, setSelectedCollaboratorByAssetId] = useState<Record<string, CollaboratorPayload | null>>({})
-  const [lookupErrorByAssetId, setLookupErrorByAssetId] = useState<Record<string, string>>({})
-  const [lookupBusyAssetId, setLookupBusyAssetId] = useState<string | null>(null)
-
   const hasSessionToken = Boolean(getAuthSessionToken())
 
   useEffect(() => {
-    if (!assetMenuOpenId) {
-      return
+    const refreshAccessState = () => {
+      setAccessStateByAssetId(parseAccessStateMapFromStorage())
     }
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null
-      if (target?.closest('[data-ui="library-asset-menu-root"]')) {
+    const onStorage = (event: StorageEvent) => {
+      if (!matchesScopedStorageEventKey(event.key, DATA_LIBRARY_ACCESS_STATE_STORAGE_KEY)) {
         return
       }
-      setAssetMenuOpenId(null)
+      refreshAccessState()
     }
-    window.addEventListener('mousedown', onPointerDown)
+    window.addEventListener(DATA_LIBRARY_ACCESS_STATE_UPDATED_EVENT, refreshAccessState)
+    window.addEventListener('storage', onStorage)
     return () => {
-      window.removeEventListener('mousedown', onPointerDown)
+      window.removeEventListener(DATA_LIBRARY_ACCESS_STATE_UPDATED_EVENT, refreshAccessState)
+      window.removeEventListener('storage', onStorage)
     }
-  }, [assetMenuOpenId])
+  }, [])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -198,7 +245,6 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
       setTotal(0)
       setHasMore(false)
       setError('')
-      setStatus('')
       setIsLoading(false)
       return () => {
         cancelled = true
@@ -211,7 +257,6 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
       setTotal(0)
       setHasMore(false)
       setError('')
-      setStatus('')
       setIsLoading(false)
       return () => {
         cancelled = true
@@ -264,291 +309,7 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
     return () => {
       cancelled = true
     }
-  }, [hasSessionToken, ownershipFilter, page, pageSize, query, refreshTick, sortBy, sortDirection])
-
-  useEffect(() => {
-    if (assetMenuOpenId && !assets.some((asset) => asset.id === assetMenuOpenId)) {
-      setAssetMenuOpenId(null)
-    }
-    if (renamingAssetId && !assets.some((asset) => asset.id === renamingAssetId)) {
-      setRenamingAssetId(null)
-      setRenameDraft('')
-    }
-  }, [assetMenuOpenId, assets, renamingAssetId])
-
-  const updateAssetInState = useCallback((nextAsset: LibraryAssetRecord) => {
-    setAssets((current) => current.map((item) => (item.id === nextAsset.id ? nextAsset : item)))
-  }, [])
-
-  const onRefresh = () => {
-    setRefreshTick((current) => current + 1)
-  }
-
-  const onCancelRenameAsset = useCallback(() => {
-    setRenamingAssetId(null)
-    setRenameDraft('')
-    setAssetMenuOpenId(null)
-  }, [])
-
-  const onStartRenameAsset = useCallback((asset: LibraryAssetRecord) => {
-    if (!asset.can_manage_access) {
-      setError('Only the file owner can rename files.')
-      return
-    }
-    setError('')
-    setStatus('')
-    setAssetMenuOpenId(null)
-    setRenamingAssetId(asset.id)
-    setRenameDraft(asset.filename)
-  }, [])
-
-  const onSaveRenameAsset = useCallback(
-    async (asset: LibraryAssetRecord) => {
-      const nextFilename = String(renameDraft || '').trim()
-      if (!asset.can_manage_access) {
-        setError('Only the file owner can rename files.')
-        return
-      }
-      if (!nextFilename) {
-        setError('File name is required.')
-        return
-      }
-      if (nextFilename === asset.filename) {
-        onCancelRenameAsset()
-        return
-      }
-      const token = getAuthSessionToken()
-      if (!token) {
-        setError('Sign in to manage permissions.')
-        return
-      }
-
-      setError('')
-      setStatus('')
-      setBusyAssetId(asset.id)
-      try {
-        const updated = await updateLibraryAssetMetadata({
-          token,
-          assetId: asset.id,
-          filename: nextFilename,
-        })
-        updateAssetInState(updated)
-        setStatus(`Renamed to ${updated.filename}.`)
-        onCancelRenameAsset()
-      } catch (renameError) {
-        setError(renameError instanceof Error ? renameError.message : 'Could not rename file.')
-      } finally {
-        setBusyAssetId((current) => (current === asset.id ? null : current))
-      }
-    },
-    [onCancelRenameAsset, renameDraft, updateAssetInState],
-  )
-
-  const onDownloadAsset = useCallback(async (asset: LibraryAssetRecord) => {
-    if (!isAssetAvailable(asset)) {
-      setError(`'${asset.filename}' is currently unavailable (missing storage).`)
-      return
-    }
-    const token = getAuthSessionToken()
-    if (!token) {
-      setError('Sign in to download files.')
-      return
-    }
-    setError('')
-    setStatus('')
-    setBusyAssetId(asset.id)
-    try {
-      const payload = await downloadLibraryAsset({
-        token,
-        assetId: asset.id,
-      })
-      const objectUrl = window.URL.createObjectURL(payload.blob)
-      const anchor = document.createElement('a')
-      anchor.href = objectUrl
-      anchor.download = payload.fileName || asset.filename
-      document.body.appendChild(anchor)
-      anchor.click()
-      anchor.remove()
-      window.URL.revokeObjectURL(objectUrl)
-      setStatus(`Downloaded ${payload.fileName || asset.filename}.`)
-    } catch (downloadError) {
-      setError(downloadError instanceof Error ? downloadError.message : 'Could not download file.')
-    } finally {
-      setBusyAssetId((current) => (current === asset.id ? null : current))
-    }
-  }, [])
-
-  const onSearchCollaborators = useCallback(
-    async (asset: LibraryAssetRecord) => {
-      const token = getAuthSessionToken()
-      if (!token) {
-        setError('Sign in to search collaborators.')
-        return
-      }
-
-      const queryValue = normalizeName(collaboratorQueryByAssetId[asset.id] || '')
-      if (queryValue.length < 2) {
-        setLookupErrorByAssetId((current) => ({
-          ...current,
-          [asset.id]: 'Type at least 2 characters to search.',
-        }))
-        return
-      }
-
-      setLookupBusyAssetId(asset.id)
-      setLookupErrorByAssetId((current) => ({ ...current, [asset.id]: '' }))
-      setStatus('')
-      setError('')
-      try {
-        const payload = await listCollaborators(token, {
-          query: queryValue,
-          page: 1,
-          pageSize: 25,
-        })
-        const existingAccessNames = new Set(
-          libraryAssetAccessMembers(asset).map((member) => normalizeName(member.name).toLowerCase()),
-        )
-        const ownerName = normalizeName(asset.owner_name || '').toLowerCase()
-        const seenNames = new Set<string>()
-        const filtered = (payload.items || []).filter((candidate) => {
-          const candidateName = normalizeName(candidate.full_name)
-          if (!candidateName) {
-            return false
-          }
-          const nameKey = candidateName.toLowerCase()
-          if (seenNames.has(nameKey)) {
-            return false
-          }
-          seenNames.add(nameKey)
-          if (nameKey === ownerName) {
-            return false
-          }
-          if (existingAccessNames.has(nameKey)) {
-            return false
-          }
-          return true
-        })
-        setCollaboratorLookupByAssetId((current) => ({
-          ...current,
-          [asset.id]: filtered,
-        }))
-        if (filtered.length === 0) {
-          setLookupErrorByAssetId((current) => ({
-            ...current,
-            [asset.id]: 'No eligible collaborators found.',
-          }))
-        }
-      } catch (lookupError) {
-        setCollaboratorLookupByAssetId((current) => ({ ...current, [asset.id]: [] }))
-        setLookupErrorByAssetId((current) => ({
-          ...current,
-          [asset.id]: lookupError instanceof Error ? lookupError.message : 'Directory lookup failed.',
-        }))
-      } finally {
-        setLookupBusyAssetId((current) => (current === asset.id ? null : current))
-      }
-    },
-    [collaboratorQueryByAssetId],
-  )
-
-  const onAddAccess = useCallback(
-    async (asset: LibraryAssetRecord) => {
-      const token = getAuthSessionToken()
-      if (!token) {
-        setError('Sign in to manage permissions.')
-        return
-      }
-      if (!asset.can_manage_access) {
-        setError('Only the file owner can manage access.')
-        return
-      }
-
-      const selected = selectedCandidateByAssetIdValue(selectedCollaboratorByAssetId, asset.id)
-      if (!selected) {
-        setError('Select a collaborator from directory results first.')
-        return
-      }
-
-      const selectedName = normalizeName(selected.full_name)
-      if (!selectedName) {
-        setError('Selected collaborator is missing a name.')
-        return
-      }
-
-      const existingAccessNames = new Set(
-        libraryAssetAccessMembers(asset).map((member) => normalizeName(member.name).toLowerCase()),
-      )
-      if (existingAccessNames.has(selectedName.toLowerCase())) {
-        setError(`${selectedName} already has access.`)
-        return
-      }
-
-      const currentIds = (asset.shared_with_user_ids || []).map((value) => String(value || '').trim()).filter(Boolean)
-
-      setError('')
-      setStatus('')
-      setBusyAssetId(asset.id)
-      try {
-        const updated = await updateLibraryAssetAccess({
-          token,
-          assetId: asset.id,
-          collaboratorUserIds: currentIds,
-          collaboratorNames: [selectedName],
-        })
-        updateAssetInState(updated)
-        setCollaboratorLookupByAssetId((current) => ({ ...current, [asset.id]: [] }))
-        setSelectedCollaboratorByAssetId((current) => ({ ...current, [asset.id]: null }))
-        setCollaboratorQueryByAssetId((current) => ({ ...current, [asset.id]: '' }))
-        setLookupErrorByAssetId((current) => ({ ...current, [asset.id]: '' }))
-        setStatus(`Granted access to ${selectedName}.`)
-      } catch (updateError) {
-        setError(updateError instanceof Error ? updateError.message : 'Could not update permissions.')
-      } finally {
-        setBusyAssetId((current) => (current === asset.id ? null : current))
-      }
-    },
-    [selectedCollaboratorByAssetId, updateAssetInState],
-  )
-
-  const onRemoveAccess = useCallback(
-    async (asset: LibraryAssetRecord, collaboratorUserId: string) => {
-      const token = getAuthSessionToken()
-      if (!token) {
-        setError('Sign in to manage permissions.')
-        return
-      }
-      if (!asset.can_manage_access) {
-        setError('Only the file owner can manage access.')
-        return
-      }
-      const cleanCollaboratorUserId = String(collaboratorUserId || '').trim()
-      if (!cleanCollaboratorUserId) {
-        setError('This collaborator cannot be removed from here.')
-        return
-      }
-
-      setError('')
-      setStatus('')
-      setBusyAssetId(asset.id)
-      try {
-        const currentIds = Array.isArray(asset.shared_with_user_ids) ? asset.shared_with_user_ids : []
-        const nextIds = currentIds.filter((userId) => String(userId || '').trim() !== cleanCollaboratorUserId)
-        const updated = await updateLibraryAssetAccess({
-          token,
-          assetId: asset.id,
-          collaboratorUserIds: nextIds,
-          collaboratorNames: [],
-        })
-        updateAssetInState(updated)
-        setStatus('Access updated.')
-      } catch (updateError) {
-        setError(updateError instanceof Error ? updateError.message : 'Could not update permissions.')
-      } finally {
-        setBusyAssetId((current) => (current === asset.id ? null : current))
-      }
-    },
-    [updateAssetInState],
-  )
+  }, [hasSessionToken, ownershipFilter, page, pageSize, query, refreshTick, refreshToken, sortBy, sortDirection])
 
   const ownedAssetCount = useMemo(
     () => assets.filter((asset) => Boolean(asset.can_manage_access)).length,
@@ -563,15 +324,52 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
   const visibleStart = total === 0 ? 0 : (page - 1) * pageSize + 1
   const visibleEnd = Math.min(total, page * pageSize)
 
+  useEffect(() => {
+    onAssetsChange?.(assets, {
+      total,
+      owned: ownedAssetCount,
+      shared: sharedAssetCount,
+      unavailable: unavailableAssetCount,
+      page,
+      pageSize,
+      totalPages,
+    })
+  }, [
+    assets,
+    onAssetsChange,
+    ownedAssetCount,
+    page,
+    pageSize,
+    sharedAssetCount,
+    total,
+    totalPages,
+    unavailableAssetCount,
+  ])
+
+  useEffect(() => {
+    if (!onSelectAsset) {
+      return
+    }
+    if (assets.length === 0) {
+      if (selectedAssetId !== null) {
+        onSelectAsset(null)
+      }
+      return
+    }
+    if (!selectedAssetId) {
+      onSelectAsset(assets[0].id)
+      return
+    }
+    const exists = assets.some((asset) => asset.id === selectedAssetId)
+    if (!exists) {
+      onSelectAsset(assets[0].id)
+    }
+  }, [assets, onSelectAsset, selectedAssetId])
+
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-        <div>
-          <h2 className={HOUSE_SECTION_TITLE_CLASS}>Data library</h2>
-          <p className={HOUSE_SECTION_SUBTITLE_CLASS}>
-            Display files, access, and permissions in your personal data library.
-          </p>
-        </div>
+        <h2 className={HOUSE_SECTION_TITLE_CLASS}>Data library</h2>
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
             Total {total}
@@ -591,7 +389,7 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
             type="button"
             size="sm"
             className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
-            onClick={onRefresh}
+            onClick={() => setRefreshTick((current) => current + 1)}
             disabled={!hasSessionToken || isLoading}
           >
             <RefreshCw className={cn('mr-1 h-4 w-4', isLoading && 'animate-spin')} />
@@ -609,7 +407,6 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
                   'inline-flex h-8 items-center gap-1.5 px-3',
                 )}
                 aria-label="Open data library drilldown"
-                title="Open data library drilldown"
               >
                 <PanelRightOpen className="h-3.5 w-3.5" />
                 Drilldown
@@ -683,7 +480,12 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
       ) : error ? (
         <div className="space-y-2 p-6">
           <p className="text-sm text-red-700">{error}</p>
-          <Button type="button" size="sm" className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)} onClick={onRefresh}>
+          <Button
+            type="button"
+            size="sm"
+            className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
+            onClick={() => setRefreshTick((current) => current + 1)}
+          >
             Retry
           </Button>
         </div>
@@ -694,7 +496,7 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
       ) : (
         <div className={cn(HOUSE_TABLE_SHELL_CLASS, 'house-workspaces-table-shell')}>
           <ScrollArea className="h-[min(65vh,46rem)]">
-            <table className="w-full min-w-sz-1080 text-sm">
+            <table className="w-full min-w-sz-920 text-sm">
               <thead className={cn('text-left', HOUSE_TABLE_HEAD_CLASS)}>
                 <tr>
                   <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>File</th>
@@ -702,261 +504,77 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
                   <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Access</th>
                   <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Uploaded</th>
                   <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Size</th>
-                  <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Permissions</th>
-                  <th className={cn('px-3 py-2', HOUSE_TABLE_HEAD_TEXT_CLASS)}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {assets.map((asset) => {
-                  const accessMembers = libraryAssetAccessMembers(asset)
-                  const isBusy = busyAssetId === asset.id
-                  const lookupBusy = lookupBusyAssetId === asset.id
+                  const stagedMembers = accessStateByAssetId[asset.id] || []
+                  const activeStagedMembers = stagedMembers.filter((member) => member.status === 'active')
+                  const accessMembers =
+                    activeStagedMembers.length > 0
+                      ? activeStagedMembers.map((member) => ({
+                          key: member.key || `${asset.id}-${member.name}`,
+                          name: member.name,
+                          role: member.role,
+                        }))
+                      : libraryAssetAccessMembers(asset).map((member) => ({
+                          key: member.user_id || `${asset.id}-${member.name}`,
+                          name: member.name,
+                          role: 'full_access' as const,
+                        }))
                   const available = isAssetAvailable(asset)
-                  const menuOpen = assetMenuOpenId === asset.id
-                  const isRenaming = renamingAssetId === asset.id
                   const ownerName = normalizeName(asset.owner_name || '') || 'Unknown'
-                  const searchQuery = collaboratorQueryByAssetId[asset.id] || ''
-                  const matches = collaboratorLookupByAssetId[asset.id] || []
-                  const lookupError = lookupErrorByAssetId[asset.id] || ''
-                  const selectedCandidate = selectedCandidateByAssetIdValue(selectedCollaboratorByAssetId, asset.id)
-
+                  const isSelected = selectedAssetId === asset.id
+                  const displayName = displayNameByAssetId[asset.id] || asset.filename
                   return (
-                    <tr key={asset.id} className={HOUSE_TABLE_ROW_CLASS}>
+                    <tr
+                      key={asset.id}
+                      className={cn(
+                        HOUSE_TABLE_ROW_CLASS,
+                        'cursor-pointer',
+                        isSelected && 'bg-[hsl(var(--tone-accent-50)/0.72)]',
+                      )}
+                      onClick={() => onSelectAsset?.(asset.id)}
+                      aria-selected={isSelected}
+                    >
                       <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            {isRenaming ? (
-                              <div className="flex items-center gap-1.5" onClick={(event) => event.stopPropagation()}>
-                                <Input
-                                  value={renameDraft}
-                                  onChange={(event) => setRenameDraft(event.target.value)}
-                                  onKeyDown={(event) => {
-                                    if (event.key === 'Enter') {
-                                      event.preventDefault()
-                                      void onSaveRenameAsset(asset)
-                                    } else if (event.key === 'Escape') {
-                                      event.preventDefault()
-                                      onCancelRenameAsset()
-                                    }
-                                  }}
-                                  className={cn('h-8 w-full', HOUSE_INPUT_CLASS)}
-                                  disabled={isBusy}
-                                  autoFocus
-                                />
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  className={cn(HOUSE_SUCCESS_ACTION_BUTTON_CLASS, DATA_LIBRARY_ICON_BUTTON_DIMENSION_CLASS)}
-                                  onClick={() => void onSaveRenameAsset(asset)}
-                                  disabled={isBusy || !String(renameDraft || '').trim() || String(renameDraft || '').trim() === asset.filename.trim()}
-                                  aria-label={`Save rename for ${asset.filename}`}
-                                  title="Save rename"
-                                >
-                                  <Save className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  className={cn(HOUSE_DANGER_ACTION_BUTTON_CLASS, DATA_LIBRARY_ICON_BUTTON_DIMENSION_CLASS)}
-                                  onClick={onCancelRenameAsset}
-                                  disabled={isBusy}
-                                  aria-label="Cancel rename"
-                                  title="Cancel rename"
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <>
-                                <p className="font-medium">{displayAssetFilename(asset.filename)}</p>
-                                <p className="text-xs text-muted-foreground">{asset.kind.toUpperCase()}</p>
-                                {!available ? <p className="text-xs text-[hsl(var(--tone-warning-900))]">Storage missing</p> : null}
-                              </>
-                            )}
-                          </div>
-                          {asset.can_manage_access ? (
-                            <div className="relative shrink-0" data-ui="library-asset-menu-root">
-                              <Button
-                                type="button"
-                                size="sm"
-                                className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS, DATA_LIBRARY_ICON_BUTTON_DIMENSION_CLASS)}
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  setAssetMenuOpenId((current) => (current === asset.id ? null : asset.id))
-                                }}
-                                disabled={isBusy}
-                                aria-label={`File actions for ${asset.filename}`}
-                                title="File actions"
-                              >
-                                ...
-                              </Button>
-                              {menuOpen ? (
-                                <div className="absolute right-0 top-full z-20 mt-1 min-w-sz-140 rounded-md border border-border bg-background p-1 shadow-sm">
-                                  <button
-                                    type="button"
-                                    onClick={() => onStartRenameAsset(asset)}
-                                    className="w-full rounded px-2 py-1 text-left text-sm text-foreground transition-colors hover:bg-muted/70"
-                                    disabled={isBusy}
-                                  >
-                                    Rename
-                                  </button>
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className={cn('px-3 py-2 align-middle text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                        {ownerName}
+                        <p className="font-medium">{displayAssetFilename(displayName)}</p>
+                        <p className="text-xs text-muted-foreground">{asset.kind.toUpperCase()}</p>
+                        {!available ? <p className="text-xs text-[hsl(var(--tone-warning-900))]">Storage missing</p> : null}
                       </td>
                       <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {accessMembers.length === 0 ? (
-                            <span className="text-xs text-muted-foreground">Owner only</span>
-                          ) : (
-                            accessMembers.map((member) => (
+                        <span className="text-sm">{asset.can_manage_access ? 'You' : ownerName}</span>
+                      </td>
+                      <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                        {accessMembers.length === 0 ? (
+                          <span className="text-xs text-muted-foreground">Private</span>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-1">
+                            {accessMembers.slice(0, 2).map((member) => (
                               <span
-                                key={`${asset.id}-${member.user_id}-${member.name}`}
+                                key={`${asset.id}-${member.key}`}
                                 className={cn(
-                                  HOUSE_COLLABORATOR_CHIP_CLASS,
-                                  HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS,
-                                  asset.can_manage_access ? HOUSE_COLLABORATOR_CHIP_MANAGEABLE_CLASS : HOUSE_COLLABORATOR_CHIP_READONLY_CLASS,
+                                  member.role === 'view_only'
+                                    ? cn(HOUSE_COLLABORATOR_CHIP_CLASS, HOUSE_COLLABORATOR_CHIP_VIEW_ONLY_CLASS, 'text-[10px]')
+                                    : cn(HOUSE_COLLABORATOR_CHIP_CLASS, HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS, 'text-[10px]'),
                                 )}
                               >
-                                <span>{member.name}</span>
-                                {asset.can_manage_access && member.user_id ? (
-                                  <button
-                                    type="button"
-                                    className={HOUSE_COLLABORATOR_CHIP_ACTION_CLASS}
-                                    onClick={() => void onRemoveAccess(asset, member.user_id)}
-                                    disabled={isBusy}
-                                    aria-label={`Remove ${member.name} access`}
-                                  >
-                                    <X className="h-3 w-3" />
-                                  </button>
-                                ) : null}
+                                {member.name}
                               </span>
-                            ))
-                          )}
-                        </div>
-                      </td>
-                      <td className={cn('px-3 py-2 align-middle text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                        {formatTimestamp(asset.uploaded_at)}
-                      </td>
-                      <td className={cn('px-3 py-2 align-middle text-muted-foreground', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                        {formatBytes(asset.byte_size)}
-                      </td>
-                      <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                        {asset.can_manage_access ? (
-                          <div className="min-w-sz-320 space-y-1.5">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-1.5">
-                                <Input
-                                  value={searchQuery}
-                                  onChange={(event) => {
-                                    const nextValue = event.target.value
-                                    setCollaboratorQueryByAssetId((current) => ({
-                                      ...current,
-                                      [asset.id]: nextValue,
-                                    }))
-                                    setSelectedCollaboratorByAssetId((current) => ({
-                                      ...current,
-                                      [asset.id]: null,
-                                    }))
-                                    setLookupErrorByAssetId((current) => ({
-                                      ...current,
-                                      [asset.id]: '',
-                                    }))
-                                  }}
-                                  placeholder="Search by name or email"
-                                  className={cn('h-8', HOUSE_INPUT_CLASS)}
-                                  disabled={isBusy}
-                                />
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
-                                  onClick={() => void onSearchCollaborators(asset)}
-                                  disabled={isBusy || lookupBusy || normalizeName(searchQuery).length < 2}
-                                >
-                                  {lookupBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
-                                </Button>
-                              </div>
-                              <p className={HOUSE_FIELD_HELPER_CLASS}>
-                                Type at least 2 characters. Access updates are enforced server-side.
-                              </p>
-                            </div>
-                            {lookupError ? <p className="text-xs text-amber-700">{lookupError}</p> : null}
-                            {matches.length > 0 ? (
-                              <div className={HOUSE_COLLABORATOR_LIST_SHELL_CLASS}>
-                                <ScrollArea className={HOUSE_COLLABORATOR_LIST_VIEWPORT_COMPACT_CLASS}>
-                                  <div className={HOUSE_COLLABORATOR_LIST_BODY_CLASS}>
-                                    {matches.map((candidate) => {
-                                      const isSelected = selectedCandidate?.id === candidate.id
-                                      return (
-                                        <button
-                                          key={`${asset.id}-${candidate.id}`}
-                                          type="button"
-                                          onClick={() => {
-                                            setSelectedCollaboratorByAssetId((current) => ({
-                                              ...current,
-                                              [asset.id]: candidate,
-                                            }))
-                                          }}
-                                          className={cn(
-                                            HOUSE_COLLABORATOR_CANDIDATE_CLASS,
-                                            isSelected
-                                              ? HOUSE_COLLABORATOR_CANDIDATE_SELECTED_CLASS
-                                              : HOUSE_COLLABORATOR_CANDIDATE_IDLE_CLASS,
-                                          )}
-                                        >
-                                          <p className={houseTypography.text}>{candidate.full_name}</p>
-                                          <div className={HOUSE_COLLABORATOR_CANDIDATE_META_CLASS}>
-                                            <p className={houseTypography.fieldHelper}>
-                                              {[candidate.email || '', candidate.primary_institution || ''].filter(Boolean).join(' | ') || 'Directory match'}
-                                            </p>
-                                            <span className={HOUSE_COLLABORATOR_CANDIDATE_SOURCE_CLASS}>Directory</span>
-                                          </div>
-                                        </button>
-                                      )
-                                    })}
-                                  </div>
-                                </ScrollArea>
-                              </div>
+                            ))}
+                            {accessMembers.length > 2 ? (
+                              <span className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                +{accessMembers.length - 2}
+                              </span>
                             ) : null}
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="text-xs text-muted-foreground">
-                                {selectedCandidate ? `Selected: ${selectedCandidate.full_name}` : 'No collaborator selected'}
-                              </p>
-                              <Button
-                                type="button"
-                                size="sm"
-                                className={cn(HOUSE_PRIMARY_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
-                                onClick={() => void onAddAccess(asset)}
-                                disabled={isBusy || !selectedCandidate}
-                              >
-                                <UserPlus className="mr-1 h-3.5 w-3.5" />
-                                Grant
-                              </Button>
-                            </div>
                           </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">View only</span>
                         )}
                       </td>
                       <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
-                        <div className="flex items-center">
-                          <Button
-                            type="button"
-                            size="sm"
-                            className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
-                            onClick={() => void onDownloadAsset(asset)}
-                            disabled={isBusy || !available || isRenaming}
-                          >
-                            {isBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
-                            {available ? 'Download' : 'Unavailable'}
-                          </Button>
-                        </div>
+                        <span className="text-xs text-muted-foreground">{formatDataLibraryTimestamp(asset.uploaded_at)}</span>
+                      </td>
+                      <td className={cn('px-3 py-2 align-middle', HOUSE_TABLE_CELL_TEXT_CLASS)}>
+                        <span className="text-xs text-muted-foreground">{formatDataLibraryBytes(asset.byte_size)}</span>
                       </td>
                     </tr>
                   )
@@ -964,54 +582,49 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
               </tbody>
             </table>
           </ScrollArea>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2">
-            <p className="text-xs text-muted-foreground">
-              Showing {visibleStart}-{visibleEnd} of {total}
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={String(pageSize)}
-                onChange={(event) => {
-                  const nextPageSize = Math.max(10, Math.min(100, Number(event.target.value || 25)))
-                  setPageSize(nextPageSize)
-                  setPage(1)
-                }}
-                className={cn('h-8 rounded-md px-2 text-xs', HOUSE_SELECT_CLASS, HOUSE_TABLE_FILTER_SELECT_CLASS)}
-                disabled={!hasSessionToken || isLoading}
-              >
-                <option value="10">10 / page</option>
-                <option value="25">25 / page</option>
-                <option value="50">50 / page</option>
-                <option value="100">100 / page</option>
-              </select>
-              <Button
-                type="button"
-                size="sm"
-                className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
-                onClick={() => setPage((current) => Math.max(1, current - 1))}
-                disabled={isLoading || page <= 1}
-              >
-                Previous
-              </Button>
-              <span className="text-xs text-muted-foreground">
-                Page {page} of {totalPages}
-              </span>
-              <Button
-                type="button"
-                size="sm"
-                className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
-                onClick={() => setPage((current) => current + 1)}
-                disabled={isLoading || !hasMore}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
         </div>
       )}
 
-      {status ? (
-        <p className={cn('px-4 py-3 text-sm text-emerald-700', HOUSE_FIELD_HELPER_CLASS)}>{status}</p>
+      {hasSessionToken && assets.length > 0 ? (
+        <div className="flex items-center justify-between border-t border-border px-4 py-3 text-xs text-muted-foreground">
+          <span>Showing {visibleStart}-{visibleEnd} of {total}</span>
+          <div className="flex items-center gap-2">
+            <select
+              value={String(pageSize)}
+              onChange={(event) => {
+                const nextPageSize = Math.max(5, Math.min(100, Number(event.target.value || 25)))
+                setPageSize(nextPageSize)
+                setPage(1)
+              }}
+              className={cn('h-8 rounded-md px-2', HOUSE_SELECT_CLASS, HOUSE_TABLE_FILTER_SELECT_CLASS)}
+              disabled={isLoading}
+            >
+              <option value="10">10 / page</option>
+              <option value="25">25 / page</option>
+              <option value="50">50 / page</option>
+              <option value="100">100 / page</option>
+            </select>
+            <Button
+              type="button"
+              size="sm"
+              className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={page <= 1 || isLoading}
+            >
+              Previous
+            </Button>
+            <span>Page {page} / {totalPages}</span>
+            <Button
+              type="button"
+              size="sm"
+              className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              disabled={!hasMore || page >= totalPages || isLoading}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
       ) : null}
     </>
   )

@@ -10,6 +10,9 @@ import type {
   FiguresScaffoldPayload,
   LibraryAssetRecord,
   LibraryAssetListPayload,
+  LibraryAssetAuditCategory,
+  LibraryAssetAuditLogEntry,
+  LibraryAssetAuditLogListPayload,
   LibraryAssetOwnership,
   LibraryAssetSortBy,
   LibraryAssetSortDirection,
@@ -237,6 +240,70 @@ export async function updateLibraryAssetMetadata(input: {
     throw new Error(await parseApiError(response, `Asset metadata update failed (${response.status})`))
   }
   return (await response.json()) as LibraryAssetRecord
+}
+
+export async function listLibraryAssetAuditLogs(input: {
+  token?: string
+  assetId: string
+  category?: LibraryAssetAuditCategory
+  collaboratorName?: string
+  startAt?: string
+  endAt?: string
+}): Promise<LibraryAssetAuditLogEntry[]> {
+  const search = new URLSearchParams()
+  if (input.category) {
+    search.set('category', input.category)
+  }
+  if ((input.collaboratorName || '').trim()) {
+    search.set('collaborator_name', input.collaboratorName!.trim())
+  }
+  if ((input.startAt || '').trim()) {
+    search.set('start_at', input.startAt!.trim())
+  }
+  if ((input.endAt || '').trim()) {
+    search.set('end_at', input.endAt!.trim())
+  }
+  const suffix = search.toString() ? `?${search.toString()}` : ''
+  const response = await fetch(
+    `${API_BASE_URL}/v1/library/assets/${encodeURIComponent(input.assetId)}/audit-logs${suffix}`,
+    {
+      headers: authHeaders(input.token || ''),
+    },
+  )
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Asset audit logs failed (${response.status})`))
+  }
+  const payload = (await response.json()) as LibraryAssetAuditLogListPayload
+  return Array.isArray(payload.items) ? payload.items : []
+}
+
+export async function appendLibraryAssetAuditLogEntry(input: {
+  token?: string
+  assetId: string
+  collaboratorName: string
+  collaboratorUserId?: string | null
+  category: LibraryAssetAuditCategory
+  toLabel: string
+  fromLabel?: string | null
+}): Promise<LibraryAssetAuditLogEntry> {
+  const response = await fetch(
+    `${API_BASE_URL}/v1/library/assets/${encodeURIComponent(input.assetId)}/audit-logs`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(input.token || ''), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        collaborator_name: input.collaboratorName,
+        collaborator_user_id: input.collaboratorUserId || null,
+        category: input.category,
+        from_label: input.fromLabel || null,
+        to_label: input.toLabel,
+      }),
+    },
+  )
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, `Asset audit append failed (${response.status})`))
+  }
+  return (await response.json()) as LibraryAssetAuditLogEntry
 }
 
 export async function downloadLibraryAsset(input: {

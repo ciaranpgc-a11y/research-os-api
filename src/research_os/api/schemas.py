@@ -461,6 +461,37 @@ class LibraryAssetMetadataUpdateRequest(BaseModel):
     filename: str
 
 
+class LibraryAssetAuditLogEntryResponse(BaseModel):
+    id: str
+    asset_id: str
+    workspace_id: str | None = None
+    collaborator_name: str
+    collaborator_key: str
+    collaborator_user_id: str | None = None
+    actor_name: str
+    actor_user_id: str | None = None
+    category: Literal["access", "roles", "invites", "activity", "other"] = "other"
+    from_label: str | None = None
+    to_label: str
+    action: str | None = None
+    target_type: str | None = None
+    target_id: str | None = None
+    outcome: Literal["allowed", "denied"] | None = None
+    created_at: datetime
+
+
+class LibraryAssetAuditLogListResponse(BaseModel):
+    items: list[LibraryAssetAuditLogEntryResponse] = Field(default_factory=list)
+
+
+class LibraryAssetAuditLogAppendRequest(BaseModel):
+    collaborator_name: str
+    collaborator_user_id: str | None = None
+    category: Literal["access", "roles", "invites", "activity", "other"] = "other"
+    from_label: str | None = None
+    to_label: str
+
+
 class ManuscriptAttachAssetsRequest(BaseModel):
     asset_ids: list[str] = Field(default_factory=list)
     section_context: Literal["RESULTS", "TABLES", "FIGURES", "PLANNER"] = "PLANNER"
@@ -2155,6 +2186,11 @@ class WorkspaceAuditLogEntryResponse(BaseModel):
     )
     message: str
     created_at: str
+    actor: str | None = None
+    action: str | None = None
+    target_type: str | None = None
+    target_id: str | None = None
+    outcome: Literal["allowed", "denied"] | None = None
 
 
 class WorkspaceRecordResponse(BaseModel):
@@ -2266,12 +2302,16 @@ class WorkspaceAuthorRequestDeclineResponse(BaseModel):
 
 class WorkspaceInvitationSentResponse(BaseModel):
     id: str
+    token: str
     workspace_id: str
     workspace_name: str
     invitee_name: str
     role: Literal["editor", "reviewer", "viewer"] = "editor"
     invited_at: str
     status: Literal["pending", "accepted", "declined"] = "pending"
+    expires_at: str | None = None
+    revoked_at: str | None = None
+    accepted_at: str | None = None
     invitee_user_id: str | None = None
     linked_author_request_id: str | None = None
 
@@ -2282,10 +2322,12 @@ class WorkspaceInvitationsSentResponse(BaseModel):
 
 class WorkspaceInvitationCreateRequest(BaseModel):
     id: str | None = None
+    token: str | None = None
     workspace_id: str
     invitee_name: str
     role: Literal["editor", "reviewer", "viewer"]
     invited_at: str | None = None
+    expires_at: str | None = None
     status: Literal["pending", "accepted", "declined"] = "pending"
 
 

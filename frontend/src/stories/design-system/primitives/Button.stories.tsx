@@ -47,9 +47,6 @@ export const CanonicalVariants: Story = {
             <Button variant="primary" size="lg">
               Large
             </Button>
-            <Button variant="primary" size="icon" aria-label="Add">
-              <Plus className="h-4 w-4" />
-            </Button>
           </div>
         </section>
 

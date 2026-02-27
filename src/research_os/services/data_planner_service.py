@@ -12,6 +12,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
+from uuid import uuid4
 
 from sqlalchemy import String, and_, cast, func, or_, select
 
@@ -51,6 +52,9 @@ class PlannerValidationError(RuntimeError):
 
 _STORAGE_MIGRATED_ROOTS: set[str] = set()
 _METADATA_INDEX_CACHE: dict[str, tuple[float, list[str]]] = {}
+_DATA_LIBRARY_AUDIT_CATEGORIES = {"access", "roles", "invites", "activity", "other"}
+_DATA_LIBRARY_AUDIT_OUTCOME_VALUES = {"allowed", "denied"}
+_DATA_LIBRARY_AUDIT_MAX_ENTRIES = 5000
 
 
 def _trim(value: Any) -> str:
@@ -78,6 +82,169 @@ def _normalize_user_ids(values: Any) -> list[str]:
         seen.add(user_id)
         deduped.append(user_id)
     return deduped
+
+
+def _normalize_name_key(value: Any) -> str:
+    return " ".join(_trim(value).split()).casefold()
+
+
+def _normalize_data_library_audit_category(value: Any) -> str:
+    clean = _trim(value).lower()
+    if clean in {"downloads", "viewed"}:
+        return "activity"
+    if clean in _DATA_LIBRARY_AUDIT_CATEGORIES:
+        return clean
+    return "other"
+
+
+def _parse_optional_iso_datetime(value: Any, *, strict: bool = True) -> datetime | None:
+    clean = _trim(value)
+    if not clean:
+        return None
+    try:
+        parsed = datetime.fromisoformat(clean.replace("Z", "+00:00"))
+    except ValueError as exc:
+        if strict:
+            raise PlannerValidationError("Invalid timestamp format. Use ISO-8601.") from exc
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _normalize_data_library_audit_entry(entry: Any) -> dict[str, Any] | None:
+    if not isinstance(entry, dict):
+        return None
+    asset_id = _trim(entry.get("asset_id"))
+    if not asset_id:
+        return None
+    collaborator_name = " ".join(_trim(entry.get("collaborator_name")).split())
+    collaborator_key = _normalize_name_key(
+        entry.get("collaborator_key") or collaborator_name
+    )
+    actor_name = " ".join(_trim(entry.get("actor_name")).split()) or "Unknown user"
+    to_label = " ".join(_trim(entry.get("to_label")).split())
+    if not collaborator_name or not collaborator_key or not to_label:
+        return None
+    created_at = _parse_optional_iso_datetime(entry.get("created_at"), strict=False)
+    if created_at is None:
+        return None
+    from_label = " ".join(_trim(entry.get("from_label")).split()) or None
+    normalized = {
+        "id": _trim(entry.get("id")) or f"{asset_id}-audit-{uuid4().hex[:10]}",
+        "asset_id": asset_id,
+        "workspace_id": _trim(entry.get("workspace_id")) or None,
+        "collaborator_name": collaborator_name,
+        "collaborator_key": collaborator_key,
+        "collaborator_user_id": _trim(entry.get("collaborator_user_id")) or None,
+        "actor_name": actor_name,
+        "actor_user_id": _trim(entry.get("actor_user_id")) or None,
+        "category": _normalize_data_library_audit_category(entry.get("category")),
+        "from_label": from_label,
+        "to_label": to_label,
+        "action": " ".join(_trim(entry.get("action")).split()) or None,
+        "target_type": " ".join(_trim(entry.get("target_type")).split()) or None,
+        "target_id": _trim(entry.get("target_id")) or None,
+        "outcome": (
+            _trim(entry.get("outcome")).lower()
+            if _trim(entry.get("outcome")).lower() in _DATA_LIBRARY_AUDIT_OUTCOME_VALUES
+            else None
+        ),
+        "created_at": created_at.isoformat(),
+    }
+    return normalized
+
+
+def _normalize_data_library_audit_entries(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for item in value:
+        entry = _normalize_data_library_audit_entry(item)
+        if entry is None:
+            continue
+        entry_id = _trim(entry.get("id"))
+        if entry_id in seen_ids:
+            continue
+        seen_ids.add(entry_id)
+        normalized.append(entry)
+    normalized.sort(
+        key=lambda item: (
+            _parse_optional_iso_datetime(item.get("created_at"), strict=False)
+            or datetime.fromtimestamp(0, tz=timezone.utc),
+            _trim(item.get("id")),
+        ),
+        reverse=True,
+    )
+    return normalized[:_DATA_LIBRARY_AUDIT_MAX_ENTRIES]
+
+
+def _asset_workspace_id(*, session, asset: DataLibraryAsset) -> str | None:
+    project_id = _trim(asset.project_id)
+    if not project_id:
+        return None
+    project = session.get(Project, project_id)
+    if project is None:
+        return None
+    return _trim(project.workspace_id) or None
+
+
+def _append_asset_audit_log_entry(
+    *,
+    session,
+    asset: DataLibraryAsset,
+    primary_root: Path,
+    collaborator_name: str,
+    collaborator_user_id: str | None,
+    actor_name: str,
+    actor_user_id: str | None,
+    category: str,
+    to_label: str,
+    from_label: str | None = None,
+    action: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    outcome: str | None = None,
+) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "id": f"{_trim(asset.id)}-audit-{uuid4().hex[:10]}",
+        "asset_id": _trim(asset.id),
+        "workspace_id": _asset_workspace_id(session=session, asset=asset),
+        "collaborator_name": collaborator_name,
+        "collaborator_key": _normalize_name_key(collaborator_name),
+        "collaborator_user_id": _trim(collaborator_user_id) or None,
+        "actor_name": actor_name,
+        "actor_user_id": _trim(actor_user_id) or None,
+        "category": _normalize_data_library_audit_category(category),
+        "from_label": " ".join(_trim(from_label).split()) or None,
+        "to_label": " ".join(_trim(to_label).split()),
+        "action": " ".join(_trim(action).split()) or None,
+        "target_type": " ".join(_trim(target_type).split()) or None,
+        "target_id": _trim(target_id) or None,
+        "outcome": (
+            _trim(outcome).lower()
+            if _trim(outcome).lower() in _DATA_LIBRARY_AUDIT_OUTCOME_VALUES
+            else None
+        ),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    normalized_entry = _normalize_data_library_audit_entry(entry)
+    if normalized_entry is None:
+        raise PlannerValidationError("Could not append audit log entry.")
+    payload = _build_asset_metadata_payload(
+        session=session,
+        asset=asset,
+        primary_root=primary_root,
+    )
+    existing_entries = _normalize_data_library_audit_entries(
+        payload.get("audit_log_entries")
+    )
+    payload["audit_log_entries"] = [normalized_entry, *existing_entries][
+        :_DATA_LIBRARY_AUDIT_MAX_ENTRIES
+    ]
+    _write_asset_metadata(root=primary_root, payload=payload)
+    return normalized_entry
 
 
 def _escape_like_pattern(value: str) -> str:
@@ -982,6 +1149,14 @@ def _resolve_storage_path_from_metadata(*, payload: dict[str, Any], primary_root
 def _build_asset_metadata_payload(
     *, session, asset: DataLibraryAsset, primary_root: Path
 ) -> dict[str, Any]:
+    existing_audit_entries: list[dict[str, Any]] = []
+    existing_payload = _load_asset_metadata(
+        _asset_metadata_path(asset_id=_trim(asset.id), root=primary_root)
+    )
+    if isinstance(existing_payload, dict):
+        existing_audit_entries = _normalize_data_library_audit_entries(
+            existing_payload.get("audit_log_entries")
+        )
     owner_user_id = _trim(asset.owner_user_id) or None
     owner_email = ""
     owner_account_key = ""
@@ -1016,6 +1191,7 @@ def _build_asset_metadata_payload(
         "byte_size": int(asset.byte_size or 0),
         "storage_path": storage_path,
         "uploaded_at": uploaded_at_str,
+        "audit_log_entries": existing_audit_entries,
     }
 
 
@@ -2030,7 +2206,26 @@ def update_library_asset_access(
                     f"Data asset '{clean_asset_id}' was not found."
                 )
         owner_user_id = _trim(asset.owner_user_id)
+        user = session.get(User, clean_user_id)
+        actor_name = " ".join(_trim(user.name if user is not None else "").split()) or "Unknown user"
         if owner_user_id not in related_user_ids:
+            _append_asset_audit_log_entry(
+                session=session,
+                asset=asset,
+                primary_root=storage_root,
+                collaborator_name=actor_name,
+                collaborator_user_id=clean_user_id,
+                actor_name=actor_name,
+                actor_user_id=clean_user_id,
+                category="access",
+                from_label="Denied",
+                to_label="Denied",
+                action="library.asset.access.update",
+                target_type="library_asset",
+                target_id=clean_asset_id,
+                outcome="denied",
+            )
+            session.commit()
             raise PlannerValidationError("Only the asset owner can manage file access.")
         if owner_user_id and owner_user_id != clean_user_id:
             asset.owner_user_id = clean_user_id
@@ -2063,6 +2258,22 @@ def update_library_asset_access(
 
         asset.shared_with_user_ids = merged_ids
         session.flush()
+        _append_asset_audit_log_entry(
+            session=session,
+            asset=asset,
+            primary_root=storage_root,
+            collaborator_name=actor_name,
+            collaborator_user_id=clean_user_id,
+            actor_name=actor_name,
+            actor_user_id=clean_user_id,
+            category="access",
+            from_label=None,
+            to_label="Updated",
+            action="library.asset.access.update",
+            target_type="library_asset",
+            target_id=clean_asset_id,
+            outcome="allowed",
+        )
         _sync_asset_metadata_for_row(
             session=session,
             asset=asset,
@@ -2072,6 +2283,241 @@ def update_library_asset_access(
             session=session,
             asset=asset,
             requesting_user_id=clean_user_id,
+        )
+
+
+def _load_accessible_library_asset_for_user(
+    *,
+    session,
+    storage_root: Path,
+    asset_id: str,
+    user_id: str,
+    account_key_hint: str | None = None,
+) -> tuple[DataLibraryAsset, set[str]]:
+    clean_asset_id = _trim(asset_id)
+    clean_user_id = _trim(user_id)
+    if not clean_asset_id:
+        raise PlannerValidationError("asset_id is required.")
+    if not clean_user_id:
+        raise PlannerValidationError("Session token is required.")
+
+    related_user_ids = _related_user_ids_for_user(
+        session=session,
+        user_id=clean_user_id,
+        account_key_hint=account_key_hint,
+    )
+    if clean_user_id not in related_user_ids:
+        related_user_ids.add(clean_user_id)
+
+    asset = session.get(DataLibraryAsset, clean_asset_id)
+    if asset is None:
+        _restore_asset_row_from_metadata(
+            session=session,
+            primary_root=storage_root,
+            asset_id=clean_asset_id,
+            claimant_user_id=clean_user_id,
+        )
+        _claim_legacy_ownerless_assets_for_user(
+            session=session,
+            user_id=clean_user_id,
+        )
+        asset = session.get(DataLibraryAsset, clean_asset_id)
+    if asset is None:
+        raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
+    if not _trim(asset.owner_user_id):
+        _claim_legacy_ownerless_assets_for_user(
+            session=session,
+            user_id=clean_user_id,
+        )
+        asset = session.get(DataLibraryAsset, clean_asset_id)
+        if asset is None:
+            raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
+    if not _asset_accessible_for_user(session=session, asset=asset, user_id=clean_user_id):
+        raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
+    owner_user_id = _trim(asset.owner_user_id)
+    if owner_user_id and owner_user_id in related_user_ids and owner_user_id != clean_user_id:
+        asset.owner_user_id = clean_user_id
+    return asset, related_user_ids
+
+
+def list_library_asset_audit_logs(
+    *,
+    asset_id: str,
+    user_id: str,
+    account_key_hint: str | None = None,
+    category: str | None = None,
+    collaborator_name: str | None = None,
+    start_at: str | None = None,
+    end_at: str | None = None,
+) -> dict[str, object]:
+    create_all_tables()
+    clean_user_id = _trim(user_id)
+    clean_category = _normalize_data_library_audit_category(category)
+    category_requested = bool(_trim(category))
+    collaborator_key = _normalize_name_key(collaborator_name)
+    start_at_dt = _parse_optional_iso_datetime(start_at)
+    end_at_dt = _parse_optional_iso_datetime(end_at)
+    if start_at_dt and end_at_dt and start_at_dt > end_at_dt:
+        raise PlannerValidationError("start_at must be earlier than or equal to end_at.")
+
+    with session_scope() as session:
+        storage_root = _storage_root()
+        asset, related_user_ids = _load_accessible_library_asset_for_user(
+            session=session,
+            storage_root=storage_root,
+            asset_id=asset_id,
+            user_id=clean_user_id,
+            account_key_hint=account_key_hint,
+        )
+
+        payload = _build_asset_metadata_payload(
+            session=session,
+            asset=asset,
+            primary_root=storage_root,
+        )
+        entries = _normalize_data_library_audit_entries(payload.get("audit_log_entries"))
+
+        owner_user_id = _trim(asset.owner_user_id)
+        is_owner = owner_user_id in related_user_ids
+        if not is_owner:
+            visible_name_keys: set[str] = set()
+            for name_row in session.scalars(
+                select(User.name).where(User.id.in_(list(related_user_ids)))
+            ).all():
+                key = _normalize_name_key(name_row)
+                if key:
+                    visible_name_keys.add(key)
+            entries = [
+                entry
+                for entry in entries
+                if (
+                    _trim(entry.get("collaborator_user_id")) in related_user_ids
+                    or _normalize_name_key(entry.get("collaborator_key"))
+                    in visible_name_keys
+                )
+            ]
+
+        if category_requested:
+            entries = [
+                entry
+                for entry in entries
+                if _normalize_data_library_audit_category(entry.get("category"))
+                == clean_category
+            ]
+        if collaborator_key:
+            entries = [
+                entry
+                for entry in entries
+                if _normalize_name_key(entry.get("collaborator_key")) == collaborator_key
+            ]
+        if start_at_dt is not None:
+            entries = [
+                entry
+                for entry in entries
+                if (
+                    (
+                        _parse_optional_iso_datetime(
+                            entry.get("created_at"), strict=False
+                        )
+                        or datetime.fromtimestamp(0, tz=timezone.utc)
+                    )
+                    >= start_at_dt
+                )
+            ]
+        if end_at_dt is not None:
+            entries = [
+                entry
+                for entry in entries
+                if (
+                    (
+                        _parse_optional_iso_datetime(
+                            entry.get("created_at"), strict=False
+                        )
+                        or datetime.fromtimestamp(0, tz=timezone.utc)
+                    )
+                    <= end_at_dt
+                )
+            ]
+
+        return {"items": entries}
+
+
+def append_library_asset_audit_log_entry(
+    *,
+    asset_id: str,
+    user_id: str,
+    account_key_hint: str | None = None,
+    collaborator_name: str,
+    collaborator_user_id: str | None = None,
+    category: str,
+    to_label: str,
+    from_label: str | None = None,
+) -> dict[str, Any]:
+    create_all_tables()
+    clean_user_id = _trim(user_id)
+    clean_collaborator_name = " ".join(_trim(collaborator_name).split())
+    clean_to_label = " ".join(_trim(to_label).split())
+    clean_from_label = " ".join(_trim(from_label).split()) or None
+    clean_collaborator_user_id = _trim(collaborator_user_id) or None
+    clean_category = _normalize_data_library_audit_category(category)
+    if not clean_collaborator_name:
+        raise PlannerValidationError("collaborator_name is required.")
+    if not clean_to_label:
+        raise PlannerValidationError("to_label is required.")
+
+    with session_scope() as session:
+        storage_root = _storage_root()
+        asset, related_user_ids = _load_accessible_library_asset_for_user(
+            session=session,
+            storage_root=storage_root,
+            asset_id=asset_id,
+            user_id=clean_user_id,
+            account_key_hint=account_key_hint,
+        )
+        user = session.get(User, clean_user_id)
+        actor_name = " ".join(_trim(user.name if user is not None else "").split()) or "Unknown user"
+        owner_user_id = _trim(asset.owner_user_id)
+        is_owner = owner_user_id in related_user_ids
+        if not is_owner and clean_category in {"access", "roles", "invites"}:
+            _append_asset_audit_log_entry(
+                session=session,
+                asset=asset,
+                primary_root=storage_root,
+                collaborator_name=actor_name,
+                collaborator_user_id=clean_user_id,
+                actor_name=actor_name,
+                actor_user_id=clean_user_id,
+                category=clean_category,
+                from_label=clean_from_label,
+                to_label=f"{clean_to_label} (denied)",
+                action="library.asset.audit.append",
+                target_type="library_asset_audit_log",
+                target_id=_trim(asset.id),
+                outcome="denied",
+            )
+            session.commit()
+            raise PlannerValidationError(
+                "Only the asset owner can append permission and invite audit logs."
+            )
+        if not is_owner:
+            clean_collaborator_name = actor_name
+            clean_collaborator_user_id = clean_user_id
+
+        return _append_asset_audit_log_entry(
+            session=session,
+            asset=asset,
+            primary_root=storage_root,
+            collaborator_name=clean_collaborator_name,
+            collaborator_user_id=clean_collaborator_user_id,
+            actor_name=actor_name,
+            actor_user_id=clean_user_id,
+            category=clean_category,
+            from_label=clean_from_label,
+            to_label=clean_to_label,
+            action="library.asset.audit.append",
+            target_type="library_asset_audit_log",
+            target_id=_trim(asset.id),
+            outcome="allowed",
         )
 
 
@@ -2131,7 +2577,26 @@ def update_library_asset_metadata(
                 )
 
         owner_user_id = _trim(asset.owner_user_id)
+        user = session.get(User, clean_user_id)
+        actor_name = " ".join(_trim(user.name if user is not None else "").split()) or "Unknown user"
         if owner_user_id not in related_user_ids:
+            _append_asset_audit_log_entry(
+                session=session,
+                asset=asset,
+                primary_root=storage_root,
+                collaborator_name=actor_name,
+                collaborator_user_id=clean_user_id,
+                actor_name=actor_name,
+                actor_user_id=clean_user_id,
+                category="roles",
+                from_label="Denied",
+                to_label="Denied",
+                action="library.asset.rename",
+                target_type="library_asset",
+                target_id=clean_asset_id,
+                outcome="denied",
+            )
+            session.commit()
             raise PlannerValidationError("Only the asset owner can rename files.")
         if owner_user_id and owner_user_id != clean_user_id:
             asset.owner_user_id = clean_user_id
@@ -2139,6 +2604,22 @@ def update_library_asset_metadata(
         asset.filename = normalized_filename
         asset.kind = _guess_kind(normalized_filename)
         session.flush()
+        _append_asset_audit_log_entry(
+            session=session,
+            asset=asset,
+            primary_root=storage_root,
+            collaborator_name=actor_name,
+            collaborator_user_id=clean_user_id,
+            actor_name=actor_name,
+            actor_user_id=clean_user_id,
+            category="roles",
+            from_label=None,
+            to_label=normalized_filename,
+            action="library.asset.rename",
+            target_type="library_asset",
+            target_id=clean_asset_id,
+            outcome="allowed",
+        )
         _sync_asset_metadata_for_row(
             session=session,
             asset=asset,
@@ -2188,9 +2669,28 @@ def download_library_asset(
             asset = session.get(DataLibraryAsset, clean_asset_id)
         if asset is None:
             raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
+        user = session.get(User, clean_user_id)
+        actor_name = " ".join(_trim(user.name if user is not None else "").split()) or "Unknown user"
         if not _asset_accessible_for_user(
             session=session, asset=asset, user_id=clean_user_id
         ):
+            _append_asset_audit_log_entry(
+                session=session,
+                asset=asset,
+                primary_root=storage_root,
+                collaborator_name=actor_name,
+                collaborator_user_id=clean_user_id,
+                actor_name=actor_name,
+                actor_user_id=clean_user_id,
+                category="activity",
+                from_label="Denied",
+                to_label="Download denied",
+                action="library.asset.download",
+                target_type="library_asset",
+                target_id=clean_asset_id,
+                outcome="denied",
+            )
+            session.commit()
             raise DataAssetNotFoundError(f"Data asset '{clean_asset_id}' was not found.")
         owner_user_id = _trim(asset.owner_user_id)
         if owner_user_id and owner_user_id in related_user_ids and owner_user_id != clean_user_id:
@@ -2211,6 +2711,22 @@ def download_library_asset(
             session=session,
             asset=asset,
             primary_root=storage_root,
+        )
+        _append_asset_audit_log_entry(
+            session=session,
+            asset=asset,
+            primary_root=storage_root,
+            collaborator_name=actor_name,
+            collaborator_user_id=clean_user_id,
+            actor_name=actor_name,
+            actor_user_id=clean_user_id,
+            category="activity",
+            from_label=None,
+            to_label="Downloaded",
+            action="library.asset.download",
+            target_type="library_asset",
+            target_id=clean_asset_id,
+            outcome="allowed",
         )
 
         file_name = _trim(asset.filename) or "asset.bin"

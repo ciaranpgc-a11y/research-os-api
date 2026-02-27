@@ -6,10 +6,14 @@ const TARGET_DIRS = [path.join(ROOT, 'src'), path.join(ROOT, '.storybook')]
 const ALLOWED_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.css'])
 const JSX_EXTENSIONS = new Set(['.tsx', '.jsx'])
 const HOUSE_ROLE_BASELINE_PATH = path.join(ROOT, 'scripts', 'house-role-baseline.json')
+const TONE_MISUSE_BASELINE_PATH = path.join(ROOT, 'scripts', 'tone-misuse-baseline.json')
 const APP_ENTRY_FILE = path.join(ROOT, 'src', 'App.tsx')
 const ALLOWED_DURATION_TOKENS = new Set(['150', '200', '220', '300', '320', '420', '500', '700'])
 const ALLOWED_NAV_LEFT_WIDTHS = new Set(['250', '280'])
 const ALLOWED_NAV_RIGHT_WIDTHS = new Set(['', '280', '320', '340'])
+const TONE_MISUSE_SCAN_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx'])
+const TONE_MISUSE_SCAN_PREFIXES = ['src/components/', 'src/pages/', 'src/stories/', '.storybook/']
+const TONE_MISUSE_ALLOW_DIRECTIVE = /design-governance:allow-tone/
 
 const RULES = [
   {
@@ -154,6 +158,52 @@ function loadHouseRoleBaseline() {
   }
 }
 
+function loadToneMisuseBaseline() {
+  if (!fs.existsSync(TONE_MISUSE_BASELINE_PATH)) {
+    return {}
+  }
+  try {
+    const raw = fs.readFileSync(TONE_MISUSE_BASELINE_PATH, 'utf8')
+    const parsed = JSON.parse(raw)
+    return typeof parsed === 'object' && parsed ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function shouldScanToneMisuse(relativePath, extension, source) {
+  if (!TONE_MISUSE_SCAN_EXTENSIONS.has(extension)) {
+    return false
+  }
+  if (!TONE_MISUSE_SCAN_PREFIXES.some((prefix) => relativePath.startsWith(prefix))) {
+    return false
+  }
+  if (TONE_MISUSE_ALLOW_DIRECTIVE.test(source)) {
+    return false
+  }
+
+  // Allow chart/viz modules to reference tone scales explicitly.
+  if (/(^|\/)(charts?|analytics|visualizations?|visualisations?|viz)(\/|[-_.])/i.test(relativePath)) {
+    return false
+  }
+
+  return true
+}
+
+function collectToneTokenReferences(source) {
+  const refs = []
+  const pattern = /(?<![A-Za-z0-9_])--tone-[a-z0-9-]+(?![A-Za-z0-9_])/gi
+  for (const match of source.matchAll(pattern)) {
+    refs.push({
+      index: match.index ?? 0,
+      snippet: String(match[0] || ''),
+      message:
+        'Tone tokens are restricted to chart/viz modules. Use semantic tokens (`--primary`, `--accent`, `--status-*`, etc.) in UI components.',
+    })
+  }
+  return refs
+}
+
 function collectUntaggedIntrinsicElements(source) {
   const untagged = []
   const openingTagPattern = /<([a-z][a-z0-9-]*)(\s[^<>]*?)?(\/?)>/g
@@ -188,6 +238,8 @@ function collectUntaggedIntrinsicElements(source) {
 const violations = []
 const houseRoleViolations = []
 const houseRoleBaseline = loadHouseRoleBaseline()
+const toneMisuseViolations = []
+const toneMisuseBaseline = loadToneMisuseBaseline()
 
 for (const dir of TARGET_DIRS) {
   const files = listFiles(dir)
@@ -263,6 +315,35 @@ for (const dir of TARGET_DIRS) {
       })
     }
 
+    if (shouldScanToneMisuse(relativePath, extension, source)) {
+      const toneReferences = collectToneTokenReferences(source)
+      const baselineCount = Number(toneMisuseBaseline[relativePath] || 0)
+      if (toneReferences.length > baselineCount) {
+        const overflow = toneReferences.slice(baselineCount)
+        for (const item of overflow.slice(0, 10)) {
+          const { line, col } = getLineAndCol(source, item.index)
+          toneMisuseViolations.push({
+            file: relativePath,
+            line,
+            col,
+            rule: 'tone-token-misuse',
+            snippet: item.snippet,
+            message: item.message,
+          })
+        }
+        if (overflow.length > 10) {
+          toneMisuseViolations.push({
+            file: relativePath,
+            line: 1,
+            col: 1,
+            rule: 'tone-token-misuse',
+            snippet: `+${overflow.length - 10} more`,
+            message: 'Additional tone-token references omitted from output.',
+          })
+        }
+      }
+    }
+
     if (JSX_EXTENSIONS.has(extension)) {
       const untagged = collectUntaggedIntrinsicElements(source)
       const baselineCount = Number(houseRoleBaseline[relativePath] || 0)
@@ -319,10 +400,15 @@ if (!fs.existsSync(APP_ENTRY_FILE)) {
   }
 }
 
-if (violations.length > 0 || houseRoleViolations.length > 0) {
-  const total = violations.length + houseRoleViolations.length
+if (violations.length > 0 || toneMisuseViolations.length > 0 || houseRoleViolations.length > 0) {
+  const total = violations.length + toneMisuseViolations.length + houseRoleViolations.length
   console.error(`Design governance check failed with ${total} violation(s).`)
   for (const violation of violations) {
+    console.error(
+      `${violation.file}:${violation.line}:${violation.col} [${violation.rule}] ${violation.message} -> ${violation.snippet}`,
+    )
+  }
+  for (const violation of toneMisuseViolations) {
     console.error(
       `${violation.file}:${violation.line}:${violation.col} [${violation.rule}] ${violation.message} -> ${violation.snippet}`,
     )

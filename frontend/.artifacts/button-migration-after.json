@@ -1,0 +1,252 @@
+{
+  "after": {
+    "default": {
+      "count": 0,
+      "files": [],
+      "occurrences": []
+    },
+    "housePrimary": {
+      "count": 0,
+      "files": [],
+      "occurrences": []
+    },
+    "house": {
+      "count": 0,
+      "files": [],
+      "occurrences": []
+    },
+    "secondary": {
+      "count": 28,
+      "files": [
+        "frontend/src/components/data-workspace/TableHeader.tsx",
+        "frontend/src/components/publications/PublicationsTopStrip.tsx",
+        "frontend/src/pages/landing-page.tsx",
+        "frontend/src/pages/manuscript-page.tsx",
+        "frontend/src/pages/profile-personal-details-page.tsx",
+        "frontend/src/pages/results-page.tsx",
+        "frontend/src/pages/workspace-inbox-page.tsx",
+        "frontend/src/stories/design-system/primitives/Button.stories.tsx",
+        "frontend/src/stories/design-system/primitives/IconButton.stories.tsx"
+      ],
+      "occurrences": [
+        {
+          "file": "frontend/src/components/data-workspace/TableHeader.tsx",
+          "line": 90
+        },
+        {
+          "file": "frontend/src/components/publications/PublicationsTopStrip.tsx",
+          "line": 6035
+        },
+        {
+          "file": "frontend/src/components/publications/PublicationsTopStrip.tsx",
+          "line": 6073
+        },
+        {
+          "file": "frontend/src/components/publications/PublicationsTopStrip.tsx",
+          "line": 6085
+        },
+        {
+          "file": "frontend/src/components/publications/PublicationsTopStrip.tsx",
+          "line": 6095
+        },
+        {
+          "file": "frontend/src/pages/landing-page.tsx",
+          "line": 26
+        },
+        {
+          "file": "frontend/src/pages/landing-page.tsx",
+          "line": 47
+        },
+        {
+          "file": "frontend/src/pages/manuscript-page.tsx",
+          "line": 477
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2081
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2093
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2100
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2148
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2177
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2320
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2498
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2653
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2683
+        },
+        {
+          "file": "frontend/src/pages/results-page.tsx",
+          "line": 597
+        },
+        {
+          "file": "frontend/src/pages/results-page.tsx",
+          "line": 619
+        },
+        {
+          "file": "frontend/src/pages/workspace-inbox-page.tsx",
+          "line": 1599
+        },
+        {
+          "file": "frontend/src/pages/workspace-inbox-page.tsx",
+          "line": 1610
+        },
+        {
+          "file": "frontend/src/pages/workspace-inbox-page.tsx",
+          "line": 1728
+        },
+        {
+          "file": "frontend/src/pages/workspace-inbox-page.tsx",
+          "line": 1753
+        },
+        {
+          "file": "frontend/src/pages/workspace-inbox-page.tsx",
+          "line": 1838
+        },
+        {
+          "file": "frontend/src/pages/workspace-inbox-page.tsx",
+          "line": 1848
+        },
+        {
+          "file": "frontend/src/stories/design-system/primitives/Button.stories.tsx",
+          "line": 30
+        },
+        {
+          "file": "frontend/src/stories/design-system/primitives/Button.stories.tsx",
+          "line": 61
+        },
+        {
+          "file": "frontend/src/stories/design-system/primitives/IconButton.stories.tsx",
+          "line": 30
+        }
+      ]
+    },
+    "outline": {
+      "count": 0,
+      "files": [],
+      "occurrences": []
+    },
+    "ghost": {
+      "count": 9,
+      "files": [
+        "frontend/src/components/data-workspace/TableTabs.tsx",
+        "frontend/src/components/study-core/StepRun.tsx",
+        "frontend/src/components/study-core/StudyCoreStepper.tsx",
+        "frontend/src/pages/manuscript-page.tsx",
+        "frontend/src/pages/manuscript-tables-page.tsx",
+        "frontend/src/pages/profile-collaboration-page.tsx"
+      ],
+      "occurrences": [
+        {
+          "file": "frontend/src/components/data-workspace/TableTabs.tsx",
+          "line": 404
+        },
+        {
+          "file": "frontend/src/components/data-workspace/TableTabs.tsx",
+          "line": 433
+        },
+        {
+          "file": "frontend/src/components/study-core/StepRun.tsx",
+          "line": 619
+        },
+        {
+          "file": "frontend/src/components/study-core/StepRun.tsx",
+          "line": 687
+        },
+        {
+          "file": "frontend/src/components/study-core/StudyCoreStepper.tsx",
+          "line": 45
+        },
+        {
+          "file": "frontend/src/pages/manuscript-page.tsx",
+          "line": 492
+        },
+        {
+          "file": "frontend/src/pages/manuscript-tables-page.tsx",
+          "line": 246
+        },
+        {
+          "file": "frontend/src/pages/manuscript-tables-page.tsx",
+          "line": 272
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 858
+        }
+      ]
+    }
+  },
+  "dataUiVariant": {
+    "count": 2,
+    "files": [
+      "frontend/src/components/ui/badge.tsx",
+      "frontend/src/components/ui/button.tsx"
+    ],
+    "occurrences": [
+      {
+        "file": "frontend/src/components/ui/badge.tsx",
+        "line": 30
+      },
+      {
+        "file": "frontend/src/components/ui/button.tsx",
+        "line": 53
+      }
+    ]
+  },
+  "adHocClassnames": [
+    {
+      "file": "frontend/src/components/study-core/Step1Panel.tsx",
+      "tokens": [
+        "house-button-action",
+        "house-button-action-primary",
+        "house-button-text"
+      ]
+    },
+    {
+      "file": "frontend/src/components/study-core/StepPlan.tsx",
+      "tokens": [
+        "house-button-action",
+        "house-button-action-primary"
+      ]
+    },
+    {
+      "file": "frontend/src/lib/house-style.ts",
+      "tokens": [
+        "house-button-action",
+        "house-button-action-danger",
+        "house-button-action-ghost",
+        "house-button-action-primary",
+        "house-button-action-success",
+        "house-button-text"
+      ]
+    },
+    {
+      "file": "frontend/src/stories/design-system/pages/ReferenceScenes.stories.tsx",
+      "tokens": [
+        "house-button-action-primary"
+      ]
+    }
+  ]
+}

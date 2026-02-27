@@ -1,0 +1,259 @@
+{
+  "version": "2026-02-27",
+  "roles": ["owner", "admin", "editor", "viewer", "outsider"],
+  "actions": [
+    {
+      "id": "workspace.list.visibility",
+      "resource_type": "workspace",
+      "method": "GET",
+      "path": "/v1/workspaces",
+      "sensitive": false,
+      "expect": {
+        "same": {
+          "owner": "allow",
+          "admin": "allow",
+          "editor": "allow",
+          "viewer": "allow",
+          "outsider": "deny"
+        },
+        "cross": {
+          "owner": "deny",
+          "admin": "deny",
+          "editor": "deny",
+          "viewer": "deny",
+          "outsider": "deny"
+        }
+      }
+    },
+    {
+      "id": "workspace.run_context.read",
+      "resource_type": "workspace",
+      "method": "GET",
+      "path": "/v1/workspaces/{workspace_id}/run-context",
+      "sensitive": false,
+      "expect": {
+        "same": {
+          "owner": "allow",
+          "admin": "allow",
+          "editor": "allow",
+          "viewer": "allow",
+          "outsider": "deny"
+        },
+        "cross": {
+          "owner": "deny",
+          "admin": "deny",
+          "editor": "deny",
+          "viewer": "deny",
+          "outsider": "deny"
+        }
+      }
+    },
+    {
+      "id": "workspace.collaborators.update",
+      "resource_type": "workspace",
+      "method": "PATCH",
+      "path": "/v1/workspaces/{workspace_id}",
+      "sensitive": true,
+      "expect": {
+        "same": {
+          "owner": "allow",
+          "admin": "deny",
+          "editor": "deny",
+          "viewer": "deny",
+          "outsider": "deny"
+        },
+        "cross": {
+          "owner": "deny",
+          "admin": "deny",
+          "editor": "deny",
+          "viewer": "deny",
+          "outsider": "deny"
+        }
+      }
+    },
+    {
+      "id": "workspace.invitation.create",
+      "resource_type": "workspace_invitation",
+      "method": "POST",
+      "path": "/v1/workspaces/invitations/sent",
+      "sensitive": true,
+      "expect": {
+        "same": {
+          "owner": "allow",
+          "admin": "deny",
+          "editor": "deny",
+          "viewer": "deny",
+          "outsider": "deny"
+        },
+        "cross": {
+          "owner": "deny",
+          "admin": "deny",
+          "editor": "deny",
+          "viewer": "deny",
+          "outsider": "deny"
+        }
+      }
+    },
+    {
+      "id": "workspace.inbox.message.create",
+      "resource_type": "workspace_inbox_message",
+      "method": "POST",
+      "path": "/v1/workspaces/inbox/messages",
+      "sensitive": true,
+      "expect": {
+        "same": {
+          "owner": "allow",
+          "admin": "allow",
+          "editor": "allow",
+          "viewer": "allow",
+          "outsider": "deny"
+        },
+        "cross": {
+          "owner": "deny",
+          "admin": "deny",
+          "editor": "deny",
+          "viewer": "deny",
+          "outsider": "deny"
+        }
+      }
+    },
+    {
+      "id": "library.asset.list",
+      "resource_type": "library_asset",
+      "method": "GET",
+      "path": "/v1/library/assets",
+      "sensitive": false,
+      "expect": {
+        "same": {
+          "owner": "allow",
+          "admin": "allow",
+          "editor": "allow",
+          "viewer": "allow",
+          "outsider": "deny"
+        },
+        "cross": {
+          "owner": "deny",
+          "admin": "deny",
+          "editor": "deny",
+          "viewer": "deny",
+          "outsider": "deny"
+        }
+      }
+    },
+    {
+      "id": "library.asset.download",
+      "resource_type": "library_asset",
+      "method": "GET",
+      "path": "/v1/library/assets/{asset_id}/download",
+      "sensitive": true,
+      "expect": {
+        "same": {
+          "owner": "allow",
+          "admin": "allow",
+          "editor": "allow",
+          "viewer": "allow",
+          "outsider": "deny"
+        },
+        "cross": {
+          "owner": "deny",
+          "admin": "deny",
+          "editor": "deny",
+          "viewer": "deny",
+          "outsider": "deny"
+        }
+      }
+    },
+    {
+      "id": "library.asset.rename",
+      "resource_type": "library_asset",
+      "method": "PATCH",
+      "path": "/v1/library/assets/{asset_id}",
+      "sensitive": true,
+      "expect": {
+        "same": {
+          "owner": "allow",
+          "admin": "deny",
+          "editor": "deny",
+          "viewer": "deny",
+          "outsider": "deny"
+        },
+        "cross": {
+          "owner": "deny",
+          "admin": "deny",
+          "editor": "deny",
+          "viewer": "deny",
+          "outsider": "deny"
+        }
+      }
+    },
+    {
+      "id": "library.asset.access.update",
+      "resource_type": "library_asset",
+      "method": "PATCH",
+      "path": "/v1/library/assets/{asset_id}/access",
+      "sensitive": true,
+      "expect": {
+        "same": {
+          "owner": "allow",
+          "admin": "deny",
+          "editor": "deny",
+          "viewer": "deny",
+          "outsider": "deny"
+        },
+        "cross": {
+          "owner": "deny",
+          "admin": "deny",
+          "editor": "deny",
+          "viewer": "deny",
+          "outsider": "deny"
+        }
+      }
+    },
+    {
+      "id": "library.asset.audit.append.roles",
+      "resource_type": "library_asset_audit_log",
+      "method": "POST",
+      "path": "/v1/library/assets/{asset_id}/audit-logs",
+      "sensitive": true,
+      "expect": {
+        "same": {
+          "owner": "allow",
+          "admin": "deny",
+          "editor": "deny",
+          "viewer": "deny",
+          "outsider": "deny"
+        },
+        "cross": {
+          "owner": "deny",
+          "admin": "deny",
+          "editor": "deny",
+          "viewer": "deny",
+          "outsider": "deny"
+        }
+      }
+    },
+    {
+      "id": "library.asset.audit.append.activity",
+      "resource_type": "library_asset_audit_log",
+      "method": "POST",
+      "path": "/v1/library/assets/{asset_id}/audit-logs",
+      "sensitive": true,
+      "expect": {
+        "same": {
+          "owner": "allow",
+          "admin": "allow",
+          "editor": "allow",
+          "viewer": "allow",
+          "outsider": "deny"
+        },
+        "cross": {
+          "owner": "deny",
+          "admin": "deny",
+          "editor": "deny",
+          "viewer": "deny",
+          "outsider": "deny"
+        }
+      }
+    }
+  ]
+}

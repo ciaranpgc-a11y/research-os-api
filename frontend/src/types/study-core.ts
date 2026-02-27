@@ -369,6 +369,26 @@ export type LibraryAssetRecord = {
   is_available?: boolean
 }
 
+export type LibraryAssetAuditCategory = 'access' | 'roles' | 'invites' | 'activity' | 'other'
+
+export type LibraryAssetAuditLogEntry = {
+  id: string
+  asset_id: string
+  collaborator_name: string
+  collaborator_key: string
+  collaborator_user_id?: string | null
+  actor_name: string
+  actor_user_id?: string | null
+  category: LibraryAssetAuditCategory
+  from_label?: string | null
+  to_label: string
+  created_at: string
+}
+
+export type LibraryAssetAuditLogListPayload = {
+  items: LibraryAssetAuditLogEntry[]
+}
+
 export type LibraryAssetSortBy = 'uploaded_at' | 'filename' | 'byte_size' | 'kind' | 'owner_name'
 export type LibraryAssetSortDirection = 'asc' | 'desc'
 export type LibraryAssetOwnership = 'all' | 'owned' | 'shared'

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -20,6 +20,8 @@ WORKSPACE_HEALTH_VALUES = {"green", "amber", "red"}
 INVITATION_STATUS_VALUES = {"pending", "accepted", "declined"}
 WORKSPACE_COLLABORATOR_ROLE_VALUES = {"editor", "reviewer", "viewer"}
 WORKSPACE_AUDIT_CATEGORY_VALUES = {"collaborator_changes", "invitation_decisions"}
+WORKSPACE_AUDIT_OUTCOME_VALUES = {"allowed", "denied"}
+INVITATION_TOKEN_MAX_PENDING_AGE_DAYS = 14
 WORKSPACE_FALLBACK_NAME = "Workspace"
 WORKSPACE_FALLBACK_OWNER_NAME = "Not set"
 
@@ -66,6 +68,18 @@ def _normalize_timestamp(value: Any) -> str:
     if parsed is None:
         parsed = _utcnow()
     return _iso_timestamp(parsed)
+
+
+def _normalize_optional_timestamp(value: Any) -> str | None:
+    parsed = _parse_timestamp(value)
+    if parsed is None:
+        return None
+    return _iso_timestamp(parsed)
+
+
+def _timestamp_plus_days(value: Any, days: int) -> str:
+    base = _parse_timestamp(value) or _utcnow()
+    return _iso_timestamp(base + timedelta(days=max(0, int(days))))
 
 
 def _normalize_str_list(values: Any) -> list[str]:
@@ -139,6 +153,13 @@ def _normalize_workspace_audit_entries(
         if entry_id in seen_ids:
             continue
         seen_ids.add(entry_id)
+        actor = _normalize_name(record.get("actor")) or None
+        action = _normalize_name(record.get("action")) or None
+        target_type = _normalize_name(record.get("target_type")) or None
+        target_id = _trim(record.get("target_id")) or None
+        outcome = _trim(record.get("outcome")).lower() or None
+        if outcome not in WORKSPACE_AUDIT_OUTCOME_VALUES:
+            outcome = None
         output.append(
             {
                 "id": entry_id,
@@ -146,6 +167,11 @@ def _normalize_workspace_audit_entries(
                 "category": category,
                 "message": message,
                 "created_at": created_at,
+                "actor": actor,
+                "action": action,
+                "target_type": target_type,
+                "target_id": target_id,
+                "outcome": outcome,
             }
         )
     output.sort(
@@ -305,8 +331,10 @@ def _normalize_invitation_sent(payload: Any) -> dict[str, Any]:
     if status not in INVITATION_STATUS_VALUES:
         status = "pending"
     workspace_id = _trim(source.get("workspace_id")) or f"workspace-{uuid4().hex[:10]}"
+    invitation_id = _trim(source.get("id")) or f"invite-{uuid4().hex[:10]}"
     normalized = {
-        "id": _trim(source.get("id")) or f"invite-{uuid4().hex[:10]}",
+        "id": invitation_id,
+        "token": _trim(source.get("token")) or invitation_id,
         "workspace_id": workspace_id,
         "workspace_name": _normalize_name(source.get("workspace_name"))
         or "Untitled workspace",
@@ -322,6 +350,15 @@ def _normalize_invitation_sent(payload: Any) -> dict[str, Any]:
     linked_author_request_id = _trim(source.get("linked_author_request_id"))
     if linked_author_request_id:
         normalized["linked_author_request_id"] = linked_author_request_id
+    expires_at = _normalize_optional_timestamp(source.get("expires_at"))
+    if expires_at:
+        normalized["expires_at"] = expires_at
+    revoked_at = _normalize_optional_timestamp(source.get("revoked_at"))
+    if revoked_at:
+        normalized["revoked_at"] = revoked_at
+    accepted_at = _normalize_optional_timestamp(source.get("accepted_at"))
+    if accepted_at:
+        normalized["accepted_at"] = accepted_at
     return normalized
 
 
@@ -937,6 +974,11 @@ def _append_workspace_audit_entry(
     workspace_id: str,
     category: str,
     message: str,
+    actor: str | None = None,
+    action: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    outcome: str | None = None,
 ) -> bool:
     clean_workspace_id = _trim(workspace_id)
     clean_message = _normalize_name(message)
@@ -960,6 +1002,15 @@ def _append_workspace_audit_entry(
         "category": clean_category,
         "message": clean_message,
         "created_at": created_at,
+        "actor": _normalize_name(actor) or None,
+        "action": _normalize_name(action) or None,
+        "target_type": _normalize_name(target_type) or None,
+        "target_id": _trim(target_id) or None,
+        "outcome": (
+            _trim(outcome).lower()
+            if _trim(outcome).lower() in WORKSPACE_AUDIT_OUTCOME_VALUES
+            else None
+        ),
     }
     workspace["audit_log_entries"] = [entry, *current_entries]
     workspace["updated_at"] = created_at
@@ -968,6 +1019,39 @@ def _append_workspace_audit_entry(
     workspaces[workspace_index] = normalized_workspace
     state["workspaces"] = workspaces
     return True
+
+
+def _append_workspace_audit_entry_for_user(
+    *,
+    session,
+    user_id: str,
+    workspace_id: str,
+    category: str,
+    message: str,
+    actor: str | None = None,
+    action: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    outcome: str | None = None,
+) -> bool:
+    clean_user_id = _trim(user_id)
+    if not clean_user_id:
+        return False
+    row, state = _load_workspace_state_row(session=session, user_id=clean_user_id)
+    changed = _append_workspace_audit_entry(
+        state=state,
+        workspace_id=workspace_id,
+        category=category,
+        message=message,
+        actor=actor,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        outcome=outcome,
+    )
+    if changed:
+        _save_workspace_state_row(row=row, state=state)
+    return changed
 
 
 def _append_owner_workspace_inbox_message_audit_entry(
@@ -1011,6 +1095,11 @@ def _append_owner_workspace_inbox_message_audit_entry(
         workspace_id=clean_workspace_id,
         category="collaborator_changes",
         message=audit_message,
+        actor=clean_sender_name,
+        action="workspace.inbox.message.create",
+        target_type="workspace_inbox_message",
+        target_id=clean_message_id,
+        outcome="allowed",
     )
     if changed:
         _save_workspace_state_row(row=owner_row, state=owner_state)
@@ -1039,6 +1128,11 @@ def _set_invitation_status_for_user(
                 previous_status = current_status
             if current_status != clean_status:
                 item["status"] = clean_status
+                if clean_status == "accepted":
+                    item["accepted_at"] = _iso_timestamp(_utcnow())
+                    item.pop("revoked_at", None)
+                elif clean_status == "declined":
+                    item["revoked_at"] = _iso_timestamp(_utcnow())
                 changed = True
             break
     if invitation_record is None:
@@ -1064,6 +1158,11 @@ def _set_invitation_status_for_user(
                 f"{invitee_name} collaborator invitation status switched from "
                 f"{previous_status} to {clean_status} by {invitee_name} as {role_label}."
             ),
+            actor=invitee_name,
+            action="workspace.invitation.status.update",
+            target_type="workspace_invitation",
+            target_id=_trim(invitation_record.get("id")),
+            outcome="allowed",
         )
 
     if not changed and not pending_changed and not audit_changed:
@@ -1307,6 +1406,43 @@ def update_workspace_record(
             )
         )
         if touches_collaborators_or_audit and not requester_is_owner:
+            audit_message = (
+                f"{_normalize_name(user.name) or 'Unknown user'} attempted to manage "
+                "workspace collaborators without owner permission."
+            )
+            _append_workspace_audit_entry(
+                state=state,
+                workspace_id=clean_workspace_id,
+                category="collaborator_changes",
+                message=audit_message,
+                actor=_normalize_name(user.name),
+                action="workspace.collaborators.update",
+                target_type="workspace",
+                target_id=clean_workspace_id,
+                outcome="denied",
+            )
+            owner_user_id = (
+                _find_user_id_by_display_name(
+                    session=session, name=current_owner_name
+                )
+                if current_owner_name
+                else None
+            )
+            if owner_user_id and owner_user_id != user_id:
+                _append_workspace_audit_entry_for_user(
+                    session=session,
+                    user_id=owner_user_id,
+                    workspace_id=clean_workspace_id,
+                    category="collaborator_changes",
+                    message=audit_message,
+                    actor=_normalize_name(user.name),
+                    action="workspace.collaborators.update",
+                    target_type="workspace",
+                    target_id=clean_workspace_id,
+                    outcome="denied",
+                )
+            _save_workspace_state_row(row=row, state=state)
+            session.commit()
             raise WorkspaceValidationError(
                 "Only the workspace owner can manage collaborators."
             )
@@ -1408,6 +1544,20 @@ def update_workspace_record(
         normalized["id"] = clean_workspace_id
         items[index] = normalized
         state["workspaces"] = items
+        if touches_collaborators_or_audit:
+            _append_workspace_audit_entry(
+                state=state,
+                workspace_id=clean_workspace_id,
+                category="collaborator_changes",
+                message=(
+                    f"{_normalize_name(user.name) or 'Unknown user'} updated collaborator access and roles."
+                ),
+                actor=_normalize_name(user.name),
+                action="workspace.collaborators.update",
+                target_type="workspace",
+                target_id=clean_workspace_id,
+                outcome="allowed",
+            )
         _save_workspace_state_row(row=row, state=state)
         if requester_is_owner:
             _sync_workspace_collaborator_states(
@@ -1526,6 +1676,43 @@ def create_workspace_invitation(*, user_id: str, payload: dict[str, Any]) -> dic
             or not requester_name
             or owner_name.casefold() != requester_name.casefold()
         ):
+            audit_message = (
+                f"{requester_name or 'Unknown user'} attempted to create an invitation for "
+                f"{invitee_name} but is not the workspace owner."
+            )
+            _append_workspace_audit_entry(
+                state=sender_state,
+                workspace_id=clean_workspace_id,
+                category="collaborator_changes",
+                message=audit_message,
+                actor=requester_name,
+                action="workspace.invitation.create",
+                target_type="workspace_invitation",
+                target_id=clean_workspace_id,
+                outcome="denied",
+            )
+            owner_user_id = (
+                _find_user_id_by_display_name(
+                    session=session, name=owner_name
+                )
+                if owner_name
+                else None
+            )
+            if owner_user_id and owner_user_id != user_id:
+                _append_workspace_audit_entry_for_user(
+                    session=session,
+                    user_id=owner_user_id,
+                    workspace_id=clean_workspace_id,
+                    category="collaborator_changes",
+                    message=audit_message,
+                    actor=requester_name,
+                    action="workspace.invitation.create",
+                    target_type="workspace_invitation",
+                    target_id=clean_workspace_id,
+                    outcome="denied",
+                )
+            _save_workspace_state_row(row=sender_row, state=sender_state)
+            session.commit()
             raise WorkspaceValidationError(
                 "Only the workspace owner can invite collaborators."
             )
@@ -1569,11 +1756,16 @@ def create_workspace_invitation(*, user_id: str, payload: dict[str, Any]) -> dic
         invitation = _normalize_invitation_sent(
             {
                 "id": _trim(payload.get("id")) or f"invite-{uuid4().hex[:10]}",
+                "token": _trim(payload.get("token")),
                 "workspace_id": clean_workspace_id,
                 "workspace_name": _normalize_name(workspace.get("name")),
                 "invitee_name": invitee_name,
                 "role": collaborator_role,
                 "invited_at": _normalize_timestamp(payload.get("invited_at")),
+                "expires_at": _normalize_optional_timestamp(payload.get("expires_at"))
+                or _timestamp_plus_days(
+                    payload.get("invited_at"), INVITATION_TOKEN_MAX_PENDING_AGE_DAYS
+                ),
                 "status": _trim(payload.get("status")) or "pending",
             }
         )
@@ -1613,6 +1805,20 @@ def create_workspace_invitation(*, user_id: str, payload: dict[str, Any]) -> dic
             role=collaborator_role,
         )
         sender_state["invitations_sent"] = invitations
+        _append_workspace_audit_entry(
+            state=sender_state,
+            workspace_id=clean_workspace_id,
+            category="collaborator_changes",
+            message=(
+                f"{requester_name} invited {invitee_name} to workspace "
+                f"{_normalize_name(workspace.get('name')) or clean_workspace_id}."
+            ),
+            actor=requester_name,
+            action="workspace.invitation.create",
+            target_type="workspace_invitation",
+            target_id=_trim(invitation.get("id")),
+            outcome="allowed",
+        )
         _save_workspace_state_row(row=sender_row, state=sender_state)
         session.flush()
         return invitation
@@ -1641,6 +1847,11 @@ def update_workspace_invitation_status(
             if current_status in INVITATION_STATUS_VALUES:
                 previous_status = current_status
             item["status"] = clean_status
+            if clean_status == "accepted":
+                item["accepted_at"] = _iso_timestamp(_utcnow())
+                item.pop("revoked_at", None)
+            elif clean_status == "declined":
+                item["revoked_at"] = _iso_timestamp(_utcnow())
             updated = item
             break
         if updated is None:
@@ -1675,12 +1886,96 @@ def update_workspace_invitation_status(
                     f"{invitee_name} collaborator invitation status switched from "
                     f"{previous_status} to {clean_status} by {actor_name} as {role_label}."
                 ),
+                actor=actor_name,
+                action="workspace.invitation.status.update",
+                target_type="workspace_invitation",
+                target_id=_trim(updated.get("id")),
+                outcome="allowed",
             )
         state["invitations_sent"] = invitations
         if pending_changed or request_removed or audit_changed or previous_status != clean_status:
             _save_workspace_state_row(row=row, state=state)
         session.flush()
         return updated
+
+
+def _validate_linked_invitation_for_acceptance(
+    *,
+    session,
+    inviter_user_id: str | None,
+    invitation_id: str | None,
+    request_workspace_id: str,
+    actor_name: str,
+) -> str | None:
+    clean_inviter_user_id = _trim(inviter_user_id)
+    clean_invitation_id = _trim(invitation_id)
+    if not clean_inviter_user_id or not clean_invitation_id:
+        return None
+
+    inviter_row, inviter_state = _load_workspace_state_row(
+        session=session, user_id=clean_inviter_user_id
+    )
+    invitations = list(inviter_state.get("invitations_sent") or [])
+    invitation: dict[str, Any] | None = None
+    for item in invitations:
+        if _trim(item.get("id")) == clean_invitation_id:
+            invitation = item
+            break
+
+    workspace_id_for_log = _trim(request_workspace_id)
+    detail: str | None = None
+    if invitation is None:
+        detail = "Invitation token is invalid."
+    else:
+        invitation_workspace_id = _trim(invitation.get("workspace_id"))
+        workspace_id_for_log = invitation_workspace_id or workspace_id_for_log
+        if (
+            invitation_workspace_id
+            and _trim(request_workspace_id)
+            and invitation_workspace_id != _trim(request_workspace_id)
+        ):
+            detail = "Invitation token does not match the requested workspace."
+        else:
+            current_status = _trim(invitation.get("status")).lower()
+            if current_status == "accepted":
+                detail = "Invitation token has already been accepted."
+            elif current_status == "declined":
+                detail = "Invitation token has been revoked."
+            elif current_status != "pending":
+                detail = "Invitation token is not active."
+            else:
+                expires_at = _parse_timestamp(invitation.get("expires_at"))
+                if expires_at is None:
+                    invited_at = _parse_timestamp(invitation.get("invited_at"))
+                    if invited_at is not None:
+                        expires_at = invited_at + timedelta(
+                            days=INVITATION_TOKEN_MAX_PENDING_AGE_DAYS
+                        )
+                if expires_at is not None and _utcnow() > expires_at:
+                    detail = "Invitation token has expired."
+
+    if not detail:
+        return None
+
+    if workspace_id_for_log:
+        changed = _append_workspace_audit_entry(
+            state=inviter_state,
+            workspace_id=workspace_id_for_log,
+            category="invitation_decisions",
+            message=(
+                f"{actor_name or 'Unknown user'} attempted invitation acceptance but "
+                f"the token was rejected: {detail}"
+            ),
+            actor=actor_name,
+            action="workspace.invitation.accept",
+            target_type="workspace_invitation",
+            target_id=clean_invitation_id,
+            outcome="denied",
+        )
+        if changed:
+            _save_workspace_state_row(row=inviter_row, state=inviter_state)
+            session.commit()
+    return detail
 
 
 def accept_workspace_author_request(
@@ -1707,6 +2002,18 @@ def accept_workspace_author_request(
             raise WorkspaceNotFoundError(
                 f"Author request '{clean_request_id}' was not found."
             )
+
+        inviter_user_id = _trim(request.get("source_inviter_user_id"))
+        invitation_id = _trim(request.get("source_invitation_id"))
+        token_validation_error = _validate_linked_invitation_for_acceptance(
+            session=session,
+            inviter_user_id=inviter_user_id,
+            invitation_id=invitation_id,
+            request_workspace_id=_trim(request.get("workspace_id")),
+            actor_name=_normalize_name(user.name),
+        )
+        if token_validation_error:
+            raise WorkspaceValidationError(token_validation_error)
 
         workspaces = list(state.get("workspaces") or [])
         existing_ids = _workspace_ids(workspaces)
@@ -1774,6 +2081,11 @@ def accept_workspace_author_request(
                             f"{_workspace_role_label(collaborator_role)}."
                         ),
                         "created_at": accepted_at,
+                        "actor": collaborator_display_name or "Collaborator",
+                        "action": "workspace.invitation.accept",
+                        "target_type": "workspace_invitation",
+                        "target_id": invitation_id or clean_request_id,
+                        "outcome": "allowed",
                     }
                 ],
             }
@@ -1812,8 +2124,6 @@ def accept_workspace_author_request(
             inbox_state["reads"] = reads
             _save_workspace_inbox_state_row(row=inbox_row, state=inbox_state)
 
-        inviter_user_id = _trim(request.get("source_inviter_user_id"))
-        invitation_id = _trim(request.get("source_invitation_id"))
         if inviter_user_id:
             inviter_row, inviter_state = _load_workspace_state_row(
                 session=session, user_id=inviter_user_id

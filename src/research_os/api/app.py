@@ -124,6 +124,9 @@ from research_os.api.schemas import (
     ImpactReportResponse,
     ImpactThemesResponse,
     JournalOptionResponse,
+    LibraryAssetAuditLogAppendRequest,
+    LibraryAssetAuditLogEntryResponse,
+    LibraryAssetAuditLogListResponse,
     LibraryAssetAccessUpdateRequest,
     LibraryAssetMetadataUpdateRequest,
     LibraryAssetListResponse,
@@ -325,8 +328,10 @@ from research_os.services.data_planner_service import (
     create_tables_scaffold,
     download_library_asset,
     improve_plan_section,
+    list_library_asset_audit_logs,
     list_library_assets,
     save_manuscript_plan,
+    append_library_asset_audit_log_entry,
     update_library_asset_access,
     update_library_asset_metadata,
     upload_library_assets,
@@ -4339,6 +4344,79 @@ def v1_update_library_asset_access(
 
 
 @app.get(
+    "/v1/library/assets/{asset_id}/audit-logs",
+    response_model=LibraryAssetAuditLogListResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_list_library_asset_audit_logs(
+    request: Request,
+    asset_id: str,
+    category: Literal["access", "roles", "invites", "activity", "other"] | None = Query(default=None),
+    collaborator_name: str | None = Query(default=None),
+    start_at: str | None = Query(default=None),
+    end_at: str | None = Query(default=None),
+) -> LibraryAssetAuditLogListResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_required(request)
+    if auth_error is not None:
+        return auth_error
+    try:
+        account_key_hint = _extract_account_key_hint(request)
+        payload = list_library_asset_audit_logs(
+            asset_id=asset_id,
+            user_id=requesting_user_id or "",
+            account_key_hint=account_key_hint,
+            category=category,
+            collaborator_name=collaborator_name,
+            start_at=start_at,
+            end_at=end_at,
+        )
+        return LibraryAssetAuditLogListResponse(
+            items=[
+                LibraryAssetAuditLogEntryResponse(**item)
+                for item in payload.get("items", [])
+            ]
+        )
+    except DataAssetNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PlannerValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.post(
+    "/v1/library/assets/{asset_id}/audit-logs",
+    response_model=LibraryAssetAuditLogEntryResponse,
+    responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
+    tags=["v1"],
+)
+def v1_append_library_asset_audit_log_entry(
+    request: Request,
+    asset_id: str,
+    payload: LibraryAssetAuditLogAppendRequest,
+) -> LibraryAssetAuditLogEntryResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_required(request)
+    if auth_error is not None:
+        return auth_error
+    try:
+        account_key_hint = _extract_account_key_hint(request)
+        entry = append_library_asset_audit_log_entry(
+            asset_id=asset_id,
+            user_id=requesting_user_id or "",
+            account_key_hint=account_key_hint,
+            collaborator_name=payload.collaborator_name,
+            collaborator_user_id=payload.collaborator_user_id,
+            category=payload.category,
+            to_label=payload.to_label,
+            from_label=payload.from_label,
+        )
+        return LibraryAssetAuditLogEntryResponse(**entry)
+    except DataAssetNotFoundError as exc:
+        return _build_not_found_response(str(exc))
+    except PlannerValidationError as exc:
+        return _build_bad_request_response(str(exc))
+
+
+@app.get(
     "/v1/library/assets/{asset_id}/download",
     response_model=None,
     responses=BAD_REQUEST_RESPONSES | NOT_FOUND_RESPONSES | UNAUTHORIZED_RESPONSES,
@@ -5703,4 +5781,3 @@ def draft_section(request: DraftSectionRequest, http_request: Request):
     if isinstance(response, JSONResponse):
         return response
     return {"section": response.section, "draft": response.draft}
-

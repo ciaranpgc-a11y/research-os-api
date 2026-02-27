@@ -1,0 +1,1024 @@
+{
+  "before": {
+    "default": {
+      "count": 14,
+      "files": [
+        "frontend/src/components/study-core/Step2Panel.tsx",
+        "frontend/src/components/study-core/StepPlan.tsx",
+        "frontend/src/pages/manuscript-page.tsx",
+        "frontend/src/pages/profile-collaboration-page.tsx",
+        "frontend/src/pages/profile-publications-page.tsx"
+      ],
+      "occurrences": [
+        {
+          "file": "frontend/src/components/study-core/Step2Panel.tsx",
+          "line": 388
+        },
+        {
+          "file": "frontend/src/components/study-core/Step2Panel.tsx",
+          "line": 396
+        },
+        {
+          "file": "frontend/src/components/study-core/Step2Panel.tsx",
+          "line": 464
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 777
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 778
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 779
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 891
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 892
+        },
+        {
+          "file": "frontend/src/pages/manuscript-page.tsx",
+          "line": 265
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 933
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 941
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 949
+        },
+        {
+          "file": "frontend/src/pages/profile-publications-page.tsx",
+          "line": 2801
+        },
+        {
+          "file": "frontend/src/pages/profile-publications-page.tsx",
+          "line": 2802
+        }
+      ]
+    },
+    "housePrimary": {
+      "count": 11,
+      "files": [
+        "frontend/src/components/data-workspace/AddColumnModal.tsx",
+        "frontend/src/pages/landing-page.tsx",
+        "frontend/src/pages/profile-manage-account-page.tsx",
+        "frontend/src/pages/profile-personal-details-page.tsx",
+        "frontend/src/pages/profile-publications-page.tsx",
+        "frontend/src/pages/workspace-inbox-page.tsx",
+        "frontend/src/pages/workspaces-page.tsx"
+      ],
+      "occurrences": [
+        {
+          "file": "frontend/src/components/data-workspace/AddColumnModal.tsx",
+          "line": 136
+        },
+        {
+          "file": "frontend/src/pages/landing-page.tsx",
+          "line": 44
+        },
+        {
+          "file": "frontend/src/pages/profile-manage-account-page.tsx",
+          "line": 216
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2151
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2630
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2798
+        },
+        {
+          "file": "frontend/src/pages/profile-publications-page.tsx",
+          "line": 2859
+        },
+        {
+          "file": "frontend/src/pages/profile-publications-page.tsx",
+          "line": 2861
+        },
+        {
+          "file": "frontend/src/pages/workspace-inbox-page.tsx",
+          "line": 1838
+        },
+        {
+          "file": "frontend/src/pages/workspace-inbox-page.tsx",
+          "line": 1848
+        },
+        {
+          "file": "frontend/src/pages/workspaces-page.tsx",
+          "line": 1348
+        }
+      ]
+    },
+    "house": {
+      "count": 24,
+      "files": [
+        "frontend/src/components/data-workspace/TableHeader.tsx",
+        "frontend/src/components/publications/PublicationsTopStrip.tsx",
+        "frontend/src/pages/landing-page.tsx",
+        "frontend/src/pages/profile-personal-details-page.tsx",
+        "frontend/src/pages/results-page.tsx",
+        "frontend/src/pages/workspace-inbox-page.tsx"
+      ],
+      "occurrences": [
+        {
+          "file": "frontend/src/components/data-workspace/TableHeader.tsx",
+          "line": 90
+        },
+        {
+          "file": "frontend/src/components/publications/PublicationsTopStrip.tsx",
+          "line": 6035
+        },
+        {
+          "file": "frontend/src/components/publications/PublicationsTopStrip.tsx",
+          "line": 6073
+        },
+        {
+          "file": "frontend/src/components/publications/PublicationsTopStrip.tsx",
+          "line": 6085
+        },
+        {
+          "file": "frontend/src/components/publications/PublicationsTopStrip.tsx",
+          "line": 6095
+        },
+        {
+          "file": "frontend/src/pages/landing-page.tsx",
+          "line": 26
+        },
+        {
+          "file": "frontend/src/pages/landing-page.tsx",
+          "line": 47
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2081
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2093
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2100
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2148
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2177
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2320
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2498
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2653
+        },
+        {
+          "file": "frontend/src/pages/profile-personal-details-page.tsx",
+          "line": 2683
+        },
+        {
+          "file": "frontend/src/pages/results-page.tsx",
+          "line": 597
+        },
+        {
+          "file": "frontend/src/pages/results-page.tsx",
+          "line": 619
+        },
+        {
+          "file": "frontend/src/pages/workspace-inbox-page.tsx",
+          "line": 1599
+        },
+        {
+          "file": "frontend/src/pages/workspace-inbox-page.tsx",
+          "line": 1610
+        },
+        {
+          "file": "frontend/src/pages/workspace-inbox-page.tsx",
+          "line": 1728
+        },
+        {
+          "file": "frontend/src/pages/workspace-inbox-page.tsx",
+          "line": 1753
+        },
+        {
+          "file": "frontend/src/pages/workspace-inbox-page.tsx",
+          "line": 1838
+        },
+        {
+          "file": "frontend/src/pages/workspace-inbox-page.tsx",
+          "line": 1848
+        }
+      ]
+    },
+    "secondary": {
+      "count": 4,
+      "files": [
+        "frontend/src/pages/manuscript-page.tsx",
+        "frontend/src/stories/design-system/primitives/Button.stories.tsx",
+        "frontend/src/stories/design-system/primitives/IconButton.stories.tsx"
+      ],
+      "occurrences": [
+        {
+          "file": "frontend/src/pages/manuscript-page.tsx",
+          "line": 477
+        },
+        {
+          "file": "frontend/src/stories/design-system/primitives/Button.stories.tsx",
+          "line": 30
+        },
+        {
+          "file": "frontend/src/stories/design-system/primitives/Button.stories.tsx",
+          "line": 61
+        },
+        {
+          "file": "frontend/src/stories/design-system/primitives/IconButton.stories.tsx",
+          "line": 30
+        }
+      ]
+    },
+    "outline": {
+      "count": 156,
+      "files": [
+        "frontend/src/components/data-workspace/AddColumnModal.tsx",
+        "frontend/src/components/data-workspace/TableHeader.tsx",
+        "frontend/src/components/data-workspace/TableTabs.tsx",
+        "frontend/src/components/layout/app-error-boundary.tsx",
+        "frontend/src/components/layout/next-best-action-panel.tsx",
+        "frontend/src/components/layout/profile-panel.tsx",
+        "frontend/src/components/layout/top-bar.tsx",
+        "frontend/src/components/study-core/Step1Panel.tsx",
+        "frontend/src/components/study-core/Step2Panel.tsx",
+        "frontend/src/components/study-core/Step3Panel.tsx",
+        "frontend/src/components/study-core/StepContext.tsx",
+        "frontend/src/components/study-core/StepDraftReview.tsx",
+        "frontend/src/components/study-core/StepLinkQcExport.tsx",
+        "frontend/src/components/study-core/StepPlan.tsx",
+        "frontend/src/components/study-core/StepRun.tsx",
+        "frontend/src/pages/admin-page.tsx",
+        "frontend/src/pages/auth-page.tsx",
+        "frontend/src/pages/manuscript-page.tsx",
+        "frontend/src/pages/manuscript-tables-page.tsx",
+        "frontend/src/pages/profile-collaboration-page.tsx",
+        "frontend/src/pages/profile-integrations-page.tsx",
+        "frontend/src/pages/profile-publications-page.tsx",
+        "frontend/src/pages/results-page.tsx",
+        "frontend/src/pages/settings-page.tsx",
+        "frontend/src/pages/workspace-exports-page.tsx",
+        "frontend/src/stories/_archive/components/auth/LoginCard.stories.tsx",
+        "frontend/src/stories/design-system/primitives/ModalSheetDrawer.stories.tsx",
+        "frontend/src/stories/design-system/primitives/Tooltip.stories.tsx"
+      ],
+      "occurrences": [
+        {
+          "file": "frontend/src/components/data-workspace/AddColumnModal.tsx",
+          "line": 133
+        },
+        {
+          "file": "frontend/src/components/data-workspace/TableHeader.tsx",
+          "line": 86
+        },
+        {
+          "file": "frontend/src/components/data-workspace/TableTabs.tsx",
+          "line": 306
+        },
+        {
+          "file": "frontend/src/components/data-workspace/TableTabs.tsx",
+          "line": 410
+        },
+        {
+          "file": "frontend/src/components/data-workspace/TableTabs.tsx",
+          "line": 438
+        },
+        {
+          "file": "frontend/src/components/data-workspace/TableTabs.tsx",
+          "line": 493
+        },
+        {
+          "file": "frontend/src/components/data-workspace/TableTabs.tsx",
+          "line": 497
+        },
+        {
+          "file": "frontend/src/components/layout/app-error-boundary.tsx",
+          "line": 46
+        },
+        {
+          "file": "frontend/src/components/layout/next-best-action-panel.tsx",
+          "line": 187
+        },
+        {
+          "file": "frontend/src/components/layout/next-best-action-panel.tsx",
+          "line": 205
+        },
+        {
+          "file": "frontend/src/components/layout/profile-panel.tsx",
+          "line": 162
+        },
+        {
+          "file": "frontend/src/components/layout/profile-panel.tsx",
+          "line": 170
+        },
+        {
+          "file": "frontend/src/components/layout/profile-panel.tsx",
+          "line": 206
+        },
+        {
+          "file": "frontend/src/components/layout/top-bar.tsx",
+          "line": 103
+        },
+        {
+          "file": "frontend/src/components/layout/top-bar.tsx",
+          "line": 169
+        },
+        {
+          "file": "frontend/src/components/layout/top-bar.tsx",
+          "line": 180
+        },
+        {
+          "file": "frontend/src/components/layout/top-bar.tsx",
+          "line": 189
+        },
+        {
+          "file": "frontend/src/components/layout/top-bar.tsx",
+          "line": 203
+        },
+        {
+          "file": "frontend/src/components/study-core/Step1Panel.tsx",
+          "line": 997
+        },
+        {
+          "file": "frontend/src/components/study-core/Step1Panel.tsx",
+          "line": 1006
+        },
+        {
+          "file": "frontend/src/components/study-core/Step1Panel.tsx",
+          "line": 1015
+        },
+        {
+          "file": "frontend/src/components/study-core/Step1Panel.tsx",
+          "line": 1060
+        },
+        {
+          "file": "frontend/src/components/study-core/Step1Panel.tsx",
+          "line": 1069
+        },
+        {
+          "file": "frontend/src/components/study-core/Step1Panel.tsx",
+          "line": 1092
+        },
+        {
+          "file": "frontend/src/components/study-core/Step1Panel.tsx",
+          "line": 1101
+        },
+        {
+          "file": "frontend/src/components/study-core/Step1Panel.tsx",
+          "line": 1124
+        },
+        {
+          "file": "frontend/src/components/study-core/Step1Panel.tsx",
+          "line": 1133
+        },
+        {
+          "file": "frontend/src/components/study-core/Step1Panel.tsx",
+          "line": 1171
+        },
+        {
+          "file": "frontend/src/components/study-core/Step1Panel.tsx",
+          "line": 1180
+        },
+        {
+          "file": "frontend/src/components/study-core/Step1Panel.tsx",
+          "line": 1200
+        },
+        {
+          "file": "frontend/src/components/study-core/Step1Panel.tsx",
+          "line": 1279
+        },
+        {
+          "file": "frontend/src/components/study-core/Step1Panel.tsx",
+          "line": 1384
+        },
+        {
+          "file": "frontend/src/components/study-core/Step1Panel.tsx",
+          "line": 1394
+        },
+        {
+          "file": "frontend/src/components/study-core/Step1Panel.tsx",
+          "line": 1458
+        },
+        {
+          "file": "frontend/src/components/study-core/Step2Panel.tsx",
+          "line": 313
+        },
+        {
+          "file": "frontend/src/components/study-core/Step2Panel.tsx",
+          "line": 359
+        },
+        {
+          "file": "frontend/src/components/study-core/Step2Panel.tsx",
+          "line": 388
+        },
+        {
+          "file": "frontend/src/components/study-core/Step2Panel.tsx",
+          "line": 396
+        },
+        {
+          "file": "frontend/src/components/study-core/Step2Panel.tsx",
+          "line": 422
+        },
+        {
+          "file": "frontend/src/components/study-core/Step2Panel.tsx",
+          "line": 437
+        },
+        {
+          "file": "frontend/src/components/study-core/Step2Panel.tsx",
+          "line": 464
+        },
+        {
+          "file": "frontend/src/components/study-core/Step2Panel.tsx",
+          "line": 482
+        },
+        {
+          "file": "frontend/src/components/study-core/Step2Panel.tsx",
+          "line": 499
+        },
+        {
+          "file": "frontend/src/components/study-core/Step2Panel.tsx",
+          "line": 518
+        },
+        {
+          "file": "frontend/src/components/study-core/Step3Panel.tsx",
+          "line": 65
+        },
+        {
+          "file": "frontend/src/components/study-core/StepContext.tsx",
+          "line": 474
+        },
+        {
+          "file": "frontend/src/components/study-core/StepContext.tsx",
+          "line": 643
+        },
+        {
+          "file": "frontend/src/components/study-core/StepContext.tsx",
+          "line": 666
+        },
+        {
+          "file": "frontend/src/components/study-core/StepContext.tsx",
+          "line": 691
+        },
+        {
+          "file": "frontend/src/components/study-core/StepDraftReview.tsx",
+          "line": 188
+        },
+        {
+          "file": "frontend/src/components/study-core/StepLinkQcExport.tsx",
+          "line": 214
+        },
+        {
+          "file": "frontend/src/components/study-core/StepLinkQcExport.tsx",
+          "line": 227
+        },
+        {
+          "file": "frontend/src/components/study-core/StepLinkQcExport.tsx",
+          "line": 261
+        },
+        {
+          "file": "frontend/src/components/study-core/StepLinkQcExport.tsx",
+          "line": 278
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 777
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 778
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 779
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 785
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 866
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 877
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 891
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 892
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 897
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 905
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 914
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 935
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 936
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 937
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 938
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 939
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 940
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 943
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 947
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 961
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 966
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 970
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 984
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 990
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 1033
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 1057
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 1083
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 1142
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 1162
+        },
+        {
+          "file": "frontend/src/components/study-core/StepPlan.tsx",
+          "line": 1163
+        },
+        {
+          "file": "frontend/src/components/study-core/StepRun.tsx",
+          "line": 542
+        },
+        {
+          "file": "frontend/src/components/study-core/StepRun.tsx",
+          "line": 562
+        },
+        {
+          "file": "frontend/src/components/study-core/StepRun.tsx",
+          "line": 651
+        },
+        {
+          "file": "frontend/src/components/study-core/StepRun.tsx",
+          "line": 681
+        },
+        {
+          "file": "frontend/src/components/study-core/StepRun.tsx",
+          "line": 738
+        },
+        {
+          "file": "frontend/src/components/study-core/StepRun.tsx",
+          "line": 772
+        },
+        {
+          "file": "frontend/src/components/study-core/StepRun.tsx",
+          "line": 778
+        },
+        {
+          "file": "frontend/src/pages/admin-page.tsx",
+          "line": 901
+        },
+        {
+          "file": "frontend/src/pages/admin-page.tsx",
+          "line": 907
+        },
+        {
+          "file": "frontend/src/pages/admin-page.tsx",
+          "line": 1303
+        },
+        {
+          "file": "frontend/src/pages/admin-page.tsx",
+          "line": 1622
+        },
+        {
+          "file": "frontend/src/pages/admin-page.tsx",
+          "line": 1635
+        },
+        {
+          "file": "frontend/src/pages/admin-page.tsx",
+          "line": 2054
+        },
+        {
+          "file": "frontend/src/pages/admin-page.tsx",
+          "line": 2063
+        },
+        {
+          "file": "frontend/src/pages/auth-page.tsx",
+          "line": 763
+        },
+        {
+          "file": "frontend/src/pages/auth-page.tsx",
+          "line": 866
+        },
+        {
+          "file": "frontend/src/pages/auth-page.tsx",
+          "line": 894
+        },
+        {
+          "file": "frontend/src/pages/auth-page.tsx",
+          "line": 919
+        },
+        {
+          "file": "frontend/src/pages/auth-page.tsx",
+          "line": 943
+        },
+        {
+          "file": "frontend/src/pages/auth-page.tsx",
+          "line": 985
+        },
+        {
+          "file": "frontend/src/pages/auth-page.tsx",
+          "line": 994
+        },
+        {
+          "file": "frontend/src/pages/manuscript-page.tsx",
+          "line": 265
+        },
+        {
+          "file": "frontend/src/pages/manuscript-page.tsx",
+          "line": 355
+        },
+        {
+          "file": "frontend/src/pages/manuscript-page.tsx",
+          "line": 477
+        },
+        {
+          "file": "frontend/src/pages/manuscript-page.tsx",
+          "line": 510
+        },
+        {
+          "file": "frontend/src/pages/manuscript-tables-page.tsx",
+          "line": 185
+        },
+        {
+          "file": "frontend/src/pages/manuscript-tables-page.tsx",
+          "line": 223
+        },
+        {
+          "file": "frontend/src/pages/manuscript-tables-page.tsx",
+          "line": 226
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 619
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 623
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 627
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 631
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 663
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 744
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 754
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 850
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 933
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 941
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 949
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 996
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 1029
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 1072
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 1097
+        },
+        {
+          "file": "frontend/src/pages/profile-integrations-page.tsx",
+          "line": 826
+        },
+        {
+          "file": "frontend/src/pages/profile-integrations-page.tsx",
+          "line": 945
+        },
+        {
+          "file": "frontend/src/pages/profile-integrations-page.tsx",
+          "line": 975
+        },
+        {
+          "file": "frontend/src/pages/profile-integrations-page.tsx",
+          "line": 1007
+        },
+        {
+          "file": "frontend/src/pages/profile-integrations-page.tsx",
+          "line": 1015
+        },
+        {
+          "file": "frontend/src/pages/profile-publications-page.tsx",
+          "line": 2783
+        },
+        {
+          "file": "frontend/src/pages/profile-publications-page.tsx",
+          "line": 2786
+        },
+        {
+          "file": "frontend/src/pages/profile-publications-page.tsx",
+          "line": 2789
+        },
+        {
+          "file": "frontend/src/pages/profile-publications-page.tsx",
+          "line": 2790
+        },
+        {
+          "file": "frontend/src/pages/profile-publications-page.tsx",
+          "line": 2801
+        },
+        {
+          "file": "frontend/src/pages/profile-publications-page.tsx",
+          "line": 2802
+        },
+        {
+          "file": "frontend/src/pages/profile-publications-page.tsx",
+          "line": 2807
+        },
+        {
+          "file": "frontend/src/pages/profile-publications-page.tsx",
+          "line": 2863
+        },
+        {
+          "file": "frontend/src/pages/profile-publications-page.tsx",
+          "line": 2864
+        },
+        {
+          "file": "frontend/src/pages/profile-publications-page.tsx",
+          "line": 2892
+        },
+        {
+          "file": "frontend/src/pages/results-page.tsx",
+          "line": 638
+        },
+        {
+          "file": "frontend/src/pages/results-page.tsx",
+          "line": 725
+        },
+        {
+          "file": "frontend/src/pages/results-page.tsx",
+          "line": 816
+        },
+        {
+          "file": "frontend/src/pages/results-page.tsx",
+          "line": 826
+        },
+        {
+          "file": "frontend/src/pages/results-page.tsx",
+          "line": 854
+        },
+        {
+          "file": "frontend/src/pages/settings-page.tsx",
+          "line": 103
+        },
+        {
+          "file": "frontend/src/pages/settings-page.tsx",
+          "line": 106
+        },
+        {
+          "file": "frontend/src/pages/workspace-exports-page.tsx",
+          "line": 31
+        },
+        {
+          "file": "frontend/src/pages/workspace-exports-page.tsx",
+          "line": 34
+        },
+        {
+          "file": "frontend/src/pages/workspace-exports-page.tsx",
+          "line": 37
+        },
+        {
+          "file": "frontend/src/stories/design-system/primitives/ModalSheetDrawer.stories.tsx",
+          "line": 11
+        },
+        {
+          "file": "frontend/src/stories/design-system/primitives/Tooltip.stories.tsx",
+          "line": 12
+        },
+        {
+          "file": "frontend/src/stories/design-system/primitives/Tooltip.stories.tsx",
+          "line": 12
+        },
+        {
+          "file": "frontend/src/stories/_archive/components/auth/LoginCard.stories.tsx",
+          "line": 119
+        }
+      ]
+    },
+    "ghost": {
+      "count": 9,
+      "files": [
+        "frontend/src/components/data-workspace/TableTabs.tsx",
+        "frontend/src/components/study-core/StepRun.tsx",
+        "frontend/src/components/study-core/StudyCoreStepper.tsx",
+        "frontend/src/pages/manuscript-page.tsx",
+        "frontend/src/pages/manuscript-tables-page.tsx",
+        "frontend/src/pages/profile-collaboration-page.tsx"
+      ],
+      "occurrences": [
+        {
+          "file": "frontend/src/components/data-workspace/TableTabs.tsx",
+          "line": 404
+        },
+        {
+          "file": "frontend/src/components/data-workspace/TableTabs.tsx",
+          "line": 433
+        },
+        {
+          "file": "frontend/src/components/study-core/StepRun.tsx",
+          "line": 619
+        },
+        {
+          "file": "frontend/src/components/study-core/StepRun.tsx",
+          "line": 687
+        },
+        {
+          "file": "frontend/src/components/study-core/StudyCoreStepper.tsx",
+          "line": 45
+        },
+        {
+          "file": "frontend/src/pages/manuscript-page.tsx",
+          "line": 492
+        },
+        {
+          "file": "frontend/src/pages/manuscript-tables-page.tsx",
+          "line": 246
+        },
+        {
+          "file": "frontend/src/pages/manuscript-tables-page.tsx",
+          "line": 272
+        },
+        {
+          "file": "frontend/src/pages/profile-collaboration-page.tsx",
+          "line": 858
+        }
+      ]
+    }
+  },
+  "dataUiVariant": {
+    "count": 2,
+    "files": [
+      "frontend/src/components/ui/badge.tsx",
+      "frontend/src/components/ui/button.tsx"
+    ],
+    "occurrences": [
+      {
+        "file": "frontend/src/components/ui/badge.tsx",
+        "line": 30
+      },
+      {
+        "file": "frontend/src/components/ui/button.tsx",
+        "line": 53
+      }
+    ]
+  },
+  "adHocClassnames": [
+    {
+      "file": "frontend/src/components/study-core/Step1Panel.tsx",
+      "tokens": [
+        "house-button-action",
+        "house-button-action-primary",
+        "house-button-text"
+      ]
+    },
+    {
+      "file": "frontend/src/components/study-core/StepPlan.tsx",
+      "tokens": [
+        "house-button-action",
+        "house-button-action-primary"
+      ]
+    },
+    {
+      "file": "frontend/src/lib/house-style.ts",
+      "tokens": [
+        "house-button-action",
+        "house-button-action-danger",
+        "house-button-action-ghost",
+        "house-button-action-primary",
+        "house-button-action-success",
+        "house-button-text"
+      ]
+    },
+    {
+      "file": "frontend/src/stories/design-system/pages/ReferenceScenes.stories.tsx",
+      "tokens": [
+        "house-button-action-primary"
+      ]
+    }
+  ]
+}

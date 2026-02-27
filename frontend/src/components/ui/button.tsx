@@ -11,15 +11,15 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary: `${houseTypography.buttonText} bg-primary text-primary-foreground`,
-        secondary: `${houseTypography.buttonText} bg-secondary text-secondary-foreground`,
-        tertiary: `${houseTypography.buttonText} border border-border bg-background text-foreground hover:bg-muted`,
+        secondary: `${houseTypography.buttonText} border border-border bg-secondary text-secondary-foreground shadow-none hover:bg-secondary/90`,
+        tertiary: `${houseTypography.buttonText} border border-border bg-background text-foreground hover:bg-muted hover:border-ring/30 active:bg-muted`,
         destructive: `${houseTypography.buttonText} bg-destructive text-destructive-foreground`,
         default: `${houseTypography.buttonText} bg-primary text-primary-foreground`,
         housePrimary: `${houseTypography.buttonText} bg-primary text-primary-foreground`,
-        house: `${houseTypography.buttonText} bg-secondary text-secondary-foreground`,
-        outline: `${houseTypography.buttonText} border border-border bg-background text-foreground hover:bg-muted`,
+        house: `${houseTypography.buttonText} border border-border bg-secondary text-secondary-foreground shadow-none hover:bg-secondary/90`,
+        outline: `${houseTypography.buttonText} border border-border bg-background text-foreground hover:bg-muted hover:border-ring/30 active:bg-muted`,
         // DEPRECATED: alias to tertiary for backward compatibility.
-        ghost: `${houseTypography.buttonText} border border-border bg-background text-foreground hover:bg-muted`,
+        ghost: `${houseTypography.buttonText} border border-border bg-background text-foreground hover:bg-muted hover:border-ring/30 active:bg-muted`,
       },
       size: {
         default: `h-9 px-3 ${houseTypography.buttonText}`,
