@@ -37,22 +37,22 @@ def _create_oauth_state(*, state: str, consumed: bool) -> None:
         session.flush()
 
 
-def test_complete_oauth_callback_rejects_consumed_state_before_token_exchange(
+def test_complete_oauth_callback_allows_retry_for_consumed_unbound_state(
     monkeypatch, tmp_path
 ) -> None:
     _set_test_environment(monkeypatch, tmp_path)
     _create_oauth_state(state="state-used", consumed=True)
 
-    def _unexpected_exchange(**kwargs):
+    def _exchange_failure(**kwargs):
         del kwargs
-        raise AssertionError("Token exchange should not execute for a consumed state.")
+        raise AuthValidationError("ORCID token exchange failed (invalid_grant).")
 
     monkeypatch.setattr(
         "research_os.services.social_auth_service._exchange_oauth_code",
-        _unexpected_exchange,
+        _exchange_failure,
     )
 
-    with pytest.raises(AuthValidationError, match="already been used"):
+    with pytest.raises(AuthValidationError, match="invalid_grant"):
         complete_oauth_callback(
             provider="orcid",
             state="state-used",

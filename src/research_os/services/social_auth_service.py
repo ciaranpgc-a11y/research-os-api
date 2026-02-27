@@ -274,7 +274,11 @@ def _claim_oauth_state(*, provider: str, state: str) -> str | None:
             # already finished and attached a user to this state.
             if state_row.user_id:
                 return str(state_row.user_id)
-            raise AuthValidationError("OAuth state has already been used.")
+            # A prior attempt consumed this state but did not complete binding
+            # (for example token exchange/network failure). Allow safe retry.
+            state_row.consumed_at = _utcnow()
+            session.flush()
+            return None
         # Claim callback state before token exchange so replayed callbacks
         # do not burn one-time provider auth codes.
         state_row.consumed_at = _utcnow()
