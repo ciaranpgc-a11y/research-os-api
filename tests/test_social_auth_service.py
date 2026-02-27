@@ -135,3 +135,30 @@ def test_complete_oauth_callback_sets_state_user_id_after_success(
         assert row.user_id == payload["user"]["id"]
     assert len(reconciled) == 1
     assert reconciled[0]["user_id"] == payload["user"]["id"]
+
+
+def test_complete_oauth_callback_normalizes_space_to_plus_in_code(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+    _create_oauth_state(state="state-code-normalize", consumed=False)
+    observed_code: dict[str, str] = {}
+
+    def _exchange_capture(**kwargs):
+        observed_code["value"] = str(kwargs.get("code") or "")
+        raise AuthValidationError("ORCID token exchange failed (invalid_grant).")
+
+    monkeypatch.setattr(
+        "research_os.services.social_auth_service._exchange_oauth_code",
+        _exchange_capture,
+    )
+
+    with pytest.raises(AuthValidationError, match="invalid_grant"):
+        complete_oauth_callback(
+            provider="orcid",
+            state="state-code-normalize",
+            code="abc def+ghi",
+            frontend_origin="http://localhost:5173",
+        )
+
+    assert observed_code["value"] == "abc+def+ghi"

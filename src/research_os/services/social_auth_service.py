@@ -583,7 +583,7 @@ def complete_oauth_callback(
 ) -> dict[str, object]:
     clean_provider = _normalize_provider(provider)
     clean_state = (state or "").strip()
-    clean_code = (code or "").strip()
+    clean_code = (code or "").strip().replace(" ", "+")
     if not clean_state or not clean_code:
         raise AuthValidationError("Provider, state, and code are required.")
 
