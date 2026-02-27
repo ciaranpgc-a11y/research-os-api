@@ -579,6 +579,11 @@ export function AuthPage() {
     clearOAuthTransientState()
     try {
       const payload = await fetchOAuthConnect(provider)
+      if (provider === 'orcid') {
+        setStatus('Redirecting to ORCID sign-in...')
+        window.location.assign(payload.url)
+        return
+      }
       const popup = window.open(
         payload.url,
         `aawe-oauth-${provider}-${Date.now()}`,
