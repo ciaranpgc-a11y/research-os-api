@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, Loader2, PanelRightOpen, RefreshCw, Save, Search, UserPlus, X } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
+import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Select } from '@/components/ui/select'
+import {
+  SelectPrimitive,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/primitives/SelectPrimitive'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { houseActions, houseCollaborators, houseForms, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import { listCollaborators } from '@/lib/impact-api'
@@ -626,46 +632,58 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
           className={cn('w-sz-280', HOUSE_INPUT_CLASS, HOUSE_TABLE_FILTER_INPUT_CLASS)}
           disabled={!hasSessionToken}
         />
-        <Select
+        <SelectPrimitive
           value={ownershipFilter}
-          onChange={(event) => {
-            setOwnershipFilter(event.target.value as LibraryAssetOwnership)
+          onValueChange={(value) => {
+            setOwnershipFilter(value as LibraryAssetOwnership)
             setPage(1)
           }}
-          className={HOUSE_DATA_LIBRARY_FILTER_SELECT_CLASS}
           disabled={!hasSessionToken}
         >
-          <option value="all">All files</option>
-          <option value="owned">Owned by me</option>
-          <option value="shared">Shared with me</option>
-        </Select>
-        <Select
+          <SelectTrigger className={HOUSE_DATA_LIBRARY_FILTER_SELECT_CLASS}>
+            <SelectValue placeholder="All files" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All files</SelectItem>
+            <SelectItem value="owned">Owned by me</SelectItem>
+            <SelectItem value="shared">Shared with me</SelectItem>
+          </SelectContent>
+        </SelectPrimitive>
+        <SelectPrimitive
           value={sortBy}
-          onChange={(event) => {
-            setSortBy(event.target.value as LibraryAssetSortBy)
+          onValueChange={(value) => {
+            setSortBy(value as LibraryAssetSortBy)
             setPage(1)
           }}
-          className={HOUSE_DATA_LIBRARY_FILTER_SELECT_CLASS}
           disabled={!hasSessionToken}
         >
-          <option value="uploaded_at">Sort: Uploaded</option>
-          <option value="filename">Sort: File name</option>
-          <option value="byte_size">Sort: Size</option>
-          <option value="kind">Sort: Type</option>
-          <option value="owner_name">Sort: Owner</option>
-        </Select>
-        <Select
+          <SelectTrigger className={HOUSE_DATA_LIBRARY_FILTER_SELECT_CLASS}>
+            <SelectValue placeholder="Sort: Uploaded" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="uploaded_at">Sort: Uploaded</SelectItem>
+            <SelectItem value="filename">Sort: File name</SelectItem>
+            <SelectItem value="byte_size">Sort: Size</SelectItem>
+            <SelectItem value="kind">Sort: Type</SelectItem>
+            <SelectItem value="owner_name">Sort: Owner</SelectItem>
+          </SelectContent>
+        </SelectPrimitive>
+        <SelectPrimitive
           value={sortDirection}
-          onChange={(event) => {
-            setSortDirection(event.target.value as LibraryAssetSortDirection)
+          onValueChange={(value) => {
+            setSortDirection(value as LibraryAssetSortDirection)
             setPage(1)
           }}
-          className={HOUSE_DATA_LIBRARY_FILTER_SELECT_CLASS}
           disabled={!hasSessionToken}
         >
-          <option value="desc">Descending</option>
-          <option value="asc">Ascending</option>
-        </Select>
+          <SelectTrigger className={HOUSE_DATA_LIBRARY_FILTER_SELECT_CLASS}>
+            <SelectValue placeholder="Descending" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="desc">Descending</SelectItem>
+            <SelectItem value="asc">Ascending</SelectItem>
+          </SelectContent>
+        </SelectPrimitive>
       </div>
 
       {!hasSessionToken ? (
@@ -968,21 +986,25 @@ export function WorkspacesDataLibraryView({ onOpenDrilldownMobile }: WorkspacesD
               Showing {visibleStart}-{visibleEnd} of {total}
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <Select
+              <SelectPrimitive
                 value={String(pageSize)}
-                onChange={(event) => {
-                  const nextPageSize = Math.max(10, Math.min(100, Number(event.target.value || 25)))
+                onValueChange={(value) => {
+                  const nextPageSize = Math.max(10, Math.min(100, Number(value || 25)))
                   setPageSize(nextPageSize)
                   setPage(1)
                 }}
-                className={cn('h-8 w-auto rounded-md px-2 text-xs', HOUSE_TABLE_FILTER_SELECT_CLASS)}
                 disabled={!hasSessionToken || isLoading}
               >
-                <option value="10">10 / page</option>
-                <option value="25">25 / page</option>
-                <option value="50">50 / page</option>
-                <option value="100">100 / page</option>
-              </Select>
+                <SelectTrigger className={cn('h-8 w-auto rounded-md px-2 text-xs', HOUSE_TABLE_FILTER_SELECT_CLASS)}>
+                  <SelectValue placeholder="25 / page" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10 / page</SelectItem>
+                  <SelectItem value="25">25 / page</SelectItem>
+                  <SelectItem value="50">50 / page</SelectItem>
+                  <SelectItem value="100">100 / page</SelectItem>
+                </SelectContent>
+              </SelectPrimitive>
               <Button
                 type="button"
                 size="sm"
