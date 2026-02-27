@@ -245,11 +245,22 @@ def hash_backup_code(code: str) -> str:
 
 def _oauth_encryption_key() -> bytes:
     raw = os.getenv("OAUTH_TOKEN_ENCRYPTION_KEY", "").strip()
-    if not raw:
+    if raw:
+        return hashlib.sha256(raw.encode("utf-8")).digest()
+
+    allow_legacy_fallback = os.getenv(
+        "ALLOW_LEGACY_OAUTH_ENCRYPTION_KEY_FALLBACK", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    running_tests = bool(os.getenv("PYTEST_CURRENT_TEST", "").strip())
+    if allow_legacy_fallback or running_tests:
         raw = os.getenv("OPENAI_API_KEY", "").strip()
-    if not raw:
-        raw = "aawe-dev-oauth-key"
-    return hashlib.sha256(raw.encode("utf-8")).digest()
+        if not raw:
+            raw = "aawe-dev-oauth-key"
+        return hashlib.sha256(raw.encode("utf-8")).digest()
+
+    raise SecurityValidationError(
+        "OAUTH_TOKEN_ENCRYPTION_KEY is required for OAuth/2FA secret encryption."
+    )
 
 
 def _keystream(key: bytes, nonce: bytes, size: int) -> bytes:

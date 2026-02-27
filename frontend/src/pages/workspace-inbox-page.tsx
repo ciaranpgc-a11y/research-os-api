@@ -16,7 +16,7 @@ import {
   INBOX_READS_STORAGE_KEY,
   useWorkspaceInboxStore,
 } from '@/store/use-workspace-inbox-store'
-import { useWorkspaceStore } from '@/store/use-workspace-store'
+import { type WorkspaceRecord, useWorkspaceStore } from '@/store/use-workspace-store'
 
 type FilterKey = 'all' | 'active' | 'pinned' | 'archived' | 'recent'
 type ParticipantFilterKey = 'all' | 'online'
@@ -131,14 +131,21 @@ const HOUSE_NAV_ITEM_WORKSPACE_CLASS = getHouseNavToneClass('workspace')
 const HOUSE_NAV_ITEM_GOVERNANCE_CLASS = getHouseNavToneClass('governance')
 const HOUSE_NAV_ITEM_DATA_CLASS = getHouseNavToneClass('data')
 
-function buildWorkspaceInboxWsUrl(input: { workspaceId: string; token: string }): string {
+function buildWorkspaceInboxWsUrl(input: { workspaceId: string }): string {
   const base = API_BASE_URL.replace(/\/+$/, '')
   const wsBase = base.replace(/^http/i, 'ws')
   const query = new URLSearchParams({
     workspace_id: input.workspaceId,
-    token: input.token,
   })
   return `${wsBase}/v1/workspaces/inbox/ws?${query.toString()}`
+}
+
+function buildWorkspaceInboxWsProtocols(token: string): string[] {
+  const clean = token.trim()
+  if (!clean) {
+    return ['aawe-realtime-v1']
+  }
+  return ['aawe-realtime-v1', `aawe-session.${clean}`]
 }
 
 function formatTimestamp(value: string): string {
@@ -171,6 +178,31 @@ function normalizeName(value: string | null | undefined): string {
 function isSamePerson(left: string, right: string): boolean {
   return normalizeName(left).toLowerCase() === normalizeName(right).toLowerCase()
 }
+
+function hasWorkspaceInboxWriteAccess(
+  workspace: WorkspaceRecord | null,
+  currentUserName: string,
+): boolean {
+  if (!workspace) {
+    return false
+  }
+  const currentUserKey = normalizeName(currentUserName).toLowerCase()
+  if (!currentUserKey) {
+    return false
+  }
+  const ownerKey = normalizeName(workspace.ownerName).toLowerCase()
+  if (ownerKey && ownerKey === currentUserKey) {
+    return true
+  }
+  const collaboratorKeys = new Set((workspace.collaborators || []).map((value) => normalizeName(value).toLowerCase()))
+  if (!collaboratorKeys.has(currentUserKey)) {
+    return false
+  }
+  const removedKeys = new Set((workspace.removedCollaborators || []).map((value) => normalizeName(value).toLowerCase()))
+  return !removedKeys.has(currentUserKey)
+}
+
+const INBOX_READ_ONLY_MESSAGE = 'This inbox is read-only for your current workspace access.'
 
 function sanitizeReturnTo(value: string | null): string | null {
   const clean = (value || '').trim()
@@ -366,6 +398,10 @@ export function WorkspaceInboxPage() {
   const currentUserName = useMemo(
     () => normalizeName(readWorkspaceOwnerNameFromProfile() || 'You'),
     [],
+  )
+  const canContributeToWorkspaceInbox = useMemo(
+    () => hasWorkspaceInboxWriteAccess(workspace, currentUserName),
+    [currentUserName, workspace],
   )
   const participants = useMemo(() => {
     const output: string[] = []
@@ -776,6 +812,10 @@ export function WorkspaceInboxPage() {
   }, [])
 
   useEffect(() => {
+    if (!canContributeToWorkspaceInbox) {
+      publishTypingState(false)
+      return
+    }
     const hasDraft = draft.trim().length > 0 || dictating
     publishTypingState(hasDraft)
     if (!hasDraft) {
@@ -787,7 +827,7 @@ export function WorkspaceInboxPage() {
     return () => {
       window.clearInterval(timer)
     }
-  }, [dictating, draft, publishTypingState])
+  }, [canContributeToWorkspaceInbox, dictating, draft, publishTypingState])
 
   useEffect(() => {
     return () => {
@@ -796,7 +836,7 @@ export function WorkspaceInboxPage() {
   }, [publishTypingState])
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !workspaceId) {
+    if (typeof window === 'undefined' || !workspaceId || !canContributeToWorkspaceInbox) {
       setRealtimeConnectionState('offline')
       return
     }
@@ -818,8 +858,8 @@ export function WorkspaceInboxPage() {
       const socket = new WebSocket(
         buildWorkspaceInboxWsUrl({
           workspaceId,
-          token,
         }),
+        buildWorkspaceInboxWsProtocols(token),
       )
       realtimeSocketRef.current = socket
       socket.onopen = () => {
@@ -900,10 +940,10 @@ export function WorkspaceInboxPage() {
         }
       }
     }
-  }, [applyRemotePresenceEvent, applyRemoteTypingEvent, hydrateWorkspaceInboxFromRemote, setParticipantPresence, workspaceId])
+  }, [applyRemotePresenceEvent, applyRemoteTypingEvent, canContributeToWorkspaceInbox, hydrateWorkspaceInboxFromRemote, setParticipantPresence, workspaceId])
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !workspaceId) {
+    if (typeof window === 'undefined' || !workspaceId || !canContributeToWorkspaceInbox) {
       return
     }
     if (realtimeConnectionState === 'connected') {
@@ -920,7 +960,7 @@ export function WorkspaceInboxPage() {
     return () => {
       window.clearInterval(timer)
     }
-  }, [hydrateWorkspaceInboxFromRemote, realtimeConnectionState, workspaceId])
+  }, [canContributeToWorkspaceInbox, hydrateWorkspaceInboxFromRemote, realtimeConnectionState, workspaceId])
 
   useEffect(() => {
     if (!workspaceId) {
@@ -1030,6 +1070,10 @@ export function WorkspaceInboxPage() {
 
   const onToggleDictation = () => {
     setError('')
+    if (!canContributeToWorkspaceInbox) {
+      setError(INBOX_READ_ONLY_MESSAGE)
+      return
+    }
     if (!dictationSupported || !recognitionRef.current) {
       setError('Voice dictation is not available in this browser.')
       return
@@ -1051,11 +1095,15 @@ export function WorkspaceInboxPage() {
 
   const onSend = async () => {
     setError('')
-    const cleanDraft = draft.trim()
     if (!workspaceId) {
       setError('Workspace is not selected.')
       return
     }
+    if (!canContributeToWorkspaceInbox) {
+      setError(INBOX_READ_ONLY_MESSAGE)
+      return
+    }
+    const cleanDraft = draft.trim()
     if (!cleanDraft) {
       setError('Type a message to send.')
       return
@@ -1632,9 +1680,9 @@ export function WorkspaceInboxPage() {
                       ref={composerRef}
                       value={draft}
                       onChange={(event) => setDraft(event.target.value)}
-                      placeholder="Write an inbox message..."
+                      placeholder={canContributeToWorkspaceInbox ? 'Write an inbox message...' : INBOX_READ_ONLY_MESSAGE}
                       className={cn('min-h-24 w-full rounded-md px-3 py-2 text-sm', houseForms.textarea)}
-                      disabled={sending}
+                      disabled={sending || !canContributeToWorkspaceInbox}
                     />
                     <div data-house-role="inbox-composer-actions" className="flex flex-wrap items-center justify-between gap-2">
                       <div data-house-role="inbox-composer-left-actions" className="flex flex-wrap items-center gap-2">
@@ -1642,7 +1690,7 @@ export function WorkspaceInboxPage() {
                           type="button"
                           className={cn(houseForms.actionButton, houseTypography.buttonText)}
                           onClick={onToggleDictation}
-                          disabled={!dictationSupported}
+                          disabled={!dictationSupported || !canContributeToWorkspaceInbox}
                         >
                           {dictating ? 'Stop dictation' : 'Voice compose'}
                         </Button>
@@ -1651,11 +1699,14 @@ export function WorkspaceInboxPage() {
                         type="button"
                         onClick={() => void onSend()}
                         className={cn(houseForms.actionButtonPrimary, houseTypography.buttonText)}
-                        disabled={sending}
+                        disabled={sending || !canContributeToWorkspaceInbox}
                       >
                         {sending ? 'Sending...' : 'Send encrypted'}
                       </Button>
                     </div>
+                    {!canContributeToWorkspaceInbox ? (
+                      <p className={houseTypography.fieldHelper}>{INBOX_READ_ONLY_MESSAGE}</p>
+                    ) : null}
                     {status ? <p data-house-role="inbox-composer-status" className={houseTypography.fieldHelper}>{status}</p> : null}
                     {error ? <p data-house-role="inbox-composer-error" className="text-sm text-[hsl(var(--tone-danger-700))]">{error}</p> : null}
                   </footer>

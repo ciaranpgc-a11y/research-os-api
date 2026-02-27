@@ -11,6 +11,7 @@ import {
   listWorkspaceAuthorRequestsApi,
   listWorkspaceInvitationsSentApi,
   setActiveWorkspaceApi,
+  updateWorkspaceInvitationStatusApi,
   updateWorkspaceRecordApi,
 } from '@/lib/workspace-api'
 import {
@@ -26,6 +27,15 @@ import {
 export type WorkspaceHealth = 'green' | 'amber' | 'red'
 export type WorkspaceInvitationStatus = 'pending' | 'accepted' | 'declined'
 export type WorkspaceCollaboratorRole = 'editor' | 'reviewer' | 'viewer'
+export type WorkspaceAuditCategory = 'collaborator_changes' | 'invitation_decisions'
+
+export type WorkspaceAuditLogEntry = {
+  id: string
+  workspaceId: string
+  category: WorkspaceAuditCategory
+  message: string
+  createdAt: string
+}
 
 export type WorkspaceRecord = {
   id: string
@@ -41,6 +51,7 @@ export type WorkspaceRecord = {
   updatedAt: string
   pinned: boolean
   archived: boolean
+  auditLogEntries?: WorkspaceAuditLogEntry[]
 }
 
 export type WorkspaceAuthorRequest = {
@@ -77,6 +88,7 @@ type WorkspacePatch = Partial<
     | 'updatedAt'
     | 'pinned'
     | 'archived'
+    | 'auditLogEntries'
   >
 >
 
@@ -98,6 +110,7 @@ type WorkspaceStore = {
   ) => WorkspaceInvitationSent | null
   acceptAuthorRequest: (requestId: string) => WorkspaceRecord | null
   declineAuthorRequest: (requestId: string) => void
+  cancelWorkspaceInvitation: (invitationId: string) => WorkspaceInvitationSent | null
 }
 
 const WORKSPACES_STORAGE_KEY = 'aawe-workspaces'
@@ -198,6 +211,51 @@ function normalizePendingCollaborators(
   return normalizeCollaborators(values).filter((value) => !activeKeys.has(value.toLowerCase()))
 }
 
+function normalizeWorkspaceAuditCategory(value: unknown): WorkspaceAuditCategory {
+  const clean = trimValue(String(value || '')).toLowerCase()
+  if (clean === 'invitation_decisions') {
+    return 'invitation_decisions'
+  }
+  return 'collaborator_changes'
+}
+
+function normalizeWorkspaceAuditEntries(
+  values: unknown,
+  workspaceId: string,
+): WorkspaceAuditLogEntry[] {
+  const source = Array.isArray(values) ? values : []
+  const cleanWorkspaceId = trimValue(workspaceId)
+  const output: WorkspaceAuditLogEntry[] = []
+  for (let index = 0; index < source.length; index += 1) {
+    const row = source[index]
+    if (!row || typeof row !== 'object') {
+      continue
+    }
+    const record = row as Record<string, unknown>
+    const message = normalizeName(String(record.message || ''))
+    if (!message) {
+      continue
+    }
+    const createdAtRaw = trimValue(String(record.createdAt || ''))
+    const createdAtParsed = Date.parse(createdAtRaw)
+    const createdAt = Number.isNaN(createdAtParsed) ? nowIso() : new Date(createdAtParsed).toISOString()
+    const entryWorkspaceId = trimValue(String(record.workspaceId || cleanWorkspaceId)) || cleanWorkspaceId
+    if (!entryWorkspaceId) {
+      continue
+    }
+    const entryId = trimValue(String(record.id || '')) || `${entryWorkspaceId}-${createdAt}-${index}`
+    output.push({
+      id: entryId,
+      workspaceId: entryWorkspaceId,
+      category: normalizeWorkspaceAuditCategory(record.category),
+      message,
+      createdAt,
+    })
+  }
+  output.sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+  return output
+}
+
 function nowIso(): string {
   return new Date().toISOString()
 }
@@ -234,6 +292,7 @@ function defaultWorkspaces(): WorkspaceRecord[] {
       updatedAt: nowIso(),
       pinned: true,
       archived: false,
+      auditLogEntries: [],
     },
   ]
 }
@@ -251,6 +310,7 @@ function normalizeWorkspaceRecords(
   fallbackOwnerName: string,
 ): WorkspaceRecord[] {
   return values.map((workspace) => {
+    const workspaceId = trimValue(workspace.id) || `workspace-${Date.now().toString(36)}`
     const collaborators = normalizeCollaborators((workspace as { collaborators?: unknown }).collaborators)
     const removedCollaborators = normalizeRemovedCollaborators(
       (workspace as { removedCollaborators?: unknown }).removedCollaborators,
@@ -269,8 +329,12 @@ function normalizeWorkspaceRecords(
       (workspace as { pendingCollaboratorRoles?: unknown }).pendingCollaboratorRoles,
       pendingCollaborators,
     )
+    const auditLogEntries = normalizeWorkspaceAuditEntries(
+      (workspace as { auditLogEntries?: unknown }).auditLogEntries,
+      workspaceId,
+    )
     return {
-      id: trimValue(workspace.id) || `workspace-${Date.now().toString(36)}`,
+      id: workspaceId,
       name: normalizeName(workspace.name) || 'Workspace',
       ownerName: normalizeName(workspace.ownerName) || fallbackOwnerName,
       collaborators,
@@ -286,6 +350,7 @@ function normalizeWorkspaceRecords(
       updatedAt: trimValue(workspace.updatedAt) || nowIso(),
       pinned: Boolean(workspace.pinned),
       archived: Boolean(workspace.archived),
+      auditLogEntries,
     }
   })
 }
@@ -441,6 +506,8 @@ function persistSnapshotLocal(snapshot: WorkspaceStateSnapshot): void {
   persistInvitationsSent(snapshot.invitationsSent)
 }
 
+let remoteWorkspaceActionQueue: Promise<void> = Promise.resolve()
+
 function runRemoteWorkspaceAction(
   action: (token: string) => Promise<unknown>,
 ): void {
@@ -448,9 +515,17 @@ function runRemoteWorkspaceAction(
   if (!token) {
     return
   }
-  void action(token).catch(() => {
-    // Keep local state when remote mutation fails.
-  })
+  remoteWorkspaceActionQueue = remoteWorkspaceActionQueue
+    .then(async () => {
+      try {
+        await action(token)
+      } catch {
+        // Keep local state when remote mutation fails.
+      }
+    })
+    .catch(() => {
+      // Keep queue alive even if a previous handler throws unexpectedly.
+    })
 }
 
 function slugifyWorkspaceName(value: string): string {
@@ -556,6 +631,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       updatedAt: nowIso(),
       pinned: false,
       archived: false,
+      auditLogEntries: [],
     }
     const nextWorkspaces = [nextWorkspace, ...state.workspaces]
     const snapshot: WorkspaceStateSnapshot = {
@@ -594,6 +670,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       updatedAt: nowIso(),
       pinned: false,
       archived: false,
+      auditLogEntries: [],
     }
     const nextWorkspaces = [nextWorkspace, ...state.workspaces]
     const snapshot: WorkspaceStateSnapshot = {
@@ -640,6 +717,26 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
             workspace.pendingCollaboratorRoles,
             nextPendingCollaborators,
           )
+      const existingAuditLogEntries = normalizeWorkspaceAuditEntries(
+        workspace.auditLogEntries,
+        workspace.id,
+      )
+      const nextAuditLogEntries = (() => {
+        if (!patch.auditLogEntries) {
+          return existingAuditLogEntries
+        }
+        const requestedAuditLogEntries = normalizeWorkspaceAuditEntries(
+          patch.auditLogEntries,
+          cleanWorkspaceId,
+        )
+        const existingAuditEntryIds = new Set(
+          existingAuditLogEntries.map((entry) => trimValue(entry.id)),
+        )
+        const newAuditEntries = requestedAuditLogEntries.filter(
+          (entry) => !existingAuditEntryIds.has(trimValue(entry.id)),
+        )
+        return [...newAuditEntries, ...existingAuditLogEntries]
+      })()
       return {
         ...workspace,
         ...patch,
@@ -649,6 +746,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         collaboratorRoles: nextCollaboratorRoles,
         pendingCollaboratorRoles: nextPendingCollaboratorRoles,
         removedCollaborators: nextRemovedCollaborators,
+        auditLogEntries: nextAuditLogEntries,
       }
     })
     persistSnapshotLocal({
@@ -795,11 +893,25 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       return null
     }
 
-    let acceptedWorkspaceId = request.workspaceId
-    if (state.workspaces.some((workspace) => workspace.id === acceptedWorkspaceId)) {
-      acceptedWorkspaceId = `${acceptedWorkspaceId}-${Date.now().toString(36)}`
+    const requestedWorkspaceId = request.workspaceId
+    const existingWorkspaceIndex = state.workspaces.findIndex(
+      (workspace) => workspace.id === requestedWorkspaceId,
+    )
+    const existingWorkspace = existingWorkspaceIndex >= 0
+      ? state.workspaces[existingWorkspaceIndex]
+      : null
+    const canReuseExistingWorkspace = Boolean(
+      existingWorkspace &&
+      normalizeName(existingWorkspace.ownerName).toLowerCase() ===
+        normalizeName(request.authorName).toLowerCase(),
+    )
+
+    let acceptedWorkspaceId = requestedWorkspaceId
+    if (existingWorkspace && !canReuseExistingWorkspace) {
+      acceptedWorkspaceId = `${requestedWorkspaceId}-${Date.now().toString(36)}`
     }
 
+    const acceptedAt = nowIso()
     const nextWorkspace: WorkspaceRecord = {
       id: acceptedWorkspaceId,
       name: request.workspaceName,
@@ -813,11 +925,25 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       removedCollaborators: [],
       version: '0.1',
       health: 'amber',
-      updatedAt: nowIso(),
+      updatedAt: acceptedAt,
       pinned: false,
       archived: false,
+      auditLogEntries: [
+        {
+          id: `${acceptedWorkspaceId}-audit-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+          workspaceId: acceptedWorkspaceId,
+          category: 'invitation_decisions',
+          message: `${currentCollaboratorName()} collaborator invitation status switched from pending to accepted by ${currentCollaboratorName()} as ${normalizeCollaboratorRole(request.collaboratorRole)}.`,
+          createdAt: acceptedAt,
+        },
+      ],
     }
-    const nextWorkspaces = [nextWorkspace, ...state.workspaces]
+    let nextWorkspaces = [...state.workspaces]
+    if (canReuseExistingWorkspace && existingWorkspaceIndex >= 0) {
+      nextWorkspaces[existingWorkspaceIndex] = nextWorkspace
+    } else {
+      nextWorkspaces = [nextWorkspace, ...nextWorkspaces]
+    }
     const nextAuthorRequests = state.authorRequests.filter((item) => item.id !== cleanRequestId)
     persistSnapshotLocal({
       workspaces: nextWorkspaces,
@@ -850,5 +976,63 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     })
     set({ authorRequests: nextAuthorRequests })
     runRemoteWorkspaceAction((token) => declineWorkspaceAuthorRequestApi(token, cleanRequestId))
+  },
+  cancelWorkspaceInvitation: (invitationId) => {
+    const cleanInvitationId = trimValue(invitationId)
+    if (!cleanInvitationId) {
+      return null
+    }
+    const state = get()
+    const invitation = state.invitationsSent.find((item) => item.id === cleanInvitationId)
+    if (!invitation || invitation.status !== 'pending') {
+      return null
+    }
+
+    const inviteeKey = normalizeName(invitation.inviteeName).toLowerCase()
+    const nextInvitationsSent = state.invitationsSent.map((item) =>
+      item.id === cleanInvitationId
+        ? { ...item, status: 'declined' as const }
+        : item,
+    )
+    const nextWorkspaces = state.workspaces.map((workspace) => {
+      if (workspace.id !== invitation.workspaceId) {
+        return workspace
+      }
+      const nextPendingCollaborators = normalizePendingCollaborators(
+        (workspace.pendingCollaborators || []).filter(
+          (name) => normalizeName(name).toLowerCase() !== inviteeKey,
+        ),
+        workspace.collaborators,
+        workspace.removedCollaborators,
+      )
+      const nextPendingCollaboratorRoles = normalizeCollaboratorRoles(
+        Object.fromEntries(
+          Object.entries(workspace.pendingCollaboratorRoles || {}).filter(
+            ([name]) => normalizeName(name).toLowerCase() !== inviteeKey,
+          ),
+        ),
+        nextPendingCollaborators,
+      )
+      return {
+        ...workspace,
+        pendingCollaborators: nextPendingCollaborators,
+        pendingCollaboratorRoles: nextPendingCollaboratorRoles,
+        updatedAt: nowIso(),
+      }
+    })
+    persistSnapshotLocal({
+      workspaces: nextWorkspaces,
+      activeWorkspaceId: state.activeWorkspaceId,
+      authorRequests: state.authorRequests,
+      invitationsSent: nextInvitationsSent,
+    })
+    set({
+      workspaces: nextWorkspaces,
+      invitationsSent: nextInvitationsSent,
+    })
+    runRemoteWorkspaceAction((token) =>
+      updateWorkspaceInvitationStatusApi(token, cleanInvitationId, 'declined'),
+    )
+    return nextInvitationsSent.find((item) => item.id === cleanInvitationId) || null
   },
 }))

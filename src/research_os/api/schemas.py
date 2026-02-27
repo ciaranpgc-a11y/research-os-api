@@ -2147,6 +2147,16 @@ class WorkspaceInboxStateUpdateRequest(BaseModel):
     reads: dict[str, dict[str, str]] = Field(default_factory=dict)
 
 
+class WorkspaceAuditLogEntryResponse(BaseModel):
+    id: str
+    workspace_id: str
+    category: Literal["collaborator_changes", "invitation_decisions"] = (
+        "collaborator_changes"
+    )
+    message: str
+    created_at: str
+
+
 class WorkspaceRecordResponse(BaseModel):
     id: str
     name: str
@@ -2165,6 +2175,7 @@ class WorkspaceRecordResponse(BaseModel):
     updated_at: str
     pinned: bool = False
     archived: bool = False
+    audit_log_entries: list[WorkspaceAuditLogEntryResponse] = Field(default_factory=list)
 
 
 class WorkspaceListResponse(BaseModel):
@@ -2190,6 +2201,7 @@ class WorkspaceCreateRequest(BaseModel):
     updated_at: str | None = None
     pinned: bool = False
     archived: bool = False
+    audit_log_entries: list[WorkspaceAuditLogEntryResponse] = Field(default_factory=list)
 
 
 class WorkspaceUpdateRequest(BaseModel):
@@ -2207,6 +2219,7 @@ class WorkspaceUpdateRequest(BaseModel):
     updated_at: str | None = None
     pinned: bool | None = None
     archived: bool | None = None
+    audit_log_entries: list[WorkspaceAuditLogEntryResponse] | None = None
 
 
 class WorkspaceDeleteResponse(BaseModel):

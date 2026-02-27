@@ -66,6 +66,37 @@ def _auth_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _register_user_and_headers(
+    client: TestClient,
+    *,
+    email: str,
+    password: str = "StrongPassword123",
+    name: str = "Test User",
+) -> dict[str, str]:
+    register_response = client.post(
+        "/v1/auth/register",
+        json={
+            "email": email,
+            "password": password,
+            "name": name,
+        },
+    )
+    if register_response.status_code == 200:
+        token = register_response.json()["session_token"]
+        return _auth_headers(token)
+    assert register_response.status_code == 409
+    login_response = client.post(
+        "/v1/auth/login",
+        json={
+            "email": email,
+            "password": password,
+        },
+    )
+    assert login_response.status_code == 200
+    token = login_response.json()["session_token"]
+    return _auth_headers(token)
+
+
 def _promote_user_to_admin(user_id: str) -> None:
     with session_scope() as session:
         user = session.get(User, user_id)
@@ -113,7 +144,16 @@ def test_draft_methods_returns_generated_draft(monkeypatch) -> None:
     monkeypatch.setattr("research_os.api.app.draft_methods_from_notes", _mock_draft)
 
     with TestClient(app) as client:
-        response = client.post("/draft/methods", json={"notes": "Example notes"})
+        headers = _register_user_and_headers(
+            client,
+            email="draft-methods@example.com",
+            name="Draft Methods User",
+        )
+        response = client.post(
+            "/draft/methods",
+            headers=headers,
+            json={"notes": "Example notes"},
+        )
 
     assert response.status_code == 200
     assert response.json() == {"draft": "Generated methods draft"}
@@ -129,7 +169,16 @@ def test_v1_draft_methods_returns_generated_draft(monkeypatch) -> None:
     monkeypatch.setattr("research_os.api.app.draft_methods_from_notes", _mock_draft)
 
     with TestClient(app) as client:
-        response = client.post("/v1/draft/methods", json={"notes": "Example notes"})
+        headers = _register_user_and_headers(
+            client,
+            email="v1-draft-methods@example.com",
+            name="V1 Draft Methods User",
+        )
+        response = client.post(
+            "/v1/draft/methods",
+            headers=headers,
+            json={"notes": "Example notes"},
+        )
 
     assert response.status_code == 200
     assert response.json() == {"methods": "Generated methods draft"}
@@ -146,8 +195,14 @@ def test_v1_draft_section_returns_generated_draft(monkeypatch) -> None:
     monkeypatch.setattr("research_os.api.app.draft_section_from_notes", _mock_draft)
 
     with TestClient(app) as client:
+        headers = _register_user_and_headers(
+            client,
+            email="v1-draft-section@example.com",
+            name="V1 Draft Section User",
+        )
         response = client.post(
             "/v1/draft/section",
+            headers=headers,
             json={"section": "results", "notes": "Example results notes"},
         )
 
@@ -166,8 +221,14 @@ def test_draft_section_returns_generated_draft(monkeypatch) -> None:
     monkeypatch.setattr("research_os.api.app.draft_section_from_notes", _mock_draft)
 
     with TestClient(app) as client:
+        headers = _register_user_and_headers(
+            client,
+            email="draft-section@example.com",
+            name="Draft Section User",
+        )
         response = client.post(
             "/draft/section",
+            headers=headers,
             json={"section": "discussion", "notes": "Example discussion notes"},
         )
 
@@ -189,7 +250,16 @@ def test_draft_methods_returns_502_on_generation_error(monkeypatch) -> None:
     monkeypatch.setattr("research_os.api.app.draft_methods_from_notes", _mock_fail)
 
     with TestClient(app) as client:
-        response = client.post("/draft/methods", json={"notes": "Example notes"})
+        headers = _register_user_and_headers(
+            client,
+            email="draft-methods-502@example.com",
+            name="Draft Methods 502 User",
+        )
+        response = client.post(
+            "/draft/methods",
+            headers=headers,
+            json={"notes": "Example notes"},
+        )
 
     assert response.status_code == 502
     assert response.json() == {
@@ -212,7 +282,16 @@ def test_v1_draft_methods_returns_502_on_generation_error(monkeypatch) -> None:
     monkeypatch.setattr("research_os.api.app.draft_methods_from_notes", _mock_fail)
 
     with TestClient(app) as client:
-        response = client.post("/v1/draft/methods", json={"notes": "Example notes"})
+        headers = _register_user_and_headers(
+            client,
+            email="v1-draft-methods-502@example.com",
+            name="V1 Draft Methods 502 User",
+        )
+        response = client.post(
+            "/v1/draft/methods",
+            headers=headers,
+            json={"notes": "Example notes"},
+        )
 
     assert response.status_code == 502
     assert response.json() == {
@@ -235,8 +314,14 @@ def test_v1_draft_section_returns_502_on_generation_error(monkeypatch) -> None:
     monkeypatch.setattr("research_os.api.app.draft_section_from_notes", _mock_fail)
 
     with TestClient(app) as client:
+        headers = _register_user_and_headers(
+            client,
+            email="v1-draft-section-502@example.com",
+            name="V1 Draft Section 502 User",
+        )
         response = client.post(
             "/v1/draft/section",
+            headers=headers,
             json={"section": "introduction", "notes": "Example notes"},
         )
 
@@ -254,15 +339,21 @@ def test_v1_create_and_list_projects(monkeypatch, tmp_path) -> None:
     _set_test_environment(monkeypatch, tmp_path)
 
     with TestClient(app) as client:
+        headers = _register_user_and_headers(
+            client,
+            email="projects-user@example.com",
+            name="Projects User",
+        )
         create_response = client.post(
             "/v1/projects",
+            headers=headers,
             json={
                 "title": "Heart Failure Outcomes Cohort",
                 "target_journal": "ehj",
                 "study_type": "cohort",
             },
         )
-        list_response = client.get("/v1/projects")
+        list_response = client.get("/v1/projects", headers=headers)
 
     assert create_response.status_code == 200
     payload = create_response.json()
@@ -353,6 +444,111 @@ def test_v1_library_asset_routes_require_session_token(monkeypatch, tmp_path) ->
     assert patch_response.status_code == 401
     assert rename_response.status_code == 401
     assert download_response.status_code == 401
+
+
+def test_v1_sensitive_planning_routes_require_session_token(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        projects_response = client.get("/v1/projects")
+        data_profile_response = client.post(
+            "/v1/data/profile",
+            json={
+                "asset_ids": [],
+                "sampling": {"max_rows": 10, "max_chars": 1000},
+            },
+        )
+        plan_sections_response = client.post(
+            "/v1/aawe/plan/sections",
+            json={
+                "target_journal": "ehj",
+                "answers": {
+                    "disease_focus": "Heart failure",
+                    "population": "Adults with index HF admission",
+                },
+                "sections": ["introduction", "methods"],
+            },
+        )
+        clarification_response = client.post(
+            "/v1/aawe/plan/clarification-questions",
+            json={
+                "project_title": "HF cohort project",
+                "target_journal": "ehj",
+                "target_journal_label": "European Heart Journal",
+                "research_category": "clinical",
+                "study_type": "cohort",
+                "interpretation_mode": "associative",
+                "article_type": "original_article",
+                "word_length": "3000",
+                "summary_of_research": "Cohort analysis for 90-day readmission.",
+            },
+        )
+        next_question_response = client.post(
+            "/v1/aawe/plan/clarification-question/next",
+            json={
+                "project_title": "HF cohort project",
+                "target_journal": "ehj",
+                "target_journal_label": "European Heart Journal",
+                "research_category": "clinical",
+                "study_type": "cohort",
+                "interpretation_mode": "associative",
+                "article_type": "original_article",
+                "word_length": "3000",
+                "summary_of_research": "Cohort analysis for 90-day readmission.",
+                "history": [],
+                "max_questions": 10,
+                "force_next_question": False,
+            },
+        )
+        edit_section_response = client.post(
+            "/v1/aawe/plan/manuscript-section/edit",
+            json={
+                "section": "introduction",
+                "section_text": "Current section text.",
+                "edit_instruction": "Make this more concise.",
+                "selected_text": "",
+                "project_title": "HF cohort project",
+                "target_journal_label": "European Heart Journal",
+                "research_category": "clinical",
+                "study_type": "cohort",
+                "interpretation_mode": "associative",
+                "article_type": "original_article",
+                "word_length": "3000",
+                "summary_of_research": "Cohort analysis for 90-day readmission.",
+            },
+        )
+        overview_response = client.post(
+            "/v1/aawe/research-overview/suggestions",
+            json={
+                "target_journal": "ehj",
+                "research_category": "clinical",
+                "research_type": "observational",
+                "study_type_options": ["cohort"],
+                "article_type": "original_article",
+                "interpretation_mode": "associative",
+                "summary_of_research": "Cohort analysis for 90-day readmission.",
+            },
+        )
+        draft_section_response = client.post(
+            "/v1/draft/section",
+            json={"section": "results", "notes": "Example notes"},
+        )
+        draft_methods_response = client.post(
+            "/v1/draft/methods",
+            json={"notes": "Example notes"},
+        )
+
+    assert projects_response.status_code == 401
+    assert data_profile_response.status_code == 401
+    assert plan_sections_response.status_code == 401
+    assert clarification_response.status_code == 401
+    assert next_question_response.status_code == 401
+    assert edit_section_response.status_code == 401
+    assert overview_response.status_code == 401
+    assert draft_section_response.status_code == 401
+    assert draft_methods_response.status_code == 401
 
 
 def test_v1_library_asset_routes_ignore_sentinel_project_ids(monkeypatch, tmp_path) -> None:
@@ -3544,6 +3740,206 @@ def test_v1_workspace_granular_endpoints_round_trip(monkeypatch, tmp_path) -> No
         assert list_after_delete.json()["items"] == []
 
 
+def test_v1_workspace_patch_merges_audit_log_entries_instead_of_replacing(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-audit-merge@example.com",
+                "password": "StrongPassword123",
+                "name": "Workspace Owner",
+            },
+        )
+        assert register_response.status_code == 200
+        headers = _auth_headers(register_response.json()["session_token"])
+
+        create_workspace = client.post(
+            "/v1/workspaces",
+            headers=headers,
+            json={
+                "id": "audit-merge-workspace",
+                "name": "Audit merge workspace",
+                "owner_name": "Workspace Owner",
+                "collaborators": ["Invitee User"],
+                "removed_collaborators": [],
+                "collaborator_roles": {"Invitee User": "editor"},
+                "version": "0.1",
+                "health": "amber",
+                "pinned": False,
+                "archived": False,
+            },
+        )
+        assert create_workspace.status_code == 200
+
+        first_patch = client.patch(
+            "/v1/workspaces/audit-merge-workspace",
+            headers=headers,
+            json={
+                "audit_log_entries": [
+                    {
+                        "id": "audit-entry-1",
+                        "workspace_id": "audit-merge-workspace",
+                        "category": "collaborator_changes",
+                        "message": "Invitee User collaborator role switched from editor to reviewer by Workspace Owner (Owner).",
+                        "created_at": "2026-02-27T10:00:00Z",
+                    }
+                ]
+            },
+        )
+        assert first_patch.status_code == 200
+
+        second_patch = client.patch(
+            "/v1/workspaces/audit-merge-workspace",
+            headers=headers,
+            json={
+                "audit_log_entries": [
+                    {
+                        "id": "audit-entry-2",
+                        "workspace_id": "audit-merge-workspace",
+                        "category": "collaborator_changes",
+                        "message": "Invitee User collaborator role switched from reviewer to viewer by Workspace Owner (Owner).",
+                        "created_at": "2026-02-27T10:05:00Z",
+                    }
+                ]
+            },
+        )
+        assert second_patch.status_code == 200
+
+        list_workspaces = client.get("/v1/workspaces", headers=headers)
+        assert list_workspaces.status_code == 200
+        workspace = next(
+            item
+            for item in list_workspaces.json()["items"]
+            if item["id"] == "audit-merge-workspace"
+        )
+        audit_ids = [entry["id"] for entry in workspace.get("audit_log_entries", [])]
+        assert "audit-entry-1" in audit_ids
+        assert "audit-entry-2" in audit_ids
+        audit_messages = [
+            entry["message"] for entry in workspace.get("audit_log_entries", [])
+        ]
+        assert any("from editor to reviewer" in message for message in audit_messages)
+        assert any("from reviewer to viewer" in message for message in audit_messages)
+
+
+def test_v1_workspace_patch_audit_log_entries_are_append_only(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        register_response = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-audit-append-only@example.com",
+                "password": "StrongPassword123",
+                "name": "Workspace Owner",
+            },
+        )
+        assert register_response.status_code == 200
+        headers = _auth_headers(register_response.json()["session_token"])
+
+        create_workspace = client.post(
+            "/v1/workspaces",
+            headers=headers,
+            json={
+                "id": "audit-append-workspace",
+                "name": "Audit append workspace",
+                "owner_name": "Workspace Owner",
+                "collaborators": ["Invitee User"],
+                "removed_collaborators": [],
+                "collaborator_roles": {"Invitee User": "editor"},
+                "version": "0.1",
+                "health": "amber",
+                "pinned": False,
+                "archived": False,
+            },
+        )
+        assert create_workspace.status_code == 200
+
+        seed_patch = client.patch(
+            "/v1/workspaces/audit-append-workspace",
+            headers=headers,
+            json={
+                "audit_log_entries": [
+                    {
+                        "id": "audit-append-1",
+                        "workspace_id": "audit-append-workspace",
+                        "category": "collaborator_changes",
+                        "message": "Invitee User collaborator role switched from editor to reviewer by Workspace Owner (Owner).",
+                        "created_at": "2026-02-27T11:00:00Z",
+                    }
+                ]
+            },
+        )
+        assert seed_patch.status_code == 200
+
+        # Attempt to overwrite existing id and omit all other entries.
+        overwrite_attempt = client.patch(
+            "/v1/workspaces/audit-append-workspace",
+            headers=headers,
+            json={
+                "audit_log_entries": [
+                    {
+                        "id": "audit-append-1",
+                        "workspace_id": "audit-append-workspace",
+                        "category": "collaborator_changes",
+                        "message": "MALICIOUS REWRITE",
+                        "created_at": "2026-02-27T11:05:00Z",
+                    }
+                ]
+            },
+        )
+        assert overwrite_attempt.status_code == 200
+
+        state_after_overwrite = client.get("/v1/workspaces", headers=headers)
+        assert state_after_overwrite.status_code == 200
+        workspace_after_overwrite = next(
+            item
+            for item in state_after_overwrite.json()["items"]
+            if item["id"] == "audit-append-workspace"
+        )
+        entry_after_overwrite = next(
+            entry
+            for entry in workspace_after_overwrite.get("audit_log_entries", [])
+            if entry["id"] == "audit-append-1"
+        )
+        assert "MALICIOUS REWRITE" not in entry_after_overwrite["message"]
+        assert "from editor to reviewer" in entry_after_overwrite["message"]
+
+        append_patch = client.patch(
+            "/v1/workspaces/audit-append-workspace",
+            headers=headers,
+            json={
+                "audit_log_entries": [
+                    {
+                        "id": "audit-append-2",
+                        "workspace_id": "audit-append-workspace",
+                        "category": "collaborator_changes",
+                        "message": "Invitee User collaborator role switched from reviewer to viewer by Workspace Owner (Owner).",
+                        "created_at": "2026-02-27T11:10:00Z",
+                    }
+                ]
+            },
+        )
+        assert append_patch.status_code == 200
+
+        final_state = client.get("/v1/workspaces", headers=headers)
+        assert final_state.status_code == 200
+        final_workspace = next(
+            item
+            for item in final_state.json()["items"]
+            if item["id"] == "audit-append-workspace"
+        )
+        final_ids = [entry["id"] for entry in final_workspace.get("audit_log_entries", [])]
+        assert "audit-append-1" in final_ids
+        assert "audit-append-2" in final_ids
+
+
 def test_v1_workspace_author_request_accept_updates_invitation_status(
     monkeypatch, tmp_path
 ) -> None:
@@ -3631,6 +4027,15 @@ def test_v1_workspace_author_request_accept_updates_invitation_status(
         assert accept_request.json()["workspace"]["collaborator_roles"] == {
             "Invitee User": "reviewer"
         }
+        invitee_audit_messages = [
+            entry["message"]
+            for entry in accept_request.json()["workspace"].get("audit_log_entries", [])
+        ]
+        assert any(
+            "Invitee User collaborator invitation status switched from pending to accepted by Invitee User as reviewer."
+            in message
+            for message in invitee_audit_messages
+        )
 
         owner_invitations = client.get("/v1/workspaces/invitations/sent", headers=owner_headers)
         assert owner_invitations.status_code == 200
@@ -3654,6 +4059,307 @@ def test_v1_workspace_author_request_accept_updates_invitation_status(
         assert "Invitee User" not in owner_workspace["pending_collaborators"]
         assert owner_workspace["pending_collaborator_roles"] == {}
         assert "Invitee User" not in owner_workspace["removed_collaborators"]
+        owner_audit_messages = [
+            entry["message"] for entry in owner_workspace.get("audit_log_entries", [])
+        ]
+        assert any(
+            "Invitee User collaborator invitation status switched from pending to accepted by Invitee User as reviewer."
+            in message
+            for message in owner_audit_messages
+        )
+
+
+def test_v1_workspace_collaborator_audit_logs_are_scoped_by_user(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        owner_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-audit-owner@example.com",
+                "password": "StrongPassword123",
+                "name": "Owner User",
+            },
+        )
+        alpha_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-audit-alpha@example.com",
+                "password": "StrongPassword123",
+                "name": "Invitee Alpha",
+            },
+        )
+        beta_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-audit-beta@example.com",
+                "password": "StrongPassword123",
+                "name": "Invitee Beta",
+            },
+        )
+        assert owner_register.status_code == 200
+        assert alpha_register.status_code == 200
+        assert beta_register.status_code == 200
+        owner_headers = _auth_headers(owner_register.json()["session_token"])
+        alpha_headers = _auth_headers(alpha_register.json()["session_token"])
+        beta_headers = _auth_headers(beta_register.json()["session_token"])
+
+        create_workspace = client.post(
+            "/v1/workspaces",
+            headers=owner_headers,
+            json={
+                "id": "audit-scope-workspace",
+                "name": "Audit scope workspace",
+                "owner_name": "Owner User",
+                "collaborators": [],
+                "removed_collaborators": [],
+                "version": "0.1",
+                "health": "amber",
+                "pinned": False,
+                "archived": False,
+            },
+        )
+        assert create_workspace.status_code == 200
+
+        invite_alpha = client.post(
+            "/v1/workspaces/invitations/sent",
+            headers=owner_headers,
+            json={
+                "workspace_id": "audit-scope-workspace",
+                "invitee_name": "Invitee Alpha",
+                "role": "reviewer",
+                "status": "pending",
+            },
+        )
+        assert invite_alpha.status_code == 200
+
+        invite_beta = client.post(
+            "/v1/workspaces/invitations/sent",
+            headers=owner_headers,
+            json={
+                "workspace_id": "audit-scope-workspace",
+                "invitee_name": "Invitee Beta",
+                "role": "viewer",
+                "status": "pending",
+            },
+        )
+        assert invite_beta.status_code == 200
+
+        alpha_requests = client.get("/v1/workspaces/author-requests", headers=alpha_headers)
+        beta_requests = client.get("/v1/workspaces/author-requests", headers=beta_headers)
+        assert alpha_requests.status_code == 200
+        assert beta_requests.status_code == 200
+        alpha_request_id = alpha_requests.json()["items"][0]["id"]
+        beta_request_id = beta_requests.json()["items"][0]["id"]
+
+        alpha_accept = client.post(
+            f"/v1/workspaces/author-requests/{alpha_request_id}/accept",
+            headers=alpha_headers,
+            json={"collaborator_name": "Invitee Alpha"},
+        )
+        beta_accept = client.post(
+            f"/v1/workspaces/author-requests/{beta_request_id}/accept",
+            headers=beta_headers,
+            json={"collaborator_name": "Invitee Beta"},
+        )
+        assert alpha_accept.status_code == 200
+        assert beta_accept.status_code == 200
+
+        owner_workspaces = client.get("/v1/workspaces", headers=owner_headers)
+        assert owner_workspaces.status_code == 200
+        owner_workspace = next(
+            item
+            for item in owner_workspaces.json()["items"]
+            if item["id"] == "audit-scope-workspace"
+        )
+        owner_messages = [
+            entry["message"] for entry in owner_workspace.get("audit_log_entries", [])
+        ]
+        assert any("Invitee Alpha" in message for message in owner_messages)
+        assert any("Invitee Beta" in message for message in owner_messages)
+
+        alpha_workspaces = client.get("/v1/workspaces", headers=alpha_headers)
+        assert alpha_workspaces.status_code == 200
+        alpha_workspace = next(
+            item
+            for item in alpha_workspaces.json()["items"]
+            if item["id"] == "audit-scope-workspace"
+        )
+        alpha_messages = [
+            entry["message"] for entry in alpha_workspace.get("audit_log_entries", [])
+        ]
+        assert len(alpha_messages) >= 1
+        assert all("Invitee Alpha" in message for message in alpha_messages)
+        assert all("Invitee Beta" not in message for message in alpha_messages)
+
+        beta_workspaces = client.get("/v1/workspaces", headers=beta_headers)
+        assert beta_workspaces.status_code == 200
+        beta_workspace = next(
+            item
+            for item in beta_workspaces.json()["items"]
+            if item["id"] == "audit-scope-workspace"
+        )
+        beta_messages = [
+            entry["message"] for entry in beta_workspace.get("audit_log_entries", [])
+        ]
+        assert len(beta_messages) >= 1
+        assert all("Invitee Beta" in message for message in beta_messages)
+        assert all("Invitee Alpha" not in message for message in beta_messages)
+
+
+def test_v1_workspace_removed_collaborator_archives_for_invitee_and_reaccept_reuses_workspace(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        owner_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-restore-owner@example.com",
+                "password": "StrongPassword123",
+                "name": "Owner User",
+            },
+        )
+        invitee_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-restore-invitee@example.com",
+                "password": "StrongPassword123",
+                "name": "Invitee User",
+            },
+        )
+        assert owner_register.status_code == 200
+        assert invitee_register.status_code == 200
+        owner_headers = _auth_headers(owner_register.json()["session_token"])
+        invitee_headers = _auth_headers(invitee_register.json()["session_token"])
+
+        create_workspace = client.post(
+            "/v1/workspaces",
+            headers=owner_headers,
+            json={
+                "id": "restore-collab-workspace",
+                "name": "Restore collaborator workspace",
+                "owner_name": "Owner User",
+                "collaborators": [],
+                "removed_collaborators": [],
+                "version": "0.1",
+                "health": "amber",
+                "pinned": False,
+                "archived": False,
+            },
+        )
+        assert create_workspace.status_code == 200
+
+        initial_invitation = client.post(
+            "/v1/workspaces/invitations/sent",
+            headers=owner_headers,
+            json={
+                "workspace_id": "restore-collab-workspace",
+                "invitee_name": "Invitee User",
+                "role": "viewer",
+                "status": "pending",
+            },
+        )
+        assert initial_invitation.status_code == 200
+
+        invitee_requests = client.get("/v1/workspaces/author-requests", headers=invitee_headers)
+        assert invitee_requests.status_code == 200
+        first_request_id = invitee_requests.json()["items"][0]["id"]
+
+        first_accept = client.post(
+            f"/v1/workspaces/author-requests/{first_request_id}/accept",
+            headers=invitee_headers,
+            json={"collaborator_name": "Invitee User"},
+        )
+        assert first_accept.status_code == 200
+        assert first_accept.json()["workspace"]["id"] == "restore-collab-workspace"
+
+        remove_collaborator = client.patch(
+            "/v1/workspaces/restore-collab-workspace",
+            headers=owner_headers,
+            json={"removed_collaborators": ["Invitee User"]},
+        )
+        assert remove_collaborator.status_code == 200
+
+        invitee_after_remove = client.get("/v1/workspaces", headers=invitee_headers)
+        assert invitee_after_remove.status_code == 200
+        invitee_removed_workspace = next(
+            item
+            for item in invitee_after_remove.json()["items"]
+            if item["id"] == "restore-collab-workspace"
+        )
+        assert invitee_removed_workspace["archived"] is True
+        assert invitee_removed_workspace["removed_collaborators"] == ["Invitee User"]
+
+        restore_invitation = client.post(
+            "/v1/workspaces/invitations/sent",
+            headers=owner_headers,
+            json={
+                "workspace_id": "restore-collab-workspace",
+                "invitee_name": "Invitee User",
+                "role": "reviewer",
+                "status": "pending",
+            },
+        )
+        assert restore_invitation.status_code == 200
+        restore_invitation_id = restore_invitation.json()["id"]
+
+        invitee_restore_requests = client.get(
+            "/v1/workspaces/author-requests", headers=invitee_headers
+        )
+        assert invitee_restore_requests.status_code == 200
+        assert len(invitee_restore_requests.json()["items"]) == 1
+        assert invitee_restore_requests.json()["items"][0]["collaborator_role"] == "reviewer"
+        restore_request_id = invitee_restore_requests.json()["items"][0]["id"]
+
+        restore_accept = client.post(
+            f"/v1/workspaces/author-requests/{restore_request_id}/accept",
+            headers=invitee_headers,
+            json={"collaborator_name": "Invitee User"},
+        )
+        assert restore_accept.status_code == 200
+        assert restore_accept.json()["workspace"]["id"] == "restore-collab-workspace"
+
+        invitee_after_restore = client.get("/v1/workspaces", headers=invitee_headers)
+        assert invitee_after_restore.status_code == 200
+        restored_workspace_ids = [
+            item["id"]
+            for item in invitee_after_restore.json()["items"]
+            if item["id"] == "restore-collab-workspace"
+        ]
+        assert len(restored_workspace_ids) == 1
+        restored_workspace = next(
+            item
+            for item in invitee_after_restore.json()["items"]
+            if item["id"] == "restore-collab-workspace"
+        )
+        assert restored_workspace["archived"] is False
+        assert restored_workspace["removed_collaborators"] == []
+        assert restored_workspace["collaborator_roles"] == {"Invitee User": "reviewer"}
+
+        owner_after_restore = client.get("/v1/workspaces", headers=owner_headers)
+        assert owner_after_restore.status_code == 200
+        owner_workspace = next(
+            item
+            for item in owner_after_restore.json()["items"]
+            if item["id"] == "restore-collab-workspace"
+        )
+        assert owner_workspace["pending_collaborators"] == []
+        assert owner_workspace["pending_collaborator_roles"] == {}
+        assert owner_workspace["removed_collaborators"] == []
+        assert owner_workspace["collaborator_roles"] == {"Invitee User": "reviewer"}
+
+        owner_invitations = client.get("/v1/workspaces/invitations/sent", headers=owner_headers)
+        assert owner_invitations.status_code == 200
+        matched_invitation = next(
+            item
+            for item in owner_invitations.json()["items"]
+            if item["id"] == restore_invitation_id
+        )
+        assert matched_invitation["status"] == "accepted"
 
 
 def test_v1_workspace_invitation_requires_workspace_owner(
@@ -4002,6 +4708,330 @@ def test_v1_workspace_inbox_messages_are_shared_with_workspace_collaborators(
         )
 
 
+def test_v1_workspace_inbox_removed_collaborator_can_view_history_but_not_new_changes(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        owner_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-inbox-remove-owner@example.com",
+                "password": "StrongPassword123",
+                "name": "Owner User",
+            },
+        )
+        invitee_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-inbox-remove-invitee@example.com",
+                "password": "StrongPassword123",
+                "name": "Invitee User",
+            },
+        )
+        assert owner_register.status_code == 200
+        assert invitee_register.status_code == 200
+        owner_headers = _auth_headers(owner_register.json()["session_token"])
+        invitee_headers = _auth_headers(invitee_register.json()["session_token"])
+
+        create_workspace = client.post(
+            "/v1/workspaces",
+            headers=owner_headers,
+            json={
+                "id": "inbox-remove-workspace",
+                "name": "Inbox remove workspace",
+                "owner_name": "Owner User",
+                "collaborators": [],
+                "removed_collaborators": [],
+                "version": "0.1",
+                "health": "amber",
+                "pinned": False,
+                "archived": False,
+            },
+        )
+        assert create_workspace.status_code == 200
+
+        create_invitation = client.post(
+            "/v1/workspaces/invitations/sent",
+            headers=owner_headers,
+            json={
+                "workspace_id": "inbox-remove-workspace",
+                "invitee_name": "Invitee User",
+                "role": "editor",
+                "status": "pending",
+            },
+        )
+        assert create_invitation.status_code == 200
+
+        invitee_requests = client.get(
+            "/v1/workspaces/author-requests", headers=invitee_headers
+        )
+        assert invitee_requests.status_code == 200
+        request_id = invitee_requests.json()["items"][0]["id"]
+        accept_request = client.post(
+            f"/v1/workspaces/author-requests/{request_id}/accept",
+            headers=invitee_headers,
+            json={"collaborator_name": "Invitee User"},
+        )
+        assert accept_request.status_code == 200
+
+        owner_before_removal = client.post(
+            "/v1/workspaces/inbox/messages",
+            headers=owner_headers,
+            json={
+                "id": "msg-owner-before-removal",
+                "workspace_id": "inbox-remove-workspace",
+                "sender_name": "Owner User",
+                "encrypted_body": "ciphertext-before",
+                "iv": "iv-before",
+                "created_at": "2026-02-26T09:00:00Z",
+            },
+        )
+        assert owner_before_removal.status_code == 200
+
+        invitee_history = client.get(
+            "/v1/workspaces/inbox/messages",
+            headers=invitee_headers,
+            params={"workspace_id": "inbox-remove-workspace"},
+        )
+        assert invitee_history.status_code == 200
+        assert any(
+            item["id"] == "msg-owner-before-removal"
+            for item in invitee_history.json()["items"]
+        )
+
+        remove_collaborator = client.patch(
+            "/v1/workspaces/inbox-remove-workspace",
+            headers=owner_headers,
+            json={"removed_collaborators": ["Invitee User"]},
+        )
+        assert remove_collaborator.status_code == 200
+
+        invitee_write_after_remove = client.post(
+            "/v1/workspaces/inbox/messages",
+            headers=invitee_headers,
+            json={
+                "id": "msg-invitee-after-removal",
+                "workspace_id": "inbox-remove-workspace",
+                "sender_name": "Invitee User",
+                "encrypted_body": "ciphertext-invitee-after-removal",
+                "iv": "iv-invitee-after-removal",
+                "created_at": "2026-02-26T10:00:00Z",
+            },
+        )
+        assert invitee_write_after_remove.status_code == 404
+
+        owner_after_removal = client.post(
+            "/v1/workspaces/inbox/messages",
+            headers=owner_headers,
+            json={
+                "id": "msg-owner-after-removal",
+                "workspace_id": "inbox-remove-workspace",
+                "sender_name": "Owner User",
+                "encrypted_body": "ciphertext-after",
+                "iv": "iv-after",
+                "created_at": "2026-02-26T10:05:00Z",
+            },
+        )
+        assert owner_after_removal.status_code == 200
+
+        invitee_after_remove = client.get(
+            "/v1/workspaces/inbox/messages",
+            headers=invitee_headers,
+            params={"workspace_id": "inbox-remove-workspace"},
+        )
+        assert invitee_after_remove.status_code == 200
+        invitee_message_ids = {
+            item["id"] for item in invitee_after_remove.json()["items"]
+        }
+        assert "msg-owner-before-removal" in invitee_message_ids
+        assert "msg-owner-after-removal" not in invitee_message_ids
+
+        owner_workspaces = client.get("/v1/workspaces", headers=owner_headers)
+        assert owner_workspaces.status_code == 200
+        owner_workspace = next(
+            item
+            for item in owner_workspaces.json()["items"]
+            if item["id"] == "inbox-remove-workspace"
+        )
+        owner_audit_messages = [
+            entry["message"] for entry in owner_workspace.get("audit_log_entries", [])
+        ]
+        assert any(
+            "Inbox message logged: id msg-owner-before-removal"
+            in message
+            for message in owner_audit_messages
+        )
+        assert any(
+            "Inbox message logged: id msg-owner-after-removal"
+            in message
+            for message in owner_audit_messages
+        )
+
+
+def test_v1_workspace_inbox_reaccept_clears_prior_history_for_readded_collaborator(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        owner_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-inbox-readd-owner@example.com",
+                "password": "StrongPassword123",
+                "name": "Owner User",
+            },
+        )
+        invitee_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-inbox-readd-invitee@example.com",
+                "password": "StrongPassword123",
+                "name": "Invitee User",
+            },
+        )
+        assert owner_register.status_code == 200
+        assert invitee_register.status_code == 200
+        owner_headers = _auth_headers(owner_register.json()["session_token"])
+        invitee_headers = _auth_headers(invitee_register.json()["session_token"])
+
+        create_workspace = client.post(
+            "/v1/workspaces",
+            headers=owner_headers,
+            json={
+                "id": "inbox-readd-workspace",
+                "name": "Inbox readd workspace",
+                "owner_name": "Owner User",
+                "collaborators": [],
+                "removed_collaborators": [],
+                "version": "0.1",
+                "health": "amber",
+                "pinned": False,
+                "archived": False,
+            },
+        )
+        assert create_workspace.status_code == 200
+
+        initial_invite = client.post(
+            "/v1/workspaces/invitations/sent",
+            headers=owner_headers,
+            json={
+                "workspace_id": "inbox-readd-workspace",
+                "invitee_name": "Invitee User",
+                "role": "viewer",
+                "status": "pending",
+            },
+        )
+        assert initial_invite.status_code == 200
+
+        first_requests = client.get(
+            "/v1/workspaces/author-requests", headers=invitee_headers
+        )
+        assert first_requests.status_code == 200
+        first_request_id = first_requests.json()["items"][0]["id"]
+        first_accept = client.post(
+            f"/v1/workspaces/author-requests/{first_request_id}/accept",
+            headers=invitee_headers,
+            json={"collaborator_name": "Invitee User"},
+        )
+        assert first_accept.status_code == 200
+
+        owner_before_remove = client.post(
+            "/v1/workspaces/inbox/messages",
+            headers=owner_headers,
+            json={
+                "id": "msg-before-remove",
+                "workspace_id": "inbox-readd-workspace",
+                "sender_name": "Owner User",
+                "encrypted_body": "ciphertext-before-remove",
+                "iv": "iv-before-remove",
+                "created_at": "2026-02-26T11:00:00Z",
+            },
+        )
+        assert owner_before_remove.status_code == 200
+
+        remove_collaborator = client.patch(
+            "/v1/workspaces/inbox-readd-workspace",
+            headers=owner_headers,
+            json={"removed_collaborators": ["Invitee User"]},
+        )
+        assert remove_collaborator.status_code == 200
+
+        owner_while_removed = client.post(
+            "/v1/workspaces/inbox/messages",
+            headers=owner_headers,
+            json={
+                "id": "msg-while-removed",
+                "workspace_id": "inbox-readd-workspace",
+                "sender_name": "Owner User",
+                "encrypted_body": "ciphertext-while-removed",
+                "iv": "iv-while-removed",
+                "created_at": "2026-02-26T11:30:00Z",
+            },
+        )
+        assert owner_while_removed.status_code == 200
+
+        restore_invite = client.post(
+            "/v1/workspaces/invitations/sent",
+            headers=owner_headers,
+            json={
+                "workspace_id": "inbox-readd-workspace",
+                "invitee_name": "Invitee User",
+                "role": "reviewer",
+                "status": "pending",
+            },
+        )
+        assert restore_invite.status_code == 200
+
+        restore_requests = client.get(
+            "/v1/workspaces/author-requests", headers=invitee_headers
+        )
+        assert restore_requests.status_code == 200
+        assert len(restore_requests.json()["items"]) == 1
+        restore_request_id = restore_requests.json()["items"][0]["id"]
+        restore_accept = client.post(
+            f"/v1/workspaces/author-requests/{restore_request_id}/accept",
+            headers=invitee_headers,
+            json={"collaborator_name": "Invitee User"},
+        )
+        assert restore_accept.status_code == 200
+
+        invitee_after_reaccept = client.get(
+            "/v1/workspaces/inbox/messages",
+            headers=invitee_headers,
+            params={"workspace_id": "inbox-readd-workspace"},
+        )
+        assert invitee_after_reaccept.status_code == 200
+        assert invitee_after_reaccept.json()["items"] == []
+
+        owner_after_reaccept = client.post(
+            "/v1/workspaces/inbox/messages",
+            headers=owner_headers,
+            json={
+                "id": "msg-after-reaccept",
+                "workspace_id": "inbox-readd-workspace",
+                "sender_name": "Owner User",
+                "encrypted_body": "ciphertext-after-reaccept",
+                "iv": "iv-after-reaccept",
+                "created_at": "2026-02-26T12:00:00Z",
+            },
+        )
+        assert owner_after_reaccept.status_code == 200
+
+        invitee_post_reaccept = client.get(
+            "/v1/workspaces/inbox/messages",
+            headers=invitee_headers,
+            params={"workspace_id": "inbox-readd-workspace"},
+        )
+        assert invitee_post_reaccept.status_code == 200
+        invitee_ids = {item["id"] for item in invitee_post_reaccept.json()["items"]}
+        assert "msg-before-remove" not in invitee_ids
+        assert "msg-while-removed" not in invitee_ids
+        assert "msg-after-reaccept" in invitee_ids
+
+
 def test_v1_workspace_run_context_requires_session_token(
     monkeypatch, tmp_path
 ) -> None:
@@ -4221,6 +5251,116 @@ def test_v1_workspace_author_request_decline_updates_invitation_status(
         assert matched["status"] == "declined"
 
 
+def test_v1_workspace_owner_cancel_pending_invitation_removes_invitee_request(
+    monkeypatch, tmp_path
+) -> None:
+    _set_test_environment(monkeypatch, tmp_path)
+
+    with TestClient(app) as client:
+        owner_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-owner-cancel@example.com",
+                "password": "StrongPassword123",
+                "name": "Owner User",
+            },
+        )
+        invitee_register = client.post(
+            "/v1/auth/register",
+            json={
+                "email": "workspace-invitee-cancel@example.com",
+                "password": "StrongPassword123",
+                "name": "Invitee User",
+            },
+        )
+        assert owner_register.status_code == 200
+        assert invitee_register.status_code == 200
+        owner_headers = _auth_headers(owner_register.json()["session_token"])
+        invitee_headers = _auth_headers(invitee_register.json()["session_token"])
+
+        create_workspace = client.post(
+            "/v1/workspaces",
+            headers=owner_headers,
+            json={
+                "id": "cancel-rhc-paper",
+                "name": "Cancel RHC paper",
+                "owner_name": "Owner User",
+                "collaborators": [],
+                "removed_collaborators": [],
+                "version": "0.1",
+                "health": "amber",
+                "pinned": False,
+                "archived": False,
+            },
+        )
+        assert create_workspace.status_code == 200
+
+        create_invitation = client.post(
+            "/v1/workspaces/invitations/sent",
+            headers=owner_headers,
+            json={
+                "workspace_id": "cancel-rhc-paper",
+                "invitee_name": "Invitee User",
+                "role": "editor",
+                "status": "pending",
+            },
+        )
+        assert create_invitation.status_code == 200
+        invitation_id = create_invitation.json()["id"]
+
+        invitee_requests = client.get("/v1/workspaces/author-requests", headers=invitee_headers)
+        assert invitee_requests.status_code == 200
+        assert len(invitee_requests.json()["items"]) == 1
+        request_id = invitee_requests.json()["items"][0]["id"]
+
+        cancel_invitation = client.patch(
+            f"/v1/workspaces/invitations/sent/{invitation_id}",
+            headers=owner_headers,
+            json={"status": "declined"},
+        )
+        assert cancel_invitation.status_code == 200
+        assert cancel_invitation.json()["status"] == "declined"
+
+        owner_invitations = client.get("/v1/workspaces/invitations/sent", headers=owner_headers)
+        assert owner_invitations.status_code == 200
+        matched = next(
+            item
+            for item in owner_invitations.json()["items"]
+            if item["id"] == invitation_id
+        )
+        assert matched["status"] == "declined"
+
+        owner_workspaces = client.get("/v1/workspaces", headers=owner_headers)
+        assert owner_workspaces.status_code == 200
+        owner_workspace = next(
+            item
+            for item in owner_workspaces.json()["items"]
+            if item["id"] == "cancel-rhc-paper"
+        )
+        assert "Invitee User" not in owner_workspace["pending_collaborators"]
+        assert owner_workspace["pending_collaborator_roles"] == {}
+        owner_audit_messages = [
+            entry["message"] for entry in owner_workspace.get("audit_log_entries", [])
+        ]
+        assert any(
+            "Invitee User collaborator invitation status switched from pending to declined by Owner User as editor."
+            in message
+            for message in owner_audit_messages
+        )
+
+        invitee_requests_after = client.get("/v1/workspaces/author-requests", headers=invitee_headers)
+        assert invitee_requests_after.status_code == 200
+        assert invitee_requests_after.json()["items"] == []
+
+        accept_cancelled = client.post(
+            f"/v1/workspaces/author-requests/{request_id}/accept",
+            headers=invitee_headers,
+            json={"collaborator_name": "Invitee User"},
+        )
+        assert accept_cancelled.status_code == 404
+        assert "was not found" in accept_cancelled.json()["error"]["detail"]
+
+
 def test_v1_workspace_inbox_websocket_relays_typing_events(
     monkeypatch, tmp_path
 ) -> None:
@@ -4289,11 +5429,17 @@ def test_v1_workspace_inbox_websocket_relays_typing_events(
         )
         assert accept_request.status_code == 200
 
-        ws_url_a = f"/v1/workspaces/inbox/ws?workspace_id=hf-registry&token={token_a}"
-        ws_url_b = f"/v1/workspaces/inbox/ws?workspace_id=hf-registry&token={token_b}"
+        ws_url_a = "/v1/workspaces/inbox/ws?workspace_id=hf-registry"
+        ws_url_b = "/v1/workspaces/inbox/ws?workspace_id=hf-registry"
 
-        with client.websocket_connect(ws_url_a) as ws_a:
-            with client.websocket_connect(ws_url_b) as ws_b:
+        with client.websocket_connect(
+            ws_url_a,
+            subprotocols=["aawe-realtime-v1", f"aawe-session.{token_a}"],
+        ) as ws_a:
+            with client.websocket_connect(
+                ws_url_b,
+                subprotocols=["aawe-realtime-v1", f"aawe-session.{token_b}"],
+            ) as ws_b:
                 presence_event = ws_a.receive_json()
                 assert presence_event["type"] == "presence"
                 assert presence_event["workspace_id"] == "hf-registry"

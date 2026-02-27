@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '@/lib/api'
-import { getAuthAccountKeyHint } from '@/lib/auth-session'
+import { getAuthAccountKeyHint, getAuthSessionToken } from '@/lib/auth-session'
 import type { ApiErrorPayload } from '@/types/insight'
 import type { QCRunResponse } from '@/types/qc-run'
 import type {
@@ -53,8 +53,9 @@ async function parseApiError(response: Response, fallback: string): Promise<stri
   }
 }
 
-function authHeaders(token: string): Record<string, string> {
-  const clean = token.trim()
+function authHeaders(token?: string): Record<string, string> {
+  const explicitToken = String(token || '').trim()
+  const clean = explicitToken || getAuthSessionToken().trim()
   const accountKeyHint = getAuthAccountKeyHint()
   const headers: Record<string, string> = {}
   if (accountKeyHint) {
@@ -485,10 +486,11 @@ export async function planSections(input: {
   targetJournal: string
   answers: Record<string, string>
   sections: string[]
+  token?: string
 }): Promise<SectionPlanPayload> {
   const response = await fetch(`${API_BASE_URL}/v1/aawe/plan/sections`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(input.token), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       target_journal: input.targetJournal,
       answers: input.answers,
@@ -511,10 +513,11 @@ export async function fetchPlanClarificationQuestions(input: {
   articleType: string
   wordLength: string
   summaryOfResearch: string
+  token?: string
 }): Promise<PlanClarificationQuestionsPayload> {
   const response = await fetch(`${API_BASE_URL}/v1/aawe/plan/clarification-questions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(input.token), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       project_title: input.projectTitle,
       target_journal: input.targetJournal,
@@ -550,10 +553,11 @@ export async function fetchNextPlanClarificationQuestion(input: {
   history: PlanClarificationHistoryItem[]
   maxQuestions?: number
   forceNextQuestion?: boolean
+  token?: string
 }): Promise<PlanClarificationNextQuestionPayload> {
   const response = await fetch(`${API_BASE_URL}/v1/aawe/plan/clarification-question/next`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(input.token), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       project_title: input.projectTitle,
       target_journal: input.targetJournal,
@@ -592,10 +596,11 @@ export async function editPlanManuscriptSection(input: {
   articleType: string
   wordLength: string
   summaryOfResearch: string
+  token?: string
 }): Promise<PlanSectionEditPayload> {
   const response = await fetch(`${API_BASE_URL}/v1/aawe/plan/manuscript-section/edit`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(input.token), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       section: input.section,
       section_text: input.sectionText,
@@ -625,12 +630,13 @@ export async function fetchResearchOverviewSuggestions(input: {
   articleType: string
   interpretationMode: string
   summaryOfResearch: string
+  token?: string
 }): Promise<ResearchOverviewSuggestionsPayload> {
   let response: Response
   try {
     response = await fetch(`${API_BASE_URL}/v1/aawe/research-overview/suggestions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...authHeaders(input.token), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         target_journal: input.targetJournal,
         research_category: input.researchCategory,

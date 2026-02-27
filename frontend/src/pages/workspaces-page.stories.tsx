@@ -9,7 +9,6 @@ import {
   type WorkspaceInvitationSent,
   type WorkspaceRecord,
 } from '@/store/use-workspace-store'
-import type { CollaboratorPayload } from '@/types/impact'
 import type { LibraryAssetRecord } from '@/types/study-core'
 
 import { WorkspacesPage } from './workspaces-page'
@@ -162,285 +161,6 @@ const defaultFixture: WorkspacesPageFixture = {
   libraryAssets: defaultLibraryAssets,
 }
 
-const mixedPortfolioFixture: WorkspacesPageFixture = {
-  workspaces: [
-    {
-      id: 'hf-registry',
-      name: 'HF Registry Manuscript',
-      ownerName: 'Ciaran Clarke',
-      collaborators: ['A. Patel'],
-      removedCollaborators: [],
-      pendingCollaborators: [],
-      collaboratorRoles: {},
-      pendingCollaboratorRoles: {},
-      version: '0.4',
-      health: 'amber',
-      updatedAt: '2026-02-25T15:57:00Z',
-      pinned: true,
-      archived: false,
-    },
-    {
-      id: 'af-screening',
-      name: 'AF Screening Cohort',
-      ownerName: 'Ciaran Clarke',
-      collaborators: ['S. Roy', 'L. Santos'],
-      removedCollaborators: ['L. Santos'],
-      pendingCollaborators: [],
-      collaboratorRoles: {},
-      pendingCollaboratorRoles: {},
-      version: '0.9',
-      health: 'green',
-      updatedAt: '2026-02-24T09:18:00Z',
-      pinned: false,
-      archived: false,
-    },
-    {
-      id: 'renal-risk-qc',
-      name: 'Renal Risk Model Validation',
-      ownerName: 'Ciaran Clarke',
-      collaborators: [],
-      removedCollaborators: [],
-      pendingCollaborators: [],
-      collaboratorRoles: {},
-      pendingCollaboratorRoles: {},
-      version: '1.2',
-      health: 'red',
-      updatedAt: '2026-02-22T13:41:00Z',
-      pinned: true,
-      archived: false,
-    },
-    {
-      id: 'legacy-trial-archive',
-      name: 'Legacy Trial Data Archive',
-      ownerName: 'Ciaran Clarke',
-      collaborators: ['M. Evans'],
-      removedCollaborators: [],
-      pendingCollaborators: [],
-      collaboratorRoles: {},
-      pendingCollaboratorRoles: {},
-      version: '2.7',
-      health: 'green',
-      updatedAt: '2026-01-06T08:12:00Z',
-      pinned: false,
-      archived: true,
-    },
-  ],
-  activeWorkspaceId: 'hf-registry',
-  authorRequests: [
-    {
-      id: 'author-req-02',
-      workspaceId: 'stroke-ct-outcomes',
-      workspaceName: 'Stroke CT Outcomes',
-      authorName: 'Aisha Rahman',
-      collaboratorRole: 'editor',
-      invitedAt: '2026-02-23T09:05:00Z',
-    },
-    {
-      id: 'author-req-03',
-      workspaceId: 'oncology-cardiac-risk',
-      workspaceName: 'Oncology Cardiac Risk Registry',
-      authorName: 'Tom Price',
-      collaboratorRole: 'editor',
-      invitedAt: '2026-02-22T16:42:00Z',
-    },
-  ],
-  invitationsSent: [
-    {
-      id: 'invite-sent-02',
-      workspaceId: 'af-screening',
-      workspaceName: 'AF Screening Cohort',
-      inviteeName: 'Nina Brooks',
-      role: 'editor',
-      invitedAt: '2026-02-25T08:14:00Z',
-      status: 'pending',
-    },
-    {
-      id: 'invite-sent-03',
-      workspaceId: 'hf-registry',
-      workspaceName: 'HF Registry Manuscript',
-      inviteeName: 'Devon Li',
-      role: 'editor',
-      invitedAt: '2026-02-24T14:40:00Z',
-      status: 'accepted',
-    },
-  ],
-  inboxMessages: [
-    { workspaceId: 'hf-registry', senderName: 'A. Patel', body: 'Updated outcomes table uploaded.' },
-    { workspaceId: 'hf-registry', senderName: 'Devon Li', body: 'I can cover statistical appendix edits.' },
-    { workspaceId: 'hf-registry', senderName: 'Ciaran Clarke', body: 'Please proceed with appendix updates.' },
-    { workspaceId: 'af-screening', senderName: 'S. Roy', body: 'Enrollment criteria finalized.' },
-    { workspaceId: 'af-screening', senderName: 'L. Santos', body: 'Need owner sign-off for subgroup analysis.' },
-    { workspaceId: 'renal-risk-qc', senderName: 'M. Evans', body: 'Validation set flagged for missing creatinine rows.' },
-    { workspaceId: 'renal-risk-qc', senderName: 'Ciaran Clarke', body: 'Please open a QC issue and assign me.' },
-    { workspaceId: 'legacy-trial-archive', senderName: 'M. Evans', body: 'Archive index completed.' },
-  ],
-  inboxReads: [
-    { workspaceId: 'hf-registry', readerName: 'Ciaran Clarke', readAt: '2026-02-24T11:00:00Z' },
-    { workspaceId: 'af-screening', readerName: 'Ciaran Clarke', readAt: '2026-02-25T23:59:59Z' },
-    { workspaceId: 'renal-risk-qc', readerName: 'Ciaran Clarke', readAt: '2026-02-20T08:00:00Z' },
-  ],
-  libraryAssets: defaultLibraryAssets,
-}
-
-const dataRichFixture: WorkspacesPageFixture = {
-  workspaces: [
-    ...mixedPortfolioFixture.workspaces,
-    {
-      id: '4d-flow-rhc-paper',
-      name: '4D flow RHC paper',
-      ownerName: 'Ciaran Clarke',
-      collaborators: ['J. Meyer', 'S. Wong', 'N. Brooks'],
-      removedCollaborators: ['S. Wong'],
-      pendingCollaborators: [],
-      collaboratorRoles: {},
-      pendingCollaboratorRoles: {},
-      version: '0.7',
-      health: 'amber',
-      updatedAt: '2026-02-25T19:10:00Z',
-      pinned: true,
-      archived: false,
-    },
-    {
-      id: 'echo-ai-validation',
-      name: 'Echo AI Validation',
-      ownerName: 'Ciaran Clarke',
-      collaborators: ['P. Green', 'K. Allen'],
-      removedCollaborators: [],
-      pendingCollaborators: [],
-      collaboratorRoles: {},
-      pendingCollaboratorRoles: {},
-      version: '1.0',
-      health: 'green',
-      updatedAt: '2026-02-25T09:34:00Z',
-      pinned: false,
-      archived: false,
-    },
-    {
-      id: 'device-adjudication',
-      name: 'Device Adjudication Review',
-      ownerName: 'Maya Singh',
-      collaborators: ['Ciaran Clarke', 'R. Kim'],
-      removedCollaborators: [],
-      pendingCollaborators: [],
-      collaboratorRoles: {},
-      pendingCollaboratorRoles: {},
-      version: '0.3',
-      health: 'amber',
-      updatedAt: '2026-02-23T15:11:00Z',
-      pinned: false,
-      archived: false,
-    },
-    {
-      id: 'registry-cleanup',
-      name: 'Registry Data Cleanup',
-      ownerName: 'Ciaran Clarke',
-      collaborators: ['I. Ahmed', 'D. Wu', 'O. Tan'],
-      removedCollaborators: ['O. Tan'],
-      pendingCollaborators: [],
-      collaboratorRoles: {},
-      pendingCollaboratorRoles: {},
-      version: '1.8',
-      health: 'red',
-      updatedAt: '2026-02-21T07:27:00Z',
-      pinned: false,
-      archived: false,
-    },
-  ],
-  activeWorkspaceId: '4d-flow-rhc-paper',
-  authorRequests: [
-    ...mixedPortfolioFixture.authorRequests,
-    {
-      id: 'author-req-04',
-      workspaceId: 'trial-followup',
-      workspaceName: 'Trial Follow-Up Meta Analysis',
-      authorName: 'Eleanor Hart',
-      collaboratorRole: 'editor',
-      invitedAt: '2026-02-25T08:31:00Z',
-    },
-  ],
-  invitationsSent: [
-    ...mixedPortfolioFixture.invitationsSent,
-    {
-      id: 'invite-sent-04',
-      workspaceId: '4d-flow-rhc-paper',
-      workspaceName: '4D flow RHC paper',
-      inviteeName: 'Sofia Green',
-      role: 'editor',
-      invitedAt: '2026-02-25T20:40:00Z',
-      status: 'pending',
-    },
-    {
-      id: 'invite-sent-05',
-      workspaceId: 'echo-ai-validation',
-      workspaceName: 'Echo AI Validation',
-      inviteeName: 'Raj Kumar',
-      role: 'editor',
-      invitedAt: '2026-02-24T13:09:00Z',
-      status: 'accepted',
-    },
-  ],
-  inboxMessages: [
-    ...mixedPortfolioFixture.inboxMessages,
-    { workspaceId: '4d-flow-rhc-paper', senderName: 'J. Meyer', body: 'Figure 3 labels updated for consistency.' },
-    { workspaceId: '4d-flow-rhc-paper', senderName: 'N. Brooks', body: 'Need one more pass on RHC cohort exclusions.' },
-    { workspaceId: 'echo-ai-validation', senderName: 'P. Green', body: 'Model drift check complete for v1.0.' },
-    { workspaceId: 'device-adjudication', senderName: 'Maya Singh', body: 'Please review adjudication edge cases in section B.' },
-    { workspaceId: 'registry-cleanup', senderName: 'I. Ahmed', body: 'A batch of invalid dates has been fixed.' },
-    { workspaceId: 'registry-cleanup', senderName: 'D. Wu', body: 'There are still duplicate patient IDs in ward 3.' },
-  ],
-  inboxReads: [
-    ...mixedPortfolioFixture.inboxReads,
-    { workspaceId: '4d-flow-rhc-paper', readerName: 'Ciaran Clarke', readAt: '2026-02-25T18:55:00Z' },
-    { workspaceId: 'echo-ai-validation', readerName: 'Ciaran Clarke', readAt: '2026-02-25T23:59:59Z' },
-    { workspaceId: 'device-adjudication', readerName: 'Ciaran Clarke', readAt: '2026-02-22T10:00:00Z' },
-    { workspaceId: 'registry-cleanup', readerName: 'Ciaran Clarke', readAt: '2026-02-19T06:00:00Z' },
-  ],
-  libraryAssets: [
-    ...defaultLibraryAssets,
-    {
-      id: 'lib-asset-04',
-      owner_user_id: STORYBOOK_USER_ID,
-      owner_name: 'Ciaran Clarke',
-      project_id: 'project-hf-registry',
-      filename: 'hf_registry_outcomes.tsv',
-      kind: 'tsv',
-      mime_type: 'text/tab-separated-values',
-      byte_size: 302112,
-      uploaded_at: '2026-02-25T18:01:00Z',
-      shared_with_user_ids: ['user-a-patel'],
-      shared_with: [{ user_id: 'user-a-patel', name: 'A. Patel' }],
-      can_manage_access: true,
-    },
-    {
-      id: 'lib-asset-05',
-      owner_user_id: 'user-eleanor-hart',
-      owner_name: 'Eleanor Hart',
-      project_id: 'project-trial-followup',
-      filename: 'trial_followup_cleaned.xlsx',
-      kind: 'xlsx',
-      mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      byte_size: 910443,
-      uploaded_at: '2026-02-22T07:42:00Z',
-      shared_with_user_ids: [STORYBOOK_USER_ID, 'user-j-meyer'],
-      shared_with: [
-        { user_id: STORYBOOK_USER_ID, name: 'Ciaran Clarke' },
-        { user_id: 'user-j-meyer', name: 'J. Meyer' },
-      ],
-      can_manage_access: false,
-    },
-  ],
-}
-
-const emptyFixture: WorkspacesPageFixture = {
-  workspaces: [],
-  activeWorkspaceId: null,
-  authorRequests: [],
-  invitationsSent: [],
-  inboxMessages: [],
-  inboxReads: [],
-  libraryAssets: [],
-}
-
 const collaboratorStateFixture: WorkspacesPageFixture = {
   workspaces: [
     {
@@ -463,17 +183,154 @@ const collaboratorStateFixture: WorkspacesPageFixture = {
       updatedAt: '2026-02-25T18:20:00Z',
       pinned: true,
       archived: false,
+      auditLogEntries: [
+        {
+          id: 'audit-collab-01',
+          workspaceId: 'hf-registry',
+          category: 'collaborator_changes',
+          message: 'M. Evans collaborator status switched from active to removed by Ciaran Clarke (Owner). Role set to reviewer.',
+          createdAt: '2026-02-25T16:20:00Z',
+        },
+        {
+          id: 'audit-collab-02',
+          workspaceId: 'hf-registry',
+          category: 'invitation_decisions',
+          message: 'R. Khan collaborator invitation status switched from none to pending by Ciaran Clarke (Owner) as reviewer.',
+          createdAt: '2026-02-25T17:20:00Z',
+        },
+      ],
     },
   ],
   activeWorkspaceId: 'hf-registry',
   authorRequests: [],
-  invitationsSent: [],
+  invitationsSent: [
+    {
+      id: 'invite-collab-01',
+      workspaceId: 'hf-registry',
+      workspaceName: 'HF Registry Manuscript',
+      inviteeName: 'R. Khan',
+      role: 'reviewer',
+      invitedAt: '2026-02-25T17:20:00Z',
+      status: 'pending',
+    },
+  ],
   inboxMessages: [
     { workspaceId: 'hf-registry', senderName: 'A. Patel', body: 'Can we reopen collaborator M. Evans next week?' },
     { workspaceId: 'hf-registry', senderName: 'L. Santos', body: 'I completed the supplementary table cleanup.' },
   ],
   inboxReads: [
     { workspaceId: 'hf-registry', readerName: 'Ciaran Clarke', readAt: '2026-02-24T18:00:00Z' },
+  ],
+  libraryAssets: defaultLibraryAssets,
+}
+
+const restoreRoleRequiredFixture: WorkspacesPageFixture = {
+  workspaces: [
+    {
+      id: 'restore-role-demo',
+      name: 'Restore Role Demo',
+      ownerName: 'Ciaran Clarke',
+      collaborators: ['A. Patel', 'M. Evans', 'L. Santos'],
+      removedCollaborators: ['M. Evans'],
+      pendingCollaborators: [],
+      collaboratorRoles: {
+        'A. Patel': 'editor',
+        'M. Evans': 'reviewer',
+        'L. Santos': 'viewer',
+      },
+      pendingCollaboratorRoles: {},
+      version: '0.9',
+      health: 'amber',
+      updatedAt: '2026-02-27T09:15:00Z',
+      pinned: true,
+      archived: false,
+      auditLogEntries: [
+        {
+          id: 'audit-restore-01',
+          workspaceId: 'restore-role-demo',
+          category: 'collaborator_changes',
+          message: 'M. Evans collaborator status switched from active to removed by Ciaran Clarke (Owner). Role set to reviewer.',
+          createdAt: '2026-02-27T08:55:00Z',
+        },
+      ],
+    },
+  ],
+  activeWorkspaceId: 'restore-role-demo',
+  authorRequests: [],
+  invitationsSent: [],
+  inboxMessages: [
+    { workspaceId: 'restore-role-demo', senderName: 'A. Patel', body: 'Role matrix has been updated for final review.' },
+  ],
+  inboxReads: [
+    { workspaceId: 'restore-role-demo', readerName: 'Ciaran Clarke', readAt: '2026-02-27T09:00:00Z' },
+  ],
+  libraryAssets: defaultLibraryAssets,
+}
+
+const auditConversationFixture: WorkspacesPageFixture = {
+  workspaces: [
+    {
+      id: 'audit-demo',
+      name: 'Audit Log Demo',
+      ownerName: 'Ciaran Clarke',
+      collaborators: ['A. Patel'],
+      removedCollaborators: [],
+      pendingCollaborators: ['R. Khan'],
+      collaboratorRoles: {
+        'A. Patel': 'editor',
+      },
+      pendingCollaboratorRoles: {
+        'R. Khan': 'reviewer',
+      },
+      version: '1.0',
+      health: 'green',
+      updatedAt: '2026-02-27T10:30:00Z',
+      pinned: true,
+      archived: false,
+      auditLogEntries: [
+        {
+          id: 'audit-demo-01',
+          workspaceId: 'audit-demo',
+          category: 'invitation_decisions',
+          message: 'R. Khan collaborator invitation status switched from none to pending by Ciaran Clarke (Owner) as reviewer.',
+          createdAt: '2026-02-27T09:10:00Z',
+        },
+        {
+          id: 'audit-demo-02',
+          workspaceId: 'audit-demo',
+          category: 'collaborator_changes',
+          message: 'Inbox message logged: id msg-20260227-01, sender A. Patel, created_at 2026-02-27T09:12:00Z, ciphertext_length 612, iv_length 24.',
+          createdAt: '2026-02-27T09:12:01Z',
+        },
+        {
+          id: 'audit-demo-03',
+          workspaceId: 'audit-demo',
+          category: 'collaborator_changes',
+          message: 'Inbox message logged: id msg-20260227-02, sender Ciaran Clarke, created_at 2026-02-27T09:21:00Z, ciphertext_length 478, iv_length 24.',
+          createdAt: '2026-02-27T09:21:01Z',
+        },
+      ],
+    },
+  ],
+  activeWorkspaceId: 'audit-demo',
+  authorRequests: [],
+  invitationsSent: [
+    {
+      id: 'invite-audit-01',
+      workspaceId: 'audit-demo',
+      workspaceName: 'Audit Log Demo',
+      inviteeName: 'R. Khan',
+      role: 'reviewer',
+      invitedAt: '2026-02-27T09:10:00Z',
+      status: 'pending',
+    },
+  ],
+  inboxMessages: [
+    { workspaceId: 'audit-demo', senderName: 'A. Patel', body: 'Results table is complete.' },
+    { workspaceId: 'audit-demo', senderName: 'Ciaran Clarke', body: 'Great, I will approve this revision.' },
+  ],
+  inboxReads: [
+    { workspaceId: 'audit-demo', readerName: 'Ciaran Clarke', readAt: '2026-02-27T09:30:00Z' },
   ],
   libraryAssets: defaultLibraryAssets,
 }
@@ -511,106 +368,6 @@ const collaboratorReadOnlyFixture: WorkspacesPageFixture = {
     { workspaceId: 'external-study', readerName: 'Ciaran Clarke', readAt: '2026-02-01T08:00:00Z' },
   ],
   libraryAssets: defaultLibraryAssets,
-}
-
-const collaboratorPendingOnlyFixture: WorkspacesPageFixture = {
-  workspaces: [
-    {
-      id: 'pending-demo',
-      name: 'Pending Collaborator Demo',
-      ownerName: 'Ciaran Clarke',
-      collaborators: [],
-      removedCollaborators: [],
-      pendingCollaborators: ['N. Brooks', 'E. Hart'],
-      collaboratorRoles: {},
-      pendingCollaboratorRoles: {
-        'N. Brooks': 'reviewer',
-        'E. Hart': 'viewer',
-      },
-      version: '0.2',
-      health: 'amber',
-      updatedAt: '2026-02-25T20:20:00Z',
-      pinned: false,
-      archived: false,
-    },
-  ],
-  activeWorkspaceId: 'pending-demo',
-  authorRequests: [],
-  invitationsSent: [],
-  inboxMessages: [],
-  inboxReads: [],
-  libraryAssets: defaultLibraryAssets,
-}
-
-const collaboratorMixedStatesFixture: WorkspacesPageFixture = {
-  ...mixedPortfolioFixture,
-  workspaces: mixedPortfolioFixture.workspaces.map((workspace) => {
-    if (workspace.id === 'hf-registry') {
-      return {
-        ...workspace,
-        pendingCollaborators: ['M. Evans'],
-        pendingCollaboratorRoles: { 'M. Evans': 'reviewer' },
-      }
-    }
-    if (workspace.id === 'af-screening') {
-      return {
-        ...workspace,
-        pendingCollaborators: ['N. Brooks'],
-        pendingCollaboratorRoles: { 'N. Brooks': 'viewer' },
-      }
-    }
-    return workspace
-  }),
-}
-
-const dataLibraryFixture: WorkspacesPageFixture = {
-  ...dataRichFixture,
-  initialRoute: '/workspaces?view=data-library',
-}
-
-const dataLibraryWithCollaboratorsFixture: WorkspacesPageFixture = {
-  ...dataRichFixture,
-  initialRoute: '/workspaces?view=data-library',
-  libraryAssets: [
-    ...dataRichFixture.libraryAssets,
-    {
-      id: 'lib-asset-06',
-      owner_user_id: STORYBOOK_USER_ID,
-      owner_name: 'Ciaran Clarke',
-      project_id: 'project-4d-flow-rhc-paper',
-      filename: 'rhc_quality_flags_v3.csv',
-      kind: 'csv',
-      mime_type: 'text/csv',
-      byte_size: 164338,
-      uploaded_at: '2026-02-25T21:42:00Z',
-      shared_with_user_ids: ['user-j-meyer', 'user-n-brooks', 'user-a-patel'],
-      shared_with: [
-        { user_id: 'user-j-meyer', name: 'J. Meyer' },
-        { user_id: 'user-n-brooks', name: 'N. Brooks' },
-        { user_id: 'user-a-patel', name: 'A. Patel' },
-      ],
-      can_manage_access: true,
-    },
-    {
-      id: 'lib-asset-07',
-      owner_user_id: STORYBOOK_USER_ID,
-      owner_name: 'Ciaran Clarke',
-      project_id: 'project-echo-ai-validation',
-      filename: 'echo_validation_subset.tsv',
-      kind: 'tsv',
-      mime_type: 'text/tab-separated-values',
-      byte_size: 487521,
-      uploaded_at: '2026-02-25T20:11:00Z',
-      shared_with_user_ids: ['user-s-wong', 'user-p-green', 'user-k-allen', 'user-i-ahmed'],
-      shared_with: [
-        { user_id: 'user-s-wong', name: 'S. Wong' },
-        { user_id: 'user-p-green', name: 'P. Green' },
-        { user_id: 'user-k-allen', name: 'K. Allen' },
-        { user_id: 'user-i-ahmed', name: 'I. Ahmed' },
-      ],
-      can_manage_access: true,
-    },
-  ],
 }
 
 function cloneLibraryAsset(asset: LibraryAssetRecord): LibraryAssetRecord {
@@ -681,60 +438,6 @@ function WorkspacesPagePreview({ fixture }: WorkspacesPagePreviewProps) {
     const previousInboxState = useWorkspaceInboxStore.getState()
     const previousFetch = window.fetch.bind(window)
     let storyLibraryAssets = (fixture.libraryAssets || []).map(cloneLibraryAsset)
-    const collaboratorDirectory = (() => {
-      const seen = new Set<string>()
-      const items: CollaboratorPayload[] = []
-      const addName = (name: string) => {
-        const clean = String(name || '').trim().replace(/\s+/g, ' ')
-        if (!clean) {
-          return
-        }
-        const id = nameToMockUserId(clean)
-        if (seen.has(id)) {
-          return
-        }
-        seen.add(id)
-        items.push({
-          id,
-          owner_user_id: STORYBOOK_USER_ID,
-          full_name: clean,
-          preferred_name: null,
-          email: `${id.replace(/^user-/, '')}@example.com`,
-          orcid_id: null,
-          openalex_author_id: null,
-          primary_institution: 'Research Collaboration Network',
-          department: null,
-          country: 'GB',
-          current_position: null,
-          research_domains: [],
-          notes: null,
-          created_at: '2026-02-20T00:00:00Z',
-          updated_at: '2026-02-25T00:00:00Z',
-          metrics: {
-            coauthored_works_count: 0,
-            shared_citations_total: 0,
-            first_collaboration_year: null,
-            last_collaboration_year: null,
-            citations_last_12m: 0,
-            collaboration_strength_score: 0,
-            classification: 'UNCLASSIFIED',
-            computed_at: null,
-            status: 'READY',
-          },
-          duplicate_warnings: [],
-        })
-      }
-      fixture.workspaces.forEach((workspace) => {
-        addName(workspace.ownerName)
-        workspace.collaborators.forEach(addName)
-        for (const pendingCollaborator of workspace.pendingCollaborators || []) {
-          addName(pendingCollaborator)
-        }
-      })
-      fixture.authorRequests.forEach((request) => addName(request.authorName))
-      fixture.invitationsSent.forEach((invitation) => addName(invitation.inviteeName))
-      return items
-    })()
 
     window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const requestUrl =
@@ -757,31 +460,6 @@ function WorkspacesPagePreview({ fixture }: WorkspacesPagePreviewProps) {
       }
 
       const path = parsedUrl.pathname
-      if (path.endsWith('/v1/account/collaboration/collaborators') && requestMethod === 'GET') {
-        const queryValue = String(parsedUrl.searchParams.get('query') || '').trim().toLowerCase()
-        const pageValue = Math.max(1, Number(parsedUrl.searchParams.get('page') || '1'))
-        const pageSizeValue = Math.max(1, Math.min(200, Number(parsedUrl.searchParams.get('page_size') || '50')))
-        const filtered = queryValue
-          ? collaboratorDirectory.filter((candidate) => candidate.full_name.toLowerCase().includes(queryValue))
-          : collaboratorDirectory
-        const start = (pageValue - 1) * pageSizeValue
-        const end = start + pageSizeValue
-        const items = filtered.slice(start, end)
-        return new Response(
-          JSON.stringify({
-            items,
-            page: pageValue,
-            page_size: pageSizeValue,
-            total: filtered.length,
-            has_more: end < filtered.length,
-          }),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          },
-        )
-      }
-
       if (path.endsWith('/v1/library/assets') && requestMethod === 'GET') {
         const queryValue = String(parsedUrl.searchParams.get('query') || '').trim().toLowerCase()
         const ownership = String(parsedUrl.searchParams.get('ownership') || 'all').trim().toLowerCase()
@@ -1133,65 +811,26 @@ type Story = StoryObj<typeof WorkspacesPagePreview>
 
 export const Default: Story = {}
 
-export const MixedPortfolio: Story = {
-  args: {
-    fixture: mixedPortfolioFixture,
-  },
-}
-
-export const DataRichPortfolio: Story = {
-  args: {
-    fixture: dataRichFixture,
-  },
-}
-
-export const DataLibrary: Story = {
-  args: {
-    fixture: dataLibraryFixture,
-  },
-}
-
-export const DataLibraryWithCollaboratorsFullPage: Story = {
-  args: {
-    fixture: dataLibraryWithCollaboratorsFixture,
-  },
-}
-
-export const EmptyState: Story = {
-  args: {
-    fixture: emptyFixture,
-  },
-}
-
-export const CollaboratorBanners: Story = {
+export const CollaboratorAccessAndRoles: Story = {
   args: {
     fixture: collaboratorStateFixture,
   },
 }
 
-export const CollaboratorBannersPending: Story = {
+export const RestoreRequiresRoleSelection: Story = {
   args: {
-    fixture: collaboratorPendingOnlyFixture,
+    fixture: restoreRoleRequiredFixture,
   },
 }
 
-export const CollaboratorBannersMixedStates: Story = {
+export const AuditLogsConversationAndAccess: Story = {
   args: {
-    fixture: collaboratorMixedStatesFixture,
+    fixture: auditConversationFixture,
   },
 }
 
-export const CollaboratorBannersReadOnly: Story = {
+export const CollaboratorReadOnlyView: Story = {
   args: {
     fixture: collaboratorReadOnlyFixture,
-  },
-}
-
-export const DarkMode: Story = {
-  args: {
-    fixture: mixedPortfolioFixture,
-  },
-  globals: {
-    theme: 'dark',
   },
 }

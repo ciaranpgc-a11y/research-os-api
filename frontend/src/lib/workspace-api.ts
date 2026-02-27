@@ -16,6 +16,13 @@ export type WorkspaceStatePayload = {
     updatedAt: string
     pinned: boolean
     archived: boolean
+    auditLogEntries?: Array<{
+      id: string
+      workspaceId: string
+      category: 'collaborator_changes' | 'invitation_decisions'
+      message: string
+      createdAt: string
+    }>
   }>
   activeWorkspaceId: string | null
   authorRequests: Array<{
@@ -89,6 +96,13 @@ type WorkspaceStateApiPayload = {
     updated_at: string
     pinned: boolean
     archived: boolean
+    audit_log_entries?: Array<{
+      id: string
+      workspace_id: string
+      category: 'collaborator_changes' | 'invitation_decisions'
+      message: string
+      created_at: string
+    }>
   }>
   active_workspace_id: string | null
   author_requests: Array<{
@@ -188,6 +202,13 @@ function workspaceRecordFromApi(item: WorkspaceRecordApiPayload): WorkspaceState
     updatedAt: item.updated_at,
     pinned: Boolean(item.pinned),
     archived: Boolean(item.archived),
+    auditLogEntries: (item.audit_log_entries || []).map((entry) => ({
+      id: entry.id,
+      workspaceId: entry.workspace_id || item.id,
+      category: entry.category === 'invitation_decisions' ? 'invitation_decisions' : 'collaborator_changes',
+      message: entry.message || '',
+      createdAt: entry.created_at,
+    })),
   }
 }
 
@@ -256,6 +277,13 @@ function workspaceStateToApi(payload: WorkspaceStatePayload): WorkspaceStateApiP
       updated_at: item.updatedAt,
       pinned: Boolean(item.pinned),
       archived: Boolean(item.archived),
+      audit_log_entries: (item.auditLogEntries || []).map((entry) => ({
+        id: entry.id,
+        workspace_id: entry.workspaceId || item.id,
+        category: entry.category,
+        message: entry.message,
+        created_at: entry.createdAt,
+      })),
     })),
     active_workspace_id: payload.activeWorkspaceId,
     author_requests: payload.authorRequests.map((item) => ({
@@ -396,6 +424,13 @@ export async function createWorkspaceRecordApi(
         updated_at: payload.updatedAt,
         pinned: Boolean(payload.pinned),
         archived: Boolean(payload.archived),
+        audit_log_entries: (payload.auditLogEntries || []).map((entry) => ({
+          id: entry.id,
+          workspace_id: entry.workspaceId || payload.id,
+          category: entry.category,
+          message: entry.message,
+          created_at: entry.createdAt,
+        })),
       }),
     },
     'Workspace create failed',
@@ -434,6 +469,17 @@ export async function updateWorkspaceRecordApi(
         ...(patch.updatedAt !== undefined ? { updated_at: patch.updatedAt } : {}),
         ...(patch.pinned !== undefined ? { pinned: patch.pinned } : {}),
         ...(patch.archived !== undefined ? { archived: patch.archived } : {}),
+        ...(patch.auditLogEntries !== undefined
+          ? {
+              audit_log_entries: patch.auditLogEntries.map((entry) => ({
+                id: entry.id,
+                workspace_id: entry.workspaceId || workspaceId,
+                category: entry.category,
+                message: entry.message,
+                created_at: entry.createdAt,
+              })),
+            }
+          : {}),
       }),
     },
     'Workspace update failed',

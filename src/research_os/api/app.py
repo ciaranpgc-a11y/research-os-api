@@ -621,17 +621,22 @@ class WorkspaceInboxRealtimeHub:
     def __init__(self) -> None:
         self._connections_by_workspace: dict[str, set[WebSocket]] = defaultdict(set)
         self._workspace_by_connection: dict[WebSocket, str] = {}
+        self._user_id_by_connection: dict[WebSocket, str] = {}
         self._lock = asyncio.Lock()
 
-    async def connect(self, *, workspace_id: str, websocket: WebSocket) -> None:
+    async def connect(
+        self, *, workspace_id: str, websocket: WebSocket, user_id: str
+    ) -> None:
         await websocket.accept()
         async with self._lock:
             self._connections_by_workspace[workspace_id].add(websocket)
             self._workspace_by_connection[websocket] = workspace_id
+            self._user_id_by_connection[websocket] = str(user_id or "").strip()
 
     async def disconnect(self, websocket: WebSocket) -> None:
         async with self._lock:
             workspace_id = self._workspace_by_connection.pop(websocket, "")
+            self._user_id_by_connection.pop(websocket, None)
             if not workspace_id:
                 return
             connections = self._connections_by_workspace.get(workspace_id)
@@ -650,10 +655,26 @@ class WorkspaceInboxRealtimeHub:
     ) -> None:
         async with self._lock:
             targets = list(self._connections_by_workspace.get(workspace_id) or [])
+            target_user_ids = {
+                target: str(self._user_id_by_connection.get(target, "")).strip()
+                for target in targets
+            }
 
         stale_targets: list[WebSocket] = []
         for target in targets:
             if exclude is not None and target is exclude:
+                continue
+            target_user_id = target_user_ids.get(target, "")
+            if not target_user_id or not has_workspace_access(
+                user_id=target_user_id, workspace_id=workspace_id
+            ):
+                stale_targets.append(target)
+                try:
+                    await target.close(
+                        code=1008, reason="Workspace access denied."
+                    )
+                except Exception:
+                    pass
                 continue
             try:
                 await target.send_json(payload)
@@ -1003,9 +1024,14 @@ def _resolve_request_admin_required(
 
 
 def _extract_ws_session_token(websocket: WebSocket) -> str:
-    query_token = str(websocket.query_params.get("token", "")).strip()
-    if query_token:
-        return query_token
+    protocol_header = str(websocket.headers.get("sec-websocket-protocol", "")).strip()
+    if protocol_header:
+        for item in protocol_header.split(","):
+            protocol = item.strip()
+            if protocol.startswith("aawe-session."):
+                token = protocol[len("aawe-session.") :].strip()
+                if token:
+                    return token
     auth_header = str(websocket.headers.get("Authorization", "")).strip()
     if auth_header.lower().startswith("bearer "):
         return auth_header[7:].strip()
@@ -3690,6 +3716,12 @@ async def v1_workspace_inbox_ws(websocket: WebSocket) -> None:
     if not workspace_id:
         await websocket.close(code=1008, reason="workspace_id is required.")
         return
+    if str(websocket.query_params.get("token", "")).strip():
+        await websocket.close(
+            code=1008,
+            reason="Query-string tokens are not allowed for websocket auth.",
+        )
+        return
 
     token = _extract_ws_session_token(websocket)
     if not token:
@@ -3711,6 +3743,7 @@ async def v1_workspace_inbox_ws(websocket: WebSocket) -> None:
     await _workspace_inbox_realtime_hub.connect(
         workspace_id=workspace_id,
         websocket=websocket,
+        user_id=sender_user_id,
     )
     await _workspace_inbox_realtime_hub.broadcast(
         workspace_id=workspace_id,
@@ -3729,6 +3762,11 @@ async def v1_workspace_inbox_ws(websocket: WebSocket) -> None:
             payload = await websocket.receive_json()
             if not isinstance(payload, dict):
                 continue
+            if not has_workspace_access(
+                user_id=sender_user_id, workspace_id=workspace_id
+            ):
+                await websocket.close(code=1008, reason="Workspace access denied.")
+                break
             event_type = str(payload.get("type") or "").strip().lower()
             if event_type not in {"typing", "message_sent", "read_marked", "ping"}:
                 continue
@@ -4342,7 +4380,7 @@ def v1_attach_assets_to_manuscript(
     payload: ManuscriptAttachAssetsRequest,
     http_request: Request,
 ) -> ManuscriptAttachAssetsResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     try:
@@ -4373,7 +4411,7 @@ def v1_create_data_profile(
     payload: DataProfileRequest,
     http_request: Request,
 ) -> DataProfileResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     try:
@@ -4399,7 +4437,7 @@ def v1_create_analysis_scaffold(
     payload: AnalysisScaffoldRequest,
     http_request: Request,
 ) -> AnalysisScaffoldResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     try:
@@ -4426,7 +4464,7 @@ def v1_create_tables_scaffold(
     payload: TablesScaffoldRequest,
     http_request: Request,
 ) -> TablesScaffoldResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     try:
@@ -4453,7 +4491,7 @@ def v1_create_figures_scaffold(
     payload: FiguresScaffoldRequest,
     http_request: Request,
 ) -> FiguresScaffoldResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     try:
@@ -4481,7 +4519,7 @@ def v1_save_manuscript_plan(
     payload: ManuscriptPlanUpdateRequest,
     http_request: Request,
 ) -> ManuscriptPlanUpdateResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     try:
@@ -4508,7 +4546,7 @@ def v1_improve_manuscript_plan_section(
     payload: PlanSectionImproveRequest,
     http_request: Request,
 ) -> PlanSectionImproveResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     try:
@@ -4568,20 +4606,21 @@ def v1_estimate_aawe_generation(
 @app.post(
     "/v1/aawe/plan/sections",
     response_model=SectionPlanResponse,
+    responses=UNAUTHORIZED_RESPONSES,
     tags=["v1"],
 )
 def v1_plan_aawe_sections(
     request: SectionPlanRequest,
     http_request: Request,
-) -> SectionPlanResponse:
+) -> SectionPlanResponse | JSONResponse:
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
+    if auth_error is not None:
+        return auth_error
     persona_context = None
-    token = _extract_session_token(http_request)
-    if token:
-        try:
-            user = get_user_by_session_token(token)
-            persona_context = get_persona_context(user_id=str(user["id"]))
-        except Exception:
-            persona_context = None
+    try:
+        persona_context = get_persona_context(user_id=requesting_user_id or "")
+    except Exception:
+        persona_context = None
     payload = build_section_plan(
         target_journal=request.target_journal,
         answers=request.answers,
@@ -4594,11 +4633,16 @@ def v1_plan_aawe_sections(
 @app.post(
     "/v1/aawe/plan/clarification-questions",
     response_model=PlanClarificationQuestionsResponse,
+    responses=UNAUTHORIZED_RESPONSES,
     tags=["v1"],
 )
 def v1_plan_aawe_clarification_questions(
     request: PlanClarificationQuestionsRequest,
-) -> PlanClarificationQuestionsResponse:
+    http_request: Request,
+) -> PlanClarificationQuestionsResponse | JSONResponse:
+    _, auth_error = _resolve_request_user_required(http_request)
+    if auth_error is not None:
+        return auth_error
     payload = generate_plan_clarification_questions(
         project_title=request.project_title,
         target_journal=request.target_journal,
@@ -4617,11 +4661,16 @@ def v1_plan_aawe_clarification_questions(
 @app.post(
     "/v1/aawe/plan/clarification-question/next",
     response_model=PlanClarificationNextQuestionResponse,
+    responses=UNAUTHORIZED_RESPONSES,
     tags=["v1"],
 )
 def v1_plan_aawe_next_clarification_question(
     request: PlanClarificationNextQuestionRequest,
-) -> PlanClarificationNextQuestionResponse:
+    http_request: Request,
+) -> PlanClarificationNextQuestionResponse | JSONResponse:
+    _, auth_error = _resolve_request_user_required(http_request)
+    if auth_error is not None:
+        return auth_error
     payload = generate_next_plan_clarification_question(
         project_title=request.project_title,
         target_journal=request.target_journal,
@@ -4647,12 +4696,16 @@ def v1_plan_aawe_next_clarification_question(
 @app.post(
     "/v1/aawe/plan/manuscript-section/edit",
     response_model=PlanSectionEditResponse,
-    responses=BAD_REQUEST_RESPONSES,
+    responses=BAD_REQUEST_RESPONSES | UNAUTHORIZED_RESPONSES,
     tags=["v1"],
 )
 def v1_plan_aawe_edit_manuscript_section(
     request: PlanSectionEditRequest,
+    http_request: Request,
 ) -> PlanSectionEditResponse | JSONResponse:
+    _, auth_error = _resolve_request_user_required(http_request)
+    if auth_error is not None:
+        return auth_error
     try:
         payload = revise_manuscript_plan_section(
             section=request.section,
@@ -4677,11 +4730,16 @@ def v1_plan_aawe_edit_manuscript_section(
 @app.post(
     "/v1/aawe/research-overview/suggestions",
     response_model=ResearchOverviewSuggestionsResponse,
+    responses=UNAUTHORIZED_RESPONSES,
     tags=["v1"],
 )
 def v1_research_overview_suggestions(
     request: ResearchOverviewSuggestionsRequest,
-) -> ResearchOverviewSuggestionsResponse:
+    http_request: Request,
+) -> ResearchOverviewSuggestionsResponse | JSONResponse:
+    _, auth_error = _resolve_request_user_required(http_request)
+    if auth_error is not None:
+        return auth_error
     study_type_options = getattr(request, "study_type_options", None) or []
     payload = generate_research_overview_suggestions(
         target_journal=request.target_journal,
@@ -4706,7 +4764,7 @@ def v1_generate_aawe_grounded_draft(
     request: GroundedDraftRequest,
     http_request: Request,
 ) -> GroundedDraftResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     if (
@@ -4773,7 +4831,7 @@ def v1_synthesize_title_abstract(
     request: TitleAbstractSynthesisRequest,
     http_request: Request,
 ) -> TitleAbstractSynthesisResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     try:
@@ -4828,7 +4886,7 @@ def v1_run_cross_section_consistency_check(
     request: ConsistencyCheckRequest,
     http_request: Request,
 ) -> ConsistencyCheckResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     try:
@@ -4872,7 +4930,7 @@ def v1_regenerate_section_paragraph(
     request: ParagraphRegenerationRequest,
     http_request: Request,
 ) -> ParagraphRegenerationResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     try:
@@ -4959,7 +5017,7 @@ def v1_generate_submission_pack(
     request: SubmissionPackRequest,
     http_request: Request,
 ) -> SubmissionPackResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     try:
@@ -5125,7 +5183,7 @@ def v1_wizard_bootstrap(
     request: WizardBootstrapRequest,
     http_request: Request,
 ) -> WizardBootstrapResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     project, manuscript, inference = bootstrap_project_from_wizard(
@@ -5148,7 +5206,7 @@ def v1_wizard_bootstrap(
 
 @app.get("/v1/projects", response_model=list[ProjectResponse], tags=["v1"])
 def v1_list_projects(request: Request) -> list[ProjectResponse] | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    requesting_user_id, auth_error = _resolve_request_user_required(request)
     if auth_error is not None:
         return auth_error
     return list_project_records(requesting_user_id=requesting_user_id)
@@ -5159,7 +5217,7 @@ def v1_create_project(
     request: ProjectCreateRequest,
     http_request: Request,
 ) -> ProjectResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     return create_project_record(
@@ -5185,7 +5243,7 @@ def v1_list_manuscripts(
     project_id: str,
     request: Request,
 ) -> list[ManuscriptResponse] | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    requesting_user_id, auth_error = _resolve_request_user_required(request)
     if auth_error is not None:
         return auth_error
     try:
@@ -5207,7 +5265,7 @@ def v1_create_manuscript(
     request: ManuscriptCreateRequest,
     http_request: Request,
 ) -> ManuscriptResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     try:
@@ -5234,7 +5292,7 @@ def v1_get_manuscript(
     manuscript_id: str,
     request: Request,
 ) -> ManuscriptResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    requesting_user_id, auth_error = _resolve_request_user_required(request)
     if auth_error is not None:
         return auth_error
     try:
@@ -5259,7 +5317,7 @@ def v1_update_manuscript_sections(
     request: ManuscriptSectionsUpdateRequest,
     http_request: Request,
 ) -> ManuscriptResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     try:
@@ -5285,7 +5343,7 @@ def v1_list_manuscript_snapshots(
     request: Request,
     limit: int = Query(default=20, ge=1, le=100),
 ) -> list[ManuscriptSnapshotResponse] | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    requesting_user_id, auth_error = _resolve_request_user_required(request)
     if auth_error is not None:
         return auth_error
     try:
@@ -5315,7 +5373,7 @@ def v1_create_manuscript_snapshot(
     request: ManuscriptSnapshotCreateRequest,
     http_request: Request,
 ) -> ManuscriptSnapshotResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     try:
@@ -5344,7 +5402,7 @@ def v1_restore_manuscript_snapshot(
     http_request: Request,
     request: ManuscriptSnapshotRestoreRequest | None = None,
 ) -> ManuscriptResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     try:
@@ -5380,7 +5438,7 @@ def v1_export_manuscript_markdown(
     request: Request,
     include_empty: bool = Query(default=False),
 ) -> PlainTextResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    requesting_user_id, auth_error = _resolve_request_user_required(request)
     if auth_error is not None:
         return auth_error
     try:
@@ -5411,7 +5469,7 @@ def v1_qc_gated_export_manuscript_markdown(
     request: QCGatedExportRequest,
     http_request: Request,
 ) -> PlainTextResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     qc_payload = run_qc_checks()
@@ -5453,7 +5511,7 @@ def v1_generate_manuscript(
     request: ManuscriptGenerateRequest,
     http_request: Request,
 ) -> GenerationJobResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     try:
@@ -5493,7 +5551,7 @@ def v1_list_generation_jobs(
     request: Request,
     limit: int = Query(default=20, ge=1, le=100),
 ) -> list[GenerationJobResponse] | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    requesting_user_id, auth_error = _resolve_request_user_required(request)
     if auth_error is not None:
         return auth_error
     try:
@@ -5521,7 +5579,7 @@ def v1_list_generation_jobs(
 def v1_get_generation_job(
     job_id: str, request: Request
 ) -> GenerationJobResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    requesting_user_id, auth_error = _resolve_request_user_required(request)
     if auth_error is not None:
         return auth_error
     try:
@@ -5542,7 +5600,7 @@ def v1_get_generation_job(
 def v1_cancel_generation_job(
     job_id: str, request: Request
 ) -> GenerationJobResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(request)
+    requesting_user_id, auth_error = _resolve_request_user_required(request)
     if auth_error is not None:
         return auth_error
     try:
@@ -5567,7 +5625,7 @@ def v1_retry_generation_job(
     request: GenerationJobRetryRequest,
     http_request: Request,
 ) -> GenerationJobResponse | JSONResponse:
-    requesting_user_id, auth_error = _resolve_request_user_optional(http_request)
+    requesting_user_id, auth_error = _resolve_request_user_required(http_request)
     if auth_error is not None:
         return auth_error
     try:
@@ -5592,24 +5650,32 @@ def v1_retry_generation_job(
 @app.post(
     "/v1/draft/section",
     response_model=DraftSectionSuccessResponse,
-    responses=ERROR_RESPONSES,
+    responses=ERROR_RESPONSES | UNAUTHORIZED_RESPONSES,
     tags=["v1"],
 )
 def v1_draft_section(
     request: DraftSectionRequest,
+    http_request: Request,
 ) -> DraftSectionSuccessResponse | JSONResponse:
+    _, auth_error = _resolve_request_user_required(http_request)
+    if auth_error is not None:
+        return auth_error
     return _generate_section_response(request.section, request.notes)
 
 
 @app.post(
     "/v1/draft/methods",
     response_model=DraftMethodsSuccessResponse,
-    responses=ERROR_RESPONSES,
+    responses=ERROR_RESPONSES | UNAUTHORIZED_RESPONSES,
     tags=["v1"],
 )
 def v1_draft_methods(
     request: DraftMethodsRequest,
+    http_request: Request,
 ) -> DraftMethodsSuccessResponse | JSONResponse:
+    _, auth_error = _resolve_request_user_required(http_request)
+    if auth_error is not None:
+        return auth_error
     return _generate_methods_response(request)
 
 
@@ -5624,16 +5690,17 @@ def health_ready_check() -> dict[str, str] | JSONResponse:
 
 
 @app.post("/draft/methods", responses=ERROR_RESPONSES)
-def draft_methods(request: DraftMethodsRequest):
-    response = v1_draft_methods(request)
+def draft_methods(request: DraftMethodsRequest, http_request: Request):
+    response = v1_draft_methods(request, http_request)
     if isinstance(response, JSONResponse):
         return response
     return {"draft": response.methods}
 
 
 @app.post("/draft/section", responses=ERROR_RESPONSES)
-def draft_section(request: DraftSectionRequest):
-    response = v1_draft_section(request)
+def draft_section(request: DraftSectionRequest, http_request: Request):
+    response = v1_draft_section(request, http_request)
     if isinstance(response, JSONResponse):
         return response
     return {"section": response.section, "draft": response.draft}
+

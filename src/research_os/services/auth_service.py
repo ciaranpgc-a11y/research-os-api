@@ -45,7 +45,7 @@ EMAIL_VERIFICATION_MINUTES = max(
     5, int(os.getenv("AUTH_EMAIL_VERIFICATION_MINUTES", "30"))
 )
 PASSWORD_RESET_MINUTES = max(5, int(os.getenv("AUTH_PASSWORD_RESET_MINUTES", "30")))
-EXPOSE_AUTH_CODES_IN_RESPONSE = os.getenv("AUTH_EXPOSE_DEBUG_CODES", "1").strip() in {
+EXPOSE_AUTH_CODES_IN_RESPONSE = os.getenv("AUTH_EXPOSE_DEBUG_CODES", "0").strip() in {
     "1",
     "true",
     "yes",
@@ -1054,3 +1054,4 @@ def disable_two_factor(*, session_token: str, code: str) -> dict[str, object]:
             "backup_codes_remaining": 0,
             "confirmed_at": None,
         }
+

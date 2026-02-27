@@ -609,6 +609,13 @@ type YearCount = {
   count: number
 }
 
+type PublicationRowBuildOptions = {
+  venues?: string[]
+  publicationTypes?: string[]
+  articleTypes?: string[]
+  titleFragments?: string[]
+}
+
 function sumYearCounts(series: YearCount[]): number {
   return series.reduce((sum, item) => sum + Math.max(0, item.count), 0)
 }
@@ -616,15 +623,23 @@ function sumYearCounts(series: YearCount[]): number {
 function buildPublicationRowsFromYearCounts(
   series: YearCount[],
   prefix: string,
+  options: PublicationRowBuildOptions = {},
 ): Array<Record<string, unknown>> {
-  const venues = [
+  const venues = options.venues || [
     'Medical Education',
     'Academic Medicine',
     'BMC Medical Education',
     'Medical Teacher',
     'Advances in Health Sciences Education',
   ]
-  const publicationTypes = ['Article', 'Review', 'Editorial', 'Conference paper']
+  const publicationTypes = options.publicationTypes || ['Article', 'Review', 'Editorial', 'Conference paper']
+  const articleTypes = options.articleTypes || ['Original', 'Review', 'Editorial', 'Conference abstract']
+  const titleFragments = options.titleFragments || [
+    'cohort and implementation study',
+    'teaching intervention analysis',
+    'practice evaluation brief',
+    'programme outcomes report',
+  ]
   const roles = ['first', 'second', 'last', 'other']
   const maxYear = series.reduce((max, item) => Math.max(max, item.year), 0)
   const rows: Array<Record<string, unknown>> = []
@@ -633,12 +648,16 @@ function buildPublicationRowsFromYearCounts(
     for (let index = 0; index < count; index += 1) {
       const age = Math.max(0, maxYear - year)
       const citations = Math.max(1, 3 + age * 2 + ((index % 6) * 3))
+      const publicationType = publicationTypes[(serial - 1) % publicationTypes.length]
+      const articleType = articleTypes[(serial - 1) % articleTypes.length]
       rows.push({
         work_id: `${prefix}-${year}-${index + 1}`,
         year,
-        title: `Publication ${serial}: cohort and implementation study`,
+        title: `Publication ${serial}: ${titleFragments[(serial - 1) % titleFragments.length]}`,
         journal: venues[(serial - 1) % venues.length],
-        publication_type: publicationTypes[(serial - 1) % publicationTypes.length],
+        publication_type: publicationType,
+        work_type: publicationType,
+        article_type: articleType,
         citations_lifetime: citations,
         user_author_role: roles[(serial - 1) % roles.length],
       })
@@ -663,6 +682,65 @@ function buildCitationTimeseriesFromYearCounts(
     }
   })
 }
+
+const EXTREME_SCALE_PUBLICATION_TYPES = [
+  'journal-article',
+  'conference-abstract',
+  'conference-paper',
+  'conference-poster',
+  'conference-presentation',
+  'meeting-abstract',
+  'proceedings-article',
+  'proceedings',
+  'preprint',
+  'data-set',
+  'review-article',
+  'book-chapter',
+  'book',
+  'dissertation',
+]
+
+const EXTREME_SCALE_ARTICLE_TYPES = [
+  'original',
+  'review',
+  'systematic-review',
+  'meta-analysis',
+  'scoping-review',
+  'narrative-review',
+  'editorial',
+  'commentary',
+  'perspective',
+  'case-report',
+  'case-series',
+  'protocol',
+  'letter',
+  'brief-report',
+]
+
+const EXTREME_SCALE_VENUES = [
+  'Medical Education',
+  'Academic Medicine',
+  'BMC Medical Education',
+  'Medical Teacher',
+  'Advances in Health Sciences Education',
+  'AMEE Proceedings',
+  'ESC Congress Abstract Book',
+  'JAMA Network Open',
+  'PLoS ONE',
+  'Zenodo',
+  'OSF Preprints',
+]
+
+const EXTREME_SCALE_TITLE_FRAGMENTS = [
+  'randomized teaching trial',
+  'multi-centre cohort follow-up',
+  'systematic synthesis of curriculum reform',
+  'simulation outcomes protocol',
+  'case-series implementation brief',
+  'editorial perspective on assessment design',
+  'rapid review of blended learning',
+  'conference methods abstract',
+]
 
 const longCareerYearCounts: YearCount[] = Array.from({ length: 25 }, (_, index) => {
   const year = 2001 + index
@@ -811,7 +889,16 @@ const extremeScaleYearCounts: YearCount[] = Array.from({ length: 30 }, (_, index
   const cycle = index % 5 === 0 ? 8 : index % 3 === 0 ? 4 : 0
   return { year, count: baseline + cycle }
 })
-const extremeScalePublicationRows = buildPublicationRowsFromYearCounts(extremeScaleYearCounts, 'extreme')
+const extremeScalePublicationRows = buildPublicationRowsFromYearCounts(
+  extremeScaleYearCounts,
+  'extreme',
+  {
+    venues: EXTREME_SCALE_VENUES,
+    publicationTypes: EXTREME_SCALE_PUBLICATION_TYPES,
+    articleTypes: EXTREME_SCALE_ARTICLE_TYPES,
+    titleFragments: EXTREME_SCALE_TITLE_FRAGMENTS,
+  },
+)
 const extremeScaleCitationsPerYear = buildCitationTimeseriesFromYearCounts(extremeScaleYearCounts, 64)
 const extremeScaleTotalPublications = sumYearCounts(extremeScaleYearCounts)
 const extremeScaleTotalCitations = extremeScaleCitationsPerYear.length

@@ -12,6 +12,7 @@ import {
   writeScopedStorageItem,
 } from '@/lib/user-scoped-storage'
 import { encryptWorkspaceInboxText } from '@/lib/workspace-inbox-crypto'
+import { type WorkspaceRecord, useWorkspaceStore } from '@/store/use-workspace-store'
 
 export type WorkspaceInboxMessageRecord = {
   id: string
@@ -63,6 +64,33 @@ function normalizeReaderKey(value: string | null | undefined): string {
 
 function isSamePerson(left: string, right: string): boolean {
   return normalizeReaderKey(left) === normalizeReaderKey(right)
+}
+
+function hasWorkspaceInboxWriteAccess(
+  workspace: WorkspaceRecord | null,
+  senderName: string,
+): boolean {
+  if (!workspace) {
+    return false
+  }
+  const senderKey = normalizeReaderKey(senderName)
+  if (!senderKey) {
+    return false
+  }
+  const ownerKey = normalizeReaderKey(workspace.ownerName)
+  if (ownerKey && ownerKey === senderKey) {
+    return true
+  }
+  const collaboratorKeys = new Set(
+    (workspace.collaborators || []).map((value) => normalizeReaderKey(value)),
+  )
+  if (!collaboratorKeys.has(senderKey)) {
+    return false
+  }
+  const removedKeys = new Set(
+    (workspace.removedCollaborators || []).map((value) => normalizeReaderKey(value)),
+  )
+  return !removedKeys.has(senderKey)
 }
 
 function nowIso(): string {
@@ -326,6 +354,12 @@ export const useWorkspaceInboxStore = create<WorkspaceInboxStore>((set, get) => 
     }
     if (!cleanBody) {
       throw new Error('Message cannot be empty.')
+    }
+    const workspace = useWorkspaceStore
+      .getState()
+      .workspaces.find((item) => item.id === cleanWorkspaceId) || null
+    if (!hasWorkspaceInboxWriteAccess(workspace, cleanSenderName)) {
+      throw new Error('You can no longer send messages in this workspace.')
     }
 
     const encrypted = await encryptWorkspaceInboxText(cleanWorkspaceId, cleanBody)

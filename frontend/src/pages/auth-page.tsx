@@ -108,14 +108,12 @@ export function AuthPage() {
   const [resetEmail, setResetEmail] = useState('')
   const [resetCode, setResetCode] = useState('')
   const [resetPassword, setResetPassword] = useState('')
-  const [resetPreviewCode, setResetPreviewCode] = useState('')
   const [showSignInPassword, setShowSignInPassword] = useState(false)
   const [showRegisterPassword, setShowRegisterPassword] = useState(false)
   const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = useState(false)
   const [showResetPanel, setShowResetPanel] = useState(false)
   const [awaitingEmailVerification, setAwaitingEmailVerification] = useState(false)
   const [verificationCode, setVerificationCode] = useState('')
-  const [verificationPreviewCode, setVerificationPreviewCode] = useState('')
   const [verificationDeliveryHint, setVerificationDeliveryHint] = useState('')
   const [verificationToken, setVerificationToken] = useState('')
   const [oauthPending, setOauthPending] = useState(false)
@@ -182,10 +180,8 @@ export function AuthPage() {
     try {
       const verificationPayload = await requestEmailVerification(sessionToken)
       setVerificationDeliveryHint(verificationPayload.delivery_hint || 'Verification code generated.')
-      setVerificationPreviewCode(verificationPayload.code_preview || '')
     } catch (verificationError) {
       setVerificationDeliveryHint('')
-      setVerificationPreviewCode('')
       setError(verificationError instanceof Error ? verificationError.message : 'Could not request verification code.')
     }
   }
@@ -429,7 +425,6 @@ export function AuthPage() {
     try {
       const payload = await requestEmailVerification(token)
       setVerificationDeliveryHint(payload.delivery_hint || 'Verification code generated.')
-      setVerificationPreviewCode(payload.code_preview || '')
       setStatus('Verification code refreshed.')
     } catch (verificationError) {
       setError(verificationError instanceof Error ? verificationError.message : 'Could not resend verification code.')
@@ -638,7 +633,6 @@ export function AuthPage() {
     setStatus('')
     try {
       const payload = await requestPasswordReset(resetEmail)
-      setResetPreviewCode(payload.code_preview || '')
       setStatus(payload.delivery_hint || 'Password reset request submitted.')
     } catch (resetError) {
       setError(resetError instanceof Error ? resetError.message : 'Password reset request failed.')
@@ -929,11 +923,6 @@ export function AuthPage() {
                 >
                   Request reset code
                 </Button>
-                {resetPreviewCode ? (
-                  <p className="text-sm text-[hsl(var(--tone-accent-700))]">
-                    Reset code (debug preview): <span className="font-mono">{resetPreviewCode}</span>
-                  </p>
-                ) : null}
                 <Input
                   id="reset-code"
                   placeholder="Reset code"
@@ -1013,11 +1002,6 @@ export function AuthPage() {
                 Verify later
               </Button>
             </div>
-            {verificationPreviewCode ? (
-              <p className="text-sm text-[hsl(var(--tone-accent-700))]">
-                Verification code (debug preview): <span className="font-mono">{verificationPreviewCode}</span>
-              </p>
-            ) : null}
           </div>
         ) : (
           <div className="space-y-3">

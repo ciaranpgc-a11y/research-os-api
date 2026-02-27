@@ -1,7 +1,22 @@
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ChevronDown, ChevronUp, ChevronsUpDown, PanelRightClose, PanelRightOpen, Pin, Save, X } from 'lucide-react'
+import {
+  ArrowRight,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
+  PanelRightClose,
+  PanelRightOpen,
+  Pencil,
+  Pin,
+  RotateCcw,
+  Save,
+  UserMinus,
+  UserPlus,
+  X,
+} from 'lucide-react'
 
 import { TopBar } from '@/components/layout/top-bar'
 import { Button } from '@/components/ui/button'
@@ -9,8 +24,6 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { getAuthSessionToken } from '@/lib/auth-session'
-import { listCollaborators } from '@/lib/impact-api'
 import { WorkspacesDataLibraryView } from '@/pages/workspaces-data-library-view'
 import {
   WORKSPACE_OWNER_REQUIRED_MESSAGE,
@@ -26,9 +39,10 @@ import {
   INBOX_READS_STORAGE_KEY,
   useWorkspaceInboxStore,
 } from '@/store/use-workspace-inbox-store'
-import type { CollaboratorPayload } from '@/types/impact'
 import {
   useWorkspaceStore,
+  type WorkspaceAuditCategory,
+  type WorkspaceAuditLogEntry,
   type WorkspaceCollaboratorRole,
   type WorkspaceRecord,
 } from '@/store/use-workspace-store'
@@ -39,13 +53,6 @@ type FilterKey = 'all' | 'active' | 'pinned' | 'archived' | 'recent'
 type SortColumn = 'name' | 'stage' | 'updatedAt' | 'status'
 type SortDirection = 'asc' | 'desc'
 
-type CollaboratorCandidate = {
-  key: string
-  name: string
-  subtitle: string
-  source: 'directory' | 'local'
-}
-
 type CollaboratorChipState = 'active' | 'removed' | 'pending'
 
 type CollaboratorChipEntry = {
@@ -53,6 +60,22 @@ type CollaboratorChipEntry = {
   name: string
   state: CollaboratorChipState
   role: WorkspaceCollaboratorRole
+}
+
+type WorkspaceAuditEntry = WorkspaceAuditLogEntry
+
+type CollaboratorAccessStatus =
+  | 'none'
+  | 'pending'
+  | 'active'
+  | 'removed'
+  | 'accepted'
+  | 'cancelled'
+  | 'declined'
+
+type ToggleCollaboratorRemovedOptions = {
+  skipRemoveConfirmation?: boolean
+  restoreRole?: WorkspaceCollaboratorRole
 }
 
 const COLLABORATOR_ROLE_OPTIONS: Array<{
@@ -101,20 +124,18 @@ const HOUSE_ACTION_BUTTON_CLASS = houseForms.actionButton
 const HOUSE_PRIMARY_ACTION_BUTTON_CLASS = houseForms.actionButtonPrimary
 const HOUSE_SUCCESS_ACTION_BUTTON_CLASS = houseForms.actionButtonSuccess
 const HOUSE_DANGER_ACTION_BUTTON_CLASS = houseForms.actionButtonDanger
-const HOUSE_COLLABORATOR_LIST_SHELL_CLASS = houseCollaborators.listShell
-const HOUSE_COLLABORATOR_LIST_VIEWPORT_CLASS = houseCollaborators.listViewport
-const HOUSE_COLLABORATOR_LIST_BODY_CLASS = houseCollaborators.listBody
-const HOUSE_COLLABORATOR_CANDIDATE_CLASS = houseCollaborators.candidate
-const HOUSE_COLLABORATOR_CANDIDATE_SELECTED_CLASS = houseCollaborators.candidateSelected
-const HOUSE_COLLABORATOR_CANDIDATE_IDLE_CLASS = houseCollaborators.candidateIdle
-const HOUSE_COLLABORATOR_CANDIDATE_META_CLASS = houseCollaborators.candidateMeta
-const HOUSE_COLLABORATOR_CANDIDATE_SOURCE_CLASS = houseCollaborators.candidateSource
 const HOUSE_COLLABORATOR_CHIP_CLASS = houseCollaborators.chip
 const HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS = houseCollaborators.chipActive
 const HOUSE_COLLABORATOR_CHIP_PENDING_CLASS = houseCollaborators.chipPending
 const HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS = houseCollaborators.chipRemoved
 const HOUSE_COLLABORATOR_CHIP_MANAGEABLE_CLASS = houseCollaborators.chipManageable
 const HOUSE_COLLABORATOR_CHIP_READONLY_CLASS = houseCollaborators.chipReadOnly
+const HOUSE_COLLABORATOR_ACTION_ICON_CLASS = houseCollaborators.actionIcon
+const HOUSE_COLLABORATOR_ACTION_ICON_ADD_CLASS = houseCollaborators.actionIconAdd
+const HOUSE_COLLABORATOR_ACTION_ICON_CONFIRM_CLASS = houseCollaborators.actionIconConfirm
+const HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS = houseCollaborators.actionIconEdit
+const HOUSE_COLLABORATOR_ACTION_ICON_REMOVE_CLASS = houseCollaborators.actionIconRemove
+const HOUSE_COLLABORATOR_ACTION_ICON_RESTORE_CLASS = houseCollaborators.actionIconRestore
 const HOUSE_NAV_SECTION_LABEL_CLASS = houseNavigation.sectionLabel
 const HOUSE_NAV_LIST_CLASS = houseNavigation.list
 const HOUSE_NAV_ITEM_CLASS = houseNavigation.item
@@ -128,6 +149,8 @@ const HOUSE_DRILLDOWN_SHEET_CLASS = houseDrilldown.sheet
 const HOUSE_DRILLDOWN_SHEET_BODY_CLASS = houseDrilldown.sheetBody
 const HOUSE_DRILLDOWN_ACTION_CLASS = houseDrilldown.action
 const HOUSE_DRILLDOWN_SECTION_LABEL_CLASS = houseDrilldown.sectionLabel
+const HOUSE_DRILLDOWN_TAB_LIST_CLASS = houseDrilldown.tabList
+const HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS = houseDrilldown.tabTrigger
 const WORKSPACE_ICON_BUTTON_DIMENSION_CLASS = 'h-8 w-8 p-0'
 const HOUSE_SECTION_TOOLS_CLASS = houseActions.sectionTools
 const HOUSE_SECTION_TOOLS_WORKSPACE_CLASS = houseActions.sectionToolsWorkspace
@@ -246,6 +269,32 @@ function collaboratorRoleLabel(role: WorkspaceCollaboratorRole): string {
   return role === 'reviewer' ? 'Reviewer' : role === 'viewer' ? 'Viewer' : 'Editor'
 }
 
+function collaboratorStatusTransitionAuditMessage(input: {
+  collaboratorName: string
+  fromStatus: CollaboratorAccessStatus
+  toStatus: CollaboratorAccessStatus
+  actorName: string
+  role?: WorkspaceCollaboratorRole
+}): string {
+  const collaboratorName = normalizeCollaboratorName(input.collaboratorName) || 'Collaborator'
+  const actorName = normalizeCollaboratorName(input.actorName) || 'Unknown user'
+  const roleSuffix = input.role ? ` Role set to ${input.role}.` : ''
+  return `${collaboratorName} collaborator status switched from ${input.fromStatus} to ${input.toStatus} by ${actorName}.${roleSuffix}`
+}
+
+function collaboratorRoleTransitionAuditMessage(input: {
+  collaboratorName: string
+  fromRole: WorkspaceCollaboratorRole
+  toRole: WorkspaceCollaboratorRole
+  actorName: string
+  pending?: boolean
+}): string {
+  const collaboratorName = normalizeCollaboratorName(input.collaboratorName) || 'Collaborator'
+  const actorName = normalizeCollaboratorName(input.actorName) || 'Unknown user'
+  const scope = input.pending ? 'pending collaborator role' : 'collaborator role'
+  return `${collaboratorName} ${scope} switched from ${input.fromRole} to ${input.toRole} by ${actorName}.`
+}
+
 function isWorkspaceOwner(workspace: WorkspaceRecord, currentUserName: string | null): boolean {
   const cleanCurrentUser = normalizeCollaboratorName(currentUserName).toLowerCase()
   if (!cleanCurrentUser) {
@@ -254,11 +303,382 @@ function isWorkspaceOwner(workspace: WorkspaceRecord, currentUserName: string | 
   return normalizeCollaboratorName(workspace.ownerName).toLowerCase() === cleanCurrentUser
 }
 
-function workspaceOwnerLabel(workspace: WorkspaceRecord, currentUserName: string | null): string {
-  if (isWorkspaceOwner(workspace, currentUserName)) {
-    return 'You'
+function workspaceOwnerLabel(workspace: WorkspaceRecord, _currentUserName: string | null): string {
+  const ownerName = normalizeCollaboratorName(workspace.ownerName) || 'Unknown'
+  return `${ownerName} (Owner)`
+}
+
+function isWorkspaceReadOnlyForCurrentUser(workspace: WorkspaceRecord, currentUserName: string | null): boolean {
+  const cleanCurrentUser = normalizeCollaboratorName(currentUserName).toLowerCase()
+  if (!cleanCurrentUser) {
+    return false
   }
-  return normalizeCollaboratorName(workspace.ownerName) || 'Unknown'
+  const removed = collaboratorRemovedSet(workspace)
+  return removed.has(cleanCurrentUser)
+}
+
+type ParsedAuditTransition = {
+  subject: string
+  fromRawValue: string
+  toRawValue: string
+  fromValue: string
+  toValue: string
+  actorName: string
+  sectionLabel: string
+  transitionKind: 'access_status' | 'invitation_status' | 'role' | 'pending_role'
+  roleDetail: string | null
+}
+
+type ParsedConversationAuditEvent = {
+  messageId: string
+  senderName: string
+  createdAtRaw: string
+  ciphertextLength: number
+  ivLength: number
+}
+
+type CollaboratorAuditPresentationEntry = {
+  actorName: string
+  entry: WorkspaceAuditEntry
+  parsedTransition: ParsedAuditTransition | null
+  timestampMs: number
+}
+
+type CollaboratorAuditActorGroup = {
+  actorName: string
+  entries: CollaboratorAuditPresentationEntry[]
+}
+
+type ConversationAuditPresentationEntry = {
+  actorName: string
+  entry: WorkspaceAuditEntry
+  parsedEvent: ParsedConversationAuditEvent | null
+  timestampMs: number
+}
+
+type ConversationAuditActorGroup = {
+  actorName: string
+  entries: ConversationAuditPresentationEntry[]
+}
+
+type CollaboratorAuditFilter =
+  | 'all'
+  | 'access_status'
+  | 'role_changes'
+  | 'invitation_status'
+  | 'other'
+
+const COLLABORATOR_AUDIT_FILTER_OPTIONS: Array<{ value: CollaboratorAuditFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'access_status', label: 'Access' },
+  { value: 'role_changes', label: 'Roles' },
+  { value: 'invitation_status', label: 'Invites' },
+  { value: 'other', label: 'Other' },
+]
+
+function humanizeAuditValue(value: string): string {
+  const clean = (value || '').trim().replace(/_/g, ' ')
+  if (!clean) {
+    return 'Unknown'
+  }
+  return clean.replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function auditTimestampMs(value: string): number {
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) {
+    return 0
+  }
+  return parsed
+}
+
+function compareAuditActorNames(left: string, right: string): number {
+  return left.localeCompare(right, undefined, { sensitivity: 'base' })
+}
+
+function parseActorNameFromAuditMessage(message: string): string {
+  const cleanMessage = normalizeCollaboratorName(message)
+  if (!cleanMessage) {
+    return 'System'
+  }
+  const byMatch = cleanMessage.match(/\bby (.*?)\.(?:\s|$)/i)
+  if (byMatch) {
+    const actorName = normalizeCollaboratorName(byMatch[1])
+    if (actorName) {
+      return actorName
+    }
+  }
+  return 'System'
+}
+
+function formatAuditTransitionDisplayValue(
+  transition: ParsedAuditTransition,
+  rawValue: string,
+  displayValue: string,
+): string {
+  const raw = rawValue.trim().toLowerCase()
+  if (transition.transitionKind === 'access_status') {
+    const statusLabel = raw || displayValue.trim().toLowerCase() || 'unknown'
+    return `Access (${statusLabel})`
+  }
+  if (transition.transitionKind === 'invitation_status') {
+    const statusLabel = raw || displayValue.trim().toLowerCase() || 'unknown'
+    return `Invite (${statusLabel})`
+  }
+  return displayValue
+}
+
+type AuditTransitionPillPresentation = {
+  fromLabel: string | null
+  toLabel: string
+  fromRawValue: string | null
+  toRawValue: string
+  showArrow: boolean
+}
+
+function normalizeRoleStatusValue(value: string): string {
+  const clean = value.trim().toLowerCase()
+  if (clean === 'accepted') {
+    return 'active'
+  }
+  return clean || 'unknown'
+}
+
+function buildAuditTransitionPillPresentation(
+  transition: ParsedAuditTransition,
+): AuditTransitionPillPresentation {
+  if (transition.transitionKind === 'pending_role') {
+    return {
+      fromLabel: `Role (pending): ${transition.fromValue}`,
+      toLabel: `Role (pending): ${transition.toValue}`,
+      fromRawValue: 'pending',
+      toRawValue: 'pending',
+      showArrow: true,
+    }
+  }
+
+  if (transition.transitionKind === 'role') {
+    return {
+      fromLabel: `Role (active): ${transition.fromValue}`,
+      toLabel: `Role (active): ${transition.toValue}`,
+      fromRawValue: 'active',
+      toRawValue: 'active',
+      showArrow: true,
+    }
+  }
+
+  if (transition.roleDetail) {
+    const fromStatus = normalizeRoleStatusValue(transition.fromRawValue)
+    const toStatus = normalizeRoleStatusValue(transition.toRawValue)
+    const fromLabel = `Role (${fromStatus}): ${transition.roleDetail}`
+    const toLabel = `Role (${toStatus}): ${transition.roleDetail}`
+
+    if (transition.fromRawValue === 'none' && transition.toRawValue === 'pending') {
+      return {
+        fromLabel: null,
+        toLabel,
+        fromRawValue: null,
+        toRawValue: transition.toRawValue,
+        showArrow: false,
+      }
+    }
+
+    if (fromStatus === toStatus) {
+      return {
+        fromLabel: null,
+        toLabel,
+        fromRawValue: null,
+        toRawValue: transition.toRawValue,
+        showArrow: false,
+      }
+    }
+
+    return {
+      fromLabel,
+      toLabel,
+      fromRawValue: transition.fromRawValue,
+      toRawValue: transition.toRawValue,
+      showArrow: true,
+    }
+  }
+
+  const fromLabel = formatAuditTransitionDisplayValue(
+    transition,
+    transition.fromRawValue,
+    transition.fromValue,
+  )
+  const toLabel = formatAuditTransitionDisplayValue(
+    transition,
+    transition.toRawValue,
+    transition.toValue,
+  )
+  if (transition.fromRawValue === transition.toRawValue) {
+    return {
+      fromLabel: null,
+      toLabel,
+      fromRawValue: null,
+      toRawValue: transition.toRawValue,
+      showArrow: false,
+    }
+  }
+  return {
+    fromLabel,
+    toLabel,
+    fromRawValue: transition.fromRawValue,
+    toRawValue: transition.toRawValue,
+    showArrow: true,
+  }
+}
+
+function auditTransitionStatePillClassName(
+  transition: ParsedAuditTransition,
+  rawValue: string,
+): string {
+  const raw = rawValue.trim().toLowerCase()
+  if (raw === 'pending') {
+    return cn(HOUSE_COLLABORATOR_CHIP_CLASS, HOUSE_COLLABORATOR_CHIP_PENDING_CLASS)
+  }
+  if (raw === 'active' || raw === 'accepted') {
+    return cn(HOUSE_COLLABORATOR_CHIP_CLASS, HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS)
+  }
+  if (raw === 'removed' || raw === 'declined' || raw === 'cancelled') {
+    return cn(HOUSE_COLLABORATOR_CHIP_CLASS, HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS)
+  }
+  if (transition.transitionKind === 'invitation_status' && raw === 'accepted') {
+    return cn(HOUSE_COLLABORATOR_CHIP_CLASS, HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS)
+  }
+  return cn(HOUSE_COLLABORATOR_CHIP_CLASS, 'border-border/70 bg-background/80 text-foreground')
+}
+
+function parseAuditTransition(message: string): ParsedAuditTransition | null {
+  const cleanMessage = normalizeCollaboratorName(message)
+  if (!cleanMessage) {
+    return null
+  }
+
+  const statusMatch = cleanMessage.match(
+    /^(.*?) collaborator(?: invitation)? status switched from ([a-z_]+) to ([a-z_]+) by (.*?)(?: as ([a-z_]+))?\.(?: Role set to ([a-z_]+)\.)?$/i,
+  )
+  if (statusMatch) {
+    const subject = normalizeCollaboratorName(statusMatch[1]) || 'Collaborator'
+    const fromRawValue = (statusMatch[2] || '').trim().toLowerCase()
+    const toRawValue = (statusMatch[3] || '').trim().toLowerCase()
+    const fromValue = humanizeAuditValue(fromRawValue)
+    const toValue = humanizeAuditValue(toRawValue)
+    const actorName = normalizeCollaboratorName(statusMatch[4]) || 'Unknown user'
+    const roleDetailSource = statusMatch[6] || statusMatch[5] || ''
+    const roleDetail = roleDetailSource ? humanizeAuditValue(roleDetailSource) : null
+    const isInvitationStatus = cleanMessage.toLowerCase().includes('invitation status')
+    const sectionLabel = isInvitationStatus ? 'Invitation status' : 'Access status'
+    return {
+      subject,
+      fromRawValue,
+      toRawValue,
+      fromValue,
+      toValue,
+      actorName,
+      sectionLabel,
+      transitionKind: isInvitationStatus ? 'invitation_status' : 'access_status',
+      roleDetail,
+    }
+  }
+
+  const roleMatch = cleanMessage.match(
+    /^(.*?) (pending )?collaborator role switched from ([a-z_]+) to ([a-z_]+) by (.*?)\.$/i,
+  )
+  if (roleMatch) {
+    const subject = normalizeCollaboratorName(roleMatch[1]) || 'Collaborator'
+    const isPendingRole = Boolean((roleMatch[2] || '').trim())
+    const fromRawValue = (roleMatch[3] || '').trim().toLowerCase()
+    const toRawValue = (roleMatch[4] || '').trim().toLowerCase()
+    const fromValue = humanizeAuditValue(fromRawValue)
+    const toValue = humanizeAuditValue(toRawValue)
+    const actorName = normalizeCollaboratorName(roleMatch[5]) || 'Unknown user'
+    return {
+      subject,
+      fromRawValue,
+      toRawValue,
+      fromValue,
+      toValue,
+      actorName,
+      sectionLabel: isPendingRole ? 'Pending role' : 'Role',
+      transitionKind: isPendingRole ? 'pending_role' : 'role',
+      roleDetail: null,
+    }
+  }
+
+  return null
+}
+
+function isConversationAuditEntry(entry: WorkspaceAuditEntry): boolean {
+  const cleanMessage = normalizeCollaboratorName(entry.message).toLowerCase()
+  return cleanMessage.startsWith('inbox message logged:')
+}
+
+function parseConversationAuditEvent(message: string): ParsedConversationAuditEvent | null {
+  const cleanMessage = normalizeCollaboratorName(message)
+  if (!cleanMessage) {
+    return null
+  }
+  const match = cleanMessage.match(
+    /^Inbox message logged: id (.*?), sender (.*?), created_at (.*?), ciphertext_length (\d+), iv_length (\d+)\.$/i,
+  )
+  if (!match) {
+    return null
+  }
+  const ciphertextLength = Number.parseInt(match[4] || '0', 10)
+  const ivLength = Number.parseInt(match[5] || '0', 10)
+  return {
+    messageId: normalizeCollaboratorName(match[1]) || 'unknown',
+    senderName: normalizeCollaboratorName(match[2]) || 'Unknown sender',
+    createdAtRaw: normalizeCollaboratorName(match[3]) || '',
+    ciphertextLength: Number.isFinite(ciphertextLength) ? ciphertextLength : 0,
+    ivLength: Number.isFinite(ivLength) ? ivLength : 0,
+  }
+}
+
+function isRoleChangeAuditEntry(entry: WorkspaceAuditEntry): boolean {
+  const cleanMessage = normalizeCollaboratorName(entry.message).toLowerCase()
+  return cleanMessage.includes('collaborator role switched from')
+}
+
+function isInvitationStatusAuditEntry(entry: WorkspaceAuditEntry): boolean {
+  const cleanMessage = normalizeCollaboratorName(entry.message).toLowerCase()
+  return cleanMessage.includes('collaborator invitation status switched from')
+}
+
+function isAccessStatusAuditEntry(entry: WorkspaceAuditEntry): boolean {
+  const cleanMessage = normalizeCollaboratorName(entry.message).toLowerCase()
+  return (
+    cleanMessage.includes('collaborator status switched from') &&
+    !cleanMessage.includes('collaborator invitation status switched from')
+  )
+}
+
+function matchesCollaboratorAuditLogFilter(
+  entry: WorkspaceAuditEntry,
+  filter: CollaboratorAuditFilter,
+): boolean {
+  if (filter === 'all') {
+    return true
+  }
+  if (filter === 'access_status') {
+    return isAccessStatusAuditEntry(entry)
+  }
+  if (filter === 'role_changes') {
+    return isRoleChangeAuditEntry(entry)
+  }
+  if (filter === 'invitation_status') {
+    return isInvitationStatusAuditEntry(entry)
+  }
+  if (filter === 'other') {
+    return (
+      !isAccessStatusAuditEntry(entry) &&
+      !isRoleChangeAuditEntry(entry) &&
+      !isInvitationStatusAuditEntry(entry)
+    )
+  }
+  return true
 }
 
 function collaboratorRemovedSet(workspace: WorkspaceRecord): Set<string> {
@@ -337,58 +757,6 @@ function workspaceCollaboratorChips(workspace: WorkspaceRecord): CollaboratorChi
   return chips
 }
 
-function buildCollaboratorCandidates(input: {
-  query: string
-  localNames: string[]
-  directoryItems: CollaboratorPayload[]
-}): CollaboratorCandidate[] {
-  const query = normalizeCollaboratorName(input.query).toLowerCase()
-  const output: CollaboratorCandidate[] = []
-  const seen = new Set<string>()
-
-  for (const item of input.directoryItems) {
-    const name = normalizeCollaboratorName(item.full_name)
-    if (!name) {
-      continue
-    }
-    const key = name.toLowerCase()
-    if (seen.has(key)) {
-      continue
-    }
-    seen.add(key)
-    const subtitleParts = [item.email || '', item.primary_institution || ''].filter(Boolean)
-    output.push({
-      key: `directory-${item.id}`,
-      name,
-      subtitle: subtitleParts.join(' | ') || 'Directory match',
-      source: 'directory',
-    })
-  }
-
-  for (const rawName of input.localNames) {
-    const name = normalizeCollaboratorName(rawName)
-    if (!name) {
-      continue
-    }
-    const key = name.toLowerCase()
-    if (seen.has(key)) {
-      continue
-    }
-    if (query && !key.includes(query)) {
-      continue
-    }
-    seen.add(key)
-    output.push({
-      key: `local-${key}`,
-      name,
-      subtitle: 'Known in your workspace network',
-      source: 'local',
-    })
-  }
-
-  return output.slice(0, 40)
-}
-
 function stageRank(stage: string): number {
   if (stage === 'Plan') {
     return 1
@@ -440,36 +808,35 @@ function WorkspacesDrilldownPanel({
   selectedWorkspaceId,
   selectedWorkspaceName,
   selectedWorkspace,
+  selectedWorkspaceReadOnly,
+  currentWorkspaceUserName,
   collaboratorChips,
+  workspaceAuditEntries,
   canManageSelectedWorkspace,
   collaboratorComposerOpen,
   collaboratorInviteRole,
   collaboratorQuery,
-  collaboratorLookupLoading,
-  collaboratorLookupError,
-  collaboratorCandidates,
-  collaboratorTargetName,
   canConfirmAddCollaborator,
   onOpenCollaboratorComposer,
   onCollaboratorInviteRoleChange,
   onChangeCollaboratorRole,
+  onCancelPendingCollaboratorInvitation,
+  onToggleCollaboratorRemoved,
   onCollaboratorQueryChange,
-  onSelectCollaboratorCandidate,
   onConfirmAddCollaborator,
   onOpenSelectedWorkspace,
 }: {
   selectedWorkspaceId: string | null
   selectedWorkspaceName: string | null
   selectedWorkspace: WorkspaceRecord | null
+  selectedWorkspaceReadOnly: boolean
+  currentWorkspaceUserName: string | null
   collaboratorChips: CollaboratorChipEntry[]
+  workspaceAuditEntries: WorkspaceAuditEntry[]
   canManageSelectedWorkspace: boolean
   collaboratorComposerOpen: boolean
   collaboratorInviteRole: WorkspaceCollaboratorRole
   collaboratorQuery: string
-  collaboratorLookupLoading: boolean
-  collaboratorLookupError: string
-  collaboratorCandidates: CollaboratorCandidate[]
-  collaboratorTargetName: string
   canConfirmAddCollaborator: boolean
   onOpenCollaboratorComposer: () => void
   onCollaboratorInviteRoleChange: (role: WorkspaceCollaboratorRole) => void
@@ -478,19 +845,125 @@ function WorkspacesDrilldownPanel({
     state: CollaboratorChipState,
     role: WorkspaceCollaboratorRole,
   ) => void
+  onCancelPendingCollaboratorInvitation: (collaboratorName: string) => void
+  onToggleCollaboratorRemoved: (
+    workspace: WorkspaceRecord,
+    collaboratorName: string,
+    options?: ToggleCollaboratorRemovedOptions,
+  ) => void
   onCollaboratorQueryChange: (value: string) => void
-  onSelectCollaboratorCandidate: (name: string) => void
   onConfirmAddCollaborator: () => void
   onOpenSelectedWorkspace: (workspaceId: string) => void
 }) {
   const selectedLabel = selectedWorkspaceName?.trim() || ''
-  const canOpenSelectedWorkspace = Boolean(selectedWorkspaceId && selectedLabel)
+  const canOpenSelectedWorkspace = Boolean(
+    selectedWorkspaceId && selectedLabel && !selectedWorkspaceReadOnly,
+  )
+  const canAddCollaborator = Boolean(selectedWorkspace && canManageSelectedWorkspace)
+  const ownerDisplayName = selectedWorkspace
+    ? workspaceOwnerLabel(selectedWorkspace, currentWorkspaceUserName)
+    : 'Unknown owner (Owner)'
+  const [roleEditorKey, setRoleEditorKey] = useState<string | null>(null)
+  const [roleEditorDraftRole, setRoleEditorDraftRole] = useState<WorkspaceCollaboratorRole | null>(null)
+  const [restoreEditorKey, setRestoreEditorKey] = useState<string | null>(null)
+  const [restoreEditorRole, setRestoreEditorRole] = useState<WorkspaceCollaboratorRole | null>(null)
+  const [collaboratorAuditFilter, setCollaboratorAuditFilter] = useState<CollaboratorAuditFilter>('all')
+  const [collaboratorActivityCollapsed, setCollaboratorActivityCollapsed] = useState(true)
+  const [conversationActivityCollapsed, setConversationActivityCollapsed] = useState(true)
+  const [removalConfirmKey, setRemovalConfirmKey] = useState<string | null>(null)
+  const sortedAuditEntries = [...workspaceAuditEntries]
+    .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+  const collaboratorActivityEntries = sortedAuditEntries
+    .filter((entry) => !isConversationAuditEntry(entry))
+    .filter((entry) =>
+      matchesCollaboratorAuditLogFilter(entry, collaboratorAuditFilter),
+    )
+  const conversationActivityEntries = sortedAuditEntries.filter(
+    (entry) => isConversationAuditEntry(entry),
+  )
+  const collaboratorActivityGroups = useMemo<CollaboratorAuditActorGroup[]>(() => {
+    const groups = new Map<string, CollaboratorAuditActorGroup>()
+    collaboratorActivityEntries.forEach((entry) => {
+      const parsedTransition = parseAuditTransition(entry.message)
+      const actorName = parsedTransition?.actorName || parseActorNameFromAuditMessage(entry.message)
+      const actorKey = normalizeCollaboratorName(actorName).toLowerCase() || 'system'
+      const item: CollaboratorAuditPresentationEntry = {
+        actorName,
+        entry,
+        parsedTransition,
+        timestampMs: auditTimestampMs(entry.createdAt),
+      }
+      const current = groups.get(actorKey)
+      if (current) {
+        current.entries.push(item)
+        return
+      }
+      groups.set(actorKey, {
+        actorName,
+        entries: [item],
+      })
+    })
+    return [...groups.values()]
+      .map((group) => ({
+        ...group,
+        entries: [...group.entries].sort(
+          (left, right) =>
+            right.timestampMs - left.timestampMs || right.entry.id.localeCompare(left.entry.id),
+        ),
+      }))
+      .sort((left, right) => compareAuditActorNames(left.actorName, right.actorName))
+  }, [collaboratorActivityEntries])
+  const conversationActivityGroups = useMemo<ConversationAuditActorGroup[]>(() => {
+    const groups = new Map<string, ConversationAuditActorGroup>()
+    conversationActivityEntries.forEach((entry) => {
+      const parsedEvent = parseConversationAuditEvent(entry.message)
+      const actorName = parsedEvent?.senderName || parseActorNameFromAuditMessage(entry.message)
+      const actorKey = normalizeCollaboratorName(actorName).toLowerCase() || 'system'
+      const item: ConversationAuditPresentationEntry = {
+        actorName,
+        entry,
+        parsedEvent,
+        timestampMs: auditTimestampMs(entry.createdAt),
+      }
+      const current = groups.get(actorKey)
+      if (current) {
+        current.entries.push(item)
+        return
+      }
+      groups.set(actorKey, {
+        actorName,
+        entries: [item],
+      })
+    })
+    return [...groups.values()]
+      .map((group) => ({
+        ...group,
+        entries: [...group.entries].sort(
+          (left, right) =>
+            right.timestampMs - left.timestampMs || right.entry.id.localeCompare(left.entry.id),
+        ),
+      }))
+      .sort((left, right) => compareAuditActorNames(left.actorName, right.actorName))
+  }, [conversationActivityEntries])
+  const clampCollaboratorActivityList = collaboratorActivityEntries.length > 6
+  const clampConversationActivityList = conversationActivityEntries.length > 6
+
+  useEffect(() => {
+    setRoleEditorKey(null)
+    setRoleEditorDraftRole(null)
+    setRestoreEditorKey(null)
+    setRestoreEditorRole(null)
+    setCollaboratorAuditFilter('all')
+    setCollaboratorActivityCollapsed(true)
+    setConversationActivityCollapsed(true)
+    setRemovalConfirmKey(null)
+  }, [selectedWorkspaceId])
+
   return (
     <div className={HOUSE_DRILLDOWN_SHEET_BODY_CLASS}>
       <div className={HOUSE_LEFT_BORDER_CLASS}>
         <h2 className={HOUSE_SECTION_TITLE_CLASS}>Manage workspace</h2>
       </div>
-      <p className={cn(HOUSE_DRILLDOWN_SECTION_LABEL_CLASS, 'mt-1 pl-3')}>Workspace data</p>
       <div className="w-full">
         <Button
           type="button"
@@ -510,54 +983,381 @@ function WorkspacesDrilldownPanel({
           disabled={!canOpenSelectedWorkspace}
         >
           <span className="truncate">
-            {canOpenSelectedWorkspace ? `Open ${selectedLabel} Workspace` : 'Select workspace'}
+            {canOpenSelectedWorkspace
+              ? `Open ${selectedLabel} Workspace`
+              : selectedWorkspaceReadOnly
+                ? 'Workspace is archived (read-only)'
+                : 'Select workspace'}
           </span>
         </Button>
       </div>
+      {selectedWorkspaceReadOnly ? (
+        <p className={HOUSE_FIELD_HELPER_CLASS}>
+          Removed access detected. This workspace is archived and read-only.
+        </p>
+      ) : null}
+      <p className={cn(HOUSE_DRILLDOWN_SECTION_LABEL_CLASS, 'pl-3')}>Workspace data</p>
 
       <div className="space-y-2">
-        <p className={cn(HOUSE_DRILLDOWN_SECTION_LABEL_CLASS, 'pl-3')}>Collaborator</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className={cn(HOUSE_DRILLDOWN_SECTION_LABEL_CLASS, 'pl-3')}>Collaborators</p>
+        </div>
         <div className="min-h-6">
           {selectedWorkspace ? (
             <div className="space-y-1.5">
-              {collaboratorChips.map((chip) => (
-                <div key={chip.key} className="flex items-center justify-between gap-2">
-                  <span
-                    className={cn(
-                      HOUSE_COLLABORATOR_CHIP_CLASS,
-                      chip.state === 'pending'
-                        ? HOUSE_COLLABORATOR_CHIP_PENDING_CLASS
-                        : chip.state === 'removed'
-                          ? HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS
-                          : HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS,
-                      HOUSE_COLLABORATOR_CHIP_READONLY_CLASS,
-                    )}
-                  >
-                    {chip.name}
-                  </span>
-                  {canManageSelectedWorkspace ? (
-                    <select
-                      value={chip.role}
-                      onChange={(event) => {
-                        const nextRole = normalizeCollaboratorRoleValue(event.target.value)
-                        if (!nextRole) {
-                          return
-                        }
-                        onChangeCollaboratorRole(chip.name, chip.state, nextRole)
-                      }}
-                      className={cn('h-8 min-w-sz-110 rounded-md px-2 text-xs', HOUSE_SELECT_CLASS)}
-                    >
-                      {COLLABORATOR_ROLE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <span className={HOUSE_FIELD_HELPER_CLASS}>{collaboratorRoleLabel(chip.role)}</span>
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className={cn(
+                    HOUSE_COLLABORATOR_CHIP_CLASS,
+                    HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS,
+                    HOUSE_COLLABORATOR_CHIP_READONLY_CLASS,
                   )}
-                </div>
+                >
+                  {ownerDisplayName}
+                </span>
+                <span className={HOUSE_FIELD_HELPER_CLASS}>Owner</span>
+              </div>
+              {collaboratorChips.map((chip) => (
+                (() => {
+                  const isRoleEditorOpen =
+                    canManageSelectedWorkspace &&
+                    roleEditorKey === chip.key &&
+                    chip.state !== 'removed'
+                  const isRestoreEditorOpen =
+                    canManageSelectedWorkspace &&
+                    chip.state === 'removed' &&
+                    restoreEditorKey === chip.key
+                  const roleEditorCurrentRole = roleEditorDraftRole || chip.role
+                  const hasRoleEditorChanges =
+                    isRoleEditorOpen && roleEditorCurrentRole !== chip.role
+                  const isRemovalAwaitingConfirm =
+                    canManageSelectedWorkspace &&
+                    chip.state === 'active' &&
+                    removalConfirmKey === chip.key
+                  return (
+                    <div key={chip.key} className="flex items-center justify-between gap-2">
+                      <span
+                        className={cn(
+                          HOUSE_COLLABORATOR_CHIP_CLASS,
+                          chip.state === 'pending'
+                            ? HOUSE_COLLABORATOR_CHIP_PENDING_CLASS
+                            : chip.state === 'removed'
+                              ? HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS
+                              : HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS,
+                          HOUSE_COLLABORATOR_CHIP_READONLY_CLASS,
+                        )}
+                      >
+                        {chip.state === 'pending' ? `${chip.name} (pending)` : chip.name}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {isRoleEditorOpen ? (
+                          <div className="flex items-center gap-1">
+                            <select
+                              value={roleEditorCurrentRole}
+                              onChange={(event) => {
+                                const nextRole = normalizeCollaboratorRoleValue(event.target.value)
+                                if (!nextRole) {
+                                  return
+                                }
+                                setRoleEditorDraftRole(nextRole)
+                              }}
+                              className={cn('h-8 min-w-sz-110 rounded-md px-2 text-xs', HOUSE_SELECT_CLASS)}
+                            >
+                              {COLLABORATOR_ROLE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              className={cn(
+                                HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                                hasRoleEditorChanges
+                                  ? HOUSE_COLLABORATOR_ACTION_ICON_CONFIRM_CLASS
+                                  : HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS,
+                              )}
+                              onClick={() => {
+                                if (hasRoleEditorChanges) {
+                                  onChangeCollaboratorRole(
+                                    chip.name,
+                                    chip.state,
+                                    roleEditorCurrentRole,
+                                  )
+                                }
+                                setRoleEditorKey(null)
+                                setRoleEditorDraftRole(null)
+                                setRestoreEditorKey(null)
+                                setRestoreEditorRole(null)
+                                setRemovalConfirmKey(null)
+                              }}
+                              aria-label={
+                                hasRoleEditorChanges
+                                  ? `Apply role change for ${chip.name}`
+                                  : `Cancel role change for ${chip.name}`
+                              }
+                              title={hasRoleEditorChanges ? 'Apply role change' : 'Cancel role change'}
+                            >
+                              <Check className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              className={cn(
+                                HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                                HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS,
+                              )}
+                              onClick={() => {
+                                setRoleEditorKey(null)
+                                setRoleEditorDraftRole(null)
+                                setRestoreEditorKey(null)
+                                setRestoreEditorRole(null)
+                                setRemovalConfirmKey(null)
+                              }}
+                              aria-label={`Cancel role change for ${chip.name}`}
+                              title="Cancel role change"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : isRestoreEditorOpen ? (
+                          <div className="flex items-center gap-1">
+                            <select
+                              value={restoreEditorRole || ''}
+                              onChange={(event) => {
+                                const nextRole = normalizeCollaboratorRoleValue(event.target.value)
+                                setRestoreEditorRole(nextRole)
+                              }}
+                              className={cn('h-8 min-w-sz-110 rounded-md px-2 text-xs', HOUSE_SELECT_CLASS)}
+                            >
+                              <option value="">Select role</option>
+                              {COLLABORATOR_ROLE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              className={cn(
+                                HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                                restoreEditorRole
+                                  ? HOUSE_COLLABORATOR_ACTION_ICON_CONFIRM_CLASS
+                                  : HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS,
+                              )}
+                              onClick={() => {
+                                if (!selectedWorkspace || !restoreEditorRole) {
+                                  return
+                                }
+                                onToggleCollaboratorRemoved(selectedWorkspace, chip.name, {
+                                  restoreRole: restoreEditorRole,
+                                })
+                                setRoleEditorKey(null)
+                                setRoleEditorDraftRole(null)
+                                setRestoreEditorKey(null)
+                                setRestoreEditorRole(null)
+                                setRemovalConfirmKey(null)
+                              }}
+                              disabled={!restoreEditorRole}
+                              aria-label={`Restore ${chip.name} with selected role`}
+                              title={
+                                restoreEditorRole
+                                  ? `Restore as ${collaboratorRoleLabel(restoreEditorRole)}`
+                                  : 'Select role before restoring'
+                              }
+                            >
+                              <Check className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              className={cn(
+                                HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                                HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS,
+                              )}
+                              onClick={() => {
+                                setRoleEditorKey(null)
+                                setRoleEditorDraftRole(null)
+                                setRestoreEditorKey(null)
+                                setRestoreEditorRole(null)
+                                setRemovalConfirmKey(null)
+                              }}
+                              aria-label={`Cancel restore for ${chip.name}`}
+                              title="Cancel restore"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className={HOUSE_FIELD_HELPER_CLASS}>{collaboratorRoleLabel(chip.role)}</span>
+                        )}
+                        {canManageSelectedWorkspace ? (
+                          isRemovalAwaitingConfirm ? (
+                            <>
+                              <button
+                                type="button"
+                                className={cn(
+                                  HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                                  HOUSE_COLLABORATOR_ACTION_ICON_CONFIRM_CLASS,
+                                )}
+                                onClick={() => {
+                                  if (!selectedWorkspace) {
+                                    return
+                                  }
+                                  onToggleCollaboratorRemoved(
+                                    selectedWorkspace,
+                                    chip.name,
+                                    { skipRemoveConfirmation: true },
+                                  )
+                                  setRemovalConfirmKey(null)
+                                  setRoleEditorKey(null)
+                                  setRoleEditorDraftRole(null)
+                                  setRestoreEditorKey(null)
+                                  setRestoreEditorRole(null)
+                                }}
+                                aria-label={`Confirm remove ${chip.name}`}
+                                title="Confirm remove collaborator"
+                              >
+                                <Check className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                className={cn(
+                                  HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                                  HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS,
+                                )}
+                                onClick={() => setRemovalConfirmKey(null)}
+                                aria-label={`Cancel remove ${chip.name}`}
+                                title="Cancel remove collaborator"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className={cn(
+                                  HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                                  HOUSE_COLLABORATOR_ACTION_ICON_EDIT_CLASS,
+                                )}
+                                onClick={() => {
+                                  if (chip.state === 'removed') {
+                                    return
+                                  }
+                                  if (roleEditorKey === chip.key) {
+                                    setRoleEditorKey(null)
+                                    setRoleEditorDraftRole(null)
+                                    setRestoreEditorKey(null)
+                                    setRestoreEditorRole(null)
+                                    return
+                                  }
+                                  setRoleEditorKey(chip.key)
+                                  setRoleEditorDraftRole(chip.role)
+                                  setRestoreEditorKey(null)
+                                  setRestoreEditorRole(null)
+                                  setRemovalConfirmKey(null)
+                                }}
+                                disabled={chip.state === 'removed'}
+                                aria-label={`Edit role for ${chip.name}`}
+                                title={chip.state === 'removed' ? 'Restore collaborator to edit role.' : 'Edit role'}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                className={cn(
+                                  HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                                  chip.state === 'pending'
+                                    ? HOUSE_COLLABORATOR_ACTION_ICON_REMOVE_CLASS
+                                    : chip.state === 'removed'
+                                    ? HOUSE_COLLABORATOR_ACTION_ICON_RESTORE_CLASS
+                                    : HOUSE_COLLABORATOR_ACTION_ICON_REMOVE_CLASS,
+                                )}
+                                onClick={() => {
+                                  if (!selectedWorkspace) {
+                                    return
+                                  }
+                                  if (chip.state === 'pending') {
+                                    onCancelPendingCollaboratorInvitation(chip.name)
+                                    setRoleEditorKey(null)
+                                    setRoleEditorDraftRole(null)
+                                    setRestoreEditorKey(null)
+                                    setRestoreEditorRole(null)
+                                    setRemovalConfirmKey(null)
+                                    return
+                                  }
+                                  if (chip.state === 'active') {
+                                    setRemovalConfirmKey(chip.key)
+                                    setRoleEditorKey(null)
+                                    setRoleEditorDraftRole(null)
+                                    setRestoreEditorKey(null)
+                                    setRestoreEditorRole(null)
+                                    return
+                                  }
+                                  if (restoreEditorKey === chip.key) {
+                                    setRestoreEditorKey(null)
+                                    setRestoreEditorRole(null)
+                                    return
+                                  }
+                                  setRestoreEditorKey(chip.key)
+                                  setRestoreEditorRole(chip.role)
+                                  setRoleEditorKey(null)
+                                  setRoleEditorDraftRole(null)
+                                  setRemovalConfirmKey(null)
+                                }}
+                                aria-label={chip.state === 'removed' ? `Restore ${chip.name}` : `Remove ${chip.name}`}
+                                title={
+                                  chip.state === 'pending'
+                                    ? 'Cancel pending invitation'
+                                    : chip.state === 'removed'
+                                      ? 'Restore collaborator'
+                                      : 'Remove collaborator'
+                                }
+                              >
+                                {chip.state === 'pending' ? (
+                                  <X className="h-4 w-4" />
+                                ) : chip.state === 'removed' ? (
+                                  <RotateCcw className="h-4 w-4" />
+                                ) : (
+                                  <UserMinus className="h-4 w-4" />
+                                )}
+                              </button>
+                            </>
+                          )
+                        ) : null}
+                      </div>
+                    </div>
+                  )
+                })()
               ))}
+              <div className="pt-0.5">
+                <button
+                  type="button"
+                  className={cn(
+                    HOUSE_COLLABORATOR_ACTION_ICON_CLASS,
+                    HOUSE_COLLABORATOR_ACTION_ICON_ADD_CLASS,
+                  )}
+                  onClick={onOpenCollaboratorComposer}
+                  disabled={!canAddCollaborator}
+                  aria-label={
+                    selectedWorkspace
+                      ? collaboratorComposerOpen
+                        ? `Cancel add collaborator for ${selectedWorkspace.name}`
+                        : `Add collaborator to ${selectedWorkspace.name}`
+                      : 'Select a workspace to add collaborators'
+                  }
+                  title={
+                    !selectedWorkspace
+                      ? 'Select a workspace to manage collaborators.'
+                      : canManageSelectedWorkspace
+                        ? collaboratorComposerOpen
+                          ? 'Cancel add collaborator'
+                          : 'Add collaborator'
+                        : 'Only the workspace owner can add collaborators.'
+                  }
+                >
+                  <UserPlus className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           ) : null}
         </div>
@@ -567,39 +1367,9 @@ function WorkspacesDrilldownPanel({
           <p className={HOUSE_FIELD_HELPER_CLASS}>Only the workspace owner can add collaborators.</p>
         ) : (
           <div className="space-y-2">
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
-                onClick={onOpenCollaboratorComposer}
-              >
-                Add collaborator
-              </Button>
-            </div>
-
             {collaboratorComposerOpen ? (
               <>
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <p className={HOUSE_FIELD_HELPER_CLASS}>Role</p>
-                    <select
-                      value={collaboratorInviteRole}
-                      onChange={(event) => {
-                        const nextRole = normalizeCollaboratorRoleValue(event.target.value)
-                        if (!nextRole) {
-                          return
-                        }
-                        onCollaboratorInviteRoleChange(nextRole)
-                      }}
-                      className={cn('h-8 min-w-sz-120 rounded-md px-2 text-xs', HOUSE_SELECT_CLASS)}
-                    >
-                      {COLLABORATOR_ROLE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                   <Input
                     value={collaboratorQuery}
                     onChange={(event) => onCollaboratorQueryChange(event.target.value)}
@@ -612,56 +1382,28 @@ function WorkspacesDrilldownPanel({
                     placeholder="Search by name"
                     className={HOUSE_INPUT_CLASS}
                   />
-                  <p className={HOUSE_FIELD_HELPER_CLASS}>Type at least 2 characters to search by name.</p>
                 </div>
 
-                {collaboratorLookupLoading ? (
-                  <p className={HOUSE_FIELD_HELPER_CLASS}>Searching collaborator directory...</p>
-                ) : null}
-                {collaboratorLookupError ? (
-                  <p className="text-sm text-amber-700">{collaboratorLookupError}</p>
-                ) : null}
-
-                <div className={HOUSE_COLLABORATOR_LIST_SHELL_CLASS}>
-                  <ScrollArea className={HOUSE_COLLABORATOR_LIST_VIEWPORT_CLASS}>
-                    <div className={HOUSE_COLLABORATOR_LIST_BODY_CLASS}>
-                      {collaboratorCandidates.length === 0 ? (
-                        <p className={cn('px-2 py-1', HOUSE_FIELD_HELPER_CLASS)}>No matches yet.</p>
-                      ) : (
-                        collaboratorCandidates.map((candidate) => {
-                          const isSelected =
-                            normalizeCollaboratorName(candidate.name).toLowerCase() ===
-                            normalizeCollaboratorName(collaboratorTargetName).toLowerCase()
-                          return (
-                            <button
-                              key={candidate.key}
-                              type="button"
-                              onClick={() => onSelectCollaboratorCandidate(candidate.name)}
-                              className={cn(
-                                HOUSE_COLLABORATOR_CANDIDATE_CLASS,
-                                isSelected
-                                  ? HOUSE_COLLABORATOR_CANDIDATE_SELECTED_CLASS
-                                  : HOUSE_COLLABORATOR_CANDIDATE_IDLE_CLASS,
-                              )}
-                            >
-                              <p className={houseTypography.text}>{candidate.name}</p>
-                              <div className={HOUSE_COLLABORATOR_CANDIDATE_META_CLASS}>
-                                <p className={houseTypography.fieldHelper}>{candidate.subtitle}</p>
-                                <span className={HOUSE_COLLABORATOR_CANDIDATE_SOURCE_CLASS}>
-                                  {candidate.source === 'directory' ? 'Directory' : 'Workspace network'}
-                                </span>
-                              </div>
-                            </button>
-                          )
-                        })
-                      )}
-                    </div>
-                  </ScrollArea>
+                <div className="space-y-1">
+                  <p className={HOUSE_FIELD_HELPER_CLASS}>Role</p>
+                  <select
+                    value={collaboratorInviteRole}
+                    onChange={(event) => {
+                      const nextRole = normalizeCollaboratorRoleValue(event.target.value)
+                      if (!nextRole) {
+                        return
+                      }
+                      onCollaboratorInviteRoleChange(nextRole)
+                    }}
+                    className={cn('h-8 min-w-sz-120 rounded-md px-2 text-xs', HOUSE_SELECT_CLASS)}
+                  >
+                    {COLLABORATOR_ROLE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-
-                {collaboratorTargetName ? (
-                  <p className={HOUSE_FIELD_HELPER_CLASS}>Selected: {collaboratorTargetName}</p>
-                ) : null}
 
                 <div className="flex justify-end">
                   <Button
@@ -678,10 +1420,266 @@ function WorkspacesDrilldownPanel({
           </div>
         )}
       </div>
+
+      <div className="space-y-2">
+        <p className={cn(HOUSE_DRILLDOWN_SECTION_LABEL_CLASS, 'pl-3')}>Audit logs</p>
+        {!selectedWorkspace ? (
+          <p className={HOUSE_FIELD_HELPER_CLASS}>Select a workspace to view audit logs.</p>
+        ) : (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setCollaboratorActivityCollapsed((current) => !current)}
+              className="flex w-full items-center justify-between rounded-md border border-border bg-background/70 px-2 py-1.5 text-left"
+              aria-expanded={!collaboratorActivityCollapsed}
+              aria-label="Toggle collaborator access and roles audit logs"
+              title={
+                collaboratorActivityCollapsed
+                  ? 'Expand collaborator access and roles'
+                  : 'Collapse collaborator access and roles'
+              }
+            >
+              <span className={houseTypography.text}>Collaborator access and roles</span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className={HOUSE_FIELD_HELPER_CLASS}>{collaboratorActivityEntries.length}</span>
+                {collaboratorActivityCollapsed ? (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                )}
+              </span>
+            </button>
+            {!collaboratorActivityCollapsed ? (
+              <div className="space-y-2">
+                <div
+                  className={cn(
+                    HOUSE_DRILLDOWN_TAB_LIST_CLASS,
+                    'rounded-md border border-border bg-background/70',
+                  )}
+                  style={{ gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' }}
+                >
+                  {COLLABORATOR_AUDIT_FILTER_OPTIONS.map((option) => {
+                    const isActive = collaboratorAuditFilter === option.value
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS}
+                        data-state={isActive ? 'active' : 'inactive'}
+                        onClick={() => setCollaboratorAuditFilter(option.value)}
+                        aria-label={`Filter collaborator access and roles by ${option.label}`}
+                        title={`Show ${option.label.toLowerCase()} events`}
+                      >
+                        {option.label}
+                      </button>
+                    )
+                  })}
+                </div>
+                <p className={HOUSE_FIELD_HELPER_CLASS}>
+                  Grouped by user. Newest events appear first within each user.
+                </p>
+                {collaboratorActivityEntries.length === 0 ? (
+                  <p className={HOUSE_FIELD_HELPER_CLASS}>
+                    No collaborator access or role events logged yet.
+                  </p>
+                ) : (
+                  <div className="rounded-md border border-border bg-background/70">
+                    <div className={cn(clampCollaboratorActivityList ? 'max-h-72 overflow-y-auto' : '')}>
+                      <div className="space-y-1.5 p-2">
+                        {collaboratorActivityGroups.map((group, groupIndex) => (
+                          <div
+                            key={`${normalizeCollaboratorName(group.actorName).toLowerCase()}-${groupIndex}`}
+                            className="rounded border border-border/70 bg-background/60"
+                          >
+                            <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-background/80 px-2 py-1.5">
+                              <p className={cn(houseTypography.text, 'font-medium')}>
+                                {group.actorName}
+                              </p>
+                              <span className={HOUSE_FIELD_HELPER_CLASS}>
+                                {group.entries.length} event{group.entries.length === 1 ? '' : 's'}
+                              </span>
+                            </div>
+                            <div className="space-y-1.5 p-2">
+                              {group.entries.map((item) => {
+                                const { entry, parsedTransition } = item
+                                if (!parsedTransition) {
+                                  return (
+                                    <div key={entry.id} className="rounded border border-border/60 bg-muted/30 px-2 py-1.5">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="rounded border border-border bg-background/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                          Other
+                                        </span>
+                                        <span className={HOUSE_FIELD_HELPER_CLASS}>{formatTimestamp(entry.createdAt)}</span>
+                                      </div>
+                                      <p className={cn(houseTypography.text, 'mt-1')}>{entry.message}</p>
+                                    </div>
+                                  )
+                                }
+                                const transitionPills = buildAuditTransitionPillPresentation(parsedTransition)
+                                const fromValueClass =
+                                  transitionPills.fromRawValue && transitionPills.fromLabel
+                                    ? auditTransitionStatePillClassName(
+                                        parsedTransition,
+                                        transitionPills.fromRawValue,
+                                      )
+                                    : ''
+                                const toValueClass = auditTransitionStatePillClassName(
+                                  parsedTransition,
+                                  transitionPills.toRawValue,
+                                )
+                                return (
+                                  <div key={entry.id} className="rounded border border-border/60 bg-muted/30 px-2 py-1.5">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="rounded border border-border bg-background/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                        {parsedTransition.sectionLabel}
+                                      </span>
+                                      <span className={HOUSE_FIELD_HELPER_CLASS}>{formatTimestamp(entry.createdAt)}</span>
+                                    </div>
+                                    <p className={cn(houseTypography.text, 'mt-1 font-medium')}>
+                                      {parsedTransition.subject}
+                                    </p>
+                                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                                      {transitionPills.fromLabel && transitionPills.fromRawValue ? (
+                                        <span className={fromValueClass}>
+                                          {transitionPills.fromLabel}
+                                        </span>
+                                      ) : null}
+                                      {transitionPills.showArrow && transitionPills.fromLabel ? (
+                                        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+                                      ) : null}
+                                      <span className={toValueClass}>
+                                        {transitionPills.toLabel}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {clampCollaboratorActivityList ? (
+                      <p className={cn(HOUSE_FIELD_HELPER_CLASS, 'px-2 pb-2')}>
+                        Scroll to view older collaborator entries.
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => setConversationActivityCollapsed((current) => !current)}
+              className="flex w-full items-center justify-between rounded-md border border-border bg-background/70 px-2 py-1.5 text-left"
+              aria-expanded={!conversationActivityCollapsed}
+              aria-label="Toggle conversation log audit logs"
+              title={
+                conversationActivityCollapsed
+                  ? 'Expand conversation log'
+                  : 'Collapse conversation log'
+              }
+            >
+              <span className={houseTypography.text}>Conversation log</span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className={HOUSE_FIELD_HELPER_CLASS}>{conversationActivityEntries.length}</span>
+                {conversationActivityCollapsed ? (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                )}
+              </span>
+            </button>
+            {!conversationActivityCollapsed ? (
+              conversationActivityEntries.length === 0 ? (
+                <p className={HOUSE_FIELD_HELPER_CLASS}>
+                  No conversation events logged yet.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <p className={HOUSE_FIELD_HELPER_CLASS}>
+                    Grouped by user. Newest messages appear first within each user.
+                  </p>
+                  <div className="rounded-md border border-border bg-background/70">
+                    <div className={cn(clampConversationActivityList ? 'max-h-72 overflow-y-auto' : '')}>
+                      <div className="space-y-1.5 p-2">
+                        {conversationActivityGroups.map((group, groupIndex) => (
+                          <div
+                            key={`${normalizeCollaboratorName(group.actorName).toLowerCase()}-${groupIndex}`}
+                            className="rounded border border-border/70 bg-background/60"
+                          >
+                            <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-background/80 px-2 py-1.5">
+                              <p className={cn(houseTypography.text, 'font-medium')}>
+                                {group.actorName}
+                              </p>
+                              <span className={HOUSE_FIELD_HELPER_CLASS}>
+                                {group.entries.length} message{group.entries.length === 1 ? '' : 's'}
+                              </span>
+                            </div>
+                            <div className="space-y-1.5 p-2">
+                              {group.entries.map((item) => {
+                                const { entry, parsedEvent } = item
+                                if (!parsedEvent) {
+                                  return (
+                                    <div key={entry.id} className="rounded border border-border/60 bg-muted/30 px-2 py-1.5">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="rounded border border-border bg-background/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                          Other
+                                        </span>
+                                        <span className={HOUSE_FIELD_HELPER_CLASS}>{formatTimestamp(entry.createdAt)}</span>
+                                      </div>
+                                      <p className={cn(houseTypography.text, 'mt-1')}>{entry.message}</p>
+                                    </div>
+                                  )
+                                }
+                                return (
+                                  <div key={entry.id} className="rounded border border-border/60 bg-muted/30 px-2 py-1.5">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="rounded border border-border bg-background/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                        Message
+                                      </span>
+                                      <span className={HOUSE_FIELD_HELPER_CLASS}>
+                                        Logged {formatTimestamp(entry.createdAt)}
+                                      </span>
+                                    </div>
+                                    <p className={cn(houseTypography.text, 'mt-1 font-medium')}>
+                                      Message ID {parsedEvent.messageId}
+                                    </p>
+                                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                                      <span className="rounded border border-border/70 bg-background/80 px-1.5 py-0.5">
+                                        Sent {formatTimestamp(parsedEvent.createdAtRaw)}
+                                      </span>
+                                      <span className="rounded border border-border/70 bg-background/80 px-1.5 py-0.5">
+                                        Cipher {parsedEvent.ciphertextLength}
+                                      </span>
+                                      <span className="rounded border border-border/70 bg-background/80 px-1.5 py-0.5">
+                                        IV {parsedEvent.ivLength}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {clampConversationActivityList ? (
+                      <p className={cn(HOUSE_FIELD_HELPER_CLASS, 'px-2 pb-2')}>
+                        Scroll to view older conversation entries.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              )
+            ) : null}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
-
 function DataLibraryDrilldownPanel() {
   return (
     <div className={HOUSE_DRILLDOWN_SHEET_BODY_CLASS}>
@@ -737,9 +1735,11 @@ function SortableHeader({
 
 function WorkspaceMenuTrigger({
   menuOpen,
+  disabled = false,
   onToggleMenu,
 }: {
   menuOpen: boolean
+  disabled?: boolean
   onToggleMenu: (event: ReactMouseEvent<HTMLButtonElement>) => void
 }) {
   return (
@@ -747,10 +1747,12 @@ function WorkspaceMenuTrigger({
       type="button"
       data-workspace-menu="true"
       onClick={onToggleMenu}
+      disabled={disabled}
       className={cn(
         'inline-flex items-center justify-center rounded-md border border-border bg-background text-sm leading-none text-muted-foreground hover:text-foreground',
         WORKSPACE_ICON_BUTTON_DIMENSION_CLASS,
         menuOpen && 'border-emerald-400 text-foreground',
+        disabled && 'cursor-not-allowed opacity-60 hover:text-muted-foreground',
       )}
       aria-label="Workspace options"
     >
@@ -880,15 +1882,14 @@ function CollaboratorBanners({
   onAddCollaborator: (workspace: WorkspaceRecord) => void
   onToggleRemoved: (workspace: WorkspaceRecord, collaboratorName: string) => void
 }) {
-  const chips = workspaceCollaboratorChips(workspace)
-  const ownerName = normalizeCollaboratorName(workspace.ownerName) || 'The workspace owner'
+  const chips = workspaceCollaboratorChips(workspace).filter((chip) => chip.state === 'active')
+  const ownerNameBase = normalizeCollaboratorName(workspace.ownerName) || 'Workspace owner'
+  const ownerName = `${ownerNameBase} (Owner)`
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <TooltipProvider delayDuration={120}>
         {chips.map((chip) => {
-          const isRemoved = chip.state === 'removed'
-          const isPending = chip.state === 'pending'
-          const canToggleRemoved = canManage && !isPending
+          const canToggleRemoved = canManage
           const collaboratorButton = (
             <button
               type="button"
@@ -902,20 +1903,12 @@ function CollaboratorBanners({
               aria-disabled={!canToggleRemoved}
               title={
                 canManage
-                  ? isPending
-                    ? `Invitation pending (${collaboratorRoleLabel(chip.role)})`
-                    : isRemoved
-                    ? 'Click to restore collaborator'
-                    : 'Click to remove collaborator'
+                  ? 'Click to remove collaborator'
                   : undefined
               }
               className={cn(
                 HOUSE_COLLABORATOR_CHIP_CLASS,
-                isPending
-                  ? HOUSE_COLLABORATOR_CHIP_PENDING_CLASS
-                  : isRemoved
-                    ? HOUSE_COLLABORATOR_CHIP_REMOVED_CLASS
-                    : HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS,
+                HOUSE_COLLABORATOR_CHIP_ACTIVE_CLASS,
                 canToggleRemoved ? HOUSE_COLLABORATOR_CHIP_MANAGEABLE_CLASS : HOUSE_COLLABORATOR_CHIP_READONLY_CLASS,
               )}
             >
@@ -931,11 +1924,7 @@ function CollaboratorBanners({
             )
           }
 
-          const tooltipMessage = isPending
-            ? `${ownerName} manages collaborators. ${chip.name} is pending ${collaboratorRoleLabel(chip.role)} access.`
-            : isRemoved
-              ? `${ownerName} manages collaborators. ${chip.name} is marked removed (${collaboratorRoleLabel(chip.role)}), and only the owner can restore access.`
-              : `${ownerName} manages collaborators. ${chip.name} is ${collaboratorRoleLabel(chip.role)} and only the owner can edit this list.`
+          const tooltipMessage = `${ownerName} manages collaborators. ${chip.name} is ${collaboratorRoleLabel(chip.role)} and only the owner can edit this list.`
 
           return (
             <Tooltip key={chip.key}>
@@ -986,6 +1975,7 @@ export function WorkspacesPage() {
   const sendWorkspaceInvitation = useWorkspaceStore((state) => state.sendWorkspaceInvitation)
   const acceptAuthorRequest = useWorkspaceStore((state) => state.acceptAuthorRequest)
   const declineAuthorRequest = useWorkspaceStore((state) => state.declineAuthorRequest)
+  const cancelWorkspaceInvitation = useWorkspaceStore((state) => state.cancelWorkspaceInvitation)
   const leftPanelOpen = useAaweStore((state) => state.leftPanelOpen)
   const setLeftPanelOpen = useAaweStore((state) => state.setLeftPanelOpen)
   const inboxMessages = useWorkspaceInboxStore((state) => state.messages)
@@ -1014,12 +2004,8 @@ export function WorkspacesPage() {
     y: number
   } | null>(null)
   const [collaboratorQuery, setCollaboratorQuery] = useState('')
-  const [selectedCollaboratorName, setSelectedCollaboratorName] = useState('')
   const [collaboratorComposerOpen, setCollaboratorComposerOpen] = useState(false)
   const [collaboratorInviteRole, setCollaboratorInviteRole] = useState<WorkspaceCollaboratorRole>('editor')
-  const [directoryCollaborators, setDirectoryCollaborators] = useState<CollaboratorPayload[]>([])
-  const [collaboratorLookupLoading, setCollaboratorLookupLoading] = useState(false)
-  const [collaboratorLookupError, setCollaboratorLookupError] = useState('')
   const [renamingWorkspaceId, setRenamingWorkspaceId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const [workspaceOwnerName, setWorkspaceOwnerName] = useState<string | null>(() =>
@@ -1029,6 +2015,48 @@ export function WorkspacesPage() {
     () => (readWorkspaceOwnerNameFromProfile() || workspaceOwnerName || 'You').trim() || 'You',
     [workspaceOwnerName],
   )
+  const currentAuditActorName = useMemo(
+    () => {
+      const cleanOwner = normalizeCollaboratorName(workspaceOwnerName)
+      if (!cleanOwner) {
+        return 'Unknown user'
+      }
+      return `${cleanOwner} (Owner)`
+    },
+    [workspaceOwnerName],
+  )
+
+  const appendWorkspaceAuditLog = (
+    workspaceId: string,
+    message: string,
+    category: WorkspaceAuditCategory = 'collaborator_changes',
+  ) => {
+    const cleanWorkspaceId = normalizeCollaboratorName(workspaceId)
+    const cleanMessage = normalizeCollaboratorName(message)
+    if (!cleanWorkspaceId || !cleanMessage) {
+      return
+    }
+    const workspace = useWorkspaceStore
+      .getState()
+      .workspaces.find((item) => item.id === cleanWorkspaceId)
+    if (!workspace) {
+      return
+    }
+    const createdAt = new Date().toISOString()
+    const nextEntry: WorkspaceAuditEntry = {
+      id: `${cleanWorkspaceId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      workspaceId: cleanWorkspaceId,
+      category,
+      message: cleanMessage,
+      createdAt,
+    }
+    const nextAuditLogEntries = [nextEntry, ...(workspace.auditLogEntries || [])]
+      .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+    updateWorkspace(cleanWorkspaceId, {
+      auditLogEntries: nextAuditLogEntries,
+      updatedAt: createdAt,
+    })
+  }
 
   const filteredWorkspaces = useMemo(() => {
     const cleanQuery = query.trim().toLowerCase()
@@ -1117,11 +2145,24 @@ export function WorkspacesPage() {
     [authorRequests, invitationsSent],
   )
   const inboxWorkspace = useMemo(
-    () =>
-      (activeWorkspaceId ? workspaces.find((workspace) => workspace.id === activeWorkspaceId) : null) ||
-      workspaces[0] ||
-      null,
-    [activeWorkspaceId, workspaces],
+    () => {
+      const activeWorkspace = activeWorkspaceId
+        ? workspaces.find((workspace) => workspace.id === activeWorkspaceId) || null
+        : null
+      if (
+        activeWorkspace &&
+        !isWorkspaceReadOnlyForCurrentUser(activeWorkspace, workspaceOwnerName)
+      ) {
+        return activeWorkspace
+      }
+      return (
+        workspaces.find(
+          (workspace) =>
+            !isWorkspaceReadOnlyForCurrentUser(workspace, workspaceOwnerName),
+        ) || null
+      )
+    },
+    [activeWorkspaceId, workspaces, workspaceOwnerName],
   )
   const canOpenInbox = Boolean(inboxWorkspace)
   const workspaceDrilldownSelection = useMemo(
@@ -1135,54 +2176,28 @@ export function WorkspacesPage() {
     () => (workspaceDrilldownSelection ? workspaceCollaboratorChips(workspaceDrilldownSelection) : []),
     [workspaceDrilldownSelection],
   )
-  const localCandidateNames = useMemo(() => {
-    const seen = new Set<string>()
-    const output: string[] = []
-    const pushName = (value: string) => {
-      const clean = normalizeCollaboratorName(value)
-      if (!clean) {
-        return
-      }
-      const key = clean.toLowerCase()
-      if (seen.has(key)) {
-        return
-      }
-      seen.add(key)
-      output.push(clean)
-    }
-    for (const workspace of workspaces) {
-      pushName(workspace.ownerName)
-      workspace.collaborators.forEach(pushName)
-      for (const pendingCollaborator of workspace.pendingCollaborators || []) {
-        pushName(pendingCollaborator)
-      }
-    }
-    authorRequests.forEach((request) => pushName(request.authorName))
-    invitationsSent.forEach((invitation) => pushName(invitation.inviteeName))
-    return output.sort((left, right) => left.localeCompare(right))
-  }, [authorRequests, invitationsSent, workspaces])
-  const collaboratorCandidates = useMemo(
+  const selectedWorkspaceAuditEntries = useMemo(
     () =>
-      buildCollaboratorCandidates({
-        query: collaboratorQuery,
-        localNames: localCandidateNames,
-        directoryItems: directoryCollaborators,
-      }),
-    [collaboratorQuery, directoryCollaborators, localCandidateNames],
+      workspaceDrilldownSelection
+        ? [...(workspaceDrilldownSelection.auditLogEntries || [])].sort(
+            (left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt),
+          )
+        : [],
+    [workspaceDrilldownSelection],
   )
-  const collaboratorTargetName = normalizeCollaboratorName(selectedCollaboratorName || collaboratorQuery)
+  const selectedWorkspaceReadOnly = useMemo(
+    () =>
+      workspaceDrilldownSelection
+        ? isWorkspaceReadOnlyForCurrentUser(workspaceDrilldownSelection, workspaceOwnerName)
+        : false,
+    [workspaceDrilldownSelection, workspaceOwnerName],
+  )
+  const collaboratorTargetName = normalizeCollaboratorName(collaboratorQuery)
   const canManageSelectedWorkspace = Boolean(
     workspaceDrilldownSelection && isWorkspaceOwner(workspaceDrilldownSelection, workspaceOwnerName),
   )
   const canConfirmAddCollaborator = Boolean(
     canManageSelectedWorkspace && collaboratorComposerOpen && collaboratorTargetName,
-  )
-  const collaboratorLookupEnabled = Boolean(
-    centerView === 'workspaces' &&
-    workspaceDrilldownSelection &&
-    canManageSelectedWorkspace &&
-    collaboratorComposerOpen &&
-    (workspaceDrilldownDesktopOpen || workspaceDrilldownMobileOpen),
   )
 
   useEffect(() => {
@@ -1228,11 +2243,7 @@ export function WorkspacesPage() {
     if (!exists) {
       setWorkspaceDrilldownSelectionId(null)
       setCollaboratorQuery('')
-      setSelectedCollaboratorName('')
       setCollaboratorComposerOpen(false)
-      setDirectoryCollaborators([])
-      setCollaboratorLookupLoading(false)
-      setCollaboratorLookupError('')
     }
   }, [workspaceDrilldownSelectionId, workspaces])
 
@@ -1292,75 +2303,23 @@ export function WorkspacesPage() {
     }
   }, [refreshInboxMessagesFromStorage, refreshInboxReadsFromStorage])
 
-  useEffect(() => {
-    if (!collaboratorLookupEnabled) {
-      setDirectoryCollaborators([])
-      setCollaboratorLookupLoading(false)
-      setCollaboratorLookupError('')
-      return
-    }
-
-    const cleanQuery = normalizeCollaboratorName(collaboratorQuery)
-    if (cleanQuery.length < 2) {
-      setDirectoryCollaborators([])
-      setCollaboratorLookupLoading(false)
-      setCollaboratorLookupError('')
-      return
-    }
-
-    const token = getAuthSessionToken()
-    if (!token) {
-      setDirectoryCollaborators([])
-      setCollaboratorLookupLoading(false)
-      setCollaboratorLookupError('Sign in to search the full collaborator directory. Showing workspace-network matches only.')
-      return
-    }
-
-    let cancelled = false
-    setCollaboratorLookupLoading(true)
-    const timer = window.setTimeout(() => {
-      void listCollaborators(token, {
-        query: cleanQuery,
-        page: 1,
-        pageSize: 30,
-      })
-        .then((payload) => {
-          if (cancelled) {
-            return
-          }
-          setDirectoryCollaborators(payload.items)
-          setCollaboratorLookupError('')
-        })
-        .catch(() => {
-          if (cancelled) {
-            return
-          }
-          setDirectoryCollaborators([])
-          setCollaboratorLookupError('Directory lookup unavailable. Showing workspace-network suggestions only.')
-        })
-        .finally(() => {
-          if (!cancelled) {
-            setCollaboratorLookupLoading(false)
-          }
-        })
-    }, 250)
-
-    return () => {
-      cancelled = true
-      window.clearTimeout(timer)
-    }
-  }, [collaboratorLookupEnabled, collaboratorQuery])
-
   const canCreateWorkspace = Boolean(workspaceOwnerName)
 
   const resetCollaboratorComposer = () => {
     setCollaboratorQuery('')
-    setSelectedCollaboratorName('')
     setCollaboratorComposerOpen(false)
     setCollaboratorInviteRole('editor')
-    setDirectoryCollaborators([])
-    setCollaboratorLookupLoading(false)
-    setCollaboratorLookupError('')
+  }
+
+  const toggleCollaboratorComposer = () => {
+    if (!workspaceDrilldownSelection || !canManageSelectedWorkspace) {
+      return
+    }
+    if (collaboratorComposerOpen) {
+      resetCollaboratorComposer()
+      return
+    }
+    setCollaboratorComposerOpen(true)
   }
 
   const onCreateWorkspace = () => {
@@ -1415,6 +2374,16 @@ export function WorkspacesPage() {
       return
     }
     setInvitationStatus(`Invitation sent to ${sent.inviteeName} as ${collaboratorRoleLabel(sent.role)}.`)
+    appendWorkspaceAuditLog(
+      workspace.id,
+      collaboratorStatusTransitionAuditMessage({
+        collaboratorName: sent.inviteeName,
+        fromStatus: 'none',
+        toStatus: 'pending',
+        actorName: currentAuditActorName,
+        role: sent.role,
+      }),
+    )
     setMenuState(null)
   }
 
@@ -1471,7 +2440,17 @@ export function WorkspacesPage() {
           updatedAt: new Date().toISOString(),
         })
         setInvitationStatus(
-          `${matchedPendingName} remains pending. Role updated to ${collaboratorRoleLabel(collaboratorInviteRole)}.`,
+          `${matchedPendingName} remains pending. Role updated to ${collaboratorRoleLabel(collaboratorInviteRole)}. Awaiting acceptance.`,
+        )
+        appendWorkspaceAuditLog(
+          workspaceDrilldownSelection.id,
+          collaboratorRoleTransitionAuditMessage({
+            collaboratorName: matchedPendingName,
+            fromRole: currentRole,
+            toRole: collaboratorInviteRole,
+            actorName: currentAuditActorName,
+            pending: true,
+          }),
         )
         resetCollaboratorComposer()
         return
@@ -1499,7 +2478,67 @@ export function WorkspacesPage() {
     setInvitationStatus(
       `${sent.inviteeName} added as pending ${collaboratorRoleLabel(sent.role)} collaborator.`,
     )
+    appendWorkspaceAuditLog(
+      workspaceDrilldownSelection.id,
+      collaboratorStatusTransitionAuditMessage({
+        collaboratorName: sent.inviteeName,
+        fromStatus: 'none',
+        toStatus: 'pending',
+        actorName: currentAuditActorName,
+        role: sent.role,
+      }),
+    )
     resetCollaboratorComposer()
+  }
+
+  const onCancelPendingInvitation = (invitationId: string) => {
+    const invitation = invitationsSent.find((item) => item.id === invitationId) || null
+    if (!invitation || invitation.status !== 'pending') {
+      setInvitationStatus('Pending invitation could not be found.')
+      return
+    }
+    const cancelled = cancelWorkspaceInvitation(invitation.id)
+    if (!cancelled) {
+      setInvitationStatus('Pending invitation could not be cancelled.')
+      return
+    }
+    setInvitationStatus(`Pending invitation for ${cancelled.inviteeName} cancelled.`)
+    appendWorkspaceAuditLog(
+      cancelled.workspaceId,
+      collaboratorStatusTransitionAuditMessage({
+        collaboratorName: cancelled.inviteeName,
+        fromStatus: 'pending',
+        toStatus: 'cancelled',
+        actorName: currentAuditActorName,
+        role: cancelled.role,
+      }),
+    )
+  }
+
+  const onCancelPendingCollaboratorInvitation = (collaboratorName: string) => {
+    if (!workspaceDrilldownSelection) {
+      setInvitationStatus('Select a workspace first.')
+      return
+    }
+    if (!isWorkspaceOwner(workspaceDrilldownSelection, workspaceOwnerName)) {
+      setInvitationStatus('Only the workspace author can manage collaborators.')
+      return
+    }
+    const collaboratorKey = normalizeCollaboratorName(collaboratorName).toLowerCase()
+    if (!collaboratorKey) {
+      return
+    }
+    const invitation = invitationsSent.find(
+      (item) =>
+        item.workspaceId === workspaceDrilldownSelection.id &&
+        item.status === 'pending' &&
+        normalizeCollaboratorName(item.inviteeName).toLowerCase() === collaboratorKey,
+    )
+    if (!invitation) {
+      setInvitationStatus(`No pending invitation found for ${collaboratorName}.`)
+      return
+    }
+    onCancelPendingInvitation(invitation.id)
   }
 
   const onChangeCollaboratorRole = (
@@ -1525,6 +2564,14 @@ export function WorkspacesPage() {
         workspaceDrilldownSelection.pendingCollaborators.find(
           (value) => normalizeCollaboratorName(value).toLowerCase() === collaboratorKey,
         ) || collaboratorName
+      const currentRole =
+        workspaceDrilldownSelection.pendingCollaboratorRoles?.[matchedPendingName] || 'editor'
+      if (currentRole === role) {
+        setInvitationStatus(
+          `${matchedPendingName} pending role unchanged (${collaboratorRoleLabel(role)}). Awaiting acceptance.`,
+        )
+        return
+      }
       updateWorkspace(workspaceDrilldownSelection.id, {
         pendingCollaboratorRoles: {
           ...(workspaceDrilldownSelection.pendingCollaboratorRoles || {}),
@@ -1532,7 +2579,19 @@ export function WorkspacesPage() {
         },
         updatedAt: new Date().toISOString(),
       })
-      setInvitationStatus(`${matchedPendingName} role set to ${collaboratorRoleLabel(role)}.`)
+      setInvitationStatus(
+        `${matchedPendingName} pending role set to ${collaboratorRoleLabel(role)}. Awaiting acceptance.`,
+      )
+      appendWorkspaceAuditLog(
+        workspaceDrilldownSelection.id,
+        collaboratorRoleTransitionAuditMessage({
+          collaboratorName: matchedPendingName,
+          fromRole: currentRole,
+          toRole: role,
+          actorName: currentAuditActorName,
+          pending: true,
+        }),
+      )
       return
     }
 
@@ -1540,6 +2599,11 @@ export function WorkspacesPage() {
       workspaceDrilldownSelection.collaborators.find(
         (value) => normalizeCollaboratorName(value).toLowerCase() === collaboratorKey,
       ) || collaboratorName
+    const currentRole = workspaceDrilldownSelection.collaboratorRoles?.[matchedActiveName] || 'editor'
+    if (currentRole === role) {
+      setInvitationStatus(`${matchedActiveName} role unchanged (${collaboratorRoleLabel(role)}).`)
+      return
+    }
     updateWorkspace(workspaceDrilldownSelection.id, {
       collaboratorRoles: {
         ...(workspaceDrilldownSelection.collaboratorRoles || {}),
@@ -1548,9 +2612,22 @@ export function WorkspacesPage() {
       updatedAt: new Date().toISOString(),
     })
     setInvitationStatus(`${matchedActiveName} role set to ${collaboratorRoleLabel(role)}.`)
+    appendWorkspaceAuditLog(
+      workspaceDrilldownSelection.id,
+      collaboratorRoleTransitionAuditMessage({
+        collaboratorName: matchedActiveName,
+        fromRole: currentRole,
+        toRole: role,
+        actorName: currentAuditActorName,
+      }),
+    )
   }
 
-  const onToggleCollaboratorRemoved = (workspace: WorkspaceRecord, collaboratorName: string) => {
+  const onToggleCollaboratorRemoved = (
+    workspace: WorkspaceRecord,
+    collaboratorName: string,
+    options?: ToggleCollaboratorRemovedOptions,
+  ) => {
     if (!isWorkspaceOwner(workspace, workspaceOwnerName)) {
       setInvitationStatus('Only the workspace author can manage collaborators.')
       return
@@ -1563,33 +2640,63 @@ export function WorkspacesPage() {
     const isRemoved = removed.has(collaboratorKey)
 
     if (isRemoved) {
-      const restoreConfirmed = window.confirm(
-        `Restore collaborator "${collaboratorName}" in "${workspace.name}"?`,
-      )
-      if (!restoreConfirmed) {
+      const pending = collaboratorPendingSet(workspace)
+      const matchedName =
+        workspace.collaborators.find(
+          (value) => normalizeCollaboratorName(value).toLowerCase() === collaboratorKey,
+        ) || collaboratorName
+      if (pending.has(collaboratorKey)) {
+        setInvitationStatus(`${matchedName} already has a pending invitation.`)
         return
       }
-      updateWorkspace(workspace.id, {
-        removedCollaborators: (workspace.removedCollaborators || []).filter(
-          (value) => normalizeCollaboratorName(value).toLowerCase() !== collaboratorKey,
-        ),
-        updatedAt: new Date().toISOString(),
-      })
-      setInvitationStatus(`${collaboratorName} restored.`)
+      const nextRole = options?.restoreRole || null
+      if (!nextRole) {
+        setInvitationStatus('Select role before restoring collaborator access.')
+        return
+      }
+      const sent = sendWorkspaceInvitation(workspace.id, matchedName, nextRole)
+      if (!sent) {
+        setInvitationStatus('Restore invitation was not sent. Check owner access or duplicate pending invitation.')
+        return
+      }
+      setInvitationStatus(
+        `${sent.inviteeName} moved to pending as ${collaboratorRoleLabel(sent.role)}. Awaiting acceptance.`,
+      )
+      appendWorkspaceAuditLog(
+        workspace.id,
+        collaboratorStatusTransitionAuditMessage({
+          collaboratorName: sent.inviteeName,
+          fromStatus: 'removed',
+          toStatus: 'pending',
+          actorName: currentAuditActorName,
+          role: sent.role,
+        }),
+      )
       return
     }
 
-    const removeConfirmed = window.confirm(
-      `Remove collaborator "${collaboratorName}" from "${workspace.name}"?`,
-    )
-    if (!removeConfirmed) {
-      return
+    if (!options?.skipRemoveConfirmation) {
+      const removeConfirmed = window.confirm(
+        `Remove collaborator "${collaboratorName}" from "${workspace.name}"?`,
+      )
+      if (!removeConfirmed) {
+        return
+      }
     }
     updateWorkspace(workspace.id, {
       removedCollaborators: [...(workspace.removedCollaborators || []), collaboratorName],
       updatedAt: new Date().toISOString(),
     })
     setInvitationStatus(`${collaboratorName} removed. Name retained in red banner.`)
+    appendWorkspaceAuditLog(
+      workspace.id,
+      collaboratorStatusTransitionAuditMessage({
+        collaboratorName,
+        fromStatus: 'active',
+        toStatus: 'removed',
+        actorName: currentAuditActorName,
+      }),
+    )
   }
 
   const onAcceptAuthorRequest = (requestId: string) => {
@@ -1607,6 +2714,11 @@ export function WorkspacesPage() {
   }
 
   const onOpenWorkspace = (workspaceId: string) => {
+    const workspace = workspaces.find((item) => item.id === workspaceId)
+    if (workspace && isWorkspaceReadOnlyForCurrentUser(workspace, workspaceOwnerName)) {
+      setInvitationStatus('This workspace is archived in read-only mode for your account.')
+      return
+    }
     setActiveWorkspaceId(workspaceId)
     navigate(`/w/${workspaceId}/overview`)
   }
@@ -1637,6 +2749,11 @@ export function WorkspacesPage() {
   }
 
   const onOpenWorkspaceInboxForWorkspace = (workspaceId: string, focusUnread = false) => {
+    const workspace = workspaces.find((item) => item.id === workspaceId)
+    if (workspace && isWorkspaceReadOnlyForCurrentUser(workspace, workspaceOwnerName)) {
+      setInvitationStatus('Read-only archived workspaces do not allow inbox actions.')
+      return
+    }
     const returnTo = buildWorkspacesReturnPath()
     const params = new URLSearchParams()
     params.set('returnTo', returnTo)
@@ -1717,6 +2834,10 @@ export function WorkspacesPage() {
 
   const onToggleWorkspaceMenu = (workspaceId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
+    const workspace = workspaces.find((item) => item.id === workspaceId)
+    if (workspace && isWorkspaceReadOnlyForCurrentUser(workspace, workspaceOwnerName)) {
+      return
+    }
     const rect = event.currentTarget.getBoundingClientRect()
     const menuWidth = 160
     const menuHeight = 204
@@ -1732,8 +2853,12 @@ export function WorkspacesPage() {
 
   const menuWorkspace =
     menuState ? workspaces.find((workspace) => workspace.id === menuState.workspaceId) || null : null
+  const menuWorkspaceReadOnly = Boolean(
+    menuWorkspace && isWorkspaceReadOnlyForCurrentUser(menuWorkspace, workspaceOwnerName),
+  )
   const canInviteFromMenu = Boolean(
     menuWorkspace &&
+    !menuWorkspaceReadOnly &&
     workspaceOwnerName &&
     menuWorkspace.ownerName.toLowerCase() === workspaceOwnerName.toLowerCase(),
   )
@@ -1949,12 +3074,24 @@ export function WorkspacesPage() {
                             lastActivityAt: workspace.updatedAt,
                           }
                           const ownerLabel = workspaceOwnerLabel(workspace, workspaceOwnerName)
+                          const workspaceReadOnly = isWorkspaceReadOnlyForCurrentUser(
+                            workspace,
+                            workspaceOwnerName,
+                          )
                           return (
                             <tr
                               key={workspace.id}
-                              className={cn('cursor-pointer', HOUSE_TABLE_ROW_CLASS)}
+                              className={cn(
+                                HOUSE_TABLE_ROW_CLASS,
+                                workspaceReadOnly ? 'cursor-default opacity-90' : 'cursor-pointer',
+                              )}
                               onClick={() => onSelectWorkspace(workspace.id)}
-                              onDoubleClick={() => onOpenWorkspace(workspace.id)}
+                              onDoubleClick={() => {
+                                if (workspaceReadOnly) {
+                                  return
+                                }
+                                onOpenWorkspace(workspace.id)
+                              }}
                             >
                               <td className={cn('px-3 py-2 align-middle font-medium', HOUSE_TABLE_CELL_TEXT_CLASS)}>
                                 <div className="flex items-center justify-between gap-2">
@@ -2010,6 +3147,7 @@ export function WorkspacesPage() {
 
                                   <WorkspaceMenuTrigger
                                     menuOpen={menuState?.workspaceId === workspace.id}
+                                    disabled={workspaceReadOnly}
                                     onToggleMenu={(event) => onToggleWorkspaceMenu(workspace.id, event)}
                                   />
                                 </div>
@@ -2046,9 +3184,13 @@ export function WorkspacesPage() {
                                   )}
                                   onClick={(event) => {
                                     event.stopPropagation()
+                                    if (workspaceReadOnly) {
+                                      return
+                                    }
                                     onOpenWorkspaceInboxForWorkspace(workspace.id, signal.unreadCount > 0)
                                   }}
                                   aria-label={`Open inbox for ${workspace.name}. ${signal.unreadCount} unread message${signal.unreadCount === 1 ? '' : 's'}.`}
+                                  disabled={workspaceReadOnly}
                                 >
                                   {signal.unreadCount}
                                 </button>
@@ -2068,13 +3210,25 @@ export function WorkspacesPage() {
                         lastActivityAt: workspace.updatedAt,
                       }
                       const ownerLabel = workspaceOwnerLabel(workspace, workspaceOwnerName)
+                      const workspaceReadOnly = isWorkspaceReadOnlyForCurrentUser(
+                        workspace,
+                        workspaceOwnerName,
+                      )
                       return (
                         <button
                           key={workspace.id}
                           type="button"
                           onClick={() => onSelectWorkspace(workspace.id)}
-                          onDoubleClick={() => onOpenWorkspace(workspace.id)}
-                          className="rounded-lg border border-border bg-background p-3 text-left hover:bg-accent/30"
+                          onDoubleClick={() => {
+                            if (workspaceReadOnly) {
+                              return
+                            }
+                            onOpenWorkspace(workspace.id)
+                          }}
+                          className={cn(
+                            'rounded-lg border border-border bg-background p-3 text-left',
+                            workspaceReadOnly ? 'opacity-90' : 'hover:bg-accent/30',
+                          )}
                         >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
@@ -2123,7 +3277,7 @@ export function WorkspacesPage() {
                                   {workspace.pinned ? <Pin size={13} className="shrink-0 text-emerald-600" aria-label="Pinned workspace" /> : null}
                                   <span className="truncate">{workspace.name}</span>
                                 </p>
-                                <p className="mt-1 text-xs text-muted-foreground">{ownerLabel === 'You' ? 'You' : `Owner ${ownerLabel}`}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">{ownerLabel}</p>
                                 <div className="mt-2 space-y-1" onClick={(event) => event.stopPropagation()}>
                                   <p className="text-xs text-muted-foreground">Collaborators</p>
                                   <CollaboratorBanners
@@ -2141,6 +3295,7 @@ export function WorkspacesPage() {
                           </div>
                           <WorkspaceMenuTrigger
                             menuOpen={menuState?.workspaceId === workspace.id}
+                            disabled={workspaceReadOnly}
                             onToggleMenu={(event) => onToggleWorkspaceMenu(workspace.id, event)}
                           />
                         </div>
@@ -2153,8 +3308,12 @@ export function WorkspacesPage() {
                             )}
                             onClick={(event) => {
                               event.stopPropagation()
+                              if (workspaceReadOnly) {
+                                return
+                              }
                               onOpenWorkspaceInboxForWorkspace(workspace.id, signal.unreadCount > 0)
                             }}
+                            disabled={workspaceReadOnly}
                           >
                             {signal.unreadCount}
                           </button>
@@ -2169,8 +3328,12 @@ export function WorkspacesPage() {
                             className="rounded border border-border bg-background px-1.5 py-0.5 text-muted-foreground hover:text-foreground"
                             onClick={(event) => {
                               event.stopPropagation()
+                              if (workspaceReadOnly) {
+                                return
+                              }
                               onOpenWorkspaceInboxForWorkspace(workspace.id, signal.unreadCount > 0)
                             }}
+                            disabled={workspaceReadOnly}
                           >
                             Open inbox
                           </button>
@@ -2266,7 +3429,18 @@ export function WorkspacesPage() {
                                       </Button>
                                     </div>
                                   ) : (
-                                    <span className="text-xs text-muted-foreground">Sent</span>
+                                    invitation.status === 'pending' ? (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        className={cn(HOUSE_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
+                                        onClick={() => onCancelPendingInvitation(invitation.id)}
+                                      >
+                                        Cancel
+                                      </Button>
+                                    ) : (
+                                      <span className="text-xs text-muted-foreground">No actions</span>
+                                    )
                                   )}
                                 </td>
                               </tr>
@@ -2304,32 +3478,24 @@ export function WorkspacesPage() {
                     selectedWorkspaceId={workspaceDrilldownSelectionId}
                     selectedWorkspaceName={workspaceDrilldownSelectionName}
                     selectedWorkspace={workspaceDrilldownSelection}
+                    selectedWorkspaceReadOnly={selectedWorkspaceReadOnly}
+                    currentWorkspaceUserName={workspaceOwnerName}
                     collaboratorChips={selectedWorkspaceCollaboratorChips}
+                    workspaceAuditEntries={selectedWorkspaceAuditEntries}
                     canManageSelectedWorkspace={canManageSelectedWorkspace}
                     collaboratorComposerOpen={collaboratorComposerOpen}
                     collaboratorInviteRole={collaboratorInviteRole}
                     collaboratorQuery={collaboratorQuery}
-                    collaboratorLookupLoading={collaboratorLookupLoading}
-                    collaboratorLookupError={collaboratorLookupError}
-                    collaboratorCandidates={collaboratorCandidates}
-                    collaboratorTargetName={collaboratorTargetName}
                     canConfirmAddCollaborator={canConfirmAddCollaborator}
-                    onOpenCollaboratorComposer={() => {
-                      setCollaboratorComposerOpen(true)
-                      setCollaboratorLookupError('')
-                    }}
+                    onOpenCollaboratorComposer={toggleCollaboratorComposer}
                     onCollaboratorInviteRoleChange={(role) => {
                       setCollaboratorInviteRole(role)
                     }}
                     onChangeCollaboratorRole={onChangeCollaboratorRole}
+                    onCancelPendingCollaboratorInvitation={onCancelPendingCollaboratorInvitation}
+                    onToggleCollaboratorRemoved={onToggleCollaboratorRemoved}
                     onCollaboratorQueryChange={(value) => {
                       setCollaboratorQuery(value)
-                      setSelectedCollaboratorName('')
-                      setCollaboratorLookupError('')
-                    }}
-                    onSelectCollaboratorCandidate={(name) => {
-                      setSelectedCollaboratorName(name)
-                      setCollaboratorQuery(name)
                     }}
                     onConfirmAddCollaborator={onConfirmAddCollaborator}
                     onOpenSelectedWorkspace={onOpenWorkspace}
@@ -2408,32 +3574,24 @@ export function WorkspacesPage() {
             selectedWorkspaceId={workspaceDrilldownSelectionId}
             selectedWorkspaceName={workspaceDrilldownSelectionName}
             selectedWorkspace={workspaceDrilldownSelection}
+            selectedWorkspaceReadOnly={selectedWorkspaceReadOnly}
+            currentWorkspaceUserName={workspaceOwnerName}
             collaboratorChips={selectedWorkspaceCollaboratorChips}
+            workspaceAuditEntries={selectedWorkspaceAuditEntries}
             canManageSelectedWorkspace={canManageSelectedWorkspace}
             collaboratorComposerOpen={collaboratorComposerOpen}
             collaboratorInviteRole={collaboratorInviteRole}
             collaboratorQuery={collaboratorQuery}
-            collaboratorLookupLoading={collaboratorLookupLoading}
-            collaboratorLookupError={collaboratorLookupError}
-            collaboratorCandidates={collaboratorCandidates}
-            collaboratorTargetName={collaboratorTargetName}
             canConfirmAddCollaborator={canConfirmAddCollaborator}
-            onOpenCollaboratorComposer={() => {
-              setCollaboratorComposerOpen(true)
-              setCollaboratorLookupError('')
-            }}
+            onOpenCollaboratorComposer={toggleCollaboratorComposer}
             onCollaboratorInviteRoleChange={(role) => {
               setCollaboratorInviteRole(role)
             }}
             onChangeCollaboratorRole={onChangeCollaboratorRole}
+            onCancelPendingCollaboratorInvitation={onCancelPendingCollaboratorInvitation}
+            onToggleCollaboratorRemoved={onToggleCollaboratorRemoved}
             onCollaboratorQueryChange={(value) => {
               setCollaboratorQuery(value)
-              setSelectedCollaboratorName('')
-              setCollaboratorLookupError('')
-            }}
-            onSelectCollaboratorCandidate={(name) => {
-              setSelectedCollaboratorName(name)
-              setCollaboratorQuery(name)
             }}
             onConfirmAddCollaborator={onConfirmAddCollaborator}
             onOpenSelectedWorkspace={onOpenWorkspace}
@@ -2474,11 +3632,18 @@ export function WorkspacesPage() {
                 <button
                   type="button"
                   data-house-role="workspace-menu-item-open"
-                  className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50"
+                  className={cn(
+                    'block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50',
+                    menuWorkspaceReadOnly && 'cursor-not-allowed text-muted-foreground hover:bg-transparent',
+                  )}
                   onClick={() => {
+                    if (menuWorkspaceReadOnly) {
+                      return
+                    }
                     onOpenWorkspace(menuWorkspace.id)
                     setMenuState(null)
                   }}
+                  disabled={menuWorkspaceReadOnly}
                 >
                   Open workspace
                 </button>
@@ -2497,35 +3662,69 @@ export function WorkspacesPage() {
                 <button
                   type="button"
                   data-house-role="workspace-menu-item-rename"
-                  className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50"
-                  onClick={() => onStartRenameWorkspace(menuWorkspace)}
+                  className={cn(
+                    'block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50',
+                    menuWorkspaceReadOnly && 'cursor-not-allowed text-muted-foreground hover:bg-transparent',
+                  )}
+                  onClick={() => {
+                    if (menuWorkspaceReadOnly) {
+                      return
+                    }
+                    onStartRenameWorkspace(menuWorkspace)
+                  }}
+                  disabled={menuWorkspaceReadOnly}
                 >
                   Rename
                 </button>
                 <button
                   type="button"
                   data-house-role="workspace-menu-item-pin"
-                  className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50"
+                  className={cn(
+                    'block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50',
+                    menuWorkspaceReadOnly && 'cursor-not-allowed text-muted-foreground hover:bg-transparent',
+                  )}
                   onClick={() => {
+                    if (menuWorkspaceReadOnly) {
+                      return
+                    }
                     onTogglePinned(menuWorkspace)
                     setMenuState(null)
                   }}
+                  disabled={menuWorkspaceReadOnly}
                 >
                   {menuWorkspace.pinned ? 'Unpin' : 'Pin'}
                 </button>
                 <button
                   type="button"
                   data-house-role="workspace-menu-item-archive"
-                  className="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50"
-                  onClick={() => onArchiveToggle(menuWorkspace)}
+                  className={cn(
+                    'block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-accent/50',
+                    menuWorkspaceReadOnly && 'cursor-not-allowed text-muted-foreground hover:bg-transparent',
+                  )}
+                  onClick={() => {
+                    if (menuWorkspaceReadOnly) {
+                      return
+                    }
+                    onArchiveToggle(menuWorkspace)
+                  }}
+                  disabled={menuWorkspaceReadOnly}
                 >
                   {menuWorkspace.archived ? 'Restore' : 'Archive'}
                 </button>
                 <button
                   type="button"
                   data-house-role="workspace-menu-item-delete"
-                  className="block w-full rounded px-2 py-1.5 text-left text-sm text-red-700 hover:bg-red-50"
-                  onClick={() => onDeleteWorkspace(menuWorkspace)}
+                  className={cn(
+                    'block w-full rounded px-2 py-1.5 text-left text-sm text-red-700 hover:bg-red-50',
+                    menuWorkspaceReadOnly && 'cursor-not-allowed text-muted-foreground hover:bg-transparent',
+                  )}
+                  onClick={() => {
+                    if (menuWorkspaceReadOnly) {
+                      return
+                    }
+                    onDeleteWorkspace(menuWorkspace)
+                  }}
+                  disabled={menuWorkspaceReadOnly}
                 >
                   Delete
                 </button>
@@ -2537,3 +3736,4 @@ export function WorkspacesPage() {
     </div>
   )
 }
+
