@@ -36,19 +36,10 @@ export function AuthCallbackPage() {
     }
     const callbackKey = `${providerRaw}:${state}:${code}`
     if (processedCallbackKeys.has(callbackKey)) {
-      setStatus('Sign-in callback already processed. You can close this window.')
-      const hasOpener = typeof window !== 'undefined' && window.opener && !window.opener.closed
-      if (hasOpener) {
-        window.opener.postMessage(
-          {
-            type: 'aawe-oauth-error',
-            provider: providerRaw,
-            error: 'OAuth callback was already processed. Start sign-in again.',
-          },
-          window.location.origin,
-        )
-        window.close()
-      }
+      // Ignore duplicate effect/callback executions without notifying opener as an error.
+      // A duplicate run can occur in development/re-render scenarios while the first run
+      // is still completing successfully.
+      setStatus('Sign-in callback already processing. You can close this window.')
       return
     }
     processedCallbackKeys.add(callbackKey)
