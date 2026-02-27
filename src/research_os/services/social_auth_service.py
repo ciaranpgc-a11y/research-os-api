@@ -261,7 +261,7 @@ def _load_oauth_state(*, session, provider: str, state: str) -> AuthOAuthState:
     return state_row
 
 
-def _claim_oauth_state(*, provider: str, state: str) -> None:
+def _claim_oauth_state(*, provider: str, state: str) -> str | None:
     create_all_tables()
     with session_scope() as session:
         state_row = _load_oauth_state(
@@ -270,11 +270,16 @@ def _claim_oauth_state(*, provider: str, state: str) -> None:
             state=state,
         )
         if state_row.consumed_at is not None:
+            # Allow idempotent callback completion when a prior callback
+            # already finished and attached a user to this state.
+            if state_row.user_id:
+                return str(state_row.user_id)
             raise AuthValidationError("OAuth state has already been used.")
         # Claim callback state before token exchange so replayed callbacks
         # do not burn one-time provider auth codes.
         state_row.consumed_at = _utcnow()
         session.flush()
+    return None
 
 
 def _exchange_oauth_code(
@@ -579,7 +584,46 @@ def complete_oauth_callback(
         raise AuthValidationError("Provider, state, and code are required.")
 
     config = _provider_config(clean_provider, frontend_origin=frontend_origin)
-    _claim_oauth_state(provider=clean_provider, state=clean_state)
+    prior_user_id = _claim_oauth_state(provider=clean_provider, state=clean_state)
+    if prior_user_id:
+        response_payload: dict[str, object] = {}
+        signed_in_user_id = ""
+        signed_in_account_key = ""
+        with session_scope() as session:
+            user = session.get(User, prior_user_id)
+            if user is None or not user.is_active:
+                raise AuthNotFoundError("User was not resolved for OAuth sign-in.")
+            session_token, auth_session = _create_session(session=session, user=user)
+            session.refresh(user)
+            response_payload = {
+                "provider": clean_provider,
+                "is_new_user": False,
+                "user": _serialize_user(user),
+                "session_token": session_token,
+                "session_expires_at": auth_session.expires_at,
+            }
+            signed_in_user_id = str(user.id)
+            signed_in_account_key = str(user.account_key or "").strip()
+
+        if signed_in_user_id:
+            _reconcile_data_library_after_sign_in(
+                user_id=signed_in_user_id,
+                account_key_hint=signed_in_account_key or None,
+            )
+            try:
+                from research_os.services.publication_metrics_service import (
+                    enqueue_publication_top_metrics_refresh,
+                )
+
+                enqueue_publication_top_metrics_refresh(
+                    user_id=signed_in_user_id,
+                    force=False,
+                    reason="auth_oauth_sign_in",
+                )
+            except Exception:
+                pass
+        return response_payload
+
     token_payload = _exchange_oauth_code(
         provider=clean_provider, config=config, code=clean_code
     )
@@ -599,7 +643,21 @@ def complete_oauth_callback(
             state=clean_state,
         )
         if state_row.user_id:
-            raise AuthValidationError("OAuth state has already been used.")
+            user = session.get(User, state_row.user_id)
+            if user is None or not user.is_active:
+                raise AuthNotFoundError("User was not resolved for OAuth sign-in.")
+            session_token, auth_session = _create_session(session=session, user=user)
+            session.refresh(user)
+            response_payload = {
+                "provider": clean_provider,
+                "is_new_user": False,
+                "user": _serialize_user(user),
+                "session_token": session_token,
+                "session_expires_at": auth_session.expires_at,
+            }
+            signed_in_user_id = str(user.id)
+            signed_in_account_key = str(user.account_key or "").strip()
+            return response_payload
 
         user, is_new_user = _resolve_user_for_oauth(
             session=session,
