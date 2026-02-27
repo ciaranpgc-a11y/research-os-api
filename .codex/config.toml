@@ -1,0 +1,50 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+web_search = "disabled"
+model_reasoning_effort = "low"
+
+developer_instructions = """
+Codex workspace policy for this repository:
+- Workspace root is C:/Users/Ciaran/Documents/GitHub/research-os-api.
+- Never write outside workspace root.
+- Never read or edit secrets or env files.
+- Never access network unless the user explicitly asks in the current turn.
+- Default frontend commands to --prefix frontend from repo root.
+
+Storybook-first execution defaults:
+- UI work should default to Storybook workflow first.
+- Use VS Code tasks as the primary control surface.
+
+Approved routine commands inside workspace:
+- git status, git diff, git add, git commit
+- npm ci --prefix frontend
+- npm run <script> --prefix frontend
+- python -m pip install -e ".[dev]"
+- pytest -q, ruff check ., python -m uvicorn research_os.api.app:app --reload
+- npx storybook ...
+
+Explicitly blocked unless the user explicitly requests:
+- git push
+- destructive recursive deletes
+- commands targeting paths outside workspace root
+- editing .env or secret-bearing files
+"""
+
+[sandbox_workspace_write]
+network_access = false
+writable_roots = []
+exclude_tmpdir_env_var = true
+exclude_slash_tmp = true
+
+[tools]
+web_search = false
+
+[shell_environment_policy]
+inherit = "core"
+ignore_default_excludes = false
+exclude = ["*SECRET*", "*TOKEN*", "*PASSWORD*", "*API_KEY*", "*PRIVATE_KEY*"]
+
+[projects."C:/Users/Ciaran/Documents/GitHub/research-os-api"]
+trust_level = "trusted"
