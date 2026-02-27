@@ -232,6 +232,11 @@ export function AuthPage() {
         return
       }
       if (payload.type === 'aawe-oauth-error') {
+        // Ignore stale OAuth error events unless this page currently has
+        // an active OAuth attempt in flight.
+        if (!oauthPending && !oauthPopupRef.current) {
+          return
+        }
         if (oauthPopupMonitorRef.current !== null) {
           window.clearInterval(oauthPopupMonitorRef.current)
           oauthPopupMonitorRef.current = null
@@ -290,7 +295,7 @@ export function AuthPage() {
     }
     window.addEventListener('message', handler)
     return () => window.removeEventListener('message', handler)
-  }, [navigate])
+  }, [navigate, oauthPending])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
