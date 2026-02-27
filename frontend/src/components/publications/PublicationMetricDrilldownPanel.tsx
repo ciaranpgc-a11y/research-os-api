@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
+import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
 import { cn } from '@/lib/utils'
 import type { PublicationMetricTilePayload } from '@/types/impact'
 
@@ -274,7 +274,7 @@ export function PublicationMetricDrilldownPanel({
             Data quality
             <span className="rounded-full bg-[hsl(var(--tone-neutral-200))] px-1.5 py-0.5">{qcFlags.length}</span>
           </div>
-          <Button type="button" variant="outline" size="sm" disabled>
+          <Button type="button" variant="secondary" size="sm" disabled>
             Generate report
           </Button>
         </div>
