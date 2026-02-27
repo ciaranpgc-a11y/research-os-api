@@ -14,19 +14,23 @@ jobs:
       - name: Enforce Node dependency boundaries
         run: |
           set -euo pipefail
-          if [ -f "package-lock.json" ]; then
-            echo "::error::Unexpected root package-lock.json found. Remove it and keep Node lockfile under frontend/package-lock.json."
-            exit 1
-          fi
           if [ -f "package.json" ] && [ "${ALLOW_ROOT_PACKAGE_JSON:-0}" != "1" ]; then
             echo "::error::Unexpected root package.json found. Set ALLOW_ROOT_PACKAGE_JSON=1 only for intentional root-level Node setup."
             exit 1
           fi
-          if [ ! -f "frontend/package-lock.json" ]; then
-            echo "::error::Missing frontend/package-lock.json. Expected Node lockfile at frontend/package-lock.json."
+          if [ -f "package-lock.json" ]; then
+            echo "::error::Unexpected root package-lock.json found. Remove it and keep Node lockfile under frontend/package-lock.json."
             exit 1
           fi
-          echo "Dependency boundary checks passed."
+          if [ ! -f "frontend/package.json" ]; then
+            echo "::error::Missing frontend/package.json. Expected frontend dependency manifest at frontend/package.json."
+            exit 1
+          fi
+          if [ ! -f "frontend/package-lock.json" ]; then
+            echo "::error::Missing frontend/package-lock.json. Expected frontend lockfile at frontend/package-lock.json."
+            exit 1
+          fi
+          echo "Node dependency boundary checks passed."
 
       - name: Set up Python
         uses: actions/setup-python@v5
