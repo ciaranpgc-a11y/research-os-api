@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
+import { DataLibraryDrilldownPanel } from '@/components/workspaces/data-library-drilldown-panel'
 import { useWorkspaceInboxStore } from '@/store/use-workspace-inbox-store'
 import {
   useWorkspaceStore,
@@ -11,7 +12,7 @@ import {
 } from '@/store/use-workspace-store'
 import type { LibraryAssetRecord } from '@/types/study-core'
 
-import { WorkspacesPage } from './workspaces-page'
+import { WorkspacesDrilldownPanel, WorkspacesPage } from './workspaces-page'
 
 const AUTH_TOKEN_STORAGE_KEY = 'aawe-impact-session-token'
 const WORKSPACES_STORAGE_KEY = 'aawe-workspaces'
@@ -22,6 +23,9 @@ const INBOX_MESSAGES_STORAGE_KEY = 'aawe-workspace-inbox-messages-v1'
 const INBOX_READS_STORAGE_KEY = 'aawe-workspace-inbox-reads-v1'
 const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const PERSONAL_DETAILS_STORAGE_PREFIX = 'aawe_profile_personal_details:'
+const DATA_LIBRARY_DISPLAY_NAME_STORAGE_KEY = 'aawe-data-library-display-names-v1'
+const DATA_LIBRARY_LINKED_WORKSPACES_STORAGE_KEY = 'aawe-data-library-linked-workspaces-v1'
+const DATA_LIBRARY_ACCESS_STATE_STORAGE_KEY = 'aawe-data-library-access-state-v1'
 const STORYBOOK_USER_ID = 'storybook-user-1'
 
 type WorkspacesInboxFixtureMessage = {
@@ -370,6 +374,148 @@ const collaboratorReadOnlyFixture: WorkspacesPageFixture = {
   libraryAssets: defaultLibraryAssets,
 }
 
+const BULK_LIBRARY_OWNER_POOL = [
+  { id: STORYBOOK_USER_ID, name: 'Ciaran Clarke' },
+  { id: 'user-maya-singh', name: 'Maya Singh' },
+  { id: 'user-jonah-meyer', name: 'Jonah Meyer' },
+  { id: 'user-lina-santos', name: 'Lina Santos' },
+]
+
+const BULK_LIBRARY_COLLABORATOR_NAMES = [
+  'A. Patel',
+  'R. Khan',
+  'M. Evans',
+  'L. Santos',
+  'N. Brooks',
+  'D. Li',
+  'K. O\'Brien',
+  'S. Ahmed',
+]
+
+const BULK_LIBRARY_WORKSPACE_DEFS: Array<{ id: string; name: string; ownerName: string }> = [
+  { id: 'hf-registry', name: 'HF Registry Manuscript', ownerName: 'Ciaran Clarke' },
+  { id: 'trial-multi-omics', name: 'Trial Multi-Omics', ownerName: 'Ciaran Clarke' },
+  { id: 'device-safety', name: 'Device Safety Registry', ownerName: 'Ciaran Clarke' },
+  { id: 'remote-monitoring', name: 'Remote Monitoring Study', ownerName: 'Ciaran Clarke' },
+  { id: 'registry-qc', name: 'Registry QC Bench', ownerName: 'Ciaran Clarke' },
+]
+
+function buildBulkStoryWorkspace(def: { id: string; name: string; ownerName: string }, index: number): WorkspaceRecord {
+  return {
+    id: def.id,
+    name: def.name,
+    ownerName: def.ownerName,
+    collaborators: ['A. Patel', 'R. Khan', 'M. Evans'],
+    removedCollaborators: index % 3 === 0 ? ['M. Evans'] : [],
+    pendingCollaborators: index % 2 === 0 ? ['L. Santos'] : [],
+    collaboratorRoles: {
+      'A. Patel': 'editor',
+      'R. Khan': 'reviewer',
+      'M. Evans': 'viewer',
+    },
+    pendingCollaboratorRoles: {
+      'L. Santos': 'reviewer',
+    },
+    version: `1.${index + 1}`,
+    health: index % 4 === 0 ? 'amber' : 'green',
+    updatedAt: new Date(Date.parse('2026-02-27T12:00:00Z') - index * 7_200_000).toISOString(),
+    pinned: index === 0,
+    archived: false,
+    auditLogEntries: [],
+  }
+}
+
+function assetKindAt(index: number): 'csv' | 'xlsx' | 'tsv' | 'pdf' | 'txt' {
+  const kinds: Array<'csv' | 'xlsx' | 'tsv' | 'pdf' | 'txt'> = ['csv', 'xlsx', 'tsv', 'pdf', 'txt']
+  return kinds[index % kinds.length]
+}
+
+function mimeTypeForAssetKind(kind: string): string {
+  if (kind === 'xlsx') {
+    return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  }
+  if (kind === 'tsv') {
+    return 'text/tab-separated-values'
+  }
+  if (kind === 'pdf') {
+    return 'application/pdf'
+  }
+  if (kind === 'txt') {
+    return 'text/plain'
+  }
+  return 'text/csv'
+}
+
+function buildBulkLibraryAssets(count: number): LibraryAssetRecord[] {
+  const assets: LibraryAssetRecord[] = []
+  for (let index = 0; index < count; index += 1) {
+    const sequence = index + 1
+    const owner = BULK_LIBRARY_OWNER_POOL[index % BULK_LIBRARY_OWNER_POOL.length]
+    const canManageAccess = owner.id === STORYBOOK_USER_ID
+    const kind = assetKindAt(index)
+    const filename = `dataset_${String(sequence).padStart(4, '0')}.${kind}`
+    const uploadedAt = new Date(Date.parse('2026-02-27T12:00:00Z') - index * 3_600_000).toISOString()
+    const workspace = BULK_LIBRARY_WORKSPACE_DEFS[index % BULK_LIBRARY_WORKSPACE_DEFS.length]
+
+    const sharedNames = canManageAccess
+      ? BULK_LIBRARY_COLLABORATOR_NAMES.slice(index % 3, (index % 3) + (index % 4 === 0 ? 3 : index % 5 === 0 ? 2 : 1))
+      : ['Ciaran Clarke', BULK_LIBRARY_COLLABORATOR_NAMES[(index + 2) % BULK_LIBRARY_COLLABORATOR_NAMES.length]]
+    const uniqueSharedNames = Array.from(new Set(sharedNames)).filter((name) => name !== owner.name)
+    const sharedWith = uniqueSharedNames.map((name) => ({
+      user_id: nameToMockUserId(name),
+      name,
+    }))
+
+    assets.push({
+      id: `lib-bulk-${String(sequence).padStart(4, '0')}`,
+      owner_user_id: owner.id,
+      owner_name: owner.name,
+      project_id: workspace.id,
+      filename,
+      kind,
+      mime_type: mimeTypeForAssetKind(kind),
+      byte_size: 42_000 + ((sequence * 9_137) % 24_000_000),
+      uploaded_at: uploadedAt,
+      shared_with_user_ids: sharedWith.map((member) => member.user_id),
+      shared_with: sharedWith,
+      can_manage_access: canManageAccess,
+      is_available: sequence % 19 !== 0,
+    })
+  }
+  return assets
+}
+
+function buildLargeDataLibraryFixture(assetCount: number): WorkspacesPageFixture {
+  const workspaces = BULK_LIBRARY_WORKSPACE_DEFS.map((workspace, index) =>
+    buildBulkStoryWorkspace(workspace, index),
+  )
+  return {
+    workspaces,
+    activeWorkspaceId: workspaces[0]?.id || null,
+    authorRequests: [],
+    invitationsSent: [],
+    inboxMessages: [
+      {
+        workspaceId: workspaces[0]?.id || 'hf-registry',
+        senderName: 'A. Patel',
+        body: 'Bulk fixture loaded for data-library stress testing.',
+      },
+    ],
+    inboxReads: [
+      {
+        workspaceId: workspaces[0]?.id || 'hf-registry',
+        readerName: 'Ciaran Clarke',
+        readAt: '2026-02-27T09:00:00Z',
+      },
+    ],
+    libraryAssets: buildBulkLibraryAssets(assetCount),
+    initialRoute: '/workspaces?view=data-library',
+  }
+}
+
+const dataLibraryLargeFixture = buildLargeDataLibraryFixture(240)
+const dataLibraryVeryLargeFixture = buildLargeDataLibraryFixture(960)
+
 function cloneLibraryAsset(asset: LibraryAssetRecord): LibraryAssetRecord {
   return {
     ...asset,
@@ -434,10 +580,26 @@ function WorkspacesPagePreview({ fixture }: WorkspacesPagePreviewProps) {
     const previousCachedUser = window.localStorage.getItem(INTEGRATIONS_USER_CACHE_KEY)
     const personalDetailsStorageKey = `${PERSONAL_DETAILS_STORAGE_PREFIX}${STORYBOOK_USER_ID}`
     const previousPersonalDetails = window.localStorage.getItem(personalDetailsStorageKey)
+    const dataLibraryBaseStorageKeys = [
+      DATA_LIBRARY_DISPLAY_NAME_STORAGE_KEY,
+      DATA_LIBRARY_LINKED_WORKSPACES_STORAGE_KEY,
+      DATA_LIBRARY_ACCESS_STATE_STORAGE_KEY,
+    ]
+    const dataLibraryStorageKeys = [
+      ...dataLibraryBaseStorageKeys,
+      ...dataLibraryBaseStorageKeys.map((key) => `${key}:${STORYBOOK_USER_ID}`),
+    ]
+    const previousDataLibraryStorageByKey = new Map(
+      dataLibraryStorageKeys.map((key) => [key, window.localStorage.getItem(key)]),
+    )
     const previousState = useWorkspaceStore.getState()
     const previousInboxState = useWorkspaceInboxStore.getState()
     const previousFetch = window.fetch.bind(window)
     let storyLibraryAssets = (fixture.libraryAssets || []).map(cloneLibraryAsset)
+    let storyAuditLogsByAssetId: Record<string, Array<Record<string, unknown>>> = {}
+    for (const asset of storyLibraryAssets) {
+      storyAuditLogsByAssetId[asset.id] = []
+    }
 
     window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const requestUrl =
@@ -634,6 +796,61 @@ function WorkspacesPagePreview({ fixture }: WorkspacesPagePreviewProps) {
         })
       }
 
+      const auditLogMatch = path.match(/\/v1\/library\/assets\/([^/]+)\/audit-logs$/)
+      if (auditLogMatch && requestMethod === 'GET') {
+        const assetId = decodeURIComponent(auditLogMatch[1])
+        const entries = storyAuditLogsByAssetId[assetId] || []
+        return new Response(JSON.stringify({ items: entries }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
+      if (auditLogMatch && requestMethod === 'POST') {
+        const assetId = decodeURIComponent(auditLogMatch[1])
+        let payload: {
+          collaborator_name?: string
+          collaborator_user_id?: string | null
+          category?: string
+          from_label?: string | null
+          to_label?: string
+        } = {}
+        if (typeof init?.body === 'string' && init.body.trim()) {
+          try {
+            payload = JSON.parse(init.body) as typeof payload
+          } catch {
+            payload = {}
+          }
+        }
+        const collaboratorName = String(payload.collaborator_name || '').trim()
+        const toLabel = String(payload.to_label || '').trim()
+        if (!collaboratorName || !toLabel) {
+          return new Response(JSON.stringify({ error: { detail: 'collaborator_name and to_label are required.' } }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+        const entry = {
+          id: `${assetId}-audit-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+          asset_id: assetId,
+          collaborator_name: collaboratorName,
+          collaborator_key: collaboratorName.toLowerCase().replace(/\s+/g, ' ').trim(),
+          collaborator_user_id: payload.collaborator_user_id || null,
+          actor_name: 'Ciaran Clarke (Owner)',
+          actor_user_id: STORYBOOK_USER_ID,
+          category: String(payload.category || 'other'),
+          from_label: payload.from_label || null,
+          to_label: toLabel,
+          created_at: new Date().toISOString(),
+        }
+        const existing = storyAuditLogsByAssetId[assetId] || []
+        storyAuditLogsByAssetId[assetId] = [entry, ...existing]
+        return new Response(JSON.stringify(entry), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
       const downloadMatch = path.match(/\/v1\/library\/assets\/([^/]+)\/download$/)
       if (downloadMatch && requestMethod === 'GET') {
         const assetId = decodeURIComponent(downloadMatch[1])
@@ -659,6 +876,9 @@ function WorkspacesPagePreview({ fixture }: WorkspacesPagePreviewProps) {
     const bootstrap = async () => {
       window.sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'storybook-session-token')
       window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'storybook-session-token')
+      for (const key of dataLibraryStorageKeys) {
+        window.localStorage.removeItem(key)
+      }
       window.localStorage.setItem(WORKSPACES_STORAGE_KEY, JSON.stringify(fixture.workspaces))
       window.localStorage.setItem(AUTHOR_REQUESTS_STORAGE_KEY, JSON.stringify(fixture.authorRequests))
       window.localStorage.setItem(INVITATIONS_SENT_STORAGE_KEY, JSON.stringify(fixture.invitationsSent))
@@ -759,6 +979,14 @@ function WorkspacesPagePreview({ fixture }: WorkspacesPagePreviewProps) {
       } else {
         window.localStorage.setItem(personalDetailsStorageKey, previousPersonalDetails)
       }
+      for (const key of dataLibraryStorageKeys) {
+        const previousValue = previousDataLibraryStorageByKey.get(key)
+        if (previousValue === null || typeof previousValue === 'undefined') {
+          window.localStorage.removeItem(key)
+        } else {
+          window.localStorage.setItem(key, previousValue)
+        }
+      }
 
       useWorkspaceStore.setState({
         workspaces: previousState.workspaces,
@@ -786,6 +1014,247 @@ function WorkspacesPagePreview({ fixture }: WorkspacesPagePreviewProps) {
           <Route path="/w/:workspaceId/inbox" element={<RouteEcho />} />
         </Routes>
       </MemoryRouter>
+    </div>
+  )
+}
+
+function DrilldownParityStackedPreview() {
+  const workspace = collaboratorStateFixture.workspaces[0] || null
+  const asset = defaultLibraryAssets[0] || null
+
+  useEffect(() => {
+    if (!workspace || !asset) {
+      return
+    }
+    const scopedAccessStateKey = `${DATA_LIBRARY_ACCESS_STATE_STORAGE_KEY}:${STORYBOOK_USER_ID}`
+    const previousCachedUser = window.localStorage.getItem(INTEGRATIONS_USER_CACHE_KEY)
+    const previousAccessState = window.localStorage.getItem(scopedAccessStateKey)
+    const previousFetch = window.fetch.bind(window)
+
+    const seededAccessState = {
+      [asset.id]: [
+        {
+          key: 'a-patel',
+          name: 'A. Patel',
+          userId: 'user-a-patel',
+          role: 'full_access',
+          status: 'active',
+          lastRole: 'full_access',
+        },
+        {
+          key: 'm-evans',
+          name: 'M. Evans',
+          userId: 'user-m-evans',
+          role: 'view_only',
+          status: 'pending',
+          lastRole: 'view_only',
+        },
+      ],
+    }
+    let seededAuditLog: Array<{
+      id: string
+      asset_id: string
+      collaborator_name: string
+      collaborator_key: string
+      collaborator_user_id: string | null
+      actor_name: string
+      actor_user_id: string
+      category: string
+      from_label: string | null
+      to_label: string
+      created_at: string
+    }> = [
+      {
+        id: 'dl-parity-01',
+        asset_id: asset.id,
+        collaborator_name: 'A. Patel',
+        collaborator_key: 'a-patel',
+        collaborator_user_id: 'user-a-patel',
+        actor_name: 'Ciaran Clarke (Owner)',
+        actor_user_id: STORYBOOK_USER_ID,
+        category: 'roles',
+        from_label: 'Full-access',
+        to_label: 'View-only',
+        created_at: '2026-02-27T09:58:00Z',
+      },
+      {
+        id: 'dl-parity-02',
+        asset_id: asset.id,
+        collaborator_name: 'M. Evans',
+        collaborator_key: 'm-evans',
+        collaborator_user_id: 'user-m-evans',
+        actor_name: 'Ciaran Clarke (Owner)',
+        actor_user_id: STORYBOOK_USER_ID,
+        category: 'invites',
+        from_label: 'View-only',
+        to_label: 'View-only (pending)',
+        created_at: '2026-02-27T10:02:00Z',
+      },
+    ]
+
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url
+      const requestMethod = (
+        init?.method ||
+        (typeof input !== 'string' && !(input instanceof URL) ? input.method : 'GET') ||
+        'GET'
+      ).toUpperCase()
+      const parsedUrl = new URL(requestUrl, window.location.origin)
+      const path = parsedUrl.pathname
+      const auditLogMatch = path.match(/\/v1\/library\/assets\/([^/]+)\/audit-logs$/)
+      if (auditLogMatch && requestMethod === 'GET') {
+        const assetId = decodeURIComponent(auditLogMatch[1])
+        const items = seededAuditLog.filter((entry) => entry.asset_id === assetId)
+        return new Response(JSON.stringify({ items }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (auditLogMatch && requestMethod === 'POST') {
+        let payload: {
+          collaborator_name?: string
+          collaborator_user_id?: string | null
+          category?: string
+          from_label?: string | null
+          to_label?: string
+        } = {}
+        if (typeof init?.body === 'string' && init.body.trim()) {
+          try {
+            payload = JSON.parse(init.body) as typeof payload
+          } catch {
+            payload = {}
+          }
+        }
+        const assetId = decodeURIComponent(auditLogMatch[1])
+        const entry = {
+          id: `${assetId}-audit-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+          asset_id: assetId,
+          collaborator_name: String(payload.collaborator_name || 'Unknown user').trim(),
+          collaborator_key: String(payload.collaborator_name || 'Unknown user').trim().toLowerCase(),
+          collaborator_user_id: payload.collaborator_user_id || null,
+          actor_name: 'Ciaran Clarke (Owner)',
+          actor_user_id: STORYBOOK_USER_ID,
+          category: String(payload.category || 'other'),
+          from_label: payload.from_label || null,
+          to_label: String(payload.to_label || 'Unknown').trim(),
+          created_at: new Date().toISOString(),
+        }
+        seededAuditLog = [entry, ...seededAuditLog]
+        return new Response(JSON.stringify(entry), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      return previousFetch(input, init)
+    }
+
+    window.localStorage.setItem(
+      INTEGRATIONS_USER_CACHE_KEY,
+      JSON.stringify({ id: STORYBOOK_USER_ID }),
+    )
+    window.localStorage.setItem(scopedAccessStateKey, JSON.stringify(seededAccessState))
+    window.dispatchEvent(new Event('data-library-access-state-updated'))
+
+    return () => {
+      window.fetch = previousFetch
+      if (previousCachedUser === null) {
+        window.localStorage.removeItem(INTEGRATIONS_USER_CACHE_KEY)
+      } else {
+        window.localStorage.setItem(INTEGRATIONS_USER_CACHE_KEY, previousCachedUser)
+      }
+      if (previousAccessState === null) {
+        window.localStorage.removeItem(scopedAccessStateKey)
+      } else {
+        window.localStorage.setItem(scopedAccessStateKey, previousAccessState)
+      }
+      window.dispatchEvent(new Event('data-library-access-state-updated'))
+    }
+  }, [asset, workspace])
+
+  if (!workspace || !asset) {
+    return <div className="min-h-screen bg-background" />
+  }
+
+  const toKey = (value: string) => value.trim().toLowerCase()
+  const removedSet = new Set((workspace.removedCollaborators || []).map((name) => toKey(name)))
+  const pendingSet = new Set((workspace.pendingCollaborators || []).map((name) => toKey(name)))
+  const collaboratorNames = Array.from(
+    new Set([...(workspace.collaborators || []), ...(workspace.pendingCollaborators || [])]),
+  )
+  const collaboratorChips = collaboratorNames
+    .filter((name) => String(name || '').trim().length > 0)
+    .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }))
+    .map((name) => {
+      const key = toKey(name)
+      const state: 'active' | 'pending' | 'removed' =
+        removedSet.has(key) ? 'removed' : pendingSet.has(key) ? 'pending' : 'active'
+      const roleLookup =
+        state === 'pending'
+          ? workspace.pendingCollaboratorRoles || {}
+          : workspace.collaboratorRoles || {}
+      const role = roleLookup[name] || 'editor'
+      return {
+        key,
+        name,
+        state,
+        role,
+      }
+    })
+
+  return (
+    <div className="min-h-screen bg-background p-4">
+      <div className="flex flex-col gap-4">
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Workspace drilldown</p>
+          <div className="w-[22rem] rounded-md border border-border p-3">
+            <WorkspacesDrilldownPanel
+              selectedWorkspaceId={workspace.id}
+              selectedWorkspaceName={workspace.name}
+              selectedWorkspace={workspace}
+              selectedWorkspaceReadOnly={false}
+              currentWorkspaceUserName={workspace.ownerName}
+              collaboratorChips={collaboratorChips}
+              workspaceAuditEntries={workspace.auditLogEntries || []}
+              canManageSelectedWorkspace
+              collaboratorComposerOpen={false}
+              collaboratorInviteRole="editor"
+              collaboratorQuery=""
+              canConfirmAddCollaborator={false}
+              onOpenCollaboratorComposer={() => {}}
+              onCollaboratorInviteRoleChange={() => {}}
+              onChangeCollaboratorRole={() => {}}
+              onCancelPendingCollaboratorInvitation={() => {}}
+              onToggleCollaboratorRemoved={() => {}}
+              onCollaboratorQueryChange={() => {}}
+              onConfirmAddCollaborator={() => {}}
+              onOpenSelectedWorkspace={() => {}}
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Data drilldown</p>
+          <div className="w-[22rem] rounded-md border border-border p-3">
+            <DataLibraryDrilldownPanel
+              selectedAsset={asset}
+              selectedAssetDisplayName="4D flow primary dataset"
+              workspaces={[workspace]}
+              linkedWorkspaceIds={[workspace.id]}
+              currentUserName={workspace.ownerName}
+              onUpdateAssetDisplayName={() => {}}
+              onLinkedWorkspaceIdsChange={() => {}}
+              onOpenWorkspace={() => {}}
+              onRequestAssetRefresh={() => {}}
+              onAssetPatched={() => {}}
+              dataLeftBorderClassName="house-left-border house-left-border-workspace"
+            />
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -833,4 +1302,20 @@ export const CollaboratorReadOnlyView: Story = {
   args: {
     fixture: collaboratorReadOnlyFixture,
   },
+}
+
+export const DataLibraryLargeDatasets: Story = {
+  args: {
+    fixture: dataLibraryLargeFixture,
+  },
+}
+
+export const DataLibraryVeryLargeDatasets: Story = {
+  args: {
+    fixture: dataLibraryVeryLargeFixture,
+  },
+}
+
+export const DrilldownParityStacked: Story = {
+  render: () => <DrilldownParityStackedPreview />,
 }
