@@ -1,0 +1,49 @@
+{
+  "count": 9,
+  "files": [
+    "frontend/src/components/data-workspace/TableTabs.tsx",
+    "frontend/src/components/study-core/StepRun.tsx",
+    "frontend/src/components/study-core/StudyCoreStepper.tsx",
+    "frontend/src/pages/manuscript-page.tsx",
+    "frontend/src/pages/manuscript-tables-page.tsx",
+    "frontend/src/pages/profile-collaboration-page.tsx"
+  ],
+  "occurrences": [
+    {
+      "file": "frontend/src/components/data-workspace/TableTabs.tsx",
+      "line": 404
+    },
+    {
+      "file": "frontend/src/components/data-workspace/TableTabs.tsx",
+      "line": 433
+    },
+    {
+      "file": "frontend/src/components/study-core/StepRun.tsx",
+      "line": 619
+    },
+    {
+      "file": "frontend/src/components/study-core/StepRun.tsx",
+      "line": 687
+    },
+    {
+      "file": "frontend/src/components/study-core/StudyCoreStepper.tsx",
+      "line": 45
+    },
+    {
+      "file": "frontend/src/pages/manuscript-page.tsx",
+      "line": 492
+    },
+    {
+      "file": "frontend/src/pages/manuscript-tables-page.tsx",
+      "line": 246
+    },
+    {
+      "file": "frontend/src/pages/manuscript-tables-page.tsx",
+      "line": 272
+    },
+    {
+      "file": "frontend/src/pages/profile-collaboration-page.tsx",
+      "line": 858
+    }
+  ]
+}

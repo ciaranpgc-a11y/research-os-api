@@ -1,0 +1,16 @@
+{
+  "counts": {
+    "default": 0,
+    "housePrimary": 0,
+    "house": 0,
+    "outline": 0,
+    "ghost": 0
+  },
+  "files": {
+    "default": [],
+    "housePrimary": [],
+    "house": [],
+    "outline": [],
+    "ghost": []
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "replaced": 9,
+  "changedFiles": [
+    "frontend/src/components/data-workspace/TableTabs.tsx",
+    "frontend/src/components/study-core/StepRun.tsx",
+    "frontend/src/components/study-core/StudyCoreStepper.tsx",
+    "frontend/src/pages/manuscript-page.tsx",
+    "frontend/src/pages/manuscript-tables-page.tsx",
+    "frontend/src/pages/profile-collaboration-page.tsx"
+  ]
+}
