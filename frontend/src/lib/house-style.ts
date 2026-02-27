@@ -161,15 +161,12 @@ export const houseCollaborators = {
   chipManageable: 'house-collaborator-chip-manageable',
   chipReadOnly: 'house-collaborator-chip-readonly',
   chipAction: 'house-collaborator-chip-action',
-<<<<<<< Updated upstream
-=======
   actionIcon: 'house-collaborator-action-icon',
   actionIconAdd: 'house-collaborator-action-icon-add',
   actionIconConfirm: 'house-collaborator-action-icon-confirm',
   actionIconEdit: 'house-collaborator-action-icon-edit',
   actionIconRemove: 'house-collaborator-action-icon-remove',
   actionIconRestore: 'house-collaborator-action-icon-restore',
->>>>>>> Stashed changes
 } as const
 
 export const houseChartColors = {
@@ -325,15 +322,12 @@ export const houseElements = {
   collaboratorChipManageable: houseCollaborators.chipManageable,
   collaboratorChipReadOnly: houseCollaborators.chipReadOnly,
   collaboratorChipAction: houseCollaborators.chipAction,
-<<<<<<< Updated upstream
-=======
   collaboratorActionIcon: houseCollaborators.actionIcon,
   collaboratorActionIconAdd: houseCollaborators.actionIconAdd,
   collaboratorActionIconConfirm: houseCollaborators.actionIconConfirm,
   collaboratorActionIconEdit: houseCollaborators.actionIconEdit,
   collaboratorActionIconRemove: houseCollaborators.actionIconRemove,
   collaboratorActionIconRestore: houseCollaborators.actionIconRestore,
->>>>>>> Stashed changes
   topPanel: houseSurfaces.topPanel,
   sectionPanel: houseSurfaces.sectionPanel,
   softPanel: houseSurfaces.softPanel,
