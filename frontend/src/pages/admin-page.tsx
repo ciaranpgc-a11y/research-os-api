@@ -23,10 +23,16 @@ import {
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
+import { CardPrimitive as Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/primitives/CardPrimitive'
+import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
+import {
+  SelectPrimitive,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/primitives/SelectPrimitive'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
 import {
   cancelAdminJob,
@@ -992,13 +998,13 @@ export function AdminPage() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" variant="outline" onClick={() => navigate('/workspaces')}>
+              <Button type="button" variant="secondary" onClick={() => navigate('/workspaces')}>
                 <ArrowLeft className="mr-1.5 h-4 w-4" />
                 Return to main site
               </Button>
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 onClick={() => void loadData(userQuery, organisationQuery, workspaceQuery, usageQuery, jobsQuery, jobStatus)}
                 disabled={loading}
               >
@@ -1394,7 +1400,7 @@ export function AdminPage() {
                           </p>
                           <Button
                             type="button"
-                            variant="outline"
+                            variant="secondary"
                             className="mt-3 w-full"
                             disabled={loading || impersonatingOrganisationId === selectedOrganisation.id}
                             onClick={() => void onImpersonateOrganisation()}
@@ -1713,7 +1719,7 @@ export function AdminPage() {
                                     <Button
                                       type="button"
                                       size="sm"
-                                      variant="outline"
+                                      variant="secondary"
                                       onClick={() => void onReconcileUserLibrary(item.id)}
                                       disabled={
                                         reconcilingUserId === item.id ||
@@ -1726,7 +1732,7 @@ export function AdminPage() {
                                     <Button
                                       type="button"
                                       size="sm"
-                                      variant="outline"
+                                      variant="secondary"
                                       onClick={() => void onRecoverUserLibraryStorage(item.id)}
                                       disabled={
                                         recoveringStorageUserId === item.id ||
@@ -1739,7 +1745,7 @@ export function AdminPage() {
                                     <Button
                                       type="button"
                                       size="sm"
-                                      variant="destructive"
+                                      variant="primary"
                                       onClick={() => void onDeleteUserAccount(item.id, item.name || item.email || item.id)}
                                       disabled={
                                         deletingUserId === item.id ||
@@ -2049,20 +2055,24 @@ export function AdminPage() {
                           className="pl-9"
                         />
                       </div>
-                      <Select
-                        size="lg"
-                        value={jobStatus}
-                        onChange={(event) => setJobStatus(event.target.value)}
-                        className="w-auto"
-                      >
-                        <option value="all">All statuses</option>
-                        <option value="queued">queued</option>
-                        <option value="running">running</option>
-                        <option value="cancel_requested">cancel_requested</option>
-                        <option value="completed">completed</option>
-                        <option value="failed">failed</option>
-                        <option value="cancelled">cancelled</option>
-                      </Select>
+                      <SelectPrimitive value={jobStatus} onValueChange={setJobStatus}>
+                        <SelectTrigger
+                          size="lg"
+                          className="w-auto min-w-[13rem]"
+                          aria-label="Job status filter"
+                        >
+                          <SelectValue placeholder="All statuses" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All statuses</SelectItem>
+                          <SelectItem value="queued">queued</SelectItem>
+                          <SelectItem value="running">running</SelectItem>
+                          <SelectItem value="cancel_requested">cancel_requested</SelectItem>
+                          <SelectItem value="completed">completed</SelectItem>
+                          <SelectItem value="failed">failed</SelectItem>
+                          <SelectItem value="cancelled">cancelled</SelectItem>
+                        </SelectContent>
+                      </SelectPrimitive>
                       <Button type="submit" disabled={loading}>
                         {loading ? 'Loading...' : 'Apply filter'}
                       </Button>
@@ -2146,7 +2156,7 @@ export function AdminPage() {
                                     <div className="flex flex-wrap gap-1.5">
                                       <Button
                                         type="button"
-                                        variant="outline"
+                                        variant="secondary"
                                         size="sm"
                                         disabled={loading || actingJobId === job.id || !canCancel}
                                         onClick={() => void onCancelJob(job.id)}
@@ -2155,7 +2165,7 @@ export function AdminPage() {
                                       </Button>
                                       <Button
                                         type="button"
-                                        variant="outline"
+                                        variant="secondary"
                                         size="sm"
                                         disabled={loading || actingJobId === job.id || !canRetry}
                                         onClick={() => void onRetryJob(job.id)}
@@ -2583,3 +2593,4 @@ export function AdminPage() {
     </section>
   )
 }
+
