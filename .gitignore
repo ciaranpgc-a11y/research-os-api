@@ -41,3 +41,8 @@ storybook-static/
 coverage/
 playwright-report/
 dist/
+
+# Data policy
+data_local/*
+!data_local/README.md
+!data_samples/*
