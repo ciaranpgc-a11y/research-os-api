@@ -9,7 +9,7 @@ import { StepLinkQcExport } from '@/components/study-core/StepLinkQcExport'
 import { StepPlan } from '@/components/study-core/StepPlan'
 import { StepRun } from '@/components/study-core/StepRun'
 import { StudyCoreStepper, type WizardStepItem } from '@/components/study-core/StudyCoreStepper'
-import { Input } from '@/components/ui/input'
+import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import type { PlanSectionKey } from '@/lib/plan-section-readiness'
 import {
