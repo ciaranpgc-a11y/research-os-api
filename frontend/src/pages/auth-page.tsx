@@ -119,8 +119,26 @@ export function AuthPage() {
   const [oauthPending, setOauthPending] = useState(false)
   const oauthPopupRef = useRef<Window | null>(null)
   const oauthPopupMonitorRef = useRef<number | null>(null)
+  const oauthPopupClosedAtRef = useRef<number | null>(null)
 
   const hasTestAccountShortcut = Boolean(TEST_ACCOUNT_EMAIL && TEST_ACCOUNT_PASSWORD)
+
+  const clearOAuthTransientState = () => {
+    if (oauthPopupMonitorRef.current !== null) {
+      window.clearInterval(oauthPopupMonitorRef.current)
+      oauthPopupMonitorRef.current = null
+    }
+    if (oauthPopupRef.current && !oauthPopupRef.current.closed) {
+      try {
+        oauthPopupRef.current.close()
+      } catch {
+        // no-op
+      }
+    }
+    oauthPopupRef.current = null
+    oauthPopupClosedAtRef.current = null
+    setOauthPending(false)
+  }
 
   const persistLastEmail = (value: string) => {
     if (typeof window === 'undefined') {
@@ -234,22 +252,10 @@ export function AuthPage() {
       if (payload.type === 'aawe-oauth-error') {
         // Ignore stale OAuth error events unless this page currently has
         // an active OAuth attempt in flight.
-        if (!oauthPending && !oauthPopupRef.current) {
+        if (!oauthPending) {
           return
         }
-        if (oauthPopupMonitorRef.current !== null) {
-          window.clearInterval(oauthPopupMonitorRef.current)
-          oauthPopupMonitorRef.current = null
-        }
-        if (oauthPopupRef.current && !oauthPopupRef.current.closed) {
-          try {
-            oauthPopupRef.current.close()
-          } catch {
-            // no-op: best effort cleanup for popup lifecycle
-          }
-        }
-        oauthPopupRef.current = null
-        setOauthPending(false)
+        clearOAuthTransientState()
         setLoading(false)
         const detail = String(payload.error || 'OAuth callback failed.')
         if (detail.toLowerCase().includes('oauth state has already been used')) {
@@ -262,20 +268,8 @@ export function AuthPage() {
         return
       }
       if (payload.type === 'aawe-oauth-success') {
-        if (oauthPopupMonitorRef.current !== null) {
-          window.clearInterval(oauthPopupMonitorRef.current)
-          oauthPopupMonitorRef.current = null
-        }
-        if (oauthPopupRef.current && !oauthPopupRef.current.closed) {
-          try {
-            oauthPopupRef.current.close()
-          } catch {
-            // no-op: best effort cleanup for popup lifecycle
-          }
-        }
-        oauthPopupRef.current = null
+        clearOAuthTransientState()
         const session = payload.payload
-        setOauthPending(false)
         setLoading(false)
         setError('')
         if (session.user.email_verified_at) {
@@ -385,6 +379,7 @@ export function AuthPage() {
   }, [resetCode, resetEmail, resetPassword])
 
   const onRegister = async () => {
+    clearOAuthTransientState()
     setAttemptedRegister(true)
     if (registerValidationMessage) {
       setError(registerValidationMessage)
@@ -467,6 +462,7 @@ export function AuthPage() {
   }
 
   const onSignIn = async () => {
+    clearOAuthTransientState()
     setAttemptedSignIn(true)
     if (loginValidationMessage) {
       setError(loginValidationMessage)
@@ -574,18 +570,7 @@ export function AuthPage() {
     setLoading(true)
     setError('')
     setStatus('')
-    if (oauthPopupMonitorRef.current !== null) {
-      window.clearInterval(oauthPopupMonitorRef.current)
-      oauthPopupMonitorRef.current = null
-    }
-    if (oauthPopupRef.current && !oauthPopupRef.current.closed) {
-      try {
-        oauthPopupRef.current.close()
-      } catch {
-        // no-op: best effort cleanup for popup lifecycle
-      }
-      oauthPopupRef.current = null
-    }
+    clearOAuthTransientState()
     try {
       const payload = await fetchOAuthConnect(provider)
       const popup = window.open(
@@ -609,11 +594,12 @@ export function AuthPage() {
         window.clearInterval(monitor)
         oauthPopupMonitorRef.current = null
         oauthPopupRef.current = null
+        oauthPopupClosedAtRef.current = Date.now()
+        setOauthPending(false)
+        setLoading(false)
         if (Date.now() - startedAt < 2500) {
           return
         }
-        setOauthPending(false)
-        setLoading(false)
       }, 500)
       oauthPopupMonitorRef.current = monitor
     } catch (oauthError) {
