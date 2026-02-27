@@ -4,12 +4,18 @@ import { useNavigate } from 'react-router-dom'
 
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
 import { publicationsHouseDetail, publicationsHouseDrilldown, publicationsHouseHeadings, publicationsHouseMotion } from '@/components/publications/publications-house-style'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
+import { CardPrimitive as Card, CardContent, CardHeader } from '@/components/primitives/CardPrimitive'
+import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
+import {
+  SelectPrimitive,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/primitives/SelectPrimitive'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TablePrimitive as Table, TableBody, TableCell, TableHead as TableHeader, TableHeaderCell as TableHead, TableRow } from '@/components/primitives/TablePrimitive'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { houseDividers, houseForms, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import {
@@ -2542,29 +2548,31 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               placeholder="Filter by title, journal, DOI, PMID, author"
               className={`w-sz-280 ${HOUSE_INPUT_CLASS} ${HOUSE_TABLE_FILTER_INPUT_CLASS}`}
             />
-            <Select
-              value={filterKey}
-              onChange={(event) => setFilterKey(event.target.value as PublicationFilterKey)}
-              className={`h-9 w-auto rounded-md px-2 ${HOUSE_TABLE_FILTER_SELECT_CLASS}`}
-            >
-              <option value="all">All works</option>
-              <option value="cited">Cited only</option>
-              <option value="with_doi">With DOI</option>
-              <option value="with_abstract">With abstract</option>
-              <option value="with_pmid">With PMID</option>
-            </Select>
-            <Select
-              value={typeFilter}
-              onChange={(event) => setTypeFilter(event.target.value)}
-              className={`h-9 w-auto rounded-md px-2 ${HOUSE_TABLE_FILTER_SELECT_CLASS}`}
-            >
-              <option value="all">All types</option>
-              {typeFilterOptions.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </Select>
+            <SelectPrimitive value={filterKey} onValueChange={(value) => setFilterKey(value as PublicationFilterKey)}>
+              <SelectTrigger className={`h-9 w-auto min-w-[11rem] rounded-md px-2 ${HOUSE_TABLE_FILTER_SELECT_CLASS}`}>
+                <SelectValue placeholder="All works" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All works</SelectItem>
+                <SelectItem value="cited">Cited only</SelectItem>
+                <SelectItem value="with_doi">With DOI</SelectItem>
+                <SelectItem value="with_abstract">With abstract</SelectItem>
+                <SelectItem value="with_pmid">With PMID</SelectItem>
+              </SelectContent>
+            </SelectPrimitive>
+            <SelectPrimitive value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger className={`h-9 w-auto min-w-[11rem] rounded-md px-2 ${HOUSE_TABLE_FILTER_SELECT_CLASS}`}>
+                <SelectValue placeholder="All types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                {typeFilterOptions.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {value}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </SelectPrimitive>
           </div>
           <div className="grid grid-cols-1 items-start gap-4">
             <div className="space-y-1">
@@ -2780,14 +2788,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           </div>
 
                           <div className="flex flex-wrap gap-2">
-                            <Button type="button" size="sm" variant="outline" disabled={!Boolean(detailDoi)} asChild={Boolean(detailDoi)}>
+                            <Button type="button" size="sm" variant="secondary" disabled={!Boolean(detailDoi)} asChild={Boolean(detailDoi)}>
                               {detailDoi ? <a href={doiToUrl(detailDoi) || undefined} target="_blank" rel="noreferrer">Open DOI</a> : <span>Open DOI</span>}
                             </Button>
-                            <Button type="button" size="sm" variant="outline" disabled={!Boolean(detailPmid)} asChild={Boolean(detailPmid)}>
+                            <Button type="button" size="sm" variant="secondary" disabled={!Boolean(detailPmid)} asChild={Boolean(detailPmid)}>
                               {detailPmid ? <a href={`https://pubmed.ncbi.nlm.nih.gov/${detailPmid}/`} target="_blank" rel="noreferrer">Open PubMed</a> : <span>Open PubMed</span>}
                             </Button>
-                            <Button type="button" size="sm" variant="outline" onClick={onCopyVancouverCitation}>Copy citation</Button>
-                            <Button type="button" size="sm" variant="outline" onClick={() => navigate('/workspace')}>Add to manuscript</Button>
+                            <Button type="button" size="sm" variant="secondary" onClick={onCopyVancouverCitation}>Copy citation</Button>
+                            <Button type="button" size="sm" variant="secondary" onClick={() => navigate('/workspace')}>Add to manuscript</Button>
                           </div>
 
                           <div className={`${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS} text-xs text-muted-foreground`}>
@@ -2798,13 +2806,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
                         <TabsContent value="content" className="space-y-3">
                           <div className="flex items-center gap-2">
-                            <Button type="button" size="sm" variant={contentMode === 'plain' ? 'default' : 'outline'} onClick={() => void onContentModeChange('plain')}>Plain</Button>
-                            <Button type="button" size="sm" variant={contentMode === 'highlighted' ? 'default' : 'outline'} onClick={() => void onContentModeChange('highlighted')}>Highlighted</Button>
+                            <Button type="button" size="sm" variant={contentMode === 'plain' ? 'primary' : 'secondary'} onClick={() => void onContentModeChange('plain')}>Plain</Button>
+                            <Button type="button" size="sm" variant={contentMode === 'highlighted' ? 'primary' : 'secondary'} onClick={() => void onContentModeChange('highlighted')}>Highlighted</Button>
                           </div>
                           <div className={`space-y-2 ${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}`}>
                             <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Abstract</p>
                             <p className="whitespace-pre-wrap text-xs leading-relaxed">{detailAbstract ? abstractPreview : 'No abstract available.'}</p>
-                            {detailAbstract.length > 700 ? <Button type="button" size="sm" variant="outline" onClick={onToggleAbstractExpanded}>{abstractExpanded ? 'Collapse' : 'Expand'}</Button> : null}
+                            {detailAbstract.length > 700 ? <Button type="button" size="sm" variant="secondary" onClick={onToggleAbstractExpanded}>{abstractExpanded ? 'Collapse' : 'Expand'}</Button> : null}
                           </div>
                           {contentMode === 'highlighted' ? (
                             <div className={`space-y-1 text-xs ${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}`}>
@@ -2856,13 +2864,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                     <p className={HOUSE_PUBLICATION_DRILLDOWN_CAPTION_CLASS}>{file.file_type} | {sourceLabel} | {formatShortDate(file.created_at)}</p>
                                     <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${HOUSE_PUBLICATION_DRILLDOWN_ACTION_CLASS}`}>
                                       {file.source === 'OA_LINK' && file.download_url ? (
-                                        <Button type="button" size="sm" variant="housePrimary" asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
+                                        <Button type="button" size="sm" variant="primary" asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
                                       ) : (
-                                        <Button type="button" size="sm" variant="housePrimary" disabled={downloadingFileId === file.id} onClick={() => void onDownloadPublicationFile(file.id, file.file_name)}>{downloadingFileId === file.id ? 'Downloading...' : 'Download'}</Button>
+                                        <Button type="button" size="sm" variant="primary" disabled={downloadingFileId === file.id} onClick={() => void onDownloadPublicationFile(file.id, file.file_name)}>{downloadingFileId === file.id ? 'Downloading...' : 'Download'}</Button>
                                       )}
-                                      <Button type="button" size="sm" variant="outline" onClick={() => onSharePublicationFileEmail(file)}>Share (email)</Button>
-                                      <Button type="button" size="sm" variant="outline" onClick={() => onSharePublicationFileWithUser(file)}>Share with user</Button>
-                                      <Button type="button" size="sm" variant="destructive" className="ml-auto" disabled={deletingFileId === file.id} onClick={() => void onDeletePublicationFile(file.id)}>{deletingFileId === file.id ? 'Deleting...' : 'Delete'}</Button>
+                                      <Button type="button" size="sm" variant="secondary" onClick={() => onSharePublicationFileEmail(file)}>Share (email)</Button>
+                                      <Button type="button" size="sm" variant="secondary" onClick={() => onSharePublicationFileWithUser(file)}>Share with user</Button>
+                                      <Button type="button" size="sm" variant="secondary" className="ml-auto" disabled={deletingFileId === file.id} onClick={() => void onDeletePublicationFile(file.id)}>{deletingFileId === file.id ? 'Deleting...' : 'Delete'}</Button>
                                     </div>
                                   </div>
                                 )
@@ -2889,7 +2897,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Drag and drop files here, or use upload.</p>
                               </div>
                               <div className="flex items-start">
-                                <Button type="button" size="sm" variant="outline" onClick={() => filePickerRef.current?.click()} disabled={uploadingFile}>{uploadingFile ? 'Uploading...' : 'Upload file'}</Button>
+                                <Button type="button" size="sm" variant="secondary" onClick={() => filePickerRef.current?.click()} disabled={uploadingFile}>{uploadingFile ? 'Uploading...' : 'Upload file'}</Button>
                                 <input ref={filePickerRef} type="file" multiple className="hidden" onChange={(event) => void onUploadFiles(event.target.files)} />
                               </div>
                             </div>
