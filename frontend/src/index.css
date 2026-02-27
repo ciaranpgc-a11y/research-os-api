@@ -156,6 +156,9 @@
     --motion-ease-default: ease-out;
     --motion-ease-elastic: cubic-bezier(0.22, 1, 0.36, 1);
     --motion-ease-chart-series: cubic-bezier(0.2, 0.68, 0.16, 1);
+    --motion-slow: var(--motion-duration-slow);
+    --motion-micro: var(--motion-duration-fast);
+    --ease-decelerate: var(--motion-ease-default);
     --motion-choreo-page-load: var(--motion-duration-base);
     --motion-choreo-tile-load: var(--motion-duration-slow);
     --motion-choreo-chart-load: var(--motion-duration-chart-refresh);
@@ -169,6 +172,9 @@
     --elevation-sm: 0 2px 4px hsl(var(--tone-neutral-900) / 0.08);
     --elevation-md: 0 4px 8px hsl(var(--tone-neutral-900) / 0.1);
     --elevation-lg: 0 8px 22px hsl(var(--tone-neutral-900) / 0.12);
+    --elevation-1: var(--elevation-xs);
+    --elevation-2: var(--elevation-sm);
+    --elevation-3: var(--elevation-md);
     --ring-focus: 0 0 0 2px hsl(var(--tone-accent-200) / 0.82);
     --ring-positive: inset 0 0 0 1px hsl(var(--tone-positive-300) / 0.62);
     --ring-danger: inset 0 0 0 1px hsl(var(--tone-danger-300) / 0.62);
@@ -3038,6 +3044,18 @@
   from {
     opacity: 0;
     transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes tooltip-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
   }
 
   to {
