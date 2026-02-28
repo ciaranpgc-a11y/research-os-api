@@ -97,8 +97,8 @@ export function TopBar({
 
   return (
     <header className="border-b border-[hsl(var(--stroke-soft)/0.82)] bg-card/95 backdrop-blur">
-      <div className="flex h-14 items-center gap-3 px-3 nav:px-4">
-        <div className="flex min-w-[12.5rem] shrink-0 items-center gap-2 xl:min-w-[15.5rem] 2xl:min-w-72">
+      <div className="flex h-14 items-center gap-4 px-4 xl:px-5">
+        <div className="flex min-w-[11.5rem] shrink-0 items-center gap-3 xl:min-w-[14.5rem] 2xl:min-w-72">
           {showLeftNavButton ? (
             <TooltipProvider delayDuration={100}>
               <Tooltip>
@@ -125,7 +125,7 @@ export function TopBar({
             </div>
           </div>
 
-          <nav className="ml-3 hidden items-center gap-1 xl:flex">
+          <nav className="ml-2.5 hidden items-center gap-1.5 xl:flex">
             <button
               type="button"
               onClick={() => navigate('/workspaces')}
@@ -143,7 +143,7 @@ export function TopBar({
           </nav>
         </div>
 
-        <div className="mx-auto hidden w-full max-w-2xl items-center gap-2 md:flex">
+        <div className="ml-3 hidden w-full max-w-4xl flex-1 items-center gap-2.5 md:flex">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--tone-neutral-500))]" />
             <Input
@@ -183,7 +183,7 @@ export function TopBar({
           </button>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2.5">
           {isGuest ? (
             <Button
               size="sm"
