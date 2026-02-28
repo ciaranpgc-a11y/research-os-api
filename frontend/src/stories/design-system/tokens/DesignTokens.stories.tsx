@@ -1,9 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { useEffect, useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
+import { MemoryRouter } from 'react-router-dom';
 import { ButtonPrimitive } from '@/components/primitives/ButtonPrimitive';
 import { InputPrimitive } from '@/components/primitives/InputPrimitive';
 import { LoginCard } from '@/components/auth/LoginCard';
+import { TopBar } from '@/components/layout/top-bar';
 
 const meta: Meta = {
   title: 'Design System/Tokens/All Tokens Reference',
@@ -399,6 +401,87 @@ function ApprovedSectionMarkerTokens() {
             ))}
           </div>
         </div>
+      </div>
+    </section>
+  );
+}
+
+type HeaderScope = 'account' | 'workspace';
+
+type HeaderTopBarVariant = {
+  id: string;
+  label: string;
+  path: string;
+  scope: HeaderScope;
+  note: string;
+  variables?: Record<string, string>;
+};
+
+function ApprovedHeaderBarSection() {
+  const variants: HeaderTopBarVariant[] = [
+    {
+      id: 'workspace',
+      label: 'Workspace active',
+      path: '/workspaces',
+      scope: 'workspace',
+      note: 'Current section: Workspace',
+    },
+    {
+      id: 'profile',
+      label: 'Profile active',
+      path: '/profile',
+      scope: 'account',
+      note: 'Current section: Profile',
+    },
+    {
+      id: 'learning-centre',
+      label: 'Learning centre active',
+      path: '/learning-centre',
+      scope: 'workspace',
+      note: 'Current section: Learning centre',
+    },
+    {
+      id: 'opportunities',
+      label: 'Opportunities active',
+      path: '/opportunities',
+      scope: 'workspace',
+      note: 'Current section: Opportunities',
+    },
+    {
+      id: 'hover-strong',
+      label: 'Hover emphasis',
+      path: '/workspaces',
+      scope: 'workspace',
+      note: 'Hover emphasis uses section accent tokens.',
+      variables: {
+        '--top-nav-hover-bg': 'var(--tone-neutral-200)',
+      },
+    },
+  ];
+
+  return (
+    <section className="mb-16">
+      <h2 className="text-2xl font-bold text-neutral-900 mb-6 pb-3 border-b-2 border-blue-500">
+        Approved Header Bar Patterns
+      </h2>
+      <p className="mb-4 text-sm text-neutral-600">
+        Use these as the canonical top bar patterns for reuse across pages.
+      </p>
+
+      <div className="space-y-6">
+        {variants.map((variant) => (
+          <div key={variant.id} className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+            <div className="border-b border-neutral-200 px-4 py-2">
+              <p className="text-sm font-semibold text-neutral-900">{variant.label}</p>
+              <p className="text-xs text-neutral-600">{variant.note}</p>
+            </div>
+            <div className="bg-card" style={variant.variables}>
+              <MemoryRouter initialEntries={[variant.path]}>
+                <TopBar scope={variant.scope} onOpenLeftNav={() => undefined} showLeftNavButton />
+              </MemoryRouter>
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -884,6 +967,7 @@ export function AllTokensReference() {
         <AuthButtonPatterns />
         <ApprovedSectionColourStyles />
         <ApprovedSectionMarkerTokens />
+        <ApprovedHeaderBarSection />
 
         {/* Footer */}
         <div className="mt-16 pt-8 border-t border-neutral-200">
@@ -897,6 +981,9 @@ export function AllTokensReference() {
 }
 
 export const Default: StoryObj = {
+  parameters: {
+    withRouter: false,
+  },
   render: () => <AllTokensReference />,
 };
 

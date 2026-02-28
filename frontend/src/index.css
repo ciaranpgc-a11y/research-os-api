@@ -230,6 +230,10 @@
     --top-nav-rail-left: 0.56rem;
     --top-nav-rail-gap: 0.46rem;
     --top-nav-hover-bg: var(--tone-neutral-100);
+    --top-nav-hover-bg-workspace: hsl(var(--section-style-workspace-accent) / 0.2);
+    --top-nav-hover-bg-profile: hsl(var(--section-style-profile-accent) / 0.2);
+    --top-nav-hover-bg-learning-centre: hsl(var(--section-style-learning-centre-accent) / 0.2);
+    --top-nav-hover-bg-opportunities: hsl(var(--section-style-opportunities-accent) / 0.2);
     --top-nav-active-bg-workspace: hsl(var(--section-style-workspace-accent) / 0.14);
     --top-nav-active-bg-profile: hsl(var(--section-style-profile-accent) / 0.14);
     --top-nav-active-bg-learning-centre: hsl(var(--section-style-learning-centre-accent) / 0.14);
@@ -698,6 +702,8 @@
     color: hsl(var(--tone-neutral-700));
     --house-top-nav-accent: var(--top-nav-accent-workspace);
     --house-top-nav-active-bg: var(--top-nav-active-bg-workspace);
+    --house-top-nav-hover-bg: var(--top-nav-hover-bg-workspace);
+    --house-top-nav-hover-color: hsl(var(--house-top-nav-accent));
     transition-property: background-color, color, transform;
     transition-duration: var(--motion-duration-ui);
     transition-timing-function: ease-out;
@@ -720,8 +726,8 @@
   }
 
   .house-top-nav-item:hover {
-    background-color: hsl(var(--top-nav-hover-bg) / 0.95);
-    color: hsl(var(--tone-neutral-900));
+    background-color: var(--house-top-nav-hover-bg);
+    color: var(--house-top-nav-hover-color);
     transform: translateY(-0.3px);
   }
 
@@ -739,21 +745,29 @@
   .house-top-nav-item-workspace {
     --house-top-nav-accent: var(--top-nav-accent-workspace);
     --house-top-nav-active-bg: var(--top-nav-active-bg-workspace);
+    --house-top-nav-hover-bg: var(--top-nav-hover-bg-workspace);
+    --house-top-nav-hover-color: hsl(var(--top-nav-accent-workspace));
   }
 
   .house-top-nav-item-profile {
     --house-top-nav-accent: var(--top-nav-accent-profile);
     --house-top-nav-active-bg: var(--top-nav-active-bg-profile);
+    --house-top-nav-hover-bg: var(--top-nav-hover-bg-profile);
+    --house-top-nav-hover-color: hsl(var(--top-nav-accent-profile));
   }
 
   .house-top-nav-item-learning-centre {
     --house-top-nav-accent: var(--top-nav-accent-learning-centre);
     --house-top-nav-active-bg: var(--top-nav-active-bg-learning-centre);
+    --house-top-nav-hover-bg: var(--top-nav-hover-bg-learning-centre);
+    --house-top-nav-hover-color: hsl(var(--top-nav-accent-learning-centre));
   }
 
   .house-top-nav-item-opportunities {
     --house-top-nav-accent: var(--top-nav-accent-opportunities);
     --house-top-nav-active-bg: var(--top-nav-active-bg-opportunities);
+    --house-top-nav-hover-bg: var(--top-nav-hover-bg-opportunities);
+    --house-top-nav-hover-color: hsl(var(--top-nav-accent-opportunities));
   }
 
   .house-top-utility-button {
