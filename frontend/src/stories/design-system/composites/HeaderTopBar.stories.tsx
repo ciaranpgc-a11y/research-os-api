@@ -1,4 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import { useLocation } from 'react-router-dom'
+import { useMemo } from 'react'
 
 import { TopBar } from '@/components/layout/top-bar'
 
@@ -9,31 +11,46 @@ const meta = {
     layout: 'fullscreen',
     chromatic: { disableSnapshot: true },
   },
+  decorators: [
+    (Story) => (
+      <div className="[&_header>div]:!h-16">
+        <Story />
+      </div>
+    ),
+  ],
 } satisfies Meta<typeof TopBar>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
-export const Workspace: Story = {
+function RouteAwareTopBarDemo() {
+  const location = useLocation()
+
+  const scope = useMemo(() => {
+    if (location.pathname.startsWith('/profile')) {
+      return 'account' as const
+    }
+    return 'workspace' as const
+  }, [location.pathname])
+
+  return (
+    <TopBar
+      scope={scope}
+      onOpenLeftNav={() => undefined}
+      showLeftNavButton
+    />
+  )
+}
+
+function HeaderTopBarStory() {
+  return <RouteAwareTopBarDemo />
+}
+
+export const Default: Story = {
   args: {
     scope: 'workspace',
     onOpenLeftNav: () => undefined,
     showLeftNavButton: true,
   },
-}
-
-export const Account: Story = {
-  args: {
-    scope: 'account',
-    onOpenLeftNav: () => undefined,
-    showLeftNavButton: true,
-  },
-}
-
-export const DesktopNoMenuButton: Story = {
-  args: {
-    scope: 'workspace',
-    onOpenLeftNav: () => undefined,
-    showLeftNavButton: false,
-  },
+  render: () => <HeaderTopBarStory />,
 }

@@ -231,8 +231,15 @@
     --top-nav-rail-gap: 0.46rem;
     --top-nav-hover-bg: var(--tone-neutral-100);
     --top-nav-active-bg: var(--tone-accent-50);
-    --top-nav-accent-workspace: var(--tone-accent-500);
-    --top-nav-accent-profile: var(--tone-accent-700);
+    --section-style-workspace-accent: var(--tone-accent-500);
+    --section-style-profile-accent: var(--tone-positive-500);
+    --section-style-learning-centre-accent: var(--tone-warning-500);
+    --section-style-opportunities-accent: var(--tone-danger-500);
+
+    --top-nav-accent-workspace: var(--section-style-workspace-accent);
+    --top-nav-accent-profile: var(--section-style-profile-accent);
+    --top-nav-accent-learning-centre: var(--section-style-learning-centre-accent);
+    --top-nav-accent-opportunities: var(--section-style-opportunities-accent);
   }
 
   .dark {
@@ -609,31 +616,39 @@
   }
 
   .house-nav-item-overview {
-    --house-nav-accent: var(--tone-accent-500);
+    --house-nav-accent: var(--section-style-profile-accent);
   }
 
   .house-nav-item-research {
-    --house-nav-accent: var(--tone-positive-500);
+    --house-nav-accent: var(--section-style-profile-accent);
   }
 
   .house-nav-item-account {
-    --house-nav-accent: var(--tone-accent-700);
+    --house-nav-accent: var(--section-style-profile-accent);
   }
 
   .house-nav-item-workspace {
-    --house-nav-accent: var(--tone-accent-500);
+    --house-nav-accent: var(--section-style-workspace-accent);
   }
 
   .house-nav-item-data {
-    --house-nav-accent: var(--tone-accent-600);
+    --house-nav-accent: var(--section-style-workspace-accent);
   }
 
   .house-nav-item-manuscript {
-    --house-nav-accent: var(--tone-positive-500);
+    --house-nav-accent: var(--section-style-workspace-accent);
   }
 
   .house-nav-item-governance {
-    --house-nav-accent: var(--tone-warning-500);
+    --house-nav-accent: var(--section-style-workspace-accent);
+  }
+
+  .house-nav-item-learning-centre {
+    --house-nav-accent: var(--section-style-learning-centre-accent);
+  }
+
+  .house-nav-item-opportunities {
+    --house-nav-accent: var(--section-style-opportunities-accent);
   }
 
   .house-nav-item-meta-group {
@@ -723,6 +738,14 @@
 
   .house-top-nav-item-profile {
     --house-top-nav-accent: var(--top-nav-accent-profile);
+  }
+
+  .house-top-nav-item-learning-centre {
+    --house-top-nav-accent: var(--top-nav-accent-learning-centre);
+  }
+
+  .house-top-nav-item-opportunities {
+    --house-top-nav-accent: var(--top-nav-accent-opportunities);
   }
 
   .house-top-utility-button {
@@ -1691,47 +1714,57 @@
 
   .house-left-border-profile {
     --house-rail-width: 3.25px;
-    --house-rail-color: var(--tone-accent-500);
+    --house-rail-color: var(--section-style-profile-accent);
   }
 
   .house-left-border-overview {
     --house-rail-width: 3.25px;
-    --house-rail-color: var(--tone-accent-500);
+    --house-rail-color: var(--section-style-profile-accent);
   }
 
   .house-left-border-research {
     --house-rail-width: 3.5px;
-    --house-rail-color: var(--tone-positive-500);
+    --house-rail-color: var(--section-style-profile-accent);
   }
 
   .house-left-border-account {
     --house-rail-width: 3.3px;
-    --house-rail-color: var(--tone-accent-700);
+    --house-rail-color: var(--section-style-profile-accent);
   }
 
   .house-left-border-workspace {
     --house-rail-width: 3.3px;
-    --house-rail-color: var(--tone-accent-500);
+    --house-rail-color: var(--section-style-workspace-accent);
   }
 
   .house-left-border-data {
     --house-rail-width: 3.35px;
-    --house-rail-color: var(--tone-accent-600);
+    --house-rail-color: var(--section-style-workspace-accent);
   }
 
   .house-left-border-manuscript {
     --house-rail-width: 3.5px;
-    --house-rail-color: var(--tone-positive-500);
+    --house-rail-color: var(--section-style-workspace-accent);
   }
 
   .house-left-border-governance {
     --house-rail-width: 3.5px;
-    --house-rail-color: var(--tone-warning-500);
+    --house-rail-color: var(--section-style-workspace-accent);
   }
 
   .house-left-border-publications {
     --house-rail-width: 3.5px;
-    --house-rail-color: var(--tone-positive-500);
+    --house-rail-color: var(--section-style-profile-accent);
+  }
+
+  .house-left-border-learning-centre {
+    --house-rail-width: 3.3px;
+    --house-rail-color: var(--section-style-learning-centre-accent);
+  }
+
+  .house-left-border-opportunities {
+    --house-rail-width: 3.3px;
+    --house-rail-color: var(--section-style-opportunities-accent);
   }
 
   .house-chart-frame {

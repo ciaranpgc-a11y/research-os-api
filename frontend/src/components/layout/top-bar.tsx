@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Loader2, Menu, Moon, Search, Sun } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import { AxiomosMark } from '@/components/auth/AxiomosMark'
 import { Button } from '@/components/ui/button'
@@ -20,11 +20,13 @@ type TopBarProps = {
 }
 
 const topNavItemBase =
-  'house-top-nav-item text-label focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))]'
+  'house-top-nav-item text-body-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))]'
 const topNavItemIdle = ''
 const topNavItemActive = 'house-top-nav-item-active'
 const topNavItemWorkspace = 'house-top-nav-item-workspace'
 const topNavItemProfile = 'house-top-nav-item-profile'
+const topNavItemLearningCentre = 'house-top-nav-item-learning-centre'
+const topNavItemOpportunities = 'house-top-nav-item-opportunities'
 const utilityButtonClass =
   'house-top-utility-button focus-visible:ring-[hsl(var(--tone-accent-500))]'
 const searchInputClass =
@@ -43,6 +45,7 @@ export function TopBar({
 
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [isAdmin, setIsAdmin] = useState(getCachedAuthRole() === 'admin')
+  const { pathname } = useLocation()
   const sessionToken = getAuthSessionToken()
   const isGuest = !sessionToken
 
@@ -140,7 +143,7 @@ export function TopBar({
           </nav>
         </div>
 
-        <div className="mx-auto hidden w-full max-w-3xl items-center gap-2 md:flex">
+        <div className="mx-auto hidden w-full max-w-2xl items-center gap-2 md:flex">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--tone-neutral-500))]" />
             <Input
@@ -154,10 +157,28 @@ export function TopBar({
               onChange={(event) => setSearchQuery(event.target.value)}
             />
           </div>
-          <button type="button" className={cn(topNavItemBase, topNavItemIdle)}>
+          <button
+            type="button"
+            onClick={() => navigate('/learning-centre')}
+            className={cn(
+              topNavItemBase,
+              topNavItemLearningCentre,
+              topNavItemIdle,
+              pathname.startsWith('/learning-centre') && topNavItemActive,
+            )}
+          >
             Learning centre
           </button>
-          <button type="button" className={cn(topNavItemBase, topNavItemIdle)}>
+          <button
+            type="button"
+            onClick={() => navigate('/opportunities')}
+            className={cn(
+              topNavItemBase,
+              topNavItemOpportunities,
+              topNavItemIdle,
+              pathname.startsWith('/opportunities') && topNavItemActive,
+            )}
+          >
             Opportunities
           </button>
         </div>
