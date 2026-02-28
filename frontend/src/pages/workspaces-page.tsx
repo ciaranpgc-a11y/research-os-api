@@ -1940,7 +1940,7 @@ function WorkspacesHomeSidebar({
     <aside className={cn(HOUSE_SIDEBAR_FRAME_CLASS, HOUSE_SIDEBAR_CLASS)} data-house-role="left-nav-shell">
       <div className={HOUSE_SIDEBAR_HEADER_CLASS}>
         <div className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
-          <h1 data-house-role="section-title" className={HOUSE_SECTION_TITLE_CLASS}>Workspaces home</h1>
+          <h1 data-house-role="section-title" className={HOUSE_SECTION_TITLE_CLASS}>My Workspace</h1>
         </div>
       </div>
       <ScrollArea className={HOUSE_SIDEBAR_SCROLL_CLASS}>
@@ -1962,7 +1962,7 @@ function WorkspacesHomeSidebar({
                   centerView === 'workspaces' && HOUSE_NAV_ITEM_ACTIVE_CLASS,
                 )}
               >
-                <span className={HOUSE_NAV_ITEM_LABEL_CLASS}>Workspaces</span>
+                <span className={HOUSE_NAV_ITEM_LABEL_CLASS}>My Workspaces</span>
               </button>
               <button
                 type="button"
@@ -3057,11 +3057,11 @@ export function WorkspacesPage() {
 
         <main className="min-w-0 flex-1 overflow-hidden bg-background">
           <ScrollArea className="h-full">
-            <div className="mx-auto w-full max-w-sz-1380 space-y-4 px-4 py-4 md:px-6">
+            <div className="house-content-container house-content-container-wide space-y-4">
               <section className={cn('rounded-lg border border-border p-4', HOUSE_CARD_CLASS)}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
-                    <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Workspaces</h1>
+                    <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>My Workspaces</h1>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Input

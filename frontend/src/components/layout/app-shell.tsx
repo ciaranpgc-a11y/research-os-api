@@ -43,12 +43,12 @@ export function AppShell() {
             <div
               data-house-role="content-container"
               className={cn(
-                'mx-auto w-full py-4',
+                'house-content-container',
                 isStudyCoreRoute
-                  ? 'max-w-none px-3 md:px-4'
+                  ? 'house-content-container-fluid'
                   : isProfileSectionRoute
-                    ? 'max-w-sz-1380 px-3 md:px-5'
-                    : 'max-w-6xl px-4 md:px-6',
+                    ? 'house-content-container-wide'
+                    : null,
               )}
             >
               <Outlet />

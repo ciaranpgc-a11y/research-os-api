@@ -48,7 +48,7 @@ export function WorkspaceLayout() {
           <ScrollArea className="h-full">
             <div
               data-house-role="content-container"
-              className={cn('mx-auto w-full py-4', isRunWizardRoute ? 'max-w-none px-3 md:px-4' : 'max-w-6xl px-4 md:px-6')}
+              className={cn('house-content-container', isRunWizardRoute && 'house-content-container-fluid')}
             >
               {isGuest ? (
                 <div data-house-role="guest-banner" className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">

@@ -24,7 +24,7 @@ export function AccountLayout() {
 
         <main data-house-role="content-main" className="min-w-0 overflow-hidden bg-background">
           <ScrollArea className="h-full">
-            <div data-house-role="content-container" className="mx-auto w-full max-w-sz-1320 px-4 py-4 md:px-6">
+            <div data-house-role="content-container" className="house-content-container house-content-container-wide">
               <Outlet />
             </div>
           </ScrollArea>

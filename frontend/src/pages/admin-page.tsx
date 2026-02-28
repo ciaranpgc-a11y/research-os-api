@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from '@/components/primitives/SelectPrimitive'
 import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
+import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import {
   cancelAdminJob,
   deleteAdminUserAccount,
@@ -49,6 +50,7 @@ import {
   reconcileAdminUserLibrary,
   retryAdminJob,
 } from '@/lib/impact-api'
+import { getHouseLeftBorderToneClass } from '@/lib/section-tone'
 import { cn } from '@/lib/utils'
 import type {
   AdminAuditEventPayload,
@@ -984,16 +986,16 @@ export function AdminPage() {
 
   return (
     <section className="min-h-screen bg-[radial-gradient(circle_at_top_left,hsl(var(--tone-accent-100)/0.42),transparent_42%),linear-gradient(180deg,hsl(var(--tone-neutral-50)),hsl(var(--tone-neutral-100)/0.55))] px-4 py-5 md:px-6 md:py-8">
-      <div className="mx-auto w-full max-w-7xl space-y-4">
+      <div className="house-content-container house-content-container-wide space-y-4">
         <header className="rounded-xl border border-[hsl(var(--tone-neutral-200))] bg-card/90 p-4 shadow-sm backdrop-blur">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-1">
+            <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, getHouseLeftBorderToneClass('workspace'))}>
               <p className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--tone-warning-300))] bg-[linear-gradient(135deg,hsl(var(--tone-warning-100)),hsl(var(--tone-warning-200)))] px-2.5 py-1 text-micro font-semibold uppercase tracking-[0.16em] text-[hsl(var(--tone-warning-900))] shadow-sm">
                 <ShieldCheck className="h-3.5 w-3.5" />
                 Admin Mode
               </p>
-              <h1 className="text-2xl font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">Operations Console</h1>
-              <p className="text-sm text-muted-foreground">
+              <h1 data-house-role="page-title" className={houseTypography.title}>Operations Console</h1>
+              <p data-house-role="page-subtitle" className={houseTypography.subtitle}>
                 Section: {activeCapability.title} | Last refresh: {formatTimestamp(overview?.generated_at)}
               </p>
             </div>
