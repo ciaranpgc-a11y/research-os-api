@@ -810,9 +810,10 @@ export function AuthPage() {
 
   return (
     <div
-      className="min-h-screen bg-[hsl(var(--tone-neutral-100))] px-4 py-8 sm:py-12"
+      className="min-h-screen bg-[hsl(var(--tone-neutral-100))]"
       style={authBrandVars}
     >
+      <div className="house-content-container house-content-container-wide">
       <LoginCard
         title={mode === 'signin' ? 'Access your research workspace' : 'Create your research workspace'}
         subtitle=""
@@ -1198,6 +1199,7 @@ export function AuthPage() {
           </div>
         )}
       </LoginCard>
+      </div>
     </div>
   )
 }

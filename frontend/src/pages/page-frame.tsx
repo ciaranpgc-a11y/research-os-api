@@ -26,7 +26,7 @@ export function PageFrame({ title, description = '', tone, hideScaffoldHeader = 
       >
         <h1 data-house-role="page-title" className={houseTypography.title}>{title}</h1>
         {description.trim().length > 0 ? (
-          <p data-house-role="page-subtitle" className={houseTypography.subtitle}>{description}</p>
+          <p data-house-role="page-title-expander" className={houseTypography.titleExpander}>{description}</p>
         ) : null}
       </header>
       <div data-house-role="section-divider" className={houseDividers.strong} />

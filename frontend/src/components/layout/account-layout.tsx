@@ -17,7 +17,7 @@ export function AccountLayout() {
         onOpenLeftNav={() => setLeftPanelOpen(true)}
       />
 
-      <div data-house-role="account-grid" className="grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[250px_minmax(0,1fr)]">
+      <div data-house-role="account-grid" className="grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)]">
         <aside data-house-role="left-nav-panel" className="hidden border-r border-border nav:block">
           <AccountNavigator />
         </aside>
@@ -32,7 +32,7 @@ export function AccountLayout() {
       </div>
 
       <Sheet open={leftPanelOpen} onOpenChange={setLeftPanelOpen}>
-        <SheetContent side="left" className="w-sz-260 p-0 nav:hidden">
+        <SheetContent side="left" className="w-[var(--layout-left-nav-width-mobile)] p-0 nav:hidden">
           <AccountNavigator onNavigate={() => setLeftPanelOpen(false)} />
         </SheetContent>
       </Sheet>

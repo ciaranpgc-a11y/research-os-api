@@ -791,8 +791,11 @@ export function ProfileIntegrationsPage({ fixture }: ProfileIntegrationsPageProp
 
   return (
     <section data-house-role="page" className="space-y-4">
-      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderAccount)}>
+      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderProfile)}>
         <h1 data-house-role="page-title" className={houseTypography.title}>Integrations</h1>
+        <p data-house-role="page-title-expander" className={houseTypography.titleExpander}>
+          Link research platforms to keep your profile data current.
+        </p>
       </header>
 
       <Card className="border-[hsl(var(--tone-neutral-200))]">

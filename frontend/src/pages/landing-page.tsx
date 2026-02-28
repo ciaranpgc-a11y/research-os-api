@@ -9,8 +9,8 @@ export function LandingPage() {
   const navigate = useNavigate()
 
   return (
-    <div className="min-h-screen bg-background px-4 py-10 md:py-12">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
+    <div className="min-h-screen bg-background">
+      <div className="house-content-container house-content-container-wide flex w-full flex-col gap-8">
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <AxiomosMark className="h-8 text-[hsl(var(--primary))]" />

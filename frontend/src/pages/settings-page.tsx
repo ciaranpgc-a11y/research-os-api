@@ -22,7 +22,7 @@ export function SettingsPage() {
     <section data-house-role="page" className="space-y-4">
       <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderAccount)}>
         <h1 data-house-role="page-title" className={houseTypography.title}>Settings & preferences</h1>
-        <p data-house-role="page-subtitle" className={houseTypography.subtitle}>
+        <p data-house-role="page-title-expander" className={houseTypography.titleExpander}>
           Control profile and publications preferences.
         </p>
       </header>

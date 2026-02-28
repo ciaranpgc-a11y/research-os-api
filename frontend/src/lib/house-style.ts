@@ -2,6 +2,7 @@ export const houseTypography = {
   // Page title level.
   title: 'house-title',
   subtitle: 'house-subtitle',
+  titleExpander: 'house-title-expander',
   sectionTitle: 'house-section-title',
   sectionSubtitle: 'house-section-subtitle',
 
@@ -280,6 +281,7 @@ export const houseDrilldown = {
 export const houseElements = {
   pageTitle: houseTypography.title,
   pageSubtitle: houseTypography.subtitle,
+  pageTitleExpander: houseTypography.titleExpander,
   sectionTitle: houseTypography.sectionTitle,
   sectionSubtitle: houseTypography.sectionSubtitle,
   metricTitle: houseTypography.h1,

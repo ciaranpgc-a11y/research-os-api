@@ -6,7 +6,7 @@ export function ProfilePage() {
     <section data-house-role="page" className="space-y-4">
       <header
         data-house-role="page-header"
-        className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderOverview)}
+        className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderProfile)}
       >
         <h1 data-house-role="page-title" className={houseTypography.title}>Profile home</h1>
       </header>

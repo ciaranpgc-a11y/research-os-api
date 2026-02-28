@@ -14,7 +14,6 @@ export function AppShell() {
   const rightPanelOpen = useAaweStore((state) => state.rightPanelOpen)
   const setLeftPanelOpen = useAaweStore((state) => state.setLeftPanelOpen)
   const setRightPanelOpen = useAaweStore((state) => state.setRightPanelOpen)
-  const isStudyCoreRoute = location.pathname === '/study-core'
   const isProfileLandingRoute = location.pathname === '/profile' || location.pathname === '/impact'
   const isProfileSectionRoute = location.pathname.startsWith('/profile') || location.pathname === '/impact'
   const showRightPanel = isProfileLandingRoute
@@ -30,8 +29,8 @@ export function AppShell() {
       <div
         data-house-role="app-grid"
         className={cn(
-          'grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[280px_minmax(0,1fr)]',
-          showRightPanel && 'insight:grid-cols-[280px_minmax(0,1fr)_320px]',
+          'grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)]',
+          showRightPanel && 'insight:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)_320px]',
         )}
       >
         <aside data-house-role="left-nav-panel" className="hidden border-r border-border nav:block">
@@ -42,14 +41,7 @@ export function AppShell() {
           <ScrollArea className="h-full">
             <div
               data-house-role="content-container"
-              className={cn(
-                'house-content-container',
-                isStudyCoreRoute
-                  ? 'house-content-container-fluid'
-                  : isProfileSectionRoute
-                    ? 'house-content-container-wide'
-                    : null,
-              )}
+              className="house-content-container house-content-container-wide"
             >
               <Outlet />
             </div>
@@ -64,7 +56,7 @@ export function AppShell() {
       </div>
 
       <Sheet open={leftPanelOpen} onOpenChange={setLeftPanelOpen}>
-        <SheetContent side="left" className="w-sz-290 p-0 nav:hidden">
+        <SheetContent side="left" className="w-[var(--layout-left-nav-width-mobile)] p-0 nav:hidden">
           <StudyNavigator onNavigate={() => setLeftPanelOpen(false)} />
         </SheetContent>
       </Sheet>

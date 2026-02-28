@@ -995,7 +995,7 @@ export function AdminPage() {
                 Admin Mode
               </p>
               <h1 data-house-role="page-title" className={houseTypography.title}>Operations Console</h1>
-              <p data-house-role="page-subtitle" className={houseTypography.subtitle}>
+              <p data-house-role="page-title-expander" className={houseTypography.titleExpander}>
                 Section: {activeCapability.title} | Last refresh: {formatTimestamp(overview?.generated_at)}
               </p>
             </div>

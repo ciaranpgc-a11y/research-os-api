@@ -102,8 +102,9 @@ export function AuthCallbackPage() {
   }, [callbackKey, code, navigate, oauthError, providerRaw, state])
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-10">
-      <div className="mx-auto w-full max-w-md">
+    <div className="min-h-screen bg-slate-50">
+      <div className="house-content-container house-content-container-wide">
+        <div className="mx-auto w-full max-w-md">
         <CardPrimitive>
           <CardHeader>
             <CardTitle>Sign-in callback</CardTitle>
@@ -118,6 +119,7 @@ export function AuthCallbackPage() {
             ) : null}
           </CardContent>
         </CardPrimitive>
+        </div>
       </div>
     </div>
   )

@@ -57,35 +57,37 @@ function TitlePositioningReference() {
               <code>--page-title-marker-inset-block</code>
             </p>
           </div>
+          <div className="rounded-md border border-neutral-200 bg-white p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Left nav width</p>
+            <p className="mt-1 text-sm font-medium text-neutral-900">
+              <code>--layout-left-nav-width</code>
+            </p>
+          </div>
+          <div className="rounded-md border border-neutral-200 bg-white p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Left nav width (mobile)</p>
+            <p className="mt-1 text-sm font-medium text-neutral-900">
+              <code>--layout-left-nav-width-mobile</code>
+            </p>
+          </div>
         </div>
 
         <div className="rounded-md border border-neutral-200 bg-card p-4">
           <p className="text-xs text-neutral-600 mb-3">
             Preview: title anchor alignment against header and left panel.
           </p>
-          <div className="grid grid-cols-[280px_1fr] gap-4">
+          <div className="grid grid-cols-[var(--layout-left-nav-width)_1fr] gap-4">
             <aside className="rounded-md border border-border bg-background p-3">
               <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Left panel</p>
             </aside>
-            <main className="rounded-md border border-border bg-background p-3">
-              <div className="approved-layout-title-anchor house-page-header house-left-border house-left-border-workspace">
-                <h3 data-house-role="page-title" className="house-title text-[1.35rem] leading-[1.5rem]">Publications</h3>
-                <p className="text-xs text-neutral-600">Canonical content title placement</p>
-              </div>
-            </main>
+              <main className="rounded-md border border-border bg-background p-3">
+                <div data-house-role="page-header" className="house-page-header house-left-border house-left-border-workspace">
+                  <h1 data-house-role="page-title" className="house-title text-[1.35rem] leading-[1.5rem]">Publications</h1>
+                  <p data-house-role="page-title-expander" className="house-title-expander">Canonical content title placement</p>
+                </div>
+              </main>
+            </div>
           </div>
-        </div>
       </div>
-      <style>{`
-        .approved-layout-title-anchor {
-          margin-top: var(--content-container-anchor-offset);
-        }
-        @media (min-width: 768px) {
-          .approved-layout-title-anchor {
-            margin-top: var(--content-container-anchor-offset-md);
-          }
-        }
-      `}</style>
     </div>
   )
 }

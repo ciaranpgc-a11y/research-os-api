@@ -18,7 +18,7 @@ export function WorkspaceExportsPage() {
         className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, getHouseLeftBorderToneClass('workspace'))}
       >
         <h1 data-house-role="page-title" className={houseTypography.title}>Exports</h1>
-        <p data-house-role="page-subtitle" className={houseTypography.subtitle}>
+        <p data-house-role="page-title-expander" className={houseTypography.titleExpander}>
           Package manuscript outputs and quality checks for submission workflows.
         </p>
       </header>

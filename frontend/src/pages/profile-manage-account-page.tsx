@@ -23,7 +23,7 @@ const ACCOUNT_CACHE_PREFIXES = [
   'aawe_orcid_active_sync_job:',
 ]
 const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
-const HOUSE_PAGE_SUBTITLE_CLASS = houseTypography.subtitle
+const HOUSE_PAGE_TITLE_EXPANDER_CLASS = houseTypography.titleExpander
 const HOUSE_FIELD_LABEL_CLASS = houseTypography.fieldLabel
 const HOUSE_HELPER_TEXT_CLASS = houseTypography.fieldHelper
 
@@ -171,10 +171,10 @@ export function ProfileManageAccountPage() {
     <section data-house-role="page" className="space-y-4">
       <header
         data-house-role="page-header"
-        className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderAccount)}
+        className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderProfile)}
       >
         <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Manage account</h1>
-        <p data-house-role="page-subtitle" className={HOUSE_PAGE_SUBTITLE_CLASS}>
+        <p data-house-role="page-title-expander" className={HOUSE_PAGE_TITLE_EXPANDER_CLASS}>
           Password and account lifecycle controls for this profile.
         </p>
       </header>

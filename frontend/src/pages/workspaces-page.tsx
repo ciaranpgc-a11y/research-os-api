@@ -1940,7 +1940,7 @@ function WorkspacesHomeSidebar({
     <aside className={cn(HOUSE_SIDEBAR_FRAME_CLASS, HOUSE_SIDEBAR_CLASS)} data-house-role="left-nav-shell">
       <div className={HOUSE_SIDEBAR_HEADER_CLASS}>
         <div className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
-          <h1 data-house-role="section-title" className={HOUSE_SECTION_TITLE_CLASS}>My Workspace</h1>
+          <h2 data-house-role="section-title" className={HOUSE_SECTION_TITLE_CLASS}>My Workspace</h2>
         </div>
       </div>
       <ScrollArea className={HOUSE_SIDEBAR_SCROLL_CLASS}>
@@ -3033,15 +3033,15 @@ export function WorkspacesPage() {
 
       <div
         className={cn(
-          'grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[280px_minmax(0,1fr)]',
+          'grid min-h-0 flex-1 grid-cols-1 nav:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)]',
           centerView === 'workspaces' &&
             (workspaceDrilldownDesktopOpen
-              ? 'xl:grid-cols-[280px_minmax(0,1fr)_22rem]'
-              : 'xl:grid-cols-[280px_minmax(0,1fr)_3rem]'),
+              ? 'xl:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)_22rem]'
+              : 'xl:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)_3rem]'),
           centerView === 'data-library' &&
             (dataLibraryDrilldownDesktopOpen
-              ? 'xl:grid-cols-[280px_minmax(0,1fr)_22rem]'
-              : 'xl:grid-cols-[280px_minmax(0,1fr)_3rem]'),
+              ? 'xl:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)_22rem]'
+              : 'xl:grid-cols-[var(--layout-left-nav-width)_minmax(0,1fr)_3rem]'),
         )}
       >
         <aside className="hidden border-r border-border nav:block">
@@ -3057,28 +3057,30 @@ export function WorkspacesPage() {
 
         <main className="min-w-0 flex-1 overflow-hidden bg-background">
           <ScrollArea className="h-full">
-            <div className="house-content-container house-content-container-wide space-y-4">
+            <div data-house-role="content-container" className="house-content-container house-content-container-wide space-y-4">
+              <header data-house-role="page-header" className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
+                <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>My Workspaces</h1>
+                <p data-house-role="page-title-expander" className={houseTypography.titleExpander}>
+                  Create and collaborate on research manuscripts with your team.
+                </p>
+              </header>
+
               <section className={cn('rounded-lg border border-border p-4', HOUSE_CARD_CLASS)}>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS)}>
-                    <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>My Workspaces</h1>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Input
-                      value={newWorkspaceName}
-                      onChange={(event) => setNewWorkspaceName(event.target.value)}
-                      placeholder="New workspace name"
-                      className={cn('w-sz-220', HOUSE_INPUT_CLASS)}
-                    />
-                    <Button
-                      type="button"
-                      onClick={onCreateWorkspace}
-                      disabled={!canCreateWorkspace}
-                      className={cn(HOUSE_PRIMARY_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
-                    >
-                      Create workspace
-                    </Button>
-                  </div>
+                <div className="house-page-toolbar">
+                  <Input
+                    value={newWorkspaceName}
+                    onChange={(event) => setNewWorkspaceName(event.target.value)}
+                    placeholder="New workspace name"
+                    className={cn('w-sz-220', HOUSE_INPUT_CLASS)}
+                  />
+                  <Button
+                    type="button"
+                    onClick={onCreateWorkspace}
+                    disabled={!canCreateWorkspace}
+                    className={cn(HOUSE_PRIMARY_ACTION_BUTTON_CLASS, HOUSE_BUTTON_TEXT_CLASS)}
+                  >
+                    Create workspace
+                  </Button>
                 </div>
                 {!canCreateWorkspace ? (
                   <p className={cn('mt-3', HOUSE_FIELD_HELPER_CLASS)}>{WORKSPACE_OWNER_REQUIRED_MESSAGE}</p>
@@ -3516,7 +3518,7 @@ export function WorkspacesPage() {
                       <div>
                         <h2 className={HOUSE_SECTION_TITLE_CLASS}>Invitations</h2>
                         <p className={HOUSE_SECTION_SUBTITLE_CLASS}>
-                          Review incoming collaboration requests and outgoing invitations.
+                          Manage invitations to collaborate on research manuscripts and datasets.
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -3772,7 +3774,7 @@ export function WorkspacesPage() {
       </Sheet>
 
       <Sheet open={leftPanelOpen} onOpenChange={setLeftPanelOpen}>
-        <SheetContent side="left" className="w-sz-290 p-0 nav:hidden">
+        <SheetContent side="left" className="w-[var(--layout-left-nav-width-mobile)] p-0 nav:hidden">
           <WorkspacesHomeSidebar
             centerView={centerView}
             onSelectCenterView={setCenterView}

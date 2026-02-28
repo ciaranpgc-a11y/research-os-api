@@ -104,7 +104,7 @@ function ApprovedLeftPanel() {
           <div className="grid grid-cols-3 gap-4">
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Workspace home</p>
-              <div className="approved-left-panel-sync approved-left-panel-canvas w-[280px] overflow-hidden rounded-md border border-border">
+              <div className="approved-left-panel-sync approved-left-panel-canvas w-[var(--layout-left-nav-width)] overflow-hidden rounded-md border border-border">
                 <MemoryRouter initialEntries={[workspacePath]}>
                   <WorkspaceNavigator workspaceId={workspaceId} />
                 </MemoryRouter>
@@ -113,7 +113,7 @@ function ApprovedLeftPanel() {
 
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Inbox</p>
-              <div className="approved-left-panel-sync approved-left-panel-canvas w-[280px] overflow-hidden rounded-md border border-border">
+              <div className="approved-left-panel-sync approved-left-panel-canvas w-[var(--layout-left-nav-width)] overflow-hidden rounded-md border border-border">
                 <MemoryRouter initialEntries={[inboxPath]}>
                   <WorkspaceNavigator workspaceId={workspaceId} />
                 </MemoryRouter>
@@ -122,7 +122,7 @@ function ApprovedLeftPanel() {
 
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Profile</p>
-              <div className="approved-left-panel-sync approved-left-panel-canvas w-[280px] overflow-hidden rounded-md border border-border">
+              <div className="approved-left-panel-sync approved-left-panel-canvas w-[var(--layout-left-nav-width)] overflow-hidden rounded-md border border-border">
                 <MemoryRouter initialEntries={[profilePath]}>
                   <AccountNavigator />
                 </MemoryRouter>
@@ -226,36 +226,44 @@ function ApprovedLayoutTitlePositioning() {
                 <code>--page-title-marker-inset-block</code>
               </p>
             </div>
+            <div className="rounded-md border border-neutral-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Title expander style</p>
+              <p className="mt-1 text-sm font-medium text-neutral-900">
+                <code>.house-title-expander</code>
+              </p>
+            </div>
+            <div className="rounded-md border border-neutral-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Left nav width</p>
+              <p className="mt-1 text-sm font-medium text-neutral-900">
+                <code>--layout-left-nav-width</code>
+              </p>
+            </div>
+            <div className="rounded-md border border-neutral-200 bg-white p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Left nav width (mobile)</p>
+              <p className="mt-1 text-sm font-medium text-neutral-900">
+                <code>--layout-left-nav-width-mobile</code>
+              </p>
+            </div>
           </div>
 
           <div className="rounded-md border border-neutral-200 bg-card p-4">
             <p className="text-xs text-neutral-600 mb-3">
               Preview: title anchor spacing to top header and left panel uses the same layout token family.
             </p>
-            <div className="grid grid-cols-[280px_1fr] gap-4">
+            <div className="grid grid-cols-[var(--layout-left-nav-width)_1fr] gap-4">
               <aside className="rounded-md border border-border bg-background p-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Left panel</p>
               </aside>
               <main className="rounded-md border border-border bg-background p-3">
-                <div className="approved-layout-title-anchor house-page-header house-left-border house-left-border-workspace">
-                  <p data-house-role="page-title" className="house-title text-[1.35rem] leading-[1.5rem]">Publications</p>
-                  <p className="text-xs text-neutral-600">Canonical content title placement</p>
+                <div data-house-role="page-header" className="house-page-header house-left-border house-left-border-workspace">
+                  <h1 data-house-role="page-title" className="house-title text-[1.35rem] leading-[1.5rem]">Publications</h1>
+                  <p data-house-role="page-title-expander" className="house-title-expander">Canonical content title placement</p>
                 </div>
               </main>
             </div>
           </div>
         </div>
       </div>
-      <style>{`
-        .approved-layout-title-anchor {
-          margin-top: var(--content-container-anchor-offset);
-        }
-        @media (min-width: 768px) {
-          .approved-layout-title-anchor {
-            margin-top: var(--content-container-anchor-offset-md);
-          }
-        }
-      `}</style>
     </section>
   )
 }

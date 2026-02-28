@@ -131,8 +131,9 @@ const LEGACY_TOP_PROFILE_PHOTO_POSITION_Y = 20
 const HOUSE_ACTION_BUTTON_CLASS = `h-9 rounded-md border border-[hsl(var(--tone-accent-300)/0.92)] bg-[hsl(var(--tone-accent-50))] px-3.5 text-[hsl(var(--tone-accent-800))] ${houseTypography.buttonText} shadow-none hover:border-[hsl(var(--tone-accent-400)/0.94)] hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]`
 const HOUSE_ACTION_BUTTON_PRIMARY_CLASS = `h-9 rounded-md border border-[hsl(var(--tone-accent-700))] bg-[hsl(var(--tone-accent-700))] px-3.5 text-[hsl(var(--tone-neutral-50))] ${houseTypography.buttonText} shadow-none hover:border-[hsl(var(--tone-accent-800))] hover:bg-[hsl(var(--tone-accent-800))] hover:text-[hsl(var(--tone-neutral-50))]`
 const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
+const HOUSE_PAGE_TITLE_EXPANDER_CLASS = houseTypography.titleExpander
 const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
-const HOUSE_LEFT_BORDER_CLASS = `${houseSurfaces.leftBorder} ${houseSurfaces.leftBorderAccount}`
+const HOUSE_LEFT_BORDER_CLASS = `${houseSurfaces.leftBorder} ${houseSurfaces.leftBorderProfile}`
 const HOUSE_PROFILE_PHOTO_PANEL_CLASS = `sm:col-span-2 flex items-start gap-3 px-3 py-2.5 ${houseSurfaces.softPanel}`
 const HOUSE_PROFILE_PHOTO_EDITOR_CLASS = 'space-y-2 rounded-md border border-[hsl(var(--stroke-strong)/0.92)] bg-[hsl(var(--tone-neutral-50))] p-2.5'
 const HOUSE_ACCOUNT_PANEL_CLASS = 'rounded-md border border-[hsl(var(--stroke-strong)/0.98)] bg-card px-3 py-2.5'
@@ -2018,11 +2019,12 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
   }
 
   return (
-    <section className="space-y-4">
-      <header>
-        <div className={cn(houseLayout.pageHeader, HOUSE_LEFT_BORDER_CLASS)}>
-          <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Personal details</h1>
-        </div>
+    <section data-house-role="page" className="space-y-4">
+      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, HOUSE_LEFT_BORDER_CLASS)}>
+        <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Personal details</h1>
+        <p data-house-role="page-title-expander" className={HOUSE_PAGE_TITLE_EXPANDER_CLASS}>
+          Your professional information and research affiliations.
+        </p>
       </header>
 
       <Card className="border-[hsl(var(--tone-neutral-200))]">

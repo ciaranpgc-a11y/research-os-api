@@ -6,8 +6,8 @@ export function ImpactPage() {
     <section data-house-role="page" className="space-y-4">
       <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderResearch)}>
         <h1 data-house-role="page-title" className={houseTypography.title}>Impact</h1>
-        <p data-house-role="page-subtitle" className={houseTypography.subtitle}>
-          This page has been cleared. Add impact content here when ready.
+        <p data-house-role="page-title-expander" className={houseTypography.titleExpander}>
+          Discover the reach and real-world influence of your research.
         </p>
       </header>
     </section>

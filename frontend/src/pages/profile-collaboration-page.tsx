@@ -587,8 +587,11 @@ export function ProfileCollaborationPage() {
 
   return (
     <section data-house-role="page" className="space-y-4">
-      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderResearch)}>
+      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, houseSurfaces.leftBorderProfile)}>
         <h1 data-house-role="page-title" className={houseTypography.title}>Collaboration</h1>
+        <p data-house-role="page-title-expander" className={houseTypography.titleExpander}>
+          View collaborative research metrics and shared impact.
+        </p>
       </header>
 
       <Card>

@@ -17,7 +17,7 @@ import {
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { TablePrimitive as Table, TableBody, TableCell, TableHead as TableHeader, TableHeaderCell as TableHead, TableRow } from '@/components/primitives/TablePrimitive'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { houseDividers, houseForms, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
+import { houseDividers, houseForms, houseLayout, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import {
   deletePublicationFile,
   downloadPublicationFile,
@@ -35,6 +35,7 @@ import {
   listPersonaSyncJobs,
   uploadPublicationFile,
 } from '@/lib/impact-api'
+import { cn } from '@/lib/utils'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import type {
@@ -105,6 +106,10 @@ const PUBLICATIONS_OA_AUTO_INTER_REQUEST_DELAY_MS = 220
 const PUBLICATIONS_OA_AUTO_STATUS_CLEAR_DELAY_MS = 9000
 const PUBLICATION_DETAIL_ACTIVE_TAB_STORAGE_KEY = 'aawe.pubDetail.activeTab'
 const HOUSE_SECTION_DIVIDER_STRONG_CLASS = houseDividers.strong
+const HOUSE_PAGE_HEADER_CLASS = houseLayout.pageHeader
+const HOUSE_LEFT_BORDER_CLASS = houseSurfaces.leftBorder
+const HOUSE_LEFT_BORDER_PROFILE_CLASS = houseSurfaces.leftBorderProfile
+const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
 const HOUSE_INPUT_CLASS = houseForms.input
 const HOUSE_TABLE_FILTER_INPUT_CLASS = houseTables.filterInput
 const HOUSE_TABLE_FILTER_SELECT_CLASS = houseTables.filterSelect
@@ -1969,10 +1974,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return
     }
     setSelectedWorkId((current) => {
-      if (current && filteredWorks.some((work) => work.id === current)) {
+      if (!current) {
+        return null
+      }
+      if (filteredWorks.some((work) => work.id === current)) {
         return current
       }
-      return filteredWorks[0].id
+      return null
     })
   }, [filteredWorks])
 
@@ -2516,11 +2524,15 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }
 
   return (
-    <section className="space-y-4">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="house-page-header house-left-border house-left-border-research">
-          <h1 data-house-role="page-title" className={publicationsHouseHeadings.title}>Publications</h1>
-        </div>
+    <section data-house-role="page" className="space-y-4">
+      <header
+        data-house-role="page-header"
+        className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS, HOUSE_LEFT_BORDER_PROFILE_CLASS)}
+      >
+        <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Publications</h1>
+        <p data-house-role="page-title-expander" className={houseTypography.titleExpander}>
+          Track your research metrics and manage your publication library.
+        </p>
       </header>
 
       <PublicationsTopStrip

@@ -37,7 +37,7 @@ const ACCOUNT_SECTIONS: AccountNavSection[] = [
     items: [{ label: 'Profile home', path: '/profile', end: true }],
   },
   {
-    label: 'Research',
+    label: 'My Research',
     tone: 'research',
     items: [
       { label: 'Publications', path: '/profile/publications' },
@@ -46,7 +46,7 @@ const ACCOUNT_SECTIONS: AccountNavSection[] = [
     ],
   },
   {
-    label: 'Account',
+    label: 'My Account',
     tone: 'account',
     items: [
       { label: 'Personal details', path: '/profile/personal-details' },

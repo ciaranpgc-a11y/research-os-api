@@ -1392,7 +1392,7 @@ export function WorkspaceInboxPage() {
           <div className={cn('flex h-full flex-col', houseLayout.sidebar)} data-house-role="left-nav-shell">
             <div className={houseLayout.sidebarHeader}>
               <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, HOUSE_LEFT_BORDER_WORKSPACE_CLASS)}>
-                <h1 className={houseTypography.sectionTitle}>My Workspace</h1>
+                <h2 className={houseTypography.sectionTitle}>My Workspace</h2>
                 <p className={houseTypography.fieldHelper}>
                   Library-level filters and actions for all workspaces.
                 </p>
@@ -1487,7 +1487,13 @@ export function WorkspaceInboxPage() {
         </aside>
 
         <main className="min-w-0 flex-1 overflow-hidden bg-background">
-          <div className="house-content-container house-content-container-wide h-full">
+          <div data-house-role="content-container" className="house-content-container house-content-container-wide h-full">
+            <header
+              data-house-role="page-header"
+              className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, HOUSE_LEFT_BORDER_WORKSPACE_CLASS)}
+            >
+              <h1 data-house-role="page-title" className={houseTypography.title}>Inbox</h1>
+            </header>
             <section className={cn('flex h-full min-h-0 flex-col rounded-lg border border-border', houseSurfaces.card)}>
               {isAllConversationsView ? (
                 <>
