@@ -60,8 +60,8 @@ export function LoginCard({
   footer,
   className,
 }: LoginCardProps) {
-  const oauthTopGap = '1.125rem'
-  const oauthBottomGap = '1.5rem'
+  const oauthTopGap = '1.625rem'
+  const oauthBottomGap = '2rem'
 
   return (
     <div className={cn('mx-auto w-full max-w-md', className)}>
@@ -82,7 +82,12 @@ export function LoginCard({
 
             <div style={{ marginTop: '1.75rem' }} className="space-y-1">
               <h1
-                className="text-h1 font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]"
+                className="font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]"
+                style={{
+                  fontSize: 'calc((var(--text-display-size) + var(--text-display-xl-size)) / 2)',
+                  lineHeight: 'calc((var(--text-display-line) + var(--text-display-xl-line)) / 2)',
+                  letterSpacing: '-0.02em',
+                }}
               >
                 {title}
               </h1>
@@ -95,12 +100,38 @@ export function LoginCard({
 
           </header>
 
-          <div style={{ marginTop: '1rem' }} className="space-y-3">
+          <div style={{ marginTop: '1.5rem' }} className="space-y-5">
             {children}
           </div>
 
+          {status ? (
+            <div className="rounded-md border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-3 py-2 text-sm text-[hsl(var(--tone-positive-700))]">
+              {status}
+            </div>
+          ) : null}
+
+          {error ? (
+            errorAction ? (
+              <div className="space-y-2 rounded-md border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-3 py-2.5">
+                <p className="text-sm text-[hsl(var(--tone-danger-700))]">{error}</p>
+                <div>{errorAction}</div>
+              </div>
+            ) : (
+              <div
+                className="flex items-center justify-center border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-3 text-center"
+                style={{
+                  height: 'calc(var(--button-auth-height, 2.5rem) - 2px)',
+                  minHeight: 'calc(var(--button-auth-height, 2.5rem) - 2px)',
+                  borderRadius: '0.25rem',
+                }}
+              >
+                <p className="text-sm leading-none text-[hsl(var(--tone-danger-700))]">{error}</p>
+              </div>
+            )
+          ) : null}
+
           <div style={{ marginTop: '1.75rem' }}>
-            <div className="flex items-center gap-2 text-[0.74rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]">
+            <div className="flex items-center gap-2 text-[0.92rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]">
               <span className="h-px flex-1 !bg-[hsl(var(--tone-neutral-500))]" />
               <span>Or continue with</span>
               <span className="h-px flex-1 !bg-[hsl(var(--tone-neutral-500))]" />
@@ -116,7 +147,7 @@ export function LoginCard({
                   title={action.title || action.label}
                   style={oauthButtonBrandStyle(action.id)}
                   className={cn(
-                    'inline-flex h-9 items-center justify-center gap-2 rounded-md border px-2.5 text-[0.74rem] font-medium uppercase tracking-[0.08em] transition-[background-color,color,box-shadow,opacity,border-color] duration-[var(--motion-duration-ui)]',
+                    'inline-flex h-11 items-center justify-center gap-2 rounded-md border px-3.5 text-[0.92rem] font-medium uppercase tracking-[0.08em] transition-[background-color,color,box-shadow,opacity,border-color] duration-[var(--motion-duration-ui)]',
                     'border-[hsl(var(--tone-neutral-400))] bg-card text-[hsl(var(--tone-neutral-600))] hover:bg-[var(--oauth-hover-bg)] hover:text-[hsl(var(--tone-neutral-700))] hover:shadow-sm',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--oauth-focus-ring)]',
                     'disabled:cursor-not-allowed disabled:opacity-55',
@@ -129,19 +160,6 @@ export function LoginCard({
               ))}
             </div>
           </div>
-
-          {status ? (
-            <div className="rounded-md border border-[hsl(var(--tone-positive-200))] bg-[hsl(var(--tone-positive-50))] px-3 py-2 text-sm text-[hsl(var(--tone-positive-700))]">
-              {status}
-            </div>
-          ) : null}
-
-          {error ? (
-            <div className="space-y-2 rounded-md border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-3 py-2.5">
-              <p className="text-sm text-[hsl(var(--tone-danger-700))]">{error}</p>
-              {errorAction ? <div>{errorAction}</div> : null}
-            </div>
-          ) : null}
 
           <footer
             style={{ marginTop: oauthBottomGap }}

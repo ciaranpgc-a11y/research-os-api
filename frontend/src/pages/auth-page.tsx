@@ -147,8 +147,6 @@ export function AuthPage() {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
-  const [attemptedSignIn, setAttemptedSignIn] = useState(false)
-  const [attemptedRegister, setAttemptedRegister] = useState(false)
   const [oauthProviders, setOauthProviders] = useState<AuthOAuthProviderStatusItem[]>([])
   const [resetEmail, setResetEmail] = useState('')
   const [resetCode, setResetCode] = useState('')
@@ -414,12 +412,6 @@ export function AuthPage() {
       matches: registerPassword === registerConfirmPassword && registerConfirmPassword.length > 0,
     }
   }, [registerConfirmPassword, registerPassword])
-  const hasRegisterInput =
-    registerName.trim().length > 0 ||
-    registerEmail.trim().length > 0 ||
-    registerPassword.length > 0 ||
-    registerConfirmPassword.length > 0
-
   const resetValidationMessage = useMemo(() => {
     if (!isLikelyEmail(resetEmail)) {
       return 'Enter a valid email address.'
@@ -432,7 +424,6 @@ export function AuthPage() {
 
   const onRegister = async () => {
     clearOAuthTransientState()
-    setAttemptedRegister(true)
     if (registerValidationMessage) {
       setError(registerValidationMessage)
       setStatus('')
@@ -515,7 +506,6 @@ export function AuthPage() {
 
   const onSignIn = async () => {
     clearOAuthTransientState()
-    setAttemptedSignIn(true)
     if (loginValidationMessage) {
       setError(loginValidationMessage)
       setStatus('')
@@ -733,7 +723,6 @@ export function AuthPage() {
   const onUseTestAccount = () => {
     setSignInEmail(TEST_ACCOUNT_EMAIL)
     setSignInPassword(TEST_ACCOUNT_PASSWORD)
-    setAttemptedSignIn(false)
     setError('')
     setStatus('Test account credentials inserted. Click Log in.')
   }
@@ -755,13 +744,13 @@ export function AuthPage() {
   const authBrandVars: CSSProperties = {}
 
   const authLabelClass =
-    'text-[0.68rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]'
+    'text-[0.86rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]'
   const authInputClass =
-    '!h-7 !min-h-0 border-[hsl(var(--tone-neutral-500))] bg-card !text-[0.84rem] !font-normal !leading-[1.1] text-[hsl(var(--tone-neutral-900))] placeholder:text-[0.8rem] placeholder:text-[hsl(var(--tone-neutral-600))] hover:border-[hsl(var(--tone-neutral-600))] focus-visible:border-[hsl(var(--tone-accent-600))] focus-visible:ring-[hsl(var(--tone-accent-500))]'
+    '!h-9 !min-h-0 border-[hsl(var(--tone-neutral-500))] bg-card !text-[1.02rem] !font-normal !leading-[1.25] text-[hsl(var(--tone-neutral-900))] placeholder:text-[0.96rem] placeholder:text-[hsl(var(--tone-neutral-600))] hover:border-[hsl(var(--tone-neutral-600))] focus-visible:border-[hsl(var(--tone-accent-600))] focus-visible:ring-[hsl(var(--tone-accent-500))]'
   const authPasswordInputClass =
     `${authInputClass} !border-0 !bg-transparent !shadow-none !focus-visible:ring-0 !focus-visible:border-transparent`
   const authPasswordWrapClass =
-    'flex h-7 items-center overflow-hidden rounded-md border border-[hsl(var(--tone-neutral-500))] bg-card transition-colors hover:border-[hsl(var(--tone-neutral-600))] focus-within:border-[hsl(var(--tone-neutral-700))] focus-within:ring-0'
+    'flex h-9 items-center overflow-hidden rounded-md border border-[hsl(var(--tone-neutral-500))] bg-card transition-colors hover:border-[hsl(var(--tone-neutral-600))] focus-within:border-[hsl(var(--tone-neutral-700))] focus-within:ring-0'
   const authPasswordToggleClass =
     'inline-flex !h-full !min-h-0 w-10 shrink-0 items-center justify-center !rounded-none !border-0 border-l border-[hsl(var(--tone-neutral-500))] !bg-transparent !text-[hsl(var(--tone-neutral-500))] !shadow-none !transition-none !duration-0 !ease-linear !transform-none hover:!bg-transparent hover:!text-[hsl(var(--tone-neutral-700))] hover:!shadow-none hover:!transform-none !active:bg-transparent !active:shadow-none !active:scale-100 !active:translate-y-0 focus-visible:!outline-none focus-visible:!ring-0 focus-visible:!border-[hsl(var(--tone-neutral-500))] focus-visible:!shadow-none'
   const authPasswordToggleStyle: CSSProperties = {
@@ -772,15 +761,15 @@ export function AuthPage() {
   }
   const authInputStyle: CSSProperties = {
     paddingBlock: '0',
-    lineHeight: '1.1',
+    lineHeight: '1.25',
   }
   const authPrimaryButtonClass =
-    'w-full !h-[calc(var(--button-auth-height)-6px)] !min-h-[calc(var(--button-auth-height)-6px)] !rounded-[0.25rem] !border px-[var(--space-3)] !text-[0.72rem] !font-medium uppercase tracking-[0.06em] !text-[hsl(var(--tone-neutral-50))] !transition-none !transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))] focus-visible:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed !active:scale-100 !active:translate-y-0'
+    'w-full !h-[calc(var(--button-auth-height)-2px)] !min-h-[calc(var(--button-auth-height)-2px)] !rounded-[0.25rem] !border px-[var(--space-3)] !text-[0.96rem] !font-medium uppercase tracking-[0.06em] !text-[hsl(var(--tone-neutral-50))] !transition-none !transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))] focus-visible:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed !active:scale-100 !active:translate-y-0'
   const authPrimaryButtonStyle: CSSProperties = {
-    height: 'calc(var(--button-auth-height, 2.5rem) - 6px)',
-    minHeight: 'calc(var(--button-auth-height, 2.5rem) - 6px)',
+    height: 'calc(var(--button-auth-height, 2.5rem) - 2px)',
+    minHeight: 'calc(var(--button-auth-height, 2.5rem) - 2px)',
     borderRadius: '0.25rem',
-    fontSize: '0.72rem',
+    fontSize: '0.96rem',
     fontWeight: 500,
     letterSpacing: '0.06em',
     textTransform: 'uppercase',
@@ -796,9 +785,9 @@ export function AuthPage() {
     transform: 'none',
   }
   const authSecondaryButtonClassBlock =
-    '!h-[calc(var(--button-auth-height)-8px)] !min-h-[calc(var(--button-auth-height)-8px)] w-full !rounded-[0.25rem] !border !border-[hsl(var(--tone-neutral-700))] !bg-white px-[var(--space-3)] !text-[0.74rem] !font-medium tracking-[0.01em] !text-[hsl(var(--tone-neutral-800))] !transition-none !transform-none !shadow-none !hover:bg-[hsl(var(--tone-neutral-100))] !hover:text-[hsl(var(--tone-neutral-900))] !hover:border-[hsl(var(--tone-neutral-800))] !hover:shadow-none !active:scale-100 !active:translate-y-0'
+    '!h-[calc(var(--button-auth-height)-4px)] !min-h-[calc(var(--button-auth-height)-4px)] w-full !rounded-[0.25rem] !border !border-[hsl(var(--tone-neutral-700))] !bg-white px-[var(--space-3)] !text-[0.92rem] !font-medium tracking-[0.01em] !text-[hsl(var(--tone-neutral-800))] !transition-none !transform-none !shadow-none !hover:bg-[hsl(var(--tone-neutral-100))] !hover:text-[hsl(var(--tone-neutral-900))] !hover:border-[hsl(var(--tone-neutral-800))] !hover:shadow-none !active:scale-100 !active:translate-y-0'
   const authSecondaryButtonClassInline =
-    '!h-[calc(var(--button-auth-height)-8px)] !min-h-[calc(var(--button-auth-height)-8px)] !rounded-[0.25rem] !border !border-[hsl(var(--tone-neutral-700))] !bg-white px-[var(--space-3)] !text-[0.74rem] !font-medium tracking-[0.01em] !text-[hsl(var(--tone-neutral-800))] !transition-none !transform-none !shadow-none !hover:bg-[hsl(var(--tone-neutral-100))] !hover:text-[hsl(var(--tone-neutral-900))] !hover:border-[hsl(var(--tone-neutral-800))] !hover:shadow-none !active:scale-100 !active:translate-y-0'
+    '!h-[calc(var(--button-auth-height)-4px)] !min-h-[calc(var(--button-auth-height)-4px)] !rounded-[0.25rem] !border !border-[hsl(var(--tone-neutral-700))] !bg-white px-[var(--space-3)] !text-[0.92rem] !font-medium tracking-[0.01em] !text-[hsl(var(--tone-neutral-800))] !transition-none !transform-none !shadow-none !hover:bg-[hsl(var(--tone-neutral-100))] !hover:text-[hsl(var(--tone-neutral-900))] !hover:border-[hsl(var(--tone-neutral-800))] !hover:shadow-none !active:scale-100 !active:translate-y-0'
   const passwordCriteriaClass = (met: boolean): string =>
     met ? 'text-[hsl(var(--tone-accent-700))]' : 'text-[hsl(var(--tone-danger-700))]'
 
@@ -847,8 +836,8 @@ export function AuthPage() {
         oauthActions={oauthActions}
         footer={
           mode === 'signin' ? (
-            <div className="mt-3 text-center">
-              <p className="text-[0.74rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]">
+            <div className="mt-5 text-center">
+              <p className="text-[0.92rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]">
                 Ready to start?
               </p>
               <a
@@ -863,8 +852,8 @@ export function AuthPage() {
               </a>
             </div>
           ) : (
-            <div className="mt-3 text-center">
-              <p className="text-[0.74rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]">
+            <div className="mt-5 text-center">
+              <p className="text-[0.92rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]">
                 Already have an account?
               </p>
               <a
@@ -882,8 +871,8 @@ export function AuthPage() {
         }
       >
         {mode === 'signin' ? (
-          <div className="space-y-3">
-            <div className="space-y-[0.3rem]">
+          <div className="space-y-5">
+            <div className="space-y-[0.55rem]">
               <label htmlFor="signin-email" className={authLabelClass}>Email address</label>
               <InputPrimitive
                 id="signin-email"
@@ -896,7 +885,7 @@ export function AuthPage() {
               />
             </div>
 
-            <div className="space-y-[0.3rem]">
+            <div className="space-y-[0.55rem]">
               <label htmlFor="signin-password" className={authLabelClass}>Password</label>
               <div className={authPasswordWrapClass}>
                 <InputPrimitive
@@ -926,7 +915,7 @@ export function AuthPage() {
                 href="/forgot-password"
                 className={`
                   block
-                  text-[0.74rem]
+                  text-[0.92rem]
                   font-normal
                   text-[hsl(var(--tone-neutral-600))]
                   no-underline
@@ -936,7 +925,7 @@ export function AuthPage() {
                   focus-visible:underline
                   focus-visible:text-[hsl(var(--tone-neutral-800))]
                 `}
-                style={{ marginTop: '0' }}
+                style={{ marginTop: '-0.35rem' }}
                 onClick={(event) => {
                   event.preventDefault()
                   setShowResetPanel((value) => !value)
@@ -952,7 +941,7 @@ export function AuthPage() {
             <ButtonPrimitive
               type="button"
               className={authPrimaryButtonClass}
-              style={{ ...authPrimaryButtonStyle, marginTop: '1.3rem' }}
+              style={{ ...authPrimaryButtonStyle, marginTop: '1.9rem' }}
               onMouseEnter={() => setIsPrimaryCtaHovered(true)}
               onMouseLeave={() => setIsPrimaryCtaHovered(false)}
               disabled={loading}
@@ -972,10 +961,6 @@ export function AuthPage() {
               >
                 Use test account
               </ButtonPrimitive>
-            ) : null}
-
-            {attemptedSignIn && loginValidationMessage ? (
-              <p className="text-sm text-[hsl(var(--tone-danger-700))]">{loginValidationMessage}</p>
             ) : null}
 
             {challengeToken ? (
@@ -1114,8 +1099,8 @@ export function AuthPage() {
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
-            <div className="space-y-[0.3rem]">
+          <div className="space-y-5">
+            <div className="space-y-[0.55rem]">
               <label htmlFor="register-name" className={authLabelClass}>Full name</label>
               <InputPrimitive
                 id="register-name"
@@ -1127,7 +1112,7 @@ export function AuthPage() {
                 style={authInputStyle}
               />
             </div>
-            <div className="space-y-[0.3rem]">
+            <div className="space-y-[0.55rem]">
               <label htmlFor="register-email" className={authLabelClass}>Email address</label>
               <InputPrimitive
                 id="register-email"
@@ -1139,7 +1124,7 @@ export function AuthPage() {
                 style={authInputStyle}
               />
             </div>
-            <div className="space-y-[0.3rem]">
+            <div className="space-y-[0.55rem]">
               <label htmlFor="register-password" className={authLabelClass}>Password</label>
               <div className={authPasswordWrapClass}>
                 <InputPrimitive
@@ -1163,7 +1148,7 @@ export function AuthPage() {
                 </ButtonPrimitive>
               </div>
             </div>
-            <div className="space-y-[0.3rem]">
+            <div className="space-y-[0.55rem]">
               <label htmlFor="register-confirm-password" className={authLabelClass}>Confirm password</label>
               <div className={authPasswordWrapClass}>
                 <InputPrimitive
@@ -1201,7 +1186,7 @@ export function AuthPage() {
             <ButtonPrimitive
               type="button"
               className={authPrimaryButtonClass}
-              style={{ ...authPrimaryButtonStyle, marginTop: '1.3rem' }}
+              style={{ ...authPrimaryButtonStyle, marginTop: '1.9rem' }}
               onMouseEnter={() => setIsPrimaryCtaHovered(true)}
               onMouseLeave={() => setIsPrimaryCtaHovered(false)}
               disabled={loading}
@@ -1210,9 +1195,6 @@ export function AuthPage() {
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Create account
             </ButtonPrimitive>
-            {(attemptedRegister || hasRegisterInput) && registerValidationMessage ? (
-              <p className="text-sm text-[hsl(var(--tone-danger-700))]">{registerValidationMessage}</p>
-            ) : null}
           </div>
         )}
       </LoginCard>
