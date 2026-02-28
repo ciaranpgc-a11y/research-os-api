@@ -147,8 +147,8 @@ export function TopBar({
             <Input
               placeholder={
                 scope === 'account'
-                  ? 'Search people, works, themes...'
-                  : 'Search sections, tables, figures, claims...'
+                  ? 'Search your research, impact and collaborators'
+                  : 'Search your projects, datasets and conversations.'
               }
               className={searchInputClass}
               value={searchQuery}

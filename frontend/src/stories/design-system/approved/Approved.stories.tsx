@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import { useState } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { Eye, EyeOff, KeyRound, Mail, Menu, Search, Settings, User } from 'lucide-react'
 
@@ -184,6 +185,8 @@ const approvedIcons: IconOption[] = [
 ]
 
 function ProviderIconSection() {
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false)
+
   return (
     <div className="grid gap-3">
       <div className="grid gap-3 sm:grid-cols-2">
@@ -201,15 +204,50 @@ function ProviderIconSection() {
           <p className="text-xs text-neutral-600 mt-1">General-purpose icons used in approved interfaces.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {approvedIcons.map((icon) => (
-              <span
+              <button
                 key={icon.id}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-900"
+                type="button"
+                className="approved-icon-chip"
                 title={`${icon.label}: ${icon.description}`}
+                aria-label={icon.label}
               >
                 {icon.icon}
-              </span>
+              </button>
             ))}
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-md border border-neutral-200 bg-white p-4">
+        <p className="text-xs font-semibold text-neutral-900">State behavior preview</p>
+        <p className="text-xs text-neutral-600 mt-1">Default, hover, focus, active, and toggled-on icon states.</p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="approved-icon-chip" aria-hidden>
+            <Search className="h-5 w-5" />
+          </span>
+          <span className="approved-icon-chip is-hover" aria-hidden>
+            <Search className="h-5 w-5" />
+          </span>
+          <span className="approved-icon-chip is-focus" aria-hidden>
+            <Search className="h-5 w-5" />
+          </span>
+          <span className="approved-icon-chip is-active" aria-hidden>
+            <Search className="h-5 w-5" />
+          </span>
+          <button
+            type="button"
+            className="approved-icon-chip"
+            data-state={isPasswordVisible ? 'on' : 'off'}
+            aria-label={isPasswordVisible ? 'Hide password' : 'Show password'}
+            aria-pressed={isPasswordVisible}
+            onClick={() => setIsPasswordVisible((previous) => !previous)}
+            title="Eye icon toggle"
+          >
+            <span className="approved-icon-swap" aria-hidden>
+              <Eye className="approved-icon-on h-5 w-5" />
+              <EyeOff className="approved-icon-off h-5 w-5" />
+            </span>
+          </button>
         </div>
       </div>
 
