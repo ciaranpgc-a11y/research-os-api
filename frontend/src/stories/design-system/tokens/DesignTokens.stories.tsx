@@ -640,10 +640,30 @@ function AuthButtonPatterns() {
  */
 function ApprovedSectionColourStyles() {
   const sectionStyles = [
-    { label: 'Workspace', token: '--section-style-workspace-accent', usage: 'Workspace pages and Workspace-scoped content strips/rails' },
-    { label: 'Profile', token: '--section-style-profile-accent', usage: 'Profile and publication-scoped strips/rails (publication green legacy)' },
-    { label: 'Learning Centre', token: '--section-style-learning-centre-accent', usage: 'Learning Centre strip/rail accent for learning and knowledge navigation' },
-    { label: 'Opportunities', token: '--section-style-opportunities-accent', usage: 'Opportunities strip/rail accent for opportunity-focused workflows' },
+    {
+      label: 'Workspace',
+      token: '--section-style-workspace-accent',
+      tone: '--tone-accent-500',
+      usage: 'Workspace pages and Workspace-scoped content strips/rails',
+    },
+    {
+      label: 'Profile',
+      token: '--section-style-profile-accent',
+      tone: '--tone-positive-500',
+      usage: 'Profile and publication-scoped strips/rails (publication green legacy)',
+    },
+    {
+      label: 'Learning Centre',
+      token: '--section-style-learning-centre-accent',
+      tone: '--tone-warning-500',
+      usage: 'Learning Centre strip/rail accent for learning and knowledge navigation',
+    },
+    {
+      label: 'Opportunities',
+      token: '--section-style-opportunities-accent',
+      tone: '--tone-danger-500',
+      usage: 'Opportunities strip/rail accent for opportunity-focused workflows',
+    },
   ];
 
   return (
@@ -651,17 +671,20 @@ function ApprovedSectionColourStyles() {
       <h2 className="text-2xl font-bold text-neutral-900 mb-6 pb-3 border-b-2 border-blue-500">
         Approved Section Colour Styles
       </h2>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {sectionStyles.map((sectionStyle) => (
-          <div key={sectionStyle.token} className="border border-neutral-200 rounded-md p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-neutral-900">{sectionStyle.label}</p>
-              <span className="text-xs text-neutral-500">{sectionStyle.token}</span>
-            </div>
-            <SectionStyleSwatch name={sectionStyle.token} value={`var(${sectionStyle.token})`} />
-            <p className="mt-3 text-xs text-neutral-600">{sectionStyle.usage}</p>
-          </div>
-        ))}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {sectionStyles.map((sectionStyle) => (
+              <div key={sectionStyle.token} className="border border-neutral-200 rounded-md p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-neutral-900">{sectionStyle.label}</p>
+                    <p className="mt-1 text-xs text-neutral-600">{sectionStyle.tone}</p>
+                  </div>
+                  <span className="text-xs text-neutral-500">{sectionStyle.token}</span>
+                </div>
+                <SectionStyleSwatch name={sectionStyle.token} value={`var(${sectionStyle.token})`} />
+                <p className="mt-3 text-xs text-neutral-600">{sectionStyle.usage}</p>
+              </div>
+            ))}
       </div>
     </section>
   );
