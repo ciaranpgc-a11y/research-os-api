@@ -61,17 +61,16 @@ export function LoginCard({
   className,
 }: LoginCardProps) {
   const oauthTopGap = '1.625rem'
-  const oauthBottomGap = '2rem'
 
   return (
     <div className={cn('mx-auto w-full max-w-md', className)}>
       <Card aria-busy={loading} className="rounded-xl border-[hsl(var(--tone-neutral-200))] bg-card shadow-none">
-        <CardContent className="space-y-5 p-6 sm:p-7">
+        <CardContent className="space-y-4 p-5 sm:p-6">
           <header className="space-y-2">
             <div className="flex items-center gap-3">
               <AxiomosMark className="h-8 text-[hsl(var(--tone-accent-600))]" />
               <div className="min-w-0">
-                <p className="truncate text-xl font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
+                <p className="truncate text-lg font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
                   Axiomos
                 </p>
                 <p className="truncate text-caption uppercase tracking-[0.14em] text-[hsl(var(--tone-neutral-500))]">
@@ -80,12 +79,12 @@ export function LoginCard({
               </div>
             </div>
 
-            <div style={{ marginTop: '1.75rem' }} className="space-y-1">
+            <div style={{ marginTop: '1.5rem' }} className="space-y-1">
               <h1
                 className="font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]"
                 style={{
-                  fontSize: 'calc((var(--text-display-size) + var(--text-display-xl-size)) / 2)',
-                  lineHeight: 'calc((var(--text-display-line) + var(--text-display-xl-line)) / 2)',
+                  fontSize: 'var(--text-display-size)',
+                  lineHeight: 'var(--text-display-line)',
                   letterSpacing: '-0.02em',
                 }}
               >
@@ -100,7 +99,7 @@ export function LoginCard({
 
           </header>
 
-          <div style={{ marginTop: '1.5rem' }} className="space-y-5">
+          <div style={{ marginTop: '1.25rem' }} className="space-y-4">
             {children}
           </div>
 
@@ -130,8 +129,8 @@ export function LoginCard({
             )
           ) : null}
 
-          <div style={{ marginTop: '1.75rem' }}>
-            <div className="flex items-center gap-2 text-[0.92rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]">
+          <div style={{ marginTop: '1.5rem' }}>
+            <div className="flex items-center gap-2 text-[0.86rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]">
               <span className="h-px flex-1 !bg-[hsl(var(--tone-neutral-500))]" />
               <span>Or continue with</span>
               <span className="h-px flex-1 !bg-[hsl(var(--tone-neutral-500))]" />
@@ -147,7 +146,7 @@ export function LoginCard({
                   title={action.title || action.label}
                   style={oauthButtonBrandStyle(action.id)}
                   className={cn(
-                    'inline-flex h-11 items-center justify-center gap-2 rounded-md border px-3.5 text-[0.92rem] font-medium uppercase tracking-[0.08em] transition-[background-color,color,box-shadow,opacity,border-color] duration-[var(--motion-duration-ui)]',
+                    'inline-flex h-10 items-center justify-center gap-2 rounded-md border px-3 text-[0.86rem] font-medium uppercase tracking-[0.08em] transition-[background-color,color,box-shadow,opacity,border-color] duration-[var(--motion-duration-ui)]',
                     'border-[hsl(var(--tone-neutral-400))] bg-card text-[hsl(var(--tone-neutral-600))] hover:bg-[var(--oauth-hover-bg)] hover:text-[hsl(var(--tone-neutral-700))] hover:shadow-sm',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--oauth-focus-ring)]',
                     'disabled:cursor-not-allowed disabled:opacity-55',
@@ -162,7 +161,7 @@ export function LoginCard({
           </div>
 
           <footer
-            style={{ marginTop: oauthBottomGap }}
+            style={{ marginTop: '1.75rem' }}
             className="border-t border-[hsl(var(--tone-neutral-400))] pt-3 text-sm text-[hsl(var(--tone-neutral-600))]"
           >
             {footer}

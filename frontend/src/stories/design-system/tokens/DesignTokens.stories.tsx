@@ -303,16 +303,16 @@ function AuthButtonPatterns() {
   const [isPrimaryCtaHovered, setIsPrimaryCtaHovered] = useState(false);
 
   const authLabelClass =
-    'text-[0.86rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]';
+    'text-[0.8rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]';
   const authInputClass =
-    '!h-9 !min-h-0 border-[hsl(var(--tone-neutral-500))] bg-card !text-[1.02rem] !font-normal !leading-[1.25] text-[hsl(var(--tone-neutral-900))] placeholder:text-[0.96rem] placeholder:text-[hsl(var(--tone-neutral-600))] hover:border-[hsl(var(--tone-neutral-600))] focus-visible:border-[hsl(var(--tone-accent-600))] focus-visible:ring-[hsl(var(--tone-accent-500))]';
+    '!h-8 !min-h-0 border-[hsl(var(--tone-neutral-500))] bg-card !text-[0.96rem] !font-normal !leading-[1.25] text-[hsl(var(--tone-neutral-900))] placeholder:text-[0.9rem] placeholder:text-[hsl(var(--tone-neutral-600))] hover:border-[hsl(var(--tone-neutral-600))] focus-visible:border-[hsl(var(--tone-accent-600))] focus-visible:ring-[hsl(var(--tone-accent-500))]';
   const authPasswordInputClass =
     `${authInputClass} !border-0 !bg-transparent !shadow-none !focus-visible:ring-0 !focus-visible:border-transparent`;
   const authInputStyle: React.CSSProperties = { paddingBlock: '0', lineHeight: '1.25' };
   const authPasswordWrapClass =
-    'flex h-9 items-center overflow-hidden rounded-md border border-[hsl(var(--tone-neutral-500))] bg-card transition-colors hover:border-[hsl(var(--tone-neutral-600))] focus-within:border-[hsl(var(--tone-neutral-700))] focus-within:ring-0';
+    'flex h-8 items-center overflow-hidden rounded-md border border-[hsl(var(--tone-neutral-500))] bg-card transition-colors hover:border-[hsl(var(--tone-neutral-600))] focus-within:border-[hsl(var(--tone-neutral-700))] focus-within:ring-0';
   const authPasswordToggleClass =
-    'inline-flex !h-full !min-h-0 w-10 shrink-0 items-center justify-center !rounded-none !border-0 border-l border-[hsl(var(--tone-neutral-500))] !bg-transparent !text-[hsl(var(--tone-neutral-500))] !shadow-none !transition-none !duration-0 !ease-linear !transform-none hover:!bg-transparent hover:!text-[hsl(var(--tone-neutral-700))] hover:!shadow-none hover:!transform-none !active:bg-transparent !active:shadow-none !active:scale-100 !active:translate-y-0 focus-visible:!outline-none focus-visible:!ring-0 focus-visible:!border-[hsl(var(--tone-neutral-500))] focus-visible:!shadow-none';
+    'inline-flex !h-full !min-h-0 w-9 shrink-0 items-center justify-center !rounded-none !border-0 border-l border-[hsl(var(--tone-neutral-500))] !bg-transparent !text-[hsl(var(--tone-neutral-500))] !shadow-none !transition-none !duration-0 !ease-linear !transform-none hover:!bg-transparent hover:!text-[hsl(var(--tone-neutral-700))] hover:!shadow-none hover:!transform-none !active:bg-transparent !active:shadow-none !active:scale-100 !active:translate-y-0 focus-visible:!outline-none focus-visible:!ring-0 focus-visible:!border-[hsl(var(--tone-neutral-500))] focus-visible:!shadow-none';
   const authPasswordToggleStyle: React.CSSProperties = {
     backgroundColor: 'transparent',
     boxShadow: 'none',
@@ -320,12 +320,12 @@ function AuthButtonPatterns() {
     transform: 'none',
   };
   const authPrimaryButtonClass =
-    'w-full !h-[calc(var(--button-auth-height)-2px)] !min-h-[calc(var(--button-auth-height)-2px)] !rounded-[0.25rem] !border px-[var(--space-3)] !text-[0.96rem] !font-medium uppercase tracking-[0.06em] !text-[hsl(var(--tone-neutral-50))] !transition-none !transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))] focus-visible:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed !active:scale-100 !active:translate-y-0';
+    'w-full !h-[calc(var(--button-auth-height)-4px)] !min-h-[calc(var(--button-auth-height)-4px)] !rounded-[0.25rem] !border px-[var(--space-3)] !text-[0.9rem] !font-medium uppercase tracking-[0.06em] !text-[hsl(var(--tone-neutral-50))] !transition-none !transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))] focus-visible:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed !active:scale-100 !active:translate-y-0';
   const authPrimaryButtonStyle: React.CSSProperties = {
-    height: 'calc(var(--button-auth-height, 2.5rem) - 2px)',
-    minHeight: 'calc(var(--button-auth-height, 2.5rem) - 2px)',
+    height: 'calc(var(--button-auth-height, 2.5rem) - 4px)',
+    minHeight: 'calc(var(--button-auth-height, 2.5rem) - 4px)',
     borderRadius: '0.25rem',
-    fontSize: '0.96rem',
+    fontSize: '0.9rem',
     fontWeight: 500,
     letterSpacing: '0.06em',
     textTransform: 'uppercase',
@@ -365,7 +365,7 @@ function AuthButtonPatterns() {
               oauthActions={oauthActions}
               footer={(
                 <div className="mt-3 text-center">
-                  <p className="text-[0.92rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]">
+                  <p className="text-[0.86rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]">
                     Ready to start?
                   </p>
                   <a
@@ -379,7 +379,7 @@ function AuthButtonPatterns() {
               )}
             >
                 <div className="space-y-5">
-                  <div className="space-y-[0.55rem]">
+                  <div className="space-y-[0.3rem]">
                   <label className={authLabelClass}>Email address</label>
                   <InputPrimitive
                     value="email@address.com"
@@ -388,7 +388,7 @@ function AuthButtonPatterns() {
                     style={authInputStyle}
                   />
                 </div>
-                  <div className="space-y-[0.55rem]">
+                  <div className="space-y-[0.3rem]">
                   <label className={authLabelClass}>Password</label>
                   <div className={authPasswordWrapClass}>
                     <InputPrimitive
@@ -405,14 +405,14 @@ function AuthButtonPatterns() {
                       onClick={() => setShowPassword((value) => !value)}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
-                      {showPassword ? <EyeOff className="h-8 w-8" strokeWidth={2} /> : <Eye className="h-8 w-8" strokeWidth={2} />}
+                      {showPassword ? <EyeOff className="h-7 w-7" strokeWidth={2} /> : <Eye className="h-7 w-7" strokeWidth={2} />}
                     </ButtonPrimitive>
                   </div>
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <a
                     href="#"
-                    className="-mt-[0.35rem] block text-[0.92rem] font-normal text-[hsl(var(--tone-neutral-600))] no-underline transition-[color,text-decoration-color] duration-[var(--motion-duration-ui)] hover:underline hover:text-[hsl(var(--tone-neutral-800))] focus-visible:underline focus-visible:text-[hsl(var(--tone-neutral-800))]"
+                    className="-mt-[0.35rem] block text-[0.86rem] font-normal text-[hsl(var(--tone-neutral-600))] no-underline transition-[color,text-decoration-color] duration-[var(--motion-duration-ui)] hover:underline hover:text-[hsl(var(--tone-neutral-800))] focus-visible:underline focus-visible:text-[hsl(var(--tone-neutral-800))]"
                     onClick={(event) => event.preventDefault()}
                   >
                     Reset password
@@ -463,8 +463,8 @@ function AuthButtonPatterns() {
           <div
             className="max-w-[32rem] flex items-center justify-center border border-[hsl(var(--tone-danger-200))] bg-[hsl(var(--tone-danger-50))] px-3 text-center"
             style={{
-              height: 'calc(var(--button-auth-height, 2.5rem) - 2px)',
-              minHeight: 'calc(var(--button-auth-height, 2.5rem) - 2px)',
+              height: 'calc(var(--button-auth-height, 2.5rem) - 4px)',
+              minHeight: 'calc(var(--button-auth-height, 2.5rem) - 4px)',
               borderRadius: '0.25rem',
             }}
           >
@@ -672,3 +672,6 @@ export function AllTokensReference() {
 export const Default: StoryObj = {
   render: () => <AllTokensReference />,
 };
+
+
+

@@ -744,15 +744,15 @@ export function AuthPage() {
   const authBrandVars: CSSProperties = {}
 
   const authLabelClass =
-    'text-[0.86rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]'
+    'text-[0.8rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]'
   const authInputClass =
-    '!h-9 !min-h-0 border-[hsl(var(--tone-neutral-500))] bg-card !text-[1.02rem] !font-normal !leading-[1.25] text-[hsl(var(--tone-neutral-900))] placeholder:text-[0.96rem] placeholder:text-[hsl(var(--tone-neutral-600))] hover:border-[hsl(var(--tone-neutral-600))] focus-visible:border-[hsl(var(--tone-accent-600))] focus-visible:ring-[hsl(var(--tone-accent-500))]'
+    '!h-8 !min-h-0 border-[hsl(var(--tone-neutral-500))] bg-card !text-[0.96rem] !font-normal !leading-[1.25] text-[hsl(var(--tone-neutral-900))] placeholder:text-[0.9rem] placeholder:text-[hsl(var(--tone-neutral-600))] hover:border-[hsl(var(--tone-neutral-600))] focus-visible:border-[hsl(var(--tone-accent-600))] focus-visible:ring-[hsl(var(--tone-accent-500))]'
   const authPasswordInputClass =
     `${authInputClass} !border-0 !bg-transparent !shadow-none !focus-visible:ring-0 !focus-visible:border-transparent`
   const authPasswordWrapClass =
-    'flex h-9 items-center overflow-hidden rounded-md border border-[hsl(var(--tone-neutral-500))] bg-card transition-colors hover:border-[hsl(var(--tone-neutral-600))] focus-within:border-[hsl(var(--tone-neutral-700))] focus-within:ring-0'
+    'flex h-8 items-center overflow-hidden rounded-md border border-[hsl(var(--tone-neutral-500))] bg-card transition-colors hover:border-[hsl(var(--tone-neutral-600))] focus-within:border-[hsl(var(--tone-neutral-700))] focus-within:ring-0'
   const authPasswordToggleClass =
-    'inline-flex !h-full !min-h-0 w-10 shrink-0 items-center justify-center !rounded-none !border-0 border-l border-[hsl(var(--tone-neutral-500))] !bg-transparent !text-[hsl(var(--tone-neutral-500))] !shadow-none !transition-none !duration-0 !ease-linear !transform-none hover:!bg-transparent hover:!text-[hsl(var(--tone-neutral-700))] hover:!shadow-none hover:!transform-none !active:bg-transparent !active:shadow-none !active:scale-100 !active:translate-y-0 focus-visible:!outline-none focus-visible:!ring-0 focus-visible:!border-[hsl(var(--tone-neutral-500))] focus-visible:!shadow-none'
+    'inline-flex !h-full !min-h-0 w-9 shrink-0 items-center justify-center !rounded-none !border-0 border-l border-[hsl(var(--tone-neutral-500))] !bg-transparent !text-[hsl(var(--tone-neutral-500))] !shadow-none !transition-none !duration-0 !ease-linear !transform-none hover:!bg-transparent hover:!text-[hsl(var(--tone-neutral-700))] hover:!shadow-none hover:!transform-none !active:bg-transparent !active:shadow-none !active:scale-100 !active:translate-y-0 focus-visible:!outline-none focus-visible:!ring-0 focus-visible:!border-[hsl(var(--tone-neutral-500))] focus-visible:!shadow-none'
   const authPasswordToggleStyle: CSSProperties = {
     backgroundColor: 'transparent',
     boxShadow: 'none',
@@ -764,12 +764,12 @@ export function AuthPage() {
     lineHeight: '1.25',
   }
   const authPrimaryButtonClass =
-    'w-full !h-[calc(var(--button-auth-height)-2px)] !min-h-[calc(var(--button-auth-height)-2px)] !rounded-[0.25rem] !border px-[var(--space-3)] !text-[0.96rem] !font-medium uppercase tracking-[0.06em] !text-[hsl(var(--tone-neutral-50))] !transition-none !transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))] focus-visible:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed !active:scale-100 !active:translate-y-0'
+    'w-full !h-[calc(var(--button-auth-height)-4px)] !min-h-[calc(var(--button-auth-height)-4px)] !rounded-[0.25rem] !border px-[var(--space-3)] !text-[0.9rem] !font-medium uppercase tracking-[0.06em] !text-[hsl(var(--tone-neutral-50))] !transition-none !transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))] focus-visible:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed !active:scale-100 !active:translate-y-0'
   const authPrimaryButtonStyle: CSSProperties = {
-    height: 'calc(var(--button-auth-height, 2.5rem) - 2px)',
-    minHeight: 'calc(var(--button-auth-height, 2.5rem) - 2px)',
+    height: 'calc(var(--button-auth-height, 2.5rem) - 4px)',
+    minHeight: 'calc(var(--button-auth-height, 2.5rem) - 4px)',
     borderRadius: '0.25rem',
-    fontSize: '0.96rem',
+    fontSize: '0.9rem',
     fontWeight: 500,
     letterSpacing: '0.06em',
     textTransform: 'uppercase',
@@ -785,9 +785,9 @@ export function AuthPage() {
     transform: 'none',
   }
   const authSecondaryButtonClassBlock =
-    '!h-[calc(var(--button-auth-height)-4px)] !min-h-[calc(var(--button-auth-height)-4px)] w-full !rounded-[0.25rem] !border !border-[hsl(var(--tone-neutral-700))] !bg-white px-[var(--space-3)] !text-[0.92rem] !font-medium tracking-[0.01em] !text-[hsl(var(--tone-neutral-800))] !transition-none !transform-none !shadow-none !hover:bg-[hsl(var(--tone-neutral-100))] !hover:text-[hsl(var(--tone-neutral-900))] !hover:border-[hsl(var(--tone-neutral-800))] !hover:shadow-none !active:scale-100 !active:translate-y-0'
+    '!h-[calc(var(--button-auth-height)-6px)] !min-h-[calc(var(--button-auth-height)-6px)] w-full !rounded-[0.25rem] !border !border-[hsl(var(--tone-neutral-700))] !bg-white px-[var(--space-3)] !text-[0.86rem] !font-medium tracking-[0.01em] !text-[hsl(var(--tone-neutral-800))] !transition-none !transform-none !shadow-none !hover:bg-[hsl(var(--tone-neutral-100))] !hover:text-[hsl(var(--tone-neutral-900))] !hover:border-[hsl(var(--tone-neutral-800))] !hover:shadow-none !active:scale-100 !active:translate-y-0'
   const authSecondaryButtonClassInline =
-    '!h-[calc(var(--button-auth-height)-4px)] !min-h-[calc(var(--button-auth-height)-4px)] !rounded-[0.25rem] !border !border-[hsl(var(--tone-neutral-700))] !bg-white px-[var(--space-3)] !text-[0.92rem] !font-medium tracking-[0.01em] !text-[hsl(var(--tone-neutral-800))] !transition-none !transform-none !shadow-none !hover:bg-[hsl(var(--tone-neutral-100))] !hover:text-[hsl(var(--tone-neutral-900))] !hover:border-[hsl(var(--tone-neutral-800))] !hover:shadow-none !active:scale-100 !active:translate-y-0'
+    '!h-[calc(var(--button-auth-height)-6px)] !min-h-[calc(var(--button-auth-height)-6px)] !rounded-[0.25rem] !border !border-[hsl(var(--tone-neutral-700))] !bg-white px-[var(--space-3)] !text-[0.86rem] !font-medium tracking-[0.01em] !text-[hsl(var(--tone-neutral-800))] !transition-none !transform-none !shadow-none !hover:bg-[hsl(var(--tone-neutral-100))] !hover:text-[hsl(var(--tone-neutral-900))] !hover:border-[hsl(var(--tone-neutral-800))] !hover:shadow-none !active:scale-100 !active:translate-y-0'
   const passwordCriteriaClass = (met: boolean): string =>
     met ? 'text-[hsl(var(--tone-accent-700))]' : 'text-[hsl(var(--tone-danger-700))]'
 
@@ -837,7 +837,7 @@ export function AuthPage() {
         footer={
           mode === 'signin' ? (
             <div className="mt-5 text-center">
-              <p className="text-[0.92rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]">
+              <p className="text-[0.86rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]">
                 Ready to start?
               </p>
               <a
@@ -853,7 +853,7 @@ export function AuthPage() {
             </div>
           ) : (
             <div className="mt-5 text-center">
-              <p className="text-[0.92rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]">
+              <p className="text-[0.86rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]">
                 Already have an account?
               </p>
               <a
@@ -872,7 +872,7 @@ export function AuthPage() {
       >
         {mode === 'signin' ? (
           <div className="space-y-5">
-            <div className="space-y-[0.55rem]">
+            <div className="space-y-[0.3rem]">
               <label htmlFor="signin-email" className={authLabelClass}>Email address</label>
               <InputPrimitive
                 id="signin-email"
@@ -885,7 +885,7 @@ export function AuthPage() {
               />
             </div>
 
-            <div className="space-y-[0.55rem]">
+            <div className="space-y-[0.3rem]">
               <label htmlFor="signin-password" className={authLabelClass}>Password</label>
               <div className={authPasswordWrapClass}>
                 <InputPrimitive
@@ -905,7 +905,7 @@ export function AuthPage() {
                   onClick={() => setShowSignInPassword((value) => !value)}
                   aria-label={showSignInPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showSignInPassword ? <EyeOff className="h-8 w-8" strokeWidth={2} /> : <Eye className="h-8 w-8" strokeWidth={2} />}
+                  {showSignInPassword ? <EyeOff className="h-7 w-7" strokeWidth={2} /> : <Eye className="h-7 w-7" strokeWidth={2} />}
                 </ButtonPrimitive>
               </div>
             </div>
@@ -915,7 +915,7 @@ export function AuthPage() {
                 href="/forgot-password"
                 className={`
                   block
-                  text-[0.92rem]
+                  text-[0.86rem]
                   font-normal
                   text-[hsl(var(--tone-neutral-600))]
                   no-underline
@@ -1100,7 +1100,7 @@ export function AuthPage() {
           </div>
         ) : (
           <div className="space-y-5">
-            <div className="space-y-[0.55rem]">
+            <div className="space-y-[0.3rem]">
               <label htmlFor="register-name" className={authLabelClass}>Full name</label>
               <InputPrimitive
                 id="register-name"
@@ -1112,7 +1112,7 @@ export function AuthPage() {
                 style={authInputStyle}
               />
             </div>
-            <div className="space-y-[0.55rem]">
+            <div className="space-y-[0.3rem]">
               <label htmlFor="register-email" className={authLabelClass}>Email address</label>
               <InputPrimitive
                 id="register-email"
@@ -1124,7 +1124,7 @@ export function AuthPage() {
                 style={authInputStyle}
               />
             </div>
-            <div className="space-y-[0.55rem]">
+            <div className="space-y-[0.3rem]">
               <label htmlFor="register-password" className={authLabelClass}>Password</label>
               <div className={authPasswordWrapClass}>
                 <InputPrimitive
@@ -1144,11 +1144,11 @@ export function AuthPage() {
                   onClick={() => setShowRegisterPassword((value) => !value)}
                   aria-label={showRegisterPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showRegisterPassword ? <EyeOff className="h-8 w-8" strokeWidth={2} /> : <Eye className="h-8 w-8" strokeWidth={2} />}
+                  {showRegisterPassword ? <EyeOff className="h-7 w-7" strokeWidth={2} /> : <Eye className="h-7 w-7" strokeWidth={2} />}
                 </ButtonPrimitive>
               </div>
             </div>
-            <div className="space-y-[0.55rem]">
+            <div className="space-y-[0.3rem]">
               <label htmlFor="register-confirm-password" className={authLabelClass}>Confirm password</label>
               <div className={authPasswordWrapClass}>
                 <InputPrimitive
@@ -1168,7 +1168,7 @@ export function AuthPage() {
                   onClick={() => setShowRegisterConfirmPassword((value) => !value)}
                   aria-label={showRegisterConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
                 >
-                  {showRegisterConfirmPassword ? <EyeOff className="h-8 w-8" strokeWidth={2} /> : <Eye className="h-8 w-8" strokeWidth={2} />}
+                  {showRegisterConfirmPassword ? <EyeOff className="h-7 w-7" strokeWidth={2} /> : <Eye className="h-7 w-7" strokeWidth={2} />}
                 </ButtonPrimitive>
               </div>
             </div>
@@ -1201,6 +1201,9 @@ export function AuthPage() {
     </div>
   )
 }
+
+
+
 
 
 
