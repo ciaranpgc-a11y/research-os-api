@@ -1,5 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { useEffect, useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
+import { ButtonPrimitive } from '@/components/primitives/ButtonPrimitive';
+import { InputPrimitive } from '@/components/primitives/InputPrimitive';
+import { LoginCard } from '@/components/auth/LoginCard';
 
 const meta: Meta = {
   title: 'Design System/Tokens/All Tokens Reference',
@@ -243,6 +247,221 @@ function MotionPreview({ name, value }: { name: string; value: string }) {
   );
 }
 
+function ProviderIconMark({ provider }: { provider: 'orcid' | 'google' | 'microsoft' }) {
+  if (provider === 'orcid') {
+    return (
+      <span aria-hidden className="inline-flex h-[1.25rem] w-[1.25rem] items-center justify-center rounded-sm bg-transparent">
+        <svg viewBox="0 0 24 24" className="h-[1.05rem] w-[1.05rem]" aria-hidden>
+          <circle cx="12" cy="12" r="11" fill="#A6CE39" />
+          <text
+            x="12"
+            y="15.2"
+            textAnchor="middle"
+            fontSize="10.6"
+            fontWeight="700"
+            fontFamily="Arial, Helvetica, sans-serif"
+            letterSpacing="-0.25"
+            fill="#FFFFFF"
+          >
+            iD
+          </text>
+        </svg>
+      </span>
+    );
+  }
+
+  if (provider === 'google') {
+    return (
+      <span aria-hidden className="inline-flex h-[1.25rem] w-[1.25rem] items-center justify-center rounded-sm bg-transparent">
+        <svg viewBox="0 0 24 24" className="h-[1.03rem] w-[1.03rem]" aria-hidden>
+          <path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.55-.2-2.27H12v4.29h6.46a5.52 5.52 0 0 1-2.39 3.62v3h3.86c2.26-2.08 3.56-5.15 3.56-8.64z" />
+          <path fill="#34A853" d="M12 24c3.24 0 5.95-1.07 7.94-2.91l-3.86-3a7.16 7.16 0 0 1-10.66-3.76H1.43v3.09A12 12 0 0 0 12 24z" />
+          <path fill="#FBBC05" d="M5.42 14.33a7.2 7.2 0 0 1 0-4.66V6.58H1.43a12 12 0 0 0 0 10.84l3.99-3.09z" />
+          <path fill="#EA4335" d="M12 4.77c1.76 0 3.34.61 4.58 1.8l3.43-3.43C17.94 1.19 15.23 0 12 0A12 12 0 0 0 1.43 6.58l3.99 3.09A7.16 7.16 0 0 1 12 4.77z" />
+        </svg>
+      </span>
+    );
+  }
+
+  return (
+    <span aria-hidden className="inline-flex h-[1.25rem] w-[1.25rem] items-center justify-center rounded-sm bg-transparent">
+      <svg viewBox="0 0 24 24" className="h-[0.98rem] w-[0.98rem]" aria-hidden>
+        <rect x="2" y="2" width="9" height="9" fill="#F25022" />
+        <rect x="13" y="2" width="9" height="9" fill="#7FBA00" />
+        <rect x="2" y="13" width="9" height="9" fill="#00A4EF" />
+        <rect x="13" y="13" width="9" height="9" fill="#FFB900" />
+      </svg>
+    </span>
+  );
+}
+
+/**
+ * Approved auth elements for reuse
+ */
+function AuthButtonPatterns() {
+  const [showPassword, setShowPassword] = useState(false);
+  const [isPrimaryCtaHovered, setIsPrimaryCtaHovered] = useState(false);
+
+  const authLabelClass =
+    'text-[0.68rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]';
+  const authInputClass =
+    '!h-7 !min-h-0 border-[hsl(var(--tone-neutral-500))] bg-card !text-[0.84rem] !font-normal !leading-[1.1] text-[hsl(var(--tone-neutral-900))] placeholder:text-[0.8rem] placeholder:text-[hsl(var(--tone-neutral-600))] hover:border-[hsl(var(--tone-neutral-600))] focus-visible:border-[hsl(var(--tone-accent-600))] focus-visible:ring-[hsl(var(--tone-accent-500))]';
+  const authPasswordInputClass =
+    `${authInputClass} !border-0 !bg-transparent !shadow-none !focus-visible:ring-0 !focus-visible:border-transparent`;
+  const authInputStyle: React.CSSProperties = { paddingBlock: '0', lineHeight: '1.1' };
+  const authPasswordWrapClass =
+    'flex h-7 items-center overflow-hidden rounded-md border border-[hsl(var(--tone-neutral-500))] bg-card transition-colors hover:border-[hsl(var(--tone-neutral-600))] focus-within:border-[hsl(var(--tone-neutral-700))] focus-within:ring-0';
+  const authPasswordToggleClass =
+    'inline-flex !h-full !min-h-0 w-10 shrink-0 items-center justify-center !rounded-none !border-0 border-l border-[hsl(var(--tone-neutral-500))] !bg-transparent !text-[hsl(var(--tone-neutral-500))] !shadow-none !transition-none !duration-0 !ease-linear !transform-none hover:!bg-transparent hover:!text-[hsl(var(--tone-neutral-700))] hover:!shadow-none hover:!transform-none !active:bg-transparent !active:shadow-none !active:scale-100 !active:translate-y-0 focus-visible:!outline-none focus-visible:!ring-0 focus-visible:!border-[hsl(var(--tone-neutral-500))] focus-visible:!shadow-none';
+  const authPasswordToggleStyle: React.CSSProperties = {
+    backgroundColor: 'transparent',
+    boxShadow: 'none',
+    transition: 'none',
+    transform: 'none',
+  };
+  const authPrimaryButtonClass =
+    'w-full !h-[calc(var(--button-auth-height)-6px)] !min-h-[calc(var(--button-auth-height)-6px)] !rounded-[0.25rem] !border px-[var(--space-3)] !text-[0.72rem] !font-medium uppercase tracking-[0.06em] !text-[hsl(var(--tone-neutral-50))] !transition-none !transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))] focus-visible:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed !active:scale-100 !active:translate-y-0';
+  const authPrimaryButtonStyle: React.CSSProperties = {
+    height: 'calc(var(--button-auth-height, 2.5rem) - 6px)',
+    minHeight: 'calc(var(--button-auth-height, 2.5rem) - 6px)',
+    borderRadius: '0.25rem',
+    fontSize: '0.72rem',
+    fontWeight: 500,
+    letterSpacing: '0.06em',
+    textTransform: 'uppercase',
+    paddingInline: 'var(--space-3)',
+    borderColor: isPrimaryCtaHovered ? 'hsl(var(--tone-accent-900))' : 'hsl(var(--tone-accent-800))',
+    backgroundColor: isPrimaryCtaHovered ? 'hsl(var(--tone-accent-800))' : 'hsl(var(--tone-accent-700))',
+    color: 'hsl(var(--tone-neutral-50))',
+    boxShadow: isPrimaryCtaHovered
+      ? '0 0 0 2px hsl(var(--tone-neutral-50) / 0.24), var(--elevation-2)'
+      : 'none',
+    transition: 'none',
+    animation: 'none',
+    transform: 'none',
+  };
+
+  const oauthActions = [
+    { id: 'orcid', label: 'ORCID', icon: <ProviderIconMark provider="orcid" />, onClick: () => {}, title: 'ORCID' },
+    { id: 'google', label: 'Google', icon: <ProviderIconMark provider="google" />, onClick: () => {}, title: 'Google' },
+    { id: 'microsoft', label: 'Microsoft', icon: <ProviderIconMark provider="microsoft" />, onClick: () => {}, title: 'Microsoft' },
+  ];
+
+  return (
+    <section className="mb-16">
+      <h2 className="text-2xl font-bold text-neutral-900 mb-6 pb-3 border-b-2 border-blue-500">
+        Approved Auth Elements
+      </h2>
+      <div className="space-y-6">
+        <div className="p-4 border border-neutral-200 rounded-md">
+          <p className="text-sm font-semibold text-neutral-900 mb-3">Approved Auth (Exact Live Sign-in)</p>
+          <div className="bg-[hsl(var(--tone-neutral-100))] p-4">
+            <LoginCard
+              title="Access your research workspace"
+              subtitle=""
+              loading={false}
+              status=""
+              error=""
+              oauthActions={oauthActions}
+              footer={(
+                <div className="mt-3 text-center">
+                  <p className="text-[0.74rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]">
+                    Ready to start?
+                  </p>
+                  <a
+                    href="#"
+                    className="mt-1 inline-block text-label font-medium underline underline-offset-2 !text-[hsl(var(--tone-neutral-900))] visited:!text-[hsl(var(--tone-neutral-900))] hover:!text-[hsl(var(--tone-accent-700))] active:!text-[hsl(var(--tone-accent-700))] transition-colors"
+                    onClick={(event) => event.preventDefault()}
+                  >
+                    Create your research workspace
+                  </a>
+                </div>
+              )}
+            >
+              <div className="space-y-3">
+                <div className="space-y-[0.3rem]">
+                  <label className={authLabelClass}>Email address</label>
+                  <InputPrimitive
+                    value="email@address.com"
+                    readOnly
+                    className={authInputClass}
+                    style={authInputStyle}
+                  />
+                </div>
+                <div className="space-y-[0.3rem]">
+                  <label className={authLabelClass}>Password</label>
+                  <div className={authPasswordWrapClass}>
+                    <InputPrimitive
+                      value="Enter your password"
+                      readOnly
+                      type={showPassword ? 'text' : 'password'}
+                      className={authPasswordInputClass}
+                      style={authInputStyle}
+                    />
+                    <ButtonPrimitive
+                      type="button"
+                      className={authPasswordToggleClass}
+                      style={authPasswordToggleStyle}
+                      onClick={() => setShowPassword((value) => !value)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff className="h-8 w-8" strokeWidth={2} /> : <Eye className="h-8 w-8" strokeWidth={2} />}
+                    </ButtonPrimitive>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <a
+                    href="#"
+                    className="block text-[0.74rem] font-normal text-[hsl(var(--tone-neutral-600))] no-underline transition-[color,text-decoration-color] duration-[var(--motion-duration-ui)] hover:underline hover:text-[hsl(var(--tone-neutral-800))] focus-visible:underline focus-visible:text-[hsl(var(--tone-neutral-800))]"
+                    onClick={(event) => event.preventDefault()}
+                  >
+                    Reset password
+                  </a>
+                </div>
+                <ButtonPrimitive
+                  type="button"
+                  className={authPrimaryButtonClass}
+                  style={{ ...authPrimaryButtonStyle, marginTop: '1.3rem' }}
+                  onMouseEnter={() => setIsPrimaryCtaHovered(true)}
+                  onMouseLeave={() => setIsPrimaryCtaHovered(false)}
+                >
+                  Sign in
+                </ButtonPrimitive>
+              </div>
+            </LoginCard>
+          </div>
+        </div>
+
+        <div className="p-4 border border-neutral-200 rounded-md">
+          <p className="text-sm font-semibold text-neutral-900 mb-3">Approved Auth Icons</p>
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="inline-flex items-center gap-2 rounded-md border border-neutral-200 px-3 py-2">
+              <Eye className="h-5 w-5 text-[hsl(var(--tone-neutral-600))]" />
+              <span className="text-xs text-neutral-600">Eye</span>
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-md border border-neutral-200 px-3 py-2">
+              <EyeOff className="h-5 w-5 text-[hsl(var(--tone-neutral-600))]" />
+              <span className="text-xs text-neutral-600">Eye Off</span>
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-md border border-neutral-200 px-3 py-2">
+              <ProviderIconMark provider="orcid" />
+              <span className="text-xs text-neutral-600">ORCID</span>
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-md border border-neutral-200 px-3 py-2">
+              <ProviderIconMark provider="google" />
+              <span className="text-xs text-neutral-600">Google</span>
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-md border border-neutral-200 px-3 py-2">
+              <ProviderIconMark provider="microsoft" />
+              <span className="text-xs text-neutral-600">Microsoft</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /**
  * Main story component
  */
@@ -420,6 +639,8 @@ export function AllTokensReference() {
             </div>
           );
         })}
+
+        <AuthButtonPatterns />
 
         {/* Footer */}
         <div className="mt-16 pt-8 border-t border-neutral-200">

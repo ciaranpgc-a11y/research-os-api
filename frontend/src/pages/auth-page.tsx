@@ -63,13 +63,58 @@ function providerLabel(provider: SocialProvider): string {
 }
 
 function ProviderIcon({ provider }: { provider: SocialProvider }) {
-  const initials = provider === 'orcid' ? 'OR' : provider === 'google' ? 'G' : 'M'
+  if (provider === 'orcid') {
+    return (
+      <span
+        aria-hidden
+        className="inline-flex h-[1.25rem] w-[1.25rem] items-center justify-center rounded-sm bg-transparent"
+      >
+        <svg viewBox="0 0 24 24" className="h-[1.05rem] w-[1.05rem]" aria-hidden>
+          <circle cx="12" cy="12" r="11" fill="#A6CE39" />
+          <text
+            x="12"
+            y="15.2"
+            textAnchor="middle"
+            fontSize="10.6"
+            fontWeight="700"
+            fontFamily="Arial, Helvetica, sans-serif"
+            letterSpacing="-0.25"
+            fill="#FFFFFF"
+          >
+            iD
+          </text>
+        </svg>
+      </span>
+    )
+  }
+
+  if (provider === 'google') {
+    return (
+      <span
+        aria-hidden
+        className="inline-flex h-[1.25rem] w-[1.25rem] items-center justify-center rounded-sm bg-transparent"
+      >
+        <svg viewBox="0 0 24 24" className="h-[1.03rem] w-[1.03rem]" aria-hidden>
+          <path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.55-.2-2.27H12v4.29h6.46a5.52 5.52 0 0 1-2.39 3.62v3h3.86c2.26-2.08 3.56-5.15 3.56-8.64z" />
+          <path fill="#34A853" d="M12 24c3.24 0 5.95-1.07 7.94-2.91l-3.86-3a7.16 7.16 0 0 1-10.66-3.76H1.43v3.09A12 12 0 0 0 12 24z" />
+          <path fill="#FBBC05" d="M5.42 14.33a7.2 7.2 0 0 1 0-4.66V6.58H1.43a12 12 0 0 0 0 10.84l3.99-3.09z" />
+          <path fill="#EA4335" d="M12 4.77c1.76 0 3.34.61 4.58 1.8l3.43-3.43C17.94 1.19 15.23 0 12 0A12 12 0 0 0 1.43 6.58l3.99 3.09A7.16 7.16 0 0 1 12 4.77z" />
+        </svg>
+      </span>
+    )
+  }
+
   return (
     <span
       aria-hidden
-      className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-caption font-semibold text-[hsl(var(--tone-neutral-700))]"
+      className="inline-flex h-[1.25rem] w-[1.25rem] items-center justify-center rounded-sm bg-transparent"
     >
-      {initials}
+      <svg viewBox="0 0 24 24" className="h-[0.98rem] w-[0.98rem]" aria-hidden>
+        <rect x="2" y="2" width="9" height="9" fill="#F25022" />
+        <rect x="13" y="2" width="9" height="9" fill="#7FBA00" />
+        <rect x="2" y="13" width="9" height="9" fill="#00A4EF" />
+        <rect x="13" y="13" width="9" height="9" fill="#FFB900" />
+      </svg>
     </span>
   )
 }
@@ -111,6 +156,7 @@ export function AuthPage() {
   const [showSignInPassword, setShowSignInPassword] = useState(false)
   const [showRegisterPassword, setShowRegisterPassword] = useState(false)
   const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = useState(false)
+  const [isPrimaryCtaHovered, setIsPrimaryCtaHovered] = useState(false)
   const [showResetPanel, setShowResetPanel] = useState(false)
   const [awaitingEmailVerification, setAwaitingEmailVerification] = useState(false)
   const [verificationCode, setVerificationCode] = useState('')
@@ -706,24 +752,53 @@ export function AuthPage() {
     }
   }
 
-  const authBrandVars: CSSProperties = {
-    ['--auth-brand-navy' as string]: '217 49% 8%',
-    ['--auth-brand-accent' as string]: '188 42% 30%',
-    ['--auth-brand-accent-strong' as string]: '188 42% 24%',
-  }
+  const authBrandVars: CSSProperties = {}
 
   const authLabelClass =
-    'text-caption font-semibold uppercase tracking-[0.12em] text-[hsl(var(--tone-neutral-600))]'
+    'text-[0.68rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]'
   const authInputClass =
-    'h-10 border-[hsl(var(--tone-neutral-200))] bg-card text-[hsl(var(--auth-brand-navy))] placeholder:text-[hsl(var(--tone-neutral-400))] focus-visible:ring-[hsl(var(--auth-brand-accent))]'
+    '!h-7 !min-h-0 border-[hsl(var(--tone-neutral-500))] bg-card !text-[0.84rem] !font-normal !leading-[1.1] text-[hsl(var(--tone-neutral-900))] placeholder:text-[0.8rem] placeholder:text-[hsl(var(--tone-neutral-600))] hover:border-[hsl(var(--tone-neutral-600))] focus-visible:border-[hsl(var(--tone-accent-600))] focus-visible:ring-[hsl(var(--tone-accent-500))]'
+  const authPasswordInputClass =
+    `${authInputClass} !border-0 !bg-transparent !shadow-none !focus-visible:ring-0 !focus-visible:border-transparent`
   const authPasswordWrapClass =
-    'flex rounded-md border border-[hsl(var(--tone-neutral-200))] bg-card transition-colors focus-within:border-[hsl(var(--auth-brand-accent))] focus-within:ring-2 focus-within:ring-[hsl(var(--auth-brand-accent))]'
+    'flex h-7 items-center overflow-hidden rounded-md border border-[hsl(var(--tone-neutral-500))] bg-card transition-colors hover:border-[hsl(var(--tone-neutral-600))] focus-within:border-[hsl(var(--tone-neutral-700))] focus-within:ring-0'
   const authPasswordToggleClass =
-    'inline-flex h-10 w-10 shrink-0 items-center justify-center border-l border-[hsl(var(--tone-neutral-200))] text-[hsl(var(--tone-neutral-600))] transition-colors hover:text-[hsl(var(--auth-brand-navy))] focus-visible:outline-none'
+    'inline-flex !h-full !min-h-0 w-10 shrink-0 items-center justify-center !rounded-none !border-0 border-l border-[hsl(var(--tone-neutral-500))] !bg-transparent !text-[hsl(var(--tone-neutral-500))] !shadow-none !transition-none !duration-0 !ease-linear !transform-none hover:!bg-transparent hover:!text-[hsl(var(--tone-neutral-700))] hover:!shadow-none hover:!transform-none !active:bg-transparent !active:shadow-none !active:scale-100 !active:translate-y-0 focus-visible:!outline-none focus-visible:!ring-0 focus-visible:!border-[hsl(var(--tone-neutral-500))] focus-visible:!shadow-none'
+  const authPasswordToggleStyle: CSSProperties = {
+    backgroundColor: 'transparent',
+    boxShadow: 'none',
+    transition: 'none',
+    transform: 'none',
+  }
+  const authInputStyle: CSSProperties = {
+    paddingBlock: '0',
+    lineHeight: '1.1',
+  }
   const authPrimaryButtonClass =
-    'h-10 w-full bg-[hsl(var(--auth-brand-accent))] text-white hover:bg-[hsl(var(--auth-brand-accent-strong))]'
-  const authSubtleActionClass =
-    'text-label font-medium text-[hsl(var(--tone-neutral-600))] underline underline-offset-2 transition-colors hover:text-[hsl(var(--auth-brand-navy))]'
+    'w-full !h-[calc(var(--button-auth-height)-6px)] !min-h-[calc(var(--button-auth-height)-6px)] !rounded-[0.25rem] !border px-[var(--space-3)] !text-[0.72rem] !font-medium uppercase tracking-[0.06em] !text-[hsl(var(--tone-neutral-50))] !transition-none !transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--tone-accent-500))] focus-visible:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed !active:scale-100 !active:translate-y-0'
+  const authPrimaryButtonStyle: CSSProperties = {
+    height: 'calc(var(--button-auth-height, 2.5rem) - 6px)',
+    minHeight: 'calc(var(--button-auth-height, 2.5rem) - 6px)',
+    borderRadius: '0.25rem',
+    fontSize: '0.72rem',
+    fontWeight: 500,
+    letterSpacing: '0.06em',
+    textTransform: 'uppercase',
+    paddingInline: 'var(--space-3)',
+    borderColor: isPrimaryCtaHovered ? 'hsl(var(--tone-accent-900))' : 'hsl(var(--tone-accent-800))',
+    backgroundColor: isPrimaryCtaHovered ? 'hsl(var(--tone-accent-800))' : 'hsl(var(--tone-accent-700))',
+    color: 'hsl(var(--tone-neutral-50))',
+    boxShadow: isPrimaryCtaHovered
+      ? '0 0 0 2px hsl(var(--tone-neutral-50) / 0.24), var(--elevation-2)'
+      : 'none',
+    transition: 'none',
+    animation: 'none',
+    transform: 'none',
+  }
+  const authSecondaryButtonClassBlock =
+    '!h-[calc(var(--button-auth-height)-8px)] !min-h-[calc(var(--button-auth-height)-8px)] w-full !rounded-[0.25rem] !border !border-[hsl(var(--tone-neutral-700))] !bg-white px-[var(--space-3)] !text-[0.74rem] !font-medium tracking-[0.01em] !text-[hsl(var(--tone-neutral-800))] !transition-none !transform-none !shadow-none !hover:bg-[hsl(var(--tone-neutral-100))] !hover:text-[hsl(var(--tone-neutral-900))] !hover:border-[hsl(var(--tone-neutral-800))] !hover:shadow-none !active:scale-100 !active:translate-y-0'
+  const authSecondaryButtonClassInline =
+    '!h-[calc(var(--button-auth-height)-8px)] !min-h-[calc(var(--button-auth-height)-8px)] !rounded-[0.25rem] !border !border-[hsl(var(--tone-neutral-700))] !bg-white px-[var(--space-3)] !text-[0.74rem] !font-medium tracking-[0.01em] !text-[hsl(var(--tone-neutral-800))] !transition-none !transform-none !shadow-none !hover:bg-[hsl(var(--tone-neutral-100))] !hover:text-[hsl(var(--tone-neutral-900))] !hover:border-[hsl(var(--tone-neutral-800))] !hover:shadow-none !active:scale-100 !active:translate-y-0'
   const passwordCriteriaClass = (met: boolean): string =>
     met ? 'text-[hsl(var(--tone-accent-700))]' : 'text-[hsl(var(--tone-danger-700))]'
 
@@ -750,13 +825,8 @@ export function AuthPage() {
       style={authBrandVars}
     >
       <LoginCard
-        mode={mode}
-        title={mode === 'signin' ? 'Welcome back' : 'Create account'}
-        subtitle={
-          mode === 'signin'
-            ? 'Sign in to continue in your research workspace.'
-            : 'Create your account to start in Axiomos.'
-        }
+        title={mode === 'signin' ? 'Access your research workspace' : 'Create your research workspace'}
+        subtitle=""
         loading={loading}
         status={oauthPending ? '' : status}
         error={error}
@@ -775,36 +845,45 @@ export function AuthPage() {
           ) : null
         }
         oauthActions={oauthActions}
-        onModeChange={(nextMode) => setMode(nextMode)}
         footer={
           mode === 'signin' ? (
-            <p>
-              New to Axiomos?{' '}
-              <ButtonPrimitive
-                type="button"
-                className={authSubtleActionClass}
-                onClick={() => setMode('register')}
+            <div className="mt-3 text-center">
+              <p className="text-[0.74rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]">
+                Ready to start?
+              </p>
+              <a
+                href="/register"
+                className="mt-1 inline-block text-label font-medium underline underline-offset-2 !text-[hsl(var(--tone-neutral-900))] visited:!text-[hsl(var(--tone-neutral-900))] hover:!text-[hsl(var(--tone-accent-700))] active:!text-[hsl(var(--tone-accent-700))] transition-colors"
+                onClick={(event) => {
+                  event.preventDefault()
+                  setMode('register')
+                }}
               >
-                Create an account
-              </ButtonPrimitive>
-            </p>
+                Create your research workspace
+              </a>
+            </div>
           ) : (
-            <p>
-              Already have an account?{' '}
-              <ButtonPrimitive
-                type="button"
-                className={authSubtleActionClass}
-                onClick={() => setMode('signin')}
+            <div className="mt-3 text-center">
+              <p className="text-[0.74rem] font-medium uppercase tracking-[0.08em] text-[hsl(var(--tone-neutral-600))]">
+                Already have an account?
+              </p>
+              <a
+                href="/auth"
+                className="mt-1 inline-block text-label font-medium underline underline-offset-2 !text-[hsl(var(--tone-neutral-900))] visited:!text-[hsl(var(--tone-neutral-900))] hover:!text-[hsl(var(--tone-accent-700))] active:!text-[hsl(var(--tone-accent-700))] transition-colors"
+                onClick={(event) => {
+                  event.preventDefault()
+                  setMode('signin')
+                }}
               >
                 Sign in
-              </ButtonPrimitive>
-            </p>
+              </a>
+            </div>
           )
         }
       >
         {mode === 'signin' ? (
           <div className="space-y-3">
-            <div className="space-y-1">
+            <div className="space-y-[0.3rem]">
               <label htmlFor="signin-email" className={authLabelClass}>Email address</label>
               <InputPrimitive
                 id="signin-email"
@@ -813,10 +892,11 @@ export function AuthPage() {
                 value={signInEmail}
                 onChange={(event) => setSignInEmail(event.target.value)}
                 className={authInputClass}
+                style={authInputStyle}
               />
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-[0.3rem]">
               <label htmlFor="signin-password" className={authLabelClass}>Password</label>
               <div className={authPasswordWrapClass}>
                 <InputPrimitive
@@ -826,37 +906,55 @@ export function AuthPage() {
                   placeholder="Enter your password"
                   value={signInPassword}
                   onChange={(event) => setSignInPassword(event.target.value)}
-                  className="h-10 border-0 bg-transparent shadow-none focus-visible:ring-0"
+                  className={authPasswordInputClass}
+                  style={authInputStyle}
                 />
                 <ButtonPrimitive
                   type="button"
                   className={authPasswordToggleClass}
+                  style={authPasswordToggleStyle}
                   onClick={() => setShowSignInPassword((value) => !value)}
                   aria-label={showSignInPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showSignInPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showSignInPassword ? <EyeOff className="h-8 w-8" strokeWidth={2} /> : <Eye className="h-8 w-8" strokeWidth={2} />}
                 </ButtonPrimitive>
               </div>
             </div>
 
             <div className="flex items-center justify-between gap-2">
-              <ButtonPrimitive
-                type="button"
-                className={authSubtleActionClass}
-                onClick={() => {
+              <a
+                href="/forgot-password"
+                className={`
+                  block
+                  text-[0.74rem]
+                  font-normal
+                  text-[hsl(var(--tone-neutral-600))]
+                  no-underline
+                  transition-[color,text-decoration-color] duration-[var(--motion-duration-ui)]
+                  hover:underline
+                  hover:text-[hsl(var(--tone-neutral-800))]
+                  focus-visible:underline
+                  focus-visible:text-[hsl(var(--tone-neutral-800))]
+                `}
+                style={{ marginTop: '0' }}
+                onClick={(event) => {
+                  event.preventDefault()
                   setShowResetPanel((value) => !value)
                   if (!resetEmail) {
                     setResetEmail(signInEmail)
                   }
                 }}
               >
-                Forgot password?
-              </ButtonPrimitive>
+                Reset password
+              </a>
             </div>
 
             <ButtonPrimitive
               type="button"
               className={authPrimaryButtonClass}
+              style={{ ...authPrimaryButtonStyle, marginTop: '1.3rem' }}
+              onMouseEnter={() => setIsPrimaryCtaHovered(true)}
+              onMouseLeave={() => setIsPrimaryCtaHovered(false)}
               disabled={loading}
               onClick={() => void onSignIn()}
             >
@@ -868,7 +966,7 @@ export function AuthPage() {
               <ButtonPrimitive
                 type="button"
                 variant="secondary"
-                className="h-10 w-full border-[hsl(var(--tone-neutral-200))] text-label"
+                className={authSecondaryButtonClassBlock}
                 onClick={onUseTestAccount}
                 disabled={loading}
               >
@@ -892,11 +990,12 @@ export function AuthPage() {
                   value={twoFactorCode}
                   onChange={(event) => setTwoFactorCode(event.target.value)}
                   className={authInputClass}
+                  style={authInputStyle}
                 />
                 <ButtonPrimitive
                   type="button"
                   variant="secondary"
-                  className="h-10 w-full border-[hsl(var(--tone-neutral-200))] text-label"
+                  className={authSecondaryButtonClassBlock}
                   onClick={() => void onVerifyTwoFactor()}
                   disabled={loading || !twoFactorCode.trim()}
                 >
@@ -917,11 +1016,12 @@ export function AuthPage() {
                   value={resetEmail}
                   onChange={(event) => setResetEmail(event.target.value)}
                   className={authInputClass}
+                  style={authInputStyle}
                 />
                 <ButtonPrimitive
                   type="button"
                   variant="secondary"
-                  className="h-10 w-full border-[hsl(var(--tone-neutral-200))] text-label"
+                  className={authSecondaryButtonClassBlock}
                   onClick={() => void onRequestReset()}
                   disabled={loading || !isLikelyEmail(resetEmail)}
                 >
@@ -933,6 +1033,7 @@ export function AuthPage() {
                   value={resetCode}
                   onChange={(event) => setResetCode(event.target.value)}
                   className={authInputClass}
+                  style={authInputStyle}
                 />
                 <InputPrimitive
                   id="reset-password"
@@ -941,11 +1042,12 @@ export function AuthPage() {
                   value={resetPassword}
                   onChange={(event) => setResetPassword(event.target.value)}
                   className={authInputClass}
+                  style={authInputStyle}
                 />
                 <ButtonPrimitive
                   type="button"
                   variant="secondary"
-                  className="h-10 w-full border-[hsl(var(--tone-neutral-200))] text-label"
+                  className={authSecondaryButtonClassBlock}
                   onClick={() => void onConfirmReset()}
                   disabled={loading || !resetCode.trim() || !isStrongPassword(resetPassword)}
                 >
@@ -959,7 +1061,7 @@ export function AuthPage() {
           </div>
         ) : awaitingEmailVerification ? (
           <div className="space-y-3 rounded-md border border-[hsl(var(--tone-accent-200))] bg-[hsl(var(--tone-accent-50))] p-3">
-            <p className="text-sm font-semibold text-[hsl(var(--auth-brand-navy))]">Verify your email</p>
+            <p className="text-sm font-semibold text-[hsl(var(--tone-neutral-900))]">Verify your email</p>
             <p className="text-sm text-[hsl(var(--tone-neutral-700))]">
               We sent a verification code to <span className="font-semibold">{registerEmail.trim()}</span>.
             </p>
@@ -973,21 +1075,25 @@ export function AuthPage() {
               value={verificationCode}
               onChange={(event) => setVerificationCode(event.target.value)}
               className={authInputClass}
+              style={authInputStyle}
             />
             <div className="flex flex-wrap gap-2">
-              <ButtonPrimitive
-                type="button"
-                className="h-10 bg-[hsl(var(--auth-brand-accent))] text-white hover:bg-[hsl(var(--auth-brand-accent-strong))]"
-                onClick={() => void onConfirmVerification()}
-                disabled={loading || !verificationCode.trim()}
-              >
+                <ButtonPrimitive
+                  type="button"
+                  className={authPrimaryButtonClass}
+                  style={authPrimaryButtonStyle}
+                  onMouseEnter={() => setIsPrimaryCtaHovered(true)}
+                  onMouseLeave={() => setIsPrimaryCtaHovered(false)}
+                  onClick={() => void onConfirmVerification()}
+                  disabled={loading || !verificationCode.trim()}
+                >
                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Verify and continue
               </ButtonPrimitive>
               <ButtonPrimitive
                 type="button"
                 variant="secondary"
-                className="h-10 border-[hsl(var(--tone-neutral-200))] text-label"
+                className={authSecondaryButtonClassInline}
                 onClick={() => void onResendVerification()}
                 disabled={loading}
               >
@@ -996,7 +1102,7 @@ export function AuthPage() {
               <ButtonPrimitive
                 type="button"
                 variant="secondary"
-                className="h-10 border-[hsl(var(--tone-neutral-200))] text-label"
+                className={authSecondaryButtonClassInline}
                 onClick={() => {
                   setAwaitingEmailVerification(false)
                   setMode('signin')
@@ -1009,7 +1115,7 @@ export function AuthPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="space-y-1">
+            <div className="space-y-[0.3rem]">
               <label htmlFor="register-name" className={authLabelClass}>Full name</label>
               <InputPrimitive
                 id="register-name"
@@ -1018,9 +1124,10 @@ export function AuthPage() {
                 value={registerName}
                 onChange={(event) => setRegisterName(event.target.value)}
                 className={authInputClass}
+                style={authInputStyle}
               />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-[0.3rem]">
               <label htmlFor="register-email" className={authLabelClass}>Email address</label>
               <InputPrimitive
                 id="register-email"
@@ -1029,9 +1136,10 @@ export function AuthPage() {
                 value={registerEmail}
                 onChange={(event) => setRegisterEmail(event.target.value)}
                 className={authInputClass}
+                style={authInputStyle}
               />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-[0.3rem]">
               <label htmlFor="register-password" className={authLabelClass}>Password</label>
               <div className={authPasswordWrapClass}>
                 <InputPrimitive
@@ -1041,19 +1149,21 @@ export function AuthPage() {
                   placeholder="Create your password"
                   value={registerPassword}
                   onChange={(event) => setRegisterPassword(event.target.value)}
-                  className="h-10 border-0 bg-transparent shadow-none focus-visible:ring-0"
+                  className={authPasswordInputClass}
+                  style={authInputStyle}
                 />
                 <ButtonPrimitive
                   type="button"
                   className={authPasswordToggleClass}
+                  style={authPasswordToggleStyle}
                   onClick={() => setShowRegisterPassword((value) => !value)}
                   aria-label={showRegisterPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showRegisterPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showRegisterPassword ? <EyeOff className="h-8 w-8" strokeWidth={2} /> : <Eye className="h-8 w-8" strokeWidth={2} />}
                 </ButtonPrimitive>
               </div>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-[0.3rem]">
               <label htmlFor="register-confirm-password" className={authLabelClass}>Confirm password</label>
               <div className={authPasswordWrapClass}>
                 <InputPrimitive
@@ -1063,15 +1173,17 @@ export function AuthPage() {
                   placeholder="Confirm password"
                   value={registerConfirmPassword}
                   onChange={(event) => setRegisterConfirmPassword(event.target.value)}
-                  className="h-10 border-0 bg-transparent shadow-none focus-visible:ring-0"
+                  className={authPasswordInputClass}
+                  style={authInputStyle}
                 />
                 <ButtonPrimitive
                   type="button"
                   className={authPasswordToggleClass}
+                  style={authPasswordToggleStyle}
                   onClick={() => setShowRegisterConfirmPassword((value) => !value)}
                   aria-label={showRegisterConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
                 >
-                  {showRegisterConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showRegisterConfirmPassword ? <EyeOff className="h-8 w-8" strokeWidth={2} /> : <Eye className="h-8 w-8" strokeWidth={2} />}
                 </ButtonPrimitive>
               </div>
             </div>
@@ -1089,6 +1201,9 @@ export function AuthPage() {
             <ButtonPrimitive
               type="button"
               className={authPrimaryButtonClass}
+              style={{ ...authPrimaryButtonStyle, marginTop: '1.3rem' }}
+              onMouseEnter={() => setIsPrimaryCtaHovered(true)}
+              onMouseLeave={() => setIsPrimaryCtaHovered(false)}
               disabled={loading}
               onClick={() => void onRegister()}
             >
