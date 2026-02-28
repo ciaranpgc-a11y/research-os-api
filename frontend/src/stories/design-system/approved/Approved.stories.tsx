@@ -136,63 +136,6 @@ function ApprovedLeftPanel() {
           height: 36rem;
           background-color: hsl(var(--card));
         }
-
-        .approved-left-panel-sync .house-nav-item {
-          --approved-left-nav-hover-bg: hsl(var(--tone-neutral-100) / 0.92);
-          --approved-left-nav-active-bg: hsl(var(--tone-neutral-100) / 0.92);
-        }
-
-        .approved-left-panel-sync .house-nav-item::before {
-          width: var(--marker-width) !important;
-          left: var(--left-nav-rail-left) !important;
-          border-radius: var(--marker-radius) !important;
-        }
-
-        .approved-left-panel-sync .house-left-border::before {
-          width: var(--marker-width) !important;
-          border-radius: var(--marker-radius) !important;
-        }
-
-        .approved-left-panel-sync .house-nav-section-label {
-          font-size: 0.8125rem;
-          line-height: 1.2rem;
-        }
-
-        .approved-left-panel-sync .house-nav-item-workspace,
-        .approved-left-panel-sync .house-nav-item-data,
-        .approved-left-panel-sync .house-nav-item-manuscript,
-        .approved-left-panel-sync .house-nav-item-governance {
-          --approved-left-nav-hover-bg: var(--top-nav-hover-bg-workspace);
-          --approved-left-nav-active-bg: var(--top-nav-active-bg-workspace);
-        }
-
-        .approved-left-panel-sync .house-nav-item-overview,
-        .approved-left-panel-sync .house-nav-item-research,
-        .approved-left-panel-sync .house-nav-item-account {
-          --approved-left-nav-hover-bg: var(--top-nav-hover-bg-profile);
-          --approved-left-nav-active-bg: var(--top-nav-active-bg-profile);
-        }
-
-        .approved-left-panel-sync .house-nav-item-learning-centre {
-          --approved-left-nav-hover-bg: var(--top-nav-hover-bg-learning-centre);
-          --approved-left-nav-active-bg: var(--top-nav-active-bg-learning-centre);
-        }
-
-        .approved-left-panel-sync .house-nav-item-opportunities {
-          --approved-left-nav-hover-bg: var(--top-nav-hover-bg-opportunities);
-          --approved-left-nav-active-bg: var(--top-nav-active-bg-opportunities);
-        }
-
-        .approved-left-panel-sync .house-nav-item:hover {
-          background-color: var(--approved-left-nav-hover-bg);
-          color: hsl(var(--tone-neutral-700));
-        }
-
-        .approved-left-panel-sync .house-nav-item-active,
-        .approved-left-panel-sync .house-nav-item-active:hover {
-          background-color: var(--approved-left-nav-active-bg);
-          color: hsl(var(--tone-neutral-900));
-        }
       `}</style>
     </section>
   )

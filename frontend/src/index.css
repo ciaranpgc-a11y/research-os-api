@@ -571,8 +571,8 @@
 
   .house-nav-section-label {
     padding-inline: 0.5rem;
-    font-size: 0.75rem;
-    line-height: 1.05rem;
+    font-size: 0.8125rem;
+    line-height: 1.2rem;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -609,6 +609,8 @@
     font-weight: 500;
     color: hsl(var(--tone-neutral-700));
     --house-nav-accent: var(--tone-neutral-500);
+    --house-nav-hover-bg: hsl(var(--tone-neutral-100) / 0.92);
+    --house-nav-active-bg: hsl(var(--tone-neutral-100) / 0.92);
     transition-property: background-color, color;
     transition-duration: var(--motion-duration-ui);
     transition-timing-function: ease-out;
@@ -636,12 +638,12 @@
   }
 
   .house-nav-item:hover {
-    background-color: hsl(var(--tone-neutral-100) / 0.92);
+    background-color: var(--house-nav-hover-bg);
     color: hsl(var(--tone-neutral-800));
   }
 
   .house-nav-item-active {
-    background-color: hsl(var(--tone-neutral-100) / 0.92);
+    background-color: var(--house-nav-active-bg);
     color: hsl(var(--tone-neutral-900));
   }
 
@@ -651,38 +653,56 @@
 
   .house-nav-item-overview {
     --house-nav-accent: var(--section-style-profile-accent);
+    --house-nav-hover-bg: var(--top-nav-hover-bg-profile);
+    --house-nav-active-bg: var(--top-nav-active-bg-profile);
   }
 
   .house-nav-item-research {
     --house-nav-accent: var(--section-style-profile-accent);
+    --house-nav-hover-bg: var(--top-nav-hover-bg-profile);
+    --house-nav-active-bg: var(--top-nav-active-bg-profile);
   }
 
   .house-nav-item-account {
     --house-nav-accent: var(--section-style-profile-accent);
+    --house-nav-hover-bg: var(--top-nav-hover-bg-profile);
+    --house-nav-active-bg: var(--top-nav-active-bg-profile);
   }
 
   .house-nav-item-workspace {
     --house-nav-accent: var(--section-style-workspace-accent);
+    --house-nav-hover-bg: var(--top-nav-hover-bg-workspace);
+    --house-nav-active-bg: var(--top-nav-active-bg-workspace);
   }
 
   .house-nav-item-data {
     --house-nav-accent: var(--section-style-workspace-accent);
+    --house-nav-hover-bg: var(--top-nav-hover-bg-workspace);
+    --house-nav-active-bg: var(--top-nav-active-bg-workspace);
   }
 
   .house-nav-item-manuscript {
     --house-nav-accent: var(--section-style-workspace-accent);
+    --house-nav-hover-bg: var(--top-nav-hover-bg-workspace);
+    --house-nav-active-bg: var(--top-nav-active-bg-workspace);
   }
 
   .house-nav-item-governance {
     --house-nav-accent: var(--section-style-workspace-accent);
+    --house-nav-hover-bg: var(--top-nav-hover-bg-workspace);
+    --house-nav-active-bg: var(--top-nav-active-bg-workspace);
   }
 
   .house-nav-item-learning-centre {
     --house-nav-accent: var(--section-style-learning-centre-accent);
+    --house-nav-hover-bg: var(--top-nav-hover-bg-learning-centre);
+    --house-nav-active-bg: var(--top-nav-active-bg-learning-centre);
   }
 
   .house-nav-item-opportunities {
     --house-nav-accent: var(--section-style-opportunities-accent);
+    --house-nav-hover-bg: var(--top-nav-hover-bg-opportunities);
+    --house-nav-active-bg: var(--top-nav-active-bg-opportunities);
   }
 
   .house-nav-item-meta-group {
