@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Loader2, Menu, Moon, Search, Sun } from 'lucide-react'
+import { Loader2, Menu, Search } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import { AxiomosMark } from '@/components/auth/AxiomosMark'
@@ -38,8 +38,6 @@ export function TopBar({
   showLeftNavButton = true,
 }: TopBarProps) {
   const navigate = useNavigate()
-  const theme = useAaweStore((state) => state.theme)
-  const toggleTheme = useAaweStore((state) => state.toggleTheme)
   const searchQuery = useAaweStore((state) => state.searchQuery)
   const setSearchQuery = useAaweStore((state) => state.setSearchQuery)
 
@@ -97,8 +95,8 @@ export function TopBar({
 
   return (
     <header className="border-b border-[hsl(var(--stroke-soft)/0.82)] bg-card/95 backdrop-blur">
-      <div className="flex h-14 items-center gap-4 px-4 xl:px-5">
-        <div className="flex min-w-[11.5rem] shrink-0 items-center gap-3 xl:min-w-[14.5rem] 2xl:min-w-72">
+      <div className="flex h-14 items-center px-[var(--header-side-padding)] xl:px-[var(--header-side-padding-xl)]">
+        <div className="flex min-w-[11.5rem] shrink-0 items-center gap-[var(--header-gap-group)] xl:min-w-[14.5rem] 2xl:min-w-72">
           {showLeftNavButton ? (
             <TooltipProvider delayDuration={100}>
               <Tooltip>
@@ -113,7 +111,7 @@ export function TopBar({
             </TooltipProvider>
           ) : null}
 
-          <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex min-w-0 items-center gap-[var(--header-gap-tight)]">
             <AxiomosMark className="h-7 w-auto shrink-0 text-[hsl(var(--primary))]" />
             <div className="min-w-0 pr-1">
               <span className="block whitespace-nowrap text-base font-semibold tracking-tight text-[hsl(var(--tone-neutral-900))]">
@@ -125,7 +123,7 @@ export function TopBar({
             </div>
           </div>
 
-          <nav className="ml-2.5 hidden items-center gap-1.5 xl:flex">
+          <nav className="hidden items-center gap-[var(--header-gap-tight)] xl:flex">
             <button
               type="button"
               onClick={() => navigate('/workspaces')}
@@ -143,8 +141,8 @@ export function TopBar({
           </nav>
         </div>
 
-        <div className="ml-3 hidden w-full max-w-4xl flex-1 items-center gap-2.5 md:flex">
-          <div className="relative min-w-0 flex-1">
+        <div className="ml-[var(--header-gap-group)] hidden min-w-0 flex-1 items-center gap-[var(--header-gap-group)] md:flex">
+          <div className="relative min-w-0 flex-1 max-w-[var(--header-search-max)]">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--tone-neutral-500))]" />
             <Input
               placeholder={
@@ -157,33 +155,35 @@ export function TopBar({
               onChange={(event) => setSearchQuery(event.target.value)}
             />
           </div>
-          <button
-            type="button"
-            onClick={() => navigate('/learning-centre')}
-            className={cn(
-              topNavItemBase,
-              topNavItemLearningCentre,
-              topNavItemIdle,
-              pathname.startsWith('/learning-centre') && topNavItemActive,
-            )}
-          >
-            Learning centre
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/opportunities')}
-            className={cn(
-              topNavItemBase,
-              topNavItemOpportunities,
-              topNavItemIdle,
-              pathname.startsWith('/opportunities') && topNavItemActive,
-            )}
-          >
-            Opportunities
-          </button>
+          <div className="hidden items-center gap-[var(--header-gap-tight)] lg:flex">
+            <button
+              type="button"
+              onClick={() => navigate('/learning-centre')}
+              className={cn(
+                topNavItemBase,
+                topNavItemLearningCentre,
+                topNavItemIdle,
+                pathname.startsWith('/learning-centre') && topNavItemActive,
+              )}
+            >
+              Learning centre
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/opportunities')}
+              className={cn(
+                topNavItemBase,
+                topNavItemOpportunities,
+                topNavItemIdle,
+                pathname.startsWith('/opportunities') && topNavItemActive,
+              )}
+            >
+              Opportunities
+            </button>
+          </div>
         </div>
 
-        <div className="ml-auto flex items-center gap-2.5">
+        <div className="ml-auto flex items-center gap-[var(--header-gap-utility)]">
           {isGuest ? (
             <Button
               size="sm"
@@ -218,17 +218,6 @@ export function TopBar({
             </>
           )}
 
-          <TooltipProvider delayDuration={100}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="icon" className={utilityButtonClass} onClick={toggleTheme}>
-                  {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                  <span className="sr-only">Toggle theme</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
         </div>
       </div>
     </header>

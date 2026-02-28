@@ -62,7 +62,6 @@ function ApprovedHeaderBar() {
 
         .approved-header-no-motion .house-top-nav-item:hover {
           transform: none !important;
-          color: hsl(var(--house-top-nav-accent)) !important;
         }
       `}</style>
     </section>
