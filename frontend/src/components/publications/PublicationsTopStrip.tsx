@@ -295,6 +295,11 @@ const HOUSE_METRIC_SUBTITLE_CLASS = publicationsHouseHeadings.metricSubtitle
 const HOUSE_METRIC_DETAIL_CLASS = publicationsHouseHeadings.metricDetail
 const HOUSE_TILE_SUBTITLE_CLASS = cn('house-metric-subtitle-row', HOUSE_METRIC_SUBTITLE_CLASS)
 const HOUSE_TILE_DETAIL_CLASS = cn('mt-0.5 min-h-[2.4rem]', HOUSE_METRIC_DETAIL_CLASS)
+const HOUSE_METRIC_RIGHT_CHART_TITLE_CLASS = 'house-metric-right-chart-title'
+const HOUSE_METRIC_RIGHT_CHART_HEADER_CLASS = 'house-metric-right-chart-header'
+const HOUSE_METRIC_RIGHT_CHART_PANEL_CLASS = 'house-metric-right-chart-panel'
+const HOUSE_METRIC_RIGHT_CHART_PANEL_TOGGLE_CLASS = 'house-metric-right-chart-panel-toggle'
+const HOUSE_METRIC_RIGHT_CHART_BODY_CLASS = 'house-metric-right-chart-body'
 const HOUSE_HEADING_LABEL_CLASS = publicationsHouseHeadings.label
 const HOUSE_CHART_TRANSITION_CLASS = publicationsHouseMotion.chartPanel
 const HOUSE_CHART_ENTERED_CLASS = publicationsHouseMotion.chartEnter
@@ -414,7 +419,10 @@ const HOUSE_CHART_RING_PANEL_CLASS = publicationsHouseCharts.ringPanel
 const HOUSE_CHART_RING_SIZE_CLASS = publicationsHouseCharts.ringSize
 const HOUSE_CHART_MINI_DONUT_CLASS = publicationsHouseCharts.miniDonut
 const HOUSE_METRIC_PROGRESS_PANEL_CLASS =
-  cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'flex flex-1 flex-col gap-2.5 px-2 py-2 transition-[opacity,transform,filter] duration-320 ease-out')
+  cn(
+    HOUSE_SURFACE_STRONG_PANEL_CLASS,
+    'house-metric-tile-chart-surface flex flex-1 flex-col gap-2.5 px-2 py-2 transition-[opacity,transform,filter] duration-320 ease-out',
+  )
 const HOUSE_LINE_CHART_SURFACE_CLASS =
   cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'relative flex-1 px-1.5 pb-1.5 pt-2')
 const HOUSE_FIELD_PERCENTILE_TOGGLE_WIDTH_CLASS = 'w-10'
@@ -1212,7 +1220,6 @@ function buildTotalCitationsChartModel(tile: PublicationMetricTilePayload): Tota
     {
       key: `year-${projectedYear}-ytd`,
       axisLabel: String(projectedYear).slice(-2),
-      axisSubLabel: 'YTD',
       value: currentYearYtd,
       isYtd: true,
       relation: relationVsMean(currentYearYtd, meanYearValue),
@@ -1224,7 +1231,15 @@ function buildTotalCitationsChartModel(tile: PublicationMetricTilePayload): Tota
   }
 }
 
-function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload }) {
+function TotalCitationsModeChart({
+  tile,
+  chartTitle,
+  chartTitleClassName,
+}: {
+  tile: PublicationMetricTilePayload
+  chartTitle?: string
+  chartTitleClassName?: string
+}) {
   const [chartVisible, setChartVisible] = useState(true)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const model = useMemo(() => buildTotalCitationsChartModel(tile), [tile])
@@ -1265,6 +1280,11 @@ function TotalCitationsModeChart({ tile }: { tile: PublicationMetricTilePayload 
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {chartTitle ? (
+        <p className={cn(chartTitleClassName || HOUSE_CHART_AXIS_TITLE_CLASS, 'mb-1')}>
+          {chartTitle}
+        </p>
+      ) : null}
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
@@ -1402,11 +1422,14 @@ function TotalCitationsTile({
             {primaryValue}
           </p>
           <p className={HOUSE_TILE_SUBTITLE_CLASS}>Lifetime citations</p>
-          <p className={HOUSE_TILE_DETAIL_CLASS}>Last 5 years shown</p>
         </div>
 
         <div className={cn('min-h-0 border-l pl-3', HOUSE_DIVIDER_BORDER_SOFT_CLASS)}>
-          <TotalCitationsModeChart tile={tile} />
+          <TotalCitationsModeChart
+            tile={tile}
+            chartTitle="Citations per year (last 5 years)"
+            chartTitleClassName={HOUSE_METRIC_RIGHT_CHART_TITLE_CLASS}
+          />
         </div>
       </div>
     </div>
@@ -1434,7 +1457,7 @@ function StructuredMetricTile({
   pinBadgeBottom?: boolean
   centerBadge?: boolean
   badgePlacement?: 'inline' | 'topRight' | 'leftChart'
-  subtitle: ReactNode
+  subtitle?: ReactNode
   detail?: ReactNode
   visual: ReactNode
   contentGridClassName?: string
@@ -1445,6 +1468,11 @@ function StructuredMetricTile({
   const isTopRightBadge = badgePlacement === 'topRight'
   const isLeftChartBadge = badgePlacement === 'leftChart'
   const isFloatingBadge = isTopRightBadge || isLeftChartBadge
+  const hasSubtitle = !(
+    subtitle === undefined
+    || subtitle === null
+    || (typeof subtitle === 'string' && subtitle.trim().length === 0)
+  )
   return (
     <div
       role="button"
@@ -1495,7 +1523,7 @@ function StructuredMetricTile({
           >
             {primaryValue}
           </p>
-          <p className={HOUSE_TILE_SUBTITLE_CLASS}>{subtitle}</p>
+          {hasSubtitle ? <p className={HOUSE_TILE_SUBTITLE_CLASS}>{subtitle}</p> : null}
           {typeof detail === 'string'
             ? <p className={HOUSE_TILE_DETAIL_CLASS}>{detail}</p>
             : detail
@@ -1619,7 +1647,7 @@ function HIndexYearChart({
   const scaledMax = Math.max(1, animatedMax)
   const axisLayout = buildChartAxisLayout({
     axisLabels: bars.map((bar) => String(bar.year).slice(-2)),
-    axisSubLabels: bars.map((bar) => (bar.current ? 'YTD' : null)),
+    axisSubLabels: bars.map(() => null),
     dense: bars.length >= 6,
   })
 
@@ -1633,8 +1661,11 @@ function HIndexYearChart({
         style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
       >
         <div
-          className="absolute inset-x-2 top-4"
-          style={{ bottom: `${axisLayout.plotBottomRem}rem` }}
+          className="absolute inset-x-2"
+          style={{
+            top: 'var(--metric-right-chart-top-inset, 1rem)',
+            bottom: `${axisLayout.plotBottomRem}rem`,
+          }}
         >
           {[50].map((pct) => (
             <div
@@ -1695,11 +1726,6 @@ function HIndexYearChart({
           {bars.map((bar, index) => (
             <div key={`${bar.year}-${index}-axis`} className={cn('text-center leading-none', HOUSE_TOGGLE_CHART_LABEL_CLASS)}>
               <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-0.5 leading-tight')}>{String(bar.year).slice(-2)}</p>
-              {bar.current ? (
-                <p className={cn(HOUSE_CHART_AXIS_SUBTEXT_CLASS, 'break-words px-0.5')}>
-                  YTD
-                </p>
-              ) : null}
             </div>
           ))}
         </div>
@@ -1724,6 +1750,7 @@ function PublicationsPerYearChart({
   autoScaleByWindow = false,
   showMeanLine = false,
   chartTitle,
+  chartTitleClassName,
   activeWindowMode,
   onWindowModeChange,
 }: {
@@ -1741,6 +1768,7 @@ function PublicationsPerYearChart({
   autoScaleByWindow?: boolean
   showMeanLine?: boolean
   chartTitle?: string
+  chartTitleClassName?: string
   activeWindowMode?: PublicationsWindowMode
   onWindowModeChange?: (mode: PublicationsWindowMode) => void
 }) {
@@ -1819,7 +1847,7 @@ function PublicationsPerYearChart({
         value: Math.max(0, bar.value),
         current: bar.current,
         axisLabel: String(bar.year).slice(-2),
-        axisSubLabel: showCurrentPeriodSemantic && bar.current ? 'YTD' : undefined,
+        axisSubLabel: undefined,
       }))
   ), [historyBars, showCurrentPeriodSemantic])
 
@@ -1854,7 +1882,7 @@ function PublicationsPerYearChart({
               ? shortYearLabel(startYear)
               : `${shortYearLabel(startYear)}-${shortYearLabel(endYear)}`
             : formatPublicationYearLabel(startYear, endYear, fullYearLabels),
-          axisSubLabel: isSingleCurrentYear ? 'YTD' : undefined,
+          axisSubLabel: undefined,
         })
       }
       let visibleBars = grouped.slice(-MAX_PUBLICATION_CHART_BARS)
@@ -1889,7 +1917,7 @@ function PublicationsPerYearChart({
         ? (() => {
           const startYear = Number(firstBar.key.split('-')[0] || firstBar.axisLabel)
           const endYear = Number(lastBar.key.split('-').slice(-1)[0] || lastBar.axisLabel)
-          const suffix = lastBar.current ? ' YTD' : ''
+          const suffix = ''
           if (Number.isFinite(startYear) && Number.isFinite(endYear)) {
             if (startYear === endYear) {
               return `${startYear}${suffix}`
@@ -2132,8 +2160,8 @@ function PublicationsPerYearChart({
       data-ui="publications-per-year-chart"
       data-house-role="metric-chart"
     >
-          {chartTitle ? (
-        <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, 'mb-1')}>
+      {chartTitle ? (
+        <p className={cn(chartTitleClassName || HOUSE_CHART_AXIS_TITLE_CLASS, 'mb-1')}>
           {chartTitle}
         </p>
       ) : null}
@@ -2890,7 +2918,6 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
     { key: 'first', label: 'First authorship', value: Math.round(firstAuthorshipPct), tone: HOUSE_CHART_BAR_ACCENT_CLASS },
     { key: 'second', label: 'Second authorship', value: Math.round(secondAuthorshipPct), tone: HOUSE_CHART_BAR_NEUTRAL_CLASS },
     { key: 'senior', label: 'Senior authorship', value: Math.round(seniorAuthorshipPct), tone: HOUSE_CHART_BAR_WARNING_CLASS },
-    { key: 'leadership', label: 'Leadership index', value: Math.round(leadershipIndexPct), tone: HOUSE_CHART_BAR_POSITIVE_CLASS },
   ]
 
   return (
@@ -2904,8 +2931,8 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
         {rows.map((row, index) => (
           <div key={row.key} className="space-y-1.5">
             <div className="flex items-center justify-between gap-2 text-caption leading-none">
-              <span className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'font-semibold')}>{row.label}</span>
-              <span className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'font-semibold')}>{row.value}%</span>
+              <span className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'house-metric-support-text font-semibold')}>{row.label}</span>
+              <span className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'house-metric-support-text font-semibold')}>{row.value}%</span>
             </div>
             <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[0.44rem]')}>
               <div
@@ -2929,7 +2956,6 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
 
 function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayload }) {
   const [panelVisible, setPanelVisible] = useState(true)
-  const [barsExpanded, setBarsExpanded] = useState(false)
   const chartData = useMemo(
     () => ((tile.chart_data || {}) as Record<string, unknown>),
     [tile.chart_data],
@@ -2952,12 +2978,19 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
     Number(chartData.unique_countries),
     Number(chartData.affiliated_countries),
   ]
+  const continentCandidates = [
+    Number(chartData.continents),
+    Number(chartData.continents_count),
+    Number(chartData.unique_continents),
+    Number(chartData.affiliated_continents),
+  ]
 
   const uniqueCollaborators = Number.isFinite(uniqueCollaboratorsRaw) ? Math.max(0, Math.round(uniqueCollaboratorsRaw)) : 0
   const repeatRatePct = Number.isFinite(repeatRateRaw) ? Math.max(0, Math.min(100, repeatRateRaw)) : 0
   const derivedCoverage = useMemo(() => {
     const normalizedInstitutionSet = new Set<string>()
     const normalizedCountrySet = new Set<string>()
+    const normalizedContinentSet = new Set<string>()
 
     const pushValue = (set: Set<string>, raw: unknown) => {
       if (typeof raw !== 'string') {
@@ -3000,9 +3033,31 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
         pushValue(normalizedCountrySet, row.country)
         pushValue(normalizedCountrySet, row.country_name)
         pushValue(normalizedCountrySet, row.country_code)
+        pushValue(normalizedContinentSet, row.continent)
+        pushValue(normalizedContinentSet, row.continent_name)
+        pushValue(normalizedContinentSet, row.region)
+        pushValue(normalizedContinentSet, row.region_name)
         return
       }
       pushValue(normalizedCountrySet, raw)
+    }
+
+    const collectContinent = (raw: unknown) => {
+      if (Array.isArray(raw)) {
+        raw.forEach(collectContinent)
+        return
+      }
+      if (raw && typeof raw === 'object') {
+        const row = raw as Record<string, unknown>
+        pushValue(normalizedContinentSet, row.name)
+        pushValue(normalizedContinentSet, row.display_name)
+        pushValue(normalizedContinentSet, row.continent)
+        pushValue(normalizedContinentSet, row.continent_name)
+        pushValue(normalizedContinentSet, row.region)
+        pushValue(normalizedContinentSet, row.region_name)
+        return
+      }
+      pushValue(normalizedContinentSet, raw)
     }
 
     const collectFromMapKeys = (
@@ -3023,8 +3078,13 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
     collectCountry(chartData.country_names)
     collectCountry(chartData.top_countries)
     collectCountry(chartData.countries_breakdown)
+    collectContinent(chartData.continents_list)
+    collectContinent(chartData.continent_names)
+    collectContinent(chartData.top_continents)
+    collectContinent(chartData.continents_breakdown)
     collectFromMapKeys(normalizedInstitutionSet, chartData.institutions_by_name)
     collectFromMapKeys(normalizedCountrySet, chartData.countries_by_name)
+    collectFromMapKeys(normalizedContinentSet, chartData.continents_by_name)
 
     const drilldownPublications = Array.isArray(drilldownData.publications)
       ? drilldownData.publications
@@ -3040,6 +3100,11 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
       collectCountry(row.country)
       collectCountry(row.country_name)
       collectCountry(row.countries)
+      collectContinent(row.continent)
+      collectContinent(row.continent_name)
+      collectContinent(row.continents)
+      collectContinent(row.region)
+      collectContinent(row.region_name)
 
       const affiliations = Array.isArray(row.affiliations) ? row.affiliations : []
       affiliations.forEach((affiliation) => {
@@ -3052,12 +3117,17 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
         collectInstitution(aff.organization)
         collectCountry(aff.country)
         collectCountry(aff.country_name)
+        collectContinent(aff.continent)
+        collectContinent(aff.continent_name)
+        collectContinent(aff.region)
+        collectContinent(aff.region_name)
       })
     })
 
     return {
       institutionCount: normalizedInstitutionSet.size,
       countryCount: normalizedCountrySet.size,
+      continentCount: normalizedContinentSet.size,
     }
   }, [chartData, drilldownData.publications])
 
@@ -3071,39 +3141,36 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
     explicitCountryCount ? Math.round(explicitCountryCount) : 0,
     derivedCoverage.countryCount,
   )
+  const explicitContinentCount = continentCandidates.find((value) => Number.isFinite(value) && value > 0)
+  const continentsBase = Math.max(
+    explicitContinentCount ? Math.round(explicitContinentCount) : 0,
+    derivedCoverage.continentCount,
+  )
   const institutions = institutionsBase > 0 ? institutionsBase : 0
   const countries = countriesBase > 0 ? countriesBase : 0
+  const continents = continentsBase > 0 ? continentsBase : 0
 
   const animationKey = useMemo(
-    () => `${uniqueCollaborators}-${Math.round(repeatRatePct)}-${institutions}-${countries}`,
-    [countries, institutions, repeatRatePct, uniqueCollaborators],
+    () => `${uniqueCollaborators}-${Math.round(repeatRatePct)}-${institutions}-${countries}-${continents}`,
+    [continents, countries, institutions, repeatRatePct, uniqueCollaborators],
   )
   useEffect(() => {
     setPanelVisible(false)
-    setBarsExpanded(false)
-    let rafOne = 0
-    let rafTwo = 0
-    rafOne = window.requestAnimationFrame(() => {
+    const rafOne = window.requestAnimationFrame(() => {
       setPanelVisible(true)
-      rafTwo = window.requestAnimationFrame(() => {
-        setBarsExpanded(true)
-      })
     })
     return () => {
       window.cancelAnimationFrame(rafOne)
-      window.cancelAnimationFrame(rafTwo)
     }
   }, [animationKey])
 
-  const rows = [
-    { key: 'collaborators', label: 'Unique collaborators', value: uniqueCollaborators, unit: 'count', tone: HOUSE_CHART_BAR_ACCENT_CLASS },
-    { key: 'repeat_rate', label: 'Repeat collaborator rate', value: repeatRatePct, unit: 'percent', tone: HOUSE_CHART_BAR_POSITIVE_CLASS },
-    { key: 'institutions', label: 'Institutions', value: institutions, unit: 'count', tone: HOUSE_CHART_BAR_WARNING_CLASS },
-    { key: 'countries', label: 'Countries', value: countries, unit: 'count', tone: HOUSE_CHART_BAR_NEUTRAL_CLASS },
+  const summaryRows = [
+    { key: 'institutions', label: 'Institutions', value: institutions },
+    { key: 'countries', label: 'Countries', value: countries },
+    { key: 'continents', label: 'Continents', value: continents },
   ] as const
 
-  const maxCountMetric = Math.max(1, uniqueCollaborators, institutions, countries)
-  const totalSignal = uniqueCollaborators + institutions + countries + Math.round(repeatRatePct)
+  const totalSignal = uniqueCollaborators + institutions + countries + continents + Math.round(repeatRatePct)
   if (totalSignal <= 0) {
     return <div className={dashboardTileStyles.emptyChart}>No collaboration data</div>
   }
@@ -3116,40 +3183,32 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
           panelVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
         )}
       >
-        {rows.map((row, index) => {
-          const isPercent = row.unit === 'percent'
-          const clamped = isPercent
-            ? Math.max(0, Math.min(100, Number(row.value)))
-            : Math.max(0, Number(row.value))
-          const widthPct = isPercent
-            ? clamped
-            : clamped <= 0
-              ? 0
-              : Math.max(10, Math.min(100, (clamped / maxCountMetric) * 100))
-          const valueLabel = isPercent ? `${Math.round(clamped)}%` : formatInt(clamped)
-
-          return (
-            <div key={row.key} className="space-y-1.5">
-              <div className="flex items-center justify-between gap-2 text-caption leading-none">
-                <span className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'font-semibold')}>{row.label}</span>
-                <span className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'font-semibold')}>{valueLabel}</span>
+        <div className="flex h-full min-h-0 flex-col">
+          {summaryRows.map((row, index) => (
+            <div key={row.key}>
+              <div className="grid grid-cols-[minmax(0,1fr)_3.25rem] items-center gap-x-3 py-1.5">
+                <span className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'house-metric-support-text leading-tight')}>{row.label}</span>
+                <span className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'house-metric-support-text leading-tight text-center')}>{formatInt(Math.max(0, Number(row.value)))}</span>
               </div>
+              {index < summaryRows.length - 1 ? (
+                <div className="my-1 h-px bg-[hsl(var(--stroke-soft)/0.72)]" />
+              ) : null}
+            </div>
+          ))}
+          <div className="mt-3.5 pt-0.5">
+            <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'house-metric-support-text mb-1 leading-tight')}>Repeat collaborator rate</p>
+            <div className="grid grid-cols-[minmax(0,1fr)_2.9rem] items-center gap-x-3">
               <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[0.44rem]')}>
                 <div
-                  className={cn(
-                    'h-full rounded-full transition-[width] duration-320 ease-out',
-                    row.tone,
-                  )}
-                  style={{
-                    width: `${barsExpanded ? widthPct : 0}%`,
-                    transitionDelay: `${Math.min(220, index * 45)}ms`,
-                  }}
+                  className={cn('h-full rounded-full transition-[width] duration-[var(--motion-duration-ui)] ease-[var(--motion-ease-default)]', HOUSE_CHART_BAR_POSITIVE_CLASS)}
+                  style={{ width: `${repeatRatePct}%` }}
                   aria-hidden="true"
                 />
               </div>
+              <span className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'house-metric-support-text text-right leading-tight')}>{`${Math.round(repeatRatePct)}%`}</span>
             </div>
-          )
-        })}
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -4891,8 +4950,11 @@ function HIndexNeedsChart({
         style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
       >
         <div
-          className="absolute inset-x-2 top-4"
-          style={{ bottom: `${axisLayout.plotBottomRem}rem` }}
+          className="absolute inset-x-2"
+          style={{
+            top: 'var(--metric-right-chart-top-inset, 1rem)',
+            bottom: `${axisLayout.plotBottomRem}rem`,
+          }}
         >
           {[50].map((pct) => (
             <div
@@ -4974,9 +5036,15 @@ function HIndexNeedsChart({
 function HIndexTrajectoryPanel({
   tile,
   mode,
+  chartHeader,
+  chartHeaderClassName,
+  chartHeaderKind = 'title',
 }: {
   tile: PublicationMetricTilePayload
   mode: HIndexViewMode
+  chartHeader?: ReactNode
+  chartHeaderClassName?: string
+  chartHeaderKind?: 'title' | 'toggle'
 }) {
   const [renderMode, setRenderMode] = useState<HIndexViewMode>(mode)
   const [visible, setVisible] = useState(false)
@@ -5020,22 +5088,44 @@ function HIndexTrajectoryPanel({
   return (
     <div
       className={cn(
-        'h-full w-full transition-opacity ease-out',
-        visible ? 'opacity-100' : 'opacity-0',
+        HOUSE_METRIC_RIGHT_CHART_PANEL_CLASS,
+        chartHeader && chartHeaderKind === 'toggle' && HOUSE_METRIC_RIGHT_CHART_PANEL_TOGGLE_CLASS,
       )}
-      style={{ transitionDuration: `${fadeMs}ms` }}
     >
-      {renderMode === 'needed'
-        ? <HIndexNeedsChart tile={tile} animate={false} />
-        : <HIndexYearChart tile={tile} showCaption={false} animate={false} />}
+      {chartHeader ? (
+        <div className={cn(chartHeaderClassName || HOUSE_METRIC_RIGHT_CHART_HEADER_CLASS)}>
+          {chartHeader}
+        </div>
+      ) : null}
+      <div
+        className={cn(
+          HOUSE_METRIC_RIGHT_CHART_BODY_CLASS,
+          'transition-opacity ease-out',
+          visible ? 'opacity-100' : 'opacity-0',
+        )}
+        style={{ transitionDuration: `${fadeMs}ms` }}
+      >
+        {renderMode === 'needed'
+          ? <HIndexNeedsChart tile={tile} animate={false} />
+          : <HIndexYearChart tile={tile} showCaption={false} animate={false} />}
+      </div>
     </div>
   )
 }
 
-function HIndexProgressInline({ tile }: { tile: PublicationMetricTilePayload }) {
+function HIndexProgressInline({
+  tile,
+  progressLabel,
+}: {
+  tile: PublicationMetricTilePayload
+  progressLabel?: string
+}) {
   const progressMeta = buildHIndexProgressMeta(tile)
   return (
-    <div className="w-full max-w-[11.7rem] space-y-1">
+    <div className="mt-4 w-full max-w-[11.7rem] space-y-1.5">
+      {progressLabel ? (
+        <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'house-metric-support-text leading-tight')}>{progressLabel}</p>
+      ) : null}
       <div className="flex items-center gap-2">
         <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-1.5 flex-1')}>
           <div
@@ -5044,7 +5134,7 @@ function HIndexProgressInline({ tile }: { tile: PublicationMetricTilePayload }) 
             aria-hidden="true"
           />
         </div>
-        <span className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'font-medium leading-none')}>
+        <span className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'house-metric-support-text font-medium leading-none')}>
           {Math.round(progressMeta.progressPct)}%
         </span>
       </div>
@@ -5117,7 +5207,15 @@ function HIndexViewToggle({
   )
 }
 
-function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload }) {
+function InfluentialTrendPanel({
+  tile,
+  chartTitle,
+  chartTitleClassName,
+}: {
+  tile: PublicationMetricTilePayload
+  chartTitle?: string
+  chartTitleClassName?: string
+}) {
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const primarySeries = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const fallbackSeries = toNumberArray(tile.sparkline || []).map((item) => Math.max(0, item))
@@ -5159,6 +5257,11 @@ function InfluentialTrendPanel({ tile }: { tile: PublicationMetricTilePayload })
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
+      {chartTitle ? (
+        <p className={cn(chartTitleClassName || HOUSE_CHART_AXIS_TITLE_CLASS, 'mb-1')}>
+          {chartTitle}
+        </p>
+      ) : null}
       <div
         className={cn(
           HOUSE_LINE_CHART_SURFACE_CLASS,
@@ -5627,8 +5730,15 @@ export function PublicationsTopStrip({
                     primaryValue = String(tile.value_display || mainValueDisplay || '\u2014').replace(/\s+papers?$/i, '')
                   }
                   secondaryText = 'Lifetime publications'
-                  detailText = 'Last 5 years shown'
-                  visual = <PublicationsPerYearChart tile={tile} showCaption={false} />
+                  detailText = undefined
+                  visual = (
+                    <PublicationsPerYearChart
+                      tile={tile}
+                      showCaption={false}
+                      chartTitle="Publications per year (last 5 years)"
+                      chartTitleClassName={HOUSE_METRIC_RIGHT_CHART_TITLE_CLASS}
+                    />
+                  )
                 } else if (tile.key === 'momentum') {
                   const activeLift = momentumWindowMode === '5y'
                     ? momentumYearBreakdown?.liftPct ?? null
@@ -5716,23 +5826,27 @@ export function PublicationsTopStrip({
                 } else if (tile.key === 'h_index_projection') {
                   const hIndexMeta = buildHIndexProgressMeta(tile)
                   primaryValue = Number.isFinite(hIndexMeta.currentH) ? `h ${formatInt(hIndexMeta.currentH)}` : mainValueDisplay
-                  secondaryText = `Progress to h ${formatInt(hIndexMeta.targetH)}`
-                  detailText = <HIndexProgressInline tile={tile} />
-                  badgeNode = (
-                    <HIndexViewToggle
-                      mode={hIndexViewMode}
-                      onModeChange={(nextMode) => {
-                        if (nextMode === hIndexViewMode) {
-                          return
-                        }
-                        setHIndexViewMode(nextMode)
-                      }}
-                    />
-                  )
+                  secondaryText = undefined
+                  detailText = <HIndexProgressInline tile={tile} progressLabel={`Progress to h ${formatInt(hIndexMeta.targetH)}`} />
+                  rightPaneClassName = 'items-stretch pl-3'
+                  badgeNode = undefined
                   visual = (
                     <HIndexTrajectoryPanel
                       tile={tile}
                       mode={hIndexViewMode}
+                      chartHeader={(
+                        <HIndexViewToggle
+                          mode={hIndexViewMode}
+                          onModeChange={(nextMode) => {
+                            if (nextMode === hIndexViewMode) {
+                              return
+                            }
+                            setHIndexViewMode(nextMode)
+                          }}
+                        />
+                      )}
+                      chartHeaderKind="toggle"
+                      chartHeaderClassName={HOUSE_METRIC_RIGHT_CHART_HEADER_CLASS}
                     />
                   )
                 } else if (tile.key === 'impact_concentration') {
@@ -5918,7 +6032,13 @@ export function PublicationsTopStrip({
                   primaryValue = mainValueDisplay
                   secondaryText = 'Influential citations'
                   detailText = influentialRatioWhole === null ? undefined : `${influentialRatioWhole}% of total citations`
-                  visual = <InfluentialTrendPanel tile={tile} />
+                  visual = (
+                    <InfluentialTrendPanel
+                      tile={tile}
+                      chartTitle="Influential citations over time"
+                      chartTitleClassName={HOUSE_METRIC_RIGHT_CHART_TITLE_CLASS}
+                    />
+                  )
                 }
 
                 return (

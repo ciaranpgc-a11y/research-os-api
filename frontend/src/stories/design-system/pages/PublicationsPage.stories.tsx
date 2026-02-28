@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
+import type { ReactNode } from 'react'
 
 import { ProfilePublicationsPage } from '@/pages/profile-publications-page'
 import type { ProfilePublicationsPageFixture } from '@/pages/profile-publications-page'
@@ -23,6 +24,39 @@ export default meta
 type Story = StoryObj<typeof ProfilePublicationsPage>
 type PublicationsLiveArgs = {
   paperCount: number
+}
+
+function PublicationsLayoutPreview({ children }: { children: ReactNode }) {
+  return (
+    <div
+      className="sb-publications-layout-preview"
+      style={{
+        ['--sb-publications-content-max' as string]: '94rem',
+        ['--sb-publications-gutter' as string]: '1.25rem',
+        ['--sb-publications-grid-gap' as string]: '0.95rem',
+        ['--sb-publications-grid-padding' as string]: '0.75rem',
+        ['--sb-publications-tile-min' as string]: '24rem',
+      }}
+    >
+      <style>{`
+        .sb-publications-layout-preview [data-house-role="content-container"].house-content-container-wide {
+          margin-inline: auto;
+          max-width: var(--sb-publications-content-max);
+          padding-inline: var(--sb-publications-gutter);
+        }
+        .sb-publications-layout-preview .publications-insights-grid {
+          gap: var(--sb-publications-grid-gap);
+          padding: var(--sb-publications-grid-padding);
+        }
+        @media (min-width: 1024px) {
+          .sb-publications-layout-preview .publications-insights-grid {
+            grid-template-columns: repeat(auto-fit, minmax(var(--sb-publications-tile-min), 1fr));
+          }
+        }
+      `}</style>
+      {children}
+    </div>
+  )
 }
 
 function cloneFixture<T>(value: T): T {
@@ -411,11 +445,13 @@ function buildLargePublicationsFixture(paperCount: number): ProfilePublicationsP
 function PublicationsCompleteLive({ paperCount }: PublicationsLiveArgs) {
   const fixture = buildLargePublicationsFixture(paperCount)
   return (
-    <AccountRouteShell
-      initialEntry="/profile/publications"
-      path="/profile/publications"
-      element={<ProfilePublicationsPage fixture={fixture} />}
-    />
+    <PublicationsLayoutPreview>
+      <AccountRouteShell
+        initialEntry="/profile/publications"
+        path="/profile/publications"
+        element={<ProfilePublicationsPage fixture={fixture} />}
+      />
+    </PublicationsLayoutPreview>
   )
 }
 

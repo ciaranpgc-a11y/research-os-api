@@ -166,6 +166,22 @@
     --text-body-strong-line: 1.5rem;
     --text-body-secondary-size: 0.875rem;
     --text-body-secondary-line: 1.25rem;
+    --metric-tile-title-value-gap: 0.25rem;
+    --metric-tile-grid-gap: 0.95rem;
+    --metric-tile-grid-padding: 0.75rem;
+    --metric-tile-grid-row-min-height: 12.5rem;
+    --metric-tile-border-color: hsl(var(--foreground) / 0.36);
+    --metric-tile-border-width: 1.5px;
+    --metric-tile-bg-rest: hsl(var(--tone-neutral-100) / 0.9);
+    --metric-tile-bg-hover: hsl(var(--background));
+    --metric-tile-bg-selected: hsl(var(--background));
+    --metric-tile-chart-bg-rest: var(--metric-tile-bg-rest);
+    --metric-tile-chart-bg-hover: var(--metric-tile-bg-hover);
+    --metric-tile-separator-color: hsl(var(--foreground) / 0.36);
+    --metric-tile-separator-width: 1.5px;
+    --metric-support-text-size: 0.8125rem;
+    --metric-support-text-line: 1.14rem;
+    --metric-support-text-weight: 600;
 
     --motion-duration-fast: 150ms;
     --motion-duration-ui: 180ms;
@@ -434,9 +450,9 @@
 
   .house-section-title {
     font-size: 1.125rem;
-    line-height: 1.45rem;
-    letter-spacing: -0.01em;
-    font-weight: 600;
+    line-height: 1.4rem;
+    letter-spacing: 0.01em;
+    font-weight: 500;
     color: hsl(var(--tone-neutral-900));
   }
 
@@ -504,6 +520,48 @@
   }
 
   .house-metric-detail {
+    font-size: 0.8125rem;
+    line-height: 1.2rem;
+    color: hsl(var(--tone-neutral-600));
+  }
+
+  .house-metric-right-chart-title {
+    font-size: 0.8125rem;
+    line-height: 1.2rem;
+    font-weight: 400;
+    color: hsl(var(--tone-neutral-600));
+    text-align: center;
+    margin-bottom: 0.25rem;
+  }
+
+  .house-metric-right-chart-panel {
+    --metric-right-chart-top-inset: 1rem;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    width: 100%;
+    flex: 1 1 auto;
+  }
+
+  .house-metric-right-chart-panel-toggle {
+    --metric-right-chart-top-inset: 0rem;
+  }
+
+  .house-metric-right-chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 1.35rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .house-metric-right-chart-body {
+    min-height: 0;
+    width: 100%;
+    flex: 1 1 auto;
+  }
+
+  .house-metric-narrative {
     font-size: 0.8125rem;
     line-height: 1.2rem;
     color: hsl(var(--tone-neutral-600));
@@ -658,6 +716,136 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: hsl(var(--tone-neutral-600));
+  }
+
+  .house-metric-tile-title {
+    font-size: 0.8125rem;
+    line-height: 1.2rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: hsl(var(--tone-neutral-600));
+  }
+
+  .house-metric-tile-value {
+    margin-top: var(--metric-tile-title-value-gap);
+    font-size: var(--text-display-size);
+    line-height: 1;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: hsl(var(--foreground));
+  }
+
+  .house-metric-tile-shell {
+    border-color: var(--metric-tile-border-color);
+    border-width: var(--metric-tile-border-width);
+    background-color: var(--metric-tile-bg-rest);
+    transition-property: background-color, border-color;
+    transition-duration: var(--motion-duration-base);
+    transition-timing-function: var(--motion-ease-default);
+  }
+
+  .house-metric-tile-shell:hover,
+  .house-metric-tile-shell:focus-visible {
+    background-color: var(--metric-tile-bg-hover);
+  }
+
+  .house-metric-tile-shell-selected {
+    background-color: var(--metric-tile-bg-selected);
+  }
+
+  .house-metric-tile-chart-surface {
+    background-color: var(--metric-tile-chart-bg-rest) !important;
+    border: 0 !important;
+    transition-property: background-color;
+    transition-duration: var(--motion-duration-base);
+    transition-timing-function: var(--motion-ease-default);
+  }
+
+  .house-metric-tile-shell:hover .house-metric-tile-chart-surface,
+  .house-metric-tile-shell:focus-visible .house-metric-tile-chart-surface,
+  .house-metric-tile-shell-selected .house-metric-tile-chart-surface {
+    background-color: var(--metric-tile-chart-bg-hover) !important;
+  }
+
+  /* Normalize all chart frames inside metric tiles to tokenized rest/hover states. */
+  .house-metric-tile-shell .house-chart-frame {
+    background-color: var(--metric-tile-chart-bg-rest) !important;
+    border: 0 !important;
+  }
+
+  .house-metric-tile-shell .house-chart-axis-text {
+    font-size: 0.72rem;
+    line-height: 1rem;
+  }
+
+  /* Targeted support-text scale bump for small helper labels in specific tiles. */
+  [data-metric-key='h_index_projection'] .house-chart-axis-text-trend {
+    font-size: var(--metric-support-text-size);
+    line-height: var(--metric-support-text-line);
+    font-weight: var(--metric-support-text-weight);
+  }
+
+  [data-metric-key='collaboration_structure'] .house-chart-axis-text,
+  [data-metric-key='collaboration_structure'] .house-chart-axis-text-trend {
+    font-size: var(--metric-support-text-size);
+    line-height: var(--metric-support-text-line);
+    font-weight: var(--metric-support-text-weight);
+  }
+
+  .house-metric-support-text {
+    font-size: var(--metric-support-text-size) !important;
+    line-height: var(--metric-support-text-line) !important;
+    font-weight: var(--metric-support-text-weight) !important;
+    transition: none;
+  }
+
+  /* Prevent perceived text-size pulsing from enter/exit scaling in collaboration right panel. */
+  [data-metric-key='collaboration_structure'] .house-motion-enter,
+  [data-metric-key='collaboration_structure'] .house-motion-exit {
+    transform: none !important;
+    filter: none !important;
+  }
+
+  .house-metric-tile-shell .house-panel-strong {
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .house-metric-tile-shell:hover .house-chart-frame,
+  .house-metric-tile-shell:focus-visible .house-chart-frame,
+  .house-metric-tile-shell-selected .house-chart-frame {
+    background-color: var(--metric-tile-chart-bg-hover) !important;
+  }
+
+  /* Metric-tile toggles: muted/inactive controls follow tile rest/hover surface behavior. */
+  .house-metric-tile-shell .house-toggle-track {
+    background-color: var(--metric-tile-chart-bg-rest);
+    border-width: 1px !important;
+    border-style: solid !important;
+    border-color: hsl(var(--tone-neutral-950)) !important;
+  }
+
+  .house-metric-tile-shell:hover .house-toggle-track,
+  .house-metric-tile-shell:focus-visible .house-toggle-track,
+  .house-metric-tile-shell-selected .house-toggle-track {
+    background-color: var(--metric-tile-chart-bg-hover);
+  }
+
+  .house-metric-tile-shell .house-toggle-button.house-drilldown-toggle-button-muted {
+    background-color: var(--metric-tile-chart-bg-rest);
+  }
+
+  .house-metric-tile-shell:hover .house-toggle-button.house-drilldown-toggle-button-muted,
+  .house-metric-tile-shell:focus-visible .house-toggle-button.house-drilldown-toggle-button-muted,
+  .house-metric-tile-shell-selected .house-toggle-button.house-drilldown-toggle-button-muted {
+    background-color: var(--metric-tile-chart-bg-hover);
+  }
+
+  .house-metric-tile-separator {
+    border-left-style: solid;
+    border-left-color: var(--metric-tile-separator-color);
+    border-left-width: var(--metric-tile-separator-width);
   }
 
   .house-nav-list {
@@ -2091,7 +2279,9 @@
     display: inline-grid;
     align-items: center;
     overflow: hidden;
-    border: 1px solid hsl(var(--stroke-strong));
+    border-style: solid;
+    border-color: hsl(var(--tone-neutral-950));
+    border-width: 1px;
     border-radius: 9999px;
     background-color: hsl(var(--tone-neutral-0));
     padding: 0.125rem;
@@ -2118,7 +2308,7 @@
     font-size: 0.75rem;
     line-height: 1.05rem;
     font-weight: 500;
-    transition-property: color, transform;
+    transition-property: color, background-color, transform;
     transition-duration: var(--motion-duration-medium);
     transition-timing-function: ease-out;
   }
@@ -3280,16 +3470,19 @@
   .publications-insights-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 0.625rem;
-    padding-top: 0.375rem;
-    padding-right: 0.625rem;
-    padding-bottom: 0.625rem;
-    padding-left: 0.625rem;
+    grid-auto-rows: minmax(var(--metric-tile-grid-row-min-height), 1fr);
+    align-items: stretch;
+    gap: var(--metric-tile-grid-gap);
+    padding-top: var(--metric-tile-grid-padding);
+    padding-right: var(--metric-tile-grid-padding);
+    padding-bottom: var(--metric-tile-grid-padding);
+    padding-left: var(--metric-tile-grid-padding);
     background-color: hsl(var(--card));
   }
 
   .publications-insights-grid > * {
     min-width: 0;
+    height: 100%;
   }
 
   @media (min-width: 640px) {

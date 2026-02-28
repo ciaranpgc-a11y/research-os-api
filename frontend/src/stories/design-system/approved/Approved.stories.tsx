@@ -149,7 +149,7 @@ function ApprovedMarkersSection() {
           <p className="text-sm font-semibold text-neutral-900">Approved Markers</p>
           <p className="text-xs text-neutral-600">Canonical marker widths for header, left nav, and panel/drilldown accents.</p>
         </div>
-        <div className="grid gap-4 p-4 lg:grid-cols-3">
+        <div className="grid gap-4 p-4 lg:grid-cols-4">
           <article className="rounded-md border border-neutral-200 bg-white p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Header Marker</p>
             <div className="mt-3">
@@ -262,6 +262,302 @@ function ApprovedLayoutTitlePositioning() {
               </main>
             </div>
           </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ApprovedTypographySection() {
+  return (
+    <section>
+      <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-neutral-200">
+          <p className="text-sm font-semibold text-neutral-900">Approved Typography</p>
+          <p className="text-xs text-neutral-600">Canonical typography sets for main content, left panel, and drilldown.</p>
+        </div>
+
+        <div className="grid gap-4 p-4 lg:grid-cols-3">
+          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Main content</p>
+            <h2 className="house-title text-[1.8rem] leading-[2rem]">Publications</h2>
+            <p className="house-title-expander">Track your research metrics and manage your publication library.</p>
+            <p className="house-section-title mt-1">Publication insights</p>
+            <p className="house-text">This paragraph uses the main body text tier for core reading content.</p>
+            <p className="house-label">Metric label</p>
+            <p className="house-field-label">Field label</p>
+            <p className="house-field-helper">Helper copy and validation guidance live here.</p>
+          </article>
+
+          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Left panel</p>
+            <p className="house-nav-section-label">Workspace</p>
+            <button type="button" className="house-nav-item house-nav-item-workspace house-nav-item-active w-full">
+              <span className="house-nav-item-label">Overview</span>
+              <span className="house-nav-item-count">12</span>
+            </button>
+            <button type="button" className="house-nav-item house-nav-item-workspace w-full">
+              <span className="house-nav-item-label">Data library</span>
+              <span className="house-nav-item-meta">New</span>
+            </button>
+            <p className="house-nav-item-meta">Meta tier for supplementary nav context.</p>
+          </article>
+
+          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Drilldown</p>
+            <p className="house-drilldown-overline">Publication drilldown</p>
+            <p className="house-drilldown-section-label">Citation momentum</p>
+            <p className="house-drilldown-summary-stat-title">Current citation pace</p>
+            <p className="house-drilldown-summary-stat-value">+87%</p>
+            <p className="house-drilldown-caption">Compared with prior 12-month period.</p>
+            <p className="house-drilldown-note-soft">Context tier for non-primary explanatory text.</p>
+          </article>
+
+          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Metric tiles</p>
+            <p className="house-metric-tile-title">Total publications</p>
+            <p className="house-metric-tile-value">150</p>
+            <p className="house-metric-subtitle">Lifetime publications</p>
+            <p className="house-metric-narrative">Last 5 years shown</p>
+            <p className="house-text-soft">Title/value gap token: <code>--metric-tile-title-value-gap</code></p>
+          </article>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ApprovedMetricTilesSection() {
+  const [hIndexMode, setHIndexMode] = useState<'trend' | 'needed'>('trend')
+
+  return (
+    <section>
+      <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-neutral-200">
+          <p className="text-sm font-semibold text-neutral-900">Approved Metric Tiles</p>
+          <p className="text-xs text-neutral-600">Canonical publication tile surface, separator, and state behavior.</p>
+        </div>
+        <div className="grid gap-4 p-4 lg:grid-cols-2">
+          <article className="house-metric-tile-shell min-h-36 rounded-md border p-3">
+            <div className="grid h-full min-h-[9.5rem] grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)] gap-3">
+              <div className="flex min-h-0 flex-col">
+                <p className="house-metric-tile-title">Total publications</p>
+                <p className="house-metric-tile-value">150</p>
+                <p className="house-metric-subtitle">Lifetime publications</p>
+              </div>
+              <div className="house-metric-tile-separator min-h-0 border-l pl-3">
+                <p className="house-metric-right-chart-title">Publications per year (last 5 years)</p>
+                <div className="house-metric-tile-chart-surface mt-1.5 flex min-h-14 flex-1 rounded-sm border border-[hsl(var(--stroke-strong)/0.92)] p-1" />
+              </div>
+            </div>
+          </article>
+
+          <article className="house-metric-tile-shell house-metric-tile-shell-selected min-h-36 rounded-md border p-3">
+            <div className="grid h-full min-h-[9.5rem] grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)] gap-3">
+              <div className="flex min-h-0 flex-col">
+                <p className="house-metric-tile-title">Citations</p>
+                <p className="house-metric-tile-value">26,382</p>
+                <p className="house-metric-subtitle">Lifetime citations</p>
+              </div>
+              <div className="house-metric-tile-separator min-h-0 border-l pl-3">
+                <p className="house-metric-right-chart-title">Citations per year (last 5 years)</p>
+                <div className="house-metric-tile-chart-surface mt-1.5 flex min-h-14 flex-1 rounded-sm border border-[hsl(var(--stroke-strong)/0.92)] p-1" />
+              </div>
+            </div>
+          </article>
+
+          <article className="house-metric-tile-shell min-h-36 rounded-md border p-3 lg:col-span-2">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">
+              Alternative Right Header Slot (Toggle Instead Of Title)
+            </p>
+            <div className="grid h-full min-h-[9.5rem] grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)] gap-3">
+              <div className="flex min-h-0 flex-col">
+                <p className="house-metric-tile-title">H-index</p>
+                <p className="house-metric-tile-value">h 23</p>
+                <p className="house-metric-subtitle">Progress to h 24</p>
+                <p className="house-metric-detail">Toggle moved to right chart header slot.</p>
+              </div>
+              <div className="house-metric-tile-separator min-h-0 border-l pl-3">
+                <div className="house-metric-right-chart-panel house-metric-right-chart-panel-toggle">
+                  <div className="house-metric-right-chart-header">
+                    <div className="house-toggle-track grid-cols-2">
+                      <span
+                        className="house-toggle-thumb"
+                        style={{
+                          width: 'calc(50% - 0.125rem)',
+                          left: hIndexMode === 'needed' ? 'calc(50% + 1px)' : '2px',
+                          willChange: 'left,width',
+                        }}
+                        aria-hidden="true"
+                      />
+                      <button
+                        type="button"
+                        className={hIndexMode === 'trend' ? 'house-toggle-button text-white' : 'house-toggle-button house-drilldown-toggle-button-muted'}
+                        onClick={() => setHIndexMode('trend')}
+                        aria-pressed={hIndexMode === 'trend'}
+                      >
+                        Trend
+                      </button>
+                      <button
+                        type="button"
+                        className={hIndexMode === 'needed' ? 'house-toggle-button text-white' : 'house-toggle-button house-drilldown-toggle-button-muted'}
+                        onClick={() => setHIndexMode('needed')}
+                        aria-pressed={hIndexMode === 'needed'}
+                      >
+                        Needed
+                      </button>
+                    </div>
+                  </div>
+                  <div className="house-metric-right-chart-body">
+                    <div className="house-metric-tile-chart-surface mt-1.5 flex min-h-14 flex-1 rounded-sm border border-[hsl(var(--stroke-strong)/0.92)] p-1" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article className="house-metric-tile-shell min-h-36 rounded-md border p-3 lg:col-span-2">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">
+              Collaboration Structure (Neutral Facts List Preview)
+            </p>
+            <div className="grid h-full min-h-[9.5rem] grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)] gap-3">
+              <div className="flex min-h-0 flex-col">
+                <p className="house-metric-tile-title">Collaboration structure</p>
+                <p className="house-metric-tile-value">448</p>
+                <p className="house-metric-subtitle">Unique collaborators</p>
+                <div className="pt-1.5">
+                  <p className="house-chart-axis-text mb-1 font-semibold">Repeat collaborator rate</p>
+                  <div className="house-drilldown-progress-track h-[0.44rem]">
+                    <div className="house-chart-bar-positive h-full rounded-full" style={{ width: '62%' }} />
+                  </div>
+                  <p className="house-chart-axis-text mt-1 text-right font-semibold">62%</p>
+                </div>
+              </div>
+              <div className="house-metric-tile-separator min-h-0 border-l pl-3">
+                <div className="house-metric-tile-chart-surface flex h-full min-h-0 flex-col rounded-sm px-2 py-1.5">
+                  <div>
+                    <div className="grid grid-cols-[minmax(0,1fr)_3.25rem] items-center gap-x-3 py-1.5">
+                      <span className="house-chart-axis-text leading-tight">Institutions</span>
+                      <span className="house-chart-axis-text leading-tight text-center">136</span>
+                    </div>
+                    <div className="my-1 h-px bg-[hsl(var(--stroke-soft)/0.72)]" />
+                    <div className="grid grid-cols-[minmax(0,1fr)_3.25rem] items-center gap-x-3 py-1.5">
+                      <span className="house-chart-axis-text leading-tight">Countries</span>
+                      <span className="house-chart-axis-text leading-tight text-center">16</span>
+                    </div>
+                    <div className="my-1 h-px bg-[hsl(var(--stroke-soft)/0.72)]" />
+                    <div className="grid grid-cols-[minmax(0,1fr)_3.25rem] items-center gap-x-3 py-1.5">
+                      <span className="house-chart-axis-text leading-tight">Continents</span>
+                      <span className="house-chart-axis-text leading-tight text-center">5</span>
+                    </div>
+                  </div>
+                  <div className="mt-2.5">
+                    <p className="house-chart-axis-text mb-1 leading-tight">Repeat collaborator rate</p>
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                      <div className="house-drilldown-progress-track h-[0.44rem]">
+                        <div className="house-chart-bar-positive h-full rounded-full" style={{ width: '62%' }} />
+                      </div>
+                      <p className="house-chart-axis-text leading-tight">62%</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+        <div className="px-4 pb-4 text-xs text-neutral-600">
+          Tokens: <code>--metric-tile-grid-gap</code>, <code>--metric-tile-grid-padding</code>, <code>--metric-tile-grid-row-min-height</code>, <code>--metric-tile-border-color</code>, <code>--metric-tile-border-width</code>, <code>--metric-tile-bg-rest</code>, <code>--metric-tile-bg-hover</code>, <code>--metric-tile-bg-selected</code>, <code>--metric-tile-chart-bg-rest</code>, <code>--metric-tile-chart-bg-hover</code>, <code>--metric-tile-separator-color</code>, <code>--metric-tile-separator-width</code>.
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ApprovedTileTogglesSection() {
+  const [hMode, setHMode] = useState<'trend' | 'needed'>('trend')
+  const thresholds = [50, 75, 90, 95, 99] as const
+  const [vMode, setVMode] = useState<(typeof thresholds)[number]>(75)
+  const vIndex = Math.max(0, thresholds.indexOf(vMode))
+
+  return (
+    <section>
+      <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-neutral-200">
+          <p className="text-sm font-semibold text-neutral-900">Approved Tile Toggles</p>
+          <p className="text-xs text-neutral-600">Canonical toggle controls for metric tiles (horizontal and vertical).</p>
+        </div>
+        <div className="grid gap-4 p-4 lg:grid-cols-2">
+          <article className="rounded-md border border-neutral-200 bg-background p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Horizontal Toggle (Trend / Needed)</p>
+            <div className="mt-3 inline-flex items-center">
+              <div className="house-toggle-track grid-cols-2">
+                <span
+                  className="house-toggle-thumb"
+                  style={{
+                    width: 'calc(50% - 0.125rem)',
+                    left: hMode === 'needed' ? 'calc(50% + 1px)' : '2px',
+                    willChange: 'left,width',
+                  }}
+                  aria-hidden="true"
+                />
+                <button
+                  type="button"
+                  className={hMode === 'trend' ? 'house-toggle-button text-white' : 'house-toggle-button house-drilldown-toggle-button-muted'}
+                  onClick={() => setHMode('trend')}
+                  aria-pressed={hMode === 'trend'}
+                >
+                  Trend
+                </button>
+                <button
+                  type="button"
+                  className={hMode === 'needed' ? 'house-toggle-button text-white' : 'house-toggle-button house-drilldown-toggle-button-muted'}
+                  onClick={() => setHMode('needed')}
+                  aria-pressed={hMode === 'needed'}
+                >
+                  Needed
+                </button>
+              </div>
+            </div>
+          </article>
+
+          <article className="rounded-md border border-neutral-200 bg-background p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Vertical Toggle (Field Percentile)</p>
+            <div className="mt-3">
+              <div
+                className="house-toggle-track relative grid w-10 items-stretch"
+                style={{
+                  gridTemplateRows: `repeat(${thresholds.length}, minmax(0, 1fr))`,
+                  minHeight: `${thresholds.length * 1.785}rem`,
+                }}
+              >
+                <span
+                  className="house-toggle-thumb"
+                  style={{
+                    width: 'calc(100% - 0.25rem)',
+                    height: `calc(${100 / thresholds.length}% - 0.125rem)`,
+                    top: `calc(${(100 / thresholds.length) * vIndex}% + 2px)`,
+                    left: '0.125rem',
+                    bottom: 'auto',
+                    right: 'auto',
+                    transitionProperty: 'top, height',
+                    willChange: 'top,height',
+                  }}
+                  aria-hidden="true"
+                />
+                {thresholds.map((threshold) => (
+                  <button
+                    key={`approved-v-toggle-${threshold}`}
+                    type="button"
+                    className={vMode === threshold ? 'house-toggle-button text-white' : 'house-toggle-button house-drilldown-toggle-button-muted'}
+                    onClick={() => setVMode(threshold)}
+                    aria-pressed={vMode === threshold}
+                  >
+                    {threshold}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </article>
         </div>
       </div>
     </section>
@@ -460,6 +756,9 @@ function ApprovedPage() {
         <ApprovedHeaderBar />
         <ApprovedMarkersSection />
         <ApprovedLayoutTitlePositioning />
+        <ApprovedTypographySection />
+        <ApprovedMetricTilesSection />
+        <ApprovedTileTogglesSection />
         <ApprovedLeftPanel />
         <AuthPagePanel />
         <div className="rounded-lg border border-neutral-200 bg-white shadow-sm">
