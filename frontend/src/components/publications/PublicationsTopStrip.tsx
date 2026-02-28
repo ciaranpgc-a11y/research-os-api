@@ -300,6 +300,10 @@ const HOUSE_METRIC_RIGHT_CHART_HEADER_CLASS = 'house-metric-right-chart-header'
 const HOUSE_METRIC_RIGHT_CHART_PANEL_CLASS = 'house-metric-right-chart-panel'
 const HOUSE_METRIC_RIGHT_CHART_PANEL_TOGGLE_CLASS = 'house-metric-right-chart-panel-toggle'
 const HOUSE_METRIC_RIGHT_CHART_BODY_CLASS = 'house-metric-right-chart-body'
+const HOUSE_METRIC_TILE_PILL_CONTAINER_CLASS = 'house-metric-tile-pill-container'
+const HOUSE_METRIC_TILE_PILL_CONTAINER_BOTTOM_CLASS = 'house-metric-tile-pill-container-bottom'
+const HOUSE_METRIC_TILE_PILL_CONTAINER_BOTTOM_CENTER_CLASS = 'house-metric-tile-pill-container-bottom-center'
+const HOUSE_METRIC_TILE_PILL_CLASS = 'house-metric-tile-pill'
 const HOUSE_HEADING_LABEL_CLASS = publicationsHouseHeadings.label
 const HOUSE_CHART_TRANSITION_CLASS = publicationsHouseMotion.chartPanel
 const HOUSE_CHART_ENTERED_CLASS = publicationsHouseMotion.chartEnter
@@ -401,7 +405,6 @@ const HOUSE_CHART_AXIS_TEXT_CLASS = publicationsHouseCharts.axisText
 const HOUSE_CHART_AXIS_TEXT_TREND_CLASS = publicationsHouseCharts.axisTextTrend
 const HOUSE_CHART_AXIS_TITLE_CLASS = publicationsHouseCharts.axisTitle
 const HOUSE_CHART_AXIS_SUBTEXT_CLASS = publicationsHouseCharts.axisSubtext
-const HOUSE_CHART_AXIS_WINDOW_SUBTEXT_CLASS = publicationsHouseCharts.axisWindowSubtext
 const HOUSE_CHART_LINE_SOFT_SVG_CLASS = publicationsHouseCharts.lineSoftSvg
 const HOUSE_CHART_RING_TRACK_SVG_CLASS = publicationsHouseCharts.ringTrackSvg
 const HOUSE_CHART_RING_MAIN_SVG_CLASS = publicationsHouseCharts.ringMainSvg
@@ -428,6 +431,7 @@ const HOUSE_LINE_CHART_SURFACE_CLASS =
 const HOUSE_FIELD_PERCENTILE_TOGGLE_WIDTH_CLASS = 'w-10'
 const HOUSE_FIELD_PERCENTILE_LEFT_CHART_TRACK_CLASS = cn(
   HOUSE_TOGGLE_TRACK_CLASS,
+  'house-field-percentile-toggle-track',
   HOUSE_FIELD_PERCENTILE_TOGGLE_WIDTH_CLASS,
   'relative grid items-stretch',
 )
@@ -436,6 +440,7 @@ const HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_CLASS = 'grid w-full min-h-0 items-
 const HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_COLUMNS_CLASS = 'grid-cols-[2.5rem_minmax(0,1fr)]'
 const HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_GAP_CLASS = 'gap-2'
 const HOUSE_FIELD_PERCENTILE_LEFT_CHART_PANEL_CLASS = 'h-full min-h-0 min-w-0 w-full'
+const HOUSE_FIELD_PERCENTILE_TOGGLE_BUTTON_CLASS = 'house-field-percentile-toggle-button'
 const HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH = 14
 const HOUSE_RING_ARC_TRANSITION = 'stroke-dasharray var(--motion-duration-chart-ring-fill) cubic-bezier(0.22, 1, 0.36, 1), stroke-dashoffset var(--motion-duration-chart-ring-fill) cubic-bezier(0.22, 1, 0.36, 1)'
 const HOUSE_RING_COLOR_TRANSITION = 'stroke var(--motion-duration-chart-ring-fill) cubic-bezier(0.22, 1, 0.36, 1)'
@@ -447,11 +452,18 @@ const FIELD_PERCENTILE_RING_CLASS_BY_THRESHOLD: Record<FieldPercentileThreshold,
   99: HOUSE_CHART_RING_THRESHOLD_99_SVG_CLASS,
 }
 const FIELD_PERCENTILE_EMPHASIS_TONE_VAR_BY_THRESHOLD: Record<FieldPercentileThreshold, string> = {
-  50: '--tone-accent-400',
+  50: '--tone-accent-500',
   75: '--tone-accent-500',
   90: '--tone-accent-600',
   95: '--tone-accent-700',
   99: '--tone-accent-800',
+}
+const FIELD_PERCENTILE_TOGGLE_ACTIVE_BUTTON_CLASS_BY_THRESHOLD: Record<FieldPercentileThreshold, string> = {
+  50: 'house-toggle-button-threshold-50',
+  75: 'house-toggle-button-threshold-75',
+  90: 'house-toggle-button-threshold-90',
+  95: 'house-toggle-button-threshold-95',
+  99: 'house-toggle-button-threshold-99',
 }
 const HOUSE_DRILLDOWN_TOOLTIP_CLASS =
   cn(
@@ -459,6 +471,20 @@ const HOUSE_DRILLDOWN_TOOLTIP_CLASS =
     'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out',
   )
 const MAX_PUBLICATION_CHART_BARS = 12
+const HOUSE_METRIC_TOGGLE_TRACK_CLASS = HOUSE_TOGGLE_TRACK_CLASS
+
+function buildTileToggleThumbStyle(activeIndex: number, optionCount: number): CSSProperties {
+  const safeCount = Math.max(1, optionCount)
+  const safeIndex = Math.max(0, Math.min(activeIndex, safeCount - 1))
+  const widthPercent = 100 / safeCount
+  const leftPercent = safeIndex * widthPercent
+  const finalWidth = `${safeIndex === safeCount - 1 ? 100 - leftPercent : widthPercent}%`
+  return {
+    width: finalWidth,
+    left: `${leftPercent}%`,
+    willChange: 'left,width',
+  }
+}
 
 function prefersReducedMotion(): boolean {
   return (
@@ -889,20 +915,27 @@ function buildMomentumBreakdown(tile: PublicationMetricTilePayload): MomentumBre
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const monthlySeries = toNumberArray(chartData.monthly_values_12m).map((item) => Math.max(0, item))
   const fallbackSeries = toNumberArray(tile.sparkline || []).map((item) => Math.max(0, item))
-  const fullSeries = monthlySeries.length ? monthlySeries : fallbackSeries
-  const lastNineValues = fullSeries.length >= 9 ? fullSeries.slice(-9) : fullSeries.slice()
   const sourceLabels = Array.isArray(chartData.month_labels_12m)
     ? chartData.month_labels_12m.filter((item) => typeof item === 'string') as string[]
     : []
-  const labels = sourceLabels.length >= lastNineValues.length
-    ? sourceLabels.slice(-lastNineValues.length)
-    : fallbackMonthLabels(lastNineValues.length)
+  const normalizedMonthlyLabels = sourceLabels.length >= monthlySeries.length
+    ? sourceLabels.slice(-monthlySeries.length)
+    : fallbackMonthLabels(monthlySeries.length)
+  const fullSeries = monthlySeries.length ? monthlySeries : fallbackSeries
+  const lastNineValues = fullSeries.length >= 9 ? fullSeries.slice(-9) : fullSeries.slice()
+  const labels = fullSeries === monthlySeries && normalizedMonthlyLabels.length >= lastNineValues.length
+    ? normalizedMonthlyLabels.slice(-lastNineValues.length)
+    : sourceLabels.length >= lastNineValues.length
+      ? sourceLabels.slice(-lastNineValues.length)
+      : fallbackMonthLabels(lastNineValues.length)
   const bars = lastNineValues.map((value, index) => ({
     label: labels[index] || `M${index + 1}`,
     value,
   }))
-  const fullLabels = sourceLabels.length >= fullSeries.length
-    ? sourceLabels.slice(-fullSeries.length)
+  const fullLabels = fullSeries === monthlySeries && normalizedMonthlyLabels.length >= fullSeries.length
+    ? normalizedMonthlyLabels.slice(-fullSeries.length)
+    : sourceLabels.length >= fullSeries.length
+      ? sourceLabels.slice(-fullSeries.length)
     : fallbackMonthLabels(fullSeries.length)
   const baselineWindow = fullSeries.length >= 12 ? fullLabels.slice(-12, -3) : []
   const recentWindow = fullSeries.length >= 3 ? fullLabels.slice(-3) : []
@@ -967,11 +1000,16 @@ function buildMomentumYearBreakdown(totalCitationsTile: PublicationMetricTilePay
   const projectedYearRaw = Number(chartData.projected_year)
   const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
   const monthlySeries = toNumberArray(chartData.monthly_values_12m).map((item) => Math.max(0, item))
-  const recent12Total = monthlySeries.length >= 12 ? monthlySeries.slice(-12).reduce((sum, item) => sum + item, 0) : null
   const monthLabels = Array.isArray(chartData.month_labels_12m)
     ? chartData.month_labels_12m.filter((item) => typeof item === 'string') as string[]
     : []
-  const trailingWindowLabels = monthLabels.length >= 12 ? monthLabels.slice(-12) : []
+  const normalizedMonthlyLabels = monthLabels.length >= monthlySeries.length
+    ? monthLabels.slice(-monthlySeries.length)
+    : fallbackMonthLabels(monthlySeries.length)
+  const recent12Total = monthlySeries.length >= 12
+    ? monthlySeries.slice(-12).reduce((sum, item) => sum + item, 0)
+    : null
+  const trailingWindowLabels = normalizedMonthlyLabels.length >= 12 ? normalizedMonthlyLabels.slice(-12) : []
   const rollingWindowLabel = trailingWindowLabels.length ? buildRollingWindowLabel(trailingWindowLabels, projectedYear) : null
   const latestYearValue = lastFivePairs.length > 0 ? lastFivePairs[lastFivePairs.length - 1].value : null
   const recentYearLabel = rollingWindowLabel || (lastFivePairs.length > 0 ? String(lastFivePairs[lastFivePairs.length - 1].year) : null)
@@ -1456,7 +1494,7 @@ function StructuredMetricTile({
   badge?: ReactNode
   pinBadgeBottom?: boolean
   centerBadge?: boolean
-  badgePlacement?: 'inline' | 'topRight' | 'leftChart'
+  badgePlacement?: 'inline' | 'topRight' | 'bottomRight' | 'bottomCenter' | 'leftChart'
   subtitle?: ReactNode
   detail?: ReactNode
   visual: ReactNode
@@ -1467,7 +1505,9 @@ function StructuredMetricTile({
 }) {
   const isTopRightBadge = badgePlacement === 'topRight'
   const isLeftChartBadge = badgePlacement === 'leftChart'
-  const isFloatingBadge = isTopRightBadge || isLeftChartBadge
+  const isBottomRightBadge = badgePlacement === 'bottomRight'
+  const isBottomCenterBadge = badgePlacement === 'bottomCenter'
+  const isFloatingBadge = isTopRightBadge || isBottomRightBadge || isBottomCenterBadge || isLeftChartBadge
   const hasSubtitle = !(
     subtitle === undefined
     || subtitle === null
@@ -1546,8 +1586,18 @@ function StructuredMetricTile({
           rightPaneClassName,
         )}>
           {badge && isTopRightBadge ? (
-            <div className="pointer-events-none absolute right-2 top-0 z-10 flex w-full justify-end">
-              <div className="pointer-events-auto pt-0.5">{badge}</div>
+            <div className={HOUSE_METRIC_TILE_PILL_CONTAINER_CLASS}>
+              <div className="pointer-events-auto">{badge}</div>
+            </div>
+          ) : null}
+          {badge && isBottomRightBadge ? (
+            <div className={HOUSE_METRIC_TILE_PILL_CONTAINER_BOTTOM_CLASS}>
+              <div className="pointer-events-auto">{badge}</div>
+            </div>
+          ) : null}
+          {badge && isBottomCenterBadge ? (
+            <div className={HOUSE_METRIC_TILE_PILL_CONTAINER_BOTTOM_CENTER_CLASS}>
+              <div className="pointer-events-auto">{badge}</div>
             </div>
           ) : null}
           {badge && isLeftChartBadge ? (
@@ -1587,37 +1637,14 @@ function HIndexYearChart({
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const years = toNumberArray(chartData.years).map((item) => Math.round(item))
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
-  const projectedYearRaw = Number(chartData.projected_year)
-  const currentHIndexRaw = Number(chartData.current_h_index)
-  const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
   const hasValidSeries = years.length > 0 && values.length > 0 && years.length === values.length
-  const baseBars: Array<{ year: number; value: number; current: boolean }> = hasValidSeries
+  const bars: Array<{ year: number; value: number }> = hasValidSeries
     ? years.map((year, index) => ({
         year,
         value: values[index],
-        current: false,
       }))
     : []
-  const existingCurrentBar = baseBars.find((item) => item.year === projectedYear)
-  const bars = baseBars.filter((item) => item.year !== projectedYear)
-  const currentValue = Math.max(
-    0,
-    Number.isFinite(currentHIndexRaw)
-      ? currentHIndexRaw
-      : existingCurrentBar
-        ? existingCurrentBar.value
-        : bars.length
-          ? bars[bars.length - 1].value
-          : 0,
-  )
-  if (hasValidSeries) {
-    bars.push({
-      year: projectedYear,
-      value: currentValue,
-      current: true,
-    })
-  }
-  const animationKey = bars.map((bar) => `${bar.year}-${bar.value}-${bar.current ? 1 : 0}`).join('|')
+  const animationKey = bars.map((bar) => `${bar.year}-${bar.value}`).join('|')
   const hasBars = bars.length > 0
   const barsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|hindex-year`, hasBars)
   const rawTargetValues = useMemo(
@@ -1680,9 +1707,7 @@ function HIndexYearChart({
               const animatedValue = Math.max(0, animatedValues[index] ?? 0)
               const heightPct = animatedValue <= 0 ? 3 : Math.max(6, (animatedValue / scaledMax) * 100)
               const isActive = hoveredIndex === index
-              const toneClass = bar.current
-                ? HOUSE_CHART_BAR_CURRENT_CLASS
-                : HOUSE_CHART_BAR_ACCENT_CLASS
+              const toneClass = HOUSE_CHART_BAR_ACCENT_CLASS
               return (
                 <div
                   key={`${bar.year}-${index}`}
@@ -1730,7 +1755,7 @@ function HIndexYearChart({
           ))}
         </div>
       </div>
-      {showCaption ? <p className={dashboardTileStyles.tileMicroLabel}>h-index by year; dashed bar is current year.</p> : null}
+      {showCaption ? <p className={dashboardTileStyles.tileMicroLabel}>h-index by year.</p> : null}
     </div>
   )
 }
@@ -2169,19 +2194,16 @@ function PublicationsPerYearChart({
         <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, rightMetaVisible ? 'justify-between' : 'justify-start')}>
           <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
             <div
-              className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
+              className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
               data-stop-tile-open="true"
               data-ui="publications-window-toggle"
               data-house-role="chart-toggle"
             >
-              <span
-                className={HOUSE_TOGGLE_THUMB_CLASS}
-                style={{
-                  width: 'calc(25% - 0.2rem)',
-                  left: `calc(${Math.max(0, activeWindowIndex) * 25}% + 2px)`,
-                }}
-                aria-hidden="true"
-              />
+                <span
+                  className={HOUSE_TOGGLE_THUMB_CLASS}
+                  style={buildTileToggleThumbStyle(activeWindowIndex, PUBLICATIONS_WINDOW_OPTIONS.length)}
+                  aria-hidden="true"
+                />
               {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
                 <button
                   key={`pub-window-${option.value}`}
@@ -2483,14 +2505,14 @@ function MomentumTilePanel({
     return [
       {
         key: 'baseline',
-        label: 'Prior avg',
+        label: 'Prior 9 month average',
         subLabel: monthlyBreakdown.baselineWindowLabel,
         value: baseline ?? 0,
         recent: false,
       },
       {
         key: 'recent',
-        label: 'Recent avg',
+        label: 'Recent 3 month average',
         subLabel: monthlyBreakdown.recentWindowLabel,
         value: recent ?? 0,
         recent: true,
@@ -2511,15 +2533,15 @@ function MomentumTilePanel({
     return [
       {
         key: 'baseline',
-        label: 'Prior avg',
-        subLabel: yearBreakdown?.priorYearsLabel || null,
+        label: 'Prior 4yr rolling average',
+        subLabel: null,
         value: baseline ?? 0,
         recent: false,
       },
       {
         key: 'recent',
-        label: 'Recent avg',
-        subLabel: yearBreakdown?.recentYearLabel || null,
+        label: 'Rolling 1y average',
+        subLabel: null,
         value: recent ?? 0,
         recent: true,
       },
@@ -2531,6 +2553,8 @@ function MomentumTilePanel({
     yearBreakdown?.recentYearLabel,
   ])
   const comparisonBars = useYearMode ? yearlyComparisonBars : monthlyComparisonBars
+  const getMomentumAxisLabel = (bar: { label: string; subLabel?: string | null }) =>
+    bar.subLabel ? `${bar.label} (${bar.subLabel})` : bar.label
   const emptyLabel = useYearMode ? 'No 5-year citation data' : 'No monthly citation data'
   const barValues = comparisonBars.map((bar) => Math.max(0, bar.value))
   const maxValue = Math.max(1, ...barValues)
@@ -2613,22 +2637,20 @@ function MomentumTilePanel({
     if (monthlyLayoutSource.length) {
       candidates.push(
         buildChartAxisLayout({
-          axisLabels: monthlyLayoutSource.map((bar) => bar.label),
-          axisSubLabels: monthlyLayoutSource.map((bar) => bar.subLabel || null),
+          axisLabels: monthlyLayoutSource.map((bar) => getMomentumAxisLabel(bar)),
           dense: false,
           maxLabelLines: 2,
-          maxSubLabelLines: 3,
+          maxSubLabelLines: 1,
         }),
       )
     }
     if (yearlyComparisonBars.length) {
       candidates.push(
         buildChartAxisLayout({
-          axisLabels: yearlyComparisonBars.map((bar) => bar.label),
-          axisSubLabels: yearlyComparisonBars.map((bar) => bar.subLabel || null),
+          axisLabels: yearlyComparisonBars.map((bar) => getMomentumAxisLabel(bar)),
           dense: false,
           maxLabelLines: 2,
-          maxSubLabelLines: 3,
+          maxSubLabelLines: 1,
         }),
       )
     }
@@ -2716,13 +2738,8 @@ function MomentumTilePanel({
               className={cn('leading-none text-center', HOUSE_TOGGLE_CHART_LABEL_CLASS)}
             >
               <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-1 text-center leading-tight')}>
-                {bar.label}
+                {getMomentumAxisLabel(bar)}
               </p>
-              {bar.subLabel ? (
-                <p className={cn(HOUSE_CHART_AXIS_WINDOW_SUBTEXT_CLASS, 'mt-px break-words px-1')}>
-                  {bar.subLabel}
-                </p>
-              ) : null}
             </div>
           ))}
         </div>
@@ -2934,7 +2951,7 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
               <span className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'house-metric-support-text font-semibold')}>{row.label}</span>
               <span className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'house-metric-support-text font-semibold')}>{row.value}%</span>
             </div>
-            <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[0.44rem]')}>
+            <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[var(--metric-progress-track-height)]')}>
               <div
                 className={cn(
                   'h-full rounded-full transition-[width] duration-320 ease-out',
@@ -3196,16 +3213,20 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
             </div>
           ))}
           <div className="mt-3.5 pt-0.5">
-            <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'house-metric-support-text mb-1 leading-tight')}>Repeat collaborator rate</p>
-            <div className="grid grid-cols-[minmax(0,1fr)_2.9rem] items-center gap-x-3">
-              <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[0.44rem]')}>
-                <div
-                  className={cn('h-full rounded-full transition-[width] duration-[var(--motion-duration-ui)] ease-[var(--motion-ease-default)]', HOUSE_CHART_BAR_POSITIVE_CLASS)}
-                  style={{ width: `${repeatRatePct}%` }}
-                  aria-hidden="true"
-                />
-              </div>
-              <span className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'house-metric-support-text text-right leading-tight')}>{`${Math.round(repeatRatePct)}%`}</span>
+            <div className="mb-1 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3">
+              <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'house-metric-support-text leading-tight')}>
+                Repeat collaborator rate
+              </p>
+              <span className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'house-metric-support-text text-right leading-tight')}>
+                {`${Math.round(repeatRatePct)}%`}
+              </span>
+            </div>
+            <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[var(--metric-progress-track-height)]')}>
+              <div
+                className={cn('h-full rounded-full transition-[width] duration-[var(--motion-duration-ui)] ease-[var(--motion-ease-default)]', HOUSE_CHART_BAR_POSITIVE_CLASS)}
+                style={{ width: `${repeatRatePct}%` }}
+                aria-hidden="true"
+              />
             </div>
           </div>
         </div>
@@ -3665,20 +3686,17 @@ function PublicationCategoryDistributionChart({
     <div className="flex h-full min-h-0 w-full flex-col">
       <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS}>
         <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
-          <div
-            className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
+            <div
+              className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
             data-stop-tile-open="true"
             data-ui="publications-window-toggle"
             data-house-role="chart-toggle"
           >
-            <span
-              className={HOUSE_TOGGLE_THUMB_CLASS}
-              style={{
-                width: 'calc(25% - 0.2rem)',
-                left: `calc(${Math.max(0, activeWindowIndex) * 25}% + 2px)`,
-              }}
-              aria-hidden="true"
-            />
+                <span
+                  className={HOUSE_TOGGLE_THUMB_CLASS}
+                  style={buildTileToggleThumbStyle(activeWindowIndex, PUBLICATIONS_WINDOW_OPTIONS.length)}
+                  aria-hidden="true"
+                />
             {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
               <button
                 key={`${dimension}-window-${option.value}`}
@@ -3706,19 +3724,16 @@ function PublicationCategoryDistributionChart({
           </div>
           {enableValueModeToggle ? (
             <div
-              className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+              className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
               data-stop-tile-open="true"
               data-ui={`${dimension}-value-mode-toggle`}
               data-house-role="chart-toggle"
             >
-              <span
-                className={HOUSE_TOGGLE_THUMB_CLASS}
-                style={{
-                  width: 'calc(50% - 0.2rem)',
-                  left: `calc(${Math.max(0, activeValueModeIndex) * 50}% + 2px)`,
-                }}
-                aria-hidden="true"
-              />
+                <span
+                  className={HOUSE_TOGGLE_THUMB_CLASS}
+                  style={buildTileToggleThumbStyle(activeValueModeIndex, PUBLICATION_VALUE_MODE_OPTIONS.length)}
+                  aria-hidden="true"
+                />
               {PUBLICATION_VALUE_MODE_OPTIONS.map((option) => (
                 <button
                   key={`${dimension}-value-mode-${option.value}`}
@@ -3745,20 +3760,17 @@ function PublicationCategoryDistributionChart({
               ))}
             </div>
           ) : null}
-          <div
-            className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+            <div
+              className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
             data-stop-tile-open="true"
             data-ui={`${dimension}-display-mode-toggle`}
             data-house-role="chart-toggle"
           >
-            <span
-              className={HOUSE_TOGGLE_THUMB_CLASS}
-              style={{
-                width: 'calc(50% - 0.2rem)',
-                left: `calc(${Math.max(0, activeDisplayModeIndex) * 50}% + 2px)`,
-              }}
-              aria-hidden="true"
-            />
+                <span
+                  className={HOUSE_TOGGLE_THUMB_CLASS}
+                  style={buildTileToggleThumbStyle(activeDisplayModeIndex, PUBLICATION_DISPLAY_MODE_OPTIONS.length)}
+                  aria-hidden="true"
+                />
             {PUBLICATION_DISPLAY_MODE_OPTIONS.map((option) => (
               <button
                 key={`${dimension}-display-mode-${option.value}`}
@@ -4728,15 +4740,12 @@ function TotalPublicationsDrilldownWorkspace({
         <div className={workspaceSectionClass}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className={workspaceHeadingClass}>Publication trajectory</p>
-            <div className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-3')}>
-              <span
-                className={HOUSE_TOGGLE_THUMB_CLASS}
-                style={{
-                  width: 'calc(33.333333% - 0.16rem)',
-                  left: `calc(${(100 / 3) * activeTrajectoryIndex}% + 2px)`,
-                }}
-                aria-hidden="true"
-              />
+            <div className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-3')}>
+                <span
+                  className={HOUSE_TOGGLE_THUMB_CLASS}
+                  style={buildTileToggleThumbStyle(activeTrajectoryIndex, trajectoryOptions.length)}
+                  aria-hidden="true"
+                />
               {trajectoryOptions.map((option) => (
                 <button
                   key={`trajectory-mode-${option.key}`}
@@ -4935,8 +4944,7 @@ function HIndexNeedsChart({
   const scaledMax = Math.max(1, animatedMax)
   const axisLayout = buildChartAxisLayout({
     axisLabels: bars.map((bar) => bar.label),
-    showXAxisName: true,
-    xAxisName: 'Citations needed',
+    showXAxisName: false,
     dense: false,
   })
 
@@ -4969,6 +4977,10 @@ function HIndexNeedsChart({
               const animatedCount = Math.max(0, animatedCounts[index] ?? 0)
               const heightPct = animatedCount <= 0 ? 3 : Math.max(6, (animatedCount / scaledMax) * 100)
               const isActive = hoveredIndex === index
+              const shouldShowTooltipInBar = heightPct >= 18
+              const tooltipStyle = shouldShowTooltipInBar
+                ? { top: `calc(${100 - heightPct}% + 0.2rem)` }
+                : { bottom: `calc(${heightPct}% + 0.35rem)` }
               const toneClass = bar.needed <= 1
                 ? HOUSE_CHART_BAR_POSITIVE_CLASS
                 : bar.needed <= 3
@@ -4986,7 +4998,7 @@ function HIndexNeedsChart({
                       HOUSE_DRILLDOWN_TOOLTIP_CLASS,
                       isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
                     )}
-                    style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
+                    style={tooltipStyle}
                     aria-hidden="true"
                   >
                     {formatInt(animatedCount)} {Math.round(animatedCount) === 1 ? 'paper' : 'papers'}
@@ -5019,14 +5031,6 @@ function HIndexNeedsChart({
               <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-0.5 leading-tight')}>{bar.label}</p>
             </div>
           ))}
-        </div>
-        <div
-          className="pointer-events-none absolute inset-x-2 text-center"
-          style={{ bottom: `${axisLayout.xAxisNameBottomRem}rem`, minHeight: `${axisLayout.xAxisNameMinHeightRem}rem` }}
-        >
-          <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words leading-tight')}>
-            Citations needed
-          </p>
         </div>
       </div>
     </div>
@@ -5122,12 +5126,12 @@ function HIndexProgressInline({
 }) {
   const progressMeta = buildHIndexProgressMeta(tile)
   return (
-    <div className="mt-4 w-full max-w-[11.7rem] space-y-1.5">
+    <div className="mt-6 w-full max-w-[11.7rem] space-y-1.5">
       {progressLabel ? (
         <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'house-metric-support-text leading-tight')}>{progressLabel}</p>
       ) : null}
       <div className="flex items-center gap-2">
-        <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-1.5 flex-1')}>
+        <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[var(--metric-progress-track-height)] flex-1')}>
           <div
             className={cn('h-full rounded-full transition-[width] duration-500 ease-out', HOUSE_CHART_BAR_POSITIVE_CLASS)}
             style={{ width: `${progressMeta.progressPct}%` }}
@@ -5152,16 +5156,12 @@ function HIndexViewToggle({
   return (
     <div className="flex items-center">
       <div
-        className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
         data-stop-tile-open="true"
       >
         <span
           className={HOUSE_TOGGLE_THUMB_CLASS}
-          style={{
-            width: 'calc(50% - 0.125rem)',
-            left: mode === 'needed' ? 'calc(50% + 1px)' : '2px',
-            willChange: 'left,width',
-          }}
+          style={buildTileToggleThumbStyle(mode === 'needed' ? 1 : 0, 2)}
           aria-hidden="true"
         />
         <button
@@ -5200,7 +5200,7 @@ function HIndexViewToggle({
           onMouseDown={(event) => event.stopPropagation()}
           aria-pressed={mode === 'needed'}
         >
-          Needed
+          Citations needed
         </button>
       </div>
     </div>
@@ -5243,17 +5243,7 @@ function InfluentialTrendPanel({
   const width = 220
   const height = 92
   const points = buildLinePoints(values, width, height, labels, 8)
-  const baselineY = height - 8
-  const areaOffsetY = 0.7
-  const areaPoints = points.map((point) => ({
-    x: point.x,
-    y: Math.min(baselineY, point.y + areaOffsetY),
-  }))
   const path = monotonePathFromPoints(points)
-  const areaCurve = monotonePathFromPoints(areaPoints)
-  const areaPath = areaPoints.length
-    ? `${areaCurve} L ${areaPoints[areaPoints.length - 1].x} ${baselineY} L ${areaPoints[0].x} ${baselineY} Z`
-    : ''
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -5271,7 +5261,6 @@ function InfluentialTrendPanel({
       >
         <div className="relative h-full w-full">
           <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-full w-full">
-            <path d={areaPath} className={HOUSE_DRILLDOWN_CHART_AREA_SVG_CLASS} fillOpacity={0.68} />
             <path
               d={path}
               fill="none"
@@ -5712,6 +5701,7 @@ export function PublicationsTopStrip({
                 const momentumBreakdown = tile.key === 'momentum' ? buildMomentumBreakdown(tile) : null
                 let primaryValue: ReactNode = mainValueDisplay
                 let badgeNode: ReactNode | undefined
+                let badgePlacement: 'inline' | 'topRight' | 'bottomRight' | 'bottomCenter' | 'leftChart' = 'inline'
                 const pinBadgeBottom = true
                 let secondaryText: ReactNode = subtitle || '\u2014'
                 let detailText: ReactNode | undefined = effectiveDeltaDisplay || undefined
@@ -5757,16 +5747,12 @@ export function PublicationsTopStrip({
                   badgeNode = (
                     <div className="flex items-center">
                       <div
-                        className={cn(HOUSE_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+                        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
                         data-stop-tile-open="true"
                       >
                         <span
                           className={HOUSE_TOGGLE_THUMB_CLASS}
-                          style={{
-                            width: 'calc(50% - 0.125rem)',
-                            left: momentumWindowMode === '5y' ? 'calc(50% + 1px)' : '2px',
-                            willChange: 'left,width',
-                          }}
+                          style={buildTileToggleThumbStyle(momentumWindowMode === '5y' ? 1 : 0, 2)}
                           aria-hidden="true"
                         />
                         <button
@@ -5873,6 +5859,7 @@ export function PublicationsTopStrip({
                         HOUSE_SURFACE_METRIC_PILL_CLASS,
                         HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS,
                         HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_REGULAR_CLASS,
+                        HOUSE_METRIC_TILE_PILL_CLASS,
                       )}
                       >
                         {impactBadgeLabel}
@@ -5894,7 +5881,6 @@ export function PublicationsTopStrip({
                   const activeThreshold = availableThresholds.includes(fieldPercentileThreshold)
                     ? fieldPercentileThreshold
                     : defaultThreshold
-                  const activeThresholdIndex = Math.max(0, availableThresholds.indexOf(activeThreshold))
                   const shareMap = parseNumericKeyedMap(fieldPercentileData.share_by_threshold_pct)
                   const countMap = parseNumericKeyedMap(fieldPercentileData.count_by_threshold)
                   const evaluatedRaw = Number(fieldPercentileData.evaluated_papers)
@@ -5930,23 +5916,10 @@ export function PublicationsTopStrip({
                       style={{
                         gridTemplateRows: `repeat(${availableThresholds.length}, minmax(0, 1fr))`,
                         minHeight: `${availableThresholds.length * 1.785}rem`,
+                        padding: 0,
                       }}
                       data-stop-tile-open="true"
                     >
-                      <span
-                        className={HOUSE_TOGGLE_THUMB_CLASS}
-                        style={{
-                          width: 'calc(100% - 0.25rem)',
-                          height: `calc(${100 / availableThresholds.length}% - 0.125rem)`,
-                          top: `calc(${(100 / availableThresholds.length) * activeThresholdIndex}% + 2px)`,
-                          left: '0.125rem',
-                          bottom: 'auto',
-                          right: 'auto',
-                          transitionProperty: 'top, height',
-                          willChange: 'top,height',
-                        }}
-                        aria-hidden="true"
-                      />
                       {availableThresholds.map((threshold) => (
                         <button
                           key={`field-threshold-${threshold}`}
@@ -5954,9 +5927,10 @@ export function PublicationsTopStrip({
                           data-stop-tile-open="true"
                           className={cn(
                             HOUSE_TOGGLE_BUTTON_CLASS,
+                            HOUSE_FIELD_PERCENTILE_TOGGLE_BUTTON_CLASS,
                             'inline-flex h-full w-full min-h-0 flex-1 items-center justify-center px-0 py-0',
                             activeThreshold === threshold
-                              ? 'text-white'
+                              ? FIELD_PERCENTILE_TOGGLE_ACTIVE_BUTTON_CLASS_BY_THRESHOLD[threshold]
                               : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
                           )}
                           onClick={(event) => {
@@ -6003,11 +5977,13 @@ export function PublicationsTopStrip({
                       HOUSE_SURFACE_METRIC_PILL_CLASS,
                       HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS,
                       HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_REGULAR_CLASS,
+                      HOUSE_METRIC_TILE_PILL_CLASS,
                     )}
                     >
                       Median author position {medianAuthorPositionDisplay}
                     </span>
                   )
+                  badgePlacement = 'bottomCenter'
                   visual = <AuthorshipStructurePanel tile={tile} />
                 } else if (tile.key === 'collaboration_structure') {
                   const collaborationChartData = (tile.chart_data || {}) as Record<string, unknown>
@@ -6029,9 +6005,12 @@ export function PublicationsTopStrip({
                   const influentialRatioWhole = Number.isFinite(influentialRatioRaw)
                     ? Math.max(0, Math.round(influentialRatioRaw))
                     : null
-                  primaryValue = mainValueDisplay
+                  const influentialValueText = String(mainValueDisplay || '\u2014').trim() || '\u2014'
+                  primaryValue = influentialRatioWhole === null || influentialValueText === '\u2014'
+                    ? influentialValueText
+                    : `${influentialValueText} (${influentialRatioWhole}%)`
                   secondaryText = 'Influential citations'
-                  detailText = influentialRatioWhole === null ? undefined : `${influentialRatioWhole}% of total citations`
+                  detailText = undefined
                   visual = (
                     <InfluentialTrendPanel
                       tile={tile}
@@ -6051,7 +6030,7 @@ export function PublicationsTopStrip({
                     shouldIgnoreTileOpen={shouldIgnoreTileOpen}
                     primaryValue={primaryValue}
                     badge={badgeNode}
-                    badgePlacement="inline"
+                    badgePlacement={badgePlacement}
                     pinBadgeBottom={pinBadgeBottom}
                     centerBadge={tile.key === 'impact_concentration'}
                     subtitle={secondaryText}

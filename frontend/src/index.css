@@ -170,18 +170,27 @@
     --metric-tile-grid-gap: 0.95rem;
     --metric-tile-grid-padding: 0.75rem;
     --metric-tile-grid-row-min-height: 12.5rem;
-    --metric-tile-border-color: hsl(var(--foreground) / 0.36);
-    --metric-tile-border-width: 1.5px;
+    --metric-tile-border-color: hsl(var(--stroke-strong) / 0.74);
+    --metric-tile-border-width: 2px;
     --metric-tile-bg-rest: hsl(var(--tone-neutral-100) / 0.9);
     --metric-tile-bg-hover: hsl(var(--background));
     --metric-tile-bg-selected: hsl(var(--background));
     --metric-tile-chart-bg-rest: var(--metric-tile-bg-rest);
     --metric-tile-chart-bg-hover: var(--metric-tile-bg-hover);
-    --metric-tile-separator-color: hsl(var(--foreground) / 0.36);
-    --metric-tile-separator-width: 1.5px;
+    --metric-tile-separator-color: hsl(var(--stroke-strong) / 0.84);
+    --metric-tile-separator-width: 2px;
+    --metric-tile-pill-radius: var(--radius-sm);
+    --metric-tile-pill-border: hsl(var(--stroke-strong) / 0.84);
+    --metric-tile-pill-bg: hsl(var(--tone-neutral-50));
+    --metric-tile-pill-fg: hsl(var(--tone-neutral-700));
+    --metric-tile-pill-px: 0.56rem;
+    --metric-tile-pill-py: 0.16rem;
     --metric-support-text-size: 0.8125rem;
     --metric-support-text-line: 1.14rem;
     --metric-support-text-weight: 600;
+    --metric-progress-track-height: 0.5rem;
+    --metric-progress-track-bg: hsl(var(--tone-neutral-300));
+    --metric-progress-track-outline: hsl(var(--tone-neutral-500) / 0.38);
 
     --motion-duration-fast: 150ms;
     --motion-duration-ui: 180ms;
@@ -779,6 +788,12 @@
     line-height: 1rem;
   }
 
+  .house-metric-tile-shell .house-drilldown-progress-track {
+    height: var(--metric-progress-track-height);
+    background-color: var(--metric-progress-track-bg);
+    box-shadow: inset 0 0 0 1px var(--metric-progress-track-outline);
+  }
+
   /* Targeted support-text scale bump for small helper labels in specific tiles. */
   [data-metric-key='h_index_projection'] .house-chart-axis-text-trend {
     font-size: var(--metric-support-text-size);
@@ -821,9 +836,20 @@
   /* Metric-tile toggles: muted/inactive controls follow tile rest/hover surface behavior. */
   .house-metric-tile-shell .house-toggle-track {
     background-color: var(--metric-tile-chart-bg-rest);
+    padding: 0 !important;
     border-width: 1px !important;
     border-style: solid !important;
-    border-color: hsl(var(--tone-neutral-950)) !important;
+    border-color: hsl(var(--stroke-soft) / 0.92) !important;
+  }
+
+  .house-metric-tile-shell .house-toggle-track:not(.house-field-percentile-toggle-track) .house-toggle-thumb {
+    inset-block: 0 !important;
+    border-radius: inherit !important;
+  }
+
+  .house-metric-tile-shell .house-field-percentile-toggle-track .house-toggle-thumb {
+    inset-block: auto !important;
+    border-radius: 9999px !important;
   }
 
   .house-metric-tile-shell:hover .house-toggle-track,
@@ -840,6 +866,18 @@
   .house-metric-tile-shell:focus-visible .house-toggle-button.house-drilldown-toggle-button-muted,
   .house-metric-tile-shell-selected .house-toggle-button.house-drilldown-toggle-button-muted {
     background-color: var(--metric-tile-chart-bg-hover);
+  }
+
+  /* Field-percentile vertical toggle should read as one continuous track while inactive. */
+  .house-metric-tile-shell .house-field-percentile-toggle-button {
+    border-radius: 0 !important;
+  }
+
+  .house-metric-tile-shell .house-field-percentile-toggle-button.house-drilldown-toggle-button-muted,
+  .house-metric-tile-shell:hover .house-field-percentile-toggle-button.house-drilldown-toggle-button-muted,
+  .house-metric-tile-shell:focus-visible .house-field-percentile-toggle-button.house-drilldown-toggle-button-muted,
+  .house-metric-tile-shell-selected .house-field-percentile-toggle-button.house-drilldown-toggle-button-muted {
+    background-color: transparent !important;
   }
 
   .house-metric-tile-separator {
@@ -2120,6 +2158,87 @@
     color: hsl(var(--tone-neutral-600));
   }
 
+  .house-metric-tile-pill-container {
+    pointer-events: none;
+    position: absolute;
+    right: 0.5rem;
+    top: 0.2rem;
+    z-index: 10;
+    display: flex;
+    width: auto;
+    justify-content: flex-end;
+  }
+
+  .house-metric-tile-pill-container-bottom {
+    pointer-events: none;
+    position: absolute;
+    right: 0.5rem;
+    bottom: 0.45rem;
+    z-index: 10;
+    display: flex;
+    width: auto;
+    justify-content: flex-end;
+  }
+
+  .house-metric-tile-pill-container-bottom-center {
+    pointer-events: none;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0.45rem;
+    z-index: 10;
+    display: flex;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .house-metric-tile-pill {
+    pointer-events: auto;
+    border-radius: var(--metric-tile-pill-radius);
+    border-color: var(--metric-tile-pill-border);
+    background-color: var(--metric-tile-chart-bg-rest);
+    color: var(--metric-tile-pill-fg);
+    padding: var(--metric-tile-pill-py) var(--metric-tile-pill-px);
+    line-height: 1.06rem;
+    min-height: 1.72rem;
+    box-shadow: none;
+  }
+
+  .house-metric-tile-shell:hover .house-metric-tile-pill,
+  .house-metric-tile-shell:focus-visible .house-metric-tile-pill,
+  .house-metric-tile-shell-selected .house-metric-tile-pill {
+    background-color: var(--metric-tile-chart-bg-hover);
+  }
+
+  .house-toggle-button-threshold-50,
+  .house-toggle-button-threshold-75,
+  .house-toggle-button-threshold-90,
+  .house-toggle-button-threshold-95,
+  .house-toggle-button-threshold-99 {
+    color: hsl(var(--tone-neutral-50));
+    font-weight: 600;
+  }
+
+  .house-toggle-button-threshold-50 {
+    background-color: hsl(var(--tone-accent-500));
+  }
+
+  .house-toggle-button-threshold-75 {
+    background-color: hsl(var(--tone-accent-500));
+  }
+
+  .house-toggle-button-threshold-90 {
+    background-color: hsl(var(--tone-accent-600));
+  }
+
+  .house-toggle-button-threshold-95 {
+    background-color: hsl(var(--tone-accent-700));
+  }
+
+  .house-toggle-button-threshold-99 {
+    background-color: hsl(var(--tone-accent-800));
+  }
+
   .house-left-border {
     position: relative;
     padding-left: 0.75rem;
@@ -2280,8 +2399,8 @@
     align-items: center;
     overflow: hidden;
     border-style: solid;
-    border-color: hsl(var(--tone-neutral-950));
-    border-width: 1px;
+    border-color: var(--metric-tile-separator-color);
+    border-width: var(--metric-tile-separator-width);
     border-radius: 9999px;
     background-color: hsl(var(--tone-neutral-0));
     padding: 0.125rem;
@@ -2298,6 +2417,26 @@
     transition-property: left, width;
     transition-duration: var(--motion-duration-slow);
     transition-timing-function: ease-out;
+  }
+
+  .house-toggle-thumb-threshold-50 {
+    background-color: hsl(var(--tone-accent-500));
+  }
+
+  .house-toggle-thumb-threshold-75 {
+    background-color: hsl(var(--tone-accent-500));
+  }
+
+  .house-toggle-thumb-threshold-90 {
+    background-color: hsl(var(--tone-accent-600));
+  }
+
+  .house-toggle-thumb-threshold-95 {
+    background-color: hsl(var(--tone-accent-700));
+  }
+
+  .house-toggle-thumb-threshold-99 {
+    background-color: hsl(var(--tone-accent-800));
   }
 
   .house-toggle-button {
@@ -2388,13 +2527,13 @@
   }
 
   .house-chart-bar-current {
-    border: 1.5px dashed hsl(var(--tone-accent-700) / 0.88);
+    border: 1.5px dashed hsl(var(--section-style-profile-accent) / 0.9);
     background: repeating-linear-gradient(
       135deg,
-      hsl(var(--tone-accent-100) / 0.92) 0 4px,
-      hsl(var(--tone-neutral-50)) 4px 8px
+      hsl(var(--section-style-profile-accent) / 0.2) 0 4px,
+      hsl(var(--background)) 4px 8px
     );
-    box-shadow: inset 0 0 0 1px hsl(var(--tone-accent-300) / 0.6);
+    box-shadow: inset 0 0 0 1px hsl(var(--section-style-profile-accent) / 0.35);
   }
 
   .house-chart-axis-text {

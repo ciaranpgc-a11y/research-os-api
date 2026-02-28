@@ -9,11 +9,33 @@ import { AccountNavigator } from '@/components/layout/account-navigator'
 import { WorkspaceNavigator } from '@/components/layout/workspace-navigator'
 
 type HeaderScope = 'account' | 'workspace'
+type FieldPercentileThreshold = 50 | 75 | 90 | 95 | 99
 type IconOption = {
   id: string
   label: string
   description: string
   icon: JSX.Element
+}
+
+function buildTileToggleThumbStyle(activeIndex: number, optionCount: number) {
+  const safeCount = Math.max(1, optionCount)
+  const safeIndex = Math.max(0, Math.min(activeIndex, safeCount - 1))
+  const widthPercent = 100 / safeCount
+  const leftPercent = safeIndex * widthPercent
+  const finalWidth = `${safeIndex === safeCount - 1 ? 100 - leftPercent : widthPercent}%`
+  return {
+    width: finalWidth,
+    left: `${leftPercent}%`,
+    willChange: 'left,width',
+  }
+}
+
+const FIELD_PERCENTILE_TOGGLE_ACTIVE_BUTTON_CLASS_BY_THRESHOLD: Record<FieldPercentileThreshold, string> = {
+  50: 'house-toggle-button-threshold-50',
+  75: 'house-toggle-button-threshold-75',
+  90: 'house-toggle-button-threshold-90',
+  95: 'house-toggle-button-threshold-95',
+  99: 'house-toggle-button-threshold-99',
 }
 
 const meta: Meta = {
@@ -383,11 +405,7 @@ function ApprovedMetricTilesSection() {
                     <div className="house-toggle-track grid-cols-2">
                       <span
                         className="house-toggle-thumb"
-                        style={{
-                          width: 'calc(50% - 0.125rem)',
-                          left: hIndexMode === 'needed' ? 'calc(50% + 1px)' : '2px',
-                          willChange: 'left,width',
-                        }}
+                        style={buildTileToggleThumbStyle(hIndexMode === 'needed' ? 1 : 0, 2)}
                         aria-hidden="true"
                       />
                       <button
@@ -404,7 +422,7 @@ function ApprovedMetricTilesSection() {
                         onClick={() => setHIndexMode('needed')}
                         aria-pressed={hIndexMode === 'needed'}
                       >
-                        Needed
+                        Citations needed
                       </button>
                     </div>
                   </div>
@@ -427,13 +445,18 @@ function ApprovedMetricTilesSection() {
                 <p className="house-metric-subtitle">Unique collaborators</p>
                 <div className="pt-1.5">
                   <p className="house-chart-axis-text mb-1 font-semibold">Repeat collaborator rate</p>
-                  <div className="house-drilldown-progress-track h-[0.44rem]">
+                  <div className="house-drilldown-progress-track h-[var(--metric-progress-track-height)]">
                     <div className="house-chart-bar-positive h-full rounded-full" style={{ width: '62%' }} />
                   </div>
                   <p className="house-chart-axis-text mt-1 text-right font-semibold">62%</p>
                 </div>
               </div>
-              <div className="house-metric-tile-separator min-h-0 border-l pl-3">
+              <div className="house-metric-tile-separator relative min-h-0 border-l pl-3">
+                <div className="house-metric-tile-pill-container-bottom-center">
+                  <span className="house-metric-pill house-metric-pill-publications house-metric-pill-publications-regular house-metric-tile-pill">
+                    Median author position 2
+                  </span>
+                </div>
                 <div className="house-metric-tile-chart-surface flex h-full min-h-0 flex-col rounded-sm px-2 py-1.5">
                   <div>
                     <div className="grid grid-cols-[minmax(0,1fr)_3.25rem] items-center gap-x-3 py-1.5">
@@ -454,7 +477,7 @@ function ApprovedMetricTilesSection() {
                   <div className="mt-2.5">
                     <p className="house-chart-axis-text mb-1 leading-tight">Repeat collaborator rate</p>
                     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
-                      <div className="house-drilldown-progress-track h-[0.44rem]">
+                      <div className="house-drilldown-progress-track h-[var(--metric-progress-track-height)]">
                         <div className="house-chart-bar-positive h-full rounded-full" style={{ width: '62%' }} />
                       </div>
                       <p className="house-chart-axis-text leading-tight">62%</p>
@@ -475,9 +498,8 @@ function ApprovedMetricTilesSection() {
 
 function ApprovedTileTogglesSection() {
   const [hMode, setHMode] = useState<'trend' | 'needed'>('trend')
-  const thresholds = [50, 75, 90, 95, 99] as const
-  const [vMode, setVMode] = useState<(typeof thresholds)[number]>(75)
-  const vIndex = Math.max(0, thresholds.indexOf(vMode))
+  const thresholds: FieldPercentileThreshold[] = [50, 75, 90, 95, 99]
+  const [vMode, setVMode] = useState<FieldPercentileThreshold>(75)
 
   return (
     <section>
@@ -487,17 +509,13 @@ function ApprovedTileTogglesSection() {
           <p className="text-xs text-neutral-600">Canonical toggle controls for metric tiles (horizontal and vertical).</p>
         </div>
         <div className="grid gap-4 p-4 lg:grid-cols-2">
-          <article className="rounded-md border border-neutral-200 bg-background p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Horizontal Toggle (Trend / Needed)</p>
+          <article className="house-metric-tile-shell rounded-md border p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Horizontal Toggle (Trend / Citations needed)</p>
             <div className="mt-3 inline-flex items-center">
               <div className="house-toggle-track grid-cols-2">
                 <span
                   className="house-toggle-thumb"
-                  style={{
-                    width: 'calc(50% - 0.125rem)',
-                    left: hMode === 'needed' ? 'calc(50% + 1px)' : '2px',
-                    willChange: 'left,width',
-                  }}
+                  style={buildTileToggleThumbStyle(hMode === 'needed' ? 1 : 0, 2)}
                   aria-hidden="true"
                 />
                 <button
@@ -514,41 +532,32 @@ function ApprovedTileTogglesSection() {
                   onClick={() => setHMode('needed')}
                   aria-pressed={hMode === 'needed'}
                 >
-                  Needed
+                  Citations needed
                 </button>
               </div>
             </div>
           </article>
 
-          <article className="rounded-md border border-neutral-200 bg-background p-4">
+          <article className="house-metric-tile-shell rounded-md border p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Vertical Toggle (Field Percentile)</p>
             <div className="mt-3">
               <div
-                className="house-toggle-track relative grid w-10 items-stretch"
+                className="house-toggle-track house-field-percentile-toggle-track relative grid w-10 items-stretch"
                 style={{
                   gridTemplateRows: `repeat(${thresholds.length}, minmax(0, 1fr))`,
                   minHeight: `${thresholds.length * 1.785}rem`,
+                  padding: 0,
                 }}
               >
-                <span
-                  className="house-toggle-thumb"
-                  style={{
-                    width: 'calc(100% - 0.25rem)',
-                    height: `calc(${100 / thresholds.length}% - 0.125rem)`,
-                    top: `calc(${(100 / thresholds.length) * vIndex}% + 2px)`,
-                    left: '0.125rem',
-                    bottom: 'auto',
-                    right: 'auto',
-                    transitionProperty: 'top, height',
-                    willChange: 'top,height',
-                  }}
-                  aria-hidden="true"
-                />
                 {thresholds.map((threshold) => (
                   <button
                     key={`approved-v-toggle-${threshold}`}
                     type="button"
-                    className={vMode === threshold ? 'house-toggle-button text-white' : 'house-toggle-button house-drilldown-toggle-button-muted'}
+                    className={
+                      vMode === threshold
+                        ? `house-toggle-button house-field-percentile-toggle-button ${FIELD_PERCENTILE_TOGGLE_ACTIVE_BUTTON_CLASS_BY_THRESHOLD[threshold]}`
+                        : 'house-toggle-button house-field-percentile-toggle-button house-drilldown-toggle-button-muted'
+                    }
                     onClick={() => setVMode(threshold)}
                     aria-pressed={vMode === threshold}
                   >
