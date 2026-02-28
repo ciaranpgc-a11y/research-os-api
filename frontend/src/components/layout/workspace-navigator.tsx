@@ -152,7 +152,7 @@ export function WorkspaceNavigator({ workspaceId, onNavigate }: WorkspaceNavigat
                   )
                 })}
               </nav>
-              {index < WORKSPACE_NAV_GROUPS.length - 1 ? <Separator /> : null}
+              {index < WORKSPACE_NAV_GROUPS.length - 1 ? <Separator className="house-nav-section-separator" /> : null}
             </section>
           ))}
         </div>

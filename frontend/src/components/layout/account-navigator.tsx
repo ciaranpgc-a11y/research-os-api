@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react'
 import { NavLink } from 'react-router-dom'
 
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
 import { getAuthSessionToken } from '@/lib/auth-session'
 import { houseLayout, houseNavigation, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { fetchOrcidStatus, fetchPersonaState } from '@/lib/impact-api'
@@ -109,7 +110,7 @@ export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
       </div>
       <ScrollArea className={houseLayout.sidebarScroll}>
         <nav className={houseLayout.sidebarBody}>
-          {ACCOUNT_SECTIONS.map((section) => (
+          {ACCOUNT_SECTIONS.map((section, index) => (
             <section key={section.label} className={houseLayout.sidebarSection}>
               <p className={houseNavigation.sectionLabel}>
                 {section.label}
@@ -139,6 +140,7 @@ export function AccountNavigator({ onNavigate }: AccountNavigatorProps) {
                   </NavLink>
                 ))}
               </div>
+              {index < ACCOUNT_SECTIONS.length - 1 ? <Separator className="house-nav-section-separator" /> : null}
             </section>
           ))}
         </nav>

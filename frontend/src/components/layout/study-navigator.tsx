@@ -77,7 +77,7 @@ function Group({ group, qcCounts, onNavigate }: { group: NavGroup; qcCounts: QcC
           const itemBadgeVariant = getBadgeVariant(item.path, qcCounts)
           return (
             <Fragment key={item.path}>
-              {item.dividerBefore ? <Separator className="my-2" /> : null}
+              {item.dividerBefore ? <Separator className="house-nav-section-separator" /> : null}
               <NavLink
                 to={item.path}
                 onClick={onNavigate}
@@ -150,7 +150,7 @@ export function StudyNavigator({ onNavigate }: StudyNavigatorProps) {
           {NAV_GROUPS.map((group, index) => (
             <div key={group.title} className="space-y-3">
               <Group group={group} qcCounts={qcCounts} onNavigate={onNavigate} />
-              {index < NAV_GROUPS.length - 1 ? <Separator /> : null}
+              {index < NAV_GROUPS.length - 1 ? <Separator className="house-nav-section-separator" /> : null}
             </div>
           ))}
         </div>

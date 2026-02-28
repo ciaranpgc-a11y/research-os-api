@@ -5,6 +5,8 @@ import { Eye, EyeOff, KeyRound, Mail, Menu, Search, Settings, User } from 'lucid
 
 import { AuthPage } from '@/pages/auth-page'
 import { TopBar } from '@/components/layout/top-bar'
+import { AccountNavigator } from '@/components/layout/account-navigator'
+import { WorkspaceNavigator } from '@/components/layout/workspace-navigator'
 
 type HeaderScope = 'account' | 'workspace'
 type IconOption = {
@@ -80,6 +82,162 @@ function AuthPagePanel() {
         <MemoryRouter initialEntries={["/auth"]}>
           <AuthPage />
         </MemoryRouter>
+      </div>
+    </section>
+  )
+}
+
+function ApprovedLeftPanel() {
+  const workspaceId = 'workspace-1'
+  const workspacePath = `/w/${workspaceId}/overview`
+  const inboxPath = `/w/${workspaceId}/inbox`
+  const profilePath = '/profile'
+
+  return (
+    <section>
+      <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-neutral-200">
+          <p className="text-sm font-semibold text-neutral-900">Approved Left Panels (mirrored canonical)</p>
+          <p className="text-xs text-neutral-600">Workspace home and Profile left panels aligned for shared sizing and state behavior.</p>
+        </div>
+        <div className="bg-card p-4">
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Workspace home</p>
+              <div className="approved-left-panel-sync approved-left-panel-canvas w-[280px] overflow-hidden rounded-md border border-border">
+                <MemoryRouter initialEntries={[workspacePath]}>
+                  <WorkspaceNavigator workspaceId={workspaceId} />
+                </MemoryRouter>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Inbox</p>
+              <div className="approved-left-panel-sync approved-left-panel-canvas w-[280px] overflow-hidden rounded-md border border-border">
+                <MemoryRouter initialEntries={[inboxPath]}>
+                  <WorkspaceNavigator workspaceId={workspaceId} />
+                </MemoryRouter>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Profile</p>
+              <div className="approved-left-panel-sync approved-left-panel-canvas w-[280px] overflow-hidden rounded-md border border-border">
+                <MemoryRouter initialEntries={[profilePath]}>
+                  <AccountNavigator />
+                </MemoryRouter>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <style>{`
+        .approved-left-panel-canvas {
+          height: 36rem;
+          background-color: hsl(var(--card));
+        }
+
+        .approved-left-panel-sync .house-nav-item {
+          --approved-left-nav-hover-bg: hsl(var(--tone-neutral-100) / 0.92);
+          --approved-left-nav-active-bg: hsl(var(--tone-neutral-100) / 0.92);
+        }
+
+        .approved-left-panel-sync .house-nav-item::before {
+          width: var(--marker-width) !important;
+          left: var(--left-nav-rail-left) !important;
+          border-radius: var(--marker-radius) !important;
+        }
+
+        .approved-left-panel-sync .house-left-border::before {
+          width: var(--marker-width) !important;
+          border-radius: var(--marker-radius) !important;
+        }
+
+        .approved-left-panel-sync .house-nav-section-label {
+          font-size: 0.8125rem;
+          line-height: 1.2rem;
+        }
+
+        .approved-left-panel-sync .house-nav-item-workspace,
+        .approved-left-panel-sync .house-nav-item-data,
+        .approved-left-panel-sync .house-nav-item-manuscript,
+        .approved-left-panel-sync .house-nav-item-governance {
+          --approved-left-nav-hover-bg: var(--top-nav-hover-bg-workspace);
+          --approved-left-nav-active-bg: var(--top-nav-active-bg-workspace);
+        }
+
+        .approved-left-panel-sync .house-nav-item-overview,
+        .approved-left-panel-sync .house-nav-item-research,
+        .approved-left-panel-sync .house-nav-item-account {
+          --approved-left-nav-hover-bg: var(--top-nav-hover-bg-profile);
+          --approved-left-nav-active-bg: var(--top-nav-active-bg-profile);
+        }
+
+        .approved-left-panel-sync .house-nav-item-learning-centre {
+          --approved-left-nav-hover-bg: var(--top-nav-hover-bg-learning-centre);
+          --approved-left-nav-active-bg: var(--top-nav-active-bg-learning-centre);
+        }
+
+        .approved-left-panel-sync .house-nav-item-opportunities {
+          --approved-left-nav-hover-bg: var(--top-nav-hover-bg-opportunities);
+          --approved-left-nav-active-bg: var(--top-nav-active-bg-opportunities);
+        }
+
+        .approved-left-panel-sync .house-nav-item:hover {
+          background-color: var(--approved-left-nav-hover-bg);
+          color: hsl(var(--tone-neutral-700));
+        }
+
+        .approved-left-panel-sync .house-nav-item-active,
+        .approved-left-panel-sync .house-nav-item-active:hover {
+          background-color: var(--approved-left-nav-active-bg);
+          color: hsl(var(--tone-neutral-900));
+        }
+      `}</style>
+    </section>
+  )
+}
+
+function ApprovedMarkersSection() {
+  return (
+    <section>
+      <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-neutral-200">
+          <p className="text-sm font-semibold text-neutral-900">Approved Markers</p>
+          <p className="text-xs text-neutral-600">Canonical marker widths for header, left nav, and panel/drilldown accents.</p>
+        </div>
+        <div className="grid gap-4 p-4 lg:grid-cols-3">
+          <article className="rounded-md border border-neutral-200 bg-white p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Header Marker</p>
+            <div className="mt-3">
+              <button type="button" className="house-top-nav-item house-top-nav-item-workspace house-top-nav-item-active">
+                Workspaces
+              </button>
+            </div>
+            <p className="mt-3 text-xs text-neutral-600">Width: <code>var(--marker-width-header)</code></p>
+          </article>
+
+          <article className="rounded-md border border-neutral-200 bg-white p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Left Nav Marker</p>
+            <div className="mt-3">
+              <button type="button" className="house-nav-item house-nav-item-workspace house-nav-item-active w-full">
+                <span className="house-nav-item-label">Overview</span>
+              </button>
+            </div>
+            <p className="mt-3 text-xs text-neutral-600">Width: <code>var(--marker-width-left-nav)</code></p>
+          </article>
+
+          <article className="rounded-md border border-neutral-200 bg-white p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Panel / Drilldown Marker</p>
+            <div className="mt-3">
+              <div className="house-left-border house-left-border-publications rounded-md border border-border bg-card p-3">
+                <p className="text-sm font-semibold text-neutral-900">Publication drilldown</p>
+                <p className="text-xs text-neutral-600">Marker follows shared panel token.</p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-neutral-600">Width: <code>var(--marker-width-panel)</code></p>
+          </article>
+        </div>
       </div>
     </section>
   )
@@ -275,6 +433,8 @@ function ApprovedPage() {
       <div className="mx-auto max-w-6xl space-y-10 p-4">
         <h1 className="text-2xl font-bold text-neutral-900">Approved Library</h1>
         <ApprovedHeaderBar />
+        <ApprovedMarkersSection />
+        <ApprovedLeftPanel />
         <AuthPagePanel />
         <div className="rounded-lg border border-neutral-200 bg-white shadow-sm">
           <div className="px-4 py-2 border-b border-neutral-200">
