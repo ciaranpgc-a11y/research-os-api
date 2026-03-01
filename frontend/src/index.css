@@ -290,18 +290,23 @@
     --page-title-offset-block: 0.4rem;
     --page-title-offset-inline: 0.4rem;
     --separator-main-title-expander-to-first-heading: 0.72rem;
-    --separator-main-subheading-to-content: 0.3rem;
-    --separator-main-content-to-subheading: 1.69rem;
+    --separator-main-heading-block-to-content: 0.3rem;
+    --separator-main-content-to-heading-block: 1.69rem;
+    --separator-main-subheading-to-content: var(--separator-main-heading-block-to-content);
+    --separator-main-content-to-subheading: var(--separator-main-content-to-heading-block);
     --separator-drilldown-title-expander-to-first-heading: 0.08rem;
     --separator-drilldown-heading-to-content: 0rem;
-    --separator-drilldown-subheading-to-content: 0.3rem;
-    --separator-drilldown-content-to-subheading: 2rem;
+    --separator-drilldown-summary-grid-to-content-top: 0.5rem;
+    --separator-drilldown-heading-block-to-content: 0.3rem;
+    --separator-drilldown-content-to-heading-block: 2.5rem;
+    --separator-drilldown-subheading-to-content: var(--separator-drilldown-heading-block-to-content);
+    --separator-drilldown-content-to-subheading: var(--separator-drilldown-content-to-heading-block);
     --drilldown-title-inline-align: 0rem;
     --separator-left-panel-subheading-to-content: 0.25rem;
     --separator-left-panel-content-to-subheading: 0.5rem;
     --main-content-separator-title-expander-to-first-heading: var(--separator-main-title-expander-to-first-heading);
-    --main-content-separator-subheading-to-content: var(--separator-main-subheading-to-content);
-    --main-content-separator-content-to-subheading: var(--separator-main-content-to-subheading);
+    --main-content-separator-subheading-to-content: var(--separator-main-heading-block-to-content);
+    --main-content-separator-content-to-subheading: var(--separator-main-content-to-heading-block);
     --left-nav-divider-margin: var(--separator-left-panel-content-to-subheading);
     --top-nav-hover-bg: var(--tone-neutral-100);
     --top-nav-hover-bg-workspace: hsl(var(--tone-accent-200) / 0.34);
@@ -501,7 +506,8 @@
     padding-block: 0.375rem;
   }
 
-  .house-main-subheading-block {
+  .house-main-subheading-block,
+  .house-main-heading-block-secondary {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
@@ -754,7 +760,8 @@
     text-overflow: clip;
   }
 
-  .house-drilldown-subheading-block {
+  .house-drilldown-subheading-block,
+  .house-drilldown-heading-block-secondary {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
@@ -774,27 +781,36 @@
   }
 
   .house-main-heading-block + .house-main-content-block,
-  .house-main-subheading-block + .house-main-content-block {
-    margin-top: var(--separator-main-subheading-to-content);
+  .house-main-subheading-block + .house-main-content-block,
+  .house-main-heading-block-secondary + .house-main-content-block {
+    margin-top: var(--separator-main-heading-block-to-content);
   }
 
   .house-main-content-block + .house-main-subheading-block,
+  .house-main-content-block + .house-main-heading-block-secondary,
   .house-main-content-block + .house-main-content-block {
-    margin-top: var(--separator-main-content-to-subheading);
+    margin-top: var(--separator-main-content-to-heading-block);
   }
 
   .house-drilldown-title-block + .house-drilldown-heading-block {
     margin-top: var(--separator-drilldown-title-expander-to-first-heading);
   }
 
-  .house-drilldown-subheading-block > .house-drilldown-overline {
+  .house-drilldown-subheading-block > .house-drilldown-overline,
+  .house-drilldown-heading-block-secondary > .house-drilldown-overline {
     display: block;
-    margin-bottom: var(--separator-drilldown-subheading-to-content);
+    margin-bottom: var(--separator-drilldown-heading-block-to-content);
   }
 
+  .house-drilldown-heading-block + .house-drilldown-heading-block-secondary,
+  .house-drilldown-heading-block + .house-drilldown-subheading-block,
+  .house-publications-drilldown-panel-no-pad > .house-drilldown-heading-block + .house-drilldown-heading-block-secondary,
+  .house-publications-drilldown-panel-no-pad > .house-drilldown-heading-block + .house-drilldown-subheading-block,
+  .house-drilldown-content-block > .house-drilldown-heading-block-secondary + .house-drilldown-heading-block-secondary,
   .house-drilldown-content-block > .house-drilldown-subheading-block + .house-drilldown-subheading-block,
+  .house-publications-drilldown-panel-no-pad > .house-drilldown-heading-block-secondary + .house-drilldown-heading-block-secondary,
   .house-publications-drilldown-panel-no-pad > .house-drilldown-subheading-block + .house-drilldown-subheading-block {
-    margin-top: var(--separator-drilldown-content-to-subheading);
+    margin-top: var(--separator-drilldown-content-to-heading-block);
   }
 
   .house-content-container {
@@ -3663,6 +3679,7 @@
   }
 
   .house-publications-headline-content {
+    --separator-drilldown-summary-grid-to-content-top: 0rem;
     margin-inline: 0;
     width: 100%;
     flex: 1 0 100%;
@@ -4015,7 +4032,8 @@
     padding: 0.625rem 0.75rem;
   }
 
-  .house-drilldown-subheading-block-title {
+  .house-drilldown-subheading-block-title,
+  .house-drilldown-heading-block-title {
     margin: 0 0 0.625rem 0;
     padding-inline: var(--house-publications-drilldown-inline-align, 0);
     font-size: 0.8125rem;
@@ -4041,7 +4059,7 @@
   }
 
   .house-drilldown-summary-stats-grid {
-    margin-top: 0.5rem;
+    margin-top: var(--separator-drilldown-summary-grid-to-content-top);
     width: 100%;
     max-width: 100%;
     display: grid;
@@ -4087,6 +4105,19 @@
     height: 18.28125rem;
     min-width: 0;
     box-sizing: border-box;
+  }
+
+  .house-publications-drilldown-summary-trend-chart-tall {
+    height: 22rem;
+  }
+
+  .house-publications-drilldown-summary-trend-chart-tall .house-chart-frame {
+    border: 0;
+    border-radius: 0;
+    background-color: transparent;
+    box-shadow: none;
+    padding-inline: 0;
+    padding-top: 0;
   }
 
   .house-drilldown-chart-controls-row {

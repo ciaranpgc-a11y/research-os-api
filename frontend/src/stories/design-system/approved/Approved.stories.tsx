@@ -472,6 +472,41 @@ function useAnimationLabEntryPhase(
   return isEntering
 }
 
+function ApprovedHorizontalToggle<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T
+  options: Array<{ value: T; label: string }>
+  onChange: (next: T) => void
+}) {
+  const activeIndex = Math.max(0, options.findIndex((option) => option.value === value))
+  return (
+    <div
+      className="house-toggle-track"
+      style={{ gridTemplateColumns: `repeat(${Math.max(1, options.length)}, minmax(0, 1fr))` }}
+    >
+      <span
+        className="house-toggle-thumb"
+        style={buildTileToggleThumbStyle(activeIndex, options.length)}
+        aria-hidden="true"
+      />
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          className={value === option.value ? 'house-toggle-button text-white' : 'house-toggle-button house-drilldown-toggle-button-muted'}
+          onClick={() => onChange(option.value)}
+          aria-pressed={value === option.value}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function AnimationLabEntryToggle({
   enabled,
   onChange,
@@ -480,29 +515,14 @@ function AnimationLabEntryToggle({
   onChange: (value: boolean) => void
 }) {
   return (
-    <div className="house-toggle-track grid-cols-2">
-      <span
-        className="house-toggle-thumb"
-        style={buildTileToggleThumbStyle(enabled ? 0 : 1, 2)}
-        aria-hidden="true"
-      />
-      <button
-        type="button"
-        className={enabled ? 'house-toggle-button text-white' : 'house-toggle-button house-drilldown-toggle-button-muted'}
-        onClick={() => onChange(true)}
-        aria-pressed={enabled}
-      >
-        Entry
-      </button>
-      <button
-        type="button"
-        className={!enabled ? 'house-toggle-button text-white' : 'house-toggle-button house-drilldown-toggle-button-muted'}
-        onClick={() => onChange(false)}
-        aria-pressed={!enabled}
-      >
-        Static
-      </button>
-    </div>
+    <ApprovedHorizontalToggle
+      value={enabled ? 'entry' : 'static'}
+      options={[
+        { value: 'entry', label: 'Entry' },
+        { value: 'static', label: 'Static' },
+      ]}
+      onChange={(next) => onChange(next === 'entry')}
+    />
   )
 }
 
@@ -719,8 +739,8 @@ function ApprovedPublicationsDrilldownSection() {
               <div className="house-drilldown-content-block house-publications-drilldown-stack-3">
                 {activeDrilldownTab === 'summary' ? (
                   <>
-                    <div className="house-drilldown-subheading-block">
-                      <p className="house-drilldown-subheading-block-title">Headline results</p>
+                    <div className="house-drilldown-heading-block-secondary">
+                      <p className="house-drilldown-heading-block-title">Headline results</p>
                       <div className="house-drilldown-summary-stats-grid">
                         {headlineResultTiles.map((tile) => (
                           <div key={tile.id} className="house-drilldown-summary-stat-card">
@@ -735,7 +755,7 @@ function ApprovedPublicationsDrilldownSection() {
                       </div>
                     </div>
 
-                    <div className="house-drilldown-subheading-block">
+                    <div className="house-drilldown-heading-block-secondary">
                       <p className="house-drilldown-overline">Publication trends over time</p>
                       <div className="house-publications-drilldown-stack-2">
                         <div className="house-drilldown-row"><span>2024</span><span className="house-drilldown-note">11 publications</span></div>
@@ -748,11 +768,11 @@ function ApprovedPublicationsDrilldownSection() {
 
                 {activeDrilldownTab === 'breakdown' ? (
                   <>
-                    <div className="house-drilldown-subheading-block">
-                      <p className="house-drilldown-subheading-block-title">Headline results</p>
+                    <div className="house-drilldown-heading-block-secondary">
+                      <p className="house-drilldown-heading-block-title">Headline results</p>
                       <p className="house-drilldown-note">150 publications across 12 active years</p>
                     </div>
-                    <div className="house-drilldown-subheading-block">
+                    <div className="house-drilldown-heading-block-secondary">
                       <p className="house-drilldown-overline">Publication count by year</p>
                       <div className="house-publications-drilldown-stack-2">
                         <div className="house-drilldown-row"><span>2024</span><span className="house-drilldown-note">11</span></div>
@@ -765,11 +785,11 @@ function ApprovedPublicationsDrilldownSection() {
 
                 {activeDrilldownTab === 'trajectory' ? (
                   <>
-                    <div className="house-drilldown-subheading-block">
-                      <p className="house-drilldown-subheading-block-title">Headline results</p>
+                    <div className="house-drilldown-heading-block-secondary">
+                      <p className="house-drilldown-heading-block-title">Headline results</p>
                       <p className="house-drilldown-note">YoY delta -3 publications</p>
                     </div>
-                    <div className="house-drilldown-subheading-block">
+                    <div className="house-drilldown-heading-block-secondary">
                       <p className="house-drilldown-overline">Year-over-year trajectory</p>
                       <div className="house-publications-drilldown-stack-2">
                         <div className="house-drilldown-row"><span>2024 vs 2023</span><span className="house-drilldown-note">-3</span></div>
@@ -782,11 +802,11 @@ function ApprovedPublicationsDrilldownSection() {
 
                 {activeDrilldownTab === 'context' ? (
                   <>
-                    <div className="house-drilldown-subheading-block">
-                      <p className="house-drilldown-subheading-block-title">Headline results</p>
+                    <div className="house-drilldown-heading-block-secondary">
+                      <p className="house-drilldown-heading-block-title">Headline results</p>
                       <p className="house-drilldown-note">150 publication records with 12 known publication years</p>
                     </div>
-                    <div className="house-drilldown-subheading-block">
+                    <div className="house-drilldown-heading-block-secondary">
                       <p className="house-drilldown-overline">Top publication venues</p>
                       <div className="house-publications-drilldown-stack-2">
                         <div className="house-drilldown-row"><span>Nature</span><span className="house-drilldown-note">18</span></div>
@@ -799,11 +819,11 @@ function ApprovedPublicationsDrilldownSection() {
 
                 {activeDrilldownTab === 'methods' ? (
                   <>
-                    <div className="house-drilldown-subheading-block">
-                      <p className="house-drilldown-subheading-block-title">Headline results</p>
+                    <div className="house-drilldown-heading-block-secondary">
+                      <p className="house-drilldown-heading-block-title">Headline results</p>
                       <p className="house-drilldown-note">Method metadata for total publication insights.</p>
                     </div>
-                    <div className="house-drilldown-subheading-block house-drilldown-note">
+                    <div className="house-drilldown-heading-block-secondary house-drilldown-note">
                       <p><strong>Formula:</strong> Count of indexed publications linked to the profile.</p>
                       <p><strong>Definition:</strong> Total number of scholarly works across the publication history.</p>
                       <p><strong>Data sources:</strong> OpenAlex, profile-linked records</p>
@@ -997,8 +1017,8 @@ function ApprovedTypographySection() {
                   <p className="house-field-helper">Heading block</p>
                   <p className="house-section-title">Section heading</p>
                 </div>
-                <div className="house-main-subheading-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
-                  <p className="house-field-helper">Subheading block</p>
+                <div className="house-main-heading-block-secondary rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                  <p className="house-field-helper">Heading block (secondary)</p>
                   <p className="house-text">Subheading row</p>
                 </div>
                 <div className="house-main-content-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
@@ -1035,10 +1055,10 @@ function ApprovedTypographySection() {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-title-block</code></td><td className="px-2 py-1.5">flex column · align-start · gap 0.2rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-heading-block</code></td><td className="px-2 py-1.5">flex wrap · align-center · justify-between · gap 0.5rem · py 0.375rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-subheading-block</code></td><td className="px-2 py-1.5">flex wrap · align-baseline · justify-between · gap 0.5rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-content-block</code></td><td className="px-2 py-1.5">flex column · min-width 0</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-title-block</code></td><td className="px-2 py-1.5">display:flex · flex-direction:column · align-items:flex-start · gap:0.2rem · min-width:0</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-heading-block</code></td><td className="px-2 py-1.5">display:flex · flex-wrap:wrap · align-items:center · justify-content:space-between · gap:0.5rem · padding-block:0.375rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-heading-block-secondary</code></td><td className="px-2 py-1.5">display:flex · flex-wrap:wrap · align-items:baseline · justify-content:space-between · gap:0.5rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-content-block</code></td><td className="px-2 py-1.5">display:flex · flex-direction:column · min-width:0</td></tr>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-page-header</code></td><td className="px-2 py-1.5">flex column · gap 0.2rem</td></tr>
                   </tbody>
                 </table>
@@ -1048,16 +1068,16 @@ function ApprovedTypographySection() {
                   <thead className="bg-neutral-50 text-neutral-700">
                     <tr>
                       <th className="px-2 py-1.5 font-semibold">Spacing relationships</th>
-                      <th className="px-2 py-1.5 font-semibold">Value</th>
+                      <th className="px-2 py-1.5 font-semibold">Token / Value</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-title-block + .house-main-heading-block</code></td><td className="px-2 py-1.5">0.72rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-title-block + .house-section-anchor .house-main-heading-block:first-child</code></td><td className="px-2 py-1.5">0.72rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-heading-block + .house-main-content-block</code></td><td className="px-2 py-1.5">0.3rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-subheading-block + .house-main-content-block</code></td><td className="px-2 py-1.5">0.3rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-content-block + .house-main-content-block</code></td><td className="px-2 py-1.5">2rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-content-block + .house-main-subheading-block</code></td><td className="px-2 py-1.5">2rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-title-block + .house-main-heading-block</code></td><td className="px-2 py-1.5"><code>--separator-main-title-expander-to-first-heading</code> = 0.72rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-title-block + .house-section-anchor .house-main-heading-block:first-child</code></td><td className="px-2 py-1.5"><code>--separator-main-title-expander-to-first-heading</code> = 0.72rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-heading-block + .house-main-content-block</code></td><td className="px-2 py-1.5"><code>--separator-main-heading-block-to-content</code> = 0.3rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-heading-block-secondary + .house-main-content-block</code></td><td className="px-2 py-1.5"><code>--separator-main-heading-block-to-content</code> = 0.3rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-content-block + .house-main-content-block</code></td><td className="px-2 py-1.5"><code>--separator-main-content-to-heading-block</code> = 1.69rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-content-block + .house-main-heading-block-secondary</code></td><td className="px-2 py-1.5"><code>--separator-main-content-to-heading-block</code> = 1.69rem</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -1152,8 +1172,8 @@ function ApprovedTypographySection() {
                   <p className="house-field-helper">Heading block</p>
                   <p className="house-drilldown-section-label">Tab row / key controls</p>
                 </div>
-                <div className="house-drilldown-subheading-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
-                  <p className="house-field-helper">Subheading block</p>
+                <div className="house-drilldown-heading-block-secondary rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                  <p className="house-field-helper">Heading block (secondary)</p>
                   <p className="house-drilldown-overline">Section overline</p>
                 </div>
                 <div className="house-drilldown-content-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
@@ -1184,22 +1204,24 @@ function ApprovedTypographySection() {
                     <tr><th className="px-2 py-1.5 font-semibold">Layout blocks</th><th className="px-2 py-1.5 font-semibold">Properties</th></tr>
                   </thead>
                   <tbody>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-title-block</code></td><td className="px-2 py-1.5">flex column · align-start · gap 0.25rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-heading-block</code></td><td className="px-2 py-1.5">flex wrap · align-center · justify-between · gap 0.5rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-subheading-block</code></td><td className="px-2 py-1.5">flex wrap · align-baseline · justify-between · gap 0.5rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-content-block</code></td><td className="px-2 py-1.5">flex column · min-width 0</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-title-block</code></td><td className="px-2 py-1.5">display:flex · flex-direction:column · align-items:flex-start · gap:0.25rem · min-width:0</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-heading-block</code></td><td className="px-2 py-1.5">display:flex · flex-wrap:wrap · align-items:center · justify-content:space-between · gap:0.5rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-heading-block-secondary</code></td><td className="px-2 py-1.5">display:flex · flex-wrap:wrap · align-items:baseline · justify-content:space-between · gap:0.5rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-content-block</code></td><td className="px-2 py-1.5">display:flex · flex-direction:column · min-width:0</td></tr>
                   </tbody>
                 </table>
               </div>
               <div className="overflow-hidden rounded-md border border-neutral-200">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-neutral-50 text-neutral-700">
-                    <tr><th className="px-2 py-1.5 font-semibold">Spacing relationships</th><th className="px-2 py-1.5 font-semibold">Value</th></tr>
+                    <tr><th className="px-2 py-1.5 font-semibold">Spacing relationships</th><th className="px-2 py-1.5 font-semibold">Token / Value</th></tr>
                   </thead>
                   <tbody>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-title-block + .house-drilldown-heading-block</code></td><td className="px-2 py-1.5">0.5rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-subheading-block &gt; .house-drilldown-overline</code></td><td className="px-2 py-1.5">0.3rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-subheading-block + .house-drilldown-subheading-block</code></td><td className="px-2 py-1.5">2rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-title-block + .house-drilldown-heading-block</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-title-expander-to-first-heading</code> = 0.08rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-publications-drilldown-tab-panel</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-heading-to-content</code> = 0rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-summary-stats-grid</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-summary-grid-to-content-top</code> = 0.5rem (0rem in publications headline content)</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-heading-block-secondary &gt; .house-drilldown-overline</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-heading-block-to-content</code> = 0.3rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-heading-block + .house-drilldown-heading-block-secondary</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-content-to-heading-block</code> = 2.5rem</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -1863,29 +1885,14 @@ function ApprovedTileTogglesSection() {
           <article className="house-metric-tile-shell rounded-md border p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Horizontal Toggle (Trend / Citations needed)</p>
             <div className="mt-3 inline-flex items-center">
-              <div className="house-toggle-track grid-cols-2">
-                <span
-                  className="house-toggle-thumb"
-                  style={buildTileToggleThumbStyle(hMode === 'needed' ? 1 : 0, 2)}
-                  aria-hidden="true"
-                />
-                <button
-                  type="button"
-                  className={hMode === 'trend' ? 'house-toggle-button text-white' : 'house-toggle-button house-drilldown-toggle-button-muted'}
-                  onClick={() => setHMode('trend')}
-                  aria-pressed={hMode === 'trend'}
-                >
-                  Trend
-                </button>
-                <button
-                  type="button"
-                  className={hMode === 'needed' ? 'house-toggle-button text-white' : 'house-toggle-button house-drilldown-toggle-button-muted'}
-                  onClick={() => setHMode('needed')}
-                  aria-pressed={hMode === 'needed'}
-                >
-                  Citations needed
-                </button>
-              </div>
+              <ApprovedHorizontalToggle
+                value={hMode}
+                options={[
+                  { value: 'trend', label: 'Trend' },
+                  { value: 'needed', label: 'Citations needed' },
+                ]}
+                onChange={setHMode}
+              />
             </div>
           </article>
 
@@ -2111,27 +2118,14 @@ function ApprovedPublicationTileAnimationsSection() {
         <div className="px-4 pt-4">
           <div className="inline-flex items-center gap-2">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Data scale</p>
-            <div className="house-toggle-track grid-cols-2">
-              <span
-                className="house-toggle-thumb"
-                style={buildTileToggleThumbStyle(entryScale === 'expanded' ? 1 : 0, 2)}
-                aria-hidden="true"
-              />
-              <button
-                type="button"
-                className={entryScale === 'compact' ? 'house-toggle-button text-white' : 'house-toggle-button house-drilldown-toggle-button-muted'}
-                onClick={() => setEntryScale('compact')}
-              >
-                Compact
-              </button>
-              <button
-                type="button"
-                className={entryScale === 'expanded' ? 'house-toggle-button text-white' : 'house-toggle-button house-drilldown-toggle-button-muted'}
-                onClick={() => setEntryScale('expanded')}
-              >
-                Expanded
-              </button>
-            </div>
+            <ApprovedHorizontalToggle
+              value={entryScale}
+              options={[
+                { value: 'compact', label: 'Compact' },
+                { value: 'expanded', label: 'Expanded' },
+              ]}
+              onChange={setEntryScale}
+            />
           </div>
         </div>
 
@@ -2641,24 +2635,14 @@ function ApprovedPublicationTileAnimationsSection() {
               <AnimationLabEntryToggle enabled={sameCountEntryEnabled} onChange={setSameCountEntryEnabled} />
             </div>
             <div className="mt-3 inline-flex items-center">
-              <div className="house-toggle-track grid-cols-2">
-                <span
-                  className="house-toggle-thumb"
-                  style={buildTileToggleThumbStyle(sameCountDataset.id === ANIMATION_LAB_SAME_COUNT_DATASETS[1].id ? 1 : 0, 2)}
-                  aria-hidden="true"
-                />
-                {ANIMATION_LAB_SAME_COUNT_DATASETS.map((dataset) => (
-                  <button
-                    key={`same-count-toggle-${dataset.id}`}
-                    type="button"
-                    className={sameCountDataset.id === dataset.id ? 'house-toggle-button text-white' : 'house-toggle-button house-drilldown-toggle-button-muted'}
-                    onClick={() => setSameCountDatasetId(dataset.id)}
-                    aria-pressed={sameCountDataset.id === dataset.id}
-                  >
-                    {dataset.id === 'rolling' ? 'Prior 4yr' : 'Latest 12m'}
-                  </button>
-                ))}
-              </div>
+              <ApprovedHorizontalToggle
+                value={sameCountDataset.id}
+                options={ANIMATION_LAB_SAME_COUNT_DATASETS.map((dataset) => ({
+                  value: dataset.id,
+                  label: dataset.id === 'rolling' ? 'Prior 4yr' : 'Latest 12m',
+                }))}
+                onChange={setSameCountDatasetId}
+              />
             </div>
             <p className="mt-2 text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-neutral-500">Entry</p>
             <p className="mt-1 text-[0.68rem] text-neutral-600">Total duration: 1,000ms motion. Key features: bar grow from zero, left-to-right sweep, eased axis roll.</p>
@@ -2814,24 +2798,14 @@ function ApprovedPublicationTileAnimationsSection() {
               <AnimationLabEntryToggle enabled={differentCountEntryEnabled} onChange={setDifferentCountEntryEnabled} />
             </div>
             <div className="mt-3 inline-flex items-center">
-              <div className="house-toggle-track grid-cols-2">
-                <span
-                  className="house-toggle-thumb"
-                  style={buildTileToggleThumbStyle(differentCountDataset.id === ANIMATION_LAB_DIFFERENT_COUNT_DATASETS[1].id ? 1 : 0, 2)}
-                  aria-hidden="true"
-                />
-                {ANIMATION_LAB_DIFFERENT_COUNT_DATASETS.map((dataset) => (
-                  <button
-                    key={`different-count-toggle-${dataset.id}`}
-                    type="button"
-                    className={differentCountDataset.id === dataset.id ? 'house-toggle-button text-white' : 'house-toggle-button house-drilldown-toggle-button-muted'}
-                    onClick={() => setDifferentCountDatasetId(dataset.id)}
-                    aria-pressed={differentCountDataset.id === dataset.id}
-                  >
-                    {dataset.id === 'annual-5' ? 'Annual' : 'Quarterly'}
-                  </button>
-                ))}
-              </div>
+              <ApprovedHorizontalToggle
+                value={differentCountDataset.id}
+                options={ANIMATION_LAB_DIFFERENT_COUNT_DATASETS.map((dataset) => ({
+                  value: dataset.id,
+                  label: dataset.id === 'annual-5' ? 'Annual' : 'Quarterly',
+                }))}
+                onChange={setDifferentCountDatasetId}
+              />
             </div>
             <p className="mt-2 text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-neutral-500">Entry</p>
             <p className="mt-1 text-[0.68rem] text-neutral-600">Total duration: 1,000ms motion. Key features: bar grow from zero, left-to-right sweep, eased axis roll.</p>

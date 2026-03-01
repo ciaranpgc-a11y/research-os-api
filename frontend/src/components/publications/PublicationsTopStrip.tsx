@@ -311,7 +311,7 @@ const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label:
   { value: '1y', label: '1y' },
   { value: '3y', label: '3y' },
   { value: '5y', label: '5y' },
-  { value: 'all', label: 'All' },
+  { value: 'all', label: 'Life' },
 ]
 const PUBLICATION_VALUE_MODE_OPTIONS: Array<{ value: PublicationCategoryValueMode; label: string }> = [
   { value: 'absolute', label: 'Absolute' },
@@ -1711,6 +1711,7 @@ function PublicationsPerYearChart({
   chartTitleClassName,
   activeWindowMode,
   onWindowModeChange,
+  showWindowToggle = true,
 }: {
   tile: PublicationMetricTilePayload
   showCaption?: boolean
@@ -1729,6 +1730,7 @@ function PublicationsPerYearChart({
   chartTitleClassName?: string
   activeWindowMode?: PublicationsWindowMode
   onWindowModeChange?: (mode: PublicationsWindowMode) => void
+  showWindowToggle?: boolean
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [windowMode, setWindowMode] = useState<PublicationsWindowMode>('5y')
@@ -2113,7 +2115,7 @@ function PublicationsPerYearChart({
           {chartTitle}
         </p>
       ) : null}
-      {enableWindowToggle ? (
+      {enableWindowToggle && showWindowToggle ? (
         <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, rightMetaVisible ? 'justify-between' : 'justify-start')}>
           <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
             <div
@@ -2174,6 +2176,7 @@ function PublicationsPerYearChart({
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
+          enableWindowToggle && HOUSE_CHART_SERIES_BY_SLOT_CLASS,
           HOUSE_CHART_ENTERED_CLASS,
         )}
         style={chartFrameStyle}
@@ -2228,6 +2231,7 @@ function PublicationsPerYearChart({
                     className={cn(
                       'block w-full rounded',
                       HOUSE_TOGGLE_CHART_BAR_CLASS,
+                      enableWindowToggle && HOUSE_TOGGLE_CHART_MORPH_CLASS,
                       enableWindowToggle && HOUSE_TOGGLE_CHART_SWAP_CLASS,
                       toneClass,
                       isActive && 'brightness-[1.08] saturate-[1.14]',
@@ -3818,16 +3822,131 @@ function TotalPublicationsDrilldownWorkspace({
   onOpenPublication?: (workId: string) => void
 }) {
   void _onOpenPublication
-  const headlineMetricTiles = [
-    { label: 'Total publications', value: '\u2014' },
-    { label: 'Active years', value: '\u2014' },
-    { label: 'Mean yearly publications', value: '\u2014' },
-    { label: 'Highest yield', value: '\u2014' },
-    { label: 'Last 1 year', value: '\u2014' },
-    { label: 'Last 3 years', value: '\u2014' },
-    { label: 'Last 5 years', value: '\u2014' },
-    { label: 'Year-to-date', value: '\u2014' },
-  ]
+  const [publicationTrendsWindowMode, setPublicationTrendsWindowMode] = useState<PublicationsWindowMode>('5y')
+  const publicationTrendsWindowIndex = Math.max(
+    0,
+    PUBLICATIONS_WINDOW_OPTIONS.findIndex((option) => option.value === publicationTrendsWindowMode),
+  )
+
+  useEffect(() => {
+    setPublicationTrendsWindowMode('5y')
+  }, [tile.key])
+
+  const headlineMetricTiles = useMemo(() => {
+    const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+    const chartData = (tile.chart_data || {}) as Record<string, unknown>
+    const metricRows = Array.isArray(drilldown.headline_metrics) ? drilldown.headline_metrics : []
+    const windows = Array.isArray(drilldown.windows) ? drilldown.windows : []
+    const publications = Array.isArray(drilldown.publications) ? drilldown.publications : []
+
+    const metricDisplayById = new Map<string, string>()
+    const metricNumericById = new Map<string, number>()
+    for (const row of metricRows) {
+      if (!row || typeof row !== 'object') {
+        continue
+      }
+      const metric = row as Record<string, unknown>
+      const rawId = String(metric.metric_id || metric.metricId || '').trim().toLowerCase()
+      if (!rawId) {
+        continue
+      }
+      const valueDisplay = formatDrilldownValue(metric.value_display ?? metric.valueDisplay ?? metric.value)
+      metricDisplayById.set(rawId, valueDisplay)
+      const numericValue = Number(metric.value)
+      if (Number.isFinite(numericValue)) {
+        metricNumericById.set(rawId, numericValue)
+      }
+    }
+
+    const years = Array.isArray(chartData.years)
+      ? chartData.years
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value))
+      : []
+    const values = Array.isArray(chartData.values)
+      ? chartData.values
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value))
+      : []
+    const yearValuePairs = years
+      .map((year, index) => ({ year, value: Math.max(0, Number(values[index] || 0)) }))
+      .filter((entry) => Number.isFinite(entry.value))
+
+    const publicationYears = publications
+      .map((item) => {
+        if (!item || typeof item !== 'object') {
+          return null
+        }
+        const rawYear = Number((item as Record<string, unknown>).year)
+        return Number.isInteger(rawYear) ? rawYear : null
+      })
+      .filter((year): year is number => year !== null)
+
+    const asOfRaw = String(drilldown.as_of_date || '').trim()
+    const asOfDate = asOfRaw ? new Date(`${asOfRaw}T00:00:00Z`) : new Date()
+    const fallbackNow = Number.isFinite(asOfDate.getTime()) ? asOfDate : new Date()
+    const fallbackNowYear = fallbackNow.getUTCFullYear()
+
+    const countRollingWindow = (windowId: string, fallbackYears: number): number => {
+      const matchedWindow = windows.find((entry) => {
+        if (!entry || typeof entry !== 'object') {
+          return false
+        }
+        const windowKey = String((entry as Record<string, unknown>).window_id || (entry as Record<string, unknown>).windowId || '').trim()
+        return windowKey === windowId
+      })
+
+      let startYear = fallbackNowYear - fallbackYears + 1
+      let endYear = fallbackNowYear
+      if (matchedWindow && typeof matchedWindow === 'object') {
+        const windowRecord = matchedWindow as Record<string, unknown>
+        const startRaw = String(windowRecord.start_date || windowRecord.startDate || '').trim()
+        const endRaw = String(windowRecord.end_date || windowRecord.endDate || '').trim()
+        const startDate = startRaw ? new Date(`${startRaw}T00:00:00Z`) : null
+        const endDate = endRaw ? new Date(`${endRaw}T00:00:00Z`) : null
+        if (startDate && Number.isFinite(startDate.getTime())) {
+          startYear = startDate.getUTCFullYear()
+        }
+        if (endDate && Number.isFinite(endDate.getTime())) {
+          endYear = endDate.getUTCFullYear()
+        }
+      }
+      return publicationYears.filter((year) => year >= startYear && year <= endYear).length
+    }
+
+    const totalPublicationsValue = formatDrilldownValue(tile.value_display || tile.main_value_display || tile.value)
+    const activeYearsValue = metricDisplayById.get('active_years')
+      ?? formatDrilldownValue(yearValuePairs.filter((entry) => entry.value > 0).length)
+    const meanYearlyValue = metricDisplayById.get('rolling_mean_5y')
+      ?? formatDrilldownValue(chartData.mean_value)
+    const highestYieldValue = metricDisplayById.get('career_peak')
+      ?? (() => {
+        if (!yearValuePairs.length) {
+          return '\u2014'
+        }
+        const peak = yearValuePairs.reduce((best, entry) => (entry.value > best.value ? entry : best), yearValuePairs[0])
+        return `${formatInt(peak.value)} (${peak.year})`
+      })()
+    const yearToDateValue = metricDisplayById.get('current_ytd')
+      ?? formatDrilldownValue(chartData.current_year_ytd)
+
+    const rolling1Year = countRollingWindow('1y', 1)
+    const rolling3Year = countRollingWindow('3y', 3)
+    const rolling5Year = countRollingWindow('5y', 5)
+
+    void metricNumericById
+
+    return [
+      { label: 'Total publications', value: totalPublicationsValue },
+      { label: 'Active years', value: activeYearsValue },
+      { label: 'Mean yearly publications', value: meanYearlyValue },
+      { label: 'Highest yield', value: highestYieldValue },
+      { label: 'Last 1 year', value: formatInt(rolling1Year) },
+      { label: 'Last 3 years', value: formatInt(rolling3Year) },
+      { label: 'Last 5 years', value: formatInt(rolling5Year) },
+      { label: 'Year-to-date', value: yearToDateValue },
+    ]
+  }, [tile])
   const subsectionTitleByTab: Partial<Record<DrilldownTab, string>> = {
     breakdown: 'Publication count by year',
     trajectory: 'Year-over-year trajectory',
@@ -3841,7 +3960,7 @@ function TotalPublicationsDrilldownWorkspace({
       <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
         <div className="house-drilldown-heading-block">
           <div className="house-drilldown-title-block">
-            <p className="house-drilldown-subheading-block-title">Headline results</p>
+            <p className="house-drilldown-heading-block-title">Headline results</p>
           </div>
           <div className="house-drilldown-content-block house-publications-headline-content w-full">
             {activeTab === 'summary' ? (
@@ -3862,8 +3981,70 @@ function TotalPublicationsDrilldownWorkspace({
           </div>
         </div>
 
+        {activeTab === 'summary' ? (
+          <div className="house-drilldown-heading-block-secondary">
+            <div className="house-drilldown-title-block">
+              <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>Publication trends</p>
+            </div>
+            <div className="house-drilldown-content-block w-full">
+              <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
+                <div
+                  className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
+                  data-stop-tile-open="true"
+                  data-ui="publications-trends-window-toggle"
+                  data-house-role="chart-toggle"
+                >
+                  <span
+                    className={HOUSE_TOGGLE_THUMB_CLASS}
+                    style={buildTileToggleThumbStyle(publicationTrendsWindowIndex, PUBLICATIONS_WINDOW_OPTIONS.length)}
+                    aria-hidden="true"
+                  />
+                  {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
+                    <button
+                      key={`pub-trends-window-${option.value}`}
+                      type="button"
+                      data-stop-tile-open="true"
+                      className={cn(
+                        HOUSE_TOGGLE_BUTTON_CLASS,
+                        publicationTrendsWindowMode === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                      )}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        if (publicationTrendsWindowMode === option.value) {
+                          return
+                        }
+                        setPublicationTrendsWindowMode(option.value)
+                      }}
+                      onMouseDown={(event) => event.stopPropagation()}
+                      aria-pressed={publicationTrendsWindowMode === option.value}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
+                <PublicationsPerYearChart
+                  tile={tile}
+                  showAxes
+                  enableWindowToggle
+                  showPeriodHint
+                  showCurrentPeriodSemantic
+                  useCompletedMonthWindowLabels
+                  autoScaleByWindow
+                  subtleGrid
+                  activeWindowMode={publicationTrendsWindowMode}
+                  onWindowModeChange={setPublicationTrendsWindowMode}
+                  showWindowToggle={false}
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {subsectionTitle ? (
-          <div className="house-drilldown-subheading-block">
+          <div className="house-drilldown-heading-block-secondary">
             <div className="house-drilldown-title-block">
               <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>{subsectionTitle}</p>
             </div>
@@ -3895,13 +4076,13 @@ function GenericMetricDrilldownWorkspace({
       <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
         <div className="house-drilldown-heading-block">
           <div className="house-drilldown-title-block">
-            <p className="house-drilldown-subheading-block-title">Headline results</p>
+            <p className="house-drilldown-heading-block-title">Headline results</p>
           </div>
           <div className="house-drilldown-content-block w-full" />
         </div>
 
         {subsectionTitle ? (
-          <div className="house-drilldown-subheading-block">
+          <div className="house-drilldown-heading-block-secondary">
             <div className="house-drilldown-title-block">
               <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>{subsectionTitle}</p>
             </div>
@@ -4950,6 +5131,13 @@ export function PublicationsTopStrip({
     return `${baseTitle} insights`
   }, [activeTile?.drilldown?.title, activeTile?.label])
 
+  const activeDrilldownExpanderText = useMemo(() => {
+    if (activeTile?.key === 'this_year_vs_last' && activeDrilldownTab === 'summary') {
+      return 'A Summary of your publication metrics'
+    }
+    return sanitizedActiveTileDefinition
+  }, [activeDrilldownTab, activeTile?.key, sanitizedActiveTileDefinition])
+
   return (
     <>
       <Card className={HOUSE_SURFACE_PANEL_BARE_CLASS} style={tileMotionStyle}>
@@ -5507,7 +5695,7 @@ export function PublicationsTopStrip({
               <div className={cn('house-drilldown-title-block', HOUSE_SURFACE_LEFT_BORDER_CLASS, HOUSE_SURFACE_LEFT_BORDER_PUBLICATIONS_CLASS)}>
                 <p className={HOUSE_DRILLDOWN_TITLE_CLASS}>{activeDrilldownTitle}</p>
                 {showActiveTileDefinition ? (
-                  <p className={HOUSE_DRILLDOWN_TITLE_EXPANDER_CLASS}>{sanitizedActiveTileDefinition}</p>
+                  <p className={HOUSE_DRILLDOWN_TITLE_EXPANDER_CLASS}>{activeDrilldownExpanderText}</p>
                 ) : null}
                 {detailError ? <p className={cn('mt-2', HOUSE_DRILLDOWN_ALERT_CLASS)}>{detailError}</p> : null}
               </div>
