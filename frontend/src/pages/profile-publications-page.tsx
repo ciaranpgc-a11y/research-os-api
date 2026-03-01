@@ -3339,25 +3339,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     selectedWorkId,
   ])
 
-  const onAdjustPublicationHeadingWidth = useCallback((column: PublicationTableColumnKey, deltaPx: number) => {
-    setPublicationTableColumns((current) => {
-      const nextWidth = clampPublicationTableColumnWidth(
-        Number(current[column].width || PUBLICATION_TABLE_COLUMN_DEFAULTS[column].width) + deltaPx,
-        PUBLICATION_TABLE_COLUMN_DEFAULTS[column].width,
-      )
-      if (nextWidth === current[column].width) {
-        return current
-      }
-      return {
-        ...current,
-        [column]: {
-          ...current[column],
-          width: nextWidth,
-        },
-      }
-    })
-  }, [])
-
   const onStartPublicationHeadingResize = useCallback((
     event: React.PointerEvent<HTMLButtonElement>,
     column: PublicationTableColumnKey,
