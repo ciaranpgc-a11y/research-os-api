@@ -85,6 +85,7 @@ export const publicationsHouseCharts = {
   axisTitle: houseChartColors.axisTitle,
   axisLabel: houseChartColors.axisLabel,
   axisSubtext: houseChartColors.axisSubtext,
+  axisPeriodTag: houseChartColors.axisPeriodTag,
   axisWindowSubtext: houseChartColors.axisWindowSubtext,
   lineSoftSvg: houseChartColors.lineSoftSvg,
   ringTrackSvg: houseChartColors.ringTrackSvg,

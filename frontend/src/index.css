@@ -292,13 +292,20 @@
     --separator-main-title-expander-to-first-heading: 0.72rem;
     --separator-main-heading-block-to-content: 0.3rem;
     --separator-main-content-to-heading-block: 1.69rem;
+    --separator-main-content-to-heading: var(--separator-main-content-to-heading-block);
+    --separator-main-content-to-secondary-heading: var(--separator-main-content-to-heading-block);
     --separator-main-subheading-to-content: var(--separator-main-heading-block-to-content);
     --separator-main-content-to-subheading: var(--separator-main-content-to-heading-block);
+    --separator-main-content-to-content: var(--separator-main-content-to-heading-block);
     --separator-drilldown-title-expander-to-first-heading: 0.08rem;
+    --separator-drilldown-title-expander-to-navigation-block: var(--separator-drilldown-title-expander-to-first-heading);
     --separator-drilldown-heading-to-content: 0rem;
+    --separator-drilldown-navigation-block-to-heading: var(--separator-drilldown-content-to-heading);
     --separator-drilldown-summary-grid-to-content-top: 0.5rem;
     --separator-drilldown-heading-block-to-content: 0.3rem;
     --separator-drilldown-content-to-heading-block: 2.5rem;
+    --separator-drilldown-content-to-heading: var(--separator-drilldown-content-to-heading-block);
+    --separator-drilldown-content-to-secondary-heading: var(--separator-drilldown-content-to-heading-block);
     --separator-drilldown-subheading-to-content: var(--separator-drilldown-heading-block-to-content);
     --separator-drilldown-content-to-subheading: var(--separator-drilldown-content-to-heading-block);
     --drilldown-title-inline-align: 0rem;
@@ -306,7 +313,7 @@
     --separator-left-panel-content-to-subheading: 0.5rem;
     --main-content-separator-title-expander-to-first-heading: var(--separator-main-title-expander-to-first-heading);
     --main-content-separator-subheading-to-content: var(--separator-main-heading-block-to-content);
-    --main-content-separator-content-to-subheading: var(--separator-main-content-to-heading-block);
+    --main-content-separator-content-to-subheading: var(--separator-main-content-to-subheading);
     --left-nav-divider-margin: var(--separator-left-panel-content-to-subheading);
     --top-nav-hover-bg: var(--tone-neutral-100);
     --top-nav-hover-bg-workspace: hsl(var(--tone-accent-200) / 0.34);
@@ -730,7 +737,16 @@
     gap: 0.5rem;
   }
 
+  .house-drilldown-navigation-block {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
   .house-publications-drilldown-panel-no-pad > .house-drilldown-heading-block,
+  .house-publications-drilldown-panel-no-pad > .house-drilldown-navigation-block,
   .house-publications-drilldown-panel-no-pad > .house-drilldown-subheading-block {
     row-gap: 0.2rem;
   }
@@ -786,14 +802,44 @@
     margin-top: var(--separator-main-heading-block-to-content);
   }
 
-  .house-main-content-block + .house-main-subheading-block,
-  .house-main-content-block + .house-main-heading-block-secondary,
+  .house-main-content-block + .house-main-heading-block {
+    margin-top: var(--separator-main-content-to-heading);
+  }
+
+  .house-main-content-block + .house-main-subheading-block {
+    margin-top: var(--separator-main-content-to-subheading);
+  }
+
+  .house-main-content-block + .house-main-heading-block-secondary {
+    margin-top: var(--separator-main-content-to-secondary-heading);
+  }
+
   .house-main-content-block + .house-main-content-block {
-    margin-top: var(--separator-main-content-to-heading-block);
+    margin-top: var(--separator-main-content-to-content);
   }
 
   .house-drilldown-title-block + .house-drilldown-heading-block {
     margin-top: var(--separator-drilldown-title-expander-to-first-heading);
+  }
+
+  .house-drilldown-title-block + .house-drilldown-navigation-block {
+    margin-top: var(--separator-drilldown-title-expander-to-navigation-block);
+  }
+
+  .house-drilldown-navigation-block + .house-drilldown-heading-block,
+  .house-drilldown-navigation-block + .house-drilldown-subheading-block,
+  .house-publications-drilldown-panel-no-pad > .house-drilldown-navigation-block + .house-drilldown-heading-block,
+  .house-publications-drilldown-panel-no-pad > .house-drilldown-navigation-block + .house-drilldown-subheading-block {
+    margin-top: var(--separator-drilldown-navigation-block-to-heading);
+  }
+
+  .house-drilldown-heading-block + .house-drilldown-content-block,
+  .house-drilldown-subheading-block + .house-drilldown-content-block,
+  .house-drilldown-heading-block-secondary + .house-drilldown-content-block,
+  .house-publications-drilldown-panel-no-pad > .house-drilldown-heading-block + .house-drilldown-content-block,
+  .house-publications-drilldown-panel-no-pad > .house-drilldown-subheading-block + .house-drilldown-content-block,
+  .house-publications-drilldown-panel-no-pad > .house-drilldown-heading-block-secondary + .house-drilldown-content-block {
+    margin-top: var(--separator-drilldown-heading-to-content);
   }
 
   .house-drilldown-subheading-block > .house-drilldown-overline,
@@ -811,6 +857,21 @@
   .house-publications-drilldown-panel-no-pad > .house-drilldown-heading-block-secondary + .house-drilldown-heading-block-secondary,
   .house-publications-drilldown-panel-no-pad > .house-drilldown-subheading-block + .house-drilldown-subheading-block {
     margin-top: var(--separator-drilldown-content-to-heading-block);
+  }
+
+  .house-drilldown-content-block + .house-drilldown-heading-block,
+  .house-publications-drilldown-panel-no-pad > .house-drilldown-content-block + .house-drilldown-heading-block {
+    margin-top: var(--separator-drilldown-content-to-heading);
+  }
+
+  .house-drilldown-content-block + .house-drilldown-heading-block-secondary,
+  .house-publications-drilldown-panel-no-pad > .house-drilldown-content-block + .house-drilldown-heading-block-secondary {
+    margin-top: var(--separator-drilldown-content-to-secondary-heading);
+  }
+
+  .house-drilldown-content-block + .house-drilldown-subheading-block,
+  .house-publications-drilldown-panel-no-pad > .house-drilldown-content-block + .house-drilldown-subheading-block {
+    margin-top: var(--separator-drilldown-content-to-subheading);
   }
 
   .house-content-container {
@@ -2813,10 +2874,10 @@
   }
 
   .house-toggle-chart-morph {
-    transition-property: left, width, height, opacity, transform, filter, box-shadow;
+    transition-property: left, width, height, bottom, opacity, transform, filter, box-shadow;
     transition-duration: var(--motion-duration-chart-toggle);
     transition-timing-function: var(--motion-ease-chart-series);
-    will-change: left, width, height, transform, opacity;
+    will-change: left, width, height, bottom, transform, opacity;
   }
 
   .house-toggle-chart-swap {
@@ -2837,7 +2898,7 @@
   }
 
   .house-chart-series-by-slot .house-toggle-chart-morph {
-    transition-property: left, width, height, opacity, transform, filter, box-shadow;
+    transition-property: left, width, height, bottom, opacity, transform, filter, box-shadow;
   }
 
   .house-chart-series-by-key .house-toggle-chart-morph {
@@ -2954,6 +3015,21 @@
     text-transform: uppercase;
     color: hsl(var(--tone-positive-800));
     background-color: hsl(var(--tone-positive-50) / 0.92);
+  }
+
+  .house-chart-axis-period-item {
+    --chart-axis-period-label-color: hsl(var(--tone-neutral-700));
+  }
+
+  .house-chart-axis-period-item .house-chart-axis-text-trend {
+    color: var(--chart-axis-period-label-color);
+  }
+
+  .house-chart-axis-period-tag {
+    color: var(--chart-axis-period-label-color);
+    border-color: hsl(var(--section-style-profile-accent) / 0.45);
+    background-color: var(--top-nav-hover-bg-workspace);
+    letter-spacing: 0.02em;
   }
 
   .house-chart-window-subtext {
@@ -3716,6 +3792,10 @@
     justify-content: flex-start;
   }
 
+  .house-publications-drilldown-panel-no-pad > .house-drilldown-navigation-block {
+    justify-content: flex-start;
+  }
+
   .house-drilldown-summary-stat-card-active {
     background-color: hsl(var(--tone-positive-50) / 0.94);
   }
@@ -4126,7 +4206,7 @@
   }
 
   .house-publications-drilldown-summary-trend-chart-tall {
-    height: 22rem;
+    height: 17.6rem;
   }
 
   .house-publications-drilldown-summary-trend-chart-tall .house-chart-frame {

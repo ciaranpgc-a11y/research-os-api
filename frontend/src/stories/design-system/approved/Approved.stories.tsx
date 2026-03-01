@@ -7,6 +7,7 @@ import { AuthPage } from '@/pages/auth-page'
 import { ProfilePublicationsPage } from '@/pages/profile-publications-page'
 import type { ProfilePublicationsPageFixture } from '@/pages/profile-publications-page'
 import { PublicationsPerYearChart } from '@/components/publications/PublicationsTopStrip'
+import type { PublicationMetricTilePayload } from '@/types/impact'
 import { TopBar } from '@/components/layout/top-bar'
 import { AccountNavigator } from '@/components/layout/account-navigator'
 import { WorkspaceNavigator } from '@/components/layout/workspace-navigator'
@@ -609,24 +610,72 @@ function AuthPagePanel() {
 }
 
 const APPROVED_DRILLDOWN_TILE_KEY = 'this_year_vs_last'
-const APPROVED_PUBLICATION_TRENDS_TILE =
-  (pagesReviewProfilePublicationsDefaultFixture.topMetricsResponse?.tiles ?? []).find((tile) => tile.key === APPROVED_DRILLDOWN_TILE_KEY)
-  ?? null
+const APPROVED_PUBLICATION_TRENDS_TEMPLATE_TILE: PublicationMetricTilePayload = {
+  id: 'approved-this-year-vs-last-template',
+  key: 'this_year_vs_last',
+  label: 'Total publications',
+  main_value: 120,
+  value: 120,
+  main_value_display: '120',
+  value_display: '120',
+  delta_value: 18.4,
+  delta_display: '+18.4% YoY',
+  delta_direction: 'up',
+  delta_tone: 'positive',
+  delta_color_code: 'hsl(var(--tone-positive-700))',
+  unit: null,
+  subtext: 'Publication count trend',
+  badge: {},
+  chart_type: 'bars',
+  chart_data: {
+    years: [2021, 2022, 2023, 2024, 2025, 2026],
+    values: [10, 41, 7, 32, 8, 22],
+    projected_year: 2026,
+    current_year_ytd: 22,
+    mean_value: 20,
+    monthly_values_12m: [1, 2, 1, 2, 2, 1, 3, 2, 2, 2, 3, 1],
+    month_labels_12m: ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb'],
+  },
+  sparkline: [10, 41, 7, 32, 8, 22],
+  sparkline_overlay: [],
+  tooltip: 'Approved publication trend chart template.',
+  tooltip_details: {
+    surface: 'approved_drilldown_chart_template',
+  },
+  data_source: ['Approved fixture'],
+  confidence_score: 1,
+  stability: 'stable',
+  drilldown: {
+    title: 'Total publication insights',
+    definition: 'Count of publication records by publication year.',
+    formula: 'sum(publications by year)',
+    confidence_note: 'Approved story template fixture for chart contract.',
+    tile_id: 't1_total_publications',
+    as_of_date: '2026-02-24',
+    publications: [],
+    metadata: {},
+  },
+}
 
 function ApprovedPublicationTrendsChartTemplate() {
-  if (!APPROVED_PUBLICATION_TRENDS_TILE) {
-    return <p className="house-drilldown-note">Publication trends fixture is unavailable.</p>
-  }
+  const [windowMode, setWindowMode] = useState<'1y' | '3y' | '5y' | 'all'>('all')
   return (
-    <div className="house-drilldown-heading-block-secondary">
-      <p className="house-drilldown-overline">Publication trends</p>
-      <div className="house-publications-drilldown-stack-2">
+    <div className="w-[535px] max-w-full">
+      <div className="house-drilldown-heading-block">
+        <p className="house-drilldown-heading-block-title">Publication trends</p>
+      </div>
+      <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
         <PublicationsPerYearChart
-          tile={APPROVED_PUBLICATION_TRENDS_TILE}
+          tile={APPROVED_PUBLICATION_TRENDS_TEMPLATE_TILE}
           showAxes
-          enableWindowToggle={false}
+          enableWindowToggle
           showPeriodHint={false}
-          showCurrentPeriodSemantic={false}
+          showCurrentPeriodSemantic
+          autoScaleByWindow
+          showMeanLine
+          showMeanValueLabel
+          activeWindowMode={windowMode}
+          onWindowModeChange={setWindowMode}
           chartTitle={undefined}
         />
       </div>
@@ -713,6 +762,7 @@ function ApprovedDrilldownApprovedChartSection() {
           <div className="mb-3 rounded-md border border-border bg-background p-3">
             <p className="text-xs font-semibold text-neutral-900">Source-of-truth template: Publication trends</p>
             <p className="mt-1 text-xs text-neutral-600">Use this chart block as the canonical approved reference for drilldown trends.</p>
+            <p className="mt-1 text-xs text-neutral-600">Definitions: <strong>Active years</strong> = years since first publication; <strong>Last 1/3/5 years</strong> are rolling windows from the current as-of year.</p>
             <div className="mt-2">
               <ApprovedPublicationTrendsChartTemplate />
             </div>
@@ -837,10 +887,10 @@ function ApprovedPublicationsDrilldownSection() {
   const [activeDrilldownTab, setActiveDrilldownTab] = useState<'summary' | 'breakdown' | 'trajectory' | 'context' | 'methods'>('summary')
 
   const headlineResultTiles = [
-    { id: 'total-publications', label: 'Total publications', value: '150', emphasize: true },
-    { id: 'active-years', label: 'Active years', value: '12', emphasize: false },
-    { id: 'mean-per-year', label: 'Mean per year', value: '13', emphasize: false },
-    { id: 'latest-year-count', label: 'Latest year count', value: '11', emphasize: false },
+    { id: 'total-publications', label: 'Total publications', value: '120', emphasize: true },
+    { id: 'active-years', label: 'Active years', value: '6', emphasize: false },
+    { id: 'mean-per-year', label: 'Mean per year (5y rolling)', value: '22', emphasize: false },
+    { id: 'latest-year-count', label: 'Latest year count', value: '22', emphasize: false },
   ] as const
 
   const drilldownTabs = [
@@ -867,7 +917,7 @@ function ApprovedPublicationsDrilldownSection() {
                 <p className="house-drilldown-title-expander">Your publication records</p>
               </div>
 
-              <div className="house-drilldown-heading-block gap-1 mb-2 bg-card p-2 rounded-sm">
+              <div className="house-drilldown-navigation-block gap-1 bg-card p-2 rounded-sm">
                 {drilldownTabs.map((tab) => (
                   <button
                     key={tab.id}
@@ -883,8 +933,10 @@ function ApprovedPublicationsDrilldownSection() {
               <div className="house-drilldown-content-block house-publications-drilldown-stack-3">
                 {activeDrilldownTab === 'summary' ? (
                   <>
-                    <div className="house-drilldown-heading-block-secondary">
+                    <div className="house-drilldown-heading-block">
                       <p className="house-drilldown-heading-block-title">Headline results</p>
+                    </div>
+                    <div className="house-drilldown-content-block">
                       <div className="house-drilldown-summary-stats-grid">
                         {headlineResultTiles.map((tile) => (
                           <div key={tile.id} className="house-drilldown-summary-stat-card">
@@ -903,16 +955,20 @@ function ApprovedPublicationsDrilldownSection() {
 
                 {activeDrilldownTab === 'breakdown' ? (
                   <>
-                    <div className="house-drilldown-heading-block-secondary">
+                    <div className="house-drilldown-heading-block">
                       <p className="house-drilldown-heading-block-title">Headline results</p>
-                      <p className="house-drilldown-note">150 publications across 12 active years</p>
                     </div>
-                    <div className="house-drilldown-heading-block-secondary">
+                    <div className="house-drilldown-content-block">
+                      <p className="house-drilldown-note">120 publications across 6 active years (since first publication)</p>
+                    </div>
+                    <div className="house-drilldown-subheading-block">
                       <p className="house-drilldown-overline">Publication count by year</p>
+                    </div>
+                    <div className="house-drilldown-content-block">
                       <div className="house-publications-drilldown-stack-2">
-                        <div className="house-drilldown-row"><span>2024</span><span className="house-drilldown-note">11</span></div>
-                        <div className="house-drilldown-row"><span>2023</span><span className="house-drilldown-note">14</span></div>
-                        <div className="house-drilldown-row"><span>2022</span><span className="house-drilldown-note">12</span></div>
+                        <div className="house-drilldown-row"><span>2024</span><span className="house-drilldown-note">32</span></div>
+                        <div className="house-drilldown-row"><span>2023</span><span className="house-drilldown-note">7</span></div>
+                        <div className="house-drilldown-row"><span>2022</span><span className="house-drilldown-note">41</span></div>
                       </div>
                     </div>
                   </>
@@ -920,16 +976,20 @@ function ApprovedPublicationsDrilldownSection() {
 
                 {activeDrilldownTab === 'trajectory' ? (
                   <>
-                    <div className="house-drilldown-heading-block-secondary">
+                    <div className="house-drilldown-heading-block">
                       <p className="house-drilldown-heading-block-title">Headline results</p>
-                      <p className="house-drilldown-note">YoY delta -3 publications</p>
                     </div>
-                    <div className="house-drilldown-heading-block-secondary">
+                    <div className="house-drilldown-content-block">
+                      <p className="house-drilldown-note">Rolling window trajectory from the same publication-trend source.</p>
+                    </div>
+                    <div className="house-drilldown-subheading-block">
                       <p className="house-drilldown-overline">Year-over-year trajectory</p>
+                    </div>
+                    <div className="house-drilldown-content-block">
                       <div className="house-publications-drilldown-stack-2">
-                        <div className="house-drilldown-row"><span>2024 vs 2023</span><span className="house-drilldown-note">-3</span></div>
-                        <div className="house-drilldown-row"><span>2023 vs 2022</span><span className="house-drilldown-note">+2</span></div>
-                        <div className="house-drilldown-row"><span>2022 vs 2021</span><span className="house-drilldown-note">+1</span></div>
+                        <div className="house-drilldown-row"><span>2026 vs 2025</span><span className="house-drilldown-note">+14</span></div>
+                        <div className="house-drilldown-row"><span>2025 vs 2024</span><span className="house-drilldown-note">-24</span></div>
+                        <div className="house-drilldown-row"><span>2024 vs 2023</span><span className="house-drilldown-note">+25</span></div>
                       </div>
                     </div>
                   </>
@@ -937,12 +997,16 @@ function ApprovedPublicationsDrilldownSection() {
 
                 {activeDrilldownTab === 'context' ? (
                   <>
-                    <div className="house-drilldown-heading-block-secondary">
+                    <div className="house-drilldown-heading-block">
                       <p className="house-drilldown-heading-block-title">Headline results</p>
-                      <p className="house-drilldown-note">150 publication records with 12 known publication years</p>
                     </div>
-                    <div className="house-drilldown-heading-block-secondary">
+                    <div className="house-drilldown-content-block">
+                      <p className="house-drilldown-note">120 publication records with rolling-window context derived from chart data.</p>
+                    </div>
+                    <div className="house-drilldown-subheading-block">
                       <p className="house-drilldown-overline">Top publication venues</p>
+                    </div>
+                    <div className="house-drilldown-content-block">
                       <div className="house-publications-drilldown-stack-2">
                         <div className="house-drilldown-row"><span>Nature</span><span className="house-drilldown-note">18</span></div>
                         <div className="house-drilldown-row"><span>Science</span><span className="house-drilldown-note">12</span></div>
@@ -954,11 +1018,16 @@ function ApprovedPublicationsDrilldownSection() {
 
                 {activeDrilldownTab === 'methods' ? (
                   <>
-                    <div className="house-drilldown-heading-block-secondary">
+                    <div className="house-drilldown-heading-block">
                       <p className="house-drilldown-heading-block-title">Headline results</p>
+                    </div>
+                    <div className="house-drilldown-content-block">
                       <p className="house-drilldown-note">Method metadata for total publication insights.</p>
                     </div>
-                    <div className="house-drilldown-heading-block-secondary house-drilldown-note">
+                    <div className="house-drilldown-subheading-block">
+                      <p className="house-drilldown-overline">Method details</p>
+                    </div>
+                    <div className="house-drilldown-content-block house-drilldown-note">
                       <p><strong>Formula:</strong> Count of indexed publications linked to the profile.</p>
                       <p><strong>Definition:</strong> Total number of scholarly works across the publication history.</p>
                       <p><strong>Data sources:</strong> OpenAlex, profile-linked records</p>
@@ -1140,28 +1209,61 @@ function ApprovedTypographySection() {
               <p className="house-section-title">Publication insights</p>
             </div>
 
+            <div className="rounded-md border border-neutral-200 bg-neutral-50 p-2">
+              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-neutral-700">Block contract</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-neutral-700">
+                <span className="rounded border border-sky-200 bg-sky-50 px-2 py-1">Title</span>
+                <span className="text-neutral-400">→</span>
+                <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1">Heading</span>
+                <span className="text-neutral-400">→</span>
+                <span className="rounded border border-teal-200 bg-teal-50 px-2 py-1">Subheading</span>
+                <span className="text-neutral-400">→</span>
+                <span className="rounded border border-neutral-300 bg-white px-2 py-1">Content</span>
+              </div>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="rounded-md border border-neutral-200 bg-white p-2">
+                <p className="text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-neutral-600">Heading → Content</p>
+                <p className="mt-1 text-sm font-semibold text-neutral-900">0.3rem</p>
+              </div>
+              <div className="rounded-md border border-neutral-200 bg-white p-2">
+                <p className="text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-neutral-600">Content → Heading</p>
+                <p className="mt-1 text-sm font-semibold text-neutral-900">1.69rem</p>
+              </div>
+              <div className="rounded-md border border-neutral-200 bg-white p-2">
+                <p className="text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-neutral-600">Content → Subheading</p>
+                <p className="mt-1 text-sm font-semibold text-neutral-900">1.69rem</p>
+              </div>
+            </div>
+
             <div className="rounded-md border border-neutral-200 p-2">
               <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-neutral-600">Block map</p>
               <div className="space-y-1.5">
-                <div className="house-main-title-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                <div className="house-main-title-block rounded-sm border border-sky-200 bg-sky-50 p-2">
                   <p className="house-field-helper">Title block</p>
                   <p className="house-title">Page title</p>
                   <p className="house-title-expander">Title expander</p>
                 </div>
-                <div className="house-main-heading-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                <div className="house-main-heading-block rounded-sm border border-amber-200 bg-amber-50 p-2">
                   <p className="house-field-helper">Heading block</p>
                   <p className="house-section-title">Section heading</p>
                 </div>
-                <div className="house-main-heading-block-secondary rounded-sm border border-neutral-200 bg-muted/30 p-2">
-                  <p className="house-field-helper">Heading block (secondary)</p>
+                <div className="house-main-subheading-block rounded-sm border border-teal-200 bg-teal-50 p-2">
+                  <p className="house-field-helper">Subheading block</p>
                   <p className="house-text">Subheading row</p>
                 </div>
-                <div className="house-main-content-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                <div className="house-main-content-block rounded-sm border border-neutral-300 bg-white p-2">
                   <p className="house-field-helper">Content block</p>
                   <p className="house-text">Main content area</p>
                 </div>
               </div>
             </div>
+
+            <details className="rounded-md border border-neutral-200 bg-neutral-50 p-2">
+              <summary className="cursor-pointer text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-neutral-700">Show detailed reference tables</summary>
+              <p className="mt-1 text-xs text-neutral-600">Typography, block properties, and full selector matrix are listed below.</p>
+            </details>
 
             <div className="grid gap-3 lg:grid-cols-3">
               <div className="overflow-hidden rounded-md border border-neutral-200">
@@ -1192,7 +1294,7 @@ function ApprovedTypographySection() {
                   <tbody>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-title-block</code></td><td className="px-2 py-1.5">display:flex · flex-direction:column · align-items:flex-start · gap:0.2rem · min-width:0</td></tr>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-heading-block</code></td><td className="px-2 py-1.5">display:flex · flex-wrap:wrap · align-items:center · justify-content:space-between · gap:0.5rem · padding-block:0.375rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-heading-block-secondary</code></td><td className="px-2 py-1.5">display:flex · flex-wrap:wrap · align-items:baseline · justify-content:space-between · gap:0.5rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-subheading-block</code></td><td className="px-2 py-1.5">display:flex · flex-wrap:wrap · align-items:baseline · justify-content:space-between · gap:0.5rem</td></tr>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-content-block</code></td><td className="px-2 py-1.5">display:flex · flex-direction:column · min-width:0</td></tr>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-page-header</code></td><td className="px-2 py-1.5">flex column · gap 0.2rem</td></tr>
                   </tbody>
@@ -1210,9 +1312,10 @@ function ApprovedTypographySection() {
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-title-block + .house-main-heading-block</code></td><td className="px-2 py-1.5"><code>--separator-main-title-expander-to-first-heading</code> = 0.72rem</td></tr>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-title-block + .house-section-anchor .house-main-heading-block:first-child</code></td><td className="px-2 py-1.5"><code>--separator-main-title-expander-to-first-heading</code> = 0.72rem</td></tr>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-heading-block + .house-main-content-block</code></td><td className="px-2 py-1.5"><code>--separator-main-heading-block-to-content</code> = 0.3rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-heading-block-secondary + .house-main-content-block</code></td><td className="px-2 py-1.5"><code>--separator-main-heading-block-to-content</code> = 0.3rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-content-block + .house-main-content-block</code></td><td className="px-2 py-1.5"><code>--separator-main-content-to-heading-block</code> = 1.69rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-content-block + .house-main-heading-block-secondary</code></td><td className="px-2 py-1.5"><code>--separator-main-content-to-heading-block</code> = 1.69rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-subheading-block + .house-main-content-block</code></td><td className="px-2 py-1.5"><code>--separator-main-heading-block-to-content</code> = 0.3rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-content-block + .house-main-heading-block</code></td><td className="px-2 py-1.5"><code>--separator-main-content-to-heading</code> = 1.69rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-content-block + .house-main-content-block</code></td><td className="px-2 py-1.5"><code>--separator-main-content-to-content</code> = 1.69rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-content-block + .house-main-subheading-block</code></td><td className="px-2 py-1.5"><code>--separator-main-content-to-subheading</code> = 1.69rem</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -1296,27 +1399,86 @@ function ApprovedTypographySection() {
             </div>
 
             <div className="rounded-md border border-neutral-200 p-2">
+              <div className="rounded-md border border-neutral-200 bg-neutral-50 p-2">
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-neutral-700">Block contract</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-neutral-700">
+                  <span className="rounded border border-sky-200 bg-sky-50 px-2 py-1">Title</span>
+                  <span className="text-neutral-400">→</span>
+                  <span className="rounded border border-cyan-200 bg-cyan-50 px-2 py-1">Navigation</span>
+                  <span className="text-neutral-400">→</span>
+                  <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1">Heading</span>
+                  <span className="text-neutral-400">→</span>
+                  <span className="rounded border border-teal-200 bg-teal-50 px-2 py-1">Subheading</span>
+                  <span className="text-neutral-400">→</span>
+                  <span className="rounded border border-neutral-300 bg-white px-2 py-1">Content</span>
+                </div>
+              </div>
+
+              <div className="mt-2 grid gap-2 sm:grid-cols-4">
+                <div className="rounded-md border border-neutral-200 bg-white p-2">
+                  <p className="text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-neutral-600">Title → Nav</p>
+                  <p className="mt-1 text-sm font-semibold text-neutral-900">0.08rem</p>
+                </div>
+                <div className="rounded-md border border-neutral-200 bg-white p-2">
+                  <p className="text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-neutral-600">Nav → Heading</p>
+                  <p className="mt-1 text-sm font-semibold text-neutral-900">2.5rem</p>
+                </div>
+                <div className="rounded-md border border-neutral-200 bg-white p-2">
+                  <p className="text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-neutral-600">Heading → Content</p>
+                  <p className="mt-1 text-sm font-semibold text-neutral-900">0rem</p>
+                </div>
+                <div className="rounded-md border border-neutral-200 bg-white p-2">
+                  <p className="text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-neutral-600">Content → Heading</p>
+                  <p className="mt-1 text-sm font-semibold text-neutral-900">2.5rem</p>
+                </div>
+              </div>
+
               <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-neutral-600">Block map</p>
               <div className="space-y-1.5">
-                <div className="house-drilldown-title-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                <div className="house-drilldown-title-block rounded-sm border border-sky-200 bg-sky-50 p-2">
                   <p className="house-field-helper">Title block</p>
                   <p className="house-drilldown-title">Drilldown title</p>
                   <p className="house-drilldown-title-expander">Drilldown expander</p>
                 </div>
-                <div className="house-drilldown-heading-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
-                  <p className="house-field-helper">Heading block</p>
-                  <p className="house-drilldown-section-label">Tab row / key controls</p>
+                <div className="house-drilldown-navigation-block rounded-sm border border-cyan-200 bg-cyan-50 p-2">
+                  <p className="house-field-helper">Navigation block</p>
+                  <p className="house-drilldown-section-label">Tab row / drilldown navigation</p>
                 </div>
-                <div className="house-drilldown-heading-block-secondary rounded-sm border border-neutral-200 bg-muted/30 p-2">
-                  <p className="house-field-helper">Heading block (secondary)</p>
+                <div className="house-drilldown-heading-block rounded-sm border border-amber-200 bg-amber-50 p-2">
+                  <p className="house-field-helper">Heading block</p>
+                  <p className="house-drilldown-section-label">Section heading / key controls</p>
+                </div>
+                <div className="house-drilldown-subheading-block rounded-sm border border-teal-200 bg-teal-50 p-2">
+                  <p className="house-field-helper">Subheading block</p>
                   <p className="house-drilldown-overline">Section overline</p>
                 </div>
-                <div className="house-drilldown-content-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                <div className="house-drilldown-content-block rounded-sm border border-neutral-300 bg-white p-2">
                   <p className="house-field-helper">Content block</p>
                   <p className="house-drilldown-note-soft">Drilldown content area</p>
                 </div>
               </div>
+
+              <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                <div className="rounded-md border border-green-200 bg-green-50 p-2">
+                  <p className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-green-800">Correct (sibling flow)</p>
+                  <p className="mt-1 text-xs text-green-900">Title block</p>
+                  <p className="text-xs text-green-900">Navigation block</p>
+                  <p className="text-xs text-green-900">Heading/Subheading block</p>
+                  <p className="text-xs text-green-900">Content block</p>
+                </div>
+                <div className="rounded-md border border-rose-200 bg-rose-50 p-2">
+                  <p className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-rose-800">Avoid (nested flow)</p>
+                  <p className="mt-1 text-xs text-rose-900">Heading block</p>
+                  <p className="text-xs text-rose-900">└ Content block nested inside heading</p>
+                  <p className="text-xs text-rose-900">Separator contract won’t apply predictably</p>
+                </div>
+              </div>
             </div>
+
+            <details className="rounded-md border border-neutral-200 bg-neutral-50 p-2">
+              <summary className="cursor-pointer text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-neutral-700">Show detailed reference tables</summary>
+              <p className="mt-1 text-xs text-neutral-600">Typography, block properties, and full selector matrix are listed below.</p>
+            </details>
 
             <div className="grid gap-3 lg:grid-cols-3">
               <div className="overflow-hidden rounded-md border border-neutral-200">
@@ -1330,6 +1492,7 @@ function ApprovedTypographySection() {
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-overline</code></td><td className="px-2 py-1.5">0.8125rem / 1.2rem · 600 · 0.08em · uppercase</td></tr>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-title</code></td><td className="px-2 py-1.5">0.6875rem / 0.95rem · 600 · 0.07em · uppercase</td></tr>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-value</code></td><td className="px-2 py-1.5">1.5rem / 1.62rem · 500 · tabular-nums</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-chart-axis-period-tag</code></td><td className="px-2 py-1.5">Year/period chip on axis line 2 · text matches label tone · fill uses nav hover accent token</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -1340,8 +1503,9 @@ function ApprovedTypographySection() {
                   </thead>
                   <tbody>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-title-block</code></td><td className="px-2 py-1.5">display:flex · flex-direction:column · align-items:flex-start · gap:0.25rem · min-width:0</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-navigation-block</code></td><td className="px-2 py-1.5">display:flex · flex-wrap:wrap · align-items:center · justify-content:space-between · gap:0.5rem</td></tr>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-heading-block</code></td><td className="px-2 py-1.5">display:flex · flex-wrap:wrap · align-items:center · justify-content:space-between · gap:0.5rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-heading-block-secondary</code></td><td className="px-2 py-1.5">display:flex · flex-wrap:wrap · align-items:baseline · justify-content:space-between · gap:0.5rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-subheading-block</code></td><td className="px-2 py-1.5">display:flex · flex-wrap:wrap · align-items:baseline · justify-content:space-between · gap:0.5rem</td></tr>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-content-block</code></td><td className="px-2 py-1.5">display:flex · flex-direction:column · min-width:0</td></tr>
                   </tbody>
                 </table>
@@ -1353,10 +1517,16 @@ function ApprovedTypographySection() {
                   </thead>
                   <tbody>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-title-block + .house-drilldown-heading-block</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-title-expander-to-first-heading</code> = 0.08rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-publications-drilldown-tab-panel</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-heading-to-content</code> = 0rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-title-block + .house-drilldown-navigation-block</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-title-expander-to-navigation-block</code> = 0.08rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-navigation-block + .house-drilldown-heading-block</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-navigation-block-to-heading</code> = 2.5rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-navigation-block + .house-drilldown-subheading-block</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-navigation-block-to-heading</code> = 2.5rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-heading-block + .house-drilldown-content-block</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-heading-to-content</code> = 0rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-subheading-block + .house-drilldown-content-block</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-heading-to-content</code> = 0rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-content-block + .house-drilldown-heading-block</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-content-to-heading</code> = 2.5rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-content-block + .house-drilldown-subheading-block</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-content-to-subheading</code> = 2.5rem</td></tr>
                     <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-summary-stats-grid</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-summary-grid-to-content-top</code> = 0.5rem (0rem in publications headline content)</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-heading-block-secondary &gt; .house-drilldown-overline</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-heading-block-to-content</code> = 0.3rem</td></tr>
-                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-heading-block + .house-drilldown-heading-block-secondary</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-content-to-heading-block</code> = 2.5rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-subheading-block &gt; .house-drilldown-overline</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-heading-block-to-content</code> = 0.3rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-heading-block + .house-drilldown-subheading-block</code></td><td className="px-2 py-1.5"><code>--separator-drilldown-content-to-heading-block</code> = 2.5rem</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -2810,8 +2980,8 @@ function ApprovedPublicationTileAnimationsSection() {
                     <div className="absolute inset-x-0 bottom-0 border-t border-[hsl(var(--stroke-soft)/0.72)]" />
                     {sameCountMeanBottom !== null ? (
                       <div
-                        className="house-chart-mean-line house-chart-scale-mean-line absolute left-0 right-0"
-                        style={{ bottom: `${sameCountMeanBottom}%` }}
+                        className="house-chart-mean-line house-toggle-chart-morph absolute left-0 right-0"
+                        style={{ bottom: `${sameCountMeanBottom}%`, transitionDuration: `${sameCountTransitionDurationMs}ms` }}
                       />
                     ) : null}
                     {sameCountSlots.map((bar, index) => (
@@ -2877,8 +3047,8 @@ function ApprovedPublicationTileAnimationsSection() {
                       <div className="absolute inset-x-0 bottom-0 border-t border-[hsl(var(--stroke-soft)/0.72)]" />
                       {sameCountMeanBottom !== null ? (
                         <div
-                          className="house-chart-mean-line house-chart-scale-mean-line absolute left-0 right-0"
-                          style={{ bottom: `${sameCountMeanBottom}%` }}
+                          className="house-chart-mean-line house-toggle-chart-morph absolute left-0 right-0"
+                          style={{ bottom: `${sameCountMeanBottom}%`, transitionDuration: `${sameCountTransitionDurationMs}ms` }}
                         />
                       ) : null}
                       {sameCountSlots.map((bar, index) => (
@@ -2973,8 +3143,8 @@ function ApprovedPublicationTileAnimationsSection() {
                     <div className="absolute inset-x-0 bottom-0 border-t border-[hsl(var(--stroke-soft)/0.72)]" />
                     {differentCountMeanBottom !== null ? (
                       <div
-                        className="house-chart-mean-line house-chart-scale-mean-line absolute left-0 right-0"
-                        style={{ bottom: `${differentCountMeanBottom}%` }}
+                        className="house-chart-mean-line house-toggle-chart-morph absolute left-0 right-0"
+                        style={{ bottom: `${differentCountMeanBottom}%`, transitionDuration: `${differentCountTransitionDurationMs}ms` }}
                       />
                     ) : null}
                     {differentCountSlots.map((bar, index) => (
@@ -3040,8 +3210,8 @@ function ApprovedPublicationTileAnimationsSection() {
                       <div className="absolute inset-x-0 bottom-0 border-t border-[hsl(var(--stroke-soft)/0.72)]" />
                       {differentCountMeanBottom !== null ? (
                         <div
-                          className="house-chart-mean-line house-chart-scale-mean-line absolute left-0 right-0"
-                          style={{ bottom: `${differentCountMeanBottom}%` }}
+                          className="house-chart-mean-line house-toggle-chart-morph absolute left-0 right-0"
+                          style={{ bottom: `${differentCountMeanBottom}%`, transitionDuration: `${differentCountTransitionDurationMs}ms` }}
                         />
                       ) : null}
                       {differentCountSlots.map((bar, index) => (
@@ -3351,33 +3521,106 @@ function ApprovedPage() {
   return (
     <div className="min-h-screen bg-white">
       <div className="mx-auto max-w-6xl space-y-10 p-4">
-        <h1 className="text-2xl font-bold text-neutral-900">Approved Library</h1>
-        <ApprovedHeaderBar />
-        <ApprovedMarkersSection />
-        <ApprovedLayoutTitlePositioning />
-        <ApprovedTypographySection />
-        <ApprovedMetricsToolbarSection />
-        <ApprovedInsightsControlSection />
-        <ApprovedTooltipSection />
-        <ApprovedNotificationBannersSection />
-        <ApprovedPublicationsDrilldownSection />
-        <ApprovedDrilldownMetricTileSection />
-        <ApprovedMetricTilesSection />
-        <ApprovedTileTogglesSection />
-        <ApprovedPublicationTileAnimationsSection />
-        <ApprovedPublicationAnimationSpecSection />
-        <ApprovedDrilldownApprovedChartSection />
-        <ApprovedLeftPanel />
-        <AuthPagePanel />
-        <div className="rounded-lg border border-neutral-200 bg-white shadow-sm">
-          <div className="px-4 py-2 border-b border-neutral-200">
-            <p className="text-sm font-semibold text-neutral-900">Approved Icons</p>
-            <p className="text-xs text-neutral-600">Canonical icon definitions for reuse in future approved stories.</p>
+        <section className="rounded-xl border border-neutral-200 bg-gradient-to-br from-white to-neutral-50 p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">Design system reference</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight text-neutral-900">Approved Library</h1>
+          <p className="mt-2 max-w-3xl text-sm text-neutral-600">Canonical production patterns, tokens, and interaction contracts. Sections are grouped by foundations, interactions, drilldown architecture, tile systems, and animation specifications.</p>
+        </section>
+
+        <section className="sticky top-2 z-20 rounded-lg border border-neutral-200 bg-white/95 p-3 shadow-sm backdrop-blur">
+          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-neutral-600">Quick navigation</p>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+            <a href="#foundations" className="rounded border border-sky-200 bg-sky-50 px-2 py-1 font-semibold text-sky-800">1. Foundations</a>
+            <a href="#interactions" className="rounded border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-800">2. Interactions</a>
+            <a href="#drilldown-system" className="rounded border border-teal-200 bg-teal-50 px-2 py-1 font-semibold text-teal-800">3. Drilldown</a>
+            <a href="#tiles-toggles" className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-800">4. Tiles</a>
+            <a href="#animation-specs" className="rounded border border-rose-200 bg-rose-50 px-2 py-1 font-semibold text-rose-800">5. Animation</a>
+            <a href="#nav-shells" className="rounded border border-slate-200 bg-slate-50 px-2 py-1 font-semibold text-slate-800">6. Nav shells</a>
           </div>
-          <div className="p-4">
-            <ProviderIconSection />
+        </section>
+
+        <section id="foundations" className="scroll-mt-24 space-y-4">
+          <div className="rounded-lg border border-sky-200 border-l-4 border-l-sky-500 bg-sky-50 p-4">
+            <h2 className="text-2xl font-bold tracking-tight text-neutral-900">1. Foundations</h2>
+            <p className="mt-1 text-sm text-neutral-600">Global shell, marker standards, layout positioning, typography, and auth surface references.</p>
           </div>
-        </div>
+          <ApprovedHeaderBar />
+          <ApprovedMarkersSection />
+          <details className="rounded-lg border border-neutral-200 bg-neutral-50 p-3" open>
+            <summary className="cursor-pointer text-[0.72rem] font-semibold uppercase tracking-[0.09em] text-neutral-700">Reference tables: layout + typography</summary>
+            <div className="mt-3 space-y-4">
+              <ApprovedLayoutTitlePositioning />
+              <ApprovedTypographySection />
+            </div>
+          </details>
+          <AuthPagePanel />
+          <div className="rounded-lg border border-neutral-200 bg-white shadow-sm">
+            <div className="px-4 py-2 border-b border-neutral-200">
+              <p className="text-sm font-semibold text-neutral-900">Approved Icons</p>
+              <p className="text-xs text-neutral-600">Canonical icon definitions for reuse in future approved stories.</p>
+            </div>
+            <div className="p-4">
+              <ProviderIconSection />
+            </div>
+          </div>
+        </section>
+
+        <section id="interactions" className="scroll-mt-24 space-y-4">
+          <div className="rounded-lg border border-amber-200 border-l-4 border-l-amber-500 bg-amber-50 p-4">
+            <h2 className="text-2xl font-bold tracking-tight text-neutral-900">2. Interaction patterns</h2>
+            <p className="mt-1 text-sm text-neutral-600">Toolbars, insight controls, tooltips, and notification surfaces for consistent behavior.</p>
+          </div>
+          <ApprovedMetricsToolbarSection />
+          <ApprovedInsightsControlSection />
+          <ApprovedTooltipSection />
+          <ApprovedNotificationBannersSection />
+        </section>
+
+        <section id="drilldown-system" className="scroll-mt-24 space-y-4">
+          <div className="rounded-lg border border-teal-200 border-l-4 border-l-teal-500 bg-teal-50 p-4">
+            <h2 className="text-2xl font-bold tracking-tight text-neutral-900">3. Publications drilldown system</h2>
+            <p className="mt-1 text-sm text-neutral-600">Drilldown block contracts, navigation flow, headline tiles, and approved source-of-truth chart behavior.</p>
+          </div>
+          <details className="rounded-lg border border-neutral-200 bg-neutral-50 p-3" open>
+            <summary className="cursor-pointer text-[0.72rem] font-semibold uppercase tracking-[0.09em] text-neutral-700">Reference-heavy drilldown architecture</summary>
+            <div className="mt-3 space-y-4">
+              <ApprovedPublicationsDrilldownSection />
+            </div>
+          </details>
+          <ApprovedDrilldownMetricTileSection />
+          <ApprovedDrilldownApprovedChartSection />
+        </section>
+
+        <section id="tiles-toggles" className="scroll-mt-24 space-y-4">
+          <div className="rounded-lg border border-emerald-200 border-l-4 border-l-emerald-500 bg-emerald-50 p-4">
+            <h2 className="text-2xl font-bold tracking-tight text-neutral-900">4. Metric tiles and toggles</h2>
+            <p className="mt-1 text-sm text-neutral-600">Base tile patterns and toggle controls used by publication metric surfaces.</p>
+          </div>
+          <ApprovedMetricTilesSection />
+          <ApprovedTileTogglesSection />
+        </section>
+
+        <section id="animation-specs" className="scroll-mt-24 space-y-4">
+          <div className="rounded-lg border border-rose-200 border-l-4 border-l-rose-500 bg-rose-50 p-4">
+            <h2 className="text-2xl font-bold tracking-tight text-neutral-900">5. Animation specifications</h2>
+            <p className="mt-1 text-sm text-neutral-600">Visual animation labs and formal production class mappings for publication tiles.</p>
+          </div>
+          <ApprovedPublicationTileAnimationsSection />
+          <details className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+            <summary className="cursor-pointer text-[0.72rem] font-semibold uppercase tracking-[0.09em] text-neutral-700">Animation specification tables</summary>
+            <div className="mt-3">
+              <ApprovedPublicationAnimationSpecSection />
+            </div>
+          </details>
+        </section>
+
+        <section id="nav-shells" className="scroll-mt-24 space-y-4">
+          <div className="rounded-lg border border-slate-200 border-l-4 border-l-slate-500 bg-slate-50 p-4">
+            <h2 className="text-2xl font-bold tracking-tight text-neutral-900">6. Navigation shells</h2>
+            <p className="mt-1 text-sm text-neutral-600">Left-panel canonical shells across workspace, inbox, and profile.</p>
+          </div>
+          <ApprovedLeftPanel />
+        </section>
       </div>
     </div>
   )

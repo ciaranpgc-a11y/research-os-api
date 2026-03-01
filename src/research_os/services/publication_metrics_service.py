@@ -1390,14 +1390,87 @@ def _contract_headline_metrics(
         for value in (chart_data.get("monthly_values_12m") or [])
     ]
     if metric_key == "this_year_vs_last":
-        active_years = sum(1 for value in values if value > 0)
+        paired_year_values = [
+            (int(years[idx]), max(0, int(values[idx])))
+            for idx in range(min(len(years), len(values)))
+            if 1900 <= int(years[idx]) <= 3000
+        ]
+        projected_year = _safe_int(chart_data.get("projected_year"))
+        reference_year = (
+            int(projected_year)
+            if projected_year is not None and 1900 <= int(projected_year) <= 3000
+            else (
+                paired_year_values[-1][0]
+                if paired_year_values
+                else date.today().year
+            )
+        )
+        current_ytd_raw = _safe_int(chart_data.get("current_year_ytd"))
+        existing_current_year_value = next(
+            (value for year, value in paired_year_values if year == reference_year),
+            0,
+        )
+        current_year_value = (
+            max(0, int(current_ytd_raw))
+            if current_ytd_raw is not None
+            else max(0, int(existing_current_year_value))
+        )
+        history_by_year: dict[int, int] = {
+            int(year): max(0, int(value))
+            for year, value in paired_year_values
+            if int(year) != reference_year
+        }
+        if paired_year_values or current_ytd_raw is not None:
+            history_by_year[int(reference_year)] = max(0, int(current_year_value))
+        history_series = sorted(history_by_year.items(), key=lambda item: item[0])
+        history_values = [max(0, int(value)) for _, value in history_series]
+        positive_history_values = [value for value in history_values if value > 0]
+
+        drilldown_payload = tile.get("drilldown") if isinstance(tile.get("drilldown"), dict) else {}
+        publication_rows = (
+            drilldown_payload.get("publications")
+            if isinstance(drilldown_payload.get("publications"), list)
+            else []
+        )
+        publication_years: list[int] = []
+        for row in publication_rows:
+            if not isinstance(row, dict):
+                continue
+            year_value = _safe_int(row.get("year"))
+            if year_value is None:
+                continue
+            if 1900 <= int(year_value) <= int(reference_year):
+                publication_years.append(int(year_value))
+        first_publication_candidates = publication_years + [
+            int(year)
+            for year, value in history_series
+            if int(value) > 0
+        ]
+        first_publication_year = (
+            min(first_publication_candidates) if first_publication_candidates else None
+        )
+        active_years = (
+            max(1, int(reference_year) - int(first_publication_year) + 1)
+            if first_publication_year is not None
+            else 0
+        )
         median_per_year = (
-            float(sorted([value for value in values if value > 0])[len([value for value in values if value > 0]) // 2])
-            if any(value > 0 for value in values)
+            float(
+                sorted(positive_history_values)[
+                    len(positive_history_values) // 2
+                ]
+            )
+            if positive_history_values
             else 0.0
         )
+        rolling_window_values = history_values[-5:]
         rolling_5 = (
-            round(sum(values[-5:]) / float(min(5, len(values))), 1) if values else 0.0
+            round(
+                sum(rolling_window_values) / float(max(1, len(rolling_window_values))),
+                1,
+            )
+            if rolling_window_values
+            else 0.0
         )
         rows.extend(
             [
@@ -1416,7 +1489,7 @@ def _contract_headline_metrics(
                 _contract_metric_row(
                     metric_id="current_ytd",
                     label="Current YTD",
-                    value=max(0, int(_safe_int(chart_data.get("current_year_ytd")) or 0)),
+                    value=max(0, int(current_year_value)),
                     window_id="ytd",
                 ),
                 _contract_metric_row(
@@ -1427,14 +1500,15 @@ def _contract_headline_metrics(
                 ),
             ]
         )
-        if years and values and len(years) == len(values):
-            peak_idx = max(range(len(values)), key=lambda idx: values[idx])
+        if history_series:
+            peak_idx = max(range(len(history_series)), key=lambda idx: history_series[idx][1])
+            peak_year, peak_value = history_series[peak_idx]
             rows.append(
                 _contract_metric_row(
                     metric_id="career_peak",
                     label="Career peak",
-                    value=values[peak_idx],
-                    value_display=f"{values[peak_idx]} ({years[peak_idx]})",
+                    value=peak_value,
+                    value_display=f"{peak_value} ({peak_year})",
                     window_id="all",
                 )
             )

@@ -209,6 +209,7 @@ export const houseChartColors = {
   axisTitle: 'house-chart-axis-title',
   axisLabel: 'house-chart-axis-label',
   axisSubtext: 'house-chart-axis-subtext',
+  axisPeriodTag: 'house-chart-axis-period-tag',
   axisWindowSubtext: 'house-chart-window-subtext',
   lineSoftSvg: 'house-chart-line-soft-svg',
   ringTrackSvg: 'house-chart-ring-track-svg',

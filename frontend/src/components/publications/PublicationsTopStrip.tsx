@@ -348,7 +348,6 @@ const HOUSE_CHART_RING_ENTERED_CLASS = publicationsHouseMotion.ringChartEnter
 const HOUSE_CHART_SCALE_LAYER_CLASS = publicationsHouseMotion.chartScaleLayer
 const HOUSE_CHART_SCALE_TICK_CLASS = publicationsHouseMotion.chartScaleTick
 const HOUSE_CHART_SCALE_AXIS_TITLE_CLASS = publicationsHouseMotion.chartScaleAxisTitle
-const HOUSE_CHART_SCALE_MEAN_LINE_CLASS = publicationsHouseMotion.chartScaleMeanLine
 const HOUSE_TOGGLE_TRACK_CLASS = publicationsHouseMotion.toggleTrack
 const HOUSE_TOGGLE_THUMB_CLASS = publicationsHouseMotion.toggleThumb
 const HOUSE_TOGGLE_BUTTON_CLASS = publicationsHouseMotion.toggleButton
@@ -410,6 +409,7 @@ const HOUSE_CHART_AXIS_TEXT_CLASS = publicationsHouseCharts.axisText
 const HOUSE_CHART_AXIS_TEXT_TREND_CLASS = publicationsHouseCharts.axisTextTrend
 const HOUSE_CHART_AXIS_TITLE_CLASS = publicationsHouseCharts.axisTitle
 const HOUSE_CHART_AXIS_SUBTEXT_CLASS = publicationsHouseCharts.axisSubtext
+const HOUSE_CHART_AXIS_PERIOD_TAG_CLASS = publicationsHouseCharts.axisPeriodTag
 const HOUSE_CHART_LINE_SOFT_SVG_CLASS = publicationsHouseCharts.lineSoftSvg
 const HOUSE_CHART_RING_TRACK_SVG_CLASS = publicationsHouseCharts.ringTrackSvg
 const HOUSE_CHART_RING_MAIN_SVG_CLASS = publicationsHouseCharts.ringMainSvg
@@ -958,6 +958,11 @@ function shortYearLabel(year: number): string {
 
 function buildNiceAxis(maxObservedValue: number): { axisMax: number; ticks: number[] } {
   const safeMax = Math.max(1, maxObservedValue)
+  if (safeMax <= 6) {
+    const axisMax = Math.max(3, Math.ceil(safeMax * 1.15))
+    const ticks = Array.from({ length: axisMax + 1 }, (_, index) => index)
+    return { axisMax, ticks }
+  }
   const intervals = safeMax >= 250 ? 5 : 4
   const targetMax = safeMax * 1.08
   const roughStep = Math.max(1, targetMax / intervals)
@@ -1403,7 +1408,7 @@ function TotalCitationsModeChart({
               className={cn(
                 'pointer-events-none absolute inset-x-0',
                 HOUSE_CHART_GRID_DASHED_CLASS,
-                HOUSE_CHART_SCALE_MEAN_LINE_CLASS,
+                HOUSE_TOGGLE_CHART_MORPH_CLASS,
               )}
               style={{
                 bottom: `${meanLinePercent}%`,
@@ -1845,6 +1850,7 @@ export function PublicationsPerYearChart({
   useCompletedMonthWindowLabels = false,
   autoScaleByWindow = false,
   showMeanLine = false,
+  showMeanValueLabel = false,
   chartTitle,
   chartTitleClassName,
   activeWindowMode,
@@ -1864,6 +1870,7 @@ export function PublicationsPerYearChart({
   useCompletedMonthWindowLabels?: boolean
   autoScaleByWindow?: boolean
   showMeanLine?: boolean
+  showMeanValueLabel?: boolean
   chartTitle?: string
   chartTitleClassName?: string
   activeWindowMode?: PublicationsWindowMode
@@ -2091,6 +2098,15 @@ export function PublicationsPerYearChart({
   const meanValue = isCompactTileMode && Number.isFinite(meanValueRaw) && meanValueRaw >= 0
     ? meanValueRaw
     : activeBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0) / Math.max(1, activeBars.length)
+  const meanValueDisplay = Number.isFinite(meanValue)
+    ? (() => {
+      const rounded = Math.round(meanValue * 10) / 10
+      if (Math.abs(rounded - Math.round(rounded)) <= 1e-9) {
+        return formatInt(Math.round(rounded))
+      }
+      return rounded.toFixed(1)
+    })()
+    : null
 
   const animationKey = useMemo(
     () => `${effectiveWindowMode}|${activeBucketSize}|${activeBars.map((bar) => `${bar.key}-${bar.value}-${bar.current ? 1 : 0}`).join('|')}`,
@@ -2140,26 +2156,42 @@ export function PublicationsPerYearChart({
     axisDurationMs,
   )
   const axisMax = axisAnimationEnabled ? Math.max(1, animatedAxisMax) : targetAxisMax
+  const renderedMeanValue = Math.max(0, meanValue)
   const barHeightAxisMax = Math.max(1, targetAxisMax)
   const yAxisTickRatios = targetAxisScale
     ? targetAxisScale.ticks.map((tickValue) => (targetAxisScale.axisMax <= 0 ? 0 : tickValue / targetAxisScale.axisMax))
     : [0, 0.25, 0.5, 0.75, 1]
   const yAxisTickValues = yAxisTickRatios.map((ratio) => ratio * axisMax)
+  const hideYearTickTabs = false
+  const showXAxisTickTabs = !hideYearTickTabs
+  const activePeriodRangeLabel = usingMonthlyBars ? groupedMonthBars.rangeLabel : activeWindowBars.rangeLabel
+  const resolveXAxisTitleForWindowMode = (mode: PublicationsWindowMode): string => {
+    if (mode === '1y') {
+      return 'Publication month'
+    }
+    if (mode === 'all') {
+      return xAxisLabel
+    }
+    return 'Rolling 12-month period'
+  }
+  const resolvedXAxisLabel = usingMonthlyBars
+    ? resolveXAxisTitleForWindowMode('1y')
+    : (hideYearTickTabs && activePeriodRangeLabel
+      ? `${resolveXAxisTitleForWindowMode(effectiveWindowMode)} (${activePeriodRangeLabel})`
+      : resolveXAxisTitleForWindowMode(effectiveWindowMode))
   const stableToggleTickValues = enableWindowToggle ? buildNiceAxis(maxWindowValue).ticks : yAxisTickValues
   const gridTickRatios = yAxisTickRatios.slice(1)
-  const resolvedXAxisLabel = usingMonthlyBars ? 'Publication month' : xAxisLabel
-  const xAxisLabelLayout = enableWindowToggle
+  const xAxisLabelLayout = enableWindowToggle && !hideYearTickTabs
     ? mergeChartAxisLayouts(
       PUBLICATIONS_WINDOW_OPTIONS.map((option) => {
         const optionWindowBars = resolveBarsForWindowMode(option.value)
         const optionBars = optionWindowBars.bars
-        const optionUsesMonthlyBars = option.value === '1y'
         return buildChartAxisLayout({
           axisLabels: optionBars.map((bar) => bar.axisLabel),
           axisSubLabels: optionBars.map((bar) => bar.axisSubLabel || null),
           showXAxisName: showAxes,
-          xAxisName: showAxes ? (optionUsesMonthlyBars ? 'Publication month' : xAxisLabel) : null,
-          dense: optionBars.length >= 7 || optionUsesMonthlyBars,
+          xAxisName: showAxes ? resolveXAxisTitleForWindowMode(option.value) : null,
+          dense: optionBars.length >= 7 || option.value === '1y',
           maxLabelLines: 2,
           maxSubLabelLines: 2,
           maxAxisNameLines: 2,
@@ -2167,8 +2199,8 @@ export function PublicationsPerYearChart({
       }),
     )
     : buildChartAxisLayout({
-      axisLabels: renderBars.map((bar) => bar.axisLabel),
-      axisSubLabels: renderBars.map((bar) => bar.axisSubLabel || null),
+      axisLabels: showXAxisTickTabs ? renderBars.map((bar) => bar.axisLabel) : [],
+      axisSubLabels: showXAxisTickTabs ? renderBars.map((bar) => bar.axisSubLabel || null) : [],
       showXAxisName: showAxes,
       xAxisName: showAxes ? resolvedXAxisLabel : null,
       dense: renderBars.length >= 7 || usingMonthlyBars,
@@ -2225,9 +2257,10 @@ export function PublicationsPerYearChart({
   const computeBarHeightPct = (value: number): number => (
     value <= 0 ? 3 : Math.min(100, Math.max(6, (value / barHeightAxisMax) * 100))
   )
+  const useCurrentPeriodBarTone = showCurrentPeriodSemantic && usingMonthlyBars
   const resolveBarToneClass = (barValue: number, isCurrentPeriod: boolean): string => {
     const relative = barValue >= meanValue * 1.1 ? 'above' : barValue <= meanValue * 0.9 ? 'below' : 'near'
-    if (isCurrentPeriod && showCurrentPeriodSemantic) {
+    if (isCurrentPeriod && useCurrentPeriodBarTone) {
       return HOUSE_CHART_BAR_CURRENT_CLASS
     }
     if (relative === 'above') {
@@ -2330,6 +2363,17 @@ export function PublicationsPerYearChart({
         data-ui="publications-chart-frame"
         data-house-role="chart-frame"
       >
+        {showMeanValueLabel && meanValueDisplay ? (
+          <p
+              className={cn(
+                HOUSE_DRILLDOWN_CHART_META_CLASS,
+                HOUSE_HEADING_LABEL_CLASS,
+                'pointer-events-none absolute right-2 -top-0.5 z-[2]',
+              )}
+          >
+            Mean: {meanValueDisplay}
+          </p>
+        ) : null}
         <div className="absolute" style={plotAreaStyle}>
           {gridTickRatios.map((ratio, index) => (
             <div
@@ -2344,9 +2388,13 @@ export function PublicationsPerYearChart({
               className={cn(
                 'pointer-events-none absolute inset-x-0',
                 HOUSE_CHART_MEAN_LINE_CLASS,
-                HOUSE_CHART_SCALE_MEAN_LINE_CLASS,
+                HOUSE_TOGGLE_CHART_MORPH_CLASS,
               )}
-              style={{ bottom: `${Math.max(0, Math.min(100, (Math.max(0, meanValue) / axisMax) * 100))}%` }}
+              style={{
+                bottom: `${Math.max(0, Math.min(100, (renderedMeanValue / barHeightAxisMax) * 100))}%`,
+                transitionDuration: barTransitionDuration,
+                transitionDelay: '0ms',
+              }}
               aria-hidden="true"
             />
           ) : null}
@@ -2383,7 +2431,7 @@ export function PublicationsPerYearChart({
                     style={{ bottom: `calc(${heightPct}% + ${PUBLICATIONS_CHART_TOOLTIP_OFFSET_REM}rem)` }}
                     aria-hidden="true"
                   >
-                    {formatInt(animatedValue)}
+                    {formatInt(bar.value)}
                   </span>
                   <span
                     className={cn(
@@ -2428,20 +2476,22 @@ export function PublicationsPerYearChart({
           </div>
         ) : null}
 
-        <div className={cn('pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1', HOUSE_TOGGLE_CHART_LABEL_CLASS)} style={xAxisTicksStyle}>
-          {renderBars.map((bar, index) => (
-            <div key={`${bar.key}-${index}-axis`} className="text-center leading-none">
-              <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>
-                {bar.axisLabel}
-              </p>
-              {bar.axisSubLabel ? (
-                <p className={cn(HOUSE_CHART_AXIS_SUBTEXT_CLASS, 'break-words px-0.5')}>
-                  {bar.axisSubLabel}
+        {showXAxisTickTabs ? (
+          <div className={cn('pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1', HOUSE_TOGGLE_CHART_LABEL_CLASS)} style={xAxisTicksStyle}>
+            {renderBars.map((bar, index) => (
+              <div key={`${bar.key}-${index}-axis`} className="house-chart-axis-period-item text-center leading-none">
+                <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>
+                  {bar.axisLabel}
                 </p>
-              ) : null}
-            </div>
-          ))}
-        </div>
+                {bar.axisSubLabel ? (
+                  <p className={cn(HOUSE_CHART_AXIS_SUBTEXT_CLASS, HOUSE_CHART_AXIS_PERIOD_TAG_CLASS, 'break-words px-0.5')}>
+                    {bar.axisSubLabel}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         {showAxes ? (
           <div
@@ -3993,28 +4043,7 @@ function TotalPublicationsDrilldownWorkspace({
   const headlineMetricTiles = useMemo(() => {
     const drilldown = (tile.drilldown || {}) as Record<string, unknown>
     const chartData = (tile.chart_data || {}) as Record<string, unknown>
-    const metricRows = Array.isArray(drilldown.headline_metrics) ? drilldown.headline_metrics : []
-    const windows = Array.isArray(drilldown.windows) ? drilldown.windows : []
     const publications = Array.isArray(drilldown.publications) ? drilldown.publications : []
-
-    const metricDisplayById = new Map<string, string>()
-    const metricNumericById = new Map<string, number>()
-    for (const row of metricRows) {
-      if (!row || typeof row !== 'object') {
-        continue
-      }
-      const metric = row as Record<string, unknown>
-      const rawId = String(metric.metric_id || metric.metricId || '').trim().toLowerCase()
-      if (!rawId) {
-        continue
-      }
-      const valueDisplay = formatDrilldownValue(metric.value_display ?? metric.valueDisplay ?? metric.value)
-      metricDisplayById.set(rawId, valueDisplay)
-      const numericValue = Number(metric.value)
-      if (Number.isFinite(numericValue)) {
-        metricNumericById.set(rawId, numericValue)
-      }
-    }
 
     const years = Array.isArray(chartData.years)
       ? chartData.years
@@ -4044,68 +4073,79 @@ function TotalPublicationsDrilldownWorkspace({
     const asOfDate = asOfRaw ? new Date(`${asOfRaw}T00:00:00Z`) : new Date()
     const fallbackNow = Number.isFinite(asOfDate.getTime()) ? asOfDate : new Date()
     const fallbackNowYear = fallbackNow.getUTCFullYear()
-
-    const countRollingWindow = (windowId: string, fallbackYears: number): number => {
-      const matchedWindow = windows.find((entry) => {
-        if (!entry || typeof entry !== 'object') {
-          return false
-        }
-        const windowKey = String((entry as Record<string, unknown>).window_id || (entry as Record<string, unknown>).windowId || '').trim()
-        return windowKey === windowId
-      })
-
-      let startYear = fallbackNowYear - fallbackYears + 1
-      let endYear = fallbackNowYear
-      if (matchedWindow && typeof matchedWindow === 'object') {
-        const windowRecord = matchedWindow as Record<string, unknown>
-        const startRaw = String(windowRecord.start_date || windowRecord.startDate || '').trim()
-        const endRaw = String(windowRecord.end_date || windowRecord.endDate || '').trim()
-        const startDate = startRaw ? new Date(`${startRaw}T00:00:00Z`) : null
-        const endDate = endRaw ? new Date(`${endRaw}T00:00:00Z`) : null
-        if (startDate && Number.isFinite(startDate.getTime())) {
-          startYear = startDate.getUTCFullYear()
-        }
-        if (endDate && Number.isFinite(endDate.getTime())) {
-          endYear = endDate.getUTCFullYear()
-        }
-      }
-      if (yearValuePairs.length > 0) {
-        return yearValuePairs
-          .filter((entry) => entry.year >= startYear && entry.year <= endYear)
-          .reduce((sum, entry) => sum + Math.max(0, entry.value), 0)
-      }
-
-      return publicationYears.filter((year) => year >= startYear && year <= endYear).length
-    }
-
-    const totalPublicationsValue = formatDrilldownValue(tile.value_display || tile.main_value_display || tile.value)
-    const activeYearsValue = metricDisplayById.get('active_years')
-      ?? formatDrilldownValue(yearValuePairs.filter((entry) => entry.value > 0).length)
-    const meanYearlyValue = metricDisplayById.get('rolling_mean_5y')
-      ?? formatDrilldownValue(chartData.mean_value)
-    const highestYieldValue = metricDisplayById.get('career_peak')
-      ?? (() => {
-        if (!yearValuePairs.length) {
-          return '\u2014'
-        }
-        const peak = yearValuePairs.reduce((best, entry) => (entry.value > best.value ? entry : best), yearValuePairs[0])
-        return `${formatInt(peak.value)} (${peak.year})`
-      })()
-    const currentYearFromSeries = yearValuePairs.find((entry) => entry.year === fallbackNowYear)?.value
-      ?? yearValuePairs[yearValuePairs.length - 1]?.value
-      ?? null
+    const projectedYearRaw = Number(chartData.projected_year)
+    const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : fallbackNowYear
     const currentYearYtdRaw = Number(chartData.current_year_ytd)
     const resolvedCurrentYearYtd = Number.isFinite(currentYearYtdRaw)
       ? Math.max(0, currentYearYtdRaw)
-      : currentYearFromSeries
-    const yearToDateValue = metricDisplayById.get('current_ytd')
-      ?? formatDrilldownValue(resolvedCurrentYearYtd)
+      : Math.max(
+        0,
+        yearValuePairs.find((entry) => entry.year === projectedYear)?.value
+        ?? yearValuePairs[yearValuePairs.length - 1]?.value
+        ?? 0,
+      )
+    const historyBars = yearValuePairs
+      .filter((entry) => entry.year !== projectedYear)
+      .concat(
+        yearValuePairs.length > 0 || Number.isFinite(currentYearYtdRaw)
+          ? [{ year: projectedYear, value: resolvedCurrentYearYtd }]
+          : [],
+      )
+      .sort((left, right) => left.year - right.year)
+    const sumNumbers = (items: number[]) => items.reduce((sum, value) => sum + Math.max(0, value), 0)
+    const rollingWindowSum = (windowYears: number) => sumNumbers(historyBars.slice(-windowYears).map((entry) => entry.value))
+    const rolling3Year = Math.round(rollingWindowSum(3))
+    const rolling5Year = Math.round(rollingWindowSum(5))
 
-    const rolling1Year = countRollingWindow('1y', 1)
-    const rolling3Year = countRollingWindow('3y', 3)
-    const rolling5Year = countRollingWindow('5y', 5)
+    const monthlySeries = toNumberArray(chartData.monthly_values_12m).map((item) => Math.max(0, item))
+    const monthlyLabels = toStringArray(chartData.month_labels_12m)
+    const currentMonthIndex = new Date().getUTCMonth()
+    const sourceLastMonthIndex = monthlyLabels.length ? parseMonthIndex(monthlyLabels[monthlyLabels.length - 1]) : null
+    const sourceLikelyIncludesCurrentMonth = sourceLastMonthIndex !== null && sourceLastMonthIndex === currentMonthIndex
+    const sourceValuesWindow = monthlySeries.length >= 13 && sourceLikelyIncludesCurrentMonth
+      ? monthlySeries.slice(-13, -1)
+      : monthlySeries.length >= 12
+        ? monthlySeries.slice(-12)
+        : monthlySeries
+    const rolling1Year = Math.round(
+      monthlySeries.length > 0
+        ? sumNumbers(sourceValuesWindow)
+        : rollingWindowSum(1),
+    )
 
-    void metricNumericById
+    const firstPublicationYearCandidates = [
+      ...publicationYears,
+      ...historyBars.filter((entry) => entry.value > 0).map((entry) => entry.year),
+    ].filter((year) => Number.isInteger(year) && year >= 1900 && year <= projectedYear)
+    const firstPublicationYear = firstPublicationYearCandidates.length
+      ? Math.min(...firstPublicationYearCandidates)
+      : null
+    const activeYears = firstPublicationYear !== null
+      ? Math.max(1, projectedYear - firstPublicationYear + 1)
+      : 0
+    const activeYearsValue = activeYears > 0 ? formatInt(activeYears) : '\u2014'
+
+    const highestYieldValue = (() => {
+      const nonZeroHistory = historyBars.filter((entry) => entry.value > 0)
+      if (!nonZeroHistory.length) {
+        return '\u2014'
+      }
+      const peak = nonZeroHistory.reduce((best, entry) => (entry.value > best.value ? entry : best), nonZeroHistory[0])
+      return `${formatInt(peak.value)} (${peak.year})`
+    })()
+
+    const totalPublicationsFromChart = Math.round(sumNumbers(historyBars.map((entry) => entry.value)))
+    const totalPublicationsValue = totalPublicationsFromChart > 0
+      ? formatInt(totalPublicationsFromChart)
+      : formatDrilldownValue(tile.value_display || tile.main_value_display || tile.value)
+    const meanDenominator = Math.max(1, Math.min(5, historyBars.length))
+    const meanYearlyPublications = historyBars.length > 0
+      ? rolling5Year / meanDenominator
+      : Number(chartData.mean_value)
+    const meanYearlyValue = Number.isFinite(meanYearlyPublications)
+      ? formatDrilldownValue(Math.round(meanYearlyPublications * 10) / 10)
+      : '\u2014'
+    const yearToDateValue = formatInt(Math.round(resolvedCurrentYearYtd))
 
     return [
       { label: 'Total publications', value: totalPublicationsValue },
@@ -4130,32 +4170,30 @@ function TotalPublicationsDrilldownWorkspace({
     <div className="house-publications-drilldown-stack-3" data-metric-key={tile.key}>
       <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
         <div className="house-drilldown-heading-block">
-          <div className="house-drilldown-title-block">
-            <p className="house-drilldown-heading-block-title">Headline results</p>
-          </div>
-          <div className="house-drilldown-content-block house-publications-headline-content w-full">
-            {activeTab === 'summary' ? (
-              <div
-                className={cn(HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS, 'house-publications-headline-metric-grid mt-0')}
-                style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
-              >
-                {headlineMetricTiles.map((tile) => (
-                  <div key={tile.label} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
-                    <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>{tile.label}</p>
-                    <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
-                      <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{tile.value}</p>
-                    </div>
+          <p className="house-drilldown-heading-block-title">Headline results</p>
+        </div>
+        <div className="house-drilldown-content-block house-publications-headline-content w-full">
+          {activeTab === 'summary' ? (
+            <div
+              className={cn(HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS, 'house-publications-headline-metric-grid mt-0')}
+              style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
+            >
+              {headlineMetricTiles.map((tile) => (
+                <div key={tile.label} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
+                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>{tile.label}</p>
+                  <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                    <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{tile.value}</p>
                   </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         {activeTab === 'summary' ? (
-          <div className="house-drilldown-heading-block-secondary">
-            <div className="house-drilldown-title-block">
-              <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>Publication trends</p>
+          <>
+            <div className="house-drilldown-heading-block">
+              <p className="house-drilldown-heading-block-title">Publication trends</p>
             </div>
             <div className="house-drilldown-content-block w-full">
               <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
@@ -4206,6 +4244,8 @@ function TotalPublicationsDrilldownWorkspace({
                   showCurrentPeriodSemantic
                   useCompletedMonthWindowLabels
                   autoScaleByWindow
+                  showMeanLine
+                  showMeanValueLabel
                   subtleGrid
                   activeWindowMode={publicationTrendsWindowMode}
                   onWindowModeChange={setPublicationTrendsWindowMode}
@@ -4213,16 +4253,16 @@ function TotalPublicationsDrilldownWorkspace({
                 />
               </div>
             </div>
-          </div>
+          </>
         ) : null}
 
         {subsectionTitle ? (
-          <div className="house-drilldown-heading-block-secondary">
-            <div className="house-drilldown-title-block">
+          <>
+            <div className="house-drilldown-heading-block-secondary">
               <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>{subsectionTitle}</p>
             </div>
             <div className="house-drilldown-content-block w-full" />
-          </div>
+          </>
         ) : null}
       </div>
     </div>
@@ -4248,19 +4288,17 @@ function GenericMetricDrilldownWorkspace({
     <div className="house-publications-drilldown-stack-3" data-metric-key={tile.key}>
       <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
         <div className="house-drilldown-heading-block">
-          <div className="house-drilldown-title-block">
-            <p className="house-drilldown-heading-block-title">Headline results</p>
-          </div>
-          <div className="house-drilldown-content-block w-full" />
+          <p className="house-drilldown-heading-block-title">Headline results</p>
         </div>
+        <div className="house-drilldown-content-block w-full" />
 
         {subsectionTitle ? (
-          <div className="house-drilldown-heading-block-secondary">
-            <div className="house-drilldown-title-block">
+          <>
+            <div className="house-drilldown-heading-block-secondary">
               <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>{subsectionTitle}</p>
             </div>
             <div className="house-drilldown-content-block w-full" />
-          </div>
+          </>
         ) : null}
       </div>
     </div>
@@ -5872,7 +5910,7 @@ export function PublicationsTopStrip({
                 ) : null}
                 {detailError ? <p className={cn('mt-2', HOUSE_DRILLDOWN_ALERT_CLASS)}>{detailError}</p> : null}
               </div>
-              <div className="house-drilldown-heading-block house-publications-drilldown-tabs rounded-sm bg-card" role="tablist" aria-label="Metric drilldown sections">
+              <div className="house-drilldown-navigation-block house-publications-drilldown-tabs rounded-sm bg-card" role="tablist" aria-label="Metric drilldown sections">
                 {DRILLDOWN_TABS.map((tab) => {
                   const isActive = activeDrilldownTab === tab.value
                   return (
