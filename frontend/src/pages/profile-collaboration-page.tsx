@@ -56,6 +56,11 @@ type CollaboratorFormState = {
 
 type HeatmapMode = 'country' | 'institution' | 'domain'
 
+type MockMetricsSeed = Pick<
+  CollaboratorPayload['metrics'],
+  'coauthored_works_count' | 'last_collaboration_year' | 'collaboration_strength_score'
+>
+
 const EMPTY_FORM: CollaboratorFormState = {
   full_name: '',
   preferred_name: '',
@@ -145,6 +150,29 @@ function heatmapTone(count: number, maxCount: number): string {
   return 'bg-emerald-100 text-emerald-900'
 }
 
+function hydrateMockMetrics(metrics: MockMetricsSeed): CollaboratorPayload['metrics'] {
+  const score = Number(metrics.collaboration_strength_score || 0)
+  const classification =
+    score >= 85
+      ? 'CORE'
+      : score >= 70
+        ? 'ACTIVE'
+        : score >= 50
+          ? 'OCCASIONAL'
+          : 'HISTORIC'
+  return {
+    coauthored_works_count: Number(metrics.coauthored_works_count || 0),
+    shared_citations_total: Math.max(0, Math.round(Number(metrics.coauthored_works_count || 0) * 14)),
+    first_collaboration_year: metrics.last_collaboration_year ? Math.max(2008, metrics.last_collaboration_year - 2) : null,
+    last_collaboration_year: metrics.last_collaboration_year,
+    citations_last_12m: Math.max(0, Math.round(Number(metrics.coauthored_works_count || 0) * 1.6)),
+    collaboration_strength_score: score,
+    classification,
+    computed_at: new Date().toISOString(),
+    status: 'READY',
+  }
+}
+
 function downloadTextFile(filename: string, content: string, mimeType: string): void {
   const blob = new Blob([content], { type: mimeType })
   const url = window.URL.createObjectURL(blob)
@@ -188,7 +216,7 @@ export function ProfileCollaborationPage() {
   // Mock data for dev visualization
   useEffect(() => {
     if (import.meta.env.DEV && import.meta.env.VITE_AUTH_BYPASS === 'true' && !listing) {
-      const mockCollaborators: CollaboratorPayload[] = [
+      const mockCollaborators = [
         {
           id: '1',
           user_id: 'mock-user',
@@ -561,22 +589,33 @@ export function ProfileCollaborationPage() {
         })
       }
 
+      const hydratedMockCollaborators: CollaboratorPayload[] = mockCollaborators.map((item) => ({
+        ...item,
+        owner_user_id: 'mock-user',
+        duplicate_warnings: [],
+        metrics: hydrateMockMetrics(item.metrics),
+      }))
+
       setListing({
-        items: mockCollaborators,
-        total: mockCollaborators.length,
+        items: hydratedMockCollaborators,
+        total: hydratedMockCollaborators.length,
         page: 1,
         page_size: 250,
+        has_more: false,
       })
 
-      const totalUkCollaborators = mockCollaborators.filter((item) => item.country === 'United Kingdom').length
+      const totalUkCollaborators = hydratedMockCollaborators.filter((item) => item.country === 'United Kingdom').length
 
       setSummary({
-        total_collaborators: mockCollaborators.length,
+        total_collaborators: hydratedMockCollaborators.length,
         core_collaborators: Math.max(12, Math.floor(totalUkCollaborators * 0.18)),
         active_collaborations_12m: Math.max(20, Math.floor(totalUkCollaborators * 0.7)),
         new_collaborators_12m: Math.max(8, Math.floor(totalUkCollaborators * 0.2)),
         last_computed_at: new Date().toISOString(),
-        status: 'COMPLETE',
+        status: 'READY',
+        is_stale: false,
+        is_updating: false,
+        last_update_failed: false,
       })
     }
   }, [listing])

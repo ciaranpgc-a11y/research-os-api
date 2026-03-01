@@ -118,6 +118,7 @@ export const houseMotion = {
   toggleThumb: 'house-toggle-thumb',
   toggleButton: 'house-toggle-button',
   toggleChartBar: 'house-toggle-chart-bar',
+  toggleChartLine: 'house-toggle-chart-line',
   toggleChartMorph: 'house-toggle-chart-morph',
   toggleChartSwap: 'house-toggle-chart-swap',
   toggleChartLabel: 'house-toggle-chart-label',

@@ -2466,6 +2466,13 @@
     will-change: transform;
   }
 
+  .house-toggle-chart-line {
+    transition-property: stroke-dashoffset, opacity, filter;
+    transition-duration: var(--motion-duration-chart-toggle);
+    transition-timing-function: var(--motion-ease-chart-series);
+    will-change: stroke-dashoffset, opacity;
+  }
+
   .house-toggle-chart-morph {
     transition-property: left, width, height, opacity, transform, filter, box-shadow;
     transition-duration: var(--motion-duration-chart-toggle);

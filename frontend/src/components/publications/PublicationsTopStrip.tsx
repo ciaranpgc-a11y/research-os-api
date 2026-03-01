@@ -318,6 +318,7 @@ const HOUSE_TOGGLE_TRACK_CLASS = publicationsHouseMotion.toggleTrack
 const HOUSE_TOGGLE_THUMB_CLASS = publicationsHouseMotion.toggleThumb
 const HOUSE_TOGGLE_BUTTON_CLASS = publicationsHouseMotion.toggleButton
 const HOUSE_TOGGLE_CHART_BAR_CLASS = publicationsHouseMotion.toggleChartBar
+const HOUSE_TOGGLE_CHART_LINE_CLASS = publicationsHouseMotion.toggleChartLine
 const HOUSE_TOGGLE_CHART_MORPH_CLASS = publicationsHouseMotion.toggleChartMorph
 const HOUSE_TOGGLE_CHART_SWAP_CLASS = publicationsHouseMotion.toggleChartSwap
 const HOUSE_TOGGLE_CHART_LABEL_CLASS = publicationsHouseMotion.toggleChartLabel
@@ -5328,7 +5329,7 @@ function InfluentialTrendPanel({
               ref={pathRef}
               d={path}
               fill="none"
-              className={HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS}
+              className={cn(HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS, HOUSE_TOGGLE_CHART_LINE_CLASS)}
               strokeWidth="3.25"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -5336,9 +5337,7 @@ function InfluentialTrendPanel({
               style={{
                 strokeDasharray: visiblePathLength,
                 strokeDashoffset: lineVisible ? 0 : visiblePathLength,
-                transitionProperty: 'stroke-dashoffset',
                 transitionDuration: lineTransitionDuration,
-                transitionTimingFunction: 'var(--motion-ease-chart-series)',
               }}
             />
           </svg>

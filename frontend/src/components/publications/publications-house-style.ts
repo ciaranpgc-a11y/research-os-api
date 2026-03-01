@@ -62,6 +62,7 @@ export const publicationsHouseMotion = {
   toggleThumb: houseMotion.toggleThumb,
   toggleButton: houseMotion.toggleButton,
   toggleChartBar: houseMotion.toggleChartBar,
+  toggleChartLine: houseMotion.toggleChartLine,
   toggleChartMorph: houseMotion.toggleChartMorph,
   toggleChartSwap: houseMotion.toggleChartSwap,
   toggleChartLabel: houseMotion.toggleChartLabel,
