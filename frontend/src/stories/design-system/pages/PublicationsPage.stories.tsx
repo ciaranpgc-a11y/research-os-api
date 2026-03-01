@@ -1,14 +1,16 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import type { ReactNode } from 'react'
+import { useEffect } from 'react'
 
 import { ProfilePublicationsPage } from '@/pages/profile-publications-page'
 import type { ProfilePublicationsPageFixture } from '@/pages/profile-publications-page'
 import { ACCOUNT_SETTINGS_STORAGE_KEY } from '@/lib/account-preferences'
+import { publicationsMetricsHappyFixture } from '@/mocks/fixtures/publications-metrics'
 import { AccountRouteShell } from '@/stories/pages-review/_helpers/page-review-shells'
 import {
   pagesReviewProfilePublicationsDefaultFixture,
 } from '@/stories/pages-review/_helpers/profile-publications-fixture'
-import type { PersonaWork, PublicationMetricTilePayload } from '@/types/impact'
+import type { PersonaWork, PublicationMetricTilePayload, PublicationsTopMetricsPayload } from '@/types/impact'
 
 const meta: Meta<typeof ProfilePublicationsPage> = {
   title: 'Design System/Pages/Publications Page',
@@ -61,6 +63,22 @@ function PublicationsLayoutPreview({ children }: { children: ReactNode }) {
 
 function cloneFixture<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
+}
+
+function createTopMetricsPayload(
+  totalPublications: number,
+  totalCitations: number,
+  paperCount: number,
+): PublicationsTopMetricsPayload {
+  const payload = cloneFixture(publicationsMetricsHappyFixture)
+  payload.tiles = buildTopMetricTiles(totalPublications, totalCitations)
+  payload.status = 'READY'
+  payload.is_updating = false
+  payload.is_stale = false
+  payload.last_error = null
+  // Update timestamp to trigger animation replay when paperCount changes
+  payload.data_last_refreshed = new Date(Date.now() + paperCount).toISOString()
+  return payload
 }
 
 function buildTopMetricTiles(totalPublications: number, totalCitations: number): PublicationMetricTilePayload[] {
@@ -431,43 +449,43 @@ function buildLargePublicationsFixture(paperCount: number): ProfilePublicationsP
     total_citations_end_year:
       timeline.slice(0, idx + 1).reduce((sum, current) => sum + current.citations, 0),
   }))
-  if (fixture.topMetricsResponse) {
-    fixture.topMetricsResponse.tiles = buildTopMetricTiles(generatedWorks.length, totalCitations)
-    fixture.topMetricsResponse.status = 'READY'
-    fixture.topMetricsResponse.is_updating = false
-    fixture.topMetricsResponse.is_stale = false
-    fixture.topMetricsResponse.last_error = null
-    // Update timestamp to trigger animation replay when paperCount changes
-    fixture.topMetricsResponse.data_last_refreshed = new Date(Date.now() + paperCount).toISOString()
-  }
+  fixture.topMetricsResponse = createTopMetricsPayload(generatedWorks.length, totalCitations, paperCount)
 
   return fixture
 }
 
 function PublicationsCompleteLive({ paperCount }: PublicationsLiveArgs) {
-  if (typeof window !== 'undefined') {
-    const raw = window.localStorage.getItem(ACCOUNT_SETTINGS_STORAGE_KEY)
-    let parsed: Record<string, unknown> = {}
-    if (raw) {
-      try {
-        const candidate = JSON.parse(raw) as unknown
-        parsed = candidate && typeof candidate === 'object' && !Array.isArray(candidate)
-          ? candidate as Record<string, unknown>
-          : {}
-      } catch {
-        parsed = {}
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    try {
+      const raw = window.localStorage.getItem(ACCOUNT_SETTINGS_STORAGE_KEY)
+      let parsed: Record<string, unknown> = {}
+      if (raw) {
+        try {
+          const candidate = JSON.parse(raw) as unknown
+          parsed = candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+            ? candidate as Record<string, unknown>
+            : {}
+        } catch {
+          parsed = {}
+        }
       }
+      if (parsed.publicationInsightsDefaultVisibility !== 'visible') {
+        window.localStorage.setItem(
+          ACCOUNT_SETTINGS_STORAGE_KEY,
+          JSON.stringify({
+            ...parsed,
+            publicationInsightsDefaultVisibility: 'visible',
+          }),
+        )
+      }
+    } catch {
+      // Ignore storage errors in restricted iframe/browser contexts.
     }
-    if (parsed.publicationInsightsDefaultVisibility !== 'visible') {
-      window.localStorage.setItem(
-        ACCOUNT_SETTINGS_STORAGE_KEY,
-        JSON.stringify({
-          ...parsed,
-          publicationInsightsDefaultVisibility: 'visible',
-        }),
-      )
-    }
-  }
+  }, [])
+
   const fixture = buildLargePublicationsFixture(paperCount)
   return (
     <PublicationsLayoutPreview>

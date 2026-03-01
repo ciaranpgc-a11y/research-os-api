@@ -631,6 +631,81 @@ function ApprovedLeftPanel() {
   )
 }
 
+function ApprovedPublicationsDrilldownSection() {
+  return (
+    <section>
+      <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-neutral-200">
+          <p className="text-sm font-semibold text-neutral-900">Approved Publications Tile Drilldown</p>
+          <p className="text-xs text-neutral-600">Canonical publications metric drilldown panel showing summary stats and typography.</p>
+        </div>
+        <div className="bg-card p-4">
+          <div className="max-w-3xl rounded-md border border-border bg-background p-4">
+            <div className="house-left-border house-left-border-publications">
+              <h3 className="house-h1">Total publications</h3>
+              <p className="house-text mt-1">Total number of scholarly works indexed across your research career.</p>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <p className="house-drilldown-section-label house-drilldown-section-title-spacer">Headline results</p>
+              
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="house-drilldown-summary-stat-card rounded-md border border-border bg-card p-3">
+                  <p className="house-drilldown-summary-stat-title">Total publications</p>
+                  <div className="house-drilldown-summary-stat-value-wrap">
+                    <p className="house-drilldown-summary-stat-value-emphasis tabular-nums">150</p>
+                  </div>
+                </div>
+                
+                <div className="house-drilldown-summary-stat-card rounded-md border border-border bg-card p-3">
+                  <p className="house-drilldown-summary-stat-title">Active years</p>
+                  <div className="house-drilldown-summary-stat-value-wrap">
+                    <p className="house-drilldown-summary-stat-value tabular-nums">12</p>
+                  </div>
+                </div>
+
+                <div className="house-drilldown-summary-stat-card rounded-md border border-border bg-card p-3">
+                  <p className="house-drilldown-summary-stat-title">Mean per year</p>
+                  <div className="house-drilldown-summary-stat-value-wrap">
+                    <p className="house-drilldown-summary-stat-value tabular-nums">12.5</p>
+                  </div>
+                </div>
+
+                <div className="house-drilldown-summary-stat-card rounded-md border border-border bg-card p-3">
+                  <p className="house-drilldown-summary-stat-title">Current YTD</p>
+                  <div className="house-drilldown-summary-stat-value-wrap">
+                    <p className="house-drilldown-summary-stat-value tabular-nums">3</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="house-drilldown-section-separator" />
+
+              <div>
+                <p className="house-drilldown-section-label">Publication trends</p>
+                <div className="mt-2 rounded-md border border-border bg-card p-3">
+                  <p className="house-drilldown-overline">Publications per year (last 5 years)</p>
+                  <div className="mt-2 h-32 rounded-sm border border-[hsl(var(--stroke-soft))] bg-[hsl(var(--tone-neutral-50))]" />
+                  <p className="house-drilldown-caption mt-2">Chart showing annual publication output trajectory</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="house-drilldown-section-label">Context</p>
+                <p className="house-drilldown-note-soft mt-1">
+                  This drilldown provides comprehensive metrics about your publication output over time. 
+                  Use the tabs above to explore different views including summary, breakdown, trajectory, and methods.
+                </p>
+                <p className="house-drilldown-hint mt-2">💡 Click any year in the charts to filter publications from that period.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function ApprovedMarkersSection() {
   return (
     <section>
@@ -781,16 +856,25 @@ function ApprovedTypographySection() {
 
           <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Left panel</p>
-            <p className="house-nav-section-label">Workspace</p>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-nav-section-label">Workspace</p>
+              <code className="text-[0.65rem] text-neutral-500">.house-nav-section-label</code>
+            </div>
             <button type="button" className="house-nav-item house-nav-item-workspace house-nav-item-active w-full">
               <span className="house-nav-item-label">Overview</span>
               <span className="house-nav-item-count">12</span>
             </button>
-            <button type="button" className="house-nav-item house-nav-item-workspace w-full">
-              <span className="house-nav-item-label">Data library</span>
-              <span className="house-nav-item-meta">New</span>
-            </button>
-            <p className="house-nav-item-meta">Meta tier for supplementary nav context.</p>
+            <div className="flex items-baseline justify-between gap-2">
+              <button type="button" className="house-nav-item house-nav-item-workspace w-full">
+                <span className="house-nav-item-label">Data library</span>
+                <span className="house-nav-item-meta">New</span>
+              </button>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-nav-item-label</code>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-nav-item-meta">Meta tier for supplementary nav context.</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-nav-item-meta</code>
+            </div>
           </article>
 
           <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-2">
@@ -2369,6 +2453,7 @@ function ApprovedPage() {
         <ApprovedPublicationTileAnimationsSection />
         <ApprovedPublicationAnimationSpecSection />
         <ApprovedLeftPanel />
+        <ApprovedPublicationsDrilldownSection />
         <AuthPagePanel />
         <div className="rounded-lg border border-neutral-200 bg-white shadow-sm">
           <div className="px-4 py-2 border-b border-neutral-200">
