@@ -341,7 +341,7 @@ function buildLargePublicationsFixture(paperCount: number): ProfilePublicationsP
       pmid: `${510000 + number}`,
       journal_impact_factor: Number((3.2 + (index % 10) * 0.9).toFixed(1)),
       created_at: '2025-01-10T09:00:00Z',
-      updated_at: '2026-02-27T09:00:00Z',
+      updated_at: '2026-03-01T09:00:00Z',
     }
   })
 

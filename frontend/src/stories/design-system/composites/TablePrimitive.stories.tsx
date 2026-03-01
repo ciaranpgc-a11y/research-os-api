@@ -27,8 +27,8 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 const sampleRows = [
-  { id: 'PUB-1001', title: 'Graph Embeddings for Search', status: 'Published', updated: '2026-02-21' },
-  { id: 'PUB-1002', title: 'Biomedical Entity Linking', status: 'In Review', updated: '2026-02-20' },
+  { id: 'PUB-1001', title: 'Graph Embeddings for Search', status: 'Published', updated: '2026-03-01' },
+  { id: 'PUB-1002', title: 'Biomedical Entity Linking', status: 'In Review', updated: '2026-03-01' },
   { id: 'PUB-1003', title: 'Citation Drift Detection', status: 'Draft', updated: '2026-02-18' },
   { id: 'PUB-1004', title: 'Temporal Ranking Signals', status: 'Published', updated: '2026-02-16' },
   { id: 'PUB-1005', title: 'Neural Index Compression', status: 'Archived', updated: '2026-02-14' },

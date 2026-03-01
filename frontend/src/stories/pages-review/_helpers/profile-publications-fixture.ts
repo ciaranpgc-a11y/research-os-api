@@ -7,7 +7,7 @@ import type {
 import { publicationsMetricsHappyFixture } from '@/mocks/fixtures/publications-metrics'
 import type { ProfilePublicationsPageFixture } from '@/pages/profile-publications-page'
 
-const FIXTURE_TIME = '2026-02-27T09:00:00Z'
+const FIXTURE_TIME = '2026-03-01T09:00:00Z'
 
 const fixtureUser: AuthUser = {
   id: 'storybook-user-1',

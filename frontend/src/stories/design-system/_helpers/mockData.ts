@@ -23,9 +23,9 @@ export const mockInvitations: MockInvitation[] = [
 ]
 
 export const mockLogs: MockLog[] = [
-  { id: 'log-01', actor: 'Ciaran Clarke', action: 'Changed role for Maya Singh to Editor', at: '2026-02-20 09:10' },
-  { id: 'log-02', actor: 'Maya Singh', action: 'Uploaded file trial_extract.csv', at: '2026-02-20 09:35' },
-  { id: 'log-03', actor: 'A. Patel', action: 'Requested workspace access', at: '2026-02-20 11:05' },
+  { id: 'log-01', actor: 'Ciaran Clarke', action: 'Changed role for Maya Singh to Editor', at: '2026-03-01 09:10' },
+  { id: 'log-02', actor: 'Maya Singh', action: 'Uploaded file trial_extract.csv', at: '2026-03-01 09:35' },
+  { id: 'log-03', actor: 'A. Patel', action: 'Requested workspace access', at: '2026-03-01 11:05' },
 ]
 
 export const mockBarChartSameCount = [

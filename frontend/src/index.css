@@ -661,7 +661,7 @@
   }
 
   [data-house-role="content-container"].house-content-container-wide {
-    margin-inline: 0;
+    margin-inline: auto;
   }
 
   .house-content-container-fluid {
@@ -2467,10 +2467,10 @@
   }
 
   .house-toggle-chart-line {
-    transition-property: stroke-dashoffset, opacity, filter;
+    transition-property: transform, filter;
     transition-duration: var(--motion-duration-chart-toggle);
     transition-timing-function: var(--motion-ease-chart-series);
-    will-change: stroke-dashoffset, opacity;
+    will-change: transform;
   }
 
   .house-toggle-chart-morph {

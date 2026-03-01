@@ -69,7 +69,7 @@ function seedAuthState(signedIn: boolean) {
     JSON.stringify({
       firstName: 'Storybook',
       lastName: 'User',
-      updatedAt: '2026-02-27T09:00:00Z',
+      updatedAt: '2026-03-01T09:00:00Z',
     }),
   )
 }

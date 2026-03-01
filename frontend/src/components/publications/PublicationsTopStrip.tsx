@@ -475,7 +475,9 @@ const HOUSE_DRILLDOWN_TOOLTIP_CLASS =
 const MAX_PUBLICATION_CHART_BARS = 12
 const HOUSE_METRIC_TOGGLE_TRACK_CLASS = HOUSE_TOGGLE_TRACK_CLASS
 
-function tileMotionEntryDelay(_index: number, _animateIn: boolean): string {
+function tileMotionEntryDelay(index = 0, animateIn = false): string {
+  void index
+  void animateIn
   return '0ms'
 }
 
@@ -5253,6 +5255,9 @@ function InfluentialTrendPanel({
   chartTitle?: string
   chartTitleClassName?: string
 }) {
+  const pathRef = useRef<SVGPathElement>(null)
+  const [pathLength, setPathLength] = useState(0)
+  
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const primarySeries = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const fallbackSeries = toNumberArray(tile.sparkline || []).map((item) => Math.max(0, item))
@@ -5274,40 +5279,39 @@ function InfluentialTrendPanel({
     values.length,
     'W',
   )
-  if (!values.length) {
-    return <div className={dashboardTileStyles.emptyChart}>No influential citation trend</div>
-  }
+  const hasValues = values.length > 0
   const width = 220
   const height = 92
-  const points = buildLinePoints(values, width, height, labels, 8)
-  const path = monotonePathFromPoints(points)
-  const pathRef = useRef<SVGPathElement | null>(null)
-  const [svgPathLength, setSvgPathLength] = useState(0)
+  const points = useMemo(
+    () => (hasValues ? buildLinePoints(values, width, height, labels, 8) : []),
+    [hasValues, labels, values],
+  )
+  const path = useMemo(
+    () => (points.length ? monotonePathFromPoints(points) : ''),
+    [points],
+  )
   const lineAnimationKey = useMemo(
-    () => values.map((value) => value.toFixed(3)).join('|'),
-    [values],
+    () => (hasValues ? values.map((value) => value.toFixed(3)).join('|') : 'empty'),
+    [hasValues, values],
   )
-  const isEntryCycle = useIsFirstChartEntry(lineAnimationKey, values.length > 0)
+  const lineEntryKey = `${lineAnimationKey}|influential-line`
+  const lineExpanded = useUnifiedToggleBarAnimation(lineEntryKey, hasValues)
+  const lineTransitionDuration = tileChartDurationVar(useIsFirstChartEntry(lineEntryKey, hasValues))
+
   useEffect(() => {
-    const pathElement = pathRef.current
-    if (!pathElement) {
-      setSvgPathLength(0)
-      return
+    if (pathRef.current) {
+      try {
+        const length = pathRef.current.getTotalLength()
+        setPathLength(length)
+      } catch {
+        setPathLength(0)
+      }
     }
-    const measuredLength = pathElement.getTotalLength()
-    if (!Number.isFinite(measuredLength) || measuredLength <= 0) {
-      setSvgPathLength(1)
-      return
-    }
-    setSvgPathLength(measuredLength)
   }, [path])
-  const entryLineVisible = useUnifiedToggleBarAnimation(
-    `${lineAnimationKey}|entry|${Math.round(svgPathLength)}`,
-    values.length > 0 && isEntryCycle && svgPathLength > 0,
-  )
-  const lineVisible = isEntryCycle ? entryLineVisible : true
-  const lineTransitionDuration = tileChartDurationVar(isEntryCycle)
-  const visiblePathLength = svgPathLength > 0 ? svgPathLength : 1
+
+  if (!hasValues) {
+    return <div className={dashboardTileStyles.emptyChart}>No influential citation trend</div>
+  }
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -5329,15 +5333,16 @@ function InfluentialTrendPanel({
               ref={pathRef}
               d={path}
               fill="none"
-              className={cn(HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS, HOUSE_TOGGLE_CHART_LINE_CLASS)}
+              stroke="hsl(var(--tone-accent-400))"
               strokeWidth="3.25"
               strokeLinecap="round"
               strokeLinejoin="round"
               shapeRendering="geometricPrecision"
               style={{
-                strokeDasharray: visiblePathLength,
-                strokeDashoffset: lineVisible ? 0 : visiblePathLength,
-                transitionDuration: lineTransitionDuration,
+                strokeDasharray: pathLength || 1,
+                strokeDashoffset: lineExpanded ? 0 : pathLength || 1,
+                transition: `stroke-dashoffset ${lineTransitionDuration}`,
+                transitionTimingFunction: 'var(--motion-ease-chart-series)',
               }}
             />
           </svg>

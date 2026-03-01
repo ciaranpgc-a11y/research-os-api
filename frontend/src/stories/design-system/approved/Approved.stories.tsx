@@ -69,7 +69,7 @@ const ANIMATION_LAB_ENTRY_DURATION_MS = 1000
 const ANIMATION_LAB_ENTRY_BAR_STAGGER_MS = 70
 const ANIMATION_LAB_ENTRY_STAGGER_MAX_MS = 420
 const ANIMATION_LAB_ENTRY_SWEEP_DURATION_MS = Math.max(160, ANIMATION_LAB_ENTRY_DURATION_MS - ANIMATION_LAB_ENTRY_STAGGER_MAX_MS)
-const ANIMATION_LAB_ENTRY_START_DELAY_MS = 0
+const ANIMATION_LAB_ENTRY_START_DELAY_MS = 120
 const ANIMATION_LAB_TOGGLE_MORPH_DURATION_MS = 460
 
 const ANIMATION_LAB_ENTRY_RING_VALUE_BY_SCALE: Record<AnimationLabScale, number> = {
@@ -891,6 +891,38 @@ function ApprovedPublicationTileAnimationsSection() {
   const [fieldShareMode, setFieldShareMode] = useState<FieldPercentileThreshold>(90)
   const [sameCountDatasetId, setSameCountDatasetId] = useState<string>(ANIMATION_LAB_SAME_COUNT_DATASETS[0].id)
   const [differentCountDatasetId, setDifferentCountDatasetId] = useState<string>(ANIMATION_LAB_DIFFERENT_COUNT_DATASETS[0].id)
+  const lineEntryPolylineRef = useRef<SVGPolylineElement>(null)
+  const lineEntryDuplicatePolylineRef = useRef<SVGPolylineElement>(null)
+  const [lineEntryPathLength, setLineEntryPathLength] = useState(0)
+  const [lineEntryDuplicatePathLength, setLineEntryDuplicatePathLength] = useState(0)
+
+  useEffect(() => {
+    const replay = () => {
+      setBarEntryReplay((previous) => previous + 1)
+      setLineEntryReplay((previous) => previous + 1)
+      setRingEntryReplay((previous) => previous + 1)
+      setFieldShareEntryReplay((previous) => previous + 1)
+      setSameCountEntryReplay((previous) => previous + 1)
+      setDifferentCountEntryReplay((previous) => previous + 1)
+    }
+
+    const frame = window.requestAnimationFrame(replay)
+    const onVisibility = () => {
+      if (document.visibilityState !== 'visible') {
+        return
+      }
+      replay()
+    }
+
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', onVisibility)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', onVisibility)
+    }
+  }, [])
 
   const entryBars = ANIMATION_LAB_ENTRY_BAR_SERIES_BY_SCALE[entryScale]
   const entryLine = ANIMATION_LAB_ENTRY_LINE_SERIES_BY_SCALE[entryScale]
@@ -918,6 +950,28 @@ function ApprovedPublicationTileAnimationsSection() {
     })),
     [entryLine, lineMax],
   )
+
+  useEffect(() => {
+    if (lineEntryPolylineRef.current) {
+      try {
+        const length = lineEntryPolylineRef.current.getTotalLength()
+        setLineEntryPathLength(length)
+      } catch {
+        setLineEntryPathLength(0)
+      }
+    }
+  }, [linePoints])
+
+  useEffect(() => {
+    if (lineEntryDuplicatePolylineRef.current) {
+      try {
+        const length = lineEntryDuplicatePolylineRef.current.getTotalLength()
+        setLineEntryDuplicatePathLength(length)
+      } catch {
+        setLineEntryDuplicatePathLength(0)
+      }
+    }
+  }, [linePoints])
 
   const sameCountDataset = useMemo(
     () => animationLabSelectDataset(ANIMATION_LAB_SAME_COUNT_DATASETS, sameCountDatasetId),
@@ -1174,7 +1228,7 @@ function ApprovedPublicationTileAnimationsSection() {
               <AnimationLabEntryToggle enabled={lineEntryEnabled} onChange={setLineEntryEnabled} />
             </div>
             <p className="mt-2 text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-neutral-500">Entry</p>
-            <p className="mt-1 text-[0.68rem] text-neutral-600">Total duration: 1,000ms motion. Key features: left-to-right line draw, point settle, eased axis roll.</p>
+            <p className="mt-1 text-[0.68rem] text-neutral-600">Total duration: 1,000ms motion. Key features: zero-baseline line grow, point co-growth, eased axis roll.</p>
             <div className="mt-1 overflow-x-auto">
               <div className="inline-flex gap-2">
                 <div className="relative h-[120px] min-w-[2.45rem]" aria-hidden="true">
@@ -1204,14 +1258,17 @@ function ApprovedPublicationTileAnimationsSection() {
                     <line x1={0} y1={ANIMATION_LAB_CHART_HEIGHT} x2={ANIMATION_LAB_CHART_WIDTH} y2={ANIMATION_LAB_CHART_HEIGHT} stroke="hsl(var(--stroke-soft) / 0.72)" strokeWidth={1} />
                     <line x1={0} y1={0} x2={0} y2={ANIMATION_LAB_CHART_HEIGHT} stroke="hsl(var(--stroke-soft) / 0.78)" strokeWidth={1} />
                     <polyline
+                      ref={lineEntryPolylineRef}
                       points={linePoints}
-                      className="house-chart-line-soft-svg"
+                      fill="none"
+                      stroke="hsl(var(--tone-accent-400))"
+                      strokeWidth="3.25"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                       style={{
-                        strokeDasharray: 1200,
-                        strokeDashoffset: lineEntryVisible ? 0 : 1200,
-                        transition: lineEntryVisible
-                          ? `stroke-dashoffset ${lineTransitionDurationMs}ms var(--motion-ease-chart-series)`
-                          : 'none',
+                        strokeDasharray: lineEntryPathLength || 1,
+                        strokeDashoffset: lineEntryVisible ? 0 : lineEntryPathLength || 1,
+                        transition: `stroke-dashoffset ${lineTransitionDurationMs}ms var(--motion-ease-chart-series)`,
                       }}
                     />
                     {lineCoords.map((point, index) => (
@@ -1223,11 +1280,7 @@ function ApprovedPublicationTileAnimationsSection() {
                         fill="hsl(var(--tone-accent-700))"
                         style={{
                           opacity: lineEntryVisible ? 1 : 0,
-                          transform: `translateY(${lineEntryVisible ? '0px' : '3px'})`,
-                          transformOrigin: `${point.x}px ${point.y}px`,
-                          transition: lineEntryVisible
-                            ? `opacity ${lineTransitionDurationMs}ms var(--motion-ease-chart-series), transform ${lineTransitionDurationMs}ms var(--motion-ease-chart-series)`
-                            : 'none',
+                          transition: `opacity ${lineTransitionDurationMs}ms var(--motion-ease-chart-series)`,
                         }}
                       />
                     ))}
@@ -1275,14 +1328,17 @@ function ApprovedPublicationTileAnimationsSection() {
                       <line x1={0} y1={ANIMATION_LAB_CHART_HEIGHT} x2={ANIMATION_LAB_CHART_WIDTH} y2={ANIMATION_LAB_CHART_HEIGHT} stroke="hsl(var(--stroke-soft) / 0.72)" strokeWidth={1} />
                       <line x1={0} y1={0} x2={0} y2={ANIMATION_LAB_CHART_HEIGHT} stroke="hsl(var(--stroke-soft) / 0.78)" strokeWidth={1} />
                       <polyline
+                        ref={lineEntryDuplicatePolylineRef}
                         points={linePoints}
-                        className="house-chart-line-soft-svg"
+                        fill="none"
+                        stroke="hsl(var(--tone-accent-400))"
+                        strokeWidth="3.25"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
                         style={{
-                          strokeDasharray: 1200,
-                          strokeDashoffset: lineEntryVisible ? 0 : 1200,
-                          transition: lineEntryVisible
-                            ? `stroke-dashoffset ${lineTransitionDurationMs}ms var(--motion-ease-chart-series)`
-                            : 'none',
+                          strokeDasharray: lineEntryDuplicatePathLength || 1,
+                          strokeDashoffset: lineEntryVisible ? 0 : lineEntryDuplicatePathLength || 1,
+                          transition: `stroke-dashoffset ${lineTransitionDurationMs}ms var(--motion-ease-chart-series)`,
                         }}
                       />
                       {lineCoords.map((point, index) => (
@@ -1294,11 +1350,7 @@ function ApprovedPublicationTileAnimationsSection() {
                           fill="hsl(var(--tone-accent-700))"
                           style={{
                             opacity: lineEntryVisible ? 1 : 0,
-                            transform: `translateY(${lineEntryVisible ? '0px' : '3px'})`,
-                            transformOrigin: `${point.x}px ${point.y}px`,
-                            transition: lineEntryVisible
-                              ? `opacity ${lineTransitionDurationMs}ms var(--motion-ease-chart-series), transform ${lineTransitionDurationMs}ms var(--motion-ease-chart-series)`
-                              : 'none',
+                            transition: `opacity ${lineTransitionDurationMs}ms var(--motion-ease-chart-series)`,
                           }}
                         />
                       ))}
