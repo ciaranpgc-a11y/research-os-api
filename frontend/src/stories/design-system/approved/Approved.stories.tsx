@@ -482,27 +482,30 @@ function ApprovedHorizontalToggle<T extends string>({
   onChange: (next: T) => void
 }) {
   const activeIndex = Math.max(0, options.findIndex((option) => option.value === value))
+  const twoOptionMode = options.length === 2
   return (
-    <div
-      className="house-toggle-track"
-      style={{ gridTemplateColumns: `repeat(${Math.max(1, options.length)}, minmax(0, 1fr))` }}
-    >
-      <span
-        className="house-toggle-thumb"
-        style={buildTileToggleThumbStyle(activeIndex, options.length)}
-        aria-hidden="true"
-      />
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          className={value === option.value ? 'house-toggle-button text-white' : 'house-toggle-button house-drilldown-toggle-button-muted'}
-          onClick={() => onChange(option.value)}
-          aria-pressed={value === option.value}
-        >
-          {option.label}
-        </button>
-      ))}
+    <div className="house-approved-toggle-context inline-flex items-center">
+      <div
+        className={twoOptionMode ? 'house-toggle-track grid-cols-2' : 'house-toggle-track'}
+        style={twoOptionMode ? undefined : { gridTemplateColumns: `repeat(${Math.max(1, options.length)}, minmax(0, 1fr))` }}
+      >
+        <span
+          className="house-toggle-thumb"
+          style={buildTileToggleThumbStyle(activeIndex, options.length)}
+          aria-hidden="true"
+        />
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={value === option.value ? 'house-toggle-button text-white' : 'house-toggle-button house-drilldown-toggle-button-muted'}
+            onClick={() => onChange(option.value)}
+            aria-pressed={value === option.value}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
@@ -515,14 +518,16 @@ function AnimationLabEntryToggle({
   onChange: (value: boolean) => void
 }) {
   return (
-    <ApprovedHorizontalToggle
-      value={enabled ? 'entry' : 'static'}
-      options={[
-        { value: 'entry', label: 'Entry' },
-        { value: 'static', label: 'Static' },
-      ]}
-      onChange={(next) => onChange(next === 'entry')}
-    />
+    <div className="inline-flex items-center">
+      <ApprovedHorizontalToggle
+        value={enabled ? 'entry' : 'static'}
+        options={[
+          { value: 'entry', label: 'Entry' },
+          { value: 'static', label: 'Static' },
+        ]}
+        onChange={(next) => onChange(next === 'entry')}
+      />
+    </div>
   )
 }
 

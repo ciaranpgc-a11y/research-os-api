@@ -1033,6 +1033,23 @@
     background-color: var(--metric-tile-chart-bg-rest);
   }
 
+  .house-approved-toggle-context .house-toggle-track {
+    background-color: var(--metric-tile-chart-bg-rest);
+    padding: 0 !important;
+    border-width: 1px !important;
+    border-style: solid !important;
+    border-color: hsl(var(--stroke-soft) / 0.92) !important;
+  }
+
+  .house-approved-toggle-context .house-toggle-track:not(.house-field-percentile-toggle-track) .house-toggle-thumb {
+    inset-block: 0 !important;
+    border-radius: inherit !important;
+  }
+
+  .house-approved-toggle-context .house-toggle-button.house-drilldown-toggle-button-muted {
+    background-color: var(--metric-tile-chart-bg-rest);
+  }
+
   .house-metric-tile-shell:hover .house-toggle-button.house-drilldown-toggle-button-muted,
   .house-metric-tile-shell:focus-visible .house-toggle-button.house-drilldown-toggle-button-muted,
   .house-metric-tile-shell-selected .house-toggle-button.house-drilldown-toggle-button-muted {

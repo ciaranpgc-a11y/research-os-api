@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import { useMemo, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 
 import { ProfilePublicationsPage } from '@/pages/profile-publications-page'
 import type { ProfilePublicationsPageFixture } from '@/pages/profile-publications-page'
@@ -25,12 +25,171 @@ export default meta
 
 type PublicationsLiveArgs = {
   paperCount: number
+  dataProfile: LiveDataProfile
 }
+
+type PublicationsStressScenario = {
+  id: string
+  label: string
+  paperCount: number
+  dataProfile: LiveDataProfile
+  tileKey: string
+}
+
+type LiveDataProfile = 'balanced' | 'volatility' | 'outlier-heavy'
 
 const LIVE_DATASET_DEFAULT_PAPER_COUNT = 48
 const LIVE_DATASET_MIN_PAPER_COUNT = 24
 const LIVE_DATASET_MAX_PAPER_COUNT = 72
 const LIVE_DATASET_STEP = 8
+const LIVE_DATASET_DEFAULT_PROFILE: LiveDataProfile = 'volatility'
+const LIVE_SERIES_YEARS = [2021, 2022, 2023, 2024, 2025, 2026] as const
+const LIVE_MONTH_LABELS = ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb']
+const STRESS_TILE_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'this_year_vs_last', label: 'Total publications' },
+  { key: 'total_citations', label: 'Citations' },
+  { key: 'momentum', label: 'Momentum' },
+  { key: 'h_index_projection', label: 'H-index' },
+  { key: 'impact_concentration', label: 'Impact concentration' },
+  { key: 'field_percentile_share', label: 'Field percentile share' },
+  { key: 'authorship_composition', label: 'Authorship composition' },
+  { key: 'collaboration_structure', label: 'Collaboration structure' },
+  { key: 'influential_citations', label: 'Influential citations' },
+]
+const STRESS_SCENARIOS: PublicationsStressScenario[] = [
+  {
+    id: 'balanced-baseline',
+    label: 'Balanced baseline',
+    paperCount: 48,
+    dataProfile: 'balanced',
+    tileKey: 'this_year_vs_last',
+  },
+  {
+    id: 'volatility-spike',
+    label: 'Volatility spike',
+    paperCount: 72,
+    dataProfile: 'volatility',
+    tileKey: 'momentum',
+  },
+  {
+    id: 'outlier-tail',
+    label: 'Outlier-heavy tail',
+    paperCount: 72,
+    dataProfile: 'outlier-heavy',
+    tileKey: 'impact_concentration',
+  },
+]
+
+function clampNonNegative(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0
+  }
+  return Math.max(0, Math.round(value))
+}
+
+function allocateByWeights(total: number, weights: number[]): number[] {
+  const safeTotal = Math.max(0, Math.round(total))
+  const safeWeights = weights.map((item) => Math.max(0, item))
+  const weightSum = safeWeights.reduce((sum, item) => sum + item, 0)
+  if (safeTotal === 0) {
+    return safeWeights.map(() => 0)
+  }
+  if (weightSum <= 0) {
+    const base = Math.floor(safeTotal / Math.max(1, safeWeights.length))
+    const remainder = safeTotal - (base * safeWeights.length)
+    return safeWeights.map((_, index) => base + (index < remainder ? 1 : 0))
+  }
+  const raw = safeWeights.map((weight) => (weight / weightSum) * safeTotal)
+  const floors = raw.map((value) => Math.floor(value))
+  let remainder = safeTotal - floors.reduce((sum, value) => sum + value, 0)
+  if (remainder > 0) {
+    const ranking = raw
+      .map((value, index) => ({ index, frac: value - Math.floor(value) }))
+      .sort((a, b) => b.frac - a.frac)
+    for (let cursor = 0; cursor < ranking.length && remainder > 0; cursor += 1) {
+      floors[ranking[cursor].index] += 1
+      remainder -= 1
+    }
+  }
+  return floors
+}
+
+function yearWeightsForProfile(profile: LiveDataProfile): number[] {
+  if (profile === 'volatility') {
+    return [0.08, 0.34, 0.06, 0.27, 0.07, 0.18]
+  }
+  if (profile === 'outlier-heavy') {
+    return [0.24, 0.18, 0.2, 0.16, 0.13, 0.09]
+  }
+  return [0.13, 0.15, 0.17, 0.19, 0.2, 0.16]
+}
+
+function buildYearPool(paperCount: number, profile: LiveDataProfile): number[] {
+  const allocations = allocateByWeights(paperCount, yearWeightsForProfile(profile))
+  const years: number[] = []
+  for (let index = 0; index < LIVE_SERIES_YEARS.length; index += 1) {
+    const year = LIVE_SERIES_YEARS[index]
+    const count = allocations[index] || 0
+    for (let cursor = 0; cursor < count; cursor += 1) {
+      years.push(year)
+    }
+  }
+  if (years.length < paperCount) {
+    while (years.length < paperCount) {
+      years.push(LIVE_SERIES_YEARS[years.length % LIVE_SERIES_YEARS.length])
+    }
+  }
+  if (years.length > paperCount) {
+    years.length = paperCount
+  }
+  return years
+}
+
+function buildMomentumSeries(profile: LiveDataProfile): number[] {
+  if (profile === 'volatility') {
+    return [8, 130, 12, 190, 16, 240, 14, 280, 20, 330, 24, 390]
+  }
+  if (profile === 'outlier-heavy') {
+    return [5, 6, 8, 10, 12, 14, 18, 24, 38, 64, 182, 420]
+  }
+  return [66, 72, 75, 79, 82, 88, 93, 98, 101, 108, 116, 124]
+}
+
+function buildCitationsForWork(profile: LiveDataProfile, index: number, paperCount: number, year: number): number {
+  if (profile === 'volatility') {
+    const phase = index % 12
+    const recencyPenalty = year >= 2025 ? 0.62 : 1
+    if (phase <= 6) {
+      return clampNonNegative((2 + ((index * 5) % 14)) * recencyPenalty)
+    }
+    if (phase <= 9) {
+      return clampNonNegative((70 + ((index * 23) % 180)) * recencyPenalty)
+    }
+    return clampNonNegative((1200 + ((paperCount - index) * 41) % 3600) * recencyPenalty)
+  }
+  if (profile === 'outlier-heavy') {
+    const eliteCutoff = Math.max(1, Math.round(paperCount * 0.05))
+    const strongCutoff = Math.max(eliteCutoff + 1, Math.round(paperCount * 0.2))
+    if (index < eliteCutoff) {
+      return clampNonNegative(2600 + ((paperCount - index) * 59) % 5200)
+    }
+    if (index < strongCutoff) {
+      return clampNonNegative(220 + ((index * 29) % 620))
+    }
+    return clampNonNegative(1 + ((index * 3) % 22))
+  }
+  return clampNonNegative(18 + (paperCount - 1 - index) * 2 + (index % 7) * 3)
+}
+
+function profileLabel(profile: LiveDataProfile): string {
+  if (profile === 'volatility') {
+    return 'Volatility stress'
+  }
+  if (profile === 'outlier-heavy') {
+    return 'Outlier-heavy skew'
+  }
+  return 'Balanced baseline'
+}
 
 function PublicationsLayoutPreview({ children }: { children: ReactNode }) {
   return (
@@ -73,9 +232,20 @@ function createTopMetricsPayload(
   totalPublications: number,
   totalCitations: number,
   paperCount: number,
+  dataProfile: LiveDataProfile,
+  publicationSeries: { years: number[]; values: number[]; currentYearYtd: number },
+  citationSeries: { years: number[]; values: number[]; currentYearYtd: number },
+  momentumSeries: number[],
 ): PublicationsTopMetricsPayload {
   const payload = cloneFixture(publicationsMetricsHappyFixture)
-  payload.tiles = buildTopMetricTiles(totalPublications, totalCitations)
+  payload.tiles = buildTopMetricTiles(
+    totalPublications,
+    totalCitations,
+    dataProfile,
+    publicationSeries,
+    citationSeries,
+    momentumSeries,
+  )
   payload.status = 'READY'
   payload.is_updating = false
   payload.is_stale = false
@@ -85,7 +255,23 @@ function createTopMetricsPayload(
   return payload
 }
 
-function buildTopMetricTiles(totalPublications: number, totalCitations: number): PublicationMetricTilePayload[] {
+function buildTopMetricTiles(
+  totalPublications: number,
+  totalCitations: number,
+  dataProfile: LiveDataProfile,
+  publicationSeries: { years: number[]; values: number[]; currentYearYtd: number },
+  citationSeries: { years: number[]; values: number[]; currentYearYtd: number },
+  momentumSeries: number[],
+): PublicationMetricTilePayload[] {
+  const momentumStart = Math.max(1, momentumSeries[0] || 1)
+  const momentumEnd = Math.max(1, momentumSeries[momentumSeries.length - 1] || momentumStart)
+  const momentumPct = Math.round(((momentumEnd - momentumStart) / momentumStart) * 100)
+  const impactSharePct = dataProfile === 'outlier-heavy' ? 82 : dataProfile === 'volatility' ? 63 : 26
+  const uniqueCollaborators = dataProfile === 'outlier-heavy'
+    ? Math.max(240, Math.round(totalPublications * 7.5))
+    : dataProfile === 'volatility'
+      ? Math.max(180, Math.round(totalPublications * 5.6))
+      : Math.max(120, Math.round(totalPublications * 4.2))
   const baseDrilldown = {
     title: 'Metric detail',
     definition: 'Fixture drilldown for Storybook live preview.',
@@ -125,12 +311,12 @@ function buildTopMetricTiles(totalPublications: number, totalCitations: number):
       subtext: 'Lifetime publications',
       chart_type: 'bars',
       chart_data: {
-        years: [2021, 2022, 2023, 2024, 2025, 2026],
-        values: [24, 28, 24, 28, 3, 1],
-        projected_year: 2026,
-        current_year_ytd: 1,
+        years: publicationSeries.years,
+        values: publicationSeries.values,
+        projected_year: publicationSeries.years[publicationSeries.years.length - 1] || 2026,
+        current_year_ytd: publicationSeries.currentYearYtd,
       },
-      sparkline: [24, 28, 24, 28, 3, 1],
+      sparkline: publicationSeries.values,
     },
     {
       ...baseTile,
@@ -144,29 +330,29 @@ function buildTopMetricTiles(totalPublications: number, totalCitations: number):
       subtext: 'Lifetime citations',
       chart_type: 'bars',
       chart_data: {
-        years: [2021, 2022, 2023, 2024, 2025, 2026],
-        values: [1160, 1640, 2085, 2120, 1490, 420],
-        projected_year: 2026,
-        current_year_ytd: 420,
+        years: citationSeries.years,
+        values: citationSeries.values,
+        projected_year: citationSeries.years[citationSeries.years.length - 1] || 2026,
+        current_year_ytd: citationSeries.currentYearYtd,
       },
-      sparkline: [1160, 1640, 2085, 2120, 1490, 420],
+      sparkline: citationSeries.values,
     },
     {
       ...baseTile,
       id: 'tile-momentum',
       key: 'momentum',
       label: 'Momentum',
-      main_value: 87,
-      value: 87,
-      main_value_display: '+87%',
-      value_display: '+87%',
+      main_value: momentumPct,
+      value: momentumPct,
+      main_value_display: `${momentumPct >= 0 ? '+' : ''}${momentumPct}%`,
+      value_display: `${momentumPct >= 0 ? '+' : ''}${momentumPct}%`,
       subtext: 'Citation pace',
       chart_type: 'bars',
       chart_data: {
-        monthly_values_12m: [66, 72, 75, 79, 82, 88, 93, 98, 101, 108, 116, 124],
-        month_labels_12m: ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb'],
+        monthly_values_12m: momentumSeries,
+        month_labels_12m: LIVE_MONTH_LABELS,
       },
-      sparkline: [66, 72, 75, 79, 82, 88, 93, 98, 101, 108, 116, 124],
+      sparkline: momentumSeries,
     },
     {
       ...baseTile,
@@ -194,19 +380,19 @@ function buildTopMetricTiles(totalPublications: number, totalCitations: number):
       id: 'tile-impact-concentration',
       key: 'impact_concentration',
       label: 'Impact concentration',
-      main_value: 26,
-      value: 26,
-      main_value_display: '26%',
-      value_display: '26%',
-      subtext: 'Top 3 cited publications account for 26% of total citations',
+      main_value: impactSharePct,
+      value: impactSharePct,
+      main_value_display: `${impactSharePct}%`,
+      value_display: `${impactSharePct}%`,
+      subtext: `Top 3 cited publications account for ${impactSharePct}% of total citations`,
       chart_type: 'ring',
       chart_data: {
-        values: [26, 74],
+        values: [impactSharePct, 100 - impactSharePct],
         top_papers_count: 3,
         total_publications: totalPublications,
       },
-      badge: { label: 'Breakthrough-skewed' },
-      sparkline: [26, 74],
+      badge: { label: dataProfile === 'outlier-heavy' ? 'Extreme concentration' : 'Breakthrough-skewed' },
+      sparkline: [impactSharePct, 100 - impactSharePct],
     },
     {
       ...baseTile,
@@ -267,19 +453,23 @@ function buildTopMetricTiles(totalPublications: number, totalCitations: number):
       id: 'tile-collaboration',
       key: 'collaboration_structure',
       label: 'Collaboration structure',
-      main_value: 448,
-      value: 448,
-      main_value_display: '448',
-      value_display: '448',
+      main_value: uniqueCollaborators,
+      value: uniqueCollaborators,
+      main_value_display: `${uniqueCollaborators}`,
+      value_display: `${uniqueCollaborators}`,
       subtext: 'Unique collaborators',
       chart_type: 'bars',
       chart_data: {
-        unique_collaborators: 448,
-        repeat_collaborator_rate_pct: 62,
-        institutions_count: 136,
-        countries_count: 16,
+        unique_collaborators: uniqueCollaborators,
+        repeat_collaborator_rate_pct: dataProfile === 'outlier-heavy' ? 28 : dataProfile === 'volatility' ? 41 : 62,
+        institutions_count: dataProfile === 'outlier-heavy' ? 312 : dataProfile === 'volatility' ? 244 : 136,
+        countries_count: dataProfile === 'outlier-heavy' ? 41 : dataProfile === 'volatility' ? 29 : 16,
       },
-      sparkline: [210, 260, 315, 372, 420, 448],
+      sparkline: dataProfile === 'outlier-heavy'
+        ? [82, 108, 144, 188, 251, uniqueCollaborators]
+        : dataProfile === 'volatility'
+          ? [94, 156, 122, 214, 176, uniqueCollaborators]
+          : [210, 260, 315, 372, 420, uniqueCollaborators],
     },
     {
       ...baseTile,
@@ -301,7 +491,7 @@ function buildTopMetricTiles(totalPublications: number, totalCitations: number):
   ]
 }
 
-function buildLargePublicationsFixture(paperCount: number): ProfilePublicationsPageFixture {
+function buildLargePublicationsFixture(paperCount: number, dataProfile: LiveDataProfile): ProfilePublicationsPageFixture {
   const fixture = cloneFixture(pagesReviewProfilePublicationsDefaultFixture)
   if (!fixture.personaState || !fixture.analyticsResponse) {
     throw new Error('Publications fixture missing personaState or analyticsResponse')
@@ -335,9 +525,10 @@ function buildLargePublicationsFixture(paperCount: number): ProfilePublicationsP
     ['Storybook User', 'R. Singh', 'S. Roy'],
     ['Storybook User', 'K. Turner', 'J. Wong'],
   ]
+  const yearPool = buildYearPool(paperCount, dataProfile)
   const generatedWorks: PersonaWork[] = Array.from({ length: paperCount }, (_, index) => {
     const number = index + 1
-    const year = 2026 - (index % 8)
+    const year = yearPool[index] || LIVE_SERIES_YEARS[index % LIVE_SERIES_YEARS.length]
     const type = publicationTypes[index % publicationTypes.length]
     const venue = venues[index % venues.length]
     const authorSet = authorPools[index % authorPools.length]
@@ -368,7 +559,7 @@ function buildLargePublicationsFixture(paperCount: number): ProfilePublicationsP
   })
 
   const metricsWorks = generatedWorks.map((work, index) => {
-    const citations = Math.max(4, 18 + (paperCount - 1 - index) * 2 + (index % 7) * 3)
+    const citations = buildCitationsForWork(dataProfile, index, paperCount, work.year ?? 2026)
     return {
       work_id: work.id,
       title: work.title,
@@ -386,11 +577,13 @@ function buildLargePublicationsFixture(paperCount: number): ProfilePublicationsP
     : null
 
   const citationsByYear = new Map<number, number>()
+  const publicationsByYear = new Map<number, number>()
   for (const entry of metricsWorks) {
     if (entry.year == null) {
       continue
     }
     citationsByYear.set(entry.year, (citationsByYear.get(entry.year) || 0) + entry.citations)
+    publicationsByYear.set(entry.year, (publicationsByYear.get(entry.year) || 0) + 1)
   }
   const timeline = Array.from(citationsByYear.entries())
     .sort((a, b) => a[0] - b[0])
@@ -453,7 +646,31 @@ function buildLargePublicationsFixture(paperCount: number): ProfilePublicationsP
     total_citations_end_year:
       timeline.slice(0, idx + 1).reduce((sum, current) => sum + current.citations, 0),
   }))
-  fixture.topMetricsResponse = createTopMetricsPayload(generatedWorks.length, totalCitations, paperCount)
+  const publicationSeries = {
+    years: [...LIVE_SERIES_YEARS],
+    values: LIVE_SERIES_YEARS.map((year) => publicationsByYear.get(year) || 0),
+    currentYearYtd: publicationsByYear.get(2026) || 0,
+  }
+  const citationSeries = {
+    years: [...LIVE_SERIES_YEARS],
+    values: LIVE_SERIES_YEARS.map((year) => citationsByYear.get(year) || 0),
+    currentYearYtd: citationsByYear.get(2026) || 0,
+  }
+  const momentumSeries = buildMomentumSeries(dataProfile)
+  fixture.topMetricsResponse = createTopMetricsPayload(
+    generatedWorks.length,
+    totalCitations,
+    paperCount,
+    dataProfile,
+    publicationSeries,
+    citationSeries,
+    momentumSeries,
+  )
+  fixture.topMetricsResponse.metadata = {
+    ...(fixture.topMetricsResponse.metadata || {}),
+    storyProfile: dataProfile,
+    storyProfileLabel: profileLabel(dataProfile),
+  }
   fixture.forceInsightsVisible = true
 
   return fixture
@@ -490,20 +707,97 @@ function ensurePublicationInsightsVisibleDefault(): void {
   }
 }
 
-function PublicationsCompleteLive({ paperCount }: PublicationsLiveArgs) {
+function PublicationsCompleteLive({ paperCount, dataProfile }: PublicationsLiveArgs) {
   ensurePublicationInsightsVisibleDefault()
   const normalizedPaperCount = Math.max(
     LIVE_DATASET_MIN_PAPER_COUNT,
     Math.min(LIVE_DATASET_MAX_PAPER_COUNT, Math.round(Number(paperCount) || LIVE_DATASET_DEFAULT_PAPER_COUNT)),
   )
   const fixture = useMemo(() => {
-    const next = buildLargePublicationsFixture(normalizedPaperCount)
+    const next = buildLargePublicationsFixture(normalizedPaperCount, dataProfile)
     // In Storybook, always disable auth-dependent network fetches.
     next.token = ''
     return next
-  }, [normalizedPaperCount])
+  }, [dataProfile, normalizedPaperCount])
   return (
     <PublicationsLayoutPreview>
+      <StandaloneRouteShell
+        initialEntry="/profile/publications"
+        path="/profile/publications"
+        element={<ProfilePublicationsPage fixture={fixture} />}
+      />
+    </PublicationsLayoutPreview>
+  )
+}
+
+function PublicationsStressHarness() {
+  ensurePublicationInsightsVisibleDefault()
+  const [paperCount, setPaperCount] = useState<number>(72)
+  const [dataProfile, setDataProfile] = useState<LiveDataProfile>('volatility')
+  const [drilldownTileKey, setDrilldownTileKey] = useState<string>('momentum')
+  const normalizedPaperCount = Math.max(
+    LIVE_DATASET_MIN_PAPER_COUNT,
+    Math.min(LIVE_DATASET_MAX_PAPER_COUNT, Math.round(Number(paperCount) || LIVE_DATASET_DEFAULT_PAPER_COUNT)),
+  )
+
+  const fixture = useMemo(() => {
+    const next = buildLargePublicationsFixture(normalizedPaperCount, dataProfile)
+    next.token = ''
+    return next
+  }, [dataProfile, normalizedPaperCount])
+
+  const openSelectedTileDrilldown = () => {
+    const selector = `.publications-insights-grid [data-metric-key="${drilldownTileKey}"]`
+    const target = document.querySelector(selector)
+    if (target instanceof HTMLElement) {
+      target.click()
+    }
+  }
+
+  return (
+    <PublicationsLayoutPreview>
+      <div className="mx-auto w-full max-w-[94rem] px-5 pt-4">
+        <div className="rounded-md border border-border bg-card p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {STRESS_SCENARIOS.map((scenario) => (
+              <button
+                key={scenario.id}
+                type="button"
+                className="rounded-md border border-border bg-background px-3 py-1 text-xs font-semibold text-foreground hover:bg-accent"
+                onClick={() => {
+                  setPaperCount(scenario.paperCount)
+                  setDataProfile(scenario.dataProfile)
+                  setDrilldownTileKey(scenario.tileKey)
+                }}
+              >
+                {scenario.label}
+              </button>
+            ))}
+            <label className="ml-auto flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+              Drilldown tile
+              <select
+                className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+                value={drilldownTileKey}
+                onChange={(event) => setDrilldownTileKey(event.target.value)}
+              >
+                {STRESS_TILE_OPTIONS.map((option) => (
+                  <option key={option.key} value={option.key}>{option.label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="rounded-md border border-border bg-background px-3 py-1 text-xs font-semibold text-foreground hover:bg-accent"
+                onClick={openSelectedTileDrilldown}
+              >
+                Open drilldown
+              </button>
+            </label>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Active profile: {profileLabel(dataProfile)} • papers: {normalizedPaperCount}
+          </p>
+        </div>
+      </div>
       <StandaloneRouteShell
         initialEntry="/profile/publications"
         path="/profile/publications"
@@ -517,12 +811,23 @@ export const Live: StoryObj<PublicationsLiveArgs> = {
   name: 'Live Dataset',
   args: {
     paperCount: LIVE_DATASET_DEFAULT_PAPER_COUNT,
+    dataProfile: LIVE_DATASET_DEFAULT_PROFILE,
   },
   argTypes: {
     paperCount: {
       control: { type: 'range', min: LIVE_DATASET_MIN_PAPER_COUNT, max: LIVE_DATASET_MAX_PAPER_COUNT, step: LIVE_DATASET_STEP },
       description: 'Number of synthetic publications generated for the live preview',
     },
+    dataProfile: {
+      control: { type: 'radio' },
+      options: ['balanced', 'volatility', 'outlier-heavy'],
+      description: 'Synthetic data profile used to stress different chart and distribution extremes',
+    },
   },
-  render: ({ paperCount }) => <PublicationsCompleteLive paperCount={paperCount} />,
+  render: ({ paperCount, dataProfile }) => <PublicationsCompleteLive paperCount={paperCount} dataProfile={dataProfile} />,
+}
+
+export const StressHarness: StoryObj = {
+  name: 'Stress Test Harness',
+  render: () => <PublicationsStressHarness />,
 }

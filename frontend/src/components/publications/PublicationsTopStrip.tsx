@@ -456,6 +456,18 @@ const HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH = 14
 const TILE_MOTION_ENTRY_DURATION_MS = 1000
 const TILE_MOTION_TOGGLE_DURATION_MS = 460
 const TILE_MOTION_AXIS_DURATION_MS = 420
+const TILE_MOTION_ENTRY_BAR_STAGGER_MS = 70
+const TILE_MOTION_ENTRY_STAGGER_MAX_MS = 420
+const PUBLICATIONS_CHART_TOP_INSET_REM = 1
+const PUBLICATIONS_CHART_RIGHT_INSET_REM = 0.5
+const PUBLICATIONS_CHART_Y_AXIS_LEFT_INSET_REM = 0.25
+const PUBLICATIONS_CHART_Y_AXIS_TO_PLOT_GAP_REM = 0.55
+const PUBLICATIONS_CHART_Y_AXIS_TICK_OFFSET_REM = 0.4
+const PUBLICATIONS_CHART_TOOLTIP_OFFSET_REM = 0.35
+const PUBLICATIONS_CHART_SLOT_GAP_PCT_DENSE = 1.1
+const PUBLICATIONS_CHART_SLOT_GAP_PCT_MEDIUM = 1.5
+const PUBLICATIONS_CHART_SLOT_GAP_PCT_DEFAULT = 2
+const PUBLICATIONS_CHART_SLOT_MIN_WIDTH_PCT = 2
 const FIELD_PERCENTILE_RING_CLASS_BY_THRESHOLD: Record<FieldPercentileThreshold, string> = {
   50: HOUSE_CHART_RING_THRESHOLD_50_SVG_CLASS,
   75: HOUSE_CHART_RING_THRESHOLD_75_SVG_CLASS,
@@ -486,9 +498,10 @@ const MAX_PUBLICATION_CHART_BARS = 12
 const HOUSE_METRIC_TOGGLE_TRACK_CLASS = HOUSE_TOGGLE_TRACK_CLASS
 
 function tileMotionEntryDelay(index = 0, animateIn = false): string {
-  void index
-  void animateIn
-  return '0ms'
+  if (!animateIn) {
+    return '0ms'
+  }
+  return `${Math.min(TILE_MOTION_ENTRY_STAGGER_MAX_MS, Math.max(0, index) * TILE_MOTION_ENTRY_BAR_STAGGER_MS)}ms`
 }
 
 function buildTileToggleThumbStyle(activeIndex: number, optionCount: number): CSSProperties {
@@ -512,15 +525,26 @@ function prefersReducedMotion(): boolean {
   )
 }
 
-function useUnifiedToggleBarAnimation(animationKey: string, enabled: boolean): boolean {
+function useUnifiedToggleBarAnimation(
+  animationKey: string,
+  enabled: boolean,
+  mode: 'replay-on-change' | 'entry-only' = 'replay-on-change',
+): boolean {
   const [barsExpanded, setBarsExpanded] = useState(false)
+  const hasAnimatedEntryRef = useRef(false)
 
   useEffect(() => {
     if (!enabled) {
       setBarsExpanded(false)
+      hasAnimatedEntryRef.current = false
       return
     }
     if (prefersReducedMotion()) {
+      setBarsExpanded(true)
+      hasAnimatedEntryRef.current = true
+      return
+    }
+    if (mode === 'entry-only' && hasAnimatedEntryRef.current) {
       setBarsExpanded(true)
       return
     }
@@ -528,11 +552,12 @@ function useUnifiedToggleBarAnimation(animationKey: string, enabled: boolean): b
     let raf = 0
     raf = window.requestAnimationFrame(() => {
       setBarsExpanded(true)
+      hasAnimatedEntryRef.current = true
     })
     return () => {
       window.cancelAnimationFrame(raf)
     }
-  }, [animationKey, enabled])
+  }, [animationKey, enabled, mode])
 
   return barsExpanded
 }
@@ -569,6 +594,7 @@ function useHouseBarSetTransition<T extends { key: string }>({
   collapseMs = 0,
   structureSwap = 'collapse',
   crossfadeMs = TILE_MOTION_TOGGLE_DURATION_MS,
+  barExpandMode = 'replay-on-change',
 }: {
   bars: T[]
   animationKey: string
@@ -576,6 +602,7 @@ function useHouseBarSetTransition<T extends { key: string }>({
   collapseMs?: number
   structureSwap?: 'collapse' | 'crossfade'
   crossfadeMs?: number
+  barExpandMode?: 'replay-on-change' | 'entry-only'
 }): {
   renderBars: T[]
   outgoingBars: T[]
@@ -584,19 +611,121 @@ function useHouseBarSetTransition<T extends { key: string }>({
   isSwappingStructure: boolean
   barsExpanded: boolean
 } {
-  void collapseMs
-  void structureSwap
-  void crossfadeMs
+  const [renderBars, setRenderBars] = useState<T[]>(bars)
+  const [outgoingBars, setOutgoingBars] = useState<T[]>([])
+  const [pendingBars, setPendingBars] = useState<T[]>([])
+  const [isCrossfading, setIsCrossfading] = useState(false)
+  const [isSwappingStructure, setIsSwappingStructure] = useState(false)
+  const previousBarsRef = useRef<T[]>(bars)
+  const swapRafRef = useRef<number | null>(null)
+  const swapTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (swapRafRef.current !== null) {
+        window.cancelAnimationFrame(swapRafRef.current)
+        swapRafRef.current = null
+      }
+      if (swapTimerRef.current !== null) {
+        window.clearTimeout(swapTimerRef.current)
+        swapTimerRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (swapRafRef.current !== null) {
+      window.cancelAnimationFrame(swapRafRef.current)
+      swapRafRef.current = null
+    }
+    if (swapTimerRef.current !== null) {
+      window.clearTimeout(swapTimerRef.current)
+      swapTimerRef.current = null
+    }
+
+    if (!enabled) {
+      previousBarsRef.current = bars
+      setRenderBars(bars)
+      setOutgoingBars([])
+      setPendingBars([])
+      setIsCrossfading(false)
+      setIsSwappingStructure(false)
+      return
+    }
+
+    const previousBars = previousBarsRef.current
+    const hadPrevious = previousBars.length > 0
+    const structureChanged =
+      previousBars.length !== bars.length
+      || previousBars.some((bar, index) => bar.key !== bars[index]?.key)
+
+    previousBarsRef.current = bars
+
+    if (!hadPrevious || !structureChanged) {
+      setRenderBars(bars)
+      setOutgoingBars([])
+      setPendingBars([])
+      setIsCrossfading(false)
+      setIsSwappingStructure(false)
+      return
+    }
+
+    if (prefersReducedMotion()) {
+      setRenderBars(bars)
+      setOutgoingBars([])
+      setPendingBars([])
+      setIsCrossfading(false)
+      setIsSwappingStructure(false)
+      return
+    }
+
+    const safeCrossfadeMs = Math.max(0, crossfadeMs)
+    const safeCollapseMs = Math.max(0, collapseMs)
+
+    if (structureSwap === 'crossfade') {
+      setRenderBars(bars)
+      setOutgoingBars(previousBars)
+      setPendingBars(bars)
+      setIsCrossfading(false)
+      setIsSwappingStructure(true)
+      swapRafRef.current = window.requestAnimationFrame(() => {
+        setIsCrossfading(true)
+      })
+      swapTimerRef.current = window.setTimeout(() => {
+        setOutgoingBars([])
+        setPendingBars([])
+        setIsCrossfading(false)
+        setIsSwappingStructure(false)
+      }, safeCrossfadeMs)
+      return
+    }
+
+    setRenderBars(previousBars)
+    setOutgoingBars(previousBars)
+    setPendingBars(bars)
+    setIsCrossfading(false)
+    setIsSwappingStructure(true)
+
+    swapTimerRef.current = window.setTimeout(() => {
+      setRenderBars(bars)
+      setOutgoingBars([])
+      setPendingBars([])
+      setIsCrossfading(false)
+      setIsSwappingStructure(false)
+    }, safeCollapseMs)
+  }, [animationKey, bars, collapseMs, crossfadeMs, enabled, structureSwap])
+
   const barsExpanded = useUnifiedToggleBarAnimation(
     `${animationKey}|${bars.map((bar) => bar.key).join('|')}`,
     enabled,
+    barExpandMode,
   )
   return {
-    renderBars: bars,
-    outgoingBars: [],
-    isCrossfading: false,
-    pendingBars: [],
-    isSwappingStructure: false,
+    renderBars,
+    outgoingBars,
+    isCrossfading,
+    pendingBars,
+    isSwappingStructure,
     barsExpanded,
   }
 }
@@ -1964,8 +2093,13 @@ function PublicationsPerYearChart({
     bars: activeBars,
     animationKey,
     enabled: hasBars,
+    structureSwap: 'crossfade',
+    crossfadeMs: TILE_MOTION_TOGGLE_DURATION_MS,
+    barExpandMode: 'entry-only',
   })
   const renderBars = enableWindowToggle ? swapTransition.renderBars : activeBars
+  const outgoingBars = enableWindowToggle ? swapTransition.outgoingBars : []
+  const isCrossfading = enableWindowToggle && swapTransition.isCrossfading
   const pendingBars = enableWindowToggle ? swapTransition.pendingBars : []
   const isStructureSwapActive = enableWindowToggle && swapTransition.isSwappingStructure
   const barsExpanded = enableWindowToggle ? swapTransition.barsExpanded : legacyBarsExpanded
@@ -2050,30 +2184,64 @@ function PublicationsPerYearChart({
   const yAxisPanelWidthRem = showAxes
     ? buildYAxisPanelWidthRem(stableToggleTickValues, Boolean(yAxisLabel))
     : 0
-  const chartLeftInset = showAxes ? `${yAxisPanelWidthRem + 0.55}rem` : '0.5rem'
+  const chartLeftInset = showAxes
+    ? `${yAxisPanelWidthRem + PUBLICATIONS_CHART_Y_AXIS_TO_PLOT_GAP_REM}rem`
+    : `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`
 
   const plotAreaStyle = {
     left: chartLeftInset,
-    right: '0.5rem',
-    top: '1rem',
+    right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
+    top: `${PUBLICATIONS_CHART_TOP_INSET_REM}rem`,
     bottom: `${xAxisLabelLayout.plotBottomRem}rem`,
   }
   const xAxisTicksStyle = {
     left: chartLeftInset,
-    right: '0.5rem',
+    right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
     bottom: `${xAxisLabelLayout.axisBottomRem}rem`,
     minHeight: `${xAxisLabelLayout.axisMinHeightRem}rem`,
   }
+  const slotMetrics = useMemo(() => {
+    const slotCount = Math.max(1, renderBars.length)
+    const slotGapPct = slotCount >= 10
+      ? PUBLICATIONS_CHART_SLOT_GAP_PCT_DENSE
+      : slotCount >= 7
+        ? PUBLICATIONS_CHART_SLOT_GAP_PCT_MEDIUM
+        : PUBLICATIONS_CHART_SLOT_GAP_PCT_DEFAULT
+    const totalGapPct = slotGapPct * Math.max(0, slotCount - 1)
+    const slotWidthPct = Math.max(PUBLICATIONS_CHART_SLOT_MIN_WIDTH_PCT, (100 - totalGapPct) / slotCount)
+    const slotStepPct = slotWidthPct + slotGapPct
+    return {
+      slotCount,
+      slotWidthPct,
+      slotStepPct,
+    }
+  }, [renderBars.length])
+  const outgoingSlotMetrics = useMemo(() => {
+    const slotCount = Math.max(1, outgoingBars.length)
+    const slotGapPct = slotCount >= 10
+      ? PUBLICATIONS_CHART_SLOT_GAP_PCT_DENSE
+      : slotCount >= 7
+        ? PUBLICATIONS_CHART_SLOT_GAP_PCT_MEDIUM
+        : PUBLICATIONS_CHART_SLOT_GAP_PCT_DEFAULT
+    const totalGapPct = slotGapPct * Math.max(0, slotCount - 1)
+    const slotWidthPct = Math.max(PUBLICATIONS_CHART_SLOT_MIN_WIDTH_PCT, (100 - totalGapPct) / slotCount)
+    const slotStepPct = slotWidthPct + slotGapPct
+    return {
+      slotCount,
+      slotWidthPct,
+      slotStepPct,
+    }
+  }, [outgoingBars.length])
   const yAxisPanelStyle = {
-    left: '0.25rem',
-    top: '1rem',
+    left: `${PUBLICATIONS_CHART_Y_AXIS_LEFT_INSET_REM}rem`,
+    top: `${PUBLICATIONS_CHART_TOP_INSET_REM}rem`,
     bottom: `${xAxisLabelLayout.plotBottomRem}rem`,
     width: `${yAxisPanelWidthRem}rem`,
   }
   const chartFrameStyle = {
     paddingBottom: `${xAxisLabelLayout.framePaddingBottomRem}rem`,
   }
-  const yAxisTickOffsetRem = 0.4
+  const yAxisTickOffsetRem = PUBLICATIONS_CHART_Y_AXIS_TICK_OFFSET_REM
   const gridLineToneClass = subtleGrid ? HOUSE_CHART_GRID_LINE_SUBTLE_CLASS : HOUSE_CHART_GRID_LINE_CLASS
   const computeBarHeightPct = (value: number): number => (
     value <= 0 ? 3 : Math.min(100, Math.max(6, (value / axisMax) * 100))
@@ -2204,16 +2372,56 @@ function PublicationsPerYearChart({
               aria-hidden="true"
             />
           ) : null}
-          <div className="absolute inset-0 flex items-end gap-1" data-ui="chart-bars" data-house-role="chart-bars">
+          <div className="absolute inset-0" data-ui="chart-bars" data-house-role="chart-bars">
+            {enableWindowToggle && outgoingBars.map((bar, index) => {
+              const heightPct = computeBarHeightPct(Math.max(0, bar.value))
+              const leftPct = index * outgoingSlotMetrics.slotStepPct
+              const toneClass = resolveBarToneClass(bar.value, bar.current)
+              return (
+                <div
+                  key={`outgoing-slot-${index}`}
+                  className={cn('pointer-events-none absolute inset-y-0', HOUSE_TOGGLE_CHART_MORPH_CLASS, HOUSE_TOGGLE_CHART_SWAP_CLASS)}
+                  style={{
+                    left: `${leftPct}%`,
+                    width: `${outgoingSlotMetrics.slotWidthPct}%`,
+                    opacity: isCrossfading ? 0 : 1,
+                    transitionDuration: `${TILE_MOTION_TOGGLE_DURATION_MS}ms`,
+                  }}
+                  aria-hidden="true"
+                >
+                  <span
+                    className={cn(
+                      'absolute bottom-0 block w-full rounded',
+                      HOUSE_TOGGLE_CHART_BAR_CLASS,
+                      HOUSE_TOGGLE_CHART_MORPH_CLASS,
+                      HOUSE_TOGGLE_CHART_SWAP_CLASS,
+                      toneClass,
+                    )}
+                    style={{
+                      height: `${heightPct}%`,
+                      transform: 'translateY(0px) scaleX(1) scaleY(1)',
+                      transformOrigin: 'bottom',
+                      transitionDuration: `${TILE_MOTION_TOGGLE_DURATION_MS}ms`,
+                    }}
+                  />
+                </div>
+              )
+            })}
             {renderBars.map((bar, index) => {
               const animatedValue = Math.max(0, renderedValuesAnimated[index] ?? bar.value)
               const heightPct = computeBarHeightPct(animatedValue)
+              const leftPct = index * slotMetrics.slotStepPct
               const isActive = hoveredIndex === index
               const toneClass = resolveBarToneClass(bar.value, bar.current)
               return (
                 <div
-                  key={`${bar.key}-${index}`}
-                  className="relative flex h-full min-h-0 flex-1 items-end"
+                  key={`slot-${index}`}
+                  className={cn('absolute inset-y-0', enableWindowToggle && HOUSE_TOGGLE_CHART_MORPH_CLASS)}
+                  style={{
+                    left: `${leftPct}%`,
+                    width: `${slotMetrics.slotWidthPct}%`,
+                    transitionDuration: barTransitionDuration,
+                  }}
                   onMouseEnter={() => setHoveredIndex(index)}
                   onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
                 >
@@ -2222,14 +2430,14 @@ function PublicationsPerYearChart({
                       HOUSE_DRILLDOWN_TOOLTIP_CLASS,
                       isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
                     )}
-                    style={{ bottom: `calc(${heightPct}% + 0.35rem)` }}
+                    style={{ bottom: `calc(${heightPct}% + ${PUBLICATIONS_CHART_TOOLTIP_OFFSET_REM}rem)` }}
                     aria-hidden="true"
                   >
                     {formatInt(animatedValue)}
                   </span>
                   <span
                     className={cn(
-                      'block w-full rounded',
+                      'absolute bottom-0 block w-full rounded',
                       HOUSE_TOGGLE_CHART_BAR_CLASS,
                       enableWindowToggle && HOUSE_TOGGLE_CHART_MORPH_CLASS,
                       enableWindowToggle && HOUSE_TOGGLE_CHART_SWAP_CLASS,
@@ -2240,7 +2448,7 @@ function PublicationsPerYearChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: tileMotionEntryDelay(index, barsExpanded && !isStructureSwapActive),
+                      transitionDelay: tileMotionEntryDelay(index, isEntryCycle && barsExpanded && !isStructureSwapActive),
                       transitionDuration: barTransitionDuration,
                     }}
                   />
@@ -2290,7 +2498,7 @@ function PublicationsPerYearChart({
             className="pointer-events-none absolute"
             style={{
               left: chartLeftInset,
-              right: '0.5rem',
+              right: `${PUBLICATIONS_CHART_RIGHT_INSET_REM}rem`,
               bottom: `${xAxisLabelLayout.xAxisNameBottomRem}rem`,
               minHeight: `${xAxisLabelLayout.xAxisNameMinHeightRem}rem`,
             }}
@@ -3988,39 +4196,41 @@ function TotalPublicationsDrilldownWorkspace({
             </div>
             <div className="house-drilldown-content-block w-full">
               <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
-                <div
-                  className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
-                  data-stop-tile-open="true"
-                  data-ui="publications-trends-window-toggle"
-                  data-house-role="chart-toggle"
-                >
-                  <span
-                    className={HOUSE_TOGGLE_THUMB_CLASS}
-                    style={buildTileToggleThumbStyle(publicationTrendsWindowIndex, PUBLICATIONS_WINDOW_OPTIONS.length)}
-                    aria-hidden="true"
-                  />
-                  {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
-                    <button
-                      key={`pub-trends-window-${option.value}`}
-                      type="button"
-                      data-stop-tile-open="true"
-                      className={cn(
-                        HOUSE_TOGGLE_BUTTON_CLASS,
-                        publicationTrendsWindowMode === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                      )}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        if (publicationTrendsWindowMode === option.value) {
-                          return
-                        }
-                        setPublicationTrendsWindowMode(option.value)
-                      }}
-                      onMouseDown={(event) => event.stopPropagation()}
-                      aria-pressed={publicationTrendsWindowMode === option.value}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
+                <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+                  <div
+                    className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
+                    data-stop-tile-open="true"
+                    data-ui="publications-trends-window-toggle"
+                    data-house-role="chart-toggle"
+                  >
+                    <span
+                      className={HOUSE_TOGGLE_THUMB_CLASS}
+                      style={buildTileToggleThumbStyle(publicationTrendsWindowIndex, PUBLICATIONS_WINDOW_OPTIONS.length)}
+                      aria-hidden="true"
+                    />
+                    {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
+                      <button
+                        key={`pub-trends-window-${option.value}`}
+                        type="button"
+                        data-stop-tile-open="true"
+                        className={cn(
+                          HOUSE_TOGGLE_BUTTON_CLASS,
+                          publicationTrendsWindowMode === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                        )}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          if (publicationTrendsWindowMode === option.value) {
+                            return
+                          }
+                          setPublicationTrendsWindowMode(option.value)
+                        }}
+                        onMouseDown={(event) => event.stopPropagation()}
+                        aria-pressed={publicationTrendsWindowMode === option.value}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
