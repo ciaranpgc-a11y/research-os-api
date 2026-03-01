@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 
 import { ProfilePublicationsPage } from '@/pages/profile-publications-page'
 import type { ProfilePublicationsPageFixture } from '@/pages/profile-publications-page'
+import { ACCOUNT_SETTINGS_STORAGE_KEY } from '@/lib/account-preferences'
 import { AccountRouteShell } from '@/stories/pages-review/_helpers/page-review-shells'
 import {
   pagesReviewProfilePublicationsDefaultFixture,
@@ -21,7 +22,6 @@ const meta: Meta<typeof ProfilePublicationsPage> = {
 
 export default meta
 
-type Story = StoryObj<typeof ProfilePublicationsPage>
 type PublicationsLiveArgs = {
   paperCount: number
 }
@@ -445,6 +445,29 @@ function buildLargePublicationsFixture(paperCount: number): ProfilePublicationsP
 }
 
 function PublicationsCompleteLive({ paperCount }: PublicationsLiveArgs) {
+  if (typeof window !== 'undefined') {
+    const raw = window.localStorage.getItem(ACCOUNT_SETTINGS_STORAGE_KEY)
+    let parsed: Record<string, unknown> = {}
+    if (raw) {
+      try {
+        const candidate = JSON.parse(raw) as unknown
+        parsed = candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+          ? candidate as Record<string, unknown>
+          : {}
+      } catch {
+        parsed = {}
+      }
+    }
+    if (parsed.publicationInsightsDefaultVisibility !== 'visible') {
+      window.localStorage.setItem(
+        ACCOUNT_SETTINGS_STORAGE_KEY,
+        JSON.stringify({
+          ...parsed,
+          publicationInsightsDefaultVisibility: 'visible',
+        }),
+      )
+    }
+  }
   const fixture = buildLargePublicationsFixture(paperCount)
   return (
     <PublicationsLayoutPreview>
@@ -455,11 +478,6 @@ function PublicationsCompleteLive({ paperCount }: PublicationsLiveArgs) {
       />
     </PublicationsLayoutPreview>
   )
-}
-
-export const Complete: Story = {
-  name: 'Complete (Live)',
-  render: () => <PublicationsCompleteLive paperCount={150} />,
 }
 
 export const Live: StoryObj<PublicationsLiveArgs> = {

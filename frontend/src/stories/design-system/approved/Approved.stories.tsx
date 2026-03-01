@@ -26,6 +26,15 @@ type PublicationAnimationSpecRow = {
   usedBy: string
 }
 
+type PublicationTileAnimationMappingRow = {
+  tileKey: string
+  tileLabel: string
+  component: string
+  entryClasses: string
+  toggleClasses: string
+  seriesClasses: string
+}
+
 function buildTileToggleThumbStyle(activeIndex: number, optionCount: number) {
   const safeCount = Math.max(1, optionCount)
   const safeIndex = Math.max(0, Math.min(activeIndex, safeCount - 1))
@@ -235,6 +244,81 @@ const PUBLICATION_ANIMATION_SPEC_ROWS: PublicationAnimationSpecRow[] = [
     durationToken: '--chart-transition-duration (fallback --motion-duration-chart-toggle)',
     easingToken: 'ease-out',
     usedBy: 'authorship_composition, h_index_projection(progress inline)',
+  },
+]
+
+const PUBLICATION_TILE_ANIMATION_MAPPING_ROWS: PublicationTileAnimationMappingRow[] = [
+  {
+    tileKey: 'this_year_vs_last',
+    tileLabel: 'Total publications',
+    component: 'PublicationsPerYearChart',
+    entryClasses: 'house-chart-frame house-motion-enter',
+    toggleClasses: 'none (tile mode)',
+    seriesClasses: 'house-toggle-chart-bar',
+  },
+  {
+    tileKey: 'total_citations',
+    tileLabel: 'Citations',
+    component: 'TotalCitationsModeChart',
+    entryClasses: 'house-chart-frame house-motion-enter',
+    toggleClasses: 'none',
+    seriesClasses: 'house-toggle-chart-bar',
+  },
+  {
+    tileKey: 'momentum',
+    tileLabel: 'Momentum',
+    component: 'MomentumTilePanel',
+    entryClasses: 'house-chart-frame house-motion-enter',
+    toggleClasses: 'house-toggle-track house-toggle-thumb house-toggle-button',
+    seriesClasses: 'house-toggle-chart-bar house-toggle-chart-swap',
+  },
+  {
+    tileKey: 'h_index_projection',
+    tileLabel: 'H-index',
+    component: 'HIndexToggleBarsChart (+ HIndexProgressInline)',
+    entryClasses: 'house-chart-frame house-chart-series-by-slot house-motion-enter',
+    toggleClasses: 'house-toggle-track house-toggle-thumb house-toggle-button',
+    seriesClasses: 'house-toggle-chart-bar house-toggle-chart-morph house-toggle-chart-swap (+ house-progress-fill-motion)',
+  },
+  {
+    tileKey: 'impact_concentration',
+    tileLabel: 'Impact concentration',
+    component: 'ImpactConcentrationPanel',
+    entryClasses: 'house-chart-frame house-motion-static-enter',
+    toggleClasses: 'none',
+    seriesClasses: 'house-chart-ring-dasharray-motion',
+  },
+  {
+    tileKey: 'field_percentile_share',
+    tileLabel: 'Field percentile share',
+    component: 'FieldPercentilePanel',
+    entryClasses: 'house-chart-frame house-motion-static-enter',
+    toggleClasses: 'house-toggle-button (vertical threshold rail)',
+    seriesClasses: 'house-chart-ring-dashoffset-motion',
+  },
+  {
+    tileKey: 'authorship_composition',
+    tileLabel: 'Authorship composition',
+    component: 'AuthorshipStructurePanel',
+    entryClasses: 'house-metric-progress-panel house-motion-enter',
+    toggleClasses: 'none',
+    seriesClasses: 'house-progress-fill-motion',
+  },
+  {
+    tileKey: 'collaboration_structure',
+    tileLabel: 'Collaboration structure',
+    component: 'CollaborationStructurePanel',
+    entryClasses: 'house-metric-progress-panel house-motion-enter',
+    toggleClasses: 'none',
+    seriesClasses: 'eased width update (repeat-rate fill)',
+  },
+  {
+    tileKey: 'influential_citations',
+    tileLabel: 'Influential citations',
+    component: 'InfluentialTrendPanel',
+    entryClasses: 'house-chart-frame house-motion-enter',
+    toggleClasses: 'none',
+    seriesClasses: 'house-toggle-chart-line',
   },
 ]
 
@@ -2073,7 +2157,7 @@ function ApprovedPublicationAnimationSpecSection() {
       <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-2 border-b border-neutral-200">
           <p className="text-sm font-semibold text-neutral-900">Publication Tile Animation Spec</p>
-          <p className="text-xs text-neutral-600">Canonical animation primitives with timing/easing tokens used by the 9 publication tiles.</p>
+          <p className="text-xs text-neutral-600">Source of truth for publication tile animation primitives and per-tile class mapping.</p>
         </div>
         <div className="overflow-x-auto p-4">
           <table className="min-w-full border-collapse text-left text-xs">
@@ -2100,6 +2184,35 @@ function ApprovedPublicationAnimationSpecSection() {
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="border-t border-neutral-200 p-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Per-tile mapping (production)</p>
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-collapse text-left text-xs">
+              <thead>
+                <tr className="border-b border-neutral-200 text-neutral-700">
+                  <th className="px-2 py-2 font-semibold">Tile key</th>
+                  <th className="px-2 py-2 font-semibold">Tile label</th>
+                  <th className="px-2 py-2 font-semibold">Component</th>
+                  <th className="px-2 py-2 font-semibold">Entry classes</th>
+                  <th className="px-2 py-2 font-semibold">Toggle classes</th>
+                  <th className="px-2 py-2 font-semibold">Series classes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {PUBLICATION_TILE_ANIMATION_MAPPING_ROWS.map((row) => (
+                  <tr key={row.tileKey} className="border-b border-neutral-100 align-top text-neutral-700">
+                    <td className="px-2 py-2 font-mono">{row.tileKey}</td>
+                    <td className="px-2 py-2">{row.tileLabel}</td>
+                    <td className="px-2 py-2 font-mono">{row.component}</td>
+                    <td className="px-2 py-2 font-mono">{row.entryClasses}</td>
+                    <td className="px-2 py-2 font-mono">{row.toggleClasses}</td>
+                    <td className="px-2 py-2 font-mono">{row.seriesClasses}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
