@@ -1832,7 +1832,7 @@ function HIndexYearChart({
   )
 }
 
-function PublicationsPerYearChart({
+export function PublicationsPerYearChart({
   tile,
   showCaption = false,
   showAxes = false,

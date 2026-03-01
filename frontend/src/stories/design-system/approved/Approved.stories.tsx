@@ -873,16 +873,7 @@ function ApprovedPublicationsDrilldownSection() {
                       <div className="house-publications-drilldown-stack-2">
                         {/* Use the real chart for Total publications */}
                         <PublicationsPerYearChart
-                          tile={{
-                            key: 'this_year_vs_last',
-                            label: 'Total publications',
-                            chart_data: {
-                              years: [2022, 2023, 2024],
-                              values: [12, 14, 11],
-                              mean_value: 13,
-                              current_year_ytd: 11,
-                            },
-                          }}
+                          tile={require('@/stories/pages-review/_helpers/profile-publications-fixture').pagesReviewProfilePublicationsDefaultFixture.topMetricsResponse.tiles.find((t: any) => t.key === 'this_year_vs_last')}
                           showAxes
                           enableWindowToggle={false}
                           showPeriodHint={false}
