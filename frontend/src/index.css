@@ -501,6 +501,10 @@
     align-items: flex-start;
     gap: 0.2rem;
     min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    padding-inline: 0;
+    box-sizing: border-box;
   }
 
   .house-main-heading-block,
@@ -511,6 +515,10 @@
     justify-content: space-between;
     gap: 0.5rem;
     padding-block: 0.375rem;
+    padding-inline: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   .house-main-subheading-block,
@@ -520,12 +528,20 @@
     align-items: baseline;
     justify-content: space-between;
     gap: 0.5rem;
+    padding-inline: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   .house-main-content-block {
     display: flex;
     flex-direction: column;
     min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    padding-inline: 0;
+    box-sizing: border-box;
   }
 
   .house-section-subtitle {
@@ -699,7 +715,11 @@
 
   [data-house-role="page-header"] {
     margin-top: var(--page-title-offset-block);
-    margin-left: var(--page-title-offset-inline);
+    margin-left: var(--layout-section-anchor-inline);
+  }
+
+  [data-house-role="page-header"].house-left-border {
+    margin-left: 0;
   }
 
   .house-page-toolbar {
@@ -909,6 +929,14 @@
   @media (min-width: 768px) {
     .house-section-anchor {
       margin-inline-start: var(--layout-section-anchor-inline-md);
+    }
+
+    [data-house-role="page-header"] {
+      margin-left: var(--layout-section-anchor-inline-md);
+    }
+
+    [data-house-role="page-header"].house-left-border {
+      margin-left: 0;
     }
 
     .house-content-container {
@@ -4244,16 +4272,26 @@
     grid-template-columns: minmax(0, 1fr);
     grid-auto-rows: minmax(var(--metric-tile-grid-row-min-height), 1fr);
     align-items: stretch;
+    justify-items: stretch;
+    align-content: stretch;
     gap: var(--metric-tile-grid-gap);
     padding-top: 0;
     padding-bottom: var(--metric-tile-grid-padding);
     padding-inline: 0;
+    width: 100%;
+    max-width: 100%;
+    margin-inline: 0;
+    box-sizing: border-box;
     background-color: hsl(var(--card));
   }
 
   .publications-insights-grid > * {
     min-width: 0;
+    width: 100%;
+    max-width: 100%;
     height: 100%;
+    justify-self: stretch;
+    box-sizing: border-box;
   }
 
   @media (min-width: 640px) {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp, ChevronsUpDown, Loader2, Paperclip } from 'lucide-react'
+import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Hammer, Loader2, Paperclip, Share2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
@@ -119,6 +119,7 @@ const HOUSE_TABLE_CELL_TEXT_CLASS = houseTypography.tableCell
 const HOUSE_BANNER_CLASS = houseSurfaces.banner
 const HOUSE_BANNER_DANGER_CLASS = houseSurfaces.bannerDanger
 const HOUSE_BANNER_PUBLICATIONS_CLASS = houseSurfaces.bannerPublications
+const HOUSE_TABLE_SHELL_CLASS = houseSurfaces.tableShell
 const HOUSE_PUBLICATION_DETAIL_SCROLL_CLASS = publicationsHouseDetail.scroll
 const HOUSE_PUBLICATION_DETAIL_HEADER_CLASS = publicationsHouseDetail.header
 const HOUSE_PUBLICATION_DETAIL_TITLE_CLASS = publicationsHouseDetail.title
@@ -1379,6 +1380,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null)
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null)
   const [filesDragOver, setFilesDragOver] = useState(false)
+  const [publicationLibraryVisible, setPublicationLibraryVisible] = useState(true)
+  const [publicationLibraryToolsOpen, setPublicationLibraryToolsOpen] = useState(false)
   const autoOaInFlightRef = useRef(false)
   const filesWarmupInFlightRef = useRef<Set<string>>(new Set())
   const filesWarmupCompletedRef = useRef<Set<string>>(new Set())
@@ -2671,8 +2674,111 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       <div className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block')}>
         <div className="house-main-heading-block">
           <h2 className={publicationsHouseHeadings.sectionTitle}>Publication library</h2>
+          <div className="ml-auto flex h-8 w-[25rem] shrink-0 items-center justify-end gap-1 overflow-visible">
+            <div
+              className={cn(
+                'overflow-visible transition-[max-width,opacity,transform] duration-200 ease-out',
+                publicationLibraryVisible && publicationLibraryToolsOpen
+                  ? 'max-w-[20rem] translate-x-0 opacity-100'
+                  : 'pointer-events-none max-w-0 translate-x-1 opacity-0',
+              )}
+              aria-hidden={!publicationLibraryVisible || !publicationLibraryToolsOpen}
+            >
+              <div className="flex min-w-0 flex-nowrap items-center gap-1 whitespace-nowrap">
+                <div className="group relative inline-flex">
+                  <button
+                    type="button"
+                    className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
+                    aria-label="Generate publication library report"
+                  >
+                    <FileText className="h-4 w-4" strokeWidth={2.1} />
+                  </button>
+                  <span
+                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-[999] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                    aria-hidden="true"
+                  >
+                    Generate report
+                  </span>
+                </div>
+                <div className="house-publications-toolbox-divider" aria-hidden="true" />
+                <div className="group relative inline-flex">
+                  <button
+                    type="button"
+                    className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
+                    aria-label="Download publication library"
+                  >
+                    <Download className="h-4 w-4" strokeWidth={2.1} />
+                  </button>
+                  <span
+                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-[999] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                    aria-hidden="true"
+                  >
+                    Download
+                  </span>
+                </div>
+                <div className="house-publications-toolbox-divider" aria-hidden="true" />
+                <div className="group relative inline-flex">
+                  <button
+                    type="button"
+                    className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
+                    aria-label="Share publication library"
+                  >
+                    <Share2 className="h-4 w-4" strokeWidth={2.1} />
+                  </button>
+                  <span
+                    className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-[999] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                    aria-hidden="true"
+                  >
+                    Share
+                  </span>
+                </div>
+              </div>
+            </div>
+            {publicationLibraryVisible ? (
+              <button
+                type="button"
+                data-state={publicationLibraryToolsOpen ? 'open' : 'closed'}
+                className={cn(
+                  'h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-200 ease-out',
+                  publicationLibraryToolsOpen && 'house-publications-tools-toggle-open',
+                )}
+                onClick={() => {
+                  setPublicationLibraryToolsOpen((current) => !current)
+                }}
+                aria-pressed={publicationLibraryToolsOpen}
+                aria-expanded={publicationLibraryToolsOpen}
+                aria-label={publicationLibraryToolsOpen ? 'Hide publication library tools' : 'Show publication library tools'}
+                title="Tools"
+              >
+                <Hammer className="house-publications-tools-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
+              </button>
+            ) : null}
+            <button
+              type="button"
+              data-state={publicationLibraryVisible ? 'open' : 'closed'}
+              className="h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-publications-eye-toggle house-section-tool-button inline-flex items-center justify-center"
+              onClick={() => {
+                setPublicationLibraryVisible((current) => {
+                  const nextVisible = !current
+                  if (!nextVisible) {
+                    setPublicationLibraryToolsOpen(false)
+                  }
+                  return nextVisible
+                })
+              }}
+              aria-pressed={publicationLibraryVisible}
+              aria-label={publicationLibraryVisible ? 'Set publication library not visible' : 'Set publication library visible'}
+            >
+              {publicationLibraryVisible ? (
+                <Eye className="house-publications-eye-toggle-icon h-[1.2rem] w-[1.2rem]" strokeWidth={2.1} />
+              ) : (
+                <EyeOff className="house-publications-eye-toggle-icon h-[1.2rem] w-[1.2rem]" strokeWidth={2.1} />
+              )}
+            </button>
+          </div>
         </div>
-        <div className="house-main-content-block space-y-1">
+        {publicationLibraryVisible ? (
+          <div className="house-main-content-block space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <Input
               value={query}
@@ -2719,7 +2825,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   </ol>
                 </div>
               ) : (
-                <div ref={publicationTableLayoutRef} className="relative w-full">
+                <div ref={publicationTableLayoutRef} className={cn('relative w-full', HOUSE_TABLE_SHELL_CLASS)}>
                   <Table
                     className="min-w-sz-760 table-fixed"
                     data-house-no-column-resize="true"
@@ -3066,7 +3172,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             </Sheet>
 
           </div>
-        </div>
+        ) : (
+          <div className="house-main-content-block">
+            <div className={cn('rounded-sm px-3 py-2.5 text-sm', HOUSE_BANNER_CLASS, HOUSE_BANNER_PUBLICATIONS_CLASS)}>
+              <p>Publication library hidden by user.</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {status ? <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_PUBLICATIONS_CLASS}`}>{status}</p> : null}

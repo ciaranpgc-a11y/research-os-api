@@ -258,7 +258,9 @@ function PublicationsLayoutPreview({ children }: { children: ReactNode }) {
         }
         .sb-publications-layout-preview .publications-insights-grid {
           gap: var(--sb-publications-grid-gap);
-          padding: var(--sb-publications-grid-padding);
+          padding-top: 0;
+          padding-bottom: var(--sb-publications-grid-padding);
+          padding-inline: 0;
         }
         @media (min-width: 1024px) {
           .sb-publications-layout-preview .publications-insights-grid {

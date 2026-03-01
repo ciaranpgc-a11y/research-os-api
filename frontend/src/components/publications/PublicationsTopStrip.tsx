@@ -1630,7 +1630,7 @@ function TotalCitationsTile({
       className={cn(
         dashboardTileStyles.tileShell,
         tile.stability === 'unstable' && dashboardTileStyles.tileShellUnstable,
-        'min-h-36 px-3 py-2.5',
+        'w-full min-h-36 px-3 py-2.5',
       )}
     >
       <div className="grid h-full min-h-[9.5rem] grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)] gap-3">
@@ -1724,7 +1724,7 @@ function StructuredMetricTile({
       className={cn(
         dashboardTileStyles.tileShell,
         tile.stability === 'unstable' && dashboardTileStyles.tileShellUnstable,
-        'min-h-36 px-3 py-2.5',
+        'w-full min-h-36 px-3 py-2.5',
       )}
     >
       <div className={cn('grid h-full min-h-[9.5rem] gap-3', contentGridClassName || 'grid-cols-[minmax(0,0.85fr)_minmax(0,1.32fr)]')}>
@@ -5920,7 +5920,7 @@ export function PublicationsTopStrip({
           {insightsVisible && loading && tiles.length === 0 ? (
             <div className="house-main-content-block publications-insights-grid">
               {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="min-h-36 px-3 py-2.5">
+                <div key={index} className="w-full min-h-36 px-3 py-2.5">
                   <div className={cn('h-full rounded-sm', HOUSE_DRILLDOWN_SKELETON_BLOCK_CLASS)} />
                 </div>
               ))}
