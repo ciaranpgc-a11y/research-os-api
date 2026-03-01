@@ -349,7 +349,6 @@ const HOUSE_CHART_SCALE_LAYER_CLASS = publicationsHouseMotion.chartScaleLayer
 const HOUSE_CHART_SCALE_TICK_CLASS = publicationsHouseMotion.chartScaleTick
 const HOUSE_CHART_SCALE_AXIS_TITLE_CLASS = publicationsHouseMotion.chartScaleAxisTitle
 const HOUSE_CHART_SCALE_MEAN_LINE_CLASS = publicationsHouseMotion.chartScaleMeanLine
-const HOUSE_CHART_SCALE_MEAN_LINE_DELAYED_CLASS = publicationsHouseMotion.chartScaleMeanLineDelayed
 const HOUSE_TOGGLE_TRACK_CLASS = publicationsHouseMotion.toggleTrack
 const HOUSE_TOGGLE_THUMB_CLASS = publicationsHouseMotion.toggleThumb
 const HOUSE_TOGGLE_BUTTON_CLASS = publicationsHouseMotion.toggleButton

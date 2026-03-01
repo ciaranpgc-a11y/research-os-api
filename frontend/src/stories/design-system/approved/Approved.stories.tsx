@@ -609,6 +609,30 @@ function AuthPagePanel() {
 }
 
 const APPROVED_DRILLDOWN_TILE_KEY = 'this_year_vs_last'
+const APPROVED_PUBLICATION_TRENDS_TILE =
+  (pagesReviewProfilePublicationsDefaultFixture.topMetricsResponse?.tiles ?? []).find((tile) => tile.key === APPROVED_DRILLDOWN_TILE_KEY)
+  ?? null
+
+function ApprovedPublicationTrendsChartTemplate() {
+  if (!APPROVED_PUBLICATION_TRENDS_TILE) {
+    return <p className="house-drilldown-note">Publication trends fixture is unavailable.</p>
+  }
+  return (
+    <div className="house-drilldown-heading-block-secondary">
+      <p className="house-drilldown-overline">Publication trends</p>
+      <div className="house-publications-drilldown-stack-2">
+        <PublicationsPerYearChart
+          tile={APPROVED_PUBLICATION_TRENDS_TILE}
+          showAxes
+          enableWindowToggle={false}
+          showPeriodHint={false}
+          showCurrentPeriodSemantic={false}
+          chartTitle={undefined}
+        />
+      </div>
+    </div>
+  )
+}
 
 function ensurePublicationInsightsVisibleDefault() {
   if (typeof window === 'undefined') {
@@ -682,10 +706,17 @@ function ApprovedDrilldownApprovedChartSection() {
     <section>
       <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-2 border-b border-neutral-200">
-          <p className="text-sm font-semibold text-neutral-900">Drilldown Approved Chart</p>
-          <p className="text-xs text-neutral-600">Canonical publications drilldown chart aligned with Approved #6 behavior.</p>
+          <p className="text-sm font-semibold text-neutral-900">Approved Drilldown Charts</p>
+          <p className="text-xs text-neutral-600">Gold-standard publication drilldown chart template and live shell behavior.</p>
         </div>
         <div className="bg-card p-4">
+          <div className="mb-3 rounded-md border border-border bg-background p-3">
+            <p className="text-xs font-semibold text-neutral-900">Source-of-truth template: Publication trends</p>
+            <p className="mt-1 text-xs text-neutral-600">Use this chart block as the canonical approved reference for drilldown trends.</p>
+            <div className="mt-2">
+              <ApprovedPublicationTrendsChartTemplate />
+            </div>
+          </div>
           <div className="mb-3 flex items-center justify-end">
             <button
               type="button"
@@ -865,21 +896,6 @@ function ApprovedPublicationsDrilldownSection() {
                             </div>
                           </div>
                         ))}
-                      </div>
-                    </div>
-
-                    <div className="house-drilldown-heading-block-secondary">
-                      <p className="house-drilldown-overline">Publication trends</p>
-                      <div className="house-publications-drilldown-stack-2">
-                        {/* Use the real chart for Total publications */}
-                        <PublicationsPerYearChart
-                          tile={require('@/stories/pages-review/_helpers/profile-publications-fixture').pagesReviewProfilePublicationsDefaultFixture.topMetricsResponse.tiles.find((t: any) => t.key === 'this_year_vs_last')}
-                          showAxes
-                          enableWindowToggle={false}
-                          showPeriodHint={false}
-                          showCurrentPeriodSemantic={false}
-                          chartTitle={undefined}
-                        />
                       </div>
                     </div>
                   </>
