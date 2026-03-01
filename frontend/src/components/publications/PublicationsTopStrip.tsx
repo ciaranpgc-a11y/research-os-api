@@ -2367,16 +2367,13 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                 cy="50"
                 r={ringRadius}
                 fill="none"
-                className={HOUSE_CHART_RING_MAIN_SVG_CLASS}
+                className={cn(HOUSE_CHART_RING_MAIN_SVG_CLASS, 'house-chart-ring-dasharray-motion')}
                 strokeWidth={ringStrokeWidth}
                 strokeLinecap="round"
                 transform="rotate(-90 50 50)"
                 style={{
                   strokeDasharray: `${ringVisibleDash} ${ringCircumference}`,
                   strokeDashoffset: 0,
-                  transitionProperty: 'stroke-dasharray,stroke-dashoffset',
-                  transitionDuration: 'var(--motion-duration-chart-refresh)',
-                  transitionTimingFunction: 'var(--motion-ease-chart-series)',
                 }}
               />
             </svg>
@@ -2734,17 +2731,15 @@ function FieldPercentilePanel({
                     cy="50"
                     r={ringRadius}
                     fill="none"
-                    className={ringShareToneClass}
+                    className={cn(ringShareToneClass, 'house-chart-ring-dashoffset-motion')}
                     strokeWidth={HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH}
                     strokeLinecap="round"
                     transform="rotate(-90 50 50)"
                     style={{
                       strokeDasharray: ringCircumference,
                       strokeDashoffset: ringVisibleOffset,
-                      transitionProperty: 'stroke-dashoffset,stroke',
-                      transitionDuration: ringTransitionDuration,
-                      transitionTimingFunction: 'var(--motion-ease-chart-series)',
-                    }}
+                      '--chart-transition-duration': ringTransitionDuration,
+                    } as React.CSSProperties}
                   />
                   <text x="50" y="50" textAnchor="middle" dominantBaseline="central" className={HOUSE_CHART_RING_CENTER_LABEL_CLASS}>
                     {papersAtThresholdLabel}
@@ -2814,14 +2809,14 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
             <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[var(--metric-progress-track-height)]')}>
               <div
                 className={cn(
-                  'h-full rounded-full transition-[width] duration-[var(--motion-duration-chart-toggle)] ease-out',
+                  'h-full rounded-full house-progress-fill-motion',
                   row.tone,
                 )}
                 style={{
                   width: `${barsExpanded ? row.value : 0}%`,
                   transitionDelay: tileMotionEntryDelay(index, barsExpanded),
-                  transitionDuration: progressTransitionDuration,
-                }}
+                  '--chart-transition-duration': progressTransitionDuration,
+                } as React.CSSProperties}
                 aria-hidden="true"
               />
             </div>
@@ -5166,11 +5161,11 @@ function HIndexProgressInline({
       <div className="flex items-center gap-2">
         <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[var(--metric-progress-track-height)] flex-1')}>
           <div
-            className={cn('h-full rounded-full transition-[width] duration-[var(--motion-duration-chart-toggle)] ease-out', HOUSE_CHART_BAR_POSITIVE_CLASS)}
+            className={cn('h-full rounded-full house-progress-fill-motion', HOUSE_CHART_BAR_POSITIVE_CLASS)}
             style={{
               width: `${progressExpanded ? progressMeta.progressPct : 0}%`,
-              transitionDuration: progressTransitionDuration,
-            }}
+              '--chart-transition-duration': progressTransitionDuration,
+            } as React.CSSProperties}
             aria-hidden="true"
           />
         </div>
@@ -5304,10 +5299,12 @@ function InfluentialTrendPanel({
   tile,
   chartTitle,
   chartTitleClassName,
+  refreshKey,
 }: {
   tile: PublicationMetricTilePayload
   chartTitle?: string
   chartTitleClassName?: string
+  refreshKey?: string | null
 }) {
   const pathRef = useRef<SVGPathElement>(null)
   const [pathLength, setPathLength] = useState(0)
@@ -5345,8 +5342,11 @@ function InfluentialTrendPanel({
     [points],
   )
   const lineAnimationKey = useMemo(
-    () => (hasValues ? values.map((value) => value.toFixed(3)).join('|') : 'empty'),
-    [hasValues, values],
+    () => {
+      const seriesKey = hasValues ? values.map((value) => value.toFixed(3)).join('|') : 'empty'
+      return `${seriesKey}|${String(refreshKey || '')}`
+    },
+    [hasValues, refreshKey, values],
   )
   const lineEntryKey = `${lineAnimationKey}|influential-line`
   const hasMeasuredPath = pathLength > 0
@@ -5396,12 +5396,12 @@ function InfluentialTrendPanel({
               strokeLinecap="round"
               strokeLinejoin="round"
               shapeRendering="geometricPrecision"
+              className="house-toggle-chart-line"
+              data-expanded={lineExpanded ? 'true' : 'false'}
               style={{
-                strokeDasharray: pathLength || 1,
-                strokeDashoffset: lineExpanded ? 0 : pathLength || 1,
-                transition: `stroke-dashoffset ${lineTransitionDuration}`,
-                transitionTimingFunction: 'var(--motion-ease-chart-series)',
-              }}
+                '--chart-path-length': pathLength || 1,
+                transitionDuration: lineTransitionDuration,
+              } as React.CSSProperties}
             />
           </svg>
         </div>
@@ -6153,6 +6153,7 @@ export function PublicationsTopStrip({
                       tile={tile}
                       chartTitle="Influential citations over time"
                       chartTitleClassName={HOUSE_METRIC_RIGHT_CHART_TITLE_CLASS}
+                      refreshKey={metrics?.data_last_refreshed}
                     />
                   )
                 }

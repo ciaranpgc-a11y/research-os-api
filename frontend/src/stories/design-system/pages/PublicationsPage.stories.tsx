@@ -437,6 +437,8 @@ function buildLargePublicationsFixture(paperCount: number): ProfilePublicationsP
     fixture.topMetricsResponse.is_updating = false
     fixture.topMetricsResponse.is_stale = false
     fixture.topMetricsResponse.last_error = null
+    // Update timestamp to trigger animation replay when paperCount changes
+    fixture.topMetricsResponse.data_last_refreshed = new Date(Date.now() + paperCount).toISOString()
   }
 
   return fixture

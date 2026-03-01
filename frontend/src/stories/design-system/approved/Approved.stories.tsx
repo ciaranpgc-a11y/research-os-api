@@ -17,6 +17,15 @@ type IconOption = {
   icon: JSX.Element
 }
 
+type PublicationAnimationSpecRow = {
+  primitive: string
+  target: string
+  transitionProperties: string
+  durationToken: string
+  easingToken: string
+  usedBy: string
+}
+
 function buildTileToggleThumbStyle(activeIndex: number, optionCount: number) {
   const safeCount = Math.max(1, optionCount)
   const safeIndex = Math.max(0, Math.min(activeIndex, safeCount - 1))
@@ -151,6 +160,81 @@ const ANIMATION_LAB_DIFFERENT_COUNT_DATASETS: AnimationLabBarDataset[] = [
       { key: 'q-7', label: 'Q7', value: 184 },
       { key: 'q-8', label: 'Q8', value: 102 },
     ],
+  },
+]
+
+const PUBLICATION_ANIMATION_SPEC_ROWS: PublicationAnimationSpecRow[] = [
+  {
+    primitive: '.house-chart-frame + .house-motion-enter',
+    target: 'Chart frame container (bar + line tiles)',
+    transitionProperties: 'opacity, transform, filter',
+    durationToken: '--motion-duration-slow',
+    easingToken: 'ease-out',
+    usedBy: 'this_year_vs_last, total_citations, momentum, h_index_projection, influential_citations',
+  },
+  {
+    primitive: '.house-motion-static-enter',
+    target: 'Ring frame container',
+    transitionProperties: 'none (static enter state)',
+    durationToken: 'n/a',
+    easingToken: 'n/a',
+    usedBy: 'impact_concentration, field_percentile_share',
+  },
+  {
+    primitive: '.house-toggle-chart-bar',
+    target: 'Bar glyphs',
+    transitionProperties: 'transform, filter, box-shadow',
+    durationToken: '--motion-duration-slower',
+    easingToken: 'cubic-bezier(0.2,0.68,0.16,1)',
+    usedBy: 'this_year_vs_last, total_citations, momentum, h_index_projection',
+  },
+  {
+    primitive: '.house-toggle-chart-swap',
+    target: 'Bar-set swap (same-count/different-count windows)',
+    transitionProperties: 'opacity (slot mode adds filter)',
+    durationToken: '--motion-duration-base / --motion-duration-fast',
+    easingToken: 'cubic-bezier(0.2,0.68,0.16,1)',
+    usedBy: 'momentum, this_year_vs_last(toggle), h_index_projection(toggle bars)',
+  },
+  {
+    primitive: '.house-toggle-chart-morph',
+    target: 'Bar slot reflow (left/width/height morph)',
+    transitionProperties: 'left, width, height, opacity, transform, filter, box-shadow',
+    durationToken: '--motion-duration-chart-toggle',
+    easingToken: '--motion-ease-chart-series',
+    usedBy: 'h_index_projection(toggle bars)',
+  },
+  {
+    primitive: '.house-toggle-chart-line',
+    target: 'Line path reveal',
+    transitionProperties: 'transform, filter, stroke-dashoffset',
+    durationToken: '--motion-duration-chart-toggle',
+    easingToken: '--motion-ease-chart-series',
+    usedBy: 'influential_citations',
+  },
+  {
+    primitive: '.house-chart-ring-dasharray-motion',
+    target: 'Ring main arc (dasharray + dashoffset)',
+    transitionProperties: 'stroke-dasharray, stroke-dashoffset',
+    durationToken: '--motion-duration-chart-refresh',
+    easingToken: '--motion-ease-chart-series',
+    usedBy: 'impact_concentration',
+  },
+  {
+    primitive: '.house-chart-ring-dashoffset-motion',
+    target: 'Ring share arc (dashoffset + stroke)',
+    transitionProperties: 'stroke-dashoffset, stroke',
+    durationToken: '--chart-transition-duration (fallback --motion-duration-chart-toggle)',
+    easingToken: '--motion-ease-chart-series',
+    usedBy: 'field_percentile_share',
+  },
+  {
+    primitive: '.house-progress-fill-motion',
+    target: 'Progress fill tracks',
+    transitionProperties: 'width',
+    durationToken: '--chart-transition-duration (fallback --motion-duration-chart-toggle)',
+    easingToken: 'ease-out',
+    usedBy: 'authorship_composition, h_index_projection(progress inline)',
   },
 ]
 
@@ -1265,11 +1349,12 @@ function ApprovedPublicationTileAnimationsSection() {
                       strokeWidth="3.25"
                       strokeLinecap="round"
                       strokeLinejoin="round"
+                      className="house-toggle-chart-line"
+                      data-expanded={lineEntryVisible ? 'true' : 'false'}
                       style={{
-                        strokeDasharray: lineEntryPathLength || 1,
-                        strokeDashoffset: lineEntryVisible ? 0 : lineEntryPathLength || 1,
-                        transition: `stroke-dashoffset ${lineTransitionDurationMs}ms var(--motion-ease-chart-series)`,
-                      }}
+                        '--chart-path-length': lineEntryPathLength || 1,
+                        transitionDuration: `${lineTransitionDurationMs}ms`,
+                      } as React.CSSProperties}
                     />
                     {lineCoords.map((point, index) => (
                       <circle
@@ -1335,11 +1420,12 @@ function ApprovedPublicationTileAnimationsSection() {
                         strokeWidth="3.25"
                         strokeLinecap="round"
                         strokeLinejoin="round"
+                        className="house-toggle-chart-line"
+                        data-expanded={lineEntryVisible ? 'true' : 'false'}
                         style={{
-                          strokeDasharray: lineEntryDuplicatePathLength || 1,
-                          strokeDashoffset: lineEntryVisible ? 0 : lineEntryDuplicatePathLength || 1,
-                          transition: `stroke-dashoffset ${lineTransitionDurationMs}ms var(--motion-ease-chart-series)`,
-                        }}
+                          '--chart-path-length': lineEntryDuplicatePathLength || 1,
+                          transitionDuration: `${lineTransitionDurationMs}ms`,
+                        } as React.CSSProperties}
                       />
                       {lineCoords.map((point, index) => (
                         <circle
@@ -1981,6 +2067,45 @@ function ProviderIcon({ provider }: { provider: 'orcid' | 'google' | 'microsoft'
   )
 }
 
+function ApprovedPublicationAnimationSpecSection() {
+  return (
+    <section>
+      <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-neutral-200">
+          <p className="text-sm font-semibold text-neutral-900">Publication Tile Animation Spec</p>
+          <p className="text-xs text-neutral-600">Canonical animation primitives with timing/easing tokens used by the 9 publication tiles.</p>
+        </div>
+        <div className="overflow-x-auto p-4">
+          <table className="min-w-full border-collapse text-left text-xs">
+            <thead>
+              <tr className="border-b border-neutral-200 text-neutral-700">
+                <th className="px-2 py-2 font-semibold">Primitive class</th>
+                <th className="px-2 py-2 font-semibold">Target element</th>
+                <th className="px-2 py-2 font-semibold">Transition properties</th>
+                <th className="px-2 py-2 font-semibold">Duration token</th>
+                <th className="px-2 py-2 font-semibold">Easing token</th>
+                <th className="px-2 py-2 font-semibold">Used by tiles</th>
+              </tr>
+            </thead>
+            <tbody>
+              {PUBLICATION_ANIMATION_SPEC_ROWS.map((row) => (
+                <tr key={row.primitive} className="border-b border-neutral-100 align-top text-neutral-700">
+                  <td className="px-2 py-2 font-mono">{row.primitive}</td>
+                  <td className="px-2 py-2">{row.target}</td>
+                  <td className="px-2 py-2 font-mono">{row.transitionProperties}</td>
+                  <td className="px-2 py-2 font-mono">{row.durationToken}</td>
+                  <td className="px-2 py-2 font-mono">{row.easingToken}</td>
+                  <td className="px-2 py-2">{row.usedBy}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 const approvedIcons: IconOption[] = [
   {
     id: 'icon-mail',
@@ -2129,6 +2254,7 @@ function ApprovedPage() {
         <ApprovedMetricTilesSection />
         <ApprovedTileTogglesSection />
         <ApprovedPublicationTileAnimationsSection />
+        <ApprovedPublicationAnimationSpecSection />
         <ApprovedLeftPanel />
         <AuthPagePanel />
         <div className="rounded-lg border border-neutral-200 bg-white shadow-sm">

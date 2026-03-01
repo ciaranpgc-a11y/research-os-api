@@ -2797,6 +2797,188 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             return clean.upper()
         return clean
 
+    country_code_to_continent: dict[str, str] = {
+        # North America
+        "US": "north_america",
+        "CA": "north_america",
+        "MX": "north_america",
+        # South America
+        "AR": "south_america",
+        "BR": "south_america",
+        "CL": "south_america",
+        "CO": "south_america",
+        "PE": "south_america",
+        "VE": "south_america",
+        "UY": "south_america",
+        # Europe
+        "AT": "europe",
+        "BE": "europe",
+        "BG": "europe",
+        "CH": "europe",
+        "CY": "europe",
+        "CZ": "europe",
+        "DE": "europe",
+        "DK": "europe",
+        "EE": "europe",
+        "ES": "europe",
+        "FI": "europe",
+        "FR": "europe",
+        "GB": "europe",
+        "GR": "europe",
+        "HR": "europe",
+        "HU": "europe",
+        "IE": "europe",
+        "IS": "europe",
+        "IT": "europe",
+        "LT": "europe",
+        "LU": "europe",
+        "LV": "europe",
+        "MT": "europe",
+        "NL": "europe",
+        "NO": "europe",
+        "PL": "europe",
+        "PT": "europe",
+        "RO": "europe",
+        "RS": "europe",
+        "SE": "europe",
+        "SI": "europe",
+        "SK": "europe",
+        "UA": "europe",
+        "UK": "europe",
+        # Asia
+        "AE": "asia",
+        "BD": "asia",
+        "CN": "asia",
+        "HK": "asia",
+        "ID": "asia",
+        "IL": "asia",
+        "IN": "asia",
+        "IR": "asia",
+        "JP": "asia",
+        "KR": "asia",
+        "KZ": "asia",
+        "MY": "asia",
+        "NP": "asia",
+        "PK": "asia",
+        "PH": "asia",
+        "QA": "asia",
+        "SA": "asia",
+        "SG": "asia",
+        "TH": "asia",
+        "TR": "asia",
+        "TW": "asia",
+        "VN": "asia",
+        # Africa
+        "DZ": "africa",
+        "EG": "africa",
+        "ET": "africa",
+        "GH": "africa",
+        "KE": "africa",
+        "MA": "africa",
+        "NG": "africa",
+        "TN": "africa",
+        "ZA": "africa",
+        # Oceania
+        "AU": "oceania",
+        "NZ": "oceania",
+    }
+
+    country_name_to_continent: dict[str, str] = {
+        "argentina": "south_america",
+        "australia": "oceania",
+        "austria": "europe",
+        "bangladesh": "asia",
+        "belgium": "europe",
+        "brazil": "south_america",
+        "bulgaria": "europe",
+        "canada": "north_america",
+        "chile": "south_america",
+        "china": "asia",
+        "colombia": "south_america",
+        "croatia": "europe",
+        "cyprus": "europe",
+        "czech republic": "europe",
+        "czechia": "europe",
+        "denmark": "europe",
+        "egypt": "africa",
+        "estonia": "europe",
+        "ethiopia": "africa",
+        "finland": "europe",
+        "france": "europe",
+        "germany": "europe",
+        "ghana": "africa",
+        "greece": "europe",
+        "hong kong": "asia",
+        "hungary": "europe",
+        "iceland": "europe",
+        "india": "asia",
+        "indonesia": "asia",
+        "iran": "asia",
+        "ireland": "europe",
+        "israel": "asia",
+        "italy": "europe",
+        "japan": "asia",
+        "kazakhstan": "asia",
+        "kenya": "africa",
+        "lithuania": "europe",
+        "luxembourg": "europe",
+        "latvia": "europe",
+        "malaysia": "asia",
+        "malta": "europe",
+        "mexico": "north_america",
+        "morocco": "africa",
+        "netherlands": "europe",
+        "new zealand": "oceania",
+        "nigeria": "africa",
+        "norway": "europe",
+        "pakistan": "asia",
+        "peru": "south_america",
+        "philippines": "asia",
+        "poland": "europe",
+        "portugal": "europe",
+        "qatar": "asia",
+        "romania": "europe",
+        "russia": "europe",
+        "russian federation": "europe",
+        "saudi arabia": "asia",
+        "serbia": "europe",
+        "singapore": "asia",
+        "slovakia": "europe",
+        "slovenia": "europe",
+        "south africa": "africa",
+        "south korea": "asia",
+        "spain": "europe",
+        "sweden": "europe",
+        "switzerland": "europe",
+        "taiwan": "asia",
+        "thailand": "asia",
+        "tunisia": "africa",
+        "turkey": "asia",
+        "uk": "europe",
+        "ukraine": "europe",
+        "united arab emirates": "asia",
+        "united kingdom": "europe",
+        "united states": "north_america",
+        "united states of america": "north_america",
+        "uruguay": "south_america",
+        "venezuela": "south_america",
+        "vietnam": "asia",
+    }
+
+    def _continent_from_country_token(value: Any) -> str | None:
+        clean = _clean_text(value)
+        if not clean:
+            return None
+        upper = clean.upper()
+        if len(upper) in {2, 3} and upper.isalpha():
+            direct = country_code_to_continent.get(upper)
+            if direct:
+                return direct
+        normalized = clean.casefold()
+        normalized = normalized.replace(".", " ").replace(",", " ")
+        normalized = " ".join(normalized.split())
+        return country_name_to_continent.get(normalized)
+
     if not collaborator_work_count_by_key:
         normalized_user_name = _clean_text(str(user.name or "")).casefold()
         for work in works:
@@ -2963,6 +3145,16 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     )
     unique_institutions_count = len(institution_keys_global)
     unique_countries_count = len(country_keys_global)
+    continent_keys_global: set[str] = set()
+    for country_key in country_keys_global:
+        continent = _continent_from_country_token(country_key)
+        if continent:
+            continent_keys_global.add(continent)
+    unique_continents_count = len(continent_keys_global)
+    if unique_continents_count <= 0 and unique_countries_count > 0:
+        # Keep the tile from showing a misleading zero when country breadth exists
+        # but country tokens are not currently mapped.
+        unique_continents_count = 1
     collaborative_works_count = len(collaborative_work_ids)
 
     collaboration_structure_publications = []
@@ -3927,6 +4119,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "repeat_collaborators": int(repeat_collaborators_count),
                 "institutions": int(unique_institutions_count),
                 "countries": int(unique_countries_count),
+                "continents": int(unique_continents_count),
                 "collaborative_works": int(collaborative_works_count),
                 "institutions_from_works": int(work_derived_institution_count),
                 "countries_from_works": int(work_derived_country_count),
@@ -3945,6 +4138,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 float(repeat_collaborator_rate_pct),
                 float(unique_institutions_count),
                 float(unique_countries_count),
+                float(unique_continents_count),
             ],
             tooltip=collaboration_tooltip,
             tooltip_details=collaboration_tooltip_details,
@@ -3973,6 +4167,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                         "repeat_collaborators": int(repeat_collaborators_count),
                         "institutions": int(unique_institutions_count),
                         "countries": int(unique_countries_count),
+                        "continents": int(unique_continents_count),
                         "collaborative_works": int(collaborative_works_count),
                         "institutions_from_works": int(
                             work_derived_institution_count

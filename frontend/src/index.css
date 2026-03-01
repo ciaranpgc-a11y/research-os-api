@@ -2467,10 +2467,28 @@
   }
 
   .house-toggle-chart-line {
-    transition-property: transform, filter;
+    transition-property: transform, filter, stroke-dashoffset;
     transition-duration: var(--motion-duration-chart-toggle);
     transition-timing-function: var(--motion-ease-chart-series);
-    will-change: transform;
+    will-change: transform, stroke-dashoffset;
+    stroke-dasharray: var(--chart-path-length, 1);
+    stroke-dashoffset: var(--chart-path-length, 1);
+  }
+
+  .house-toggle-chart-line[data-expanded="true"] {
+    stroke-dashoffset: 0;
+  }
+
+  .house-chart-ring-dasharray-motion {
+    transition-property: stroke-dasharray, stroke-dashoffset;
+    transition-duration: var(--motion-duration-chart-refresh);
+    transition-timing-function: var(--motion-ease-chart-series);
+  }
+
+  .house-chart-ring-dashoffset-motion {
+    transition-property: stroke-dashoffset, stroke;
+    transition-duration: var(--chart-transition-duration, var(--motion-duration-chart-toggle));
+    transition-timing-function: var(--motion-ease-chart-series);
   }
 
   .house-toggle-chart-morph {
@@ -2512,6 +2530,12 @@
   .house-label-transition {
     transition-property: opacity, transform;
     transition-duration: var(--motion-duration-base);
+    transition-timing-function: ease-out;
+  }
+
+  .house-progress-fill-motion {
+    transition-property: width;
+    transition-duration: var(--chart-transition-duration, var(--motion-duration-chart-toggle));
     transition-timing-function: ease-out;
   }
 

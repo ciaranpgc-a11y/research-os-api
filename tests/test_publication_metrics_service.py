@@ -467,6 +467,7 @@ def test_collaboration_structure_uses_collaborator_affiliations_when_work_data_i
     assert chart_data.get("unique_collaborators") == 3
     assert chart_data.get("institutions") == 3
     assert chart_data.get("countries") == 3
+    assert chart_data.get("continents") == 2
     assert chart_data.get("institutions_from_works") == 0
     assert chart_data.get("countries_from_works") == 0
     assert chart_data.get("institutions_from_collaborators") == 3
