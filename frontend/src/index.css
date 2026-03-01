@@ -4036,6 +4036,7 @@
 
   .house-publications-drilldown-panel-no-pad {
     --house-publications-drilldown-inline-align: 0.5rem;
+    --house-publications-drilldown-chart-controls-inline-align: var(--house-publications-drilldown-inline-align);
     padding: 0;
   }
 
@@ -4146,6 +4147,7 @@
   }
 
   .house-drilldown-chart-controls-left {
+    padding-inline-start: var(--house-publications-drilldown-chart-controls-inline-align, 0);
     display: flex;
     min-width: 0;
     align-items: center;
