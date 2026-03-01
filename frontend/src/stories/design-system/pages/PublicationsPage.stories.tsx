@@ -502,7 +502,7 @@ function PublicationsCompleteLive({ paperCount }: PublicationsLiveArgs) {
 export const Live: StoryObj<PublicationsLiveArgs> = {
   name: 'Live Dataset',
   args: {
-    paperCount: 150,
+    paperCount: 300,
   },
   argTypes: {
     paperCount: {

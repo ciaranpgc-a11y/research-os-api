@@ -924,13 +924,34 @@ function ApprovedTypographySection() {
         <div className="grid gap-4 p-4 lg:grid-cols-3">
           <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Main content</p>
-            <h2 className="house-title text-[1.8rem] leading-[2rem]">Publications</h2>
-            <p className="house-title-expander">Track your research metrics and manage your publication library.</p>
-            <p className="house-section-title mt-1">Publication insights</p>
-            <p className="house-text">This paragraph uses the main body text tier for core reading content.</p>
-            <p className="house-label">Metric label</p>
-            <p className="house-field-label">Field label</p>
-            <p className="house-field-helper">Helper copy and validation guidance live here.</p>
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 className="house-title text-[1.8rem] leading-[2rem]">Publications</h2>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-title</code>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-title-expander">Track your research metrics and manage your publication library.</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-title-expander</code>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-section-title mt-1">Publication insights</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-section-title</code>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-text">This paragraph uses the main body text tier for core reading content.</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-text</code>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-label">Metric label</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-label</code>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-field-label">Field label</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-field-label</code>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-field-helper">Helper copy and validation guidance live here.</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-field-helper</code>
+            </div>
           </article>
 
           <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-2">
@@ -958,22 +979,58 @@ function ApprovedTypographySection() {
 
           <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Drilldown</p>
-            <p className="house-section-title">Total publications</p>
-            <p className="house-drilldown-overline">Publication drilldown</p>
-            <p className="house-drilldown-section-label">Citation momentum</p>
-            <p className="house-drilldown-summary-stat-title">Current citation pace</p>
-            <p className="house-drilldown-summary-stat-value">+87%</p>
-            <p className="house-drilldown-caption">Compared with prior 12-month period.</p>
-            <p className="house-drilldown-note-soft">Context tier for non-primary explanatory text.</p>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-section-title">Total publications</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-section-title</code>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-drilldown-overline">Publication drilldown</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-drilldown-overline</code>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-drilldown-section-label">Citation momentum</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-drilldown-section-label</code>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-drilldown-summary-stat-title">Current citation pace</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-drilldown-summary-stat-title</code>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-drilldown-summary-stat-value">+87%</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-drilldown-summary-stat-value</code>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-drilldown-caption">Compared with prior 12-month period.</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-drilldown-caption</code>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-drilldown-note-soft">Context tier for non-primary explanatory text.</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-drilldown-note-soft</code>
+            </div>
           </article>
 
           <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Metric tiles</p>
-            <p className="house-metric-tile-title">Total publications</p>
-            <p className="house-metric-tile-value">150</p>
-            <p className="house-metric-subtitle">Lifetime publications</p>
-            <p className="house-metric-narrative">Last 5 years shown</p>
-            <p className="house-text-soft">Title/value gap token: <code>--metric-tile-title-value-gap</code></p>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-metric-tile-title">Total publications</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-metric-tile-title</code>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-metric-tile-value">150</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-metric-tile-value</code>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-metric-subtitle">Lifetime publications</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-metric-subtitle</code>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-metric-narrative">Last 5 years shown</p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-metric-narrative</code>
+            </div>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="house-text-soft">Title/value gap token: <code>--metric-tile-title-value-gap</code></p>
+              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-text-soft</code>
+            </div>
           </article>
         </div>
       </div>
