@@ -99,15 +99,16 @@ export function getAuthSessionToken(): string {
 
   const sessionValue = window.sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
   if (sessionValue) {
+    window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, sessionValue)
     return sessionValue
   }
   const localValue = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
   if (!localValue) {
     return ''
   }
-  // One-way migrate from legacy persistent storage to session storage.
+  // Keep both stores aligned for resilient local navigation/reloads.
   window.sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, localValue)
-  window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
+  window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, localValue)
   return localValue
 }
 
@@ -118,7 +119,7 @@ export function setAuthSessionToken(token: string): void {
     return
   }
   window.sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, clean)
-  window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
+  window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, clean)
 }
 
 export function clearAuthSessionToken(): void {

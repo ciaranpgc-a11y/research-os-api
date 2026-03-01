@@ -170,8 +170,8 @@
     --metric-tile-grid-gap: 0.95rem;
     --metric-tile-grid-padding: 0.75rem;
     --metric-tile-grid-row-min-height: 12.5rem;
-    --metric-tile-border-color: hsl(var(--stroke-strong) / 0.74);
-    --metric-tile-border-width: 2px;
+    --metric-tile-border-color: hsl(0 0% 0% / 0.92);
+    --metric-tile-border-width: 1px;
     --metric-tile-bg-rest: hsl(var(--tone-neutral-100) / 0.9);
     --metric-tile-bg-hover: hsl(var(--background));
     --metric-tile-bg-selected: hsl(var(--background));
