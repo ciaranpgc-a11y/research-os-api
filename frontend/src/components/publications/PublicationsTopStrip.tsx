@@ -5349,10 +5349,14 @@ function InfluentialTrendPanel({
     [hasValues, values],
   )
   const lineEntryKey = `${lineAnimationKey}|influential-line`
-  const lineExpanded = useUnifiedToggleBarAnimation(lineEntryKey, hasValues)
-  const lineTransitionDuration = tileChartDurationVar(useIsFirstChartEntry(lineEntryKey, hasValues))
+  const hasMeasuredPath = pathLength > 0
+  const lineExpanded = useUnifiedToggleBarAnimation(lineEntryKey, hasValues && hasMeasuredPath)
+  const lineTransitionDuration = tileChartDurationVar(
+    useIsFirstChartEntry(lineEntryKey, hasValues && hasMeasuredPath),
+  )
 
   useEffect(() => {
+    setPathLength(0)
     if (pathRef.current) {
       try {
         const length = pathRef.current.getTotalLength()
