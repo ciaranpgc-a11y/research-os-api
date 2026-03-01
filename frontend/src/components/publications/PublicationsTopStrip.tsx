@@ -2360,13 +2360,14 @@ function PublicationsPerYearChart({
               const leftPct = index * slotMetrics.slotStepPct
               const isActive = hoveredIndex === index
               const toneClass = resolveBarToneClass(bar.value, bar.current)
+              const baseScaleX = isActive ? 1.035 : 1
               const entryDelayMs = isEntryCycle && barsExpanded
                 ? TILE_MOTION_ENTRY_START_DELAY_MS + Math.min(TILE_MOTION_ENTRY_STAGGER_MAX_MS, Math.max(0, index) * TILE_MOTION_ENTRY_BAR_STAGGER_MS)
                 : 0
               return (
                 <div
                   key={`slot-${index}`}
-                  className={cn('absolute inset-y-0', enableWindowToggle && HOUSE_TOGGLE_CHART_MORPH_CLASS)}
+                  className={cn('absolute inset-y-0 z-[1]', enableWindowToggle && HOUSE_TOGGLE_CHART_MORPH_CLASS)}
                   style={{
                     left: `${leftPct}%`,
                     width: `${slotMetrics.slotWidthPct}%`,
@@ -2396,7 +2397,7 @@ function PublicationsPerYearChart({
                     )}
                     style={{
                       height: `${heightPct}%`,
-                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${baseScaleX}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
                       transitionDelay: `${entryDelayMs}ms`,
                       transitionDuration: barTransitionDuration,

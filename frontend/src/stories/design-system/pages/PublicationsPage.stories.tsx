@@ -43,6 +43,9 @@ const LIVE_DATASET_MIN_PAPER_COUNT = 24
 const LIVE_DATASET_MAX_PAPER_COUNT = 72
 const LIVE_DATASET_STEP = 8
 const LIVE_DATASET_DEFAULT_PROFILE: LiveDataProfile = 'volatility'
+const STRESS_DATASET_DEFAULT_PAPER_COUNT = 120
+const STRESS_DATASET_MIN_PAPER_COUNT = 6
+const STRESS_DATASET_MAX_PAPER_COUNT = 480
 const LIVE_SERIES_YEARS = [2021, 2022, 2023, 2024, 2025, 2026] as const
 const LIVE_MONTH_LABELS = ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb']
 const STRESS_TILE_OPTIONS: Array<{ key: string; label: string }> = [
@@ -60,21 +63,65 @@ const STRESS_SCENARIOS: PublicationsStressScenario[] = [
   {
     id: 'balanced-baseline',
     label: 'Balanced baseline',
-    paperCount: 48,
+    paperCount: 120,
     dataProfile: 'balanced',
     tileKey: 'this_year_vs_last',
   },
   {
     id: 'volatility-spike',
     label: 'Volatility spike',
-    paperCount: 72,
+    paperCount: 240,
     dataProfile: 'volatility',
     tileKey: 'momentum',
   },
   {
     id: 'outlier-tail',
     label: 'Outlier-heavy tail',
-    paperCount: 72,
+    paperCount: 240,
+    dataProfile: 'outlier-heavy',
+    tileKey: 'impact_concentration',
+  },
+]
+const STRESS_RANGE_SCENARIOS: PublicationsStressScenario[] = [
+  {
+    id: 'balanced-low',
+    label: 'Balanced • 6',
+    paperCount: 6,
+    dataProfile: 'balanced',
+    tileKey: 'this_year_vs_last',
+  },
+  {
+    id: 'balanced-high',
+    label: 'Balanced • 360',
+    paperCount: 360,
+    dataProfile: 'balanced',
+    tileKey: 'this_year_vs_last',
+  },
+  {
+    id: 'volatility-low',
+    label: 'Volatility • 6',
+    paperCount: 6,
+    dataProfile: 'volatility',
+    tileKey: 'momentum',
+  },
+  {
+    id: 'volatility-high',
+    label: 'Volatility • 360',
+    paperCount: 360,
+    dataProfile: 'volatility',
+    tileKey: 'momentum',
+  },
+  {
+    id: 'outlier-low',
+    label: 'Outlier • 6',
+    paperCount: 6,
+    dataProfile: 'outlier-heavy',
+    tileKey: 'impact_concentration',
+  },
+  {
+    id: 'outlier-high',
+    label: 'Outlier • 360',
+    paperCount: 360,
     dataProfile: 'outlier-heavy',
     tileKey: 'impact_concentration',
   },
@@ -732,12 +779,12 @@ function PublicationsCompleteLive({ paperCount, dataProfile }: PublicationsLiveA
 
 function PublicationsStressHarness() {
   ensurePublicationInsightsVisibleDefault()
-  const [paperCount, setPaperCount] = useState<number>(72)
+  const [paperCount, setPaperCount] = useState<number>(STRESS_DATASET_DEFAULT_PAPER_COUNT)
   const [dataProfile, setDataProfile] = useState<LiveDataProfile>('volatility')
   const [drilldownTileKey, setDrilldownTileKey] = useState<string>('momentum')
   const normalizedPaperCount = Math.max(
-    LIVE_DATASET_MIN_PAPER_COUNT,
-    Math.min(LIVE_DATASET_MAX_PAPER_COUNT, Math.round(Number(paperCount) || LIVE_DATASET_DEFAULT_PAPER_COUNT)),
+    STRESS_DATASET_MIN_PAPER_COUNT,
+    Math.min(STRESS_DATASET_MAX_PAPER_COUNT, Math.round(Number(paperCount) || STRESS_DATASET_DEFAULT_PAPER_COUNT)),
   )
 
   const fixture = useMemo(() => {
@@ -760,6 +807,22 @@ function PublicationsStressHarness() {
         <div className="rounded-md border border-border bg-card p-3">
           <div className="flex flex-wrap items-center gap-2">
             {STRESS_SCENARIOS.map((scenario) => (
+              <button
+                key={scenario.id}
+                type="button"
+                className="rounded-md border border-border bg-background px-3 py-1 text-xs font-semibold text-foreground hover:bg-accent"
+                onClick={() => {
+                  setPaperCount(scenario.paperCount)
+                  setDataProfile(scenario.dataProfile)
+                  setDrilldownTileKey(scenario.tileKey)
+                }}
+              >
+                {scenario.label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {STRESS_RANGE_SCENARIOS.map((scenario) => (
               <button
                 key={scenario.id}
                 type="button"
