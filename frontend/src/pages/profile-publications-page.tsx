@@ -1,22 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Hammer, Loader2, Paperclip, Share2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, ChevronsUpDown, Download, Eye, EyeOff, FileText, Filter, GripVertical, Hammer, Loader2, Paperclip, Search, Settings, Share2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import * as XLSX from 'xlsx'
 
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
-import { publicationsHouseDetail, publicationsHouseDrilldown, publicationsHouseHeadings, publicationsHouseMotion } from '@/components/publications/publications-house-style'
+import { publicationsHouseDrilldown, publicationsHouseHeadings, publicationsHouseMotion } from '@/components/publications/publications-house-style'
 import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
-import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
-import {
-  SelectPrimitive,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/primitives/SelectPrimitive'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { TablePrimitive as Table, TableBody, TableCell, TableHead as TableHeader, TableHeaderCell as TableHead, TableRow } from '@/components/primitives/TablePrimitive'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { houseForms, houseLayout, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
+import { houseLayout, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import {
   deletePublicationFile,
   downloadPublicationFile,
@@ -55,12 +48,28 @@ import type {
   PublicationsTopMetricsPayload,
 } from '@/types/impact'
 
-type PublicationFilterKey = 'all' | 'cited' | 'with_doi' | 'with_abstract' | 'with_pmid'
 type PublicationSortField = 'citations' | 'year' | 'title' | 'venue' | 'work_type'
 type SortDirection = 'asc' | 'desc'
 type PublicationDetailTab = 'overview' | 'content' | 'impact' | 'files' | 'ai'
 type PublicationTableColumnKey = 'title' | 'year' | 'venue' | 'work_type' | 'article_type' | 'citations'
 type PublicationTableColumnAlign = 'left' | 'center' | 'right'
+type PublicationTablePageSize = 25 | 50 | 100 | 'all'
+type PublicationTableDensity = 'compact' | 'default' | 'comfortable'
+type PublicationExportFormat = 'xlsx' | 'csv' | 'ris' | 'bibtex' | 'nbib' | 'endnote_xml'
+type PublicationExportScope = 'whole_library' | 'filtered_results' | 'current_page' | 'selected_rows'
+type PublicationExportFieldKey =
+  | 'title'
+  | 'authors'
+  | 'year'
+  | 'journal'
+  | 'doi'
+  | 'pmid'
+  | 'publication_type'
+  | 'article_type'
+  | 'citations'
+  | 'abstract'
+  | 'keywords'
+  | 'oa_status'
 type PublicationTableColumnPreference = {
   visible: boolean
   align: PublicationTableColumnAlign
@@ -93,12 +102,73 @@ const PUBLICATION_TABLE_COLUMN_DEFAULTS: Record<PublicationTableColumnKey, Publi
 }
 const PUBLICATION_TABLE_COLUMN_WIDTH_MIN = 80
 const PUBLICATION_TABLE_COLUMN_WIDTH_MAX = 640
+const PUBLICATION_EXPORT_FORMAT_OPTIONS: Array<{ value: PublicationExportFormat; label: string; extension: string; mimeType: string }> = [
+  {
+    value: 'xlsx',
+    label: 'Excel (.xlsx)',
+    extension: 'xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  },
+  {
+    value: 'csv',
+    label: 'CSV (.csv)',
+    extension: 'csv',
+    mimeType: 'text/csv;charset=utf-8',
+  },
+  {
+    value: 'ris',
+    label: 'RIS (EndNote / Zotero / Mendeley)',
+    extension: 'ris',
+    mimeType: 'application/x-research-info-systems',
+  },
+  {
+    value: 'bibtex',
+    label: 'BibTeX (.bib)',
+    extension: 'bib',
+    mimeType: 'application/x-bibtex',
+  },
+  {
+    value: 'nbib',
+    label: 'PubMed NBIB (.nbib)',
+    extension: 'nbib',
+    mimeType: 'text/plain;charset=utf-8',
+  },
+  {
+    value: 'endnote_xml',
+    label: 'EndNote XML (.xml)',
+    extension: 'xml',
+    mimeType: 'application/xml;charset=utf-8',
+  },
+]
+const PUBLICATION_EXPORT_SCOPE_OPTIONS: Array<{ value: PublicationExportScope; label: string }> = [
+  { value: 'whole_library', label: 'Whole library' },
+  { value: 'filtered_results', label: 'Current filtered results' },
+  { value: 'current_page', label: 'Current page' },
+  { value: 'selected_rows', label: 'Selected rows' },
+]
+const PUBLICATION_EXPORT_FIELD_OPTIONS: Array<{ key: PublicationExportFieldKey; label: string; defaultEnabled: boolean }> = [
+  { key: 'title', label: 'Title', defaultEnabled: true },
+  { key: 'authors', label: 'Authors', defaultEnabled: true },
+  { key: 'year', label: 'Year', defaultEnabled: true },
+  { key: 'journal', label: 'Journal', defaultEnabled: true },
+  { key: 'doi', label: 'DOI', defaultEnabled: true },
+  { key: 'pmid', label: 'PMID', defaultEnabled: true },
+  { key: 'publication_type', label: 'Publication type', defaultEnabled: true },
+  { key: 'article_type', label: 'Article type', defaultEnabled: true },
+  { key: 'citations', label: 'Citations', defaultEnabled: true },
+  { key: 'abstract', label: 'Abstract', defaultEnabled: false },
+  { key: 'keywords', label: 'Keywords', defaultEnabled: false },
+  { key: 'oa_status', label: 'Attachment status', defaultEnabled: false },
+]
 
 const INTEGRATIONS_USER_CACHE_KEY = 'aawe_integrations_user_cache'
 const PUBLICATIONS_ANALYTICS_CACHE_KEY = 'aawe_publications_analytics_cache'
 const PUBLICATIONS_TOP_METRICS_CACHE_KEY = 'aawe_publications_top_metrics_cache'
 const PUBLICATIONS_ACTIVE_SYNC_JOB_STORAGE_PREFIX = 'aawe_publications_active_sync_job:'
 const PUBLICATIONS_LIBRARY_COLUMNS_STORAGE_PREFIX = 'aawe_publications_library_columns:'
+const PUBLICATIONS_LIBRARY_PAGE_SIZE_STORAGE_PREFIX = 'aawe_publications_library_page_size:'
+const PUBLICATIONS_LIBRARY_COLUMN_ORDER_STORAGE_PREFIX = 'aawe_publications_library_column_order:'
+const PUBLICATIONS_LIBRARY_VISUAL_SETTINGS_STORAGE_PREFIX = 'aawe_publications_library_visual_settings:'
 const PUBLICATIONS_OA_AUTO_ATTEMPTED_STORAGE_PREFIX = 'aawe_publications_oa_auto_attempted:'
 const PUBLICATIONS_OA_STATUS_STORAGE_PREFIX = 'aawe_publications_oa_status:'
 const PUBLICATIONS_OA_AUTO_MAX_PER_PASS = 60
@@ -110,25 +180,14 @@ const HOUSE_PAGE_HEADER_CLASS = houseLayout.pageHeader
 const HOUSE_LEFT_BORDER_CLASS = houseSurfaces.leftBorder
 const HOUSE_LEFT_BORDER_PROFILE_CLASS = houseSurfaces.leftBorderProfile
 const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
-const HOUSE_INPUT_CLASS = houseForms.input
-const HOUSE_TABLE_FILTER_INPUT_CLASS = houseTables.filterInput
-const HOUSE_TABLE_FILTER_SELECT_CLASS = houseTables.filterSelect
 const HOUSE_TABLE_SORT_TRIGGER_CLASS = houseTables.sortTrigger
 const HOUSE_TABLE_HEAD_TEXT_CLASS = houseTypography.tableHead
 const HOUSE_TABLE_CELL_TEXT_CLASS = houseTypography.tableCell
 const HOUSE_BANNER_CLASS = houseSurfaces.banner
+const HOUSE_BANNER_INFO_CLASS = houseSurfaces.bannerInfo
 const HOUSE_BANNER_DANGER_CLASS = houseSurfaces.bannerDanger
 const HOUSE_BANNER_PUBLICATIONS_CLASS = houseSurfaces.bannerPublications
 const HOUSE_TABLE_SHELL_CLASS = houseSurfaces.tableShell
-const HOUSE_PUBLICATION_DETAIL_SCROLL_CLASS = publicationsHouseDetail.scroll
-const HOUSE_PUBLICATION_DETAIL_HEADER_CLASS = publicationsHouseDetail.header
-const HOUSE_PUBLICATION_DETAIL_TITLE_CLASS = publicationsHouseDetail.title
-const HOUSE_PUBLICATION_DETAIL_TABS_CLASS = publicationsHouseDetail.tabs
-const HOUSE_PUBLICATION_DETAIL_TAB_CLASS = publicationsHouseDetail.tab
-const HOUSE_PUBLICATION_DETAIL_BODY_CLASS = publicationsHouseDetail.body
-const HOUSE_PUBLICATION_DETAIL_SECTION_CLASS = publicationsHouseDetail.section
-const HOUSE_PUBLICATION_DETAIL_LABEL_CLASS = publicationsHouseDetail.sectionLabel
-const HOUSE_PUBLICATION_DETAIL_INFO_CLASS = publicationsHouseDetail.info
 const HOUSE_PUBLICATION_TEXT_CLASS = publicationsHouseHeadings.text
 const HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS = publicationsHouseDrilldown.statCard
 const HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS = publicationsHouseDrilldown.statTitle
@@ -510,6 +569,165 @@ function publicationsLibraryColumnsStorageKey(userId: string): string {
   return `${PUBLICATIONS_LIBRARY_COLUMNS_STORAGE_PREFIX}${userId}`
 }
 
+function publicationsLibraryPageSizeStorageKey(userId: string): string {
+  return `${PUBLICATIONS_LIBRARY_PAGE_SIZE_STORAGE_PREFIX}${userId}`
+}
+
+function publicationsLibraryColumnOrderStorageKey(userId: string): string {
+  return `${PUBLICATIONS_LIBRARY_COLUMN_ORDER_STORAGE_PREFIX}${userId}`
+}
+
+function publicationsLibraryVisualSettingsStorageKey(userId: string): string {
+  return `${PUBLICATIONS_LIBRARY_VISUAL_SETTINGS_STORAGE_PREFIX}${userId}`
+}
+
+function parsePublicationTablePageSize(value: unknown): PublicationTablePageSize {
+  const parsed = String(value || '').trim().toLowerCase()
+  if (parsed === '25') {
+    return 25
+  }
+  if (parsed === '50') {
+    return 50
+  }
+  if (parsed === '100') {
+    return 100
+  }
+  if (parsed === 'all') {
+    return 'all'
+  }
+  return 50
+}
+
+function loadPublicationTablePageSizePreference(userId: string): PublicationTablePageSize {
+  if (typeof window === 'undefined') {
+    return 50
+  }
+  const raw = window.localStorage.getItem(publicationsLibraryPageSizeStorageKey(userId))
+  return parsePublicationTablePageSize(raw)
+}
+
+function savePublicationTablePageSizePreference(userId: string, pageSize: PublicationTablePageSize): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(publicationsLibraryPageSizeStorageKey(userId), String(pageSize))
+}
+
+function loadPublicationTableColumnOrderPreference(userId: string): PublicationTableColumnKey[] {
+  if (typeof window === 'undefined') {
+    return [...PUBLICATION_TABLE_COLUMN_ORDER]
+  }
+  const raw = window.localStorage.getItem(publicationsLibraryColumnOrderStorageKey(userId))
+  if (!raw) {
+    return [...PUBLICATION_TABLE_COLUMN_ORDER]
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) {
+      return [...PUBLICATION_TABLE_COLUMN_ORDER]
+    }
+    const seen = new Set<PublicationTableColumnKey>()
+    const ordered = parsed
+      .map((value) => String(value || '').trim())
+      .filter((value): value is PublicationTableColumnKey => (
+        PUBLICATION_TABLE_COLUMN_ORDER.includes(value as PublicationTableColumnKey)
+      ))
+      .filter((value) => {
+        if (seen.has(value)) {
+          return false
+        }
+        seen.add(value)
+        return true
+      })
+    for (const key of PUBLICATION_TABLE_COLUMN_ORDER) {
+      if (!seen.has(key)) {
+        ordered.push(key)
+      }
+    }
+    return ordered
+  } catch {
+    return [...PUBLICATION_TABLE_COLUMN_ORDER]
+  }
+}
+
+function savePublicationTableColumnOrderPreference(userId: string, order: PublicationTableColumnKey[]): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  const payload = order.filter((key, index) => order.indexOf(key) === index)
+  window.localStorage.setItem(publicationsLibraryColumnOrderStorageKey(userId), JSON.stringify(payload))
+}
+
+function parsePublicationTableDensity(value: unknown): PublicationTableDensity {
+  const parsed = String(value || '').trim().toLowerCase()
+  if (parsed === 'compact' || parsed === 'comfortable' || parsed === 'default') {
+    return parsed
+  }
+  return 'default'
+}
+
+function loadPublicationTableVisualSettingsPreference(userId: string): {
+  density: PublicationTableDensity
+  alternateRowColoring: boolean
+  metricHighlights: boolean
+  attachmentStatusVisible: boolean
+} {
+  if (typeof window === 'undefined') {
+    return {
+      density: 'default',
+      alternateRowColoring: true,
+      metricHighlights: true,
+      attachmentStatusVisible: true,
+    }
+  }
+  const raw = window.localStorage.getItem(publicationsLibraryVisualSettingsStorageKey(userId))
+  if (!raw) {
+    return {
+      density: 'default',
+      alternateRowColoring: true,
+      metricHighlights: true,
+      attachmentStatusVisible: true,
+    }
+  }
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    return {
+      density: parsePublicationTableDensity(parsed.density),
+      alternateRowColoring: typeof parsed.alternateRowColoring === 'boolean' ? parsed.alternateRowColoring : true,
+      metricHighlights: typeof parsed.metricHighlights === 'boolean' ? parsed.metricHighlights : true,
+      attachmentStatusVisible: typeof parsed.attachmentStatusVisible === 'boolean' ? parsed.attachmentStatusVisible : true,
+    }
+  } catch {
+    return {
+      density: 'default',
+      alternateRowColoring: true,
+      metricHighlights: true,
+      attachmentStatusVisible: true,
+    }
+  }
+}
+
+function savePublicationTableVisualSettingsPreference(input: {
+  userId: string
+  density: PublicationTableDensity
+  alternateRowColoring: boolean
+  metricHighlights: boolean
+  attachmentStatusVisible: boolean
+}): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(
+    publicationsLibraryVisualSettingsStorageKey(input.userId),
+    JSON.stringify({
+      density: input.density,
+      alternateRowColoring: input.alternateRowColoring,
+      metricHighlights: input.metricHighlights,
+      attachmentStatusVisible: input.attachmentStatusVisible,
+    }),
+  )
+}
+
 function clampPublicationTableColumnWidth(value: number, fallback: number): number {
   if (!Number.isFinite(value)) {
     return fallback
@@ -518,6 +736,40 @@ function clampPublicationTableColumnWidth(value: number, fallback: number): numb
     PUBLICATION_TABLE_COLUMN_WIDTH_MIN,
     Math.min(PUBLICATION_TABLE_COLUMN_WIDTH_MAX, Math.round(value)),
   )
+}
+
+function clampPublicationTableAdjacentResize(input: {
+  primaryStartWidth: number
+  adjacentStartWidth: number
+  deltaPx: number
+}): { primaryWidth: number; adjacentWidth: number } {
+  const min = PUBLICATION_TABLE_COLUMN_WIDTH_MIN
+  const max = PUBLICATION_TABLE_COLUMN_WIDTH_MAX
+  const pairTotal = Math.max(0, Math.round(input.primaryStartWidth + input.adjacentStartWidth))
+  let primaryWidth = Math.round(input.primaryStartWidth + input.deltaPx)
+  primaryWidth = Math.max(min, Math.min(max, primaryWidth))
+  let adjacentWidth = pairTotal - primaryWidth
+
+  if (adjacentWidth < min) {
+    adjacentWidth = min
+    primaryWidth = pairTotal - adjacentWidth
+  } else if (adjacentWidth > max) {
+    adjacentWidth = max
+    primaryWidth = pairTotal - adjacentWidth
+  }
+
+  if (primaryWidth < min) {
+    primaryWidth = min
+    adjacentWidth = pairTotal - primaryWidth
+  } else if (primaryWidth > max) {
+    primaryWidth = max
+    adjacentWidth = pairTotal - primaryWidth
+  }
+
+  return {
+    primaryWidth: clampPublicationTableColumnWidth(primaryWidth, input.primaryStartWidth),
+    adjacentWidth: clampPublicationTableColumnWidth(adjacentWidth, input.adjacentStartWidth),
+  }
 }
 
 function parsePublicationTableColumnAlign(value: unknown): PublicationTableColumnAlign {
@@ -557,9 +809,9 @@ function loadPublicationTableColumnPreferences(userId: string): Record<Publicati
       }
       const payload = candidate as Record<string, unknown>
       const parsedAlign = parsePublicationTableColumnAlign(payload.align)
+      const parsedVisible = typeof payload.visible === 'boolean' ? payload.visible : PUBLICATION_TABLE_COLUMN_DEFAULTS[key].visible
       defaults[key] = {
-        // Keep all columns visible now that the column-controls UI is removed.
-        visible: true,
+        visible: parsedVisible,
         // Migrate prior centered defaults to left alignment for visual consistency.
         align: parsedAlign === 'center' ? 'left' : parsedAlign,
         width: clampPublicationTableColumnWidth(
@@ -567,6 +819,9 @@ function loadPublicationTableColumnPreferences(userId: string): Record<Publicati
           PUBLICATION_TABLE_COLUMN_DEFAULTS[key].width,
         ),
       }
+    }
+    if (!PUBLICATION_TABLE_COLUMN_ORDER.some((column) => defaults[column].visible)) {
+      defaults.title.visible = true
     }
   } catch {
     return defaults
@@ -1128,6 +1383,123 @@ function formatVancouverCitation(input: {
   return `${authorText} ${title}. ${journal}. ${year}.${doi ? ` doi:${doi}.` : ''}`
 }
 
+function createDefaultPublicationExportFieldSelection(): Record<PublicationExportFieldKey, boolean> {
+  return PUBLICATION_EXPORT_FIELD_OPTIONS.reduce<Record<PublicationExportFieldKey, boolean>>(
+    (accumulator, option) => {
+      accumulator[option.key] = option.defaultEnabled
+      return accumulator
+    },
+    {
+      title: true,
+      authors: true,
+      year: true,
+      journal: true,
+      doi: true,
+      pmid: true,
+      publication_type: true,
+      article_type: true,
+      citations: true,
+      abstract: false,
+      keywords: false,
+      oa_status: false,
+    },
+  )
+}
+
+function publicationExportFileBaseName(scope: PublicationExportScope): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `publication-library-${scope}-${year}${month}${day}`
+}
+
+function normalizePublicationExportText(value: unknown): string {
+  return String(value ?? '').replace(/\s+/g, ' ').trim()
+}
+
+function csvEscape(value: string): string {
+  const clean = String(value ?? '')
+  if (/[",\r\n]/.test(clean)) {
+    return `"${clean.replace(/"/g, '""')}"`
+  }
+  return clean
+}
+
+function xmlEscape(value: string): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
+function bibtexEscape(value: string): string {
+  return String(value ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/\{/g, '\\{')
+    .replace(/\}/g, '\\}')
+}
+
+function downloadBlob(filename: string, blob: Blob): void {
+  const url = window.URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  document.body.removeChild(anchor)
+  window.setTimeout(() => {
+    window.URL.revokeObjectURL(url)
+  }, 0)
+}
+
+function publicationExportAuthors(work: PersonaWork): string[] {
+  const raw = (work as Record<string, unknown>).authors
+  if (Array.isArray(raw)) {
+    const names = raw
+      .map((item) => {
+        if (typeof item === 'string') {
+          return item
+        }
+        if (item && typeof item === 'object') {
+          const candidate = item as Record<string, unknown>
+          return String(candidate.name || candidate.full_name || '').trim()
+        }
+        return ''
+      })
+      .map((item) => item.trim())
+      .filter(Boolean)
+    if (names.length > 0) {
+      return names
+    }
+  }
+  if (typeof raw === 'string') {
+    return raw
+      .split(/[,;]+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+  return []
+}
+
+function publicationExportKeywords(work: PersonaWork): string[] {
+  const raw = (work as Record<string, unknown>).keywords
+  if (Array.isArray(raw)) {
+    return raw
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+  }
+  if (typeof raw === 'string') {
+    return raw
+      .split(/[,;]+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+  return []
+}
+
 function normalizeAuthorName(value: string): string {
   return value
     .toLowerCase()
@@ -1343,9 +1715,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [, setAnalyticsTopDrivers] = useState<PublicationsAnalyticsTopDriversPayload | null>(initialCachedAnalyticsTopDrivers)
   const [topMetricsResponse, setTopMetricsResponse] = useState<PublicationsTopMetricsPayload | null>(initialCachedTopMetricsResponse)
   const [query, setQuery] = useState('')
-  const [filterKey, setFilterKey] = useState<PublicationFilterKey>('all')
-  const [typeFilter, setTypeFilter] = useState<string>('all')
   const [publicationTableLayoutWidth, setPublicationTableLayoutWidth] = useState(1100)
+  const [publicationTableColumnOrder, setPublicationTableColumnOrder] = useState<PublicationTableColumnKey[]>(() => [...PUBLICATION_TABLE_COLUMN_ORDER])
   const [publicationTableColumns, setPublicationTableColumns] = useState<Record<PublicationTableColumnKey, PublicationTableColumnPreference>>(
     () => createDefaultPublicationTableColumnPreferences(),
   )
@@ -1381,6 +1752,25 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null)
   const [filesDragOver, setFilesDragOver] = useState(false)
   const [publicationLibraryVisible, setPublicationLibraryVisible] = useState(true)
+  const [publicationLibraryFiltersVisible, setPublicationLibraryFiltersVisible] = useState(false)
+  const [publicationLibrarySearchVisible, setPublicationLibrarySearchVisible] = useState(false)
+  const [publicationLibraryDownloadVisible, setPublicationLibraryDownloadVisible] = useState(false)
+  const [publicationLibrarySettingsVisible, setPublicationLibrarySettingsVisible] = useState(false)
+  const [publicationLibraryDownloadFormat, setPublicationLibraryDownloadFormat] = useState<PublicationExportFormat>('xlsx')
+  const [publicationLibraryDownloadScope, setPublicationLibraryDownloadScope] = useState<PublicationExportScope>('filtered_results')
+  const [publicationLibraryDownloadFields, setPublicationLibraryDownloadFields] = useState<Record<PublicationExportFieldKey, boolean>>(
+    () => createDefaultPublicationExportFieldSelection(),
+  )
+  const [publicationLibraryPageSize, setPublicationLibraryPageSize] = useState<PublicationTablePageSize>(50)
+  const [publicationLibraryPage, setPublicationLibraryPage] = useState(1)
+  const [publicationTableDensity, setPublicationTableDensity] = useState<PublicationTableDensity>('default')
+  const [publicationTableAlternateRowColoring, setPublicationTableAlternateRowColoring] = useState(true)
+  const [publicationTableMetricHighlights, setPublicationTableMetricHighlights] = useState(true)
+  const [publicationTableAttachmentStatusVisible, setPublicationTableAttachmentStatusVisible] = useState(true)
+  const [publicationTableResizingColumn, setPublicationTableResizingColumn] = useState<PublicationTableColumnKey | null>(null)
+  const [publicationTableDraggingColumn, setPublicationTableDraggingColumn] = useState<PublicationTableColumnKey | null>(null)
+  const [selectedPublicationTypes, setSelectedPublicationTypes] = useState<string[]>([])
+  const [selectedArticleTypes, setSelectedArticleTypes] = useState<string[]>([])
   const [publicationLibraryToolsOpen, setPublicationLibraryToolsOpen] = useState(false)
   const autoOaInFlightRef = useRef(false)
   const filesWarmupInFlightRef = useRef<Set<string>>(new Set())
@@ -1388,6 +1778,21 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const autoOaStatusClearTimerRef = useRef<number | null>(null)
   const localTopMetricsBootstrapAttemptedRef = useRef(false)
   const publicationTableLayoutRef = useRef<HTMLDivElement | null>(null)
+  const publicationLibraryFilterButtonRef = useRef<HTMLButtonElement | null>(null)
+  const publicationLibraryFilterPopoverRef = useRef<HTMLDivElement | null>(null)
+  const publicationLibrarySearchButtonRef = useRef<HTMLButtonElement | null>(null)
+  const publicationLibrarySearchPopoverRef = useRef<HTMLDivElement | null>(null)
+  const publicationLibraryDownloadButtonRef = useRef<HTMLButtonElement | null>(null)
+  const publicationLibraryDownloadPopoverRef = useRef<HTMLDivElement | null>(null)
+  const publicationLibrarySettingsButtonRef = useRef<HTMLButtonElement | null>(null)
+  const publicationLibrarySettingsPopoverRef = useRef<HTMLDivElement | null>(null)
+  const publicationTableResizeRef = useRef<{
+    column: PublicationTableColumnKey
+    adjacentColumn: PublicationTableColumnKey
+    startX: number
+    startWidth: number
+    adjacentStartWidth: number
+  } | null>(null)
   const filePickerRef = useRef<HTMLInputElement | null>(null)
 
   const loadData = useCallback(async (
@@ -1540,6 +1945,32 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     if (!user?.id) {
       return
     }
+    setPublicationTableColumnOrder(loadPublicationTableColumnOrderPreference(user.id))
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) {
+      return
+    }
+    setPublicationLibraryPageSize(loadPublicationTablePageSizePreference(user.id))
+    setPublicationLibraryPage(1)
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) {
+      return
+    }
+    const settings = loadPublicationTableVisualSettingsPreference(user.id)
+    setPublicationTableDensity(settings.density)
+    setPublicationTableAlternateRowColoring(settings.alternateRowColoring)
+    setPublicationTableMetricHighlights(settings.metricHighlights)
+    setPublicationTableAttachmentStatusVisible(settings.attachmentStatusVisible)
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) {
+      return
+    }
     setOaPdfStatusByWorkId(loadPublicationsOaStatus(user.id))
   }, [user?.id])
 
@@ -1549,6 +1980,39 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     savePublicationTableColumnPreferences(user.id, publicationTableColumns)
   }, [publicationTableColumns, user?.id])
+
+  useEffect(() => {
+    if (!user?.id) {
+      return
+    }
+    savePublicationTableColumnOrderPreference(user.id, publicationTableColumnOrder)
+  }, [publicationTableColumnOrder, user?.id])
+
+  useEffect(() => {
+    if (!user?.id) {
+      return
+    }
+    savePublicationTablePageSizePreference(user.id, publicationLibraryPageSize)
+  }, [publicationLibraryPageSize, user?.id])
+
+  useEffect(() => {
+    if (!user?.id) {
+      return
+    }
+    savePublicationTableVisualSettingsPreference({
+      userId: user.id,
+      density: publicationTableDensity,
+      alternateRowColoring: publicationTableAlternateRowColoring,
+      metricHighlights: publicationTableMetricHighlights,
+      attachmentStatusVisible: publicationTableAttachmentStatusVisible,
+    })
+  }, [
+    publicationTableAlternateRowColoring,
+    publicationTableAttachmentStatusVisible,
+    publicationTableDensity,
+    publicationTableMetricHighlights,
+    user?.id,
+  ])
 
   useEffect(() => {
     if (!user?.id) {
@@ -1580,6 +2044,48 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       observer.disconnect()
     }
   }, [])
+
+  useEffect(() => {
+    if (!publicationLibraryFiltersVisible && !publicationLibrarySearchVisible && !publicationLibraryDownloadVisible && !publicationLibrarySettingsVisible) {
+      return
+    }
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null
+      if (!target) {
+        return
+      }
+      const popoverNode = publicationLibraryFilterPopoverRef.current
+      const buttonNode = publicationLibraryFilterButtonRef.current
+      const searchPopoverNode = publicationLibrarySearchPopoverRef.current
+      const searchButtonNode = publicationLibrarySearchButtonRef.current
+      const downloadPopoverNode = publicationLibraryDownloadPopoverRef.current
+      const downloadButtonNode = publicationLibraryDownloadButtonRef.current
+      const settingsPopoverNode = publicationLibrarySettingsPopoverRef.current
+      const settingsButtonNode = publicationLibrarySettingsButtonRef.current
+      if (
+        (popoverNode && popoverNode.contains(target)) ||
+        (buttonNode && buttonNode.contains(target)) ||
+        (searchPopoverNode && searchPopoverNode.contains(target)) ||
+        (searchButtonNode && searchButtonNode.contains(target)) ||
+        (downloadPopoverNode && downloadPopoverNode.contains(target)) ||
+        (downloadButtonNode && downloadButtonNode.contains(target)) ||
+        (settingsPopoverNode && settingsPopoverNode.contains(target)) ||
+        (settingsButtonNode && settingsButtonNode.contains(target))
+      ) {
+        return
+      }
+      setPublicationLibraryFiltersVisible(false)
+      setPublicationLibrarySearchVisible(false)
+      setPublicationLibraryDownloadVisible(false)
+      setPublicationLibrarySettingsVisible(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('touchstart', onPointerDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('touchstart', onPointerDown)
+    }
+  }, [publicationLibraryDownloadVisible, publicationLibraryFiltersVisible, publicationLibrarySearchVisible, publicationLibrarySettingsVisible])
 
   const setPaneLoading = useCallback((workId: string, tab: PublicationDetailTab, loadingValue: boolean) => {
     const key = publicationPaneKey(workId, tab)
@@ -1983,10 +2489,21 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     return map
   }, [personaState?.metrics.works])
 
-  const typeFilterOptions = useMemo(() => {
+  const publicationTypeFilterOptions = useMemo(() => {
     const values = new Set<string>()
     for (const work of personaState?.works ?? []) {
       const key = derivePublicationTypeLabel(work)
+      if (key) {
+        values.add(key)
+      }
+    }
+    return Array.from(values).sort((left, right) => left.localeCompare(right))
+  }, [personaState?.works])
+
+  const articleTypeFilterOptions = useMemo(() => {
+    const values = new Set<string>()
+    for (const work of personaState?.works ?? []) {
+      const key = deriveArticleTypeLabel(work)
       if (key) {
         values.add(key)
       }
@@ -2008,20 +2525,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       if (!matchesQuery) {
         return false
       }
-      if (typeFilter !== 'all' && derivePublicationTypeLabel(work) !== typeFilter) {
+      const publicationType = derivePublicationTypeLabel(work)
+      if (selectedPublicationTypes.length > 0 && !selectedPublicationTypes.includes(publicationType)) {
         return false
       }
-      if (filterKey === 'cited') {
-        return Number(metricsByWorkId.get(work.id)?.citations || 0) > 0
-      }
-      if (filterKey === 'with_doi') {
-        return Boolean((work.doi || '').trim())
-      }
-      if (filterKey === 'with_abstract') {
-        return Boolean((work.abstract || '').trim())
-      }
-      if (filterKey === 'with_pmid') {
-        return Boolean((work.pmid || '').trim())
+      const articleType = deriveArticleTypeLabel(work)
+      if (selectedArticleTypes.length > 0 && !selectedArticleTypes.includes(articleType)) {
+        return false
       }
       return true
     })
@@ -2050,7 +2560,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       )
     })
     return filtered
-  }, [filterKey, metricsByWorkId, personaState?.works, query, sortDirection, sortField, typeFilter])
+  }, [metricsByWorkId, personaState?.works, query, selectedArticleTypes, selectedPublicationTypes, sortDirection, sortField])
 
   useEffect(() => {
     const works = personaState?.works ?? []
@@ -2071,23 +2581,64 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     })
   }, [metricsByWorkId, personaState?.works, publicationTableLayoutWidth])
 
+  const totalFilteredPublicationWorks = filteredWorks.length
+  const publicationLibraryTotalPages = useMemo(() => {
+    if (publicationLibraryPageSize === 'all') {
+      return 1
+    }
+    return Math.max(1, Math.ceil(totalFilteredPublicationWorks / publicationLibraryPageSize))
+  }, [publicationLibraryPageSize, totalFilteredPublicationWorks])
+
+  useEffect(() => {
+    setPublicationLibraryPage((current) => {
+      if (publicationLibraryPageSize === 'all') {
+        return 1
+      }
+      const next = Math.max(1, Math.min(current, publicationLibraryTotalPages))
+      return next
+    })
+  }, [publicationLibraryPageSize, publicationLibraryTotalPages])
+
+  const pagedFilteredWorks = useMemo(() => {
+    if (publicationLibraryPageSize === 'all') {
+      return filteredWorks
+    }
+    const safePage = Math.max(1, Math.min(publicationLibraryPage, publicationLibraryTotalPages))
+    const startIndex = (safePage - 1) * publicationLibraryPageSize
+    return filteredWorks.slice(startIndex, startIndex + publicationLibraryPageSize)
+  }, [filteredWorks, publicationLibraryPage, publicationLibraryPageSize, publicationLibraryTotalPages])
+
+  const publicationLibraryRangeStart = totalFilteredPublicationWorks === 0
+    ? 0
+    : publicationLibraryPageSize === 'all'
+      ? 1
+      : (Math.max(1, Math.min(publicationLibraryPage, publicationLibraryTotalPages)) - 1) * publicationLibraryPageSize + 1
+  const publicationLibraryRangeEnd = totalFilteredPublicationWorks === 0
+    ? 0
+    : publicationLibraryPageSize === 'all'
+      ? totalFilteredPublicationWorks
+      : Math.min(
+        totalFilteredPublicationWorks,
+        Math.max(1, Math.min(publicationLibraryPage, publicationLibraryTotalPages)) * publicationLibraryPageSize,
+      )
+
   const visiblePublicationTableColumns = useMemo(() => (
-    PUBLICATION_TABLE_COLUMN_ORDER.filter((key) => publicationTableColumns[key].visible)
-  ), [publicationTableColumns])
+    publicationTableColumnOrder.filter((key) => publicationTableColumns[key].visible)
+  ), [publicationTableColumnOrder, publicationTableColumns])
 
   useEffect(() => {
     const sortColumn = sortField as PublicationTableColumnKey
     if (publicationTableColumns[sortColumn]?.visible) {
       return
     }
-    const fallbackColumn = PUBLICATION_TABLE_COLUMN_ORDER.find(
+    const fallbackColumn = publicationTableColumnOrder.find(
       (column) => publicationTableColumns[column].visible,
     )
     if (!fallbackColumn) {
       return
     }
     setSortField(PUBLICATION_TABLE_COLUMN_DEFINITIONS[fallbackColumn].sortField)
-  }, [publicationTableColumns, sortField])
+  }, [publicationTableColumnOrder, publicationTableColumns, sortField])
 
   useEffect(() => {
     if (filteredWorks.length === 0) {
@@ -2104,6 +2655,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return null
     })
   }, [filteredWorks])
+
+  useEffect(() => {
+    if (publicationLibraryDownloadScope !== 'selected_rows') {
+      return
+    }
+    if (selectedWorkId) {
+      return
+    }
+    setPublicationLibraryDownloadScope('filtered_results')
+  }, [publicationLibraryDownloadScope, selectedWorkId])
 
   useEffect(() => {
     if (isFixtureMode || !token || !user?.id || autoOaInFlightRef.current) {
@@ -2423,6 +2984,500 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setSortDirection('desc')
   }
 
+  const onReorderPublicationColumn = useCallback((fromColumn: PublicationTableColumnKey, toColumn: PublicationTableColumnKey) => {
+    if (fromColumn === toColumn) {
+      return
+    }
+    setPublicationTableColumnOrder((current) => {
+      const visibleOrder = current.filter((columnKey) => publicationTableColumns[columnKey].visible)
+      const fromIndex = visibleOrder.indexOf(fromColumn)
+      const toIndex = visibleOrder.indexOf(toColumn)
+      if (fromIndex < 0 || toIndex < 0) {
+        return current
+      }
+      const nextVisibleOrder = [...visibleOrder]
+      nextVisibleOrder.splice(fromIndex, 1)
+      nextVisibleOrder.splice(toIndex, 0, fromColumn)
+      const queue = [...nextVisibleOrder]
+      return current.map((columnKey) => (
+        publicationTableColumns[columnKey].visible ? (queue.shift() || columnKey) : columnKey
+      ))
+    })
+  }, [publicationTableColumns])
+
+  const onTogglePublicationColumnVisibility = useCallback((column: PublicationTableColumnKey) => {
+    setPublicationTableColumns((current) => {
+      const visibleCount = PUBLICATION_TABLE_COLUMN_ORDER.reduce(
+        (count, key) => count + (current[key].visible ? 1 : 0),
+        0,
+      )
+      if (current[column].visible && visibleCount <= 1) {
+        return current
+      }
+      return {
+        ...current,
+        [column]: {
+          ...current[column],
+          visible: !current[column].visible,
+        },
+      }
+    })
+  }, [])
+
+  const onResetPublicationTableSettings = useCallback(() => {
+    setPublicationTableColumns((current) => (
+      PUBLICATION_TABLE_COLUMN_ORDER.reduce<Record<PublicationTableColumnKey, PublicationTableColumnPreference>>(
+        (accumulator, column) => {
+          accumulator[column] = {
+            ...current[column],
+            visible: true,
+          }
+          return accumulator
+        },
+        {
+          title: { ...current.title },
+          year: { ...current.year },
+          venue: { ...current.venue },
+          work_type: { ...current.work_type },
+          article_type: { ...current.article_type },
+          citations: { ...current.citations },
+        },
+      )
+    ))
+    setPublicationTableColumnOrder([...PUBLICATION_TABLE_COLUMN_ORDER])
+    setPublicationTableDensity('default')
+    setPublicationTableAlternateRowColoring(true)
+    setPublicationTableMetricHighlights(true)
+    setPublicationTableAttachmentStatusVisible(true)
+    setPublicationLibraryPageSize(50)
+    setPublicationLibraryPage(1)
+  }, [])
+
+  const onAutoAdjustPublicationTableWidths = useCallback(() => {
+    const works = filteredWorks.length > 0 ? filteredWorks : (personaState?.works ?? [])
+    if (works.length === 0) {
+      return
+    }
+    setPublicationTableColumns((current) => {
+      const next = autoFitPublicationTableColumns({
+        works,
+        metricsByWorkId,
+        current,
+        availableWidth: publicationTableLayoutWidth,
+      })
+      if (publicationTableColumnsEqual(current, next)) {
+        return current
+      }
+      return next
+    })
+  }, [filteredWorks, metricsByWorkId, personaState?.works, publicationTableLayoutWidth])
+
+  const onDownloadPublicationLibrary = useCallback(() => {
+    const selectedFieldKeys = PUBLICATION_EXPORT_FIELD_OPTIONS
+      .map((option) => option.key)
+      .filter((key) => publicationLibraryDownloadFields[key])
+    if (selectedFieldKeys.length === 0) {
+      setError('Select at least one field to export.')
+      return
+    }
+
+    const wholeLibraryWorks = personaState?.works ?? []
+    const selectedScopeWorks = (() => {
+      if (publicationLibraryDownloadScope === 'whole_library') {
+        return wholeLibraryWorks
+      }
+      if (publicationLibraryDownloadScope === 'filtered_results') {
+        return filteredWorks
+      }
+      if (publicationLibraryDownloadScope === 'current_page') {
+        return pagedFilteredWorks
+      }
+      if (!selectedWorkId) {
+        return []
+      }
+      return wholeLibraryWorks.filter((work) => work.id === selectedWorkId)
+    })()
+
+    if (selectedScopeWorks.length === 0) {
+      setError('No publications available for the selected export scope.')
+      return
+    }
+
+    const exportRows = selectedScopeWorks.map((work) => {
+      const authors = publicationExportAuthors(work)
+      const keywords = publicationExportKeywords(work)
+      const citations = Number(metricsByWorkId.get(work.id)?.citations || 0)
+      const publicationType = derivePublicationTypeLabel(work)
+      const articleType = deriveArticleTypeLabel(work)
+      const oaRecord = oaPdfStatusByWorkId[work.id] || null
+      const oaStatus = publicationOaStatusLabel(
+        publicationOaStatusVisualStatus(work, oaRecord),
+        Boolean((work.doi || '').trim()),
+      )
+      return {
+        key: `pub_${String(work.year || 'nd')}_${String(work.id || '').replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 24)}`,
+        title: normalizePublicationExportText(work.title || ''),
+        authors,
+        year: work.year ?? null,
+        journal: normalizePublicationExportText(formatJournalName(work.venue_name)),
+        doi: normalizePublicationExportText(work.doi || ''),
+        pmid: normalizePublicationExportText(work.pmid || ''),
+        publicationType,
+        articleType,
+        citations,
+        abstract: normalizePublicationExportText(work.abstract || ''),
+        keywords,
+        oaStatus,
+      }
+    })
+
+    const fieldLabelByKey = PUBLICATION_EXPORT_FIELD_OPTIONS.reduce<Record<PublicationExportFieldKey, string>>(
+      (accumulator, option) => {
+        accumulator[option.key] = option.label
+        return accumulator
+      },
+      {
+        title: 'Title',
+        authors: 'Authors',
+        year: 'Year',
+        journal: 'Journal',
+        doi: 'DOI',
+        pmid: 'PMID',
+        publication_type: 'Publication type',
+        article_type: 'Article type',
+        citations: 'Citations',
+        abstract: 'Abstract',
+        keywords: 'Keywords',
+        oa_status: 'Attachment status',
+      },
+    )
+
+    const resolveFieldValue = (
+      row: (typeof exportRows)[number],
+      key: PublicationExportFieldKey,
+    ): string | number => {
+      if (key === 'title') {
+        return row.title
+      }
+      if (key === 'authors') {
+        return row.authors.join('; ')
+      }
+      if (key === 'year') {
+        return row.year ?? ''
+      }
+      if (key === 'journal') {
+        return row.journal
+      }
+      if (key === 'doi') {
+        return row.doi
+      }
+      if (key === 'pmid') {
+        return row.pmid
+      }
+      if (key === 'publication_type') {
+        return row.publicationType
+      }
+      if (key === 'article_type') {
+        return row.articleType
+      }
+      if (key === 'citations') {
+        return row.citations
+      }
+      if (key === 'abstract') {
+        return row.abstract
+      }
+      if (key === 'keywords') {
+        return row.keywords.join('; ')
+      }
+      return row.oaStatus
+    }
+
+    const exportOption = PUBLICATION_EXPORT_FORMAT_OPTIONS.find((option) => option.value === publicationLibraryDownloadFormat)
+    if (!exportOption) {
+      setError('Unsupported export format.')
+      return
+    }
+
+    const fileBaseName = publicationExportFileBaseName(publicationLibraryDownloadScope)
+    const filename = `${fileBaseName}.${exportOption.extension}`
+
+    try {
+      if (publicationLibraryDownloadFormat === 'xlsx') {
+        const xlsxRows = exportRows.map((row) => (
+          selectedFieldKeys.reduce<Record<string, string | number>>((accumulator, key) => {
+            accumulator[fieldLabelByKey[key]] = resolveFieldValue(row, key)
+            return accumulator
+          }, {})
+        ))
+        const worksheet = XLSX.utils.json_to_sheet(xlsxRows)
+        const workbook = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Publications')
+        const content = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+        downloadBlob(filename, new Blob([content], { type: exportOption.mimeType }))
+      } else if (publicationLibraryDownloadFormat === 'csv') {
+        const header = selectedFieldKeys.map((key) => csvEscape(fieldLabelByKey[key])).join(',')
+        const body = exportRows.map((row) => (
+          selectedFieldKeys
+            .map((key) => csvEscape(String(resolveFieldValue(row, key))))
+            .join(',')
+        ))
+        const content = [header, ...body].join('\n')
+        downloadBlob(filename, new Blob([content], { type: exportOption.mimeType }))
+      } else if (publicationLibraryDownloadFormat === 'ris') {
+        const lines: string[] = []
+        for (const row of exportRows) {
+          lines.push('TY  - JOUR')
+          if (publicationLibraryDownloadFields.title && row.title) lines.push(`TI  - ${row.title}`)
+          if (publicationLibraryDownloadFields.authors) {
+            for (const author of row.authors) {
+              lines.push(`AU  - ${author}`)
+            }
+          }
+          if (publicationLibraryDownloadFields.year && row.year) lines.push(`PY  - ${row.year}`)
+          if (publicationLibraryDownloadFields.journal && row.journal) lines.push(`JO  - ${row.journal}`)
+          if (publicationLibraryDownloadFields.doi && row.doi) lines.push(`DO  - ${row.doi}`)
+          if (publicationLibraryDownloadFields.pmid && row.pmid) lines.push(`AN  - ${row.pmid}`)
+          if (publicationLibraryDownloadFields.abstract && row.abstract) lines.push(`N2  - ${row.abstract}`)
+          if (publicationLibraryDownloadFields.keywords) {
+            for (const keyword of row.keywords) {
+              lines.push(`KW  - ${keyword}`)
+            }
+          }
+          if (publicationLibraryDownloadFields.citations) lines.push(`N1  - Citations: ${row.citations}`)
+          if (publicationLibraryDownloadFields.oa_status) lines.push(`N1  - Attachment status: ${row.oaStatus}`)
+          lines.push('ER  -')
+          lines.push('')
+        }
+        downloadBlob(filename, new Blob([lines.join('\n')], { type: exportOption.mimeType }))
+      } else if (publicationLibraryDownloadFormat === 'bibtex') {
+        const entries = exportRows.map((row, rowIndex) => {
+          const fields: string[] = []
+          if (publicationLibraryDownloadFields.title && row.title) fields.push(`  title = {${bibtexEscape(row.title)}}`)
+          if (publicationLibraryDownloadFields.authors && row.authors.length > 0) fields.push(`  author = {${bibtexEscape(row.authors.join(' and '))}}`)
+          if (publicationLibraryDownloadFields.year && row.year) fields.push(`  year = {${row.year}}`)
+          if (publicationLibraryDownloadFields.journal && row.journal) fields.push(`  journal = {${bibtexEscape(row.journal)}}`)
+          if (publicationLibraryDownloadFields.doi && row.doi) fields.push(`  doi = {${bibtexEscape(row.doi)}}`)
+          if (publicationLibraryDownloadFields.pmid && row.pmid) fields.push(`  pmid = {${bibtexEscape(row.pmid)}}`)
+          if (publicationLibraryDownloadFields.abstract && row.abstract) fields.push(`  abstract = {${bibtexEscape(row.abstract)}}`)
+          if (publicationLibraryDownloadFields.keywords && row.keywords.length > 0) fields.push(`  keywords = {${bibtexEscape(row.keywords.join(', '))}}`)
+          const notes: string[] = []
+          if (publicationLibraryDownloadFields.citations) notes.push(`Citations: ${row.citations}`)
+          if (publicationLibraryDownloadFields.oa_status) notes.push(`Attachment status: ${row.oaStatus}`)
+          if (notes.length > 0) fields.push(`  note = {${bibtexEscape(notes.join('; '))}}`)
+          const key = row.key || `pub_${rowIndex + 1}`
+          return `@article{${key},\n${fields.join(',\n')}\n}`
+        })
+        downloadBlob(filename, new Blob([entries.join('\n\n')], { type: exportOption.mimeType }))
+      } else if (publicationLibraryDownloadFormat === 'nbib') {
+        const lines: string[] = []
+        for (const row of exportRows) {
+          if (publicationLibraryDownloadFields.pmid && row.pmid) lines.push(`PMID- ${row.pmid}`)
+          if (publicationLibraryDownloadFields.title && row.title) lines.push(`TI  - ${row.title}`)
+          if (publicationLibraryDownloadFields.authors) {
+            for (const author of row.authors) {
+              lines.push(`FAU - ${author}`)
+            }
+          }
+          if (publicationLibraryDownloadFields.journal && row.journal) lines.push(`JT  - ${row.journal}`)
+          if (publicationLibraryDownloadFields.year && row.year) lines.push(`DP  - ${row.year}`)
+          if (publicationLibraryDownloadFields.doi && row.doi) lines.push(`LID - ${row.doi} [doi]`)
+          if (publicationLibraryDownloadFields.abstract && row.abstract) lines.push(`AB  - ${row.abstract}`)
+          if (publicationLibraryDownloadFields.publication_type && row.publicationType) lines.push(`PT  - ${row.publicationType}`)
+          if (publicationLibraryDownloadFields.keywords) {
+            for (const keyword of row.keywords) {
+              lines.push(`OT  - ${keyword}`)
+            }
+          }
+          if (publicationLibraryDownloadFields.citations) lines.push(`CI  - ${row.citations}`)
+          if (publicationLibraryDownloadFields.oa_status) lines.push(`STAT- ${row.oaStatus}`)
+          lines.push('')
+        }
+        downloadBlob(filename, new Blob([lines.join('\n')], { type: exportOption.mimeType }))
+      } else {
+        const records = exportRows.map((row) => {
+          const notes: string[] = []
+          if (publicationLibraryDownloadFields.citations) notes.push(`Citations: ${row.citations}`)
+          if (publicationLibraryDownloadFields.oa_status) notes.push(`Attachment status: ${row.oaStatus}`)
+          return [
+            '    <record>',
+            '      <ref-type name="Journal Article">17</ref-type>',
+            publicationLibraryDownloadFields.authors
+              ? `      <contributors><authors>${row.authors.map((author) => `<author>${xmlEscape(author)}</author>`).join('')}</authors></contributors>`
+              : '',
+            `      <titles>${publicationLibraryDownloadFields.title ? `<title>${xmlEscape(row.title)}</title>` : ''}${publicationLibraryDownloadFields.journal ? `<secondary-title>${xmlEscape(row.journal)}</secondary-title>` : ''}</titles>`,
+            publicationLibraryDownloadFields.year && row.year ? `      <dates><year>${row.year}</year></dates>` : '',
+            publicationLibraryDownloadFields.abstract && row.abstract ? `      <abstract>${xmlEscape(row.abstract)}</abstract>` : '',
+            publicationLibraryDownloadFields.doi && row.doi ? `      <electronic-resource-num>${xmlEscape(row.doi)}</electronic-resource-num>` : '',
+            publicationLibraryDownloadFields.pmid && row.pmid ? `      <accession-num>${xmlEscape(row.pmid)}</accession-num>` : '',
+            publicationLibraryDownloadFields.keywords && row.keywords.length > 0
+              ? `      <keywords>${row.keywords.map((keyword) => `<keyword>${xmlEscape(keyword)}</keyword>`).join('')}</keywords>`
+              : '',
+            notes.length > 0
+              ? `      <notes>${notes.map((note) => `<note>${xmlEscape(note)}</note>`).join('')}</notes>`
+              : '',
+            '    </record>',
+          ].filter(Boolean).join('\n')
+        })
+        const content = `<?xml version="1.0" encoding="UTF-8"?>\n<xml>\n  <records>\n${records.join('\n')}\n  </records>\n</xml>\n`
+        downloadBlob(filename, new Blob([content], { type: exportOption.mimeType }))
+      }
+      setStatus(`Downloaded ${selectedScopeWorks.length} publication${selectedScopeWorks.length === 1 ? '' : 's'} as ${exportOption.label}.`)
+      setPublicationLibraryDownloadVisible(false)
+      setError('')
+    } catch {
+      setError('Could not generate the selected export format.')
+    }
+  }, [
+    filteredWorks,
+    metricsByWorkId,
+    oaPdfStatusByWorkId,
+    pagedFilteredWorks,
+    personaState?.works,
+    publicationLibraryDownloadFields,
+    publicationLibraryDownloadFormat,
+    publicationLibraryDownloadScope,
+    selectedWorkId,
+  ])
+
+  const onAdjustPublicationHeadingWidth = useCallback((column: PublicationTableColumnKey, deltaPx: number) => {
+    setPublicationTableColumns((current) => {
+      const nextWidth = clampPublicationTableColumnWidth(
+        Number(current[column].width || PUBLICATION_TABLE_COLUMN_DEFAULTS[column].width) + deltaPx,
+        PUBLICATION_TABLE_COLUMN_DEFAULTS[column].width,
+      )
+      if (nextWidth === current[column].width) {
+        return current
+      }
+      return {
+        ...current,
+        [column]: {
+          ...current[column],
+          width: nextWidth,
+        },
+      }
+    })
+  }, [])
+
+  const onStartPublicationHeadingResize = useCallback((
+    event: React.PointerEvent<HTMLButtonElement>,
+    column: PublicationTableColumnKey,
+  ) => {
+    if (event.button !== 0) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    const visibleColumns = publicationTableColumnOrder.filter((key) => publicationTableColumns[key].visible)
+    const columnIndex = visibleColumns.indexOf(column)
+    const adjacentColumn = columnIndex >= 0 ? visibleColumns[columnIndex + 1] : undefined
+    if (!adjacentColumn) {
+      return
+    }
+    const startWidth = Number(publicationTableColumns[column].width || PUBLICATION_TABLE_COLUMN_DEFAULTS[column].width)
+    const adjacentStartWidth = Number(
+      publicationTableColumns[adjacentColumn].width || PUBLICATION_TABLE_COLUMN_DEFAULTS[adjacentColumn].width,
+    )
+    publicationTableResizeRef.current = {
+      column,
+      adjacentColumn,
+      startX: event.clientX,
+      startWidth,
+      adjacentStartWidth,
+    }
+    setPublicationTableResizingColumn(column)
+  }, [publicationTableColumnOrder, publicationTableColumns])
+
+  const onPublicationHeadingResizeHandleKeyDown = useCallback((
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    column: PublicationTableColumnKey,
+  ) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    const deltaPx = event.key === 'ArrowLeft' ? -16 : 16
+    setPublicationTableColumns((current) => {
+      const visibleColumns = publicationTableColumnOrder.filter((key) => current[key].visible)
+      const columnIndex = visibleColumns.indexOf(column)
+      const adjacentColumn = columnIndex >= 0 ? visibleColumns[columnIndex + 1] : undefined
+      if (!adjacentColumn) {
+        return current
+      }
+      const startWidth = Number(current[column].width || PUBLICATION_TABLE_COLUMN_DEFAULTS[column].width)
+      const adjacentStartWidth = Number(
+        current[adjacentColumn].width || PUBLICATION_TABLE_COLUMN_DEFAULTS[adjacentColumn].width,
+      )
+      const resized = clampPublicationTableAdjacentResize({
+        primaryStartWidth: startWidth,
+        adjacentStartWidth,
+        deltaPx,
+      })
+      if (resized.primaryWidth === startWidth && resized.adjacentWidth === adjacentStartWidth) {
+        return current
+      }
+      return {
+        ...current,
+        [column]: {
+          ...current[column],
+          width: resized.primaryWidth,
+        },
+        [adjacentColumn]: {
+          ...current[adjacentColumn],
+          width: resized.adjacentWidth,
+        },
+      }
+    })
+  }, [publicationTableColumnOrder])
+
+  useEffect(() => {
+    if (!publicationTableResizingColumn) {
+      return
+    }
+    const onPointerMove = (event: PointerEvent) => {
+      const resizeState = publicationTableResizeRef.current
+      if (!resizeState) {
+        return
+      }
+      const resized = clampPublicationTableAdjacentResize({
+        primaryStartWidth: resizeState.startWidth,
+        adjacentStartWidth: resizeState.adjacentStartWidth,
+        deltaPx: event.clientX - resizeState.startX,
+      })
+      setPublicationTableColumns((current) => {
+        if (
+          current[resizeState.column].width === resized.primaryWidth &&
+          current[resizeState.adjacentColumn].width === resized.adjacentWidth
+        ) {
+          return current
+        }
+        return {
+          ...current,
+          [resizeState.column]: {
+            ...current[resizeState.column],
+            width: resized.primaryWidth,
+          },
+          [resizeState.adjacentColumn]: {
+            ...current[resizeState.adjacentColumn],
+            width: resized.adjacentWidth,
+          },
+        }
+      })
+    }
+    const stopResize = () => {
+      publicationTableResizeRef.current = null
+      setPublicationTableResizingColumn(null)
+    }
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', stopResize)
+    window.addEventListener('pointercancel', stopResize)
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', stopResize)
+      window.removeEventListener('pointercancel', stopResize)
+    }
+  }, [publicationTableResizingColumn])
+
   const activePaneError = selectedWorkId
     ? paneErrorByKey[publicationPaneKey(selectedWorkId, activeDetailTab)] || ''
     : ''
@@ -2677,10 +3732,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           <div className="ml-auto flex h-8 w-[25rem] shrink-0 items-center justify-end gap-1 overflow-visible">
             <div
               className={cn(
-                'overflow-visible transition-[max-width,opacity,transform] duration-200 ease-out',
+                'relative order-3 overflow-visible transition-[max-width,opacity,transform] duration-200 ease-out',
                 publicationLibraryVisible && publicationLibraryToolsOpen
-                  ? 'max-w-[20rem] translate-x-0 opacity-100'
-                  : 'pointer-events-none max-w-0 translate-x-1 opacity-0',
+                  ? 'z-[70] max-w-[20rem] translate-x-0 opacity-100'
+                  : 'pointer-events-none z-0 max-w-0 translate-x-1 opacity-0',
               )}
               aria-hidden={!publicationLibraryVisible || !publicationLibraryToolsOpen}
             >
@@ -2703,12 +3758,151 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 <div className="house-publications-toolbox-divider" aria-hidden="true" />
                 <div className="group relative inline-flex">
                   <button
+                    ref={publicationLibraryDownloadButtonRef}
                     type="button"
-                    className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
-                    aria-label="Download publication library"
+                    data-state={publicationLibraryDownloadVisible ? 'open' : 'closed'}
+                    className={cn(
+                      'house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center',
+                      publicationLibraryDownloadVisible && 'house-publications-tools-toggle-open',
+                    )}
+                    onClick={() => {
+                      setPublicationLibraryDownloadVisible((current) => {
+                        const nextVisible = !current
+                        if (nextVisible) {
+                          setPublicationLibrarySearchVisible(false)
+                          setPublicationLibraryFiltersVisible(false)
+                          setPublicationLibrarySettingsVisible(false)
+                        }
+                        return nextVisible
+                      })
+                    }}
+                    aria-label={publicationLibraryDownloadVisible ? 'Hide publication library download options' : 'Show publication library download options'}
+                    aria-expanded={publicationLibraryDownloadVisible}
                   >
                     <Download className="h-4 w-4" strokeWidth={2.1} />
                   </button>
+                  {publicationLibraryDownloadVisible ? (
+                    <div
+                      ref={publicationLibraryDownloadPopoverRef}
+                      className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-40 w-[20.5rem]"
+                    >
+                      <div className="house-publications-filter-header">
+                        <p className="house-publications-filter-title">Download library</p>
+                        <button
+                          type="button"
+                          className="house-publications-filter-clear"
+                          onClick={() => {
+                            setPublicationLibraryDownloadFields(createDefaultPublicationExportFieldSelection())
+                            setPublicationLibraryDownloadScope('filtered_results')
+                            setPublicationLibraryDownloadFormat('xlsx')
+                          }}
+                        >
+                          Reset
+                        </button>
+                      </div>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Format</span>
+                          <span className="house-publications-filter-count">
+                            {PUBLICATION_EXPORT_FORMAT_OPTIONS.find((option) => option.value === publicationLibraryDownloadFormat)?.extension?.toUpperCase() || ''}
+                          </span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          {PUBLICATION_EXPORT_FORMAT_OPTIONS.map((option) => (
+                            <label key={`publication-download-format-${option.value}`} className="house-publications-filter-option">
+                              <input
+                                type="radio"
+                                name="publication-library-download-format"
+                                className="house-publications-filter-checkbox"
+                                checked={publicationLibraryDownloadFormat === option.value}
+                                onChange={() => setPublicationLibraryDownloadFormat(option.value)}
+                              />
+                              <span className="house-publications-filter-option-label">{option.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </details>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Scope</span>
+                          <span className="house-publications-filter-count">
+                            {publicationLibraryDownloadScope === 'whole_library'
+                              ? 'Library'
+                              : publicationLibraryDownloadScope === 'filtered_results'
+                                ? 'Filtered'
+                                : publicationLibraryDownloadScope === 'current_page'
+                                  ? 'Page'
+                                  : 'Selected'}
+                          </span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          {PUBLICATION_EXPORT_SCOPE_OPTIONS.map((option) => {
+                            const disabled = option.value === 'selected_rows' && !selectedWorkId
+                            return (
+                              <label
+                                key={`publication-download-scope-${option.value}`}
+                                className={cn('house-publications-filter-option', disabled && 'opacity-60')}
+                              >
+                                <input
+                                  type="radio"
+                                  name="publication-library-download-scope"
+                                  className="house-publications-filter-checkbox"
+                                  checked={publicationLibraryDownloadScope === option.value}
+                                  disabled={disabled}
+                                  onChange={() => setPublicationLibraryDownloadScope(option.value)}
+                                />
+                                <span className="house-publications-filter-option-label">{option.label}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </details>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Include fields</span>
+                          <span className="house-publications-filter-count">
+                            {Object.values(publicationLibraryDownloadFields).filter(Boolean).length}/{PUBLICATION_EXPORT_FIELD_OPTIONS.length}
+                          </span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          {PUBLICATION_EXPORT_FIELD_OPTIONS.map((option) => {
+                            const enabledCount = Object.values(publicationLibraryDownloadFields).filter(Boolean).length
+                            const checked = publicationLibraryDownloadFields[option.key]
+                            const disabled = checked && enabledCount <= 1
+                            return (
+                              <label
+                                key={`publication-download-field-${option.key}`}
+                                className={cn('house-publications-filter-option', disabled && 'opacity-60')}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="house-publications-filter-checkbox"
+                                  checked={checked}
+                                  disabled={disabled}
+                                  onChange={() => {
+                                    setPublicationLibraryDownloadFields((current) => ({
+                                      ...current,
+                                      [option.key]: !current[option.key],
+                                    }))
+                                  }}
+                                />
+                                <span className="house-publications-filter-option-label">{option.label}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </details>
+                      <div className="mt-2 flex items-center justify-end">
+                        <button
+                          type="button"
+                          className="house-section-tool-button inline-flex h-8 items-center justify-center px-2.5 text-[0.69rem] font-semibold uppercase tracking-[0.07em]"
+                          onClick={onDownloadPublicationLibrary}
+                        >
+                          Download
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                   <span
                     className="house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-[999] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
                     aria-hidden="true"
@@ -2735,15 +3929,179 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
               </div>
             </div>
             {publicationLibraryVisible ? (
+              <div className="relative order-1 shrink-0">
+                <button
+                  ref={publicationLibrarySearchButtonRef}
+                  type="button"
+                  data-state={publicationLibrarySearchVisible ? 'open' : 'closed'}
+                  className={cn(
+                    'h-8 w-8 house-publications-action-icon house-publications-top-control house-publications-search-toggle house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-200 ease-out',
+                    publicationLibrarySearchVisible && 'house-publications-tools-toggle-open',
+                  )}
+                  onClick={() => {
+                    setPublicationLibrarySearchVisible((current) => {
+                      const nextVisible = !current
+                      if (nextVisible) {
+                        setPublicationLibraryFiltersVisible(false)
+                        setPublicationLibraryDownloadVisible(false)
+                        setPublicationLibrarySettingsVisible(false)
+                      }
+                      return nextVisible
+                    })
+                  }}
+                  aria-pressed={publicationLibrarySearchVisible}
+                  aria-expanded={publicationLibrarySearchVisible}
+                  aria-label={publicationLibrarySearchVisible ? 'Hide publication library search' : 'Show publication library search'}
+                  title="Search"
+                >
+                  <Search className="house-publications-tools-toggle-icon house-publications-search-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
+                </button>
+                {publicationLibrarySearchVisible ? (
+                  <div
+                    ref={publicationLibrarySearchPopoverRef}
+                    className="house-publications-search-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[22.5rem]"
+                  >
+                    <label className="house-publications-search-label" htmlFor="publication-library-search-input">
+                      Search library
+                    </label>
+                    <input
+                      id="publication-library-search-input"
+                      type="text"
+                      autoFocus
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="Search by publication name, author, PMID, DOI, journal..."
+                      className="house-publications-search-input"
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {publicationLibraryVisible ? (
+              <div className="relative order-2 shrink-0">
+                <button
+                  ref={publicationLibraryFilterButtonRef}
+                  type="button"
+                  data-state={publicationLibraryFiltersVisible ? 'open' : 'closed'}
+                  data-filtered={selectedPublicationTypes.length > 0 || selectedArticleTypes.length > 0 ? 'true' : 'false'}
+                  className={cn(
+                    'h-8 w-8 house-publications-action-icon house-publications-top-control house-publications-filter-toggle house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-200 ease-out',
+                    publicationLibraryFiltersVisible && 'house-publications-tools-toggle-open',
+                  )}
+                  onClick={() => {
+                    setPublicationLibraryFiltersVisible((current) => {
+                      const nextVisible = !current
+                      if (nextVisible) {
+                        setPublicationLibrarySearchVisible(false)
+                        setPublicationLibraryDownloadVisible(false)
+                        setPublicationLibrarySettingsVisible(false)
+                      }
+                      return nextVisible
+                    })
+                  }}
+                  aria-pressed={publicationLibraryFiltersVisible}
+                  aria-expanded={publicationLibraryFiltersVisible}
+                  aria-label={publicationLibraryFiltersVisible ? 'Hide publication library filters' : 'Show publication library filters'}
+                  title="Filters"
+                >
+                  <Filter className="house-publications-tools-toggle-icon house-publications-filter-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
+                </button>
+                {publicationLibraryFiltersVisible ? (
+                  <div
+                    ref={publicationLibraryFilterPopoverRef}
+                    className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[17.5rem]"
+                  >
+                    <div className="house-publications-filter-header">
+                      <p className="house-publications-filter-title">Filter library</p>
+                      <button
+                        type="button"
+                        className="house-publications-filter-clear"
+                        onClick={() => {
+                          setSelectedPublicationTypes([])
+                          setSelectedArticleTypes([])
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <details className="house-publications-filter-group" open>
+                      <summary className="house-publications-filter-summary">
+                        <span>Publication type</span>
+                        <span className="house-publications-filter-count">
+                          {selectedPublicationTypes.length > 0 ? selectedPublicationTypes.length : 'All'}
+                        </span>
+                      </summary>
+                      <div className="house-publications-filter-options">
+                        {publicationTypeFilterOptions.length > 0 ? (
+                          publicationTypeFilterOptions.map((value) => (
+                            <label key={`publication-filter-${value}`} className="house-publications-filter-option">
+                              <input
+                                type="checkbox"
+                                className="house-publications-filter-checkbox"
+                                checked={selectedPublicationTypes.includes(value)}
+                                onChange={() => {
+                                  setSelectedPublicationTypes((current) =>
+                                    current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value],
+                                  )
+                                }}
+                              />
+                              <span className="house-publications-filter-option-label">{value}</span>
+                            </label>
+                          ))
+                        ) : (
+                          <p className="house-publications-filter-empty">No publication types available.</p>
+                        )}
+                      </div>
+                    </details>
+                    <details className="house-publications-filter-group" open>
+                      <summary className="house-publications-filter-summary">
+                        <span>Article type</span>
+                        <span className="house-publications-filter-count">
+                          {selectedArticleTypes.length > 0 ? selectedArticleTypes.length : 'All'}
+                        </span>
+                      </summary>
+                      <div className="house-publications-filter-options">
+                        {articleTypeFilterOptions.length > 0 ? (
+                          articleTypeFilterOptions.map((value) => (
+                            <label key={`article-filter-${value}`} className="house-publications-filter-option">
+                              <input
+                                type="checkbox"
+                                className="house-publications-filter-checkbox"
+                                checked={selectedArticleTypes.includes(value)}
+                                onChange={() => {
+                                  setSelectedArticleTypes((current) =>
+                                    current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value],
+                                  )
+                                }}
+                              />
+                              <span className="house-publications-filter-option-label">{value}</span>
+                            </label>
+                          ))
+                        ) : (
+                          <p className="house-publications-filter-empty">No article types available.</p>
+                        )}
+                      </div>
+                    </details>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {publicationLibraryVisible ? (
               <button
                 type="button"
                 data-state={publicationLibraryToolsOpen ? 'open' : 'closed'}
                 className={cn(
-                  'h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-200 ease-out',
+                  'order-4 h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-200 ease-out',
                   publicationLibraryToolsOpen && 'house-publications-tools-toggle-open',
                 )}
                 onClick={() => {
-                  setPublicationLibraryToolsOpen((current) => !current)
+                  setPublicationLibraryToolsOpen((current) => {
+                    const nextOpen = !current
+                    if (!nextOpen) {
+                      setPublicationLibraryDownloadVisible(false)
+                    }
+                    return nextOpen
+                  })
                 }}
                 aria-pressed={publicationLibraryToolsOpen}
                 aria-expanded={publicationLibraryToolsOpen}
@@ -2753,15 +4111,190 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 <Hammer className="house-publications-tools-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
               </button>
             ) : null}
+            {publicationLibraryVisible ? (
+              <div className="relative order-5 shrink-0">
+                <button
+                  ref={publicationLibrarySettingsButtonRef}
+                  type="button"
+                  data-state={publicationLibrarySettingsVisible ? 'open' : 'closed'}
+                  className={cn(
+                    'h-8 w-8 house-publications-action-icon house-publications-top-control house-publications-settings-toggle house-section-tool-button inline-flex items-center justify-center transition-[background-color,border-color,box-shadow] duration-200 ease-out',
+                    publicationLibrarySettingsVisible && 'house-publications-tools-toggle-open',
+                  )}
+                  onClick={() => {
+                    setPublicationLibrarySettingsVisible((current) => {
+                      const nextVisible = !current
+                      if (nextVisible) {
+                        setPublicationLibraryFiltersVisible(false)
+                        setPublicationLibrarySearchVisible(false)
+                        setPublicationLibraryDownloadVisible(false)
+                      }
+                      return nextVisible
+                    })
+                  }}
+                  aria-pressed={publicationLibrarySettingsVisible}
+                  aria-expanded={publicationLibrarySettingsVisible}
+                  aria-label={publicationLibrarySettingsVisible ? 'Hide publication library settings' : 'Show publication library settings'}
+                  title="Settings"
+                >
+                  <Settings className="house-publications-tools-toggle-icon house-publications-settings-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
+                </button>
+                {publicationLibrarySettingsVisible ? (
+                  <div
+                    ref={publicationLibrarySettingsPopoverRef}
+                    className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[18.75rem]"
+                  >
+                    <div className="house-publications-filter-header">
+                      <p className="house-publications-filter-title">Table settings</p>
+                      <div className="inline-flex items-center gap-2">
+                        <button type="button" className="house-publications-filter-clear" onClick={onAutoAdjustPublicationTableWidths}>
+                          Auto width
+                        </button>
+                        <button type="button" className="house-publications-filter-clear" onClick={onResetPublicationTableSettings}>
+                          Reset
+                        </button>
+                      </div>
+                    </div>
+                    <details className="house-publications-filter-group" open>
+                      <summary className="house-publications-filter-summary">
+                        <span>Columns</span>
+                        <span className="house-publications-filter-count">
+                          {visiblePublicationTableColumns.length}/{PUBLICATION_TABLE_COLUMN_ORDER.length}
+                        </span>
+                      </summary>
+                      <div className="house-publications-filter-options">
+                        {publicationTableColumnOrder.map((columnKey) => {
+                          const checked = publicationTableColumns[columnKey].visible
+                          const visibleCount = visiblePublicationTableColumns.length
+                          const disableToggle = checked && visibleCount <= 1
+                          const label = PUBLICATION_TABLE_COLUMN_DEFINITIONS[columnKey].label
+                          return (
+                            <label
+                              key={`publication-column-visibility-${columnKey}`}
+                              className={cn('house-publications-filter-option', disableToggle && 'opacity-60')}
+                            >
+                              <input
+                                type="checkbox"
+                                className="house-publications-filter-checkbox"
+                                checked={checked}
+                                disabled={disableToggle}
+                                onChange={() => onTogglePublicationColumnVisibility(columnKey)}
+                              />
+                              <span className="house-publications-filter-option-label">{label}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </details>
+                    <details className="house-publications-filter-group" open>
+                      <summary className="house-publications-filter-summary">
+                        <span>Visuals</span>
+                        <span className="house-publications-filter-count">
+                          {(publicationTableAlternateRowColoring ? 1 : 0) + (publicationTableMetricHighlights ? 1 : 0) + (publicationTableAttachmentStatusVisible ? 1 : 0)}/3
+                        </span>
+                      </summary>
+                      <div className="house-publications-filter-options">
+                        <label className="house-publications-filter-option">
+                          <input
+                            type="checkbox"
+                            className="house-publications-filter-checkbox"
+                            checked={publicationTableAlternateRowColoring}
+                            onChange={() => setPublicationTableAlternateRowColoring((current) => !current)}
+                          />
+                          <span className="house-publications-filter-option-label">Alternate row shading</span>
+                        </label>
+                        <label className="house-publications-filter-option">
+                          <input
+                            type="checkbox"
+                            className="house-publications-filter-checkbox"
+                            checked={publicationTableMetricHighlights}
+                            onChange={() => setPublicationTableMetricHighlights((current) => !current)}
+                          />
+                          <span className="house-publications-filter-option-label">Metric highlights (citations)</span>
+                        </label>
+                        <label className="house-publications-filter-option">
+                          <input
+                            type="checkbox"
+                            className="house-publications-filter-checkbox"
+                            checked={publicationTableAttachmentStatusVisible}
+                            onChange={() => setPublicationTableAttachmentStatusVisible((current) => !current)}
+                          />
+                          <span className="house-publications-filter-option-label">Attachment status icon</span>
+                        </label>
+                      </div>
+                    </details>
+                    <details className="house-publications-filter-group" open>
+                      <summary className="house-publications-filter-summary">
+                        <span>Density</span>
+                        <span className="house-publications-filter-count">
+                          {publicationTableDensity === 'default' ? 'Default' : publicationTableDensity === 'compact' ? 'Compact' : 'Comfortable'}
+                        </span>
+                      </summary>
+                      <div className="house-publications-filter-options">
+                        {(['compact', 'default', 'comfortable'] as PublicationTableDensity[]).map((densityOption) => (
+                          <label key={`publication-density-${densityOption}`} className="house-publications-filter-option">
+                            <input
+                              type="radio"
+                              name="publication-table-density"
+                              className="house-publications-filter-checkbox"
+                              checked={publicationTableDensity === densityOption}
+                              onChange={() => setPublicationTableDensity(densityOption)}
+                            />
+                            <span className="house-publications-filter-option-label">
+                              {densityOption === 'default'
+                                ? 'Default'
+                                : densityOption === 'compact'
+                                  ? 'Compact'
+                                  : 'Comfortable'}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </details>
+                    <details className="house-publications-filter-group" open>
+                      <summary className="house-publications-filter-summary">
+                        <span>Rows per page</span>
+                        <span className="house-publications-filter-count">
+                          {publicationLibraryPageSize === 'all' ? 'All' : publicationLibraryPageSize}
+                        </span>
+                      </summary>
+                      <div className="house-publications-filter-options">
+                        {([25, 50, 100, 'all'] as PublicationTablePageSize[]).map((pageSizeOption) => (
+                          <label key={`publication-page-size-${pageSizeOption}`} className="house-publications-filter-option">
+                            <input
+                              type="radio"
+                              name="publication-table-page-size"
+                              className="house-publications-filter-checkbox"
+                              checked={publicationLibraryPageSize === pageSizeOption}
+                              onChange={() => {
+                                setPublicationLibraryPageSize(pageSizeOption)
+                                setPublicationLibraryPage(1)
+                              }}
+                            />
+                            <span className="house-publications-filter-option-label">
+                              {pageSizeOption === 'all' ? 'All publications' : `${pageSizeOption} publications`}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </details>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <button
               type="button"
               data-state={publicationLibraryVisible ? 'open' : 'closed'}
-              className="h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-publications-eye-toggle house-section-tool-button inline-flex items-center justify-center"
+              className="order-6 h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-publications-eye-toggle house-section-tool-button inline-flex items-center justify-center"
               onClick={() => {
                 setPublicationLibraryVisible((current) => {
                   const nextVisible = !current
                   if (!nextVisible) {
                     setPublicationLibraryToolsOpen(false)
+                    setPublicationLibraryFiltersVisible(false)
+                    setPublicationLibrarySearchVisible(false)
+                    setPublicationLibraryDownloadVisible(false)
+                    setPublicationLibrarySettingsVisible(false)
                   }
                   return nextVisible
                 })
@@ -2779,39 +4312,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         </div>
         {publicationLibraryVisible ? (
           <div className="house-main-content-block space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Filter by title, journal, DOI, PMID, author"
-              className={`w-sz-280 ${HOUSE_INPUT_CLASS} ${HOUSE_TABLE_FILTER_INPUT_CLASS}`}
-            />
-            <SelectPrimitive value={filterKey} onValueChange={(value) => setFilterKey(value as PublicationFilterKey)}>
-              <SelectTrigger className={`h-9 w-auto min-w-[11rem] rounded-md px-2 ${HOUSE_TABLE_FILTER_SELECT_CLASS}`}>
-                <SelectValue placeholder="All works" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All works</SelectItem>
-                <SelectItem value="cited">Cited only</SelectItem>
-                <SelectItem value="with_doi">With DOI</SelectItem>
-                <SelectItem value="with_abstract">With abstract</SelectItem>
-                <SelectItem value="with_pmid">With PMID</SelectItem>
-              </SelectContent>
-            </SelectPrimitive>
-            <SelectPrimitive value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className={`h-9 w-auto min-w-[11rem] rounded-md px-2 ${HOUSE_TABLE_FILTER_SELECT_CLASS}`}>
-                <SelectValue placeholder="All types" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All types</SelectItem>
-                {typeFilterOptions.map((value) => (
-                  <SelectItem key={value} value={value}>
-                    {value}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </SelectPrimitive>
-          </div>
           <div className="grid grid-cols-1 items-start gap-4">
             <div className="space-y-1">
 
@@ -2825,10 +4325,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   </ol>
                 </div>
               ) : (
-                <div ref={publicationTableLayoutRef} className={cn('relative w-full', HOUSE_TABLE_SHELL_CLASS)}>
+                <div ref={publicationTableLayoutRef} className={cn('relative w-full house-table-context-profile', HOUSE_TABLE_SHELL_CLASS)}>
                   <Table
-                    className="min-w-sz-760 table-fixed"
-                    data-house-no-column-resize="true"
+                    striped={publicationTableAlternateRowColoring}
+                    className={cn(
+                      'min-w-sz-760 table-fixed house-table-resizable',
+                      publicationTableDensity === 'compact' && 'house-publications-table-density-compact',
+                      publicationTableDensity === 'comfortable' && 'house-publications-table-density-comfortable',
+                    )}
                     data-house-no-column-controls="true"
                   >
                     <colgroup>
@@ -2845,14 +4349,29 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         )
                       })}
                     </colgroup>
-                    <TableHeader className="text-left">
-                      <TableRow>
-                        {visiblePublicationTableColumns.map((columnKey) => {
+                    <TableHeader className="house-table-head text-left">
+                      <TableRow style={{ backgroundColor: 'transparent' }}>
+                        {visiblePublicationTableColumns.map((columnKey, columnIndex) => {
                           const definition = PUBLICATION_TABLE_COLUMN_DEFINITIONS[columnKey]
+                          const isLastVisibleColumn = columnIndex >= visiblePublicationTableColumns.length - 1
                           return (
                             <TableHead
                               key={`table-head-${columnKey}`}
-                              className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} text-left`}
+                              className={`${HOUSE_TABLE_HEAD_TEXT_CLASS} group relative text-left`}
+                              onDragOver={(event) => {
+                                if (!publicationTableDraggingColumn || publicationTableDraggingColumn === columnKey) {
+                                  return
+                                }
+                                event.preventDefault()
+                              }}
+                              onDrop={(event) => {
+                                event.preventDefault()
+                                if (!publicationTableDraggingColumn || publicationTableDraggingColumn === columnKey) {
+                                  return
+                                }
+                                onReorderPublicationColumn(publicationTableDraggingColumn, columnKey)
+                                setPublicationTableDraggingColumn(null)
+                              }}
                             >
                               <SortHeader
                                 label={definition.label}
@@ -2862,13 +4381,50 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 align="left"
                                 onSort={onSortColumn}
                               />
+                              <button
+                                type="button"
+                                draggable
+                                className="house-table-reorder-handle"
+                                data-house-dragging={publicationTableDraggingColumn === columnKey ? 'true' : undefined}
+                                onDragStart={(event) => {
+                                  event.dataTransfer.effectAllowed = 'move'
+                                  event.dataTransfer.setData('text/plain', columnKey)
+                                  setPublicationTableDraggingColumn(columnKey)
+                                }}
+                                onDragEnd={() => {
+                                  setPublicationTableDraggingColumn(null)
+                                }}
+                                onClick={(event) => {
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                }}
+                                aria-label={`Reorder ${definition.label} column`}
+                                title={`Drag to reorder ${definition.label}`}
+                              >
+                                <GripVertical className="h-3 w-3" />
+                              </button>
+                              {!isLastVisibleColumn ? (
+                                <button
+                                  type="button"
+                                  className="house-table-resize-handle"
+                                  data-house-dragging={publicationTableResizingColumn === columnKey ? 'true' : undefined}
+                                  onPointerDown={(event) => onStartPublicationHeadingResize(event, columnKey)}
+                                  onKeyDown={(event) => onPublicationHeadingResizeHandleKeyDown(event, columnKey)}
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
+                                  }}
+                                  aria-label={`Resize ${definition.label} column`}
+                                  title={`Resize ${definition.label} column`}
+                                />
+                              ) : null}
                             </TableHead>
                           )
                         })}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredWorks.map((work) => {
+                      {pagedFilteredWorks.map((work) => {
                         const metrics = metricsByWorkId.get(work.id)
                         const isSelected = selectedWorkId === work.id
                         const oaRecord = oaPdfStatusByWorkId[work.id] || null
@@ -2889,28 +4445,30 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               if (columnKey === 'title') {
                                 return (
                                   <TableCell key={`${work.id}-${columnKey}`} className={`align-top font-medium ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass}`}>
-                                    <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-1.5">
-                                      {oaVisualStatus === 'available' && oaDownloadUrl ? (
-                                        <button
-                                          type="button"
-                                          title={`${oaLabel}. Open in Files panel.`}
-                                          className={`inline-flex items-center ${oaToneClass}`}
-                                          onClick={(event) => {
-                                            event.stopPropagation()
-                                            openPublicationInDetailPanel(work.id, 'files')
-                                          }}
-                                        >
-                                          <Paperclip className="h-3.5 w-3.5" />
-                                        </button>
-                                      ) : (
-                                        <span title={oaLabel} className={`inline-flex items-center ${oaToneClass}`}>
-                                          {oaVisualStatus === 'checking' ? (
-                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                          ) : (
+                                    <div className={cn('grid items-start gap-1.5', publicationTableAttachmentStatusVisible ? 'grid-cols-[auto_minmax(0,1fr)]' : 'grid-cols-1')}>
+                                      {publicationTableAttachmentStatusVisible ? (
+                                        oaVisualStatus === 'available' && oaDownloadUrl ? (
+                                          <button
+                                            type="button"
+                                            title={`${oaLabel}. Open in Files panel.`}
+                                            className={`inline-flex items-center ${oaToneClass}`}
+                                            onClick={(event) => {
+                                              event.stopPropagation()
+                                              openPublicationInDetailPanel(work.id, 'files')
+                                            }}
+                                          >
                                             <Paperclip className="h-3.5 w-3.5" />
-                                          )}
-                                        </span>
-                                      )}
+                                          </button>
+                                        ) : (
+                                          <span title={oaLabel} className={`inline-flex items-center ${oaToneClass}`}>
+                                            {oaVisualStatus === 'checking' ? (
+                                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            ) : (
+                                              <Paperclip className="h-3.5 w-3.5" />
+                                            )}
+                                          </span>
+                                        )
+                                      ) : null}
                                       <span className="min-w-0 whitespace-normal break-words leading-tight">{work.title}</span>
                                     </div>
                                   </TableCell>
@@ -2947,10 +4505,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               return (
                                 <TableCell
                                   key={`${work.id}-${columnKey}`}
-                                  className={`align-top whitespace-normal break-words leading-tight ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass} transition-colors ${citationCellTone(
-                                    metrics?.citations ?? 0,
-                                    hIndex,
-                                  )}`}
+                                  className={cn(
+                                    `align-top whitespace-normal break-words leading-tight ${HOUSE_TABLE_CELL_TEXT_CLASS} ${alignClass} transition-colors`,
+                                    publicationTableMetricHighlights
+                                      ? citationCellTone(metrics?.citations ?? 0, hIndex)
+                                      : 'text-[hsl(var(--tone-neutral-750))]',
+                                  )}
                                 >
                                   {metrics?.citations ?? 0}
                                 </TableCell>
@@ -2961,6 +4521,44 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                       })}
                     </TableBody>
                   </Table>
+                  <div className="mt-1 flex items-center justify-between gap-2 px-1">
+                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-650))]">
+                      Showing {publicationLibraryRangeStart}-{publicationLibraryRangeEnd} of {totalFilteredPublicationWorks}
+                    </p>
+                    {publicationLibraryPageSize === 'all' ? null : (
+                      <div className="inline-flex items-center gap-1">
+                        <button
+                          type="button"
+                          className={cn(
+                            'house-section-tool-button inline-flex h-7 items-center justify-center px-2 text-[0.68rem] font-semibold uppercase tracking-[0.06em]',
+                            publicationLibraryPage <= 1 && 'pointer-events-none opacity-50',
+                          )}
+                          onClick={() => {
+                            setPublicationLibraryPage((current) => Math.max(1, current - 1))
+                          }}
+                          aria-label="Go to previous page"
+                        >
+                          Prev
+                        </button>
+                        <span className="min-w-[4.2rem] text-center text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-700))]">
+                          {publicationLibraryPage}/{publicationLibraryTotalPages}
+                        </span>
+                        <button
+                          type="button"
+                          className={cn(
+                            'house-section-tool-button inline-flex h-7 items-center justify-center px-2 text-[0.68rem] font-semibold uppercase tracking-[0.06em]',
+                            publicationLibraryPage >= publicationLibraryTotalPages && 'pointer-events-none opacity-50',
+                          )}
+                          onClick={() => {
+                            setPublicationLibraryPage((current) => Math.min(publicationLibraryTotalPages, current + 1))
+                          }}
+                          aria-label="Go to next page"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -2977,35 +4575,94 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                 {selectedWork ? (
                   <div className={HOUSE_PUBLICATION_DRILLDOWN_SHEET_BODY_CLASS}>
                     <Tabs value={activeDetailTab} onValueChange={onDetailTabChange} className="w-full">
-                      <div className={`max-h-[78vh] overflow-auto ${HOUSE_PUBLICATION_DETAIL_SCROLL_CLASS}`}>
-                      <div className={HOUSE_PUBLICATION_DETAIL_HEADER_CLASS}>
-                        <p className={HOUSE_PUBLICATION_DETAIL_TITLE_CLASS}>
+                      <div className="max-h-[78vh] overflow-auto">
+                      <div className={cn('house-drilldown-title-block', HOUSE_LEFT_BORDER_CLASS, HOUSE_LEFT_BORDER_PROFILE_CLASS)}>
+                        <p className="house-drilldown-title">
                           {selectedDetail?.title || selectedWork.title}
                         </p>
-                        <TabsList className={`mt-2 grid h-auto w-full grid-cols-5 gap-1 ${HOUSE_PUBLICATION_DETAIL_TABS_CLASS}`}>
-                          <TabsTrigger value="overview" className={`text-micro ${HOUSE_PUBLICATION_DETAIL_TAB_CLASS}`}>Overview</TabsTrigger>
-                          <TabsTrigger value="content" className={`text-micro ${HOUSE_PUBLICATION_DETAIL_TAB_CLASS}`}>Content</TabsTrigger>
-                          <TabsTrigger value="impact" className={`text-micro ${HOUSE_PUBLICATION_DETAIL_TAB_CLASS}`}>Impact</TabsTrigger>
-                          <TabsTrigger value="files" className={`text-micro ${HOUSE_PUBLICATION_DETAIL_TAB_CLASS}`}>Files</TabsTrigger>
-                          <TabsTrigger value="ai" className={`text-micro ${HOUSE_PUBLICATION_DETAIL_TAB_CLASS}`}>AI Insights</TabsTrigger>
-                        </TabsList>
+                        <p className="house-drilldown-title-expander">
+                          {[detailJournal || 'Publication record', detailYear ? String(detailYear) : null].filter(Boolean).join(' • ')}
+                        </p>
+                      </div>
+                      <div className="house-drilldown-navigation-block">
+                        <div className="house-publications-drilldown-tabs">
+                          {([
+                            { id: 'overview', label: 'Overview' },
+                            { id: 'content', label: 'Content' },
+                            { id: 'impact', label: 'Impact' },
+                            { id: 'files', label: 'Files' },
+                            { id: 'ai', label: 'AI insights' },
+                          ] as const).map((tab) => {
+                            const isActive = activeDetailTab === tab.id
+                            return (
+                              <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => onDetailTabChange(tab.id)}
+                                className={cn(
+                                  'house-nav-item approved-drilldown-nav-item house-publications-drilldown-tab-item',
+                                  isActive && 'approved-drilldown-nav-item-active',
+                                )}
+                                aria-pressed={isActive}
+                              >
+                                <span className="house-nav-item-label">{tab.label}</span>
+                              </button>
+                            )
+                          })}
+                        </div>
                       </div>
 
-                      <div className={`space-y-3 ${HOUSE_PUBLICATION_DETAIL_BODY_CLASS}`}>
+                      <div className="space-y-0">
                         {activePaneError ? (
                           <p className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-700">{activePaneError}</p>
                         ) : null}
 
-                        <TabsContent value="overview" className="space-y-3">
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Year</p><p className="font-semibold">{detailYear ?? 'n/a'}</p></div>
-                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Journal</p><p className="font-medium">{detailJournal || 'Not available'}</p></div>
-                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Type</p><p className="font-medium">{detailPublicationType || 'Not available'}</p></div>
-                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Citations</p><p className="font-semibold">{detailCitations}</p></div>
-                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>PMID</p>{detailPmid ? <a className="text-emerald-700 underline-offset-2 hover:underline" href={`https://pubmed.ncbi.nlm.nih.gov/${detailPmid}/`} target="_blank" rel="noreferrer">{detailPmid}</a> : <p className="text-muted-foreground">Not available</p>}</div>
-                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>DOI</p>{detailDoi ? <a className="break-all text-emerald-700 underline-offset-2 hover:underline" href={doiToUrl(detailDoi) || undefined} target="_blank" rel="noreferrer">{detailDoi}</a> : <p className="text-muted-foreground">Not available</p>}</div>
+                        <TabsContent value="overview" className="space-y-0">
+                          <div className="house-drilldown-heading-block">
+                            <p className="house-drilldown-heading-block-title">Publication overview</p>
+                          </div>
+                          <div className="house-drilldown-content-block rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.55)] p-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS}`}>
+                                <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>Year</p>
+                                <p className="house-drilldown-stat-value">{detailYear ?? 'n/a'}</p>
+                              </div>
+                              <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS}`}>
+                                <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>Journal</p>
+                                <p className="house-drilldown-stat-value">{detailJournal || 'Not available'}</p>
+                              </div>
+                              <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS}`}>
+                                <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>Type</p>
+                                <p className="house-drilldown-stat-value">{detailPublicationType || 'Not available'}</p>
+                              </div>
+                              <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS}`}>
+                                <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>Citations</p>
+                                <p className="house-drilldown-stat-value">{detailCitations}</p>
+                              </div>
+                              <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS}`}>
+                                <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>PMID</p>
+                                {detailPmid ? (
+                                  <a className="house-drilldown-stat-value text-emerald-700 underline-offset-2 hover:underline" href={`https://pubmed.ncbi.nlm.nih.gov/${detailPmid}/`} target="_blank" rel="noreferrer">
+                                    {detailPmid}
+                                  </a>
+                                ) : (
+                                  <p className="house-drilldown-stat-value text-muted-foreground">Not available</p>
+                                )}
+                              </div>
+                              <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS}`}>
+                                <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>DOI</p>
+                                {detailDoi ? (
+                                  <a className="house-drilldown-stat-value break-all text-emerald-700 underline-offset-2 hover:underline" href={doiToUrl(detailDoi) || undefined} target="_blank" rel="noreferrer">
+                                    {detailDoi}
+                                  </a>
+                                ) : (
+                                  <p className="house-drilldown-stat-value text-muted-foreground">Not available</p>
+                                )}
+                              </div>
+                            </div>
                           </div>
 
+                          <div className="house-drilldown-content-block space-y-3">
                           <div className="space-y-1">
                             <p className="text-micro uppercase text-muted-foreground">Authors</p>
                             {selectedAuthorsPayload?.status === 'RUNNING' ? <p className="text-xs text-muted-foreground">Fetching authors...</p> : null}
@@ -3036,24 +4693,29 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                             <Button type="button" size="sm" variant="secondary" onClick={() => navigate('/workspace')}>Add to manuscript</Button>
                           </div>
 
-                          <div className={`${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS} text-xs text-muted-foreground`}>
+                          <div className="rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2 text-xs text-muted-foreground">
                             <p>Added: {formatShortDate(selectedDetail?.created_at || selectedWork.created_at)}</p>
                             <p>Updated: {formatShortDate(selectedDetail?.updated_at || selectedWork.updated_at)}</p>
                           </div>
+                          </div>
                         </TabsContent>
 
-                        <TabsContent value="content" className="space-y-3">
+                        <TabsContent value="content" className="space-y-0">
+                          <div className="house-drilldown-heading-block">
+                            <p className="house-drilldown-heading-block-title">Content</p>
+                          </div>
+                          <div className="house-drilldown-content-block space-y-3">
                           <div className="flex items-center gap-2">
                             <Button type="button" size="sm" variant={contentMode === 'plain' ? 'primary' : 'secondary'} onClick={() => void onContentModeChange('plain')}>Plain</Button>
                             <Button type="button" size="sm" variant={contentMode === 'highlighted' ? 'primary' : 'secondary'} onClick={() => void onContentModeChange('highlighted')}>Highlighted</Button>
                           </div>
-                          <div className={`space-y-2 ${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}`}>
-                            <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Abstract</p>
+                          <div className="space-y-2 rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2">
+                            <p className="house-drilldown-overline">Abstract</p>
                             <p className="whitespace-pre-wrap text-xs leading-relaxed">{detailAbstract ? abstractPreview : 'No abstract available.'}</p>
                             {detailAbstract.length > 700 ? <Button type="button" size="sm" variant="secondary" onClick={onToggleAbstractExpanded}>{abstractExpanded ? 'Collapse' : 'Expand'}</Button> : null}
                           </div>
                           {contentMode === 'highlighted' ? (
-                            <div className={`space-y-1 text-xs ${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}`}>
+                            <div className="space-y-1 rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2 text-xs">
                               <p><span className="font-semibold">Objective:</span> {selectedAiResponse?.payload?.extractive_key_points?.objective || 'Not stated in abstract.'}</p>
                               <p><span className="font-semibold">Methods:</span> {selectedAiResponse?.payload?.extractive_key_points?.methods || 'Not stated in abstract.'}</p>
                               <p><span className="font-semibold">Findings:</span> {selectedAiResponse?.payload?.extractive_key_points?.main_findings || 'Not stated in abstract.'}</p>
@@ -3068,24 +4730,34 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               </div>
                             ) : <p className="text-xs text-muted-foreground">No keywords saved.</p>}
                           </div>
+                          </div>
                         </TabsContent>
 
-                        <TabsContent value="impact" className="space-y-3">
+                        <TabsContent value="impact" className="space-y-0">
+                          <div className="house-drilldown-heading-block">
+                            <p className="house-drilldown-heading-block-title">Impact</p>
+                          </div>
+                          <div className="house-drilldown-content-block space-y-3">
                           {selectedImpactResponse?.status === 'RUNNING' ? <p className="text-xs text-muted-foreground">Computing impact insights...</p> : null}
                           {selectedImpactResponse?.status === 'FAILED' ? <p className="text-xs text-amber-700">Last impact update failed. Showing cached data.</p> : null}
                           <div className="grid grid-cols-2 gap-2">
-                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Total citations</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_total ?? detailCitations}</p></div>
-                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Citations (12m)</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_last_12m ?? 0}</p></div>
-                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>YoY %</p><p className={`font-semibold ${growthToneClass(selectedImpactResponse?.payload?.yoy_pct ?? null)}`}>{formatSignedPercent(selectedImpactResponse?.payload?.yoy_pct ?? null)}</p></div>
-                            <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}><p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Acceleration</p><p className="font-semibold">{selectedImpactResponse?.payload?.acceleration_citations_per_month ?? 0}/month</p></div>
+                            <div className="rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2"><p className="house-drilldown-overline">Total citations</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_total ?? detailCitations}</p></div>
+                            <div className="rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2"><p className="house-drilldown-overline">Citations (12m)</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_last_12m ?? 0}</p></div>
+                            <div className="rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2"><p className="house-drilldown-overline">YoY %</p><p className={`font-semibold ${growthToneClass(selectedImpactResponse?.payload?.yoy_pct ?? null)}`}>{formatSignedPercent(selectedImpactResponse?.payload?.yoy_pct ?? null)}</p></div>
+                            <div className="rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2"><p className="house-drilldown-overline">Acceleration</p><p className="font-semibold">{selectedImpactResponse?.payload?.acceleration_citations_per_month ?? 0}/month</p></div>
                           </div>
-                          <div className={`space-y-1 ${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}`}>
-                            <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Key citing papers</p>
+                          <div className="space-y-1 rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2">
+                            <p className="house-drilldown-overline">Key citing papers</p>
                             {(selectedImpactResponse?.payload?.key_citing_papers || []).length === 0 ? <p className="text-xs text-muted-foreground">Not available from source.</p> : (selectedImpactResponse?.payload?.key_citing_papers || []).slice(0, 5).map((paper, index) => <p key={`${paper.title}-${index}`} className="text-xs">{paper.year ?? 'n/a'} | {paper.title}</p>)}
+                          </div>
                           </div>
                         </TabsContent>
 
-                        <TabsContent value="files" className="space-y-3">
+                        <TabsContent value="files" className="space-y-0">
+                          <div className="house-drilldown-heading-block">
+                            <p className="house-drilldown-heading-block-title">Files</p>
+                          </div>
+                          <div className="house-drilldown-content-block space-y-3">
                           {selectedFiles.length === 0 ? (
                             <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS}`}>
                               <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>No files linked to this publication.</p>
@@ -3140,27 +4812,33 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               </div>
                             </div>
                           </div>
+                          </div>
                         </TabsContent>
 
-                        <TabsContent value="ai" className="space-y-3">
-                          <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_PUBLICATION_DETAIL_INFO_CLASS} text-micro`}>AI-generated draft insights. Verify against full text.</p>
+                        <TabsContent value="ai" className="space-y-0">
+                          <div className="house-drilldown-heading-block">
+                            <p className="house-drilldown-heading-block-title">AI insights</p>
+                          </div>
+                          <div className="house-drilldown-content-block space-y-3">
+                          <p className={`${HOUSE_BANNER_CLASS} text-micro`}>AI-generated draft insights. Verify against full text.</p>
                           {selectedAiResponse?.status === 'RUNNING' ? <p className="text-xs text-muted-foreground">Generating insights...</p> : null}
                           {selectedAiResponse?.status === 'FAILED' ? <p className="text-xs text-amber-700">Last AI update failed. Showing cached data.</p> : null}
-                          <div className={`space-y-1 ${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}`}>
-                            <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Performance summary</p>
+                          <div className="space-y-1 rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2">
+                            <p className="house-drilldown-overline">Performance summary</p>
                             <p className="text-xs leading-relaxed">{selectedAiResponse?.payload?.performance_summary || 'Not available'}</p>
                           </div>
-                          <div className={HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}>
-                            <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Trajectory</p>
+                          <div className="rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2">
+                            <p className="house-drilldown-overline">Trajectory</p>
                             <p className="text-xs font-medium">{(selectedAiResponse?.payload?.trajectory_classification || 'UNKNOWN').replace(/_/g, ' ')}</p>
                           </div>
-                          <div className={`space-y-1 ${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}`}>
-                            <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Reuse suggestions</p>
+                          <div className="space-y-1 rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2">
+                            <p className="house-drilldown-overline">Reuse suggestions</p>
                             {(selectedAiResponse?.payload?.reuse_suggestions || []).length === 0 ? <p className="text-xs text-muted-foreground">No suggestions yet.</p> : (selectedAiResponse?.payload?.reuse_suggestions || []).map((item, index) => <p key={`${item}-${index}`} className="text-xs">- {item}</p>)}
                           </div>
-                          <div className={`space-y-1 ${HOUSE_PUBLICATION_DETAIL_SECTION_CLASS}`}>
-                            <p className={HOUSE_PUBLICATION_DETAIL_LABEL_CLASS}>Caution flags</p>
+                          <div className="space-y-1 rounded-sm border border-[hsl(var(--stroke-soft)/0.92)] bg-[hsl(var(--tone-neutral-50)/0.76)] p-2">
+                            <p className="house-drilldown-overline">Caution flags</p>
                             {(selectedAiResponse?.payload?.caution_flags || []).length === 0 ? <p className="text-xs text-muted-foreground">No caution flags.</p> : (selectedAiResponse?.payload?.caution_flags || []).map((item, index) => <p key={`${item}-${index}`} className="text-xs">- {item}</p>)}
+                          </div>
                           </div>
                         </TabsContent>
                       </div>
@@ -3172,11 +4850,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             </Sheet>
 
           </div>
+          </div>
         ) : (
           <div className="house-main-content-block">
-            <div className={cn('rounded-sm px-3 py-2.5 text-sm', HOUSE_BANNER_CLASS, HOUSE_BANNER_PUBLICATIONS_CLASS)}>
-              <p>Publication library hidden by user.</p>
-            </div>
+            <section className="house-notification-section" aria-live="polite">
+              <div className={cn(HOUSE_BANNER_CLASS, HOUSE_BANNER_INFO_CLASS)}>
+                <p>Publication library hidden by user.</p>
+              </div>
+            </section>
           </div>
         )}
       </div>

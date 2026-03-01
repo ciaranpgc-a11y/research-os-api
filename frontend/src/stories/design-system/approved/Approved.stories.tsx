@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MemoryRouter } from 'react-router-dom'
-import { Download, Eye, EyeOff, FileText, Hammer, KeyRound, Mail, Menu, Search, Settings, Share2, User } from 'lucide-react'
+import { Download, Eye, EyeOff, FileText, Filter, Hammer, KeyRound, Mail, Menu, Search, Settings, Share2, User } from 'lucide-react'
 
 import { AuthPage } from '@/pages/auth-page'
 import { ProfilePublicationsPage } from '@/pages/profile-publications-page'
@@ -1706,7 +1706,7 @@ function ApprovedInsightsControlSection() {
               <div className="house-main-heading-block w-full rounded-sm border border-neutral-200 p-2">
                 <p className="house-section-title">Publication insights</p>
                 <div className="ml-auto flex h-8 w-[25rem] shrink-0 items-center justify-end gap-1 overflow-visible">
-                  <div className="overflow-visible transition-[max-width,opacity,transform] duration-200 ease-out max-w-[20rem] translate-x-0 opacity-100">
+                  <div className="relative order-3 z-[70] overflow-visible transition-[max-width,opacity,transform] duration-200 ease-out max-w-[20rem] translate-x-0 opacity-100">
                     <div className="flex min-w-0 flex-nowrap items-center gap-1 whitespace-nowrap">
                       <div className="group relative inline-flex">
                         <button
@@ -1722,11 +1722,63 @@ function ApprovedInsightsControlSection() {
                       <div className="group relative inline-flex">
                         <button
                           type="button"
-                          className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
+                          className="house-section-tool-button house-publications-toolbox-item house-publications-tools-toggle-open h-8 w-8 inline-flex items-center justify-center"
                           aria-label="Download"
                         >
                           <Download className="h-4 w-4" />
                         </button>
+                        <div className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-40 w-[20.5rem]">
+                          <div className="house-publications-filter-header">
+                            <p className="house-publications-filter-title">Download library</p>
+                            <button type="button" className="house-publications-filter-clear">Reset</button>
+                          </div>
+                          <details className="house-publications-filter-group" open>
+                            <summary className="house-publications-filter-summary">
+                              <span>Format</span>
+                              <span className="house-publications-filter-count">XLSX</span>
+                            </summary>
+                            <div className="house-publications-filter-options">
+                              <label className="house-publications-filter-option"><input type="radio" name="approved-download-format" className="house-publications-filter-checkbox" defaultChecked /><span className="house-publications-filter-option-label">Excel (.xlsx)</span></label>
+                              <label className="house-publications-filter-option"><input type="radio" name="approved-download-format" className="house-publications-filter-checkbox" /><span className="house-publications-filter-option-label">CSV (.csv)</span></label>
+                              <label className="house-publications-filter-option"><input type="radio" name="approved-download-format" className="house-publications-filter-checkbox" /><span className="house-publications-filter-option-label">RIS (EndNote / Zotero / Mendeley)</span></label>
+                              <label className="house-publications-filter-option"><input type="radio" name="approved-download-format" className="house-publications-filter-checkbox" /><span className="house-publications-filter-option-label">BibTeX (.bib)</span></label>
+                              <label className="house-publications-filter-option"><input type="radio" name="approved-download-format" className="house-publications-filter-checkbox" /><span className="house-publications-filter-option-label">PubMed NBIB (.nbib)</span></label>
+                              <label className="house-publications-filter-option"><input type="radio" name="approved-download-format" className="house-publications-filter-checkbox" /><span className="house-publications-filter-option-label">EndNote XML (.xml)</span></label>
+                            </div>
+                          </details>
+                          <details className="house-publications-filter-group" open>
+                            <summary className="house-publications-filter-summary">
+                              <span>Scope</span>
+                              <span className="house-publications-filter-count">Filtered</span>
+                            </summary>
+                            <div className="house-publications-filter-options">
+                              <label className="house-publications-filter-option"><input type="radio" name="approved-download-scope" className="house-publications-filter-checkbox" /><span className="house-publications-filter-option-label">Whole library</span></label>
+                              <label className="house-publications-filter-option"><input type="radio" name="approved-download-scope" className="house-publications-filter-checkbox" defaultChecked /><span className="house-publications-filter-option-label">Current filtered results</span></label>
+                              <label className="house-publications-filter-option"><input type="radio" name="approved-download-scope" className="house-publications-filter-checkbox" /><span className="house-publications-filter-option-label">Current page</span></label>
+                              <label className="house-publications-filter-option"><input type="radio" name="approved-download-scope" className="house-publications-filter-checkbox" /><span className="house-publications-filter-option-label">Selected rows</span></label>
+                            </div>
+                          </details>
+                          <details className="house-publications-filter-group" open>
+                            <summary className="house-publications-filter-summary">
+                              <span>Include fields</span>
+                              <span className="house-publications-filter-count">9/12</span>
+                            </summary>
+                            <div className="house-publications-filter-options">
+                              <label className="house-publications-filter-option"><input type="checkbox" className="house-publications-filter-checkbox" defaultChecked /><span className="house-publications-filter-option-label">Title</span></label>
+                              <label className="house-publications-filter-option"><input type="checkbox" className="house-publications-filter-checkbox" defaultChecked /><span className="house-publications-filter-option-label">Authors</span></label>
+                              <label className="house-publications-filter-option"><input type="checkbox" className="house-publications-filter-checkbox" defaultChecked /><span className="house-publications-filter-option-label">Year</span></label>
+                              <label className="house-publications-filter-option"><input type="checkbox" className="house-publications-filter-checkbox" defaultChecked /><span className="house-publications-filter-option-label">Journal</span></label>
+                              <label className="house-publications-filter-option"><input type="checkbox" className="house-publications-filter-checkbox" defaultChecked /><span className="house-publications-filter-option-label">DOI</span></label>
+                              <label className="house-publications-filter-option"><input type="checkbox" className="house-publications-filter-checkbox" defaultChecked /><span className="house-publications-filter-option-label">PMID</span></label>
+                              <label className="house-publications-filter-option"><input type="checkbox" className="house-publications-filter-checkbox" defaultChecked /><span className="house-publications-filter-option-label">Publication type</span></label>
+                              <label className="house-publications-filter-option"><input type="checkbox" className="house-publications-filter-checkbox" defaultChecked /><span className="house-publications-filter-option-label">Article type</span></label>
+                              <label className="house-publications-filter-option"><input type="checkbox" className="house-publications-filter-checkbox" defaultChecked /><span className="house-publications-filter-option-label">Citations</span></label>
+                            </div>
+                          </details>
+                          <div className="mt-2 flex items-center justify-end">
+                            <button type="button" className="house-section-tool-button inline-flex h-8 items-center justify-center px-2.5 text-[0.69rem] font-semibold uppercase tracking-[0.07em]">Download</button>
+                          </div>
+                        </div>
                         <span className={toolboxTooltipClass} aria-hidden="true">Download</span>
                       </div>
                       <div className="house-publications-toolbox-divider" aria-hidden="true" />
@@ -1743,18 +1795,214 @@ function ApprovedInsightsControlSection() {
                     </div>
                   </div>
 
+                  <div className="relative order-1 shrink-0">
+                    <button
+                      type="button"
+                      className="h-8 w-8 house-publications-action-icon house-publications-top-control house-section-tool-button house-publications-tools-toggle-open inline-flex items-center justify-center"
+                      aria-label="Show publication library search"
+                      aria-pressed="true"
+                      aria-expanded="true"
+                    >
+                      <Search className="house-publications-tools-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
+                    </button>
+                    <div className="house-publications-search-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[22.5rem]">
+                      <label className="house-publications-search-label" htmlFor="approved-publication-library-search">
+                        Search library
+                      </label>
+                      <input
+                        id="approved-publication-library-search"
+                        type="text"
+                        className="house-publications-search-input"
+                        placeholder="Search by publication name, author, PMID, DOI, journal..."
+                        defaultValue=""
+                      />
+                    </div>
+                  </div>
+                  <div className="relative order-2 shrink-0">
+                    <button
+                      type="button"
+                      className="h-8 w-8 house-publications-action-icon house-publications-top-control house-section-tool-button house-publications-tools-toggle-open inline-flex items-center justify-center"
+                      aria-label="Hide publication library filters"
+                      aria-pressed="true"
+                      aria-expanded="true"
+                    >
+                      <Filter className="house-publications-tools-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
+                    </button>
+                    <div className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[17.5rem]">
+                      <div className="house-publications-filter-header">
+                        <p className="house-publications-filter-title">Filter library</p>
+                        <button type="button" className="house-publications-filter-clear">Clear</button>
+                      </div>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Publication type</span>
+                          <span className="house-publications-filter-count">2</span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          <label className="house-publications-filter-option">
+                            <input type="checkbox" className="house-publications-filter-checkbox" defaultChecked />
+                            <span className="house-publications-filter-option-label">Journal article</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input type="checkbox" className="house-publications-filter-checkbox" defaultChecked />
+                            <span className="house-publications-filter-option-label">Review article</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input type="checkbox" className="house-publications-filter-checkbox" />
+                            <span className="house-publications-filter-option-label">Conference paper</span>
+                          </label>
+                        </div>
+                      </details>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Article type</span>
+                          <span className="house-publications-filter-count">1</span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          <label className="house-publications-filter-option">
+                            <input type="checkbox" className="house-publications-filter-checkbox" defaultChecked />
+                            <span className="house-publications-filter-option-label">Original research</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input type="checkbox" className="house-publications-filter-checkbox" />
+                            <span className="house-publications-filter-option-label">Case report</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input type="checkbox" className="house-publications-filter-checkbox" />
+                            <span className="house-publications-filter-option-label">Systematic review</span>
+                          </label>
+                        </div>
+                      </details>
+                    </div>
+                  </div>
                   <button
                     type="button"
-                    className="h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-section-tool-button house-publications-tools-toggle-open inline-flex items-center justify-center"
+                    className="order-4 h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-section-tool-button house-publications-tools-toggle-open inline-flex items-center justify-center"
                     aria-label="Hide toolbox actions"
                     aria-pressed="true"
                   >
                     <Hammer className="house-publications-tools-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
                   </button>
+                  <div className="relative order-5 shrink-0">
+                    <button
+                      type="button"
+                      className="h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-section-tool-button house-publications-tools-toggle-open inline-flex items-center justify-center"
+                      aria-label="Show publication library settings"
+                      aria-pressed="true"
+                      aria-expanded="true"
+                    >
+                      <Settings className="house-publications-tools-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
+                    </button>
+                    <div className="house-publications-filter-popover absolute right-[calc(100%+0.5rem)] top-0 z-30 w-[18.75rem]">
+                      <div className="house-publications-filter-header">
+                        <p className="house-publications-filter-title">Table settings</p>
+                        <div className="inline-flex items-center gap-2">
+                          <button type="button" className="house-publications-filter-clear">Auto width</button>
+                          <button type="button" className="house-publications-filter-clear">Reset</button>
+                        </div>
+                      </div>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Columns</span>
+                          <span className="house-publications-filter-count">6/6</span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          <label className="house-publications-filter-option">
+                            <input type="checkbox" className="house-publications-filter-checkbox" defaultChecked />
+                            <span className="house-publications-filter-option-label">Title</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input type="checkbox" className="house-publications-filter-checkbox" defaultChecked />
+                            <span className="house-publications-filter-option-label">Year</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input type="checkbox" className="house-publications-filter-checkbox" defaultChecked />
+                            <span className="house-publications-filter-option-label">Journal</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input type="checkbox" className="house-publications-filter-checkbox" defaultChecked />
+                            <span className="house-publications-filter-option-label">Publication type</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input type="checkbox" className="house-publications-filter-checkbox" defaultChecked />
+                            <span className="house-publications-filter-option-label">Article type</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input type="checkbox" className="house-publications-filter-checkbox" defaultChecked />
+                            <span className="house-publications-filter-option-label">Citations</span>
+                          </label>
+                        </div>
+                      </details>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Visuals</span>
+                          <span className="house-publications-filter-count">3/3</span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          <label className="house-publications-filter-option">
+                            <input type="checkbox" className="house-publications-filter-checkbox" defaultChecked />
+                            <span className="house-publications-filter-option-label">Alternate row shading</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input type="checkbox" className="house-publications-filter-checkbox" defaultChecked />
+                            <span className="house-publications-filter-option-label">Metric highlights (citations)</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input type="checkbox" className="house-publications-filter-checkbox" defaultChecked />
+                            <span className="house-publications-filter-option-label">Attachment status icon</span>
+                          </label>
+                        </div>
+                      </details>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Density</span>
+                          <span className="house-publications-filter-count">Default</span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          <label className="house-publications-filter-option">
+                            <input type="radio" name="approved-publications-density" className="house-publications-filter-checkbox" />
+                            <span className="house-publications-filter-option-label">Compact</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input type="radio" name="approved-publications-density" className="house-publications-filter-checkbox" defaultChecked />
+                            <span className="house-publications-filter-option-label">Default</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input type="radio" name="approved-publications-density" className="house-publications-filter-checkbox" />
+                            <span className="house-publications-filter-option-label">Comfortable</span>
+                          </label>
+                        </div>
+                      </details>
+                      <details className="house-publications-filter-group" open>
+                        <summary className="house-publications-filter-summary">
+                          <span>Rows per page</span>
+                          <span className="house-publications-filter-count">50</span>
+                        </summary>
+                        <div className="house-publications-filter-options">
+                          <label className="house-publications-filter-option">
+                            <input type="radio" name="approved-publications-page-size" className="house-publications-filter-checkbox" />
+                            <span className="house-publications-filter-option-label">25 publications</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input type="radio" name="approved-publications-page-size" className="house-publications-filter-checkbox" defaultChecked />
+                            <span className="house-publications-filter-option-label">50 publications</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input type="radio" name="approved-publications-page-size" className="house-publications-filter-checkbox" />
+                            <span className="house-publications-filter-option-label">100 publications</span>
+                          </label>
+                          <label className="house-publications-filter-option">
+                            <input type="radio" name="approved-publications-page-size" className="house-publications-filter-checkbox" />
+                            <span className="house-publications-filter-option-label">All publications</span>
+                          </label>
+                        </div>
+                      </details>
+                    </div>
+                  </div>
 
                   <button
                     type="button"
-                    className="h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-publications-eye-toggle house-section-tool-button inline-flex items-center justify-center"
+                    className="order-6 h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-publications-eye-toggle house-section-tool-button inline-flex items-center justify-center"
                     aria-label="Set publication insights not visible"
                     aria-pressed="true"
                   >
@@ -1817,6 +2065,46 @@ function ApprovedInsightsControlSection() {
                       <td className="px-2 py-1.5">open/closed eye control visual contract for insights visibility</td>
                     </tr>
                     <tr className="border-t border-neutral-200">
+                      <td className="px-2 py-1.5"><code>.house-publications-filter-popover</code></td>
+                      <td className="px-2 py-1.5">Filter surface</td>
+                      <td className="px-2 py-1.5">left-opening anchored panel sharing house border, neutral gradient, and elevation contract</td>
+                    </tr>
+                    <tr className="border-t border-neutral-200">
+                      <td className="px-2 py-1.5"><code>.house-publications-filter-group</code> + <code>.house-publications-filter-option</code></td>
+                      <td className="px-2 py-1.5">Tick-list filter groups</td>
+                      <td className="px-2 py-1.5">dropdown section shell, count badge, checkbox rows, and hover state for publication/article filters</td>
+                    </tr>
+                    <tr className="border-t border-neutral-200">
+                      <td className="px-2 py-1.5"><code>.house-publications-search-popover</code> + <code>.house-publications-search-input</code></td>
+                      <td className="px-2 py-1.5">Search quick panel</td>
+                      <td className="px-2 py-1.5">left-opening search surface and input contract for publication name, author, PMID, DOI, and journal lookups</td>
+                    </tr>
+                    <tr className="border-t border-neutral-200">
+                      <td className="px-2 py-1.5"><code>Download popover</code></td>
+                      <td className="px-2 py-1.5">Export controls</td>
+                      <td className="px-2 py-1.5">format options (XLSX/CSV/RIS/BibTeX/NBIB/EndNote XML), scope options, and include-field toggles</td>
+                    </tr>
+                    <tr className="border-t border-neutral-200">
+                      <td className="px-2 py-1.5"><code>.house-table-resize-handle</code></td>
+                      <td className="px-2 py-1.5">Header width controls</td>
+                      <td className="px-2 py-1.5">hover a header separator and drag left/right to resize columns directly in-table</td>
+                    </tr>
+                    <tr className="border-t border-neutral-200">
+                      <td className="px-2 py-1.5"><code>.house-table-reorder-handle</code></td>
+                      <td className="px-2 py-1.5">Hover reorder affordance</td>
+                      <td className="px-2 py-1.5">subtle drag handle appears on header hover; drag onto another header to reorder columns</td>
+                    </tr>
+                    <tr className="border-t border-neutral-200">
+                      <td className="px-2 py-1.5"><code>Settings popover (Table settings)</code></td>
+                      <td className="px-2 py-1.5">Column + visual + page-size controls</td>
+                      <td className="px-2 py-1.5">column visibility toggles, alternate row shading toggle, citation highlight toggle, attachment icon visibility, density, rows-per-page options (25/50/100/All), and an Auto width action for current visible columns</td>
+                    </tr>
+                    <tr className="border-t border-neutral-200">
+                      <td className="px-2 py-1.5"><code>Publication table pagination footer</code></td>
+                      <td className="px-2 py-1.5">Page navigation contract</td>
+                      <td className="px-2 py-1.5">showing range text with Prev/Next controls and page index; hidden when rows-per-page is set to All</td>
+                    </tr>
+                    <tr className="border-t border-neutral-200">
                       <td className="px-2 py-1.5"><code>.house-drilldown-chart-tooltip</code></td>
                       <td className="px-2 py-1.5">Tooltip surface</td>
                       <td className="px-2 py-1.5">same chart-tooltip style used for toolbox icon hovers</td>
@@ -1829,6 +2117,97 @@ function ApprovedInsightsControlSection() {
         </div>
       </section>
     )
+}
+
+function ApprovedDefaultPublicationTableSection() {
+  return (
+    <section>
+      <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-neutral-200">
+          <p className="text-sm font-semibold text-neutral-900">Approved Default Table (Publication Library)</p>
+          <p className="text-xs text-neutral-600">Canonical base table shell for publication library usage, including black outer border contract.</p>
+        </div>
+        <div className="grid gap-4 p-4 lg:grid-cols-2">
+          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Visual preview</p>
+            <div className="house-main-content-block rounded-sm border border-neutral-200 p-2">
+              <div className="house-table-shell house-table-context-profile">
+                <table className="min-w-full table-fixed">
+                  <thead className="house-table-head">
+                    <tr className="house-table-row">
+                      <th className="house-table-head-text px-2 py-1.5 text-left">Title</th>
+                      <th className="house-table-head-text px-2 py-1.5 text-left">Year</th>
+                      <th className="house-table-head-text px-2 py-1.5 text-left">Journal</th>
+                      <th className="house-table-head-text px-2 py-1.5 text-left">Citations</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="house-table-row">
+                      <td className="house-table-cell-text px-2 py-1.5 align-top">Cardio-Oncology Evidence Series 12</td>
+                      <td className="house-table-cell-text px-2 py-1.5 align-top">2024</td>
+                      <td className="house-table-cell-text px-2 py-1.5 align-top">European Heart Journal</td>
+                      <td className="house-table-cell-text px-2 py-1.5 align-top">84</td>
+                    </tr>
+                    <tr className="house-table-row">
+                      <td className="house-table-cell-text px-2 py-1.5 align-top">AI-Augmented Echo Workflow Validation</td>
+                      <td className="house-table-cell-text px-2 py-1.5 align-top">2023</td>
+                      <td className="house-table-cell-text px-2 py-1.5 align-top">JACC Imaging</td>
+                      <td className="house-table-cell-text px-2 py-1.5 align-top">67</td>
+                    </tr>
+                    <tr className="house-table-row">
+                      <td className="house-table-cell-text px-2 py-1.5 align-top">Registry Outcomes in Anthracycline Exposure</td>
+                      <td className="house-table-cell-text px-2 py-1.5 align-top">2022</td>
+                      <td className="house-table-cell-text px-2 py-1.5 align-top">Circulation</td>
+                      <td className="house-table-cell-text px-2 py-1.5 align-top">41</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-2 px-1">
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-650))]">Showing 1-50 of 120</p>
+                <div className="inline-flex items-center gap-1">
+                  <button type="button" className="house-section-tool-button inline-flex h-7 items-center justify-center px-2 text-[0.68rem] font-semibold uppercase tracking-[0.06em] opacity-50" aria-label="Go to previous page">Prev</button>
+                  <span className="min-w-[4.2rem] text-center text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-[hsl(var(--tone-neutral-700))]">1/3</span>
+                  <button type="button" className="house-section-tool-button inline-flex h-7 items-center justify-center px-2 text-[0.68rem] font-semibold uppercase tracking-[0.06em]" aria-label="Go to next page">Next</button>
+                </div>
+              </div>
+            </div>
+          </article>
+          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Class + token mapping</p>
+            <div className="overflow-hidden rounded-md border border-neutral-200">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-neutral-50 text-neutral-700">
+                  <tr>
+                    <th className="px-2 py-1.5 font-semibold">Element</th>
+                    <th className="px-2 py-1.5 font-semibold">Role</th>
+                    <th className="px-2 py-1.5 font-semibold">Token touchpoints</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-table-shell</code></td>
+                    <td className="px-2 py-1.5">Default table container</td>
+                    <td className="px-2 py-1.5">black 1px outer border, rounded shell, scroll containment</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-table-head</code> + <code>.house-table-head-text</code></td>
+                    <td className="px-2 py-1.5">Header row styling</td>
+                    <td className="px-2 py-1.5">neutral header surface and typography hierarchy for column labels</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-table-row</code> + <code>.house-table-cell-text</code></td>
+                    <td className="px-2 py-1.5">Body rows and cells</td>
+                    <td className="px-2 py-1.5">row separators, hover state, and base table text contract</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+  )
 }
 
 function ApprovedMetricsToolbarSection() {
@@ -3574,6 +3953,7 @@ function ApprovedPage() {
           </div>
           <ApprovedMetricsToolbarSection />
           <ApprovedInsightsControlSection />
+          <ApprovedDefaultPublicationTableSection />
           <ApprovedTooltipSection />
           <ApprovedNotificationBannersSection />
         </section>
@@ -3631,3 +4011,4 @@ function ApprovedPage() {
 export const Approved: Story = {
   render: () => <ApprovedPage />,
 }
+
