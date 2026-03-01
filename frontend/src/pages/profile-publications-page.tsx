@@ -18,6 +18,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { TablePrimitive as Table, TableBody, TableCell, TableHead as TableHeader, TableHeaderCell as TableHead, TableRow } from '@/components/primitives/TablePrimitive'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { houseDividers, houseForms, houseLayout, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
+import { API_BASE_URL } from '@/lib/api'
 import {
   deletePublicationFile,
   downloadPublicationFile,
@@ -31,13 +32,14 @@ import {
   fetchPersonaState,
   fetchPublicationsAnalytics,
   fetchPublicationsTopMetrics,
+  triggerPublicationsTopMetricsRefresh,
   linkPublicationOpenAccessPdf,
   listPersonaSyncJobs,
   uploadPublicationFile,
 } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
 import { readCachedPersonaState, writeCachedPersonaState } from '@/lib/persona-cache'
-import { getAuthSessionToken } from '@/lib/auth-session'
+import { clearAuthSessionToken, getAuthSessionToken } from '@/lib/auth-session'
 import type {
   AuthUser,
   PublicationAiInsightsResponsePayload,
@@ -1321,6 +1323,13 @@ type ProfilePublicationsPageProps = {
 
 export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProps = {}) {
   const navigate = useNavigate()
+  const isLocalRuntime = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return false
+    }
+    const host = String(window.location.hostname || '').toLowerCase()
+    return host === 'localhost' || host === '127.0.0.1'
+  }, [])
   const isFixtureMode = Boolean(fixture)
   const initialCachedPersonaState = fixture?.personaState ?? readCachedPersonaState()
   const initialCachedUser = fixture?.user ?? loadCachedUser()
@@ -1377,6 +1386,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const filesWarmupInFlightRef = useRef<Set<string>>(new Set())
   const filesWarmupCompletedRef = useRef<Set<string>>(new Set())
   const autoOaStatusClearTimerRef = useRef<number | null>(null)
+  const localTopMetricsBootstrapAttemptedRef = useRef(false)
   const publicationTableLayoutRef = useRef<HTMLDivElement | null>(null)
   const filePickerRef = useRef<HTMLInputElement | null>(null)
 
@@ -1405,7 +1415,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           setTopMetricsResponse(value)
           saveCachedTopMetricsResponse(value)
         })
-        .catch(() => {})
+        .catch((topMetricsError) => {
+          const message = topMetricsError instanceof Error ? topMetricsError.message : 'Publications top metrics lookup failed.'
+          setStatus(message)
+        })
 
       const settled = await Promise.allSettled([
         personaPromise,
@@ -1415,6 +1428,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         topMetricsPromise,
       ])
       const [stateResult, userResult, jobsResult, analyticsResult, topMetricsResult] = settled
+      if (userResult.status === 'rejected') {
+        const reason = userResult.reason
+        const message = reason instanceof Error ? reason.message : String(reason || '')
+        const likelyExpiredSession = /unauthorized|session token|auth|401/i.test(message)
+        if (likelyExpiredSession) {
+          clearAuthSessionToken()
+          setToken('')
+          setUser(null)
+          setTopMetricsResponse(null)
+          setAnalyticsResponse(null)
+          setAnalyticsSummary(null)
+          setStatus('')
+          setError('Your session has expired. Please sign in again.')
+          navigate('/auth', { replace: true })
+          return
+        }
+      }
       if (stateResult.status === 'fulfilled') {
         setPersonaState(stateResult.value)
         writeCachedPersonaState(stateResult.value)
@@ -1716,11 +1746,46 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     const sessionToken = getAuthSessionToken()
     setToken(sessionToken)
     if (!sessionToken) {
+      if (isLocalRuntime) {
+        setLoading(false)
+        setError('No local auth session token found. Sign in on /auth to load publication metrics.')
+        return
+      }
       navigate('/auth', { replace: true })
       return
     }
-    void loadData(sessionToken, false, true)
-  }, [isFixtureMode, loadData, navigate])
+    let cancelled = false
+
+    const validateAndLoad = async () => {
+      try {
+        const activeUser = await fetchMe(sessionToken)
+        if (cancelled) {
+          return
+        }
+        setUser(activeUser)
+        saveCachedUser(activeUser)
+        await loadData(sessionToken, false, true)
+      } catch {
+        if (cancelled) {
+          return
+        }
+        clearAuthSessionToken()
+        setToken('')
+        setUser(null)
+        setTopMetricsResponse(null)
+        setAnalyticsResponse(null)
+        setAnalyticsSummary(null)
+        setStatus('')
+        setError('Your session has expired. Please sign in again.')
+        navigate('/auth', { replace: true })
+      }
+    }
+
+    void validateAndLoad()
+    return () => {
+      cancelled = true
+    }
+  }, [isFixtureMode, isLocalRuntime, loadData, navigate])
 
   useEffect(() => {
     if (!activeSyncJob || activeSyncJob.status === 'completed' || activeSyncJob.status === 'failed') {
@@ -1790,6 +1855,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [activeSyncJob?.id, loadData, token, user?.id])
 
   useEffect(() => {
+    if (isLocalRuntime) {
+      return
+    }
     if (!token || analyticsResponse?.status !== 'RUNNING') {
       return
     }
@@ -1820,10 +1888,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [analyticsResponse?.status, token])
+  }, [analyticsResponse?.status, isLocalRuntime, token])
 
   useEffect(() => {
-    if (!token || topMetricsResponse?.status !== 'RUNNING') {
+    if (isLocalRuntime) {
+      return
+    }
+    const tileCount = (topMetricsResponse?.tiles || []).length
+    if (!token || topMetricsResponse?.status !== 'RUNNING' || tileCount > 0) {
       return
     }
     let cancelled = false
@@ -1851,7 +1923,54 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [topMetricsResponse?.status, token])
+  }, [isLocalRuntime, topMetricsResponse?.status, topMetricsResponse?.tiles, token])
+
+  useEffect(() => {
+    if (!isLocalRuntime) {
+      return
+    }
+    localTopMetricsBootstrapAttemptedRef.current = false
+  }, [isLocalRuntime, token, user?.id])
+
+  useEffect(() => {
+    if (!isLocalRuntime || !token || !user?.id) {
+      return
+    }
+    if (localTopMetricsBootstrapAttemptedRef.current) {
+      return
+    }
+    if ((topMetricsResponse?.tiles || []).length > 0) {
+      localTopMetricsBootstrapAttemptedRef.current = true
+      return
+    }
+    localTopMetricsBootstrapAttemptedRef.current = true
+    let cancelled = false
+    const bootstrap = async () => {
+      try {
+        await triggerPublicationsTopMetricsRefresh(token)
+      } catch {
+        // Continue with fetch attempt even if refresh enqueue call fails.
+      }
+      try {
+        const next = await fetchPublicationsTopMetrics(token)
+        if (cancelled) {
+          return
+        }
+        setTopMetricsResponse(next)
+        saveCachedTopMetricsResponse(next)
+      } catch (error) {
+        if (cancelled) {
+          return
+        }
+        const message = error instanceof Error ? error.message : 'Could not load publication insight tiles.'
+        setStatus(message)
+      }
+    }
+    void bootstrap()
+    return () => {
+      cancelled = true
+    }
+  }, [isLocalRuntime, token, topMetricsResponse?.tiles, user?.id])
 
   const metricsByWorkId = useMemo(() => {
     const map = new Map<string, { citations: number; provider: string }>()
@@ -2536,6 +2655,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           Track your research metrics and manage your publication library.
         </p>
       </header>
+
+      {isLocalRuntime ? (
+        <div className={HOUSE_SECTION_ANCHOR_CLASS}>
+          <div className={cn(HOUSE_BANNER_CLASS, HOUSE_BANNER_PUBLICATIONS_CLASS)}>
+            <p className="font-medium">Local diagnostics</p>
+            <p className="mt-1 text-xs">
+              api={API_BASE_URL} | token={token ? 'present' : 'missing'} | user={user?.email || 'none'} | metrics={topMetricsResponse?.status || 'none'} | tiles={(topMetricsResponse?.tiles || []).length}
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       <div className={HOUSE_SECTION_ANCHOR_CLASS}>
         <PublicationsTopStrip

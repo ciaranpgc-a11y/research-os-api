@@ -1,11 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react'
-import type { ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 
 import { ProfilePublicationsPage } from '@/pages/profile-publications-page'
 import type { ProfilePublicationsPageFixture } from '@/pages/profile-publications-page'
 import { ACCOUNT_SETTINGS_STORAGE_KEY } from '@/lib/account-preferences'
 import { publicationsMetricsHappyFixture } from '@/mocks/fixtures/publications-metrics'
-import { AccountRouteShell } from '@/stories/pages-review/_helpers/page-review-shells'
+import { StandaloneRouteShell } from '@/stories/pages-review/_helpers/page-review-shells'
 import {
   pagesReviewProfilePublicationsDefaultFixture,
 } from '@/stories/pages-review/_helpers/profile-publications-fixture'
@@ -26,6 +26,11 @@ export default meta
 type PublicationsLiveArgs = {
   paperCount: number
 }
+
+const LIVE_DATASET_DEFAULT_PAPER_COUNT = 48
+const LIVE_DATASET_MIN_PAPER_COUNT = 24
+const LIVE_DATASET_MAX_PAPER_COUNT = 72
+const LIVE_DATASET_STEP = 8
 
 function PublicationsLayoutPreview({ children }: { children: ReactNode }) {
   return (
@@ -487,10 +492,19 @@ function ensurePublicationInsightsVisibleDefault(): void {
 
 function PublicationsCompleteLive({ paperCount }: PublicationsLiveArgs) {
   ensurePublicationInsightsVisibleDefault()
-  const fixture = buildLargePublicationsFixture(paperCount)
+  const normalizedPaperCount = Math.max(
+    LIVE_DATASET_MIN_PAPER_COUNT,
+    Math.min(LIVE_DATASET_MAX_PAPER_COUNT, Math.round(Number(paperCount) || LIVE_DATASET_DEFAULT_PAPER_COUNT)),
+  )
+  const fixture = useMemo(() => {
+    const next = buildLargePublicationsFixture(normalizedPaperCount)
+    // In Storybook, always disable auth-dependent network fetches.
+    next.token = ''
+    return next
+  }, [normalizedPaperCount])
   return (
     <PublicationsLayoutPreview>
-      <AccountRouteShell
+      <StandaloneRouteShell
         initialEntry="/profile/publications"
         path="/profile/publications"
         element={<ProfilePublicationsPage fixture={fixture} />}
@@ -502,11 +516,11 @@ function PublicationsCompleteLive({ paperCount }: PublicationsLiveArgs) {
 export const Live: StoryObj<PublicationsLiveArgs> = {
   name: 'Live Dataset',
   args: {
-    paperCount: 300,
+    paperCount: LIVE_DATASET_DEFAULT_PAPER_COUNT,
   },
   argTypes: {
     paperCount: {
-      control: { type: 'range', min: 25, max: 300, step: 25 },
+      control: { type: 'range', min: LIVE_DATASET_MIN_PAPER_COUNT, max: LIVE_DATASET_MAX_PAPER_COUNT, step: LIVE_DATASET_STEP },
       description: 'Number of synthetic publications generated for the live preview',
     },
   },

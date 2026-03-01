@@ -5912,11 +5912,8 @@ export function PublicationsTopStrip({
     if (insightsVisible) {
       return
     }
-    if (tiles.length <= 0) {
-      return
-    }
     setInsightsVisible(true)
-  }, [autoRevealLocalInsights, insightsVisible, tiles.length])
+  }, [autoRevealLocalInsights, insightsVisible])
 
   const onSelectTile = async (tile: PublicationMetricTilePayload) => {
     setActiveTileKey(tile.key)
@@ -6047,6 +6044,14 @@ export function PublicationsTopStrip({
                   <div className={cn('h-full rounded-sm', HOUSE_DRILLDOWN_SKELETON_BLOCK_CLASS)} />
                 </div>
               ))}
+            </div>
+          ) : insightsVisible && tiles.length === 0 ? (
+            <div className="px-3 pb-3">
+              <div className={cn('rounded-sm px-3 py-2.5 text-sm', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>
+                <p>No publication insight tiles are available yet.</p>
+                {metrics?.status === 'RUNNING' ? <p className="mt-1">Metrics are currently computing. This panel updates automatically.</p> : null}
+                {metrics?.status === 'FAILED' ? <p className="mt-1">Metrics refresh failed. Use Sync Publications to retry.</p> : null}
+              </div>
             </div>
           ) : insightsVisible ? (
             <div className="publications-insights-grid">

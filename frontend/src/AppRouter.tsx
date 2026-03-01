@@ -3,7 +3,7 @@ import { Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-r
 
 import { AccountLayout } from '@/components/layout/account-layout'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
-import { getAuthSessionToken, getCachedAuthRole, isAuthBypassEnabled, setCachedAuthRole } from '@/lib/auth-session'
+import { clearAuthSessionToken, getAuthSessionToken, getCachedAuthRole, isAuthBypassEnabled, setCachedAuthRole } from '@/lib/auth-session'
 import { fetchMe } from '@/lib/impact-api'
 import { AdminPage } from '@/pages/admin-page'
 import { AgentLogsPage } from '@/pages/agent-logs-page'
@@ -67,10 +67,49 @@ function LandingOrWorkspace() {
 }
 
 function RequireSignIn() {
+  const [status, setStatus] = useState<'checking' | 'allowed' | 'signed_out'>('checking')
   const token = getAuthSessionToken()
   const location = useLocation()
-  if (!token) {
-    return <Navigate to="/" replace state={{ from: location.pathname }} />
+  useEffect(() => {
+    if (isAuthBypassEnabled()) {
+      setStatus('allowed')
+      return
+    }
+    if (!token) {
+      setStatus('signed_out')
+      return
+    }
+    let cancelled = false
+    setStatus('checking')
+    void fetchMe(token)
+      .then((user) => {
+        if (cancelled) {
+          return
+        }
+        setCachedAuthRole(user.role)
+        setStatus('allowed')
+      })
+      .catch(() => {
+        if (cancelled) {
+          return
+        }
+        clearAuthSessionToken()
+        setStatus('signed_out')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  if (status === 'checking') {
+    return (
+      <div data-ui="auth-session-checking" className="p-6 text-sm text-muted-foreground">
+        Checking session...
+      </div>
+    )
+  }
+  if (status === 'signed_out') {
+    return <Navigate to="/auth" replace state={{ from: location.pathname }} />
   }
   return <Outlet />
 }
