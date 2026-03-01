@@ -33,6 +33,21 @@ type PublicationsTopStripProps = {
   forceInsightsVisible?: boolean
 }
 
+function estimatePolylineLength(points: Array<{ x: number; y: number }>): number {
+  if (points.length < 2) {
+    return 0
+  }
+  let total = 0
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1]
+    const current = points[index]
+    const dx = current.x - previous.x
+    const dy = current.y - previous.y
+    total += Math.hypot(dx, dy)
+  }
+  return total
+}
+
 function toNumberArray(value: unknown): number[] {
   if (!Array.isArray(value)) {
     return []
@@ -71,6 +86,8 @@ function formatDrilldownValue(value: unknown): string {
   const text = String(value).trim()
   return text || '\u2014'
 }
+
+void formatDrilldownValue
 
 type ChartAxisLayoutOptions = {
   axisLabels: Array<string | null | undefined>
@@ -408,6 +425,13 @@ const HOUSE_CHART_RING_CENTER_LABEL_CLASS = publicationsHouseCharts.ringCenterLa
 const HOUSE_CHART_RING_PANEL_CLASS = publicationsHouseCharts.ringPanel
 const HOUSE_CHART_RING_SIZE_CLASS = publicationsHouseCharts.ringSize
 const HOUSE_CHART_MINI_DONUT_CLASS = publicationsHouseCharts.miniDonut
+void HOUSE_DRILLDOWN_PLACEHOLDER_CLASS
+void HOUSE_DRILLDOWN_HINT_CLASS
+void HOUSE_DRILLDOWN_ROW_CLASS
+void HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_EMPHASIS_CLASS
+void HOUSE_DRILLDOWN_SECTION_LABEL_CLASS
+void HOUSE_DRILLDOWN_NOTE_CLASS
+void HOUSE_DRILLDOWN_NOTE_SOFT_CLASS
 const HOUSE_METRIC_PROGRESS_PANEL_CLASS =
   cn(
     HOUSE_SURFACE_STRONG_PANEL_CLASS,
@@ -3163,6 +3187,8 @@ function normalizeRoleLabel(value: string): string {
   return clean.charAt(0).toUpperCase() + clean.slice(1)
 }
 
+void normalizeRoleLabel
+
 export function median(values: number[]): number {
   if (!values.length) {
     return 0
@@ -3791,261 +3817,62 @@ function TotalPublicationsDrilldownWorkspace({
   activeTab: DrilldownTab
   onOpenPublication?: (workId: string) => void
 }) {
-  const publications = useMemo(() => {
-    const source = Array.isArray(tile.drilldown?.publications)
-      ? tile.drilldown.publications
-      : []
-    return source.map((item, index): PublicationDrilldownRecord => {
-      const row = (item || {}) as Record<string, unknown>
-      const yearRaw = Number(row.year)
-      const year = Number.isFinite(yearRaw) && yearRaw > 0 ? Math.round(yearRaw) : null
-      const citationsRaw = Number(row.citations_lifetime)
-      const publicationTypeFromData = String(row.work_type || row.publication_type || '').trim()
-      const articleTypeFromData = String(row.article_type || row.publication_type || '').trim()
-      const typeFromData = publicationTypeFromData || articleTypeFromData
-      const publicationType = formatPublicationCategoryLabel(publicationTypeFromData)
-      const articleType = formatPublicationCategoryLabel(articleTypeFromData)
-      const type = formatPublicationCategoryLabel(typeFromData)
-      return {
-        workId: String(row.work_id || `row-${index}`),
-        year,
-        title: String(row.title || 'Untitled').trim() || 'Untitled',
-        role: normalizeRoleLabel(String(row.user_author_role || 'Unknown')),
-        type,
-        publicationType,
-        articleType,
-        venue: String(row.journal || 'Unknown venue').trim() || 'Unknown venue',
-        citations: Number.isFinite(citationsRaw) ? Math.max(0, Math.round(citationsRaw)) : 0,
-      }
-    })
-  }, [tile.drilldown?.publications])
-
-  const years = useMemo(
-    () => Array.from(new Set(publications.map((item) => item.year).filter((item): item is number => item !== null))).sort((a, b) => a - b),
-    [publications],
-  )
-  const countsByYear = useMemo(() => {
-    const output = new Map<number, number>()
-    for (const publication of publications) {
-      if (publication.year === null) {
-        continue
-      }
-      output.set(publication.year, (output.get(publication.year) || 0) + 1)
-    }
-    return output
-  }, [publications])
-  const activeYears = years.filter((year) => (countsByYear.get(year) || 0) > 0).length
-  const meanPerActiveYear = activeYears > 0 ? Math.round(publications.length / activeYears) : 0
-  const latestYear = years.length ? years[years.length - 1] : null
-  const latestYearCount = latestYear === null ? 0 : Number(countsByYear.get(latestYear) || 0)
-  const previousYear = latestYear === null ? null : latestYear - 1
-  const previousYearCount = previousYear === null ? 0 : Number(countsByYear.get(previousYear) || 0)
-  const yoyDelta = latestYearCount - previousYearCount
-
-  const publicationTypeRows = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const publication of publications) {
-      counts.set(publication.publicationType, (counts.get(publication.publicationType) || 0) + 1)
-    }
-    return Array.from(counts.entries())
-      .map(([label, count]) => ({ label, count }))
-      .sort((left, right) => right.count - left.count)
-  }, [publications])
-  const articleTypeRows = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const publication of publications) {
-      counts.set(publication.articleType, (counts.get(publication.articleType) || 0) + 1)
-    }
-    return Array.from(counts.entries())
-      .map(([label, count]) => ({ label, count }))
-      .sort((left, right) => right.count - left.count)
-  }, [publications])
-  if (activeTab === 'summary') {
-    return (
-      <div className="house-publications-drilldown-stack-3">
-        <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
-          <div className="house-drilldown-subheading-block">
-            <p className="house-publications-drilldown-headline-results">Headline results</p>
-            <div className={HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS}>
-              <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
-                <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>Total publications</p>
-                <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
-                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_EMPHASIS_CLASS, 'tabular-nums')}>{String(tile.value_display || formatInt(publications.length))}</p>
-                </div>
-              </div>
-              <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
-                <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>Active years</p>
-                <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
-                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{formatInt(activeYears)}</p>
-                </div>
-              </div>
-              <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
-                <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>Mean per year</p>
-                <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
-                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{formatInt(meanPerActiveYear)}</p>
-                </div>
-              </div>
-              <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
-                <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>Latest year count</p>
-                <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
-                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{formatInt(latestYearCount)}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="house-drilldown-subheading-block">
-            <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>Publication trends over time</p>
-            <div className="house-publications-drilldown-stack-2">
-              {years.length ? years.slice().reverse().map((year) => (
-                <div key={`summary-year-${year}`} className={HOUSE_DRILLDOWN_ROW_CLASS}>
-                  <span>{year}</span>
-                  <span className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`${formatInt(Number(countsByYear.get(year) || 0))} publications`}</span>
-                </div>
-              )) : <p className={HOUSE_DRILLDOWN_HINT_CLASS}>No yearly publication data available.</p>}
-            </div>
-          </div>
-
-          <div className="house-drilldown-subheading-block">
-            <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>Publication type</p>
-            <div className="house-publications-drilldown-stack-2">
-              {publicationTypeRows.length ? publicationTypeRows.slice(0, 8).map((row) => (
-                <div key={`summary-publication-type-${row.label}`} className={HOUSE_DRILLDOWN_ROW_CLASS}>
-                  <span>{row.label}</span>
-                  <span className={HOUSE_DRILLDOWN_NOTE_CLASS}>{formatInt(row.count)}</span>
-                </div>
-              )) : <p className={HOUSE_DRILLDOWN_HINT_CLASS}>No publication type data available.</p>}
-            </div>
-          </div>
-
-          <div className="house-drilldown-subheading-block">
-            <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>Article type</p>
-            <div className="house-publications-drilldown-stack-2">
-              {articleTypeRows.length ? articleTypeRows.slice(0, 8).map((row) => (
-                <div key={`summary-article-type-${row.label}`} className={HOUSE_DRILLDOWN_ROW_CLASS}>
-                  <span>{row.label}</span>
-                  <span className={HOUSE_DRILLDOWN_NOTE_CLASS}>{formatInt(row.count)}</span>
-                </div>
-              )) : <p className={HOUSE_DRILLDOWN_HINT_CLASS}>No article type data available.</p>}
-            </div>
-          </div>
-        </div>
-      </div>
-    )
+  void _onOpenPublication
+  const headlineMetricTiles = [
+    { label: 'Total publications', value: '\u2014' },
+    { label: 'Active years', value: '\u2014' },
+    { label: 'Mean yearly publications', value: '\u2014' },
+    { label: 'Highest yield', value: '\u2014' },
+    { label: 'Last 1 year', value: '\u2014' },
+    { label: 'Last 3 years', value: '\u2014' },
+    { label: 'Last 5 years', value: '\u2014' },
+    { label: 'Year-to-date', value: '\u2014' },
+  ]
+  const subsectionTitleByTab: Partial<Record<DrilldownTab, string>> = {
+    breakdown: 'Publication count by year',
+    trajectory: 'Year-over-year trajectory',
+    context: 'Top publication venues',
+    methods: 'Method details',
   }
+  const subsectionTitle = subsectionTitleByTab[activeTab] || null
 
-  if (activeTab === 'breakdown') {
-    return (
-      <div className="house-publications-drilldown-stack-3">
-        <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
-          <div className="house-drilldown-subheading-block">
-            <p className="house-publications-drilldown-headline-results">Headline results</p>
-            <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`${formatInt(publications.length)} publications across ${formatInt(activeYears)} active years`}</p>
+  return (
+    <div className="house-publications-drilldown-stack-3" data-metric-key={tile.key}>
+      <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
+        <div className="house-drilldown-heading-block">
+          <div className="house-drilldown-title-block">
+            <p className="house-drilldown-subheading-block-title">Headline results</p>
           </div>
-          <div className="house-drilldown-subheading-block">
-            <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>Publication count by year</p>
-            <div className="house-publications-drilldown-stack-2">
-              {years.length ? years.slice().reverse().map((year) => (
-                <div key={`breakdown-row-${year}`} className={HOUSE_DRILLDOWN_ROW_CLASS}>
-                  <span>{year}</span>
-                  <span className={HOUSE_DRILLDOWN_NOTE_CLASS}>{formatInt(Number(countsByYear.get(year) || 0))}</span>
-                </div>
-              )) : <p className={HOUSE_DRILLDOWN_HINT_CLASS}>No publication records available.</p>}
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (activeTab === 'trajectory') {
-    return (
-      <div className="house-publications-drilldown-stack-3">
-        <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
-          <div className="house-drilldown-subheading-block">
-            <p className="house-publications-drilldown-headline-results">Headline results</p>
-            <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`YoY delta ${yoyDelta >= 0 ? '+' : ''}${formatInt(yoyDelta)} publications`}</p>
-          </div>
-          <div className="house-drilldown-subheading-block">
-            <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>Year-over-year trajectory</p>
-            <div className="house-publications-drilldown-stack-2">
-              {years.length > 1 ? years.slice(1).reverse().map((year) => {
-                const value = Number(countsByYear.get(year) || 0)
-                const prior = Number(countsByYear.get(year - 1) || 0)
-                const delta = value - prior
-                return (
-                  <div key={`trajectory-row-${year}`} className={HOUSE_DRILLDOWN_ROW_CLASS}>
-                    <span>{`${year} vs ${year - 1}`}</span>
-                    <span className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`${delta >= 0 ? '+' : ''}${formatInt(delta)}`}</span>
-                  </div>
-                )
-              }) : <p className={HOUSE_DRILLDOWN_HINT_CLASS}>Not enough yearly data for trajectory.</p>}
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (activeTab === 'context') {
-    return (
-      <div className="house-publications-drilldown-stack-3">
-        <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
-          <div className="house-drilldown-subheading-block">
-            <p className="house-publications-drilldown-headline-results">Headline results</p>
-            <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`${formatInt(publications.length)} publication records with ${formatInt(years.length)} known publication years`}</p>
-          </div>
-
-          <div className="house-drilldown-subheading-block">
-            <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>Top publication venues</p>
-            <div className="house-publications-drilldown-stack-2">
-              {(() => {
-                const venueCounts = new Map<string, number>()
-                for (const publication of publications) {
-                  venueCounts.set(publication.venue, (venueCounts.get(publication.venue) || 0) + 1)
-                }
-                const rows = Array.from(venueCounts.entries())
-                  .map(([label, count]) => ({ label, count }))
-                  .sort((left, right) => right.count - left.count)
-                  .slice(0, 8)
-                return rows.length
-                  ? rows.map((row) => (
-                    <div key={`context-venue-${row.label}`} className={HOUSE_DRILLDOWN_ROW_CLASS}>
-                      <span>{row.label}</span>
-                      <span className={HOUSE_DRILLDOWN_NOTE_CLASS}>{formatInt(row.count)}</span>
+          <div className="house-drilldown-content-block house-publications-headline-content w-full">
+            {activeTab === 'summary' ? (
+              <div
+                className={cn(HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS, 'house-publications-headline-metric-grid mt-0')}
+                style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}
+              >
+                {headlineMetricTiles.map((tile) => (
+                  <div key={tile.label} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
+                    <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>{tile.label}</p>
+                    <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                      <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{tile.value}</p>
                     </div>
-                  ))
-                  : <p className={HOUSE_DRILLDOWN_HINT_CLASS}>No venue data available.</p>
-              })()}
-            </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
-      </div>
-    )
-  }
 
-  if (activeTab === 'methods') {
-    return (
-      <div className="house-publications-drilldown-stack-3">
-        <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
+        {subsectionTitle ? (
           <div className="house-drilldown-subheading-block">
-            <p className="house-publications-drilldown-headline-results">Headline results</p>
-            <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>Method metadata for total publication insights.</p>
+            <div className="house-drilldown-title-block">
+              <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>{subsectionTitle}</p>
+            </div>
+            <div className="house-drilldown-content-block w-full" />
           </div>
-          <div className={cn('house-drilldown-subheading-block', HOUSE_DRILLDOWN_NOTE_CLASS)}>
-            <p><strong>Formula:</strong> {String(tile.drilldown?.formula || 'Not available')}</p>
-            <p><strong>Definition:</strong> {String(tile.drilldown?.definition || 'Not available')}</p>
-            <p><strong>Data sources:</strong> {(tile.data_source || []).join(', ') || 'Not available'}</p>
-            <p><strong>Update frequency:</strong> {String(tile.tooltip_details?.update_frequency || 'Not available')}</p>
-            <p><strong>Confidence:</strong> {(Number(tile.confidence_score || 0)).toFixed(2)}</p>
-            {tile.drilldown?.confidence_note ? <p className={HOUSE_DRILLDOWN_NOTE_SOFT_CLASS}>{String(tile.drilldown.confidence_note)}</p> : null}
-          </div>
-        </div>
+        ) : null}
       </div>
-    )
-  }
-
-  return <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>Select a tab to inspect this metric.</div>
+    </div>
+  )
 }
 
 function GenericMetricDrilldownWorkspace({
@@ -4055,188 +3882,33 @@ function GenericMetricDrilldownWorkspace({
   tile: PublicationMetricTilePayload
   activeTab: DrilldownTab
 }) {
-  const drilldown = tile.drilldown || ({} as PublicationMetricTilePayload['drilldown'])
-  const headlineMetrics = useMemo(() => {
-    const source = Array.isArray(drilldown.headline_metrics) ? drilldown.headline_metrics : []
-    return source
-      .map((item, index) => {
-        const row = (item || {}) as Record<string, unknown>
-        const label = String(
-          row.label || row.title || row.name || row.metric || row.key || `Metric ${index + 1}`,
-        ).trim()
-        const value = row.value_display ?? row.display ?? row.value ?? row.metric_value ?? row.score ?? row.count
-        return {
-          id: String(row.id || row.key || `headline-${index}`),
-          label,
-          value: formatDrilldownValue(value),
-        }
-      })
-      .filter((item) => item.label)
-  }, [drilldown.headline_metrics])
-
-  const breakdownRows = useMemo(() => {
-    const source = Array.isArray(drilldown.breakdowns) ? drilldown.breakdowns : []
-    return source
-      .map((item, index) => {
-        const row = (item || {}) as Record<string, unknown>
-        const label = String(row.label || row.name || row.category || row.group || `Breakdown ${index + 1}`).trim()
-        const value = row.value_display ?? row.display ?? row.value ?? row.count ?? row.percent ?? row.pct
-        return {
-          id: String(row.id || row.key || `breakdown-${index}`),
-          label,
-          value: formatDrilldownValue(value),
-        }
-      })
-      .filter((item) => item.label)
-  }, [drilldown.breakdowns])
-
-  const trajectoryRows = useMemo(() => {
-    const source = Array.isArray(drilldown.series) ? drilldown.series : []
-    return source
-      .map((item, index) => {
-        const row = (item || {}) as Record<string, unknown>
-        const label = String(row.label || row.window || row.period || row.name || `Point ${index + 1}`).trim()
-        const value = row.value_display ?? row.display ?? row.value ?? row.metric_value ?? row.count
-        return {
-          id: String(row.id || row.key || `trajectory-${index}`),
-          label,
-          value: formatDrilldownValue(value),
-        }
-      })
-      .filter((item) => item.label)
-  }, [drilldown.series])
-
-  const contextRows = useMemo(() => {
-    const benchmarkSource = Array.isArray(drilldown.benchmarks) ? drilldown.benchmarks : []
-    const qcSource = Array.isArray(drilldown.qc_flags) ? drilldown.qc_flags : []
-    const benchmarkRows = benchmarkSource.map((item, index) => {
-      const row = (item || {}) as Record<string, unknown>
-      const label = String(row.label || row.name || row.group || `Benchmark ${index + 1}`).trim()
-      const value = row.value_display ?? row.display ?? row.value ?? row.score ?? row.status
-      return {
-        id: String(row.id || row.key || `benchmark-${index}`),
-        label,
-        value: formatDrilldownValue(value),
-      }
-    })
-    const qcRows = qcSource.map((item, index) => {
-      const row = (item || {}) as Record<string, unknown>
-      const label = String(row.label || row.flag || row.name || `QC ${index + 1}`).trim()
-      const value = row.value_display ?? row.display ?? row.value ?? row.status ?? row.note
-      return {
-        id: String(row.id || row.key || `qc-${index}`),
-        label,
-        value: formatDrilldownValue(value),
-      }
-    })
-    return [...benchmarkRows, ...qcRows].filter((item) => item.label)
-  }, [drilldown.benchmarks, drilldown.qc_flags])
-
-  const methodsRows = useMemo(() => {
-    const methods = (drilldown.methods || {}) as Record<string, unknown>
-    return Object.entries(methods)
-      .map(([key, value]) => ({
-        id: `method-${key}`,
-        label: key.replace(/_/g, ' '),
-        value: formatDrilldownValue(value),
-      }))
-      .filter((item) => item.label)
-  }, [drilldown.methods])
-
-  if (activeTab === 'summary') {
-    return (
-      <div className="space-y-3">
-        <p className="house-publications-drilldown-headline-results">Headline results</p>
-        {headlineMetrics.length ? (
-          <div className={HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS}>
-            {headlineMetrics.slice(0, 8).map((item) => (
-              <div key={item.id} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
-                <p className={HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS}>{item.label}</p>
-                <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
-                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums whitespace-nowrap leading-none')}>
-                    {item.value}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>No summary metrics returned for this tile yet.</div>
-        )}
-      </div>
-    )
+  const subsectionTitleByTab: Partial<Record<DrilldownTab, string>> = {
+    breakdown: 'Breakdown results',
+    trajectory: 'Trajectory results',
+    context: 'Context results',
+    methods: 'Methods metadata',
   }
-
-  if (activeTab === 'breakdown') {
-    return breakdownRows.length ? (
-      <div className="space-y-2">
-        {breakdownRows.map((row) => (
-          <div key={row.id} className={HOUSE_DRILLDOWN_ROW_CLASS}>
-            <span>{row.label}</span>
-            <span className="tabular-nums">{row.value}</span>
-          </div>
-        ))}
-      </div>
-    ) : (
-      <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>No breakdown rows returned for this tile yet.</div>
-    )
-  }
-
-  if (activeTab === 'trajectory') {
-    return trajectoryRows.length ? (
-      <div className="space-y-2">
-        {trajectoryRows.map((row) => (
-          <div key={row.id} className={HOUSE_DRILLDOWN_ROW_CLASS}>
-            <span>{row.label}</span>
-            <span className="tabular-nums">{row.value}</span>
-          </div>
-        ))}
-      </div>
-    ) : (
-      <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>No trajectory points returned for this tile yet.</div>
-    )
-  }
-
-  if (activeTab === 'context') {
-    return contextRows.length ? (
-      <div className="space-y-2">
-        {contextRows.map((row) => (
-          <div key={row.id} className={HOUSE_DRILLDOWN_ROW_CLASS}>
-            <span>{row.label}</span>
-            <span className="tabular-nums">{row.value}</span>
-          </div>
-        ))}
-      </div>
-    ) : (
-      <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>No contextual benchmarks returned for this tile yet.</div>
-    )
-  }
+  const subsectionTitle = subsectionTitleByTab[activeTab] || null
 
   return (
-    <div className="space-y-3">
-      <div className="space-y-1">
-        <p className={HOUSE_DRILLDOWN_SECTION_LABEL_CLASS}>Definition</p>
-        <p className={HOUSE_DRILLDOWN_NOTE_SOFT_CLASS}>{formatDrilldownValue(drilldown.definition)}</p>
-      </div>
-      <div className="space-y-1">
-        <p className={HOUSE_DRILLDOWN_SECTION_LABEL_CLASS}>Formula</p>
-        <p className={HOUSE_DRILLDOWN_NOTE_SOFT_CLASS}>{formatDrilldownValue(drilldown.formula)}</p>
-      </div>
-      <div className="space-y-1">
-        <p className={HOUSE_DRILLDOWN_SECTION_LABEL_CLASS}>Confidence note</p>
-        <p className={HOUSE_DRILLDOWN_NOTE_SOFT_CLASS}>{formatDrilldownValue(drilldown.confidence_note)}</p>
-      </div>
-      {methodsRows.length ? (
-        <div className="space-y-2">
-          <p className={HOUSE_DRILLDOWN_SECTION_LABEL_CLASS}>Methods metadata</p>
-          {methodsRows.map((row) => (
-            <div key={row.id} className={HOUSE_DRILLDOWN_ROW_CLASS}>
-              <span className="capitalize">{row.label}</span>
-              <span>{row.value}</span>
-            </div>
-          ))}
+    <div className="house-publications-drilldown-stack-3" data-metric-key={tile.key}>
+      <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
+        <div className="house-drilldown-heading-block">
+          <div className="house-drilldown-title-block">
+            <p className="house-drilldown-subheading-block-title">Headline results</p>
+          </div>
+          <div className="house-drilldown-content-block w-full" />
         </div>
-      ) : null}
+
+        {subsectionTitle ? (
+          <div className="house-drilldown-subheading-block">
+            <div className="house-drilldown-title-block">
+              <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>{subsectionTitle}</p>
+            </div>
+            <div className="house-drilldown-content-block w-full" />
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -4870,10 +4542,14 @@ function InfluentialTrendPanel({
     [hasValues, refreshKey, values],
   )
   const lineEntryKey = `${lineAnimationKey}|influential-line`
-  const hasMeasuredPath = pathLength > 0
-  const lineExpanded = useUnifiedToggleBarAnimation(lineEntryKey, hasValues && hasMeasuredPath)
+  const fallbackPathLength = useMemo(
+    () => Math.max(1, estimatePolylineLength(points)),
+    [points],
+  )
+  const effectivePathLength = pathLength > 0 ? pathLength : fallbackPathLength
+  const lineExpanded = useUnifiedToggleBarAnimation(lineEntryKey, hasValues)
   const lineTransitionDuration = tileChartDurationVar(
-    useIsFirstChartEntry(lineEntryKey, hasValues && hasMeasuredPath),
+    useIsFirstChartEntry(lineEntryKey, hasValues),
   )
 
   useEffect(() => {
@@ -4920,7 +4596,7 @@ function InfluentialTrendPanel({
               className="house-toggle-chart-line"
               data-expanded={lineExpanded ? 'true' : 'false'}
               style={{
-                '--chart-path-length': pathLength || 1,
+                '--chart-path-length': effectivePathLength,
                 transitionDuration: lineTransitionDuration,
               } as React.CSSProperties}
             />
@@ -5144,10 +4820,18 @@ export function PublicationsTopStrip({
     () => forceInsightsVisible || readAccountSettings().publicationInsightsDefaultVisibility !== 'hidden',
   )
   const [toolboxOpen, setToolboxOpen] = useState(false)
+  const [chartRefreshCycle, setChartRefreshCycle] = useState(0)
   const tileMotionStyle = useMemo(() => ({
     '--motion-duration-chart-refresh': `${TILE_MOTION_ENTRY_DURATION_MS}ms`,
     '--motion-duration-chart-toggle': `${TILE_MOTION_TOGGLE_DURATION_MS}ms`,
   }) as CSSProperties, [])
+
+  useEffect(() => {
+    if (!metrics || loading) {
+      return
+    }
+    setChartRefreshCycle((current) => current + 1)
+  }, [loading, metrics])
 
   const tiles = useMemo(() => {
     const source = metrics?.tiles ?? []
@@ -5777,7 +5461,7 @@ export function PublicationsTopStrip({
                       tile={tile}
                       chartTitle="Influential citations over time"
                       chartTitleClassName={HOUSE_METRIC_RIGHT_CHART_TITLE_CLASS}
-                      refreshKey={metrics?.data_last_refreshed}
+                      refreshKey={`${String(metrics?.data_last_refreshed || '')}|${chartRefreshCycle}`}
                     />
                   )
                 }
@@ -5827,7 +5511,7 @@ export function PublicationsTopStrip({
                 ) : null}
                 {detailError ? <p className={cn('mt-2', HOUSE_DRILLDOWN_ALERT_CLASS)}>{detailError}</p> : null}
               </div>
-              <div className="house-drilldown-heading-block gap-1 rounded-sm bg-card p-2" role="tablist" aria-label="Metric drilldown sections">
+              <div className="house-drilldown-heading-block house-publications-drilldown-tabs rounded-sm bg-card" role="tablist" aria-label="Metric drilldown sections">
                 {DRILLDOWN_TABS.map((tab) => {
                   const isActive = activeDrilldownTab === tab.value
                   return (
@@ -5838,9 +5522,13 @@ export function PublicationsTopStrip({
                       aria-selected={isActive}
                       aria-controls={`drilldown-panel-${tab.value}`}
                       className={cn(
-                        'house-nav-item approved-drilldown-nav-item flex-1',
+                        'house-nav-item approved-drilldown-nav-item house-publications-drilldown-tab-item',
                         isActive && 'approved-drilldown-nav-item-active',
                       )}
+                      style={{
+                        flexGrow: Math.max(1, tab.label.length),
+                        flexBasis: 0,
+                      }}
                       onClick={() => setActiveDrilldownTab(tab.value)}
                     >
                       <span className="house-nav-item-label">{tab.label}</span>

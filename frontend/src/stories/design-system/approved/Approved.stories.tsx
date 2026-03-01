@@ -1,8 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MemoryRouter } from 'react-router-dom'
-import { Download, Eye, EyeOff, FileText, KeyRound, Mail, Menu, Search, Settings, Share2, User } from 'lucide-react'
-import { Download, Eye, EyeOff, FileText, Hammer, KeyRound, Mail, Menu, Search, Settings, Share2, User } from 'lucide-react
+import { Download, Eye, EyeOff, FileText, Hammer, KeyRound, Mail, Menu, Search, Settings, Share2, User } from 'lucide-react'
 
 import { AuthPage } from '@/pages/auth-page'
 import { TopBar } from '@/components/layout/top-bar'
@@ -721,7 +720,7 @@ function ApprovedPublicationsDrilldownSection() {
                 {activeDrilldownTab === 'summary' ? (
                   <>
                     <div className="house-drilldown-subheading-block">
-                      <p className="house-publications-drilldown-headline-results">Headline results</p>
+                      <p className="house-drilldown-subheading-block-title">Headline results</p>
                       <div className="house-drilldown-summary-stats-grid">
                         {headlineResultTiles.map((tile) => (
                           <div key={tile.id} className="house-drilldown-summary-stat-card">
@@ -750,7 +749,7 @@ function ApprovedPublicationsDrilldownSection() {
                 {activeDrilldownTab === 'breakdown' ? (
                   <>
                     <div className="house-drilldown-subheading-block">
-                      <p className="house-publications-drilldown-headline-results">Headline results</p>
+                      <p className="house-drilldown-subheading-block-title">Headline results</p>
                       <p className="house-drilldown-note">150 publications across 12 active years</p>
                     </div>
                     <div className="house-drilldown-subheading-block">
@@ -767,7 +766,7 @@ function ApprovedPublicationsDrilldownSection() {
                 {activeDrilldownTab === 'trajectory' ? (
                   <>
                     <div className="house-drilldown-subheading-block">
-                      <p className="house-publications-drilldown-headline-results">Headline results</p>
+                      <p className="house-drilldown-subheading-block-title">Headline results</p>
                       <p className="house-drilldown-note">YoY delta -3 publications</p>
                     </div>
                     <div className="house-drilldown-subheading-block">
@@ -784,7 +783,7 @@ function ApprovedPublicationsDrilldownSection() {
                 {activeDrilldownTab === 'context' ? (
                   <>
                     <div className="house-drilldown-subheading-block">
-                      <p className="house-publications-drilldown-headline-results">Headline results</p>
+                      <p className="house-drilldown-subheading-block-title">Headline results</p>
                       <p className="house-drilldown-note">150 publication records with 12 known publication years</p>
                     </div>
                     <div className="house-drilldown-subheading-block">
@@ -801,7 +800,7 @@ function ApprovedPublicationsDrilldownSection() {
                 {activeDrilldownTab === 'methods' ? (
                   <>
                     <div className="house-drilldown-subheading-block">
-                      <p className="house-publications-drilldown-headline-results">Headline results</p>
+                      <p className="house-drilldown-subheading-block-title">Headline results</p>
                       <p className="house-drilldown-note">Method metadata for total publication insights.</p>
                     </div>
                     <div className="house-drilldown-subheading-block house-drilldown-note">
@@ -1359,9 +1358,7 @@ function ApprovedMetricTilesSection() {
   )
 }
 
-function ApprovedMetricsToolbarSection() {
-
-  function ApprovedInsightsControlSection() {
+function ApprovedInsightsControlSection() {
     const toolboxTooltipClass =
       'house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-[999] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
 
@@ -1503,7 +1500,9 @@ function ApprovedMetricsToolbarSection() {
         </div>
       </section>
     )
-  }
+}
+
+function ApprovedMetricsToolbarSection() {
   const toolboxTooltipClass =
     'house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-[999] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
 
