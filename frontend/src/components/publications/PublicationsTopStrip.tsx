@@ -61,7 +61,9 @@ function toNumberArray(value: unknown): number[] {
 }
 
 function formatInt(value: number): string {
-  return Math.round(Number.isFinite(value) ? value : 0).toLocaleString('en-GB')
+  const finiteValue = Number.isFinite(value) ? value : 0
+  const boundedValue = Math.max(-Number.MAX_SAFE_INTEGER, Math.min(Number.MAX_SAFE_INTEGER, finiteValue))
+  return Math.round(boundedValue).toLocaleString('en-GB')
 }
 
 function formatSignedPercentCompact(value: number): string {
@@ -611,14 +613,19 @@ function useHouseBarSetTransition<T extends { key: string }>({
   isSwappingStructure: boolean
   barsExpanded: boolean
 } {
-  const [renderBars, setRenderBars] = useState<T[]>(bars)
+  const [frozenRenderBars, setFrozenRenderBars] = useState<T[] | null>(null)
   const [outgoingBars, setOutgoingBars] = useState<T[]>([])
   const [pendingBars, setPendingBars] = useState<T[]>([])
   const [isCrossfading, setIsCrossfading] = useState(false)
   const [isSwappingStructure, setIsSwappingStructure] = useState(false)
+  const barsRef = useRef<T[]>(bars)
   const previousBarsRef = useRef<T[]>(bars)
   const swapRafRef = useRef<number | null>(null)
   const swapTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    barsRef.current = bars
+  }, [bars])
 
   useEffect(() => {
     return () => {
@@ -634,6 +641,14 @@ function useHouseBarSetTransition<T extends { key: string }>({
   }, [])
 
   useEffect(() => {
+    const nextBars = barsRef.current
+    const clearSwapState = () => {
+      setOutgoingBars((current) => (current.length > 0 ? [] : current))
+      setPendingBars((current) => (current.length > 0 ? [] : current))
+      setIsCrossfading((current) => (current ? false : current))
+      setIsSwappingStructure((current) => (current ? false : current))
+      setFrozenRenderBars((current) => (current === null ? current : null))
+    }
     if (swapRafRef.current !== null) {
       window.cancelAnimationFrame(swapRafRef.current)
       swapRafRef.current = null
@@ -644,38 +659,26 @@ function useHouseBarSetTransition<T extends { key: string }>({
     }
 
     if (!enabled) {
-      previousBarsRef.current = bars
-      setRenderBars(bars)
-      setOutgoingBars([])
-      setPendingBars([])
-      setIsCrossfading(false)
-      setIsSwappingStructure(false)
+      previousBarsRef.current = nextBars
+      clearSwapState()
       return
     }
 
     const previousBars = previousBarsRef.current
     const hadPrevious = previousBars.length > 0
     const structureChanged =
-      previousBars.length !== bars.length
-      || previousBars.some((bar, index) => bar.key !== bars[index]?.key)
+      previousBars.length !== nextBars.length
+      || previousBars.some((bar, index) => bar.key !== nextBars[index]?.key)
 
-    previousBarsRef.current = bars
+    previousBarsRef.current = nextBars
 
     if (!hadPrevious || !structureChanged) {
-      setRenderBars(bars)
-      setOutgoingBars([])
-      setPendingBars([])
-      setIsCrossfading(false)
-      setIsSwappingStructure(false)
+      clearSwapState()
       return
     }
 
     if (prefersReducedMotion()) {
-      setRenderBars(bars)
-      setOutgoingBars([])
-      setPendingBars([])
-      setIsCrossfading(false)
-      setIsSwappingStructure(false)
+      clearSwapState()
       return
     }
 
@@ -683,9 +686,9 @@ function useHouseBarSetTransition<T extends { key: string }>({
     const safeCollapseMs = Math.max(0, collapseMs)
 
     if (structureSwap === 'crossfade') {
-      setRenderBars(bars)
+      setFrozenRenderBars(null)
       setOutgoingBars(previousBars)
-      setPendingBars(bars)
+      setPendingBars(nextBars)
       setIsCrossfading(false)
       setIsSwappingStructure(true)
       swapRafRef.current = window.requestAnimationFrame(() => {
@@ -700,20 +703,20 @@ function useHouseBarSetTransition<T extends { key: string }>({
       return
     }
 
-    setRenderBars(previousBars)
+    setFrozenRenderBars(previousBars)
     setOutgoingBars(previousBars)
-    setPendingBars(bars)
+    setPendingBars(nextBars)
     setIsCrossfading(false)
     setIsSwappingStructure(true)
 
     swapTimerRef.current = window.setTimeout(() => {
-      setRenderBars(bars)
-      setOutgoingBars([])
-      setPendingBars([])
-      setIsCrossfading(false)
-      setIsSwappingStructure(false)
+      setFrozenRenderBars(null)
+      setOutgoingBars((current) => (current.length > 0 ? [] : current))
+      setPendingBars((current) => (current.length > 0 ? [] : current))
+      setIsCrossfading((current) => (current ? false : current))
+      setIsSwappingStructure((current) => (current ? false : current))
     }, safeCollapseMs)
-  }, [animationKey, bars, collapseMs, crossfadeMs, enabled, structureSwap])
+  }, [animationKey, collapseMs, crossfadeMs, enabled, structureSwap])
 
   const barsExpanded = useUnifiedToggleBarAnimation(
     `${animationKey}|${bars.map((bar) => bar.key).join('|')}`,
@@ -721,7 +724,7 @@ function useHouseBarSetTransition<T extends { key: string }>({
     barExpandMode,
   )
   return {
-    renderBars,
+    renderBars: frozenRenderBars ?? bars,
     outgoingBars,
     isCrossfading,
     pendingBars,
@@ -786,14 +789,20 @@ function useEasedSeries(target: number[], animationKey: string, enabled: boolean
 
   useEffect(() => {
     if (!target.length) {
-      setValues([])
-      valuesRef.current = []
+      if (valuesRef.current.length !== 0) {
+        setValues([])
+        valuesRef.current = []
+      }
       return
     }
     const to = target.map((value) => (Number.isFinite(value) ? value : 0))
     if (!enabled || prefersReducedMotion()) {
-      setValues(to)
-      valuesRef.current = to
+      const current = valuesRef.current
+      const unchanged = current.length === to.length && current.every((value, index) => Math.abs(value - to[index]) < 0.0001)
+      if (!unchanged) {
+        setValues(to)
+        valuesRef.current = to
+      }
       return
     }
     const from = to.map((_, index) => {
@@ -1886,31 +1895,34 @@ function PublicationsPerYearChart({
   const projectedYearRaw = Number(chartData.projected_year)
   const currentYearYtdRaw = Number(chartData.current_year_ytd)
   const projectedYear = Number.isFinite(projectedYearRaw) ? Math.round(projectedYearRaw) : new Date().getUTCFullYear()
-  const bars: Array<{
-    year: number
-    value: number
-    current: boolean
-  }> = validYears.map((year, index) => {
-    const value = validValues[index]
-    return { year, value, current: false }
-  })
-  const existingCurrentBar = bars.find((item) => item.year === projectedYear)
-  const historyBars = bars.filter((item) => item.year !== projectedYear)
-  const currentYearValue = Math.max(
-    0,
-    Number.isFinite(currentYearYtdRaw)
-      ? currentYearYtdRaw
-      : existingCurrentBar
-        ? existingCurrentBar.value
-        : 0,
-  )
-  if (hasValidSeries) {
-    historyBars.push({
-      year: projectedYear,
-      value: currentYearValue,
-      current: true,
+  const historyBars = useMemo(() => {
+    const baseBars: Array<{
+      year: number
+      value: number
+      current: boolean
+    }> = validYears.map((year, index) => {
+      const value = validValues[index]
+      return { year, value, current: false }
     })
-  }
+    const existingCurrentBar = baseBars.find((item) => item.year === projectedYear)
+    const nextHistoryBars = baseBars.filter((item) => item.year !== projectedYear)
+    const currentYearValue = Math.max(
+      0,
+      Number.isFinite(currentYearYtdRaw)
+        ? currentYearYtdRaw
+        : existingCurrentBar
+          ? existingCurrentBar.value
+          : 0,
+    )
+    if (hasValidSeries) {
+      nextHistoryBars.push({
+        year: projectedYear,
+        value: currentYearValue,
+        current: true,
+      })
+    }
+    return nextHistoryBars
+  }, [currentYearYtdRaw, hasValidSeries, projectedYear, validValues, validYears])
 
   const isCompactTileMode = !showAxes && !enableWindowToggle
 
@@ -2088,11 +2100,11 @@ function PublicationsPerYearChart({
   const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
   const barTransitionDuration = tileChartDurationVar(isEntryCycle)
   const axisDurationMs = tileAxisDurationMs(isEntryCycle)
-  const legacyBarsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars)
+  const legacyBarsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars, 'entry-only')
   const swapTransition = useHouseBarSetTransition({
     bars: activeBars,
     animationKey,
-    enabled: hasBars,
+    enabled: hasBars && enableWindowToggle,
     structureSwap: 'crossfade',
     crossfadeMs: TILE_MOTION_TOGGLE_DURATION_MS,
     barExpandMode: 'entry-only',
@@ -2127,6 +2139,7 @@ function PublicationsPerYearChart({
   const maxYearlyValue = Math.max(1, ...historyBars.map((bar) => Math.max(0, bar.value)))
   const maxMonthlyValue = Math.max(0, ...groupedMonthBars.bars.map((bar) => Math.max(0, bar.value)))
   const maxWindowValue = Math.max(maxYearlyValue, maxMonthlyValue)
+  const maxAnimatedDisplayValue = Math.max(1, maxWindowValue * 1.5)
   const stableAxisScale = enableWindowToggle && !autoScaleByWindow ? buildNiceAxis(maxWindowValue) : null
   const targetAxisScale = showAxes
     ? stableAxisScale || buildNiceAxis(maxValue)
@@ -2408,7 +2421,9 @@ function PublicationsPerYearChart({
               )
             })}
             {renderBars.map((bar, index) => {
-              const animatedValue = Math.max(0, renderedValuesAnimated[index] ?? bar.value)
+              const rawAnimatedValue = renderedValuesAnimated[index]
+              const finiteAnimatedValue = Number.isFinite(rawAnimatedValue) ? rawAnimatedValue : bar.value
+              const animatedValue = Math.max(0, Math.min(maxAnimatedDisplayValue, finiteAnimatedValue))
               const heightPct = computeBarHeightPct(animatedValue)
               const leftPct = index * slotMetrics.slotStepPct
               const isActive = hoveredIndex === index
