@@ -1015,6 +1015,28 @@
     --house-nav-hover-bg: var(--house-nav-active-bg);
   }
 
+  .approved-drilldown-nav-item {
+    --house-nav-accent: var(--section-style-profile-accent);
+    --house-nav-active-bg: hsl(var(--section-style-profile-accent) / 0.18);
+    --house-nav-hover-bg: hsl(var(--section-style-profile-accent) / 0.12);
+    background-color: transparent;
+    border: 1px solid hsl(var(--tone-neutral-900));
+    box-sizing: border-box;
+  }
+
+  .approved-drilldown-nav-item:not(.approved-drilldown-nav-item-active):hover {
+    background-color: var(--house-nav-hover-bg);
+  }
+
+  .approved-drilldown-nav-item.approved-drilldown-nav-item-active {
+    background-color: var(--house-nav-active-bg);
+    color: hsl(var(--tone-neutral-900));
+  }
+
+  .approved-drilldown-nav-item.approved-drilldown-nav-item-active::before {
+    background-color: hsl(var(--house-nav-accent) / var(--marker-opacity));
+  }
+
   .house-nav-item-meta-group {
     margin-left: 0.5rem;
     display: inline-flex;

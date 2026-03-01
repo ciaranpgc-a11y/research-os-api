@@ -56,6 +56,23 @@ function formatSignedPercentCompact(value: number): string {
   return `${normalized >= 0 ? '+' : ''}${normalized.toFixed(0)}%`
 }
 
+function formatDrilldownValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '\u2014'
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      return '\u2014'
+    }
+    return Number.isInteger(value) ? formatInt(value) : value.toFixed(2)
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'Yes' : 'No'
+  }
+  const text = String(value).trim()
+  return text || '\u2014'
+}
+
 type ChartAxisLayoutOptions = {
   axisLabels: Array<string | null | undefined>
   axisSubLabels?: Array<string | null | undefined>
@@ -4721,6 +4738,199 @@ function TotalPublicationsDrilldownWorkspace({
   )
 }
 
+function GenericMetricDrilldownWorkspace({
+  tile,
+  activeTab,
+}: {
+  tile: PublicationMetricTilePayload
+  activeTab: DrilldownTab
+}) {
+  const drilldown = tile.drilldown || ({} as PublicationMetricTilePayload['drilldown'])
+  const headlineMetrics = useMemo(() => {
+    const source = Array.isArray(drilldown.headline_metrics) ? drilldown.headline_metrics : []
+    return source
+      .map((item, index) => {
+        const row = (item || {}) as Record<string, unknown>
+        const label = String(
+          row.label || row.title || row.name || row.metric || row.key || `Metric ${index + 1}`,
+        ).trim()
+        const value = row.value_display ?? row.display ?? row.value ?? row.metric_value ?? row.score ?? row.count
+        return {
+          id: String(row.id || row.key || `headline-${index}`),
+          label,
+          value: formatDrilldownValue(value),
+        }
+      })
+      .filter((item) => item.label)
+  }, [drilldown.headline_metrics])
+
+  const breakdownRows = useMemo(() => {
+    const source = Array.isArray(drilldown.breakdowns) ? drilldown.breakdowns : []
+    return source
+      .map((item, index) => {
+        const row = (item || {}) as Record<string, unknown>
+        const label = String(row.label || row.name || row.category || row.group || `Breakdown ${index + 1}`).trim()
+        const value = row.value_display ?? row.display ?? row.value ?? row.count ?? row.percent ?? row.pct
+        return {
+          id: String(row.id || row.key || `breakdown-${index}`),
+          label,
+          value: formatDrilldownValue(value),
+        }
+      })
+      .filter((item) => item.label)
+  }, [drilldown.breakdowns])
+
+  const trajectoryRows = useMemo(() => {
+    const source = Array.isArray(drilldown.series) ? drilldown.series : []
+    return source
+      .map((item, index) => {
+        const row = (item || {}) as Record<string, unknown>
+        const label = String(row.label || row.window || row.period || row.name || `Point ${index + 1}`).trim()
+        const value = row.value_display ?? row.display ?? row.value ?? row.metric_value ?? row.count
+        return {
+          id: String(row.id || row.key || `trajectory-${index}`),
+          label,
+          value: formatDrilldownValue(value),
+        }
+      })
+      .filter((item) => item.label)
+  }, [drilldown.series])
+
+  const contextRows = useMemo(() => {
+    const benchmarkSource = Array.isArray(drilldown.benchmarks) ? drilldown.benchmarks : []
+    const qcSource = Array.isArray(drilldown.qc_flags) ? drilldown.qc_flags : []
+    const benchmarkRows = benchmarkSource.map((item, index) => {
+      const row = (item || {}) as Record<string, unknown>
+      const label = String(row.label || row.name || row.group || `Benchmark ${index + 1}`).trim()
+      const value = row.value_display ?? row.display ?? row.value ?? row.score ?? row.status
+      return {
+        id: String(row.id || row.key || `benchmark-${index}`),
+        label,
+        value: formatDrilldownValue(value),
+      }
+    })
+    const qcRows = qcSource.map((item, index) => {
+      const row = (item || {}) as Record<string, unknown>
+      const label = String(row.label || row.flag || row.name || `QC ${index + 1}`).trim()
+      const value = row.value_display ?? row.display ?? row.value ?? row.status ?? row.note
+      return {
+        id: String(row.id || row.key || `qc-${index}`),
+        label,
+        value: formatDrilldownValue(value),
+      }
+    })
+    return [...benchmarkRows, ...qcRows].filter((item) => item.label)
+  }, [drilldown.benchmarks, drilldown.qc_flags])
+
+  const methodsRows = useMemo(() => {
+    const methods = (drilldown.methods || {}) as Record<string, unknown>
+    return Object.entries(methods)
+      .map(([key, value]) => ({
+        id: `method-${key}`,
+        label: key.replace(/_/g, ' '),
+        value: formatDrilldownValue(value),
+      }))
+      .filter((item) => item.label)
+  }, [drilldown.methods])
+
+  if (activeTab === 'summary') {
+    return (
+      <div className="space-y-3">
+        <p className={cn(HOUSE_DRILLDOWN_SECTION_LABEL_CLASS, HOUSE_DRILLDOWN_SECTION_TITLE_SPACER_CLASS)}>Headline results</p>
+        {headlineMetrics.length ? (
+          <div className={HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS}>
+            {headlineMetrics.slice(0, 8).map((item) => (
+              <div key={item.id} className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
+                <p className={HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS}>{item.label}</p>
+                <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums whitespace-nowrap leading-none')}>
+                    {item.value}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>No summary metrics returned for this tile yet.</div>
+        )}
+      </div>
+    )
+  }
+
+  if (activeTab === 'breakdown') {
+    return breakdownRows.length ? (
+      <div className="space-y-2">
+        {breakdownRows.map((row) => (
+          <div key={row.id} className={HOUSE_DRILLDOWN_ROW_CLASS}>
+            <span>{row.label}</span>
+            <span className="tabular-nums">{row.value}</span>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>No breakdown rows returned for this tile yet.</div>
+    )
+  }
+
+  if (activeTab === 'trajectory') {
+    return trajectoryRows.length ? (
+      <div className="space-y-2">
+        {trajectoryRows.map((row) => (
+          <div key={row.id} className={HOUSE_DRILLDOWN_ROW_CLASS}>
+            <span>{row.label}</span>
+            <span className="tabular-nums">{row.value}</span>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>No trajectory points returned for this tile yet.</div>
+    )
+  }
+
+  if (activeTab === 'context') {
+    return contextRows.length ? (
+      <div className="space-y-2">
+        {contextRows.map((row) => (
+          <div key={row.id} className={HOUSE_DRILLDOWN_ROW_CLASS}>
+            <span>{row.label}</span>
+            <span className="tabular-nums">{row.value}</span>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>No contextual benchmarks returned for this tile yet.</div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <p className={HOUSE_DRILLDOWN_SECTION_LABEL_CLASS}>Definition</p>
+        <p className={HOUSE_DRILLDOWN_NOTE_SOFT_CLASS}>{formatDrilldownValue(drilldown.definition)}</p>
+      </div>
+      <div className="space-y-1">
+        <p className={HOUSE_DRILLDOWN_SECTION_LABEL_CLASS}>Formula</p>
+        <p className={HOUSE_DRILLDOWN_NOTE_SOFT_CLASS}>{formatDrilldownValue(drilldown.formula)}</p>
+      </div>
+      <div className="space-y-1">
+        <p className={HOUSE_DRILLDOWN_SECTION_LABEL_CLASS}>Confidence note</p>
+        <p className={HOUSE_DRILLDOWN_NOTE_SOFT_CLASS}>{formatDrilldownValue(drilldown.confidence_note)}</p>
+      </div>
+      {methodsRows.length ? (
+        <div className="space-y-2">
+          <p className={HOUSE_DRILLDOWN_SECTION_LABEL_CLASS}>Methods metadata</p>
+          {methodsRows.map((row) => (
+            <div key={row.id} className={HOUSE_DRILLDOWN_ROW_CLASS}>
+              <span className="capitalize">{row.label}</span>
+              <span>{row.value}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function HIndexNeedsChart({
   tile,
   animate = true,
@@ -6234,9 +6444,10 @@ export function PublicationsTopStrip({
                       onOpenPublication={onOpenPublication ? onOpenPublicationFromDrilldown : undefined}
                     />
                   ) : (
-                    <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>
-                      Tab scaffold ready.
-                    </div>
+                    <GenericMetricDrilldownWorkspace
+                      tile={activeTile}
+                      activeTab={activeDrilldownTab}
+                    />
                   )}
                 </div>
               </Tabs>

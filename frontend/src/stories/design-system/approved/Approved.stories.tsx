@@ -685,35 +685,32 @@ function ApprovedPublicationsDrilldownSection() {
       <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-2 border-b border-neutral-200">
           <p className="text-sm font-semibold text-neutral-900">Approved Publications Tile Drilldown</p>
-          <p className="text-xs text-neutral-600">Canonical publications metric drilldown panel showing summary stats and typography with vertical tab navigation.</p>
+          <p className="text-xs text-neutral-600">Canonical publications metric drilldown panel showing summary stats and typography with horizontal tab navigation.</p>
         </div>
         <div className="bg-card p-4">
           <div className="max-w-4xl rounded-md border border-border bg-background overflow-hidden">
-            {/* Horizontal Tab Navigation */}
-            <div className="flex border-b border-border bg-card">
-              {drilldownTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveDrilldownTab(tab.id as typeof activeDrilldownTab)}
-                  className={`house-nav-item house-nav-item-publications flex-1 h-10 px-3 rounded-none border-0 ${activeDrilldownTab === tab.id ? 'house-nav-item-active' : ''}`}
-                  type="button"
-                >
-                  <span className="house-nav-item-label text-sm">{tab.label}</span>
-                </button>
-              ))}
-            </div>
-            <div className="border-t border-[hsl(var(--publications-accent-500)/0.3)]" />
-
             {/* Tab Content */}
             <div className="p-4">
               <div className="house-left-border house-left-border-publications pb-3">
-                <h3 className="house-h1">Total publications</h3>
+                <p className="house-section-title">Total publications</p>
                 <p className="house-text mt-1">Total number of scholarly works indexed across your research career.</p>
               </div>
-              <div className="border-t border-[hsl(var(--publications-accent-500)/0.3)] mb-4" />
+
+              <div className="flex gap-1 mb-2 bg-card p-2 rounded-sm">
+                {drilldownTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveDrilldownTab(tab.id as typeof activeDrilldownTab)}
+                    className={`house-nav-item approved-drilldown-nav-item flex-1 ${activeDrilldownTab === tab.id ? 'approved-drilldown-nav-item-active' : ''}`}
+                    type="button"
+                  >
+                    <span className="house-nav-item-label text-sm">{tab.label}</span>
+                  </button>
+                ))}
+              </div>
 
               <div className="mt-4 space-y-3">
-                <p className="house-drilldown-section-label house-drilldown-section-title-spacer">Headline results</p>
+                <p className="house-nav-section-label house-drilldown-section-title-spacer">Headline results</p>
                 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="house-drilldown-summary-stat-card rounded-md border border-border bg-card p-3">
@@ -748,7 +745,7 @@ function ApprovedPublicationsDrilldownSection() {
                 <div className="house-drilldown-section-separator" />
 
                 <div>
-                  <p className="house-drilldown-section-label">Publication trends</p>
+                  <p className="house-nav-section-label">Publication trends</p>
                   <div className="mt-2 rounded-md border border-border bg-card p-3">
                     <p className="house-drilldown-overline">Publications per year (last 5 years)</p>
                     <div className="mt-2 h-24 rounded-sm border border-[hsl(var(--stroke-soft))] bg-[hsl(var(--tone-neutral-50))]" />
@@ -757,7 +754,7 @@ function ApprovedPublicationsDrilldownSection() {
                 </div>
 
                 <div>
-                  <p className="house-drilldown-section-label">Context</p>
+                  <p className="house-nav-section-label">Context</p>
                   <p className="house-drilldown-note-soft mt-1">
                     This drilldown provides comprehensive metrics. Currently viewing: <strong>{activeDrilldownTab}</strong> tab.
                   </p>
@@ -816,16 +813,16 @@ function ApprovedMarkersSection() {
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Drilldown Nav Marker</p>
             <div className="mt-3">
               <div className="flex gap-1 mb-2 bg-card p-2 rounded-sm">
-                <button type="button" className="house-nav-item house-nav-item-publications house-nav-item-active flex-1 h-8 px-2 rounded-none border-0">
+                <button type="button" className="house-nav-item approved-drilldown-nav-item approved-drilldown-nav-item-active flex-1">
                   <span className="house-nav-item-label text-xs">Summary</span>
                 </button>
-                <button type="button" className="house-nav-item house-nav-item-publications flex-1 h-8 px-2 rounded-none border-0">
+                <button type="button" className="house-nav-item approved-drilldown-nav-item flex-1">
                   <span className="house-nav-item-label text-xs">Details</span>
                 </button>
               </div>
-              <div className="border-t border-[hsl(var(--publications-accent-500)/0.3)]" />
+              <div className="border-t border-[hsl(var(--section-style-profile-accent)/var(--marker-opacity))]" />
             </div>
-            <p className="mt-3 text-xs text-neutral-600">Classes: <code>house-nav-item-publications</code> with marker divider below</p>
+            <p className="mt-3 text-xs text-neutral-600">Classes: <code>approved-drilldown-nav-item</code> + <code>approved-drilldown-nav-item-active</code> with profile marker divider</p>
           </article>
         </div>
       </div>
@@ -961,6 +958,7 @@ function ApprovedTypographySection() {
 
           <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Drilldown</p>
+            <p className="house-section-title">Total publications</p>
             <p className="house-drilldown-overline">Publication drilldown</p>
             <p className="house-drilldown-section-label">Citation momentum</p>
             <p className="house-drilldown-summary-stat-title">Current citation pace</p>

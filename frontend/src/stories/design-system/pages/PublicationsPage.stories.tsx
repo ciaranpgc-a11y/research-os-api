@@ -5,7 +5,7 @@ import { ProfilePublicationsPage } from '@/pages/profile-publications-page'
 import type { ProfilePublicationsPageFixture } from '@/pages/profile-publications-page'
 import { ACCOUNT_SETTINGS_STORAGE_KEY } from '@/lib/account-preferences'
 import { publicationsMetricsHappyFixture } from '@/mocks/fixtures/publications-metrics'
-import { AccountRouteShell } from '@/stories/pages-review/_helpers/page-review-shells'
+import { StandaloneRouteShell } from '@/stories/pages-review/_helpers/page-review-shells'
 import {
   pagesReviewProfilePublicationsDefaultFixture,
 } from '@/stories/pages-review/_helpers/profile-publications-fixture'
@@ -490,7 +490,7 @@ function PublicationsCompleteLive({ paperCount }: PublicationsLiveArgs) {
   const fixture = buildLargePublicationsFixture(paperCount)
   return (
     <PublicationsLayoutPreview>
-      <AccountRouteShell
+      <StandaloneRouteShell
         initialEntry="/profile/publications"
         path="/profile/publications"
         element={<ProfilePublicationsPage fixture={fixture} />}
