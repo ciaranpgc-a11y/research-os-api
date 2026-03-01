@@ -3495,6 +3495,73 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 )
             field_percentile_cohort_count = len(used_cohort_keys)
 
+    if not field_percentile_available and per_work_rows:
+        portfolio_citations = sorted(
+            [max(0, int(row.get("citations_lifetime") or 0)) for row in per_work_rows]
+        )
+        if portfolio_citations:
+            portfolio_ranks: list[float] = []
+            field_percentile_publications = []
+            for row in per_work_rows:
+                citations_value = max(0, int(row.get("citations_lifetime") or 0))
+                rank = _empirical_percentile_rank(portfolio_citations, citations_value)
+                if rank is None:
+                    continue
+                rank_value = float(rank)
+                portfolio_ranks.append(rank_value)
+                for threshold in FIELD_PERCENTILE_THRESHOLDS:
+                    if rank_value >= float(threshold):
+                        field_percentile_counts[threshold] += 1
+                field_percentile_publications.append(
+                    _publication_item_with_links(
+                        {
+                            "work_id": row.get("work_id"),
+                            "title": row.get("title"),
+                            "doi": row.get("doi"),
+                            "year": row.get("year"),
+                            "journal": row.get("journal"),
+                            "citations_lifetime": citations_value,
+                            "field_percentile_rank": round(rank_value, 2),
+                            "field_name": "Portfolio proxy",
+                            "field_id": "portfolio_proxy",
+                            "cohort_year": row.get("year"),
+                            "cohort_sample_size": len(portfolio_citations),
+                            "cohort_total_results": len(portfolio_citations),
+                            "cohort_percentile_cutoffs": {
+                                str(threshold): _percentile_cutoff(
+                                    portfolio_citations, float(threshold)
+                                )
+                                for threshold in FIELD_PERCENTILE_THRESHOLDS
+                            },
+                            "confidence_score": row.get("confidence_score"),
+                            "confidence_label": row.get("confidence_label"),
+                            "match_source": "portfolio_proxy",
+                            "match_method": "portfolio_distribution",
+                        }
+                    )
+                )
+            if portfolio_ranks:
+                field_percentile_available = True
+                field_percentile_evaluated = len(portfolio_ranks)
+                for threshold in FIELD_PERCENTILE_THRESHOLDS:
+                    share = (
+                        field_percentile_counts[threshold]
+                        / float(field_percentile_evaluated)
+                    ) * 100.0
+                    field_percentile_shares[str(threshold)] = round(share, 2)
+                field_percentile_coverage_pct = 100.0
+                sorted_ranks = sorted(portfolio_ranks)
+                middle = len(sorted_ranks) // 2
+                if len(sorted_ranks) % 2 == 1:
+                    field_percentile_median_rank = round(sorted_ranks[middle], 2)
+                else:
+                    field_percentile_median_rank = round(
+                        (sorted_ranks[middle - 1] + sorted_ranks[middle]) / 2.0,
+                        2,
+                    )
+                field_percentile_cohort_count = 1
+                field_percentile_used_cohort_sizes = [len(portfolio_citations)]
+
     field_percentile_publications = sorted(
         field_percentile_publications,
         key=lambda item: float(item.get("field_percentile_rank") or 0.0),

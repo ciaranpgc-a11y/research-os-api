@@ -1497,11 +1497,13 @@ export function WorkspaceInboxPage() {
             <section className={cn('flex h-full min-h-0 flex-col rounded-lg border border-border', houseSurfaces.card)}>
               {isAllConversationsView ? (
                 <>
-                  <div className="border-b border-border px-4 py-3">
-                    <h2 className={houseTypography.sectionTitle}>All conversations</h2>
-                    <p className={houseTypography.sectionSubtitle}>
-                      Search every workspace thread and open the conversation you need.
-                    </p>
+                  <div className="house-main-heading-block border-b border-border px-4 py-3">
+                    <div className="house-main-title-block">
+                      <h2 className={houseTypography.sectionTitle}>All conversations</h2>
+                      <p className={houseTypography.sectionSubtitle}>
+                        Search every workspace thread and open the conversation you need.
+                      </p>
+                    </div>
                   </div>
                   <div className="space-y-2 border-b border-border p-3">
                     <label htmlFor="workspace-inbox-conversation-search" className={houseTypography.fieldLabel}>
@@ -1564,8 +1566,8 @@ export function WorkspaceInboxPage() {
               ) : (
                 <>
                   <div className="border-b border-border px-4 py-3">
-                    <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-                      <div className="min-w-0">
+                    <div className="house-main-heading-block flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                      <div className="house-main-title-block min-w-0">
                         <h2 className={houseTypography.sectionTitle}>{conversationTitle}</h2>
                         {unreadCount > 0 ? (
                           <p className={houseTypography.sectionSubtitle}>

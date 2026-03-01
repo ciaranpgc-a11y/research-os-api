@@ -535,12 +535,14 @@ export function ResultsPage() {
           data-house-role="data-page-layout"
         >
           <div data-house-role="data-main-column" className="space-y-3 nav:pr-3">
-            <section data-house-role="available-datasets-section" className="space-y-3">
-              <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, HOUSE_LEFT_BORDER_DATA_CLASS)}>
-                <h2 className={houseTypography.sectionTitle}>Data</h2>
-                <p className={houseTypography.fieldHelper}>Available datasets</p>
+            <section data-house-role="available-datasets-section" className="house-main-content-block">
+              <div className="house-main-heading-block">
+                <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, HOUSE_LEFT_BORDER_DATA_CLASS, 'house-main-title-block')}>
+                  <h2 className={houseTypography.sectionTitle}>Data</h2>
+                  <p className={houseTypography.fieldHelper}>Available datasets</p>
+                </div>
               </div>
-              <div className={houseSurfaces.tableShell}>
+              <div className={cn(houseSurfaces.tableShell, 'house-main-content-block')}>
                 <table className="w-full min-w-sz-760 text-sm">
                   <thead className={cn('text-left', houseSurfaces.tableHead)}>
                     <tr>
@@ -609,8 +611,8 @@ export function ResultsPage() {
             ) : (
               <div className={cn('flex h-full flex-col', houseLayout.sidebar)} data-house-role="data-right-panel-expanded">
                 <div className={houseLayout.sidebarHeader}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, HOUSE_LEFT_BORDER_DATA_CLASS)}>
+                  <div className="house-main-heading-block flex items-start justify-between gap-2">
+                    <div className={cn(houseLayout.pageHeader, houseSurfaces.leftBorder, HOUSE_LEFT_BORDER_DATA_CLASS, 'house-main-title-block')}>
                       <h2 className={houseTypography.sectionTitle}>Data sources</h2>
                     </div>
                     <Button
@@ -627,7 +629,7 @@ export function ResultsPage() {
                   </div>
                 </div>
 
-                <div className="grid gap-3 p-3">
+                <div className="house-main-content-block grid gap-3 p-3">
                   <Card data-house-role="workspace-card">
                     <CardHeader className="space-y-2">
                       <div data-house-role="library-header-row" className="flex items-center gap-2">
@@ -747,7 +749,7 @@ export function ResultsPage() {
         <SheetContent side="right" className="w-full max-w-sz-580 p-0 sm:w-sz-580">
           <div className="flex h-full flex-col">
             <div className="space-y-3 border-b border-border px-4 py-4">
-              <div>
+              <div className="house-main-title-block">
                 <h3 className={houseTypography.sectionTitle}>Personal library</h3>
                 <p className={houseTypography.fieldHelper}>
                   Select datasets to pull into this workspace.

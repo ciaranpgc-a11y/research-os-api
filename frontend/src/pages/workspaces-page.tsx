@@ -3514,8 +3514,8 @@ export function WorkspacesPage() {
                   </>
                 ) : centerView === 'invitations' ? (
                   <>
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-                      <div>
+                    <div className="house-main-heading-block flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+                      <div className="house-main-title-block">
                         <h2 className={HOUSE_SECTION_TITLE_CLASS}>Invitations</h2>
                         <p className={HOUSE_SECTION_SUBTITLE_CLASS}>
                           Manage invitations to collaborate on research manuscripts and datasets.

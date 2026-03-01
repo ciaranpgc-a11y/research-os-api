@@ -2,7 +2,7 @@ const AUTH_TOKEN_STORAGE_KEY = 'aawe-impact-session-token'
 const AUTH_ROLE_STORAGE_KEY = 'aawe-impact-session-role'
 const AUTH_ACCOUNT_KEY_MAP_STORAGE_KEY = 'aawe-impact-account-key-map'
 const AUTH_ACTIVE_EMAIL_STORAGE_KEY = 'aawe-impact-active-email'
-const DEV_AUTH_BYPASS_TOKEN = 'aawe-dev-auth-bypass-token'
+const DEV_AUTH_BYPASS_TOKEN = String(import.meta.env.VITE_AUTH_BYPASS_TOKEN || '').trim()
 const DEV_AUTH_BYPASS_ROLE = 'admin'
 
 type AccountKeyMap = Record<string, string>
@@ -87,7 +87,9 @@ export function getAuthAccountKeyHint(): string {
 }
 
 export function isAuthBypassEnabled(): boolean {
-  return import.meta.env.DEV && import.meta.env.VITE_AUTH_BYPASS === 'true'
+  return import.meta.env.DEV
+    && import.meta.env.VITE_AUTH_BYPASS === 'true'
+    && DEV_AUTH_BYPASS_TOKEN.length > 0
 }
 
 export function getAuthSessionToken(): string {

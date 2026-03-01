@@ -4,7 +4,6 @@ import { Download, Eye, EyeOff, FileText, Share2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { readAccountSettings } from '@/lib/account-preferences'
 import { fetchPublicationMetricDetail } from '@/lib/impact-api'
 import { cn } from '@/lib/utils'
@@ -305,7 +304,8 @@ const PUBLICATION_DISPLAY_MODE_OPTIONS: Array<{ value: PublicationCategoryDispla
   { value: 'chart', label: 'Chart' },
   { value: 'table', label: 'Table' },
 ]
-const HOUSE_HEADING_TITLE_CLASS = publicationsHouseHeadings.title
+const PUBLICATION_INSIGHTS_TITLE = 'Publication insights'
+const PUBLICATION_INSIGHTS_LABEL = 'publication insights'
 const HOUSE_HEADING_SECTION_TITLE_CLASS = publicationsHouseHeadings.sectionTitle
 const HOUSE_HEADING_H2_CLASS = publicationsHouseHeadings.h2
 const HOUSE_TEXT_CLASS = publicationsHouseHeadings.text
@@ -349,6 +349,7 @@ const HOUSE_SURFACE_METRIC_PILL_CLASS = publicationsHouseSurfaces.metricPill
 const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS = publicationsHouseSurfaces.metricPillPublications
 const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_REGULAR_CLASS = publicationsHouseSurfaces.metricPillPublicationsRegular
 const HOUSE_SURFACE_LEFT_BORDER_CLASS = publicationsHouseSurfaces.leftBorder
+const HOUSE_SURFACE_LEFT_BORDER_PUBLICATIONS_CLASS = publicationsHouseSurfaces.leftBorderPublications
 const HOUSE_DIVIDER_BORDER_SOFT_CLASS = publicationsHouseDividers.borderSoft
 const HOUSE_ACTIONS_SECTION_TOOLS_CLASS = publicationsHouseActions.sectionTools
 const HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS = publicationsHouseActions.sectionToolsPublications
@@ -358,8 +359,6 @@ const HOUSE_ACTIONS_PILL_PRIMARY_CLASS = publicationsHouseActions.actionPillPrim
 const HOUSE_ACTIONS_PILL_ICON_GROUP_CLASS = publicationsHouseActions.actionPillIconGroup
 const HOUSE_ACTIONS_PILL_ICON_CLASS = publicationsHouseActions.actionPillIcon
 const HOUSE_DRILLDOWN_SHEET_CLASS = publicationsHouseDrilldown.sheet
-const HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS = publicationsHouseDrilldown.tabTrigger
-const HOUSE_DRILLDOWN_TAB_LIST_CLASS = publicationsHouseDrilldown.tabList
 const HOUSE_DRILLDOWN_PLACEHOLDER_CLASS = publicationsHouseDrilldown.placeholder
 const HOUSE_DRILLDOWN_ALERT_CLASS = publicationsHouseDrilldown.alert
 const HOUSE_DRILLDOWN_HINT_CLASS = publicationsHouseDrilldown.hint
@@ -380,6 +379,9 @@ const HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS = publicationsHouseDrilldown.summ
 const HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS = publicationsHouseDrilldown.summaryStatCard
 const HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_ACTIVE_CLASS = publicationsHouseDrilldown.summaryStatCardActive
 const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS = publicationsHouseDrilldown.summaryStatValueWrap
+const HOUSE_DRILLDOWN_TITLE_CLASS = publicationsHouseDrilldown.title
+const HOUSE_DRILLDOWN_TITLE_EXPANDER_CLASS = publicationsHouseDrilldown.titleExpander
+const HOUSE_DRILLDOWN_OVERLINE_CLASS = publicationsHouseDrilldown.overline
 const HOUSE_DRILLDOWN_SECTION_LABEL_CLASS = publicationsHouseDrilldown.sectionLabel
 const HOUSE_DRILLDOWN_AXIS_CLASS = publicationsHouseDrilldown.axis
 const HOUSE_DRILLDOWN_RANGE_CLASS = publicationsHouseDrilldown.range
@@ -408,8 +410,6 @@ const HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS = publicationsHouseDrilldown.char
 const HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS = publicationsHouseDrilldown.chartControlsLeft
 const HOUSE_DRILLDOWN_CHART_META_CLASS = publicationsHouseDrilldown.chartMeta
 const HOUSE_DRILLDOWN_SHEET_BODY_CLASS = publicationsHouseDrilldown.sheetBody
-const HOUSE_DRILLDOWN_SECTION_SEPARATOR_CLASS = publicationsHouseDrilldown.sectionSeparator
-const HOUSE_DRILLDOWN_SECTION_TITLE_SPACER_CLASS = publicationsHouseDrilldown.sectionTitleSpacer
 const HOUSE_CHART_BAR_ACCENT_CLASS = publicationsHouseCharts.barAccent
 const HOUSE_CHART_BAR_POSITIVE_CLASS = publicationsHouseCharts.barPositive
 const HOUSE_CHART_BAR_WARNING_CLASS = publicationsHouseCharts.barWarning
@@ -3851,508 +3851,125 @@ function TotalPublicationsDrilldownWorkspace({
     })
   }, [tile.drilldown?.publications])
 
-  const [selectedYear, setSelectedYear] = useState<number | null>(null)
-  const [selectedTypes, setSelectedTypes] = useState<string[]>([])
-  const [selectedVenue, setSelectedVenue] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [showAllVenues, setShowAllVenues] = useState(false)
-  const [hoveredBreakdownYear, setHoveredBreakdownYear] = useState<number | null>(null)
-  const [sortKey, setSortKey] = useState<PublicationDrilldownSortKey>('year')
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
-  const [trajectoryMode, setTrajectoryMode] = useState<PublicationTrajectoryMode>('raw')
-  const [trajectoryWindow, setTrajectoryWindow] = useState(12)
-  const [publicationTrendWindowMode, setPublicationTrendWindowMode] = useState<PublicationsWindowMode>('5y')
-  const [hasPublicationTrendToggleInteracted, setHasPublicationTrendToggleInteracted] = useState(false)
-
-  useEffect(() => {
-    setSelectedYear(null)
-    setSelectedTypes([])
-    setSelectedVenue(null)
-    setSearchQuery('')
-    setShowAllVenues(false)
-    setHoveredBreakdownYear(null)
-    setSortKey('year')
-    setSortDirection('desc')
-    setTrajectoryMode('raw')
-    setPublicationTrendWindowMode('5y')
-    setHasPublicationTrendToggleInteracted(false)
-  }, [tile.key])
-
-  const handlePublicationTrendWindowChange = (mode: PublicationsWindowMode) => {
-    setHasPublicationTrendToggleInteracted(true)
-    setPublicationTrendWindowMode(mode)
-  }
-
-  const yearsWithData = useMemo(() => {
-    const values = publications
-      .map((row) => row.year)
-      .filter((value): value is number => Number.isFinite(value) && value !== null)
-    return Array.from(new Set(values)).sort((left, right) => left - right)
-  }, [publications])
-
-  const fallbackChartData = (tile.chart_data || {}) as Record<string, unknown>
-  const fallbackYears = toNumberArray(fallbackChartData.years).map((item) => Math.round(item))
-  const fallbackValues = toNumberArray(fallbackChartData.values).map((item) => Math.max(0, Math.round(item)))
-  const fallbackYearToCount = useMemo(() => {
-    const output = new Map<number, number>()
-    for (let index = 0; index < Math.min(fallbackYears.length, fallbackValues.length); index += 1) {
-      output.set(fallbackYears[index], fallbackValues[index])
-    }
-    return output
-  }, [fallbackValues, fallbackYears])
-
-  const minYear = yearsWithData.length ? yearsWithData[0] : (fallbackYears.length ? Math.min(...fallbackYears) : new Date().getUTCFullYear() - 4)
-  const maxYear = yearsWithData.length ? yearsWithData[yearsWithData.length - 1] : (fallbackYears.length ? Math.max(...fallbackYears) : new Date().getUTCFullYear())
-  const fullYears = useMemo(() => {
-    const output: number[] = []
-    for (let year = minYear; year <= maxYear; year += 1) {
-      output.push(year)
-    }
-    return output
-  }, [maxYear, minYear])
-
+  const years = useMemo(
+    () => Array.from(new Set(publications.map((item) => item.year).filter((item): item is number => item !== null))).sort((a, b) => a - b),
+    [publications],
+  )
   const countsByYear = useMemo(() => {
     const output = new Map<number, number>()
-    for (const record of publications) {
-      if (record.year === null) {
+    for (const publication of publications) {
+      if (publication.year === null) {
         continue
       }
-      output.set(record.year, (output.get(record.year) || 0) + 1)
-    }
-    for (const year of fullYears) {
-      if (!output.has(year) && fallbackYearToCount.has(year)) {
-        output.set(year, Number(fallbackYearToCount.get(year) || 0))
-      }
-      if (!output.has(year)) {
-        output.set(year, 0)
-      }
-    }
-    return output
-  }, [fallbackYearToCount, fullYears, publications])
-
-  const yearSeriesRaw = useMemo(
-    () => fullYears.map((year) => Number(countsByYear.get(year) || 0)),
-    [countsByYear, fullYears],
-  )
-  const yearSeriesMovingAvg = useMemo(
-    () => yearSeriesRaw.map((_, index) => {
-      const start = Math.max(0, index - 2)
-      const window = yearSeriesRaw.slice(start, index + 1)
-      return window.length ? (window.reduce((sum, value) => sum + value, 0) / window.length) : 0
-    }),
-    [yearSeriesRaw],
-  )
-  const yearSeriesCumulative = useMemo(() => {
-    let running = 0
-    return yearSeriesRaw.map((value) => {
-      running += value
-      return running
-    })
-  }, [yearSeriesRaw])
-
-  useEffect(() => {
-    setTrajectoryWindow(Math.max(6, Math.min(12, fullYears.length || 12)))
-  }, [fullYears.length])
-
-  const roleCountsByYear = useMemo(() => {
-    const output: Record<number, Record<string, number>> = {}
-    for (const record of publications) {
-      if (record.year === null) {
-        continue
-      }
-      output[record.year] = output[record.year] || { First: 0, Second: 0, Senior: 0, Other: 0, Unknown: 0 }
-      const roleKey = ['First', 'Second', 'Senior', 'Other'].includes(record.role) ? record.role : 'Unknown'
-      output[record.year][roleKey] = (output[record.year][roleKey] || 0) + 1
+      output.set(publication.year, (output.get(publication.year) || 0) + 1)
     }
     return output
   }, [publications])
-
-  const activeYears = yearSeriesRaw.filter((count) => count > 0).length
-  const activeYearValues = yearSeriesRaw.filter((count) => count > 0)
-  const meanPerActiveYear = activeYearValues.length
-    ? Math.round(activeYearValues.reduce((sum, count) => sum + count, 0) / activeYearValues.length)
-    : 0
-  const peakYearData = useMemo(() => {
-    let bestYear = maxYear
-    let bestCount = -1
-    yearSeriesRaw.forEach((count, index) => {
-      if (count > bestCount) {
-        bestCount = count
-        bestYear = fullYears[index]
+  const sortedPublications = useMemo(
+    () => [...publications].sort((left, right) => {
+      const leftYear = left.year || 0
+      const rightYear = right.year || 0
+      if (leftYear !== rightYear) {
+        return rightYear - leftYear
       }
-    })
-    return { year: bestYear, count: Math.max(0, bestCount) }
-  }, [fullYears, maxYear, yearSeriesRaw])
-
-  const volatilityIndex = useMemo(() => {
-    if (!yearSeriesRaw.length) {
-      return 0
-    }
-    const mean = yearSeriesRaw.reduce((sum, value) => sum + value, 0) / yearSeriesRaw.length
-    if (mean <= 1e-9) {
-      return 0
-    }
-    const variance = yearSeriesRaw.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / yearSeriesRaw.length
-    return Math.sqrt(variance) / mean
-  }, [yearSeriesRaw])
-
-  const growthSlope = useMemo(() => {
-    if (yearSeriesRaw.length <= 1) {
-      return 0
-    }
-    const n = yearSeriesRaw.length
-    const xs = Array.from({ length: n }, (_, index) => index + 1)
-    const sumX = xs.reduce((sum, value) => sum + value, 0)
-    const sumY = yearSeriesRaw.reduce((sum, value) => sum + value, 0)
-    const sumXY = yearSeriesRaw.reduce((sum, value, index) => sum + (value * xs[index]), 0)
-    const sumXX = xs.reduce((sum, value) => sum + (value * value), 0)
-    const numerator = (n * sumXY) - (sumX * sumY)
-    const denominator = (n * sumXX) - (sumX * sumX)
-    if (Math.abs(denominator) <= 1e-9) {
-      return 0
-    }
-    return numerator / denominator
-  }, [yearSeriesRaw])
-
-  const trajectoryPhase = growthSlope > 0.2
-    ? 'Expanding'
-    : growthSlope < -0.2
-      ? 'Contracting'
-      : 'Stable'
-
-  const unknownYearCount = publications.filter((record) => record.year === null).length
-  const ytdCountRaw = Number((tile.chart_data || {}).current_year_ytd)
-  const ytdCount = Number.isFinite(ytdCountRaw) ? Math.max(0, Math.round(ytdCountRaw)) : 0
-  const workspaceSectionClass = HOUSE_SURFACE_SECTION_PANEL_CLASS
-  const workspacePanelCompactClass = cn(HOUSE_SURFACE_SOFT_PANEL_CLASS, 'p-2')
-  const workspaceHeadingClass = HOUSE_HEADING_H2_CLASS
-  const workspaceSubheadingClass = HOUSE_DRILLDOWN_SECTION_LABEL_CLASS
-
-  const availableTypes = useMemo(
-    () => Array.from(new Set(publications.map((record) => record.type))).sort((left, right) => left.localeCompare(right)),
+      return right.citations - left.citations
+    }),
     [publications],
   )
 
-  const filteredPublications = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase()
-    return publications.filter((record) => {
-      if (selectedYear !== null && record.year !== selectedYear) {
-        return false
-      }
-      if (selectedTypes.length && !selectedTypes.includes(record.type)) {
-        return false
-      }
-      if (selectedVenue && record.venue !== selectedVenue) {
-        return false
-      }
-      if (!normalizedQuery) {
-        return true
-      }
-      return (
-        record.title.toLowerCase().includes(normalizedQuery)
-        || record.venue.toLowerCase().includes(normalizedQuery)
-        || record.type.toLowerCase().includes(normalizedQuery)
-        || record.role.toLowerCase().includes(normalizedQuery)
-      )
-    })
-  }, [publications, searchQuery, selectedTypes, selectedVenue, selectedYear])
+  const activeYears = years.filter((year) => (countsByYear.get(year) || 0) > 0).length
+  const meanPerActiveYear = activeYears > 0 ? Math.round(publications.length / activeYears) : 0
+  const latestYear = years.length ? years[years.length - 1] : null
+  const latestYearCount = latestYear === null ? 0 : Number(countsByYear.get(latestYear) || 0)
+  const previousYear = latestYear === null ? null : latestYear - 1
+  const previousYearCount = previousYear === null ? 0 : Number(countsByYear.get(previousYear) || 0)
+  const yoyDelta = latestYearCount - previousYearCount
 
-  const sortedPublications = useMemo(() => {
-    const direction = sortDirection === 'asc' ? 1 : -1
-    const output = [...filteredPublications]
-    output.sort((left, right) => {
-      if (sortKey === 'year') {
-        return ((left.year || 0) - (right.year || 0)) * direction
-      }
-      if (sortKey === 'citations') {
-        return (left.citations - right.citations) * direction
-      }
-      if (sortKey === 'title') {
-        return left.title.localeCompare(right.title) * direction
-      }
-      if (sortKey === 'role') {
-        return left.role.localeCompare(right.role) * direction
-      }
-      if (sortKey === 'type') {
-        return left.type.localeCompare(right.type) * direction
-      }
-      return left.venue.localeCompare(right.venue) * direction
-    })
-    return output
-  }, [filteredPublications, sortDirection, sortKey])
-
-  const venueConcentration = useMemo(() => {
+  const publicationTypeRows = useMemo(() => {
     const counts = new Map<string, number>()
-    const citations = new Map<string, number[]>()
-    const roles = new Map<string, Record<string, number>>()
-    for (const record of publications) {
-      counts.set(record.venue, (counts.get(record.venue) || 0) + 1)
-      const venueCitations = citations.get(record.venue) || []
-      venueCitations.push(record.citations)
-      citations.set(record.venue, venueCitations)
-      const roleCounter = roles.get(record.venue) || { First: 0, Senior: 0, Other: 0, Unknown: 0 }
-      if (record.role === 'First') {
-        roleCounter.First += 1
-      } else if (record.role === 'Senior') {
-        roleCounter.Senior += 1
-      } else if (record.role === 'Unknown') {
-        roleCounter.Unknown += 1
-      } else {
-        roleCounter.Other += 1
-      }
-      roles.set(record.venue, roleCounter)
+    for (const publication of publications) {
+      counts.set(publication.publicationType, (counts.get(publication.publicationType) || 0) + 1)
     }
-    const total = Math.max(1, publications.length)
     return Array.from(counts.entries())
-      .map(([venue, count]) => {
-        const citationValues = citations.get(venue) || []
-        return {
-          venue,
-          count,
-          sharePct: (count / total) * 100,
-          medianCitations: median(citationValues),
-          roleMix: roles.get(venue) || { First: 0, Senior: 0, Other: 0, Unknown: 0 },
-        }
-      })
+      .map(([label, count]) => ({ label, count }))
       .sort((left, right) => right.count - left.count)
   }, [publications])
-
-  const visibleVenueRows = showAllVenues ? venueConcentration : venueConcentration.slice(0, 6)
-
-  const toggleType = (type: string) => {
-    setSelectedTypes((current) => {
-      if (current.includes(type)) {
-        return current.filter((item) => item !== type)
-      }
-      return [...current, type]
-    })
-  }
-
-  const handleSort = (key: PublicationDrilldownSortKey) => {
-    if (sortKey === key) {
-      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'))
-      return
+  const articleTypeRows = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const publication of publications) {
+      counts.set(publication.articleType, (counts.get(publication.articleType) || 0) + 1)
     }
-    setSortKey(key)
-    setSortDirection(key === 'title' || key === 'role' || key === 'type' || key === 'venue' ? 'asc' : 'desc')
-  }
-
-  const sortIndicator = (key: PublicationDrilldownSortKey) => {
-    if (sortKey !== key) {
-      return ''
-    }
-    return sortDirection === 'asc' ? ' ↑' : ' ↓'
-  }
-
-  const breakdownYears = fullYears
-  const breakdownMaxCount = Math.max(1, ...breakdownYears.map((year) => Number(countsByYear.get(year) || 0)))
-  const hoveredYear = hoveredBreakdownYear
-  const hoveredYearCount = hoveredYear === null ? 0 : Number(countsByYear.get(hoveredYear) || 0)
-  const hoveredPrevCount = hoveredYear === null ? 0 : Number(countsByYear.get(hoveredYear - 1) || 0)
-  const hoveredYearYoY = hoveredPrevCount > 0
-    ? ((hoveredYearCount - hoveredPrevCount) / hoveredPrevCount) * 100
-    : null
-
-  const trajectoryVisibleCount = Math.max(6, Math.min(trajectoryWindow, fullYears.length))
-  const visibleYears = fullYears.slice(-trajectoryVisibleCount)
-  const visibleRaw = yearSeriesRaw.slice(-trajectoryVisibleCount)
-  const visibleMoving = yearSeriesMovingAvg.slice(-trajectoryVisibleCount)
-  const visibleCumulative = yearSeriesCumulative.slice(-trajectoryVisibleCount)
-  const trajectoryValues = trajectoryMode === 'cumulative'
-    ? visibleCumulative
-    : trajectoryMode === 'moving_avg'
-      ? visibleMoving
-      : visibleRaw
-
-  const trajectoryLabels = visibleYears.map((year) => String(year))
-  const trajectoryPoints = buildLinePoints(trajectoryValues, 320, 138, trajectoryLabels, 8)
-  const movingPoints = buildLinePoints(visibleMoving, 320, 138, trajectoryLabels, 8)
-  const rawPoints = buildLinePoints(visibleRaw, 320, 138, trajectoryLabels, 8)
-  const trajectoryPath = monotonePathFromPoints(trajectoryPoints)
-  const movingPath = monotonePathFromPoints(movingPoints)
-  const volatilityAreaPath = rawPoints.length && movingPoints.length
-    ? `M ${rawPoints.map((point) => `${point.x} ${point.y}`).join(' L ')} L ${[...movingPoints].reverse().map((point) => `${point.x} ${point.y}`).join(' L ')} Z`
-    : ''
-
-  const badgeToneClass = trajectoryPhase === 'Expanding'
-    ? HOUSE_DRILLDOWN_BADGE_POSITIVE_CLASS
-    : trajectoryPhase === 'Contracting'
-      ? HOUSE_DRILLDOWN_BADGE_WARNING_CLASS
-      : HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS
-
-  const contextClassLabel = volatilityIndex > 0.55
-    ? 'High-variability portfolio'
-    : volatilityIndex > 0.3
-      ? 'Moderately variable portfolio'
-      : 'Steady portfolio'
-
-  const clearFilters = () => {
-    setSelectedYear(null)
-    setSelectedTypes([])
-    setSelectedVenue(null)
-    setSearchQuery('')
-  }
-
+    return Array.from(counts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((left, right) => right.count - left.count)
+  }, [publications])
   if (activeTab === 'summary') {
-    const headlineValue = String(tile.value_display || formatInt(publications.length))
-    const computeRollingMean = (windowSize: number): number => {
-      if (!yearSeriesRaw.length) {
-        return 0
-      }
-      const windowEnd = Math.max(0, yearSeriesRaw.length - Math.max(1, windowSize))
-      const windowValues = yearSeriesRaw.slice(windowEnd)
-      return windowValues.length ? (windowValues.reduce((sum, value) => sum + value, 0) / windowValues.length) : 0
-    }
-    const formatRollingMean = (value: number): string => formatInt(Math.round(value))
-    const rollingMean1y = computeRollingMean(1)
-    const rollingMean3y = computeRollingMean(3)
-    const rollingMean5y = computeRollingMean(5)
-    const rollingMean1yDisplay = formatRollingMean(rollingMean1y)
-    const rollingMean3yDisplay = formatRollingMean(rollingMean3y)
-    const rollingMean5yDisplay = formatRollingMean(rollingMean5y)
-    const summaryStatCardClass = HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS
-    const summaryStatTitleClass = cn(
-      HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS,
-      HOUSE_DRILLDOWN_STAT_TITLE_CLASS,
-    )
-    const summaryStatValueWrapClass = HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS
-    const summaryStatValueClass = cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums whitespace-nowrap leading-none')
-    const summaryStatValueEmphasisClass = cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_EMPHASIS_CLASS, 'tabular-nums whitespace-nowrap leading-none')
-    const isRollingMean1Active = hasPublicationTrendToggleInteracted && publicationTrendWindowMode === '1y'
-    const isRollingMean3Active = hasPublicationTrendToggleInteracted && publicationTrendWindowMode === '3y'
-    const isRollingMean5Active = hasPublicationTrendToggleInteracted && publicationTrendWindowMode === '5y'
-    const isOverallMeanActive = hasPublicationTrendToggleInteracted && publicationTrendWindowMode === 'all'
     return (
-      <div className="space-y-3">
-        <div className={workspaceSectionClass}>
-            <p className={cn(workspaceSubheadingClass, HOUSE_DRILLDOWN_SECTION_TITLE_SPACER_CLASS)}>Headline results</p>
-          <div className={HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS}>
-            <div className={summaryStatCardClass}>
-              <p className={summaryStatTitleClass}>Total publications</p>
-              <div className={summaryStatValueWrapClass}>
-                <p className={summaryStatValueEmphasisClass}>{headlineValue}</p>
+      <div className="house-publications-drilldown-stack-3">
+        <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
+          <div className="house-drilldown-subheading-block">
+            <p className="house-publications-drilldown-headline-results">Headline results</p>
+            <div className={HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS}>
+              <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
+                <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>Total publications</p>
+                <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_EMPHASIS_CLASS, 'tabular-nums')}>{String(tile.value_display || formatInt(publications.length))}</p>
+                </div>
               </div>
-            </div>
-            <div className={summaryStatCardClass}>
-              <p className={summaryStatTitleClass}>Active years</p>
-              <div className={summaryStatValueWrapClass}>
-                <p className={summaryStatValueClass}>{formatInt(activeYears)}</p>
+              <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
+                <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>Active years</p>
+                <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{formatInt(activeYears)}</p>
+                </div>
               </div>
-            </div>
-            <div
-              className={cn(
-                summaryStatCardClass,
-                isOverallMeanActive && HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_ACTIVE_CLASS,
-              )}
-            >
-              <p className={summaryStatTitleClass}>Mean per year</p>
-              <div className={summaryStatValueWrapClass}>
-                <p className={summaryStatValueClass}>{formatInt(meanPerActiveYear)}</p>
+              <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
+                <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>Mean per year</p>
+                <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{formatInt(meanPerActiveYear)}</p>
+                </div>
               </div>
-            </div>
-            <div className={summaryStatCardClass}>
-              <p className={summaryStatTitleClass}>Current year to date</p>
-              <div className={summaryStatValueWrapClass}>
-                <p className={summaryStatValueClass}>{formatInt(ytdCount)}</p>
+              <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS}>
+                <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS, HOUSE_DRILLDOWN_STAT_TITLE_CLASS)}>Latest year count</p>
+                <div className={HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS}>
+                  <p className={cn(HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS, 'tabular-nums')}>{formatInt(latestYearCount)}</p>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className={HOUSE_DRILLDOWN_SUMMARY_STATS_COMPACT_GRID_CLASS}>
-            <div
-              className={cn(
-                summaryStatCardClass,
-                'min-h-[4.9rem]',
-                isRollingMean1Active && HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_ACTIVE_CLASS,
-              )}
-            >
-              <p className={summaryStatTitleClass}>1-year rolling mean</p>
-              <div className={summaryStatValueWrapClass}>
-                <p className={summaryStatValueClass}>{rollingMean1yDisplay}</p>
-              </div>
-            </div>
-            <div
-              className={cn(
-                summaryStatCardClass,
-                'min-h-[4.9rem]',
-                isRollingMean3Active && HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_ACTIVE_CLASS,
-              )}
-            >
-              <p className={summaryStatTitleClass}>3-year rolling mean</p>
-              <div className={summaryStatValueWrapClass}>
-                <p className={summaryStatValueClass}>{rollingMean3yDisplay}</p>
-              </div>
-            </div>
-            <div
-              className={cn(
-                summaryStatCardClass,
-                'min-h-[4.9rem]',
-                isRollingMean5Active && HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_ACTIVE_CLASS,
-              )}
-            >
-              <p className={summaryStatTitleClass}>5-year rolling mean</p>
-              <div className={summaryStatValueWrapClass}>
-                <p className={summaryStatValueClass}>{rollingMean5yDisplay}</p>
-              </div>
-            </div>
-            <div
-              className={cn(
-                summaryStatCardClass,
-                'min-h-[4.9rem]',
-              )}
-            >
-              <p className={summaryStatTitleClass}>Career peak</p>
-              <div className={summaryStatValueWrapClass}>
-                <p className={summaryStatValueClass}>{`${formatInt(peakYearData.count)} (${peakYearData.year})`}</p>
-              </div>
+          <div className="house-drilldown-subheading-block">
+            <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>Publication trends over time</p>
+            <div className="house-publications-drilldown-stack-2">
+              {years.length ? years.slice().reverse().map((year) => (
+                <div key={`summary-year-${year}`} className={HOUSE_DRILLDOWN_ROW_CLASS}>
+                  <span>{year}</span>
+                  <span className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`${formatInt(Number(countsByYear.get(year) || 0))} publications`}</span>
+                </div>
+              )) : <p className={HOUSE_DRILLDOWN_HINT_CLASS}>No yearly publication data available.</p>}
             </div>
           </div>
 
-          <div className={HOUSE_DRILLDOWN_SECTION_SEPARATOR_CLASS}>
-            <div className={HOUSE_DRILLDOWN_SUMMARY_TREND_CHART_CLASS}>
-              <PublicationsPerYearChart
-                tile={tile}
-                showCaption={false}
-                showAxes
-                chartTitle="Publications trends over time"
-                fullYearLabels
-                xAxisLabel="Publication year"
-                yAxisLabel="Publications"
-                enableWindowToggle
-                subtleGrid
-                showPeriodHint={false}
-                showCurrentPeriodSemantic={false}
-                useCompletedMonthWindowLabels
-                autoScaleByWindow
-                showMeanLine
-                activeWindowMode={publicationTrendWindowMode}
-                onWindowModeChange={handlePublicationTrendWindowChange}
-              />
+          <div className="house-drilldown-subheading-block">
+            <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>Publication type</p>
+            <div className="house-publications-drilldown-stack-2">
+              {publicationTypeRows.length ? publicationTypeRows.slice(0, 8).map((row) => (
+                <div key={`summary-publication-type-${row.label}`} className={HOUSE_DRILLDOWN_ROW_CLASS}>
+                  <span>{row.label}</span>
+                  <span className={HOUSE_DRILLDOWN_NOTE_CLASS}>{formatInt(row.count)}</span>
+                </div>
+              )) : <p className={HOUSE_DRILLDOWN_HINT_CLASS}>No publication type data available.</p>}
             </div>
           </div>
 
-          <div className={HOUSE_DRILLDOWN_SECTION_SEPARATOR_CLASS}>
-            <p className={cn(workspaceSubheadingClass, HOUSE_DRILLDOWN_SECTION_TITLE_SPACER_CLASS)}>Publication type</p>
-            <div className={HOUSE_DRILLDOWN_SUMMARY_TREND_CHART_CLASS}>
-              <PublicationCategoryDistributionChart
-                publications={publications}
-                dimension="publication"
-                xAxisLabel="Publication type"
-                emptyLabel="No publication type data"
-                enableValueModeToggle
-              />
-            </div>
-          </div>
-
-          <div className={HOUSE_DRILLDOWN_SECTION_SEPARATOR_CLASS}>
-            <p className={cn(workspaceSubheadingClass, HOUSE_DRILLDOWN_SECTION_TITLE_SPACER_CLASS)}>Article type</p>
-            <div className={HOUSE_DRILLDOWN_SUMMARY_TREND_CHART_CLASS}>
-              <PublicationCategoryDistributionChart
-                publications={publications}
-                dimension="article"
-                xAxisLabel="Article type"
-                emptyLabel="No article type data"
-              />
+          <div className="house-drilldown-subheading-block">
+            <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>Article type</p>
+            <div className="house-publications-drilldown-stack-2">
+              {articleTypeRows.length ? articleTypeRows.slice(0, 8).map((row) => (
+                <div key={`summary-article-type-${row.label}`} className={HOUSE_DRILLDOWN_ROW_CLASS}>
+                  <span>{row.label}</span>
+                  <span className={HOUSE_DRILLDOWN_NOTE_CLASS}>{formatInt(row.count)}</span>
+                </div>
+              )) : <p className={HOUSE_DRILLDOWN_HINT_CLASS}>No article type data available.</p>}
             </div>
           </div>
         </div>
@@ -4362,215 +3979,22 @@ function TotalPublicationsDrilldownWorkspace({
 
   if (activeTab === 'breakdown') {
     return (
-      <div className="space-y-3">
-        <div className={workspaceSectionClass}>
-          <p className={workspaceHeadingClass}>Publications by year</p>
-          <div className={cn('mt-2', workspacePanelCompactClass)}>
-            <div className="overflow-x-auto">
-              <div className="relative min-w-[42.5rem]">
-                <div className="absolute inset-x-0 top-0 h-28">
-                  {[50].map((pct) => (
-                    <div key={`breakdown-grid-${pct}`} className={cn('absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)} style={{ top: `${pct}%` }} />
-                  ))}
+      <div className="house-publications-drilldown-stack-3">
+        <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
+          <div className="house-drilldown-subheading-block">
+            <p className="house-publications-drilldown-headline-results">Headline results</p>
+            <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`${formatInt(publications.length)} publications across ${formatInt(activeYears)} active years`}</p>
+          </div>
+          <div className="house-drilldown-subheading-block">
+            <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>Publication count by year</p>
+            <div className="house-publications-drilldown-stack-2">
+              {years.length ? years.slice().reverse().map((year) => (
+                <div key={`breakdown-row-${year}`} className={HOUSE_DRILLDOWN_ROW_CLASS}>
+                  <span>{year}</span>
+                  <span className={HOUSE_DRILLDOWN_NOTE_CLASS}>{formatInt(Number(countsByYear.get(year) || 0))}</span>
                 </div>
-                <div className="relative flex h-28 items-end gap-1">
-                  {breakdownYears.map((year) => {
-                    const count = Number(countsByYear.get(year) || 0)
-                    const heightPct = count <= 0 ? 4 : Math.max(7, (count / breakdownMaxCount) * 100)
-                    const isSelected = selectedYear === year
-                    return (
-                      <button
-                        key={`breakdown-year-${year}`}
-                        type="button"
-                        className={cn(
-                          'relative flex min-w-[1.95rem] flex-1 items-end rounded border border-transparent transition-all duration-[var(--motion-duration-chart-toggle)]',
-                          isSelected && HOUSE_DRILLDOWN_BAR_SELECTED_OUTLINE_CLASS,
-                        )}
-                        onMouseEnter={() => setHoveredBreakdownYear(year)}
-                        onMouseLeave={() => setHoveredBreakdownYear((current) => (current === year ? null : current))}
-                        onClick={() => setSelectedYear((current) => (current === year ? null : year))}
-                        title={`${year}: ${count} publications`}
-                      >
-                        <span
-                          className={cn(
-                            'block w-full rounded transition-[height,filter] duration-[var(--motion-duration-chart-toggle)] ease-out',
-                            isSelected ? HOUSE_DRILLDOWN_BAR_SELECTED_CLASS : HOUSE_CHART_BAR_ACCENT_CLASS,
-                          )}
-                          style={{ height: `${heightPct}%` }}
-                        />
-                      </button>
-                    )
-                  })}
-                </div>
-                <div className={cn('mt-1 flex items-center gap-1', HOUSE_DRILLDOWN_CAPTION_CLASS)}>
-                  {breakdownYears.map((year) => (
-                    <span key={`breakdown-label-${year}`} className="min-w-[1.95rem] flex-1 text-center font-semibold">{String(year).slice(-2)}</span>
-                  ))}
-                </div>
-              </div>
+              )) : <p className={HOUSE_DRILLDOWN_HINT_CLASS}>No publication records available.</p>}
             </div>
-            {hoveredYear !== null ? (
-              <div className={cn('mt-2 px-2 py-1.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS, HOUSE_DRILLDOWN_NOTE_CLASS)}>
-                <span className="font-semibold">{hoveredYear}</span>
-                <span>{` | Count ${formatInt(hoveredYearCount)}`}</span>
-                <span>{` | YoY ${hoveredYearYoY === null ? 'n/a' : `${hoveredYearYoY >= 0 ? '+' : ''}${hoveredYearYoY.toFixed(0)}%`}`}</span>
-                <span>{` | Roles First ${(roleCountsByYear[hoveredYear]?.First || 0)}, Senior ${(roleCountsByYear[hoveredYear]?.Senior || 0)}`}</span>
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <div className={workspaceSectionClass}>
-          <p className={workspaceHeadingClass}>Publication type</p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {availableTypes.map((type) => {
-              const isActive = selectedTypes.includes(type)
-              return (
-                <button
-                  key={`type-filter-${type}`}
-                  type="button"
-                  className={cn(
-                    HOUSE_DRILLDOWN_CHIP_CLASS,
-                    isActive
-                      ? HOUSE_DRILLDOWN_CHIP_ACTIVE_CLASS
-                      : null,
-                  )}
-                  onClick={() => toggleType(type)}
-                >
-                  {type}
-                </button>
-              )
-            })}
-            {!availableTypes.length ? (
-              <span className={HOUSE_DRILLDOWN_HINT_CLASS}>No type data available</span>
-            ) : null}
-          </div>
-        </div>
-
-        <div className={workspaceSectionClass}>
-          <div className="flex items-center justify-between gap-2">
-            <p className={workspaceHeadingClass}>Venue concentration</p>
-            <button
-              type="button"
-              className={HOUSE_DRILLDOWN_ACTION_CLASS}
-              onClick={() => setShowAllVenues((current) => !current)}
-            >
-              {showAllVenues ? 'View top' : 'View all'}
-            </button>
-          </div>
-          <div className="mt-2 space-y-1.5">
-            {visibleVenueRows.map((row) => {
-              const isSelected = selectedVenue === row.venue
-              return (
-                <button
-                  key={`venue-row-${row.venue}`}
-                  type="button"
-                  className={cn(
-                    HOUSE_DRILLDOWN_ROW_CLASS,
-                    isSelected
-                      ? HOUSE_DRILLDOWN_ROW_ACTIVE_CLASS
-                      : null,
-                  )}
-                  onClick={() => setSelectedVenue((current) => (current === row.venue ? null : row.venue))}
-                  title={`Median citations ${row.medianCitations.toFixed(1)} | First ${row.roleMix.First} | Senior ${row.roleMix.Senior}`}
-                >
-                  <div className={cn('flex items-center justify-between gap-2', HOUSE_DRILLDOWN_NOTE_CLASS)}>
-                    <span className="block max-w-full break-words pr-2 font-medium leading-snug">{row.venue}</span>
-                    <span>{`${formatInt(row.count)} (${row.sharePct.toFixed(0)}%)`}</span>
-                  </div>
-                  <div className={cn('mt-1', HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS)}>
-                    <span className={HOUSE_DRILLDOWN_PROGRESS_FILL_CLASS} style={{ width: `${Math.max(4, Math.min(100, row.sharePct))}%` }} />
-                  </div>
-                </button>
-              )
-            })}
-            {!visibleVenueRows.length ? <p className={HOUSE_DRILLDOWN_HINT_CLASS}>No venue data</p> : null}
-          </div>
-        </div>
-
-        <div className={workspaceSectionClass}>
-          <div className="flex flex-wrap items-center gap-2">
-            <p className={workspaceHeadingClass}>Paper list</p>
-            <input
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search title, venue, role"
-              className={cn('house-input h-9 min-w-[12rem] rounded-md px-3 text-sm outline-none', HOUSE_TEXT_CLASS)}
-            />
-            <button
-              type="button"
-              className={cn('inline-flex h-9 items-center rounded-md px-3 text-sm font-medium transition-colors', HOUSE_DRILLDOWN_ACTION_CLASS)}
-              onClick={clearFilters}
-            >
-              Clear filters
-            </button>
-          </div>
-          <div className="house-table-shell mt-2 overflow-x-auto rounded-md bg-background">
-            <table className="w-full min-w-sz-760 border-collapse">
-              <thead className="house-table-head">
-                <tr>
-                  <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">
-                    <button type="button" onClick={() => handleSort('year')}>{`Year ${sortIndicator('year')}`}</button>
-                  </th>
-                  <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">
-                    <button type="button" onClick={() => handleSort('title')}>{`Title ${sortIndicator('title')}`}</button>
-                  </th>
-                  <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">
-                    <button type="button" onClick={() => handleSort('role')}>{`Role ${sortIndicator('role')}`}</button>
-                  </th>
-                  <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">
-                    <button type="button" onClick={() => handleSort('type')}>{`Type ${sortIndicator('type')}`}</button>
-                  </th>
-                  <th className="house-table-head-text h-10 px-3 text-left align-middle font-semibold">
-                    <button type="button" onClick={() => handleSort('venue')}>{`Venue ${sortIndicator('venue')}`}</button>
-                  </th>
-                  <th className="house-table-head-text h-10 px-3 text-right align-middle font-semibold">
-                    <button type="button" onClick={() => handleSort('citations')}>{`Citations ${sortIndicator('citations')}`}</button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedPublications.slice(0, 120).map((record) => {
-                  const canOpenPublication = Boolean(onOpenPublication) && !record.workId.startsWith('row-')
-                  return (
-                    <tr
-                      key={`paper-row-${record.workId}`}
-                      className={cn('house-table-row', HOUSE_DRILLDOWN_TABLE_ROW_CLASS, canOpenPublication && 'cursor-pointer')}
-                      role={canOpenPublication ? 'button' : undefined}
-                      tabIndex={canOpenPublication ? 0 : undefined}
-                      onClick={canOpenPublication ? () => onOpenPublication?.(record.workId) : undefined}
-                      onKeyDown={canOpenPublication ? (event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault()
-                          onOpenPublication?.(record.workId)
-                        }
-                      } : undefined}
-                      title={canOpenPublication ? 'Open publication in right panel' : undefined}
-                    >
-                      <td className="house-table-cell-text px-3 py-2">{record.year || 'n/a'}</td>
-                      <td className="house-table-cell-text px-3 py-2">
-                        <span className={cn('block max-w-[28rem] break-words leading-snug', canOpenPublication && 'underline-offset-2 hover:underline')}>
-                          {record.title}
-                        </span>
-                      </td>
-                      <td className="house-table-cell-text px-3 py-2">{record.role}</td>
-                      <td className="house-table-cell-text px-3 py-2">{record.type}</td>
-                      <td className="house-table-cell-text px-3 py-2">
-                        <span className="block max-w-[18rem] break-words leading-snug">{record.venue}</span>
-                      </td>
-                      <td className="house-table-cell-text px-3 py-2 text-right">{formatInt(record.citations)}</td>
-                    </tr>
-                  )
-                })}
-                {!sortedPublications.length ? (
-                  <tr>
-                    <td className={cn('house-table-cell-text px-3 py-4 text-center', HOUSE_DRILLDOWN_TABLE_EMPTY_CLASS)} colSpan={6}>
-                      No papers match the current filters.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
           </div>
         </div>
       </div>
@@ -4578,92 +4002,27 @@ function TotalPublicationsDrilldownWorkspace({
   }
 
   if (activeTab === 'trajectory') {
-    const trajectoryMaxWindow = Math.max(6, fullYears.length)
-    const trajectoryOptions = [
-      { key: 'raw' as const, label: 'Raw' },
-      { key: 'moving_avg' as const, label: 'Moving avg' },
-      { key: 'cumulative' as const, label: 'Cumulative' },
-    ]
-    const activeTrajectoryIndex = Math.max(0, trajectoryOptions.findIndex((option) => option.key === trajectoryMode))
     return (
-      <div className="space-y-3">
-        <div className={workspaceSectionClass}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className={workspaceHeadingClass}>Publication trajectory</p>
-            <div className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-3')}>
-                <span
-                  className={HOUSE_TOGGLE_THUMB_CLASS}
-                  style={buildTileToggleThumbStyle(activeTrajectoryIndex, trajectoryOptions.length)}
-                  aria-hidden="true"
-                />
-              {trajectoryOptions.map((option) => (
-                <button
-                  key={`trajectory-mode-${option.key}`}
-                  type="button"
-                  className={cn(
-                    HOUSE_TOGGLE_BUTTON_CLASS,
-                    trajectoryMode === option.key
-                      ? 'text-white'
-                      : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                  )}
-                  onClick={() => setTrajectoryMode(option.key)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+      <div className="house-publications-drilldown-stack-3">
+        <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
+          <div className="house-drilldown-subheading-block">
+            <p className="house-publications-drilldown-headline-results">Headline results</p>
+            <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`YoY delta ${yoyDelta >= 0 ? '+' : ''}${formatInt(yoyDelta)} publications`}</p>
           </div>
-          <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,1fr)_10.5rem]">
-            <div className={workspacePanelCompactClass}>
-              <svg viewBox="0 0 320 138" className="h-40 w-full">
-                {[50].map((pct) => (
-                  <line
-                    key={`trajectory-grid-${pct}`}
-                    x1={8}
-                    x2={312}
-                    y1={8 + ((122 * pct) / 100)}
-                    y2={8 + ((122 * pct) / 100)}
-                    className={HOUSE_DRILLDOWN_CHART_GRID_SVG_CLASS}
-                  />
-                ))}
-                {trajectoryMode === 'raw' && volatilityAreaPath ? (
-                  <path d={volatilityAreaPath} className={HOUSE_DRILLDOWN_CHART_AREA_SVG_CLASS} />
-                ) : null}
-                {trajectoryMode === 'raw' && movingPath ? (
-                  <path d={movingPath} className={HOUSE_DRILLDOWN_CHART_MOVING_SVG_CLASS} />
-                ) : null}
-                {trajectoryPath ? (
-                  <path d={trajectoryPath} className={HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS} />
-                ) : null}
-              </svg>
-              <div className={cn('mt-1 flex items-center justify-between', HOUSE_DRILLDOWN_AXIS_CLASS)}>
-                <span>{visibleYears[0] || 'n/a'}</span>
-                <span>{visibleYears[visibleYears.length - 1] || 'n/a'}</span>
-              </div>
-              <div className="mt-2">
-                <input
-                  type="range"
-                  min={Math.min(6, trajectoryMaxWindow)}
-                  max={trajectoryMaxWindow}
-                  value={Math.min(trajectoryWindow, trajectoryMaxWindow)}
-                  onChange={(event) => setTrajectoryWindow(Math.max(6, Number(event.target.value) || 6))}
-                  className={HOUSE_DRILLDOWN_RANGE_CLASS}
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <div className={cn('px-2 py-1.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
-                <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Volatility index</p>
-                <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{volatilityIndex.toFixed(2)}</p>
-              </div>
-              <div className={cn('px-2 py-1.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
-                <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Growth slope</p>
-                <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{growthSlope >= 0 ? '+' : ''}{growthSlope.toFixed(2)}/year</p>
-              </div>
-              <div className={cn('px-2 py-1.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
-                <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Phase marker</p>
-                <p className={HOUSE_DRILLDOWN_STAT_VALUE_CLASS}>{trajectoryPhase}</p>
-              </div>
+          <div className="house-drilldown-subheading-block">
+            <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>Year-over-year trajectory</p>
+            <div className="house-publications-drilldown-stack-2">
+              {years.length > 1 ? years.slice(1).reverse().map((year) => {
+                const value = Number(countsByYear.get(year) || 0)
+                const prior = Number(countsByYear.get(year - 1) || 0)
+                const delta = value - prior
+                return (
+                  <div key={`trajectory-row-${year}`} className={HOUSE_DRILLDOWN_ROW_CLASS}>
+                    <span>{`${year} vs ${year - 1}`}</span>
+                    <span className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`${delta >= 0 ? '+' : ''}${formatInt(delta)}`}</span>
+                  </div>
+                )
+              }) : <p className={HOUSE_DRILLDOWN_HINT_CLASS}>Not enough yearly data for trajectory.</p>}
             </div>
           </div>
         </div>
@@ -4673,38 +4032,35 @@ function TotalPublicationsDrilldownWorkspace({
 
   if (activeTab === 'context') {
     return (
-      <div className="space-y-3">
-        <div className={workspaceSectionClass}>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={cn(HOUSE_DRILLDOWN_BADGE_CLASS, badgeToneClass)}>
-              {contextClassLabel}
-            </span>
-            <span className={HOUSE_DRILLDOWN_CAPTION_CLASS}>{trajectoryPhase} phase detected</span>
+      <div className="house-publications-drilldown-stack-3">
+        <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
+          <div className="house-drilldown-subheading-block">
+            <p className="house-publications-drilldown-headline-results">Headline results</p>
+            <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`${formatInt(publications.length)} publication records with ${formatInt(years.length)} known publication years`}</p>
           </div>
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            <div className={cn('p-2.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
-              <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Portfolio structure</p>
-              <p className={cn('mt-1', HOUSE_DRILLDOWN_NOTE_CLASS)}>{`Active years ${formatInt(activeYears)}`}</p>
-              <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`Mean/year ${meanPerActiveYear.toFixed(0)}`}</p>
-              <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`Unknown year records ${formatInt(unknownYearCount)}`}</p>
+
+          <div className="house-drilldown-subheading-block">
+            <p className={HOUSE_DRILLDOWN_OVERLINE_CLASS}>Top publication venues</p>
+            <div className="house-publications-drilldown-stack-2">
+              {(() => {
+                const venueCounts = new Map<string, number>()
+                for (const publication of publications) {
+                  venueCounts.set(publication.venue, (venueCounts.get(publication.venue) || 0) + 1)
+                }
+                const rows = Array.from(venueCounts.entries())
+                  .map(([label, count]) => ({ label, count }))
+                  .sort((left, right) => right.count - left.count)
+                  .slice(0, 8)
+                return rows.length
+                  ? rows.map((row) => (
+                    <div key={`context-venue-${row.label}`} className={HOUSE_DRILLDOWN_ROW_CLASS}>
+                      <span>{row.label}</span>
+                      <span className={HOUSE_DRILLDOWN_NOTE_CLASS}>{formatInt(row.count)}</span>
+                    </div>
+                  ))
+                  : <p className={HOUSE_DRILLDOWN_HINT_CLASS}>No venue data available.</p>
+              })()}
             </div>
-            <div className={cn('p-2.5', HOUSE_DRILLDOWN_STAT_CARD_CLASS)}>
-              <p className={HOUSE_DRILLDOWN_STAT_TITLE_CLASS}>Distribution profile</p>
-              <p className={cn('mt-1', HOUSE_DRILLDOWN_NOTE_CLASS)}>{`Peak year ${peakYearData.year} (${formatInt(peakYearData.count)})`}</p>
-              <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`Volatility ${volatilityIndex.toFixed(2)}`}</p>
-              <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>{`Slope ${growthSlope >= 0 ? '+' : ''}${growthSlope.toFixed(2)} / year`}</p>
-            </div>
-          </div>
-          <div className="mt-3 grid gap-1.5 sm:grid-cols-3">
-            <button type="button" className={cn(HOUSE_DRILLDOWN_ACTION_CLASS, 'text-left')}>
-              View authorship distribution
-            </button>
-            <button type="button" className={cn(HOUSE_DRILLDOWN_ACTION_CLASS, 'text-left')}>
-              View collaboration structure
-            </button>
-            <button type="button" className={cn(HOUSE_DRILLDOWN_ACTION_CLASS, 'text-left')}>
-              View impact concentration
-            </button>
           </div>
         </div>
       </div>
@@ -4713,29 +4069,26 @@ function TotalPublicationsDrilldownWorkspace({
 
   if (activeTab === 'methods') {
     return (
-      <div className="space-y-3">
-        <details className={cn(workspaceSectionClass, 'p-0')}>
-          <summary className={cn(workspaceHeadingClass, 'cursor-pointer list-none px-3 py-2')}>
-            Method details
-          </summary>
-          <div className={cn('space-y-1.5 px-3 py-2.5', HOUSE_DRILLDOWN_DIVIDER_TOP_CLASS, HOUSE_DRILLDOWN_NOTE_CLASS)}>
-            <p><span className="font-semibold">Formula:</span> {String(tile.drilldown?.formula || 'Not available')}</p>
-            <p><span className="font-semibold">Filters:</span> Publication year when available; author-linked publication records.</p>
-            <p><span className="font-semibold">Sources:</span> {(tile.data_source || []).join(', ') || 'Not available'}</p>
-            <p><span className="font-semibold">Updated:</span> {String(tile.tooltip_details?.update_frequency || 'Not available')}</p>
-            <p><span className="font-semibold">Confidence:</span> {(Number(tile.confidence_score || 0)).toFixed(2)}</p>
-            <p className={HOUSE_DRILLDOWN_NOTE_SOFT_CLASS}>{String(tile.drilldown?.confidence_note || '')}</p>
+      <div className="house-publications-drilldown-stack-3">
+        <div className={cn(HOUSE_SURFACE_SECTION_PANEL_CLASS, 'house-publications-drilldown-panel-no-pad')}>
+          <div className="house-drilldown-subheading-block">
+            <p className="house-publications-drilldown-headline-results">Headline results</p>
+            <p className={HOUSE_DRILLDOWN_NOTE_CLASS}>Method metadata for total publication insights.</p>
           </div>
-        </details>
+          <div className={cn('house-drilldown-subheading-block', HOUSE_DRILLDOWN_NOTE_CLASS)}>
+            <p><strong>Formula:</strong> {String(tile.drilldown?.formula || 'Not available')}</p>
+            <p><strong>Definition:</strong> {String(tile.drilldown?.definition || 'Not available')}</p>
+            <p><strong>Data sources:</strong> {(tile.data_source || []).join(', ') || 'Not available'}</p>
+            <p><strong>Update frequency:</strong> {String(tile.tooltip_details?.update_frequency || 'Not available')}</p>
+            <p><strong>Confidence:</strong> {(Number(tile.confidence_score || 0)).toFixed(2)}</p>
+            {tile.drilldown?.confidence_note ? <p className={HOUSE_DRILLDOWN_NOTE_SOFT_CLASS}>{String(tile.drilldown.confidence_note)}</p> : null}
+          </div>
+        </div>
       </div>
     )
   }
 
-  return (
-    <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>
-      Select a tab to inspect this metric.
-    </div>
-  )
+  return <div className={HOUSE_DRILLDOWN_PLACEHOLDER_CLASS}>Select a tab to inspect this metric.</div>
 }
 
 function GenericMetricDrilldownWorkspace({
@@ -4836,7 +4189,7 @@ function GenericMetricDrilldownWorkspace({
   if (activeTab === 'summary') {
     return (
       <div className="space-y-3">
-        <p className={cn(HOUSE_DRILLDOWN_SECTION_LABEL_CLASS, HOUSE_DRILLDOWN_SECTION_TITLE_SPACER_CLASS)}>Headline results</p>
+        <p className="house-publications-drilldown-headline-results">Headline results</p>
         {headlineMetrics.length ? (
           <div className={HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS}>
             {headlineMetrics.slice(0, 8).map((item) => (
@@ -5833,13 +5186,6 @@ export function PublicationsTopStrip({
   const [insightsVisible, setInsightsVisible] = useState(
     () => forceInsightsVisible || readAccountSettings().publicationInsightsDefaultVisibility !== 'hidden',
   )
-  const autoRevealLocalInsights = useMemo(() => {
-    if (typeof window === 'undefined') {
-      return false
-    }
-    const host = String(window.location.hostname || '').toLowerCase()
-    return host === 'localhost' || host === '127.0.0.1'
-  }, [])
   const tileMotionStyle = useMemo(() => ({
     '--motion-duration-chart-refresh': `${TILE_MOTION_ENTRY_DURATION_MS}ms`,
     '--motion-duration-chart-toggle': `${TILE_MOTION_TOGGLE_DURATION_MS}ms`,
@@ -5883,12 +5229,13 @@ export function PublicationsTopStrip({
     if (!activeTileDefinition) {
       return ''
     }
+    if (activeTile?.key === 'this_year_vs_last') {
+      return 'Your publication records'
+    }
     if (activeTile?.key !== 'this_year_vs_last') {
       return activeTileDefinition
     }
     return activeTileDefinition
-      .replace(/counts?\s+authored\s+publications?\s+and\s+groups?[^.]*\.?/i, '')
-      .trim()
   }, [activeTileDefinition, activeTile?.key])
   const showActiveTileDefinition = useMemo(
     () => Boolean(sanitizedActiveTileDefinition) && !/fixture\s+drilldown/i.test(sanitizedActiveTileDefinition),
@@ -5904,16 +5251,6 @@ export function PublicationsTopStrip({
       setInsightsVisible(true)
     }
   }, [forceInsightsVisible])
-
-  useEffect(() => {
-    if (!autoRevealLocalInsights) {
-      return
-    }
-    if (insightsVisible) {
-      return
-    }
-    setInsightsVisible(true)
-  }, [autoRevealLocalInsights, insightsVisible])
 
   const onSelectTile = async (tile: PublicationMetricTilePayload) => {
     setActiveTileKey(tile.key)
@@ -5955,13 +5292,28 @@ export function PublicationsTopStrip({
     setDrawerOpen(false)
   }
 
+  const activeDrilldownTitle = useMemo(() => {
+    const rawTitle = String(activeTile?.title || activeTile?.drilldown?.title || '').trim()
+    const baseTitle = (rawTitle || 'Publication metric').replace(/[.:;,\s]+$/g, '').trim()
+    if (/insights?$/i.test(baseTitle)) {
+      return baseTitle
+    }
+    if (/^total publications$/i.test(baseTitle)) {
+      return 'Total publication insights'
+    }
+    if (/publications$/i.test(baseTitle)) {
+      return `${baseTitle.replace(/publications$/i, 'publication')} insights`
+    }
+    return `${baseTitle} insights`
+  }, [activeTile?.drilldown?.title, activeTile?.title])
+
   return (
     <>
       <Card className={HOUSE_SURFACE_PANEL_BARE_CLASS} style={tileMotionStyle}>
         <CardContent className="p-0">
-          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5">
+          <div className="house-main-heading-block">
             <div className="min-w-0 flex items-center gap-2">
-              <p className={HOUSE_HEADING_SECTION_TITLE_CLASS}>Publication insights</p>
+              <p className={HOUSE_HEADING_SECTION_TITLE_CLASS}>{PUBLICATION_INSIGHTS_TITLE}</p>
               <Button
                 type="button"
                 data-stop-tile-open="true"
@@ -5976,7 +5328,7 @@ export function PublicationsTopStrip({
                 )}
                 onClick={() => setInsightsVisible((current) => !current)}
                 aria-pressed={insightsVisible}
-                aria-label={insightsVisible ? 'Set publication insights not visible' : 'Set publication insights visible'}
+                aria-label={insightsVisible ? `Set ${PUBLICATION_INSIGHTS_LABEL} not visible` : `Set ${PUBLICATION_INSIGHTS_LABEL} visible`}
               >
                 {insightsVisible ? (
                   <Eye className="house-publications-eye-glyph h-[1.09rem] w-[1.09rem]" strokeWidth={2.3} />
@@ -5988,7 +5340,7 @@ export function PublicationsTopStrip({
                 <p className={cn('mt-1', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>Last update failed</p>
               ) : null}
             </div>
-            <div className="ml-auto min-h-8 min-w-[16.5rem]">
+            <div className="ml-auto flex min-h-8 min-w-[16.5rem] justify-end">
               <div
                 className={cn(
                   'flex flex-wrap items-center',
@@ -6006,7 +5358,7 @@ export function PublicationsTopStrip({
                   variant="house"
                   size="sm"
                   className={cn('h-8 gap-1.5 px-3', HOUSE_ACTIONS_PILL_PRIMARY_CLASS, HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
-                  aria-label="Generate publication insights report"
+                  aria-label={`Generate ${PUBLICATION_INSIGHTS_LABEL} report`}
                 >
                   <FileText className="h-3.5 w-3.5" />
                   <span>Generate report</span>
@@ -6038,7 +5390,7 @@ export function PublicationsTopStrip({
           </div>
 
           {insightsVisible && loading && tiles.length === 0 ? (
-            <div className="publications-insights-grid">
+            <div className="house-main-content-block publications-insights-grid">
               {Array.from({ length: 6 }).map((_, index) => (
                 <div key={index} className="min-h-36 px-3 py-2.5">
                   <div className={cn('h-full rounded-sm', HOUSE_DRILLDOWN_SKELETON_BLOCK_CLASS)} />
@@ -6046,7 +5398,7 @@ export function PublicationsTopStrip({
               ))}
             </div>
           ) : insightsVisible && tiles.length === 0 ? (
-            <div className="px-3 pb-3">
+            <div className="house-main-content-block pb-3">
               <div className={cn('rounded-sm px-3 py-2.5 text-sm', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>
                 <p>No publication insight tiles are available yet.</p>
                 {metrics?.status === 'RUNNING' ? <p className="mt-1">Metrics are currently computing. This panel updates automatically.</p> : null}
@@ -6054,7 +5406,7 @@ export function PublicationsTopStrip({
               </div>
             </div>
           ) : insightsVisible ? (
-            <div className="publications-insights-grid">
+            <div className="house-main-content-block publications-insights-grid">
               {tiles.map((tile) => {
                 const subtitle = String(tile.subtext || '').trim()
                 const rawDeltaDisplay = String(tile.delta_display || '').trim()
@@ -6431,44 +5783,48 @@ export function PublicationsTopStrip({
         <SheetContent side="right" className={HOUSE_DRILLDOWN_SHEET_CLASS}>
           {activeTile ? (
             <div className={HOUSE_DRILLDOWN_SHEET_BODY_CLASS}>
-              <div className={HOUSE_SURFACE_LEFT_BORDER_CLASS}>
-                <h3 className={HOUSE_HEADING_TITLE_CLASS}>{activeTile.drilldown.title}</h3>
+              <div className={cn('house-drilldown-title-block', HOUSE_SURFACE_LEFT_BORDER_CLASS, HOUSE_SURFACE_LEFT_BORDER_PUBLICATIONS_CLASS)}>
+                <p className={HOUSE_DRILLDOWN_TITLE_CLASS}>{activeDrilldownTitle}</p>
                 {showActiveTileDefinition ? (
-                  <p className={cn(HOUSE_TEXT_CLASS, 'mt-1')}>{sanitizedActiveTileDefinition}</p>
+                  <p className={HOUSE_DRILLDOWN_TITLE_EXPANDER_CLASS}>{sanitizedActiveTileDefinition}</p>
                 ) : null}
                 {detailError ? <p className={cn('mt-2', HOUSE_DRILLDOWN_ALERT_CLASS)}>{detailError}</p> : null}
               </div>
-              <Tabs
-                value={activeDrilldownTab}
-                onValueChange={(value) => setActiveDrilldownTab(value as DrilldownTab)}
-                className="w-full"
-              >
-                <TabsList className={HOUSE_DRILLDOWN_TAB_LIST_CLASS}>
-                  {DRILLDOWN_TABS.map((tab) => (
-                    <TabsTrigger
+              <div className="house-drilldown-heading-block gap-1 rounded-sm bg-card p-2" role="tablist" aria-label="Metric drilldown sections">
+                {DRILLDOWN_TABS.map((tab) => {
+                  const isActive = activeDrilldownTab === tab.value
+                  return (
+                    <button
                       key={tab.value}
-                      value={tab.value}
-                      className={HOUSE_DRILLDOWN_TAB_TRIGGER_CLASS}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      aria-controls={`drilldown-panel-${tab.value}`}
+                      className={cn(
+                        'house-nav-item approved-drilldown-nav-item flex-1',
+                        isActive && 'approved-drilldown-nav-item-active',
+                      )}
+                      onClick={() => setActiveDrilldownTab(tab.value)}
                     >
-                      {tab.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-                <div className="mt-2.5">
-                  {activeTile.key === 'this_year_vs_last' ? (
-                    <TotalPublicationsDrilldownWorkspace
-                      tile={activeTile}
-                      activeTab={activeDrilldownTab}
-                      onOpenPublication={onOpenPublication ? onOpenPublicationFromDrilldown : undefined}
-                    />
-                  ) : (
-                    <GenericMetricDrilldownWorkspace
-                      tile={activeTile}
-                      activeTab={activeDrilldownTab}
-                    />
-                  )}
-                </div>
-              </Tabs>
+                      <span className="house-nav-item-label">{tab.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="house-drilldown-content-block house-publications-drilldown-tab-panel" id={`drilldown-panel-${activeDrilldownTab}`} role="tabpanel">
+                {activeTile.key === 'this_year_vs_last' ? (
+                  <TotalPublicationsDrilldownWorkspace
+                    tile={activeTile}
+                    activeTab={activeDrilldownTab}
+                    onOpenPublication={onOpenPublication ? onOpenPublicationFromDrilldown : undefined}
+                  />
+                ) : (
+                  <GenericMetricDrilldownWorkspace
+                    tile={activeTile}
+                    activeTab={activeDrilldownTab}
+                  />
+                )}
+              </div>
             </div>
           ) : (
             <div className="text-sm text-muted-foreground">Select a metric tile to inspect its drilldown.</div>

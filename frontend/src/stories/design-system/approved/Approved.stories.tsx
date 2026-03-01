@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MemoryRouter } from 'react-router-dom'
-import { Eye, EyeOff, KeyRound, Mail, Menu, Search, Settings, User } from 'lucide-react'
+import { Download, Eye, EyeOff, FileText, KeyRound, Mail, Menu, Search, Settings, Share2, User } from 'lucide-react'
 
 import { AuthPage } from '@/pages/auth-page'
 import { TopBar } from '@/components/layout/top-bar'
@@ -672,6 +672,13 @@ function ApprovedLeftPanel() {
 function ApprovedPublicationsDrilldownSection() {
   const [activeDrilldownTab, setActiveDrilldownTab] = useState<'summary' | 'breakdown' | 'trajectory' | 'context' | 'methods'>('summary')
 
+  const headlineResultTiles = [
+    { id: 'total-publications', label: 'Total publications', value: '150', emphasize: true },
+    { id: 'active-years', label: 'Active years', value: '12', emphasize: false },
+    { id: 'mean-per-year', label: 'Mean per year', value: '13', emphasize: false },
+    { id: 'latest-year-count', label: 'Latest year count', value: '11', emphasize: false },
+  ] as const
+
   const drilldownTabs = [
     { id: 'summary', label: 'Summary' },
     { id: 'breakdown', label: 'Breakdown' },
@@ -691,12 +698,12 @@ function ApprovedPublicationsDrilldownSection() {
           <div className="max-w-4xl rounded-md border border-border bg-background overflow-hidden">
             {/* Tab Content */}
             <div className="p-4">
-              <div className="house-left-border house-left-border-publications pb-3">
-                <p className="house-section-title">Total publications</p>
-                <p className="house-text mt-1">Total number of scholarly works indexed across your research career.</p>
+              <div className="house-drilldown-title-block house-left-border house-left-border-publications">
+                <p className="house-drilldown-title">Total publication insights</p>
+                <p className="house-drilldown-title-expander">Your publication records</p>
               </div>
 
-              <div className="flex gap-1 mb-2 bg-card p-2 rounded-sm">
+              <div className="house-drilldown-heading-block gap-1 mb-2 bg-card p-2 rounded-sm">
                 {drilldownTabs.map((tab) => (
                   <button
                     key={tab.id}
@@ -704,61 +711,107 @@ function ApprovedPublicationsDrilldownSection() {
                     className={`house-nav-item approved-drilldown-nav-item flex-1 ${activeDrilldownTab === tab.id ? 'approved-drilldown-nav-item-active' : ''}`}
                     type="button"
                   >
-                    <span className="house-nav-item-label text-sm">{tab.label}</span>
+                    <span className="house-nav-item-label">{tab.label}</span>
                   </button>
                 ))}
               </div>
 
-              <div className="mt-4 space-y-3">
-                <p className="house-nav-section-label house-drilldown-section-title-spacer">Headline results</p>
-                
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="house-drilldown-summary-stat-card rounded-md border border-border bg-card p-3">
-                    <p className="house-drilldown-summary-stat-title">Total publications</p>
-                    <div className="house-drilldown-summary-stat-value-wrap">
-                      <p className="house-drilldown-summary-stat-value-emphasis tabular-nums">150</p>
+              <div className="house-drilldown-content-block house-publications-drilldown-stack-3">
+                {activeDrilldownTab === 'summary' ? (
+                  <>
+                    <div className="house-drilldown-subheading-block">
+                      <p className="house-publications-drilldown-headline-results">Headline results</p>
+                      <div className="house-drilldown-summary-stats-grid">
+                        {headlineResultTiles.map((tile) => (
+                          <div key={tile.id} className="house-drilldown-summary-stat-card">
+                            <p className="house-drilldown-summary-stat-title">{tile.label}</p>
+                            <div className="house-drilldown-summary-stat-value-wrap">
+                              <p className={`${tile.emphasize ? 'house-drilldown-summary-stat-value-emphasis' : 'house-drilldown-summary-stat-value'} tabular-nums`}>
+                                {tile.value}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                  
-                  <div className="house-drilldown-summary-stat-card rounded-md border border-border bg-card p-3">
-                    <p className="house-drilldown-summary-stat-title">Active years</p>
-                    <div className="house-drilldown-summary-stat-value-wrap">
-                      <p className="house-drilldown-summary-stat-value tabular-nums">12</p>
+
+                    <div className="house-drilldown-subheading-block">
+                      <p className="house-drilldown-overline">Publication trends over time</p>
+                      <div className="house-publications-drilldown-stack-2">
+                        <div className="house-drilldown-row"><span>2024</span><span className="house-drilldown-note">11 publications</span></div>
+                        <div className="house-drilldown-row"><span>2023</span><span className="house-drilldown-note">14 publications</span></div>
+                        <div className="house-drilldown-row"><span>2022</span><span className="house-drilldown-note">12 publications</span></div>
+                      </div>
                     </div>
-                  </div>
+                  </>
+                ) : null}
 
-                  <div className="house-drilldown-summary-stat-card rounded-md border border-border bg-card p-3">
-                    <p className="house-drilldown-summary-stat-title">Mean per year</p>
-                    <div className="house-drilldown-summary-stat-value-wrap">
-                      <p className="house-drilldown-summary-stat-value tabular-nums">12.5</p>
+                {activeDrilldownTab === 'breakdown' ? (
+                  <>
+                    <div className="house-drilldown-subheading-block">
+                      <p className="house-publications-drilldown-headline-results">Headline results</p>
+                      <p className="house-drilldown-note">150 publications across 12 active years</p>
                     </div>
-                  </div>
-
-                  <div className="house-drilldown-summary-stat-card rounded-md border border-border bg-card p-3">
-                    <p className="house-drilldown-summary-stat-title">Current YTD</p>
-                    <div className="house-drilldown-summary-stat-value-wrap">
-                      <p className="house-drilldown-summary-stat-value tabular-nums">3</p>
+                    <div className="house-drilldown-subheading-block">
+                      <p className="house-drilldown-overline">Publication count by year</p>
+                      <div className="house-publications-drilldown-stack-2">
+                        <div className="house-drilldown-row"><span>2024</span><span className="house-drilldown-note">11</span></div>
+                        <div className="house-drilldown-row"><span>2023</span><span className="house-drilldown-note">14</span></div>
+                        <div className="house-drilldown-row"><span>2022</span><span className="house-drilldown-note">12</span></div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  </>
+                ) : null}
 
-                <div className="house-drilldown-section-separator" />
+                {activeDrilldownTab === 'trajectory' ? (
+                  <>
+                    <div className="house-drilldown-subheading-block">
+                      <p className="house-publications-drilldown-headline-results">Headline results</p>
+                      <p className="house-drilldown-note">YoY delta -3 publications</p>
+                    </div>
+                    <div className="house-drilldown-subheading-block">
+                      <p className="house-drilldown-overline">Year-over-year trajectory</p>
+                      <div className="house-publications-drilldown-stack-2">
+                        <div className="house-drilldown-row"><span>2024 vs 2023</span><span className="house-drilldown-note">-3</span></div>
+                        <div className="house-drilldown-row"><span>2023 vs 2022</span><span className="house-drilldown-note">+2</span></div>
+                        <div className="house-drilldown-row"><span>2022 vs 2021</span><span className="house-drilldown-note">+1</span></div>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
 
-                <div>
-                  <p className="house-nav-section-label">Publication trends</p>
-                  <div className="mt-2 rounded-md border border-border bg-card p-3">
-                    <p className="house-drilldown-overline">Publications per year (last 5 years)</p>
-                    <div className="mt-2 h-24 rounded-sm border border-[hsl(var(--stroke-soft))] bg-[hsl(var(--tone-neutral-50))]" />
-                    <p className="house-drilldown-caption mt-2">Chart showing annual publication output trajectory</p>
-                  </div>
-                </div>
+                {activeDrilldownTab === 'context' ? (
+                  <>
+                    <div className="house-drilldown-subheading-block">
+                      <p className="house-publications-drilldown-headline-results">Headline results</p>
+                      <p className="house-drilldown-note">150 publication records with 12 known publication years</p>
+                    </div>
+                    <div className="house-drilldown-subheading-block">
+                      <p className="house-drilldown-overline">Top publication venues</p>
+                      <div className="house-publications-drilldown-stack-2">
+                        <div className="house-drilldown-row"><span>Nature</span><span className="house-drilldown-note">18</span></div>
+                        <div className="house-drilldown-row"><span>Science</span><span className="house-drilldown-note">12</span></div>
+                        <div className="house-drilldown-row"><span>Cell</span><span className="house-drilldown-note">10</span></div>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
 
-                <div>
-                  <p className="house-nav-section-label">Context</p>
-                  <p className="house-drilldown-note-soft mt-1">
-                    This drilldown provides comprehensive metrics. Currently viewing: <strong>{activeDrilldownTab}</strong> tab.
-                  </p>
-                </div>
+                {activeDrilldownTab === 'methods' ? (
+                  <>
+                    <div className="house-drilldown-subheading-block">
+                      <p className="house-publications-drilldown-headline-results">Headline results</p>
+                      <p className="house-drilldown-note">Method metadata for total publication insights.</p>
+                    </div>
+                    <div className="house-drilldown-subheading-block house-drilldown-note">
+                      <p><strong>Formula:</strong> Count of indexed publications linked to the profile.</p>
+                      <p><strong>Definition:</strong> Total number of scholarly works across the publication history.</p>
+                      <p><strong>Data sources:</strong> OpenAlex, profile-linked records</p>
+                      <p><strong>Update frequency:</strong> Daily</p>
+                      <p><strong>Confidence:</strong> 0.92</p>
+                    </div>
+                  </>
+                ) : null}
               </div>
             </div>
           </div>
@@ -918,118 +971,238 @@ function ApprovedTypographySection() {
       <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-2 border-b border-neutral-200">
           <p className="text-sm font-semibold text-neutral-900">Approved Typography</p>
-          <p className="text-xs text-neutral-600">Canonical typography sets for main content, left panel, and drilldown.</p>
+          <p className="text-xs text-neutral-600">Organized reference by component area with grouped typography, layout blocks, and spacing rules.</p>
         </div>
 
-        <div className="grid gap-4 p-4 lg:grid-cols-3">
-          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Main content</p>
-            <div className="flex items-baseline justify-between gap-2">
-              <h2 className="house-title text-[1.8rem] leading-[2rem]">Publications</h2>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-title</code>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
+        <div className="space-y-4 p-4">
+          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Main</p>
+            <div className="house-main-title-block rounded-sm border border-neutral-200 p-2">
+              <p className="house-title">Publications</p>
               <p className="house-title-expander">Track your research metrics and manage your publication library.</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-title-expander</code>
             </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-section-title mt-1">Publication insights</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-section-title</code>
+            <div className="house-main-heading-block rounded-sm border border-neutral-200 p-2">
+              <p className="house-section-title">Publication insights</p>
             </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-text">This paragraph uses the main body text tier for core reading content.</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-text</code>
+
+            <div className="rounded-md border border-neutral-200 p-2">
+              <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-neutral-600">Block map</p>
+              <div className="space-y-1.5">
+                <div className="house-main-title-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                  <p className="house-field-helper">Title block</p>
+                  <p className="house-title">Page title</p>
+                  <p className="house-title-expander">Title expander</p>
+                </div>
+                <div className="house-main-heading-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                  <p className="house-field-helper">Heading block</p>
+                  <p className="house-section-title">Section heading</p>
+                </div>
+                <div className="house-main-subheading-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                  <p className="house-field-helper">Subheading block</p>
+                  <p className="house-text">Subheading row</p>
+                </div>
+                <div className="house-main-content-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                  <p className="house-field-helper">Content block</p>
+                  <p className="house-text">Main content area</p>
+                </div>
+              </div>
             </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-label">Metric label</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-label</code>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-field-label">Field label</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-field-label</code>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-field-helper">Helper copy and validation guidance live here.</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-field-helper</code>
+
+            <div className="grid gap-3 lg:grid-cols-3">
+              <div className="overflow-hidden rounded-md border border-neutral-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-neutral-50 text-neutral-700">
+                    <tr>
+                      <th className="px-2 py-1.5 font-semibold">Typography</th>
+                      <th className="px-2 py-1.5 font-semibold">Properties</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-title</code></td><td className="px-2 py-1.5">2.05rem / 2.3rem · 500 · -0.02em</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-title-expander</code></td><td className="px-2 py-1.5">0.875rem / 1.25rem · 400</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-section-title</code></td><td className="px-2 py-1.5">1.125rem / 1.4rem · 500 · 0.01em</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-text</code></td><td className="px-2 py-1.5">0.875rem / 1.5rem · 400</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-field-helper</code></td><td className="px-2 py-1.5">0.8125rem / 1.2rem · 500</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="overflow-hidden rounded-md border border-neutral-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-neutral-50 text-neutral-700">
+                    <tr>
+                      <th className="px-2 py-1.5 font-semibold">Layout blocks</th>
+                      <th className="px-2 py-1.5 font-semibold">Properties</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-title-block</code></td><td className="px-2 py-1.5">flex column · align-start · gap 0.2rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-heading-block</code></td><td className="px-2 py-1.5">flex wrap · align-center · justify-between · gap 0.5rem · py 0.375rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-subheading-block</code></td><td className="px-2 py-1.5">flex wrap · align-baseline · justify-between · gap 0.5rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-content-block</code></td><td className="px-2 py-1.5">flex column · min-width 0</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-page-header</code></td><td className="px-2 py-1.5">flex column · gap 0.2rem</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="overflow-hidden rounded-md border border-neutral-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-neutral-50 text-neutral-700">
+                    <tr>
+                      <th className="px-2 py-1.5 font-semibold">Spacing relationships</th>
+                      <th className="px-2 py-1.5 font-semibold">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-title-block + .house-main-heading-block</code></td><td className="px-2 py-1.5">0.72rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-title-block + .house-section-anchor .house-main-heading-block:first-child</code></td><td className="px-2 py-1.5">0.72rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-heading-block + .house-main-content-block</code></td><td className="px-2 py-1.5">0.3rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-subheading-block + .house-main-content-block</code></td><td className="px-2 py-1.5">0.3rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-content-block + .house-main-content-block</code></td><td className="px-2 py-1.5">2rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-main-content-block + .house-main-subheading-block</code></td><td className="px-2 py-1.5">2rem</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </article>
 
-          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Left panel</p>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-nav-section-label">Workspace</p>
-              <code className="text-[0.65rem] text-neutral-500">.house-nav-section-label</code>
-            </div>
+          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Left</p>
             <button type="button" className="house-nav-item house-nav-item-workspace house-nav-item-active w-full">
               <span className="house-nav-item-label">Overview</span>
               <span className="house-nav-item-count">12</span>
             </button>
-            <div className="flex items-baseline justify-between gap-2">
-              <button type="button" className="house-nav-item house-nav-item-workspace w-full">
-                <span className="house-nav-item-label">Data library</span>
-                <span className="house-nav-item-meta">New</span>
-              </button>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-nav-item-label</code>
+
+            <div className="rounded-md border border-neutral-200 p-2">
+              <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-neutral-600">Block map</p>
+              <div className="space-y-1.5">
+                <div className="rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                  <p className="house-field-helper">Left section label block</p>
+                  <p className="house-nav-section-label">Workspace</p>
+                </div>
+                <div className="rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                  <p className="house-field-helper">Left content block (nav list)</p>
+                  <div className="house-nav-list">
+                    <button type="button" className="house-nav-item house-nav-item-workspace">
+                      <span className="house-nav-item-label">Overview</span>
+                    </button>
+                    <button type="button" className="house-nav-item house-nav-item-workspace">
+                      <span className="house-nav-item-label">Data library</span>
+                      <span className="house-nav-item-meta">New</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-nav-item-meta">Meta tier for supplementary nav context.</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-nav-item-meta</code>
+
+            <div className="grid gap-3 lg:grid-cols-3">
+              <div className="overflow-hidden rounded-md border border-neutral-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-neutral-50 text-neutral-700">
+                    <tr><th className="px-2 py-1.5 font-semibold">Typography</th><th className="px-2 py-1.5 font-semibold">Properties</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-nav-section-label</code></td><td className="px-2 py-1.5">0.8125rem / 1.2rem · 600 · 0.08em · uppercase</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-nav-item-label</code></td><td className="px-2 py-1.5">0.875rem / 1.25rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-nav-item-meta</code></td><td className="px-2 py-1.5">0.75rem / 1.1rem · 500</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="overflow-hidden rounded-md border border-neutral-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-neutral-50 text-neutral-700">
+                    <tr><th className="px-2 py-1.5 font-semibold">Layout blocks</th><th className="px-2 py-1.5 font-semibold">Properties</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-nav-list</code></td><td className="px-2 py-1.5">flex column · gap var(--separator-left-panel-subheading-to-content)</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-nav-item</code></td><td className="px-2 py-1.5">gap 0.5rem · padding 0.5rem 0.75rem</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="overflow-hidden rounded-md border border-neutral-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-neutral-50 text-neutral-700">
+                    <tr><th className="px-2 py-1.5 font-semibold">Spacing relationships</th><th className="px-2 py-1.5 font-semibold">Value</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>--separator-left-panel-subheading-to-content</code></td><td className="px-2 py-1.5">0.25rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>--separator-left-panel-content-to-subheading</code></td><td className="px-2 py-1.5">0.5rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-separator-left-panel-subheading-to-content</code></td><td className="px-2 py-1.5">margin-bottom: 0.25rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-separator-left-panel-content-to-subheading</code></td><td className="px-2 py-1.5">margin-top: 0.5rem</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </article>
 
-          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-2">
+          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-3">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Drilldown</p>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-section-title">Total publications</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-section-title</code>
+            <div className="house-drilldown-title-block rounded-sm border border-neutral-200 p-2">
+              <p className="house-drilldown-title">Total publication insights</p>
+              <p className="house-drilldown-title-expander">Lifetime citations across all publications with annual growth context.</p>
             </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-drilldown-overline">Publication drilldown</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-drilldown-overline</code>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-drilldown-section-label">Citation momentum</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-drilldown-section-label</code>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-drilldown-summary-stat-title">Current citation pace</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-drilldown-summary-stat-title</code>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-drilldown-summary-stat-value">+87%</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-drilldown-summary-stat-value</code>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-drilldown-caption">Compared with prior 12-month period.</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-drilldown-caption</code>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-drilldown-note-soft">Context tier for non-primary explanatory text.</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-drilldown-note-soft</code>
-            </div>
-          </article>
 
-          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Metric tiles</p>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-metric-tile-title">Total publications</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-metric-tile-title</code>
+            <div className="rounded-md border border-neutral-200 p-2">
+              <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-neutral-600">Block map</p>
+              <div className="space-y-1.5">
+                <div className="house-drilldown-title-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                  <p className="house-field-helper">Title block</p>
+                  <p className="house-drilldown-title">Drilldown title</p>
+                  <p className="house-drilldown-title-expander">Drilldown expander</p>
+                </div>
+                <div className="house-drilldown-heading-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                  <p className="house-field-helper">Heading block</p>
+                  <p className="house-drilldown-section-label">Tab row / key controls</p>
+                </div>
+                <div className="house-drilldown-subheading-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                  <p className="house-field-helper">Subheading block</p>
+                  <p className="house-drilldown-overline">Section overline</p>
+                </div>
+                <div className="house-drilldown-content-block rounded-sm border border-neutral-200 bg-muted/30 p-2">
+                  <p className="house-field-helper">Content block</p>
+                  <p className="house-drilldown-note-soft">Drilldown content area</p>
+                </div>
+              </div>
             </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-metric-tile-value">150</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-metric-tile-value</code>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-metric-subtitle">Lifetime publications</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-metric-subtitle</code>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-metric-narrative">Last 5 years shown</p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-metric-narrative</code>
-            </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="house-text-soft">Title/value gap token: <code>--metric-tile-title-value-gap</code></p>
-              <code className="shrink-0 text-[0.65rem] text-neutral-500">.house-text-soft</code>
+
+            <div className="grid gap-3 lg:grid-cols-3">
+              <div className="overflow-hidden rounded-md border border-neutral-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-neutral-50 text-neutral-700">
+                    <tr><th className="px-2 py-1.5 font-semibold">Typography</th><th className="px-2 py-1.5 font-semibold">Properties</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-title</code></td><td className="px-2 py-1.5">1.5rem / 1.86rem · 500 · 0.01em</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-title-expander</code></td><td className="px-2 py-1.5">0.875rem / 1.25rem · 400</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-overline</code></td><td className="px-2 py-1.5">0.8125rem / 1.2rem · 600 · 0.08em · uppercase</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-title</code></td><td className="px-2 py-1.5">0.6875rem / 0.95rem · 600 · 0.07em · uppercase</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-value</code></td><td className="px-2 py-1.5">1.5rem / 1.62rem · 500 · tabular-nums</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="overflow-hidden rounded-md border border-neutral-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-neutral-50 text-neutral-700">
+                    <tr><th className="px-2 py-1.5 font-semibold">Layout blocks</th><th className="px-2 py-1.5 font-semibold">Properties</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-title-block</code></td><td className="px-2 py-1.5">flex column · align-start · gap 0.25rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-heading-block</code></td><td className="px-2 py-1.5">flex wrap · align-center · justify-between · gap 0.5rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-subheading-block</code></td><td className="px-2 py-1.5">flex wrap · align-baseline · justify-between · gap 0.5rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-content-block</code></td><td className="px-2 py-1.5">flex column · min-width 0</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="overflow-hidden rounded-md border border-neutral-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-neutral-50 text-neutral-700">
+                    <tr><th className="px-2 py-1.5 font-semibold">Spacing relationships</th><th className="px-2 py-1.5 font-semibold">Value</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-title-block + .house-drilldown-heading-block</code></td><td className="px-2 py-1.5">0.5rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-subheading-block &gt; .house-drilldown-overline</code></td><td className="px-2 py-1.5">0.3rem</td></tr>
+                    <tr className="border-t border-neutral-200"><td className="px-2 py-1.5"><code>.house-drilldown-subheading-block + .house-drilldown-subheading-block</code></td><td className="px-2 py-1.5">2rem</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </article>
         </div>
@@ -1179,6 +1352,163 @@ function ApprovedMetricTilesSection() {
         </div>
         <div className="px-4 pb-4 text-xs text-neutral-600">
           Tokens: <code>--metric-tile-grid-gap</code>, <code>--metric-tile-grid-padding</code>, <code>--metric-tile-grid-row-min-height</code>, <code>--metric-tile-border-color</code>, <code>--metric-tile-border-width</code>, <code>--metric-tile-bg-rest</code>, <code>--metric-tile-bg-hover</code>, <code>--metric-tile-bg-selected</code>, <code>--metric-tile-chart-bg-rest</code>, <code>--metric-tile-chart-bg-hover</code>, <code>--metric-tile-separator-color</code>, <code>--metric-tile-separator-width</code>.
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ApprovedMetricsToolbarSection() {
+  return (
+    <section>
+      <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-neutral-200">
+          <p className="text-sm font-semibold text-neutral-900">Approved Metrics Toolbar (Publications)</p>
+          <p className="text-xs text-neutral-600">Live publications toolbar pattern for defining house tokens around report/download/share actions.</p>
+        </div>
+
+        <div className="grid gap-4 p-4 lg:grid-cols-2">
+          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Visual preview</p>
+            <div className="house-main-heading-block w-full rounded-sm border border-neutral-200 p-2">
+              <p className="house-section-title">Publication insights</p>
+              <div className="ml-auto flex min-h-8 min-w-[16.5rem] justify-end">
+                <div className="house-publications-actions house-section-tools house-section-tools-publications flex flex-wrap items-center">
+                  <button
+                    type="button"
+                    className="house-publications-action-primary house-section-tool-button h-8 gap-1.5 px-3 inline-flex items-center"
+                    aria-label="Generate publication insights report"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    <span>Generate report</span>
+                  </button>
+                  <div className="house-publications-action-icons">
+                    <button
+                      type="button"
+                      className="house-publications-action-icon house-section-tool-button h-8 w-8 inline-flex items-center justify-center"
+                      aria-label="Download"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      className="house-publications-action-icon house-section-tool-button h-8 w-8 inline-flex items-center justify-center"
+                      aria-label="Share"
+                    >
+                      <Share2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Class + token mapping</p>
+            <div className="overflow-hidden rounded-md border border-neutral-200">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-neutral-50 text-neutral-700">
+                  <tr>
+                    <th className="px-2 py-1.5 font-semibold">Element</th>
+                    <th className="px-2 py-1.5 font-semibold">Role</th>
+                    <th className="px-2 py-1.5 font-semibold">Token touchpoints</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-publications-actions</code></td>
+                    <td className="px-2 py-1.5">Toolbar shell</td>
+                    <td className="px-2 py-1.5">surface/border/radius grouping for full action rail</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-publications-action-primary</code></td>
+                    <td className="px-2 py-1.5">Primary CTA segment</td>
+                    <td className="px-2 py-1.5">primary bg/fg, hover tone, segment divider behavior</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-publications-action-icons</code></td>
+                    <td className="px-2 py-1.5">Icon group wrapper</td>
+                    <td className="px-2 py-1.5">group gap, join radius, internal separation</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-publications-action-icon</code></td>
+                    <td className="px-2 py-1.5">Icon segment</td>
+                    <td className="px-2 py-1.5">icon-button surface/hover/active tokens</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-section-tools-publications</code></td>
+                    <td className="px-2 py-1.5">Publications scope override</td>
+                    <td className="px-2 py-1.5">section-scoped palette and stroke tuning</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-section-tool-button</code></td>
+                    <td className="px-2 py-1.5">Shared interactive primitive</td>
+                    <td className="px-2 py-1.5">focus ring, interaction motion, shared control metrics</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ApprovedDrilldownMetricTileSection() {
+  return (
+    <section>
+      <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-neutral-200">
+          <p className="text-sm font-semibold text-neutral-900">Approved Drilldown Metric Tile</p>
+          <p className="text-xs text-neutral-600">Canonical drilldown headline metric tile, documented separately from standard metric tiles.</p>
+        </div>
+        <div className="grid gap-4 p-4 lg:grid-cols-2">
+          <article className="rounded-md border border-neutral-200 bg-background p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Drilldown metric tile preview</p>
+            <div className="mt-3 grid max-w-md grid-cols-2 gap-2">
+              <div className="house-drilldown-summary-stat-card">
+                <p className="house-drilldown-summary-stat-title">Total publications</p>
+                <div className="house-drilldown-summary-stat-value-wrap">
+                  <p className="house-drilldown-summary-stat-value-emphasis tabular-nums">150</p>
+                </div>
+              </div>
+              <div className="house-drilldown-summary-stat-card">
+                <p className="house-drilldown-summary-stat-title">Active years</p>
+                <div className="house-drilldown-summary-stat-value-wrap">
+                  <p className="house-drilldown-summary-stat-value tabular-nums">12</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article className="rounded-md border border-neutral-200 bg-background p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Typography spec</p>
+            <div className="mt-3 overflow-hidden rounded-md border border-neutral-200">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-neutral-50 text-neutral-700">
+                  <tr>
+                    <th className="px-2 py-1.5 font-semibold">Typography label</th>
+                    <th className="px-2 py-1.5 font-semibold">Property</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-title</code></td>
+                    <td className="px-2 py-1.5">0.6875rem / 0.95rem · 600 · 0.07em · uppercase</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-value</code></td>
+                    <td className="px-2 py-1.5">1.2rem / 1.5rem · 600 · neutral-800 · centered</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-value-emphasis</code></td>
+                    <td className="px-2 py-1.5">2.275rem / 1.05 · 700 · neutral-900 · centered</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
         </div>
       </div>
     </section>
@@ -2585,12 +2915,14 @@ function ApprovedPage() {
         <ApprovedMarkersSection />
         <ApprovedLayoutTitlePositioning />
         <ApprovedTypographySection />
+        <ApprovedMetricsToolbarSection />
+        <ApprovedPublicationsDrilldownSection />
+        <ApprovedDrilldownMetricTileSection />
         <ApprovedMetricTilesSection />
         <ApprovedTileTogglesSection />
         <ApprovedPublicationTileAnimationsSection />
         <ApprovedPublicationAnimationSpecSection />
         <ApprovedLeftPanel />
-        <ApprovedPublicationsDrilldownSection />
         <AuthPagePanel />
         <div className="rounded-lg border border-neutral-200 bg-white shadow-sm">
           <div className="px-4 py-2 border-b border-neutral-200">

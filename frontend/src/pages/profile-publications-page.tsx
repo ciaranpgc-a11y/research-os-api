@@ -5,7 +5,6 @@ import { useNavigate } from 'react-router-dom'
 import { PublicationsTopStrip } from '@/components/publications/PublicationsTopStrip'
 import { publicationsHouseDetail, publicationsHouseDrilldown, publicationsHouseHeadings, publicationsHouseMotion } from '@/components/publications/publications-house-style'
 import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
-import { CardPrimitive as Card, CardContent, CardHeader } from '@/components/primitives/CardPrimitive'
 import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
 import {
   SelectPrimitive,
@@ -1389,110 +1388,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const localTopMetricsBootstrapAttemptedRef = useRef(false)
   const publicationTableLayoutRef = useRef<HTMLDivElement | null>(null)
   const filePickerRef = useRef<HTMLInputElement | null>(null)
-  const [localDebugBusy, setLocalDebugBusy] = useState(false)
-  const [localDebugLines, setLocalDebugLines] = useState<string[]>([])
-
-  const collectLocalDiagnostics = useCallback((extraLines: string[] = []) => {
-    if (typeof window === 'undefined') {
-      return
-    }
-    const sessionToken = window.sessionStorage.getItem('aawe-impact-session-token') || ''
-    const localToken = window.localStorage.getItem('aawe-impact-session-token') || ''
-    const sessionEmail = window.sessionStorage.getItem('aawe-impact-active-email') || ''
-    const localEmail = window.localStorage.getItem('aawe-impact-active-email') || ''
-    const accountMapRaw = window.localStorage.getItem('aawe-impact-account-key-map') || ''
-    const accountMapPreview = accountMapRaw.length > 120 ? `${accountMapRaw.slice(0, 120)}...` : accountMapRaw
-    const lines = [
-      `time=${new Date().toISOString()}`,
-      `path=${window.location.pathname}`,
-      `api=${API_BASE_URL}`,
-      `state.token=${token ? 'present' : 'missing'} len=${token.length}`,
-      `state.user=${user?.email || 'none'}`,
-      `state.metrics=${topMetricsResponse?.status || 'none'} tiles=${(topMetricsResponse?.tiles || []).length}`,
-      `state.status=${status || 'none'}`,
-      `state.error=${error || 'none'}`,
-      `storage.sessionToken=${sessionToken ? `present len=${sessionToken.length}` : 'missing'}`,
-      `storage.localToken=${localToken ? `present len=${localToken.length}` : 'missing'}`,
-      `storage.sessionEmail=${sessionEmail || 'none'}`,
-      `storage.localEmail=${localEmail || 'none'}`,
-      `storage.accountKeyMap=${accountMapPreview || 'none'}`,
-      ...extraLines,
-    ]
-    setLocalDebugLines(lines)
-  }, [error, status, token, topMetricsResponse?.status, topMetricsResponse?.tiles, user?.email])
-
-  const runLocalAuthProbe = useCallback(async () => {
-    if (!isLocalRuntime) {
-      return
-    }
-    setLocalDebugBusy(true)
-    const probeLines: string[] = []
-    const activeToken = getAuthSessionToken()
-    probeLines.push(`probe.token=${activeToken ? 'present' : 'missing'} len=${activeToken.length}`)
-    if (!activeToken) {
-      probeLines.push('probe.auth_me=skipped (missing token)')
-      probeLines.push('probe.metrics=skipped (missing token)')
-      collectLocalDiagnostics(probeLines)
-      setLocalDebugBusy(false)
-      return
-    }
-    try {
-      const me = await fetchMe(activeToken)
-      probeLines.push(`probe.auth_me=ok email=${me.email}`)
-      setUser(me)
-      saveCachedUser(me)
-    } catch (probeError) {
-      probeLines.push(`probe.auth_me=failed ${(probeError instanceof Error ? probeError.message : 'unknown error')}`)
-    }
-    try {
-      const metrics = await fetchPublicationsTopMetrics(activeToken)
-      probeLines.push(`probe.metrics=ok status=${metrics.status} tiles=${(metrics.tiles || []).length}`)
-      setTopMetricsResponse(metrics)
-      saveCachedTopMetricsResponse(metrics)
-    } catch (probeError) {
-      probeLines.push(`probe.metrics=failed ${(probeError instanceof Error ? probeError.message : 'unknown error')}`)
-    }
-    collectLocalDiagnostics(probeLines)
-    setLocalDebugBusy(false)
-  }, [collectLocalDiagnostics, isLocalRuntime])
-
-  const runLocalMetricsRefresh = useCallback(async () => {
-    if (!isLocalRuntime) {
-      return
-    }
-    setLocalDebugBusy(true)
-    const probeLines: string[] = []
-    const activeToken = getAuthSessionToken()
-    if (!activeToken) {
-      probeLines.push('probe.refresh=skipped (missing token)')
-      collectLocalDiagnostics(probeLines)
-      setLocalDebugBusy(false)
-      return
-    }
-    try {
-      const refresh = await triggerPublicationsTopMetricsRefresh(activeToken)
-      probeLines.push(`probe.refresh=enqueued ${refresh.enqueued ? 'yes' : 'no'} status=${refresh.status}`)
-    } catch (probeError) {
-      probeLines.push(`probe.refresh=failed ${(probeError instanceof Error ? probeError.message : 'unknown error')}`)
-    }
-    try {
-      const metrics = await fetchPublicationsTopMetrics(activeToken)
-      probeLines.push(`probe.refreshFetch=ok status=${metrics.status} tiles=${(metrics.tiles || []).length}`)
-      setTopMetricsResponse(metrics)
-      saveCachedTopMetricsResponse(metrics)
-    } catch (probeError) {
-      probeLines.push(`probe.refreshFetch=failed ${(probeError instanceof Error ? probeError.message : 'unknown error')}`)
-    }
-    collectLocalDiagnostics(probeLines)
-    setLocalDebugBusy(false)
-  }, [collectLocalDiagnostics, isLocalRuntime])
-
-  useEffect(() => {
-    if (!isLocalRuntime) {
-      return
-    }
-    collectLocalDiagnostics()
-  }, [collectLocalDiagnostics, isLocalRuntime])
 
   const loadData = useCallback(async (
     sessionToken: string,
@@ -2749,10 +2644,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }
 
   return (
-    <section data-house-role="page" className="space-y-4">
+    <section data-house-role="page">
       <header
         data-house-role="page-header"
-        className={cn(HOUSE_PAGE_HEADER_CLASS, HOUSE_LEFT_BORDER_CLASS, HOUSE_LEFT_BORDER_PROFILE_CLASS)}
+        className={cn(HOUSE_PAGE_HEADER_CLASS, 'house-main-title-block', HOUSE_LEFT_BORDER_CLASS, HOUSE_LEFT_BORDER_PROFILE_CLASS)}
       >
         <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Publications</h1>
         <p data-house-role="page-title-expander" className={houseTypography.titleExpander}>
@@ -2760,50 +2655,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         </p>
       </header>
 
-      {isLocalRuntime ? (
-        <div className={HOUSE_SECTION_ANCHOR_CLASS}>
-          <div className={cn(HOUSE_BANNER_CLASS, HOUSE_BANNER_PUBLICATIONS_CLASS)}>
-            <p className="font-medium">Local diagnostics (advanced)</p>
-            <p className="mt-1 text-xs">api={API_BASE_URL} | token={token ? 'present' : 'missing'} | user={user?.email || 'none'} | metrics={topMetricsResponse?.status || 'none'} | tiles={(topMetricsResponse?.tiles || []).length}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" size="sm" onClick={() => { void runLocalAuthProbe() }} disabled={localDebugBusy}>
-                {localDebugBusy ? 'Running…' : 'Probe auth + metrics'}
-              </Button>
-              <Button type="button" variant="secondary" size="sm" onClick={() => { void runLocalMetricsRefresh() }} disabled={localDebugBusy}>
-                Force metrics refresh
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  clearAuthSessionToken()
-                  collectLocalDiagnostics(['action=clearAuthSessionToken'])
-                  navigate('/auth', { replace: true })
-                }}
-              >
-                Clear session + auth
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  collectLocalDiagnostics(['action=reload'])
-                  window.location.reload()
-                }}
-              >
-                Reload page
-              </Button>
-            </div>
-            <div className="mt-2 rounded-sm border border-[hsl(var(--stroke-strong)/0.55)] bg-[hsl(var(--tone-neutral-50)/0.85)] px-2 py-1.5">
-              <pre className="m-0 whitespace-pre-wrap break-words text-[11px] leading-4 text-[hsl(var(--tone-neutral-800))]">{localDebugLines.join('\n')}</pre>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      <div className={HOUSE_SECTION_ANCHOR_CLASS}>
+      <div className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block')}>
         <PublicationsTopStrip
           metrics={topMetricsResponse}
           loading={
@@ -2817,13 +2669,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           }}
         />
       </div>
-      <div className={cn(HOUSE_SECTION_DIVIDER_STRONG_CLASS, HOUSE_SECTION_ANCHOR_CLASS)} />
 
-      <Card className={HOUSE_SECTION_ANCHOR_CLASS}>
-        <CardHeader className="pb-1">
+      <div className={cn(HOUSE_SECTION_ANCHOR_CLASS, 'house-main-content-block')}>
+        <div className="house-main-heading-block">
           <h2 className={publicationsHouseHeadings.sectionTitle}>Publication library</h2>
-        </CardHeader>
-        <CardContent className="space-y-1">
+        </div>
+        <div className="house-main-content-block space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <Input
               value={query}
@@ -3217,8 +3068,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
             </Sheet>
 
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {status ? <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_PUBLICATIONS_CLASS}`}>{status}</p> : null}
       {error ? <p className={`${HOUSE_BANNER_CLASS} ${HOUSE_BANNER_DANGER_CLASS}`}>{error}</p> : null}
