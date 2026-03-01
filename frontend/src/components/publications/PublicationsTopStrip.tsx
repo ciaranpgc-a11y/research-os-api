@@ -306,10 +306,9 @@ const HOUSE_METRIC_TILE_PILL_CONTAINER_BOTTOM_CENTER_CLASS = 'house-metric-tile-
 const HOUSE_METRIC_TILE_PILL_CLASS = 'house-metric-tile-pill'
 const HOUSE_HEADING_LABEL_CLASS = publicationsHouseHeadings.label
 const HOUSE_CHART_TRANSITION_CLASS = publicationsHouseMotion.chartPanel
+const HOUSE_CHART_SERIES_BY_SLOT_CLASS = publicationsHouseMotion.chartSeriesBySlot
 const HOUSE_CHART_ENTERED_CLASS = publicationsHouseMotion.chartEnter
-const HOUSE_CHART_EXITED_CLASS = publicationsHouseMotion.chartExit
 const HOUSE_CHART_RING_ENTERED_CLASS = publicationsHouseMotion.ringChartEnter
-const HOUSE_CHART_RING_EXITED_CLASS = publicationsHouseMotion.ringChartExit
 const HOUSE_CHART_SCALE_LAYER_CLASS = publicationsHouseMotion.chartScaleLayer
 const HOUSE_CHART_SCALE_TICK_CLASS = publicationsHouseMotion.chartScaleTick
 const HOUSE_CHART_SCALE_AXIS_TITLE_CLASS = publicationsHouseMotion.chartScaleAxisTitle
@@ -319,6 +318,7 @@ const HOUSE_TOGGLE_TRACK_CLASS = publicationsHouseMotion.toggleTrack
 const HOUSE_TOGGLE_THUMB_CLASS = publicationsHouseMotion.toggleThumb
 const HOUSE_TOGGLE_BUTTON_CLASS = publicationsHouseMotion.toggleButton
 const HOUSE_TOGGLE_CHART_BAR_CLASS = publicationsHouseMotion.toggleChartBar
+const HOUSE_TOGGLE_CHART_MORPH_CLASS = publicationsHouseMotion.toggleChartMorph
 const HOUSE_TOGGLE_CHART_SWAP_CLASS = publicationsHouseMotion.toggleChartSwap
 const HOUSE_TOGGLE_CHART_LABEL_CLASS = publicationsHouseMotion.toggleChartLabel
 const HOUSE_SURFACE_SECTION_PANEL_CLASS = publicationsHouseSurfaces.sectionPanel
@@ -424,7 +424,7 @@ const HOUSE_CHART_MINI_DONUT_CLASS = publicationsHouseCharts.miniDonut
 const HOUSE_METRIC_PROGRESS_PANEL_CLASS =
   cn(
     HOUSE_SURFACE_STRONG_PANEL_CLASS,
-    'house-metric-tile-chart-surface flex flex-1 flex-col gap-2.5 px-2 py-2 transition-[opacity,transform,filter] duration-320 ease-out',
+    'house-metric-tile-chart-surface flex flex-1 flex-col gap-2.5 px-2 py-2 transition-[opacity,transform,filter] duration-[var(--motion-duration-chart-toggle)] ease-out',
   )
 const HOUSE_LINE_CHART_SURFACE_CLASS =
   cn(HOUSE_SURFACE_STRONG_PANEL_CLASS, 'relative flex-1 px-1.5 pb-1.5 pt-2')
@@ -442,8 +442,9 @@ const HOUSE_FIELD_PERCENTILE_LEFT_CHART_GRID_GAP_CLASS = 'gap-2'
 const HOUSE_FIELD_PERCENTILE_LEFT_CHART_PANEL_CLASS = 'h-full min-h-0 min-w-0 w-full'
 const HOUSE_FIELD_PERCENTILE_TOGGLE_BUTTON_CLASS = 'house-field-percentile-toggle-button'
 const HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH = 14
-const HOUSE_RING_ARC_TRANSITION = 'stroke-dasharray var(--motion-duration-chart-ring-fill) cubic-bezier(0.22, 1, 0.36, 1), stroke-dashoffset var(--motion-duration-chart-ring-fill) cubic-bezier(0.22, 1, 0.36, 1)'
-const HOUSE_RING_COLOR_TRANSITION = 'stroke var(--motion-duration-chart-ring-fill) cubic-bezier(0.22, 1, 0.36, 1)'
+const TILE_MOTION_ENTRY_DURATION_MS = 1000
+const TILE_MOTION_TOGGLE_DURATION_MS = 460
+const TILE_MOTION_AXIS_DURATION_MS = 420
 const FIELD_PERCENTILE_RING_CLASS_BY_THRESHOLD: Record<FieldPercentileThreshold, string> = {
   50: HOUSE_CHART_RING_THRESHOLD_50_SVG_CLASS,
   75: HOUSE_CHART_RING_THRESHOLD_75_SVG_CLASS,
@@ -472,6 +473,10 @@ const HOUSE_DRILLDOWN_TOOLTIP_CLASS =
   )
 const MAX_PUBLICATION_CHART_BARS = 12
 const HOUSE_METRIC_TOGGLE_TRACK_CLASS = HOUSE_TOGGLE_TRACK_CLASS
+
+function tileMotionEntryDelay(_index: number, _animateIn: boolean): string {
+  return '0ms'
+}
 
 function buildTileToggleThumbStyle(activeIndex: number, optionCount: number): CSSProperties {
   const safeCount = Math.max(1, optionCount)
@@ -507,29 +512,50 @@ function useUnifiedToggleBarAnimation(animationKey: string, enabled: boolean): b
       return
     }
     setBarsExpanded(false)
-    let rafOne = 0
-    let rafTwo = 0
-    rafOne = window.requestAnimationFrame(() => {
-      rafTwo = window.requestAnimationFrame(() => {
-        setBarsExpanded(true)
-      })
+    let raf = 0
+    raf = window.requestAnimationFrame(() => {
+      setBarsExpanded(true)
     })
     return () => {
-      window.cancelAnimationFrame(rafOne)
-      window.cancelAnimationFrame(rafTwo)
+      window.cancelAnimationFrame(raf)
     }
   }, [animationKey, enabled])
 
   return barsExpanded
 }
 
+function useIsFirstChartEntry(animationKey: string, enabled: boolean): boolean {
+  const hasEnteredRef = useRef(false)
+  const [isEntryCycle, setIsEntryCycle] = useState<boolean>(() => enabled)
+
+  useEffect(() => {
+    if (!enabled) {
+      setIsEntryCycle(false)
+      return
+    }
+    const entryCycle = !hasEnteredRef.current
+    setIsEntryCycle(entryCycle)
+    hasEnteredRef.current = true
+  }, [animationKey, enabled])
+
+  return isEntryCycle
+}
+
+function tileChartDurationVar(isEntryCycle: boolean): string {
+  return isEntryCycle ? 'var(--motion-duration-chart-refresh)' : 'var(--motion-duration-chart-toggle)'
+}
+
+function tileAxisDurationMs(isEntryCycle: boolean): number {
+  return isEntryCycle ? TILE_MOTION_ENTRY_DURATION_MS : TILE_MOTION_AXIS_DURATION_MS
+}
+
 function useHouseBarSetTransition<T extends { key: string }>({
   bars,
   animationKey,
   enabled,
-  collapseMs = 200,
+  collapseMs = 0,
   structureSwap = 'collapse',
-  crossfadeMs = 220,
+  crossfadeMs = TILE_MOTION_TOGGLE_DURATION_MS,
 }: {
   bars: T[]
   animationKey: string
@@ -545,125 +571,24 @@ function useHouseBarSetTransition<T extends { key: string }>({
   isSwappingStructure: boolean
   barsExpanded: boolean
 } {
-  const [renderBars, setRenderBars] = useState<T[]>(bars)
-  const [outgoingBars, setOutgoingBars] = useState<T[]>([])
-  const [isCrossfading, setIsCrossfading] = useState(false)
-  const [pendingBars, setPendingBars] = useState<T[]>([])
-  const [isSwappingStructure, setIsSwappingStructure] = useState(false)
-  const [barsExpanded, setBarsExpanded] = useState(enabled)
-  const renderBarsRef = useRef(renderBars)
-  const barsRef = useRef(bars)
-  const barsStructureKey = useMemo(
-    () => bars.map((bar) => bar.key).join('|'),
-    [bars],
+  void collapseMs
+  void structureSwap
+  void crossfadeMs
+  const barsExpanded = useUnifiedToggleBarAnimation(
+    `${animationKey}|${bars.map((bar) => bar.key).join('|')}`,
+    enabled,
   )
-
-  useEffect(() => {
-    renderBarsRef.current = renderBars
-  }, [renderBars])
-
-  useEffect(() => {
-    barsRef.current = bars
-  }, [bars])
-
-  useEffect(() => {
-    const nextBars = barsRef.current
-    if (!enabled) {
-      setRenderBars(nextBars)
-      setOutgoingBars((current) => (current.length ? [] : current))
-      setIsCrossfading(false)
-      setPendingBars((current) => (current.length ? [] : current))
-      setIsSwappingStructure(false)
-      setBarsExpanded(false)
-      return
-    }
-    if (prefersReducedMotion()) {
-      setRenderBars(nextBars)
-      setOutgoingBars((current) => (current.length ? [] : current))
-      setIsCrossfading(false)
-      setPendingBars((current) => (current.length ? [] : current))
-      setIsSwappingStructure(false)
-      setBarsExpanded(true)
-      return
-    }
-
-    const previousBars = renderBarsRef.current
-    const barStructureChanged =
-      previousBars.length !== nextBars.length
-      || previousBars.some((bar, index) => bar.key !== nextBars[index]?.key)
-    if (!barStructureChanged) {
-      setRenderBars(nextBars)
-      setOutgoingBars((current) => (current.length ? [] : current))
-      setIsCrossfading(false)
-      setPendingBars((current) => (current.length ? [] : current))
-      setIsSwappingStructure(false)
-      setBarsExpanded(true)
-      return
-    }
-
-    setIsSwappingStructure(true)
-    if (structureSwap === 'crossfade') {
-      setOutgoingBars(previousBars)
-      setIsCrossfading(true)
-      setPendingBars((current) => (current.length ? [] : current))
-      setRenderBars(nextBars)
-      setBarsExpanded(false)
-      let rafOne = 0
-      let rafTwo = 0
-      let fadeTimer = 0
-      rafOne = window.requestAnimationFrame(() => {
-        rafTwo = window.requestAnimationFrame(() => {
-          setBarsExpanded(true)
-        })
-      })
-      fadeTimer = window.setTimeout(() => {
-        setIsCrossfading(false)
-        setOutgoingBars([])
-        setIsSwappingStructure(false)
-      }, Math.max(120, crossfadeMs))
-      return () => {
-        window.cancelAnimationFrame(rafOne)
-        window.cancelAnimationFrame(rafTwo)
-        window.clearTimeout(fadeTimer)
-      }
-    }
-
-    setBarsExpanded(false)
-    setOutgoingBars((current) => (current.length ? [] : current))
-    setIsCrossfading(false)
-    setPendingBars(nextBars)
-    let timeoutId = 0
-    let rafOne = 0
-    let rafTwo = 0
-    timeoutId = window.setTimeout(() => {
-      setRenderBars(nextBars)
-      setPendingBars((current) => (current.length ? [] : current))
-      rafOne = window.requestAnimationFrame(() => {
-        rafTwo = window.requestAnimationFrame(() => {
-          setBarsExpanded(true)
-          setIsSwappingStructure(false)
-        })
-      })
-    }, Math.max(0, collapseMs))
-
-    return () => {
-      window.clearTimeout(timeoutId)
-      window.cancelAnimationFrame(rafOne)
-      window.cancelAnimationFrame(rafTwo)
-    }
-  }, [animationKey, barsStructureKey, collapseMs, crossfadeMs, enabled, structureSwap])
-
   return {
-    renderBars,
-    outgoingBars,
-    isCrossfading,
-    pendingBars,
-    isSwappingStructure,
+    renderBars: bars,
+    outgoingBars: [],
+    isCrossfading: false,
+    pendingBars: [],
+    isSwappingStructure: false,
     barsExpanded,
   }
 }
 
-function useEasedValue(target: number, animationKey: string, enabled: boolean, durationMs = 420): number {
+function useEasedValue(target: number, animationKey: string, enabled: boolean, durationMs = TILE_MOTION_AXIS_DURATION_MS): number {
   const [value, setValue] = useState<number>(() => (enabled ? 0 : target))
   const valueRef = useRef(value)
 
@@ -677,12 +602,7 @@ function useEasedValue(target: number, animationKey: string, enabled: boolean, d
       valueRef.current = 0
       return
     }
-    if (!enabled) {
-      setValue(target)
-      valueRef.current = target
-      return
-    }
-    if (prefersReducedMotion()) {
+    if (!enabled || prefersReducedMotion()) {
       setValue(target)
       valueRef.current = target
       return
@@ -698,9 +618,9 @@ function useEasedValue(target: number, animationKey: string, enabled: boolean, d
     const step = (now: number) => {
       const progress = Math.min(1, (now - startedAt) / Math.max(1, durationMs))
       const eased = easeOutCubic(progress)
-      const next = from + ((to - from) * eased)
-      valueRef.current = next
-      setValue(next)
+      const nextValue = from + ((to - from) * eased)
+      valueRef.current = nextValue
+      setValue(nextValue)
       if (progress < 1) {
         raf = window.requestAnimationFrame(step)
       }
@@ -714,7 +634,7 @@ function useEasedValue(target: number, animationKey: string, enabled: boolean, d
   return value
 }
 
-function useEasedSeries(target: number[], animationKey: string, enabled: boolean, durationMs = 420): number[] {
+function useEasedSeries(target: number[], animationKey: string, enabled: boolean, durationMs = TILE_MOTION_AXIS_DURATION_MS): number[] {
   const [values, setValues] = useState<number[]>(() => (enabled ? target.map(() => 0) : target))
   const valuesRef = useRef(values)
 
@@ -729,7 +649,7 @@ function useEasedSeries(target: number[], animationKey: string, enabled: boolean
       return
     }
     const to = target.map((value) => (Number.isFinite(value) ? value : 0))
-    if (!enabled) {
+    if (!enabled || prefersReducedMotion()) {
       setValues(to)
       valuesRef.current = to
       return
@@ -738,15 +658,8 @@ function useEasedSeries(target: number[], animationKey: string, enabled: boolean
       const current = valuesRef.current[index]
       return Number.isFinite(current) ? current : 0
     })
-
     const unchanged = from.length === to.length && from.every((value, index) => Math.abs(value - to[index]) < 0.0001)
     if (unchanged) {
-      return
-    }
-
-    if (prefersReducedMotion()) {
-      setValues(to)
-      valuesRef.current = to
       return
     }
 
@@ -1278,26 +1191,18 @@ function TotalCitationsModeChart({
   chartTitle?: string
   chartTitleClassName?: string
 }) {
-  const [chartVisible, setChartVisible] = useState(true)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const model = useMemo(() => buildTotalCitationsChartModel(tile), [tile])
   const animationKey = useMemo(
     () => `year:${model.bars.map((bar) => `${bar.key}-${bar.value}`).join('|')}:${model.meanValue ?? 'none'}`,
     [model.bars, model.meanValue],
   )
-  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, model.bars.length > 0)
-  useEffect(() => {
-    setChartVisible(false)
-    let rafOne = 0
-    rafOne = window.requestAnimationFrame(() => {
-      setChartVisible(true)
-    })
-    return () => {
-      window.cancelAnimationFrame(rafOne)
-    }
-  }, [animationKey])
+  const hasBars = model.bars.length > 0
+  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars)
+  const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
+  const barTransitionDuration = tileChartDurationVar(isEntryCycle)
 
-  if (!model.bars.length) {
+  if (!hasBars) {
     return <div className={dashboardTileStyles.emptyChart}>No citation data</div>
   }
 
@@ -1326,7 +1231,7 @@ function TotalCitationsModeChart({
       <div
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
-          chartVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
+          HOUSE_CHART_ENTERED_CLASS,
         )}
         style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
       >
@@ -1344,8 +1249,16 @@ function TotalCitationsModeChart({
           ))}
           {meanLinePercent !== null ? (
             <div
-              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_DASHED_CLASS)}
-              style={{ bottom: `${meanLinePercent}%` }}
+              className={cn(
+                'pointer-events-none absolute inset-x-0',
+                HOUSE_CHART_GRID_DASHED_CLASS,
+                HOUSE_CHART_SCALE_MEAN_LINE_CLASS,
+              )}
+              style={{
+                bottom: `${meanLinePercent}%`,
+                opacity: barsExpanded ? 1 : 0,
+                transitionDuration: barTransitionDuration,
+              }}
               aria-hidden="true"
             />
           ) : null}
@@ -1372,7 +1285,8 @@ function TotalCitationsModeChart({
                   </span>
                   <span
                     className={cn(
-                      'block w-full rounded transition-[transform,filter,box-shadow] duration-220 ease-out',
+                      'block w-full rounded',
+                      HOUSE_TOGGLE_CHART_BAR_CLASS,
                       totalCitationsBarToneClass(bar),
                       isActive && 'brightness-[1.08] saturate-[1.14]',
                     )}
@@ -1380,7 +1294,8 @@ function TotalCitationsModeChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: barsExpanded ? `${Math.min(220, index * 18)}ms` : '0ms',
+                      transitionDelay: tileMotionEntryDelay(index, barsExpanded),
+                      transitionDuration: barTransitionDuration,
                     }}
                   />
                 </div>
@@ -1647,6 +1562,9 @@ function HIndexYearChart({
   const animationKey = bars.map((bar) => `${bar.year}-${bar.value}`).join('|')
   const hasBars = bars.length > 0
   const barsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|hindex-year`, hasBars)
+  const isEntryCycle = useIsFirstChartEntry(`${animationKey}|hindex-year`, hasBars)
+  const barTransitionDuration = tileChartDurationVar(isEntryCycle)
+  const axisDurationMs = tileAxisDurationMs(isEntryCycle)
   const rawTargetValues = useMemo(
     () => bars.map((bar) => Math.max(0, bar.value)),
     [bars],
@@ -1659,9 +1577,10 @@ function HIndexYearChart({
     targetValues,
     `${animationKey}|values|${collapse ? 'collapse' : 'expand'}`,
     animate && hasBars,
+    axisDurationMs,
   )
   const targetMax = Math.max(1, ...rawTargetValues) * 1.18
-  const animatedMax = useEasedValue(targetMax, `${animationKey}|max`, animate && hasBars)
+  const animatedMax = useEasedValue(targetMax, `${animationKey}|max`, animate && hasBars, axisDurationMs)
 
   useEffect(() => {
     setHoveredIndex(null)
@@ -1736,7 +1655,8 @@ function HIndexYearChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: barsExpanded ? `${Math.min(220, index * 18)}ms` : '0ms',
+                      transitionDelay: tileMotionEntryDelay(index, barsExpanded),
+                      transitionDuration: barTransitionDuration,
                     }}
                   />
                 </div>
@@ -2021,6 +1941,9 @@ function PublicationsPerYearChart({
     [activeBars, activeBucketSize, effectiveWindowMode],
   )
   const hasBars = hasValidSeries && historyBars.length > 0 && activeBars.length > 0
+  const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
+  const barTransitionDuration = tileChartDurationVar(isEntryCycle)
+  const axisDurationMs = tileAxisDurationMs(isEntryCycle)
   const legacyBarsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars)
   const swapTransition = useHouseBarSetTransition({
     bars: activeBars,
@@ -2035,25 +1958,12 @@ function PublicationsPerYearChart({
     () => renderBars.map((bar) => Math.max(0, bar.value)),
     [renderBars],
   )
-  const [allowInitialValueEasing, setAllowInitialValueEasing] = useState(false)
-  useEffect(() => {
-    if (!enableWindowToggle) {
-      setAllowInitialValueEasing(true)
-      return
-    }
-    setAllowInitialValueEasing(false)
-    let raf = 0
-    raf = window.requestAnimationFrame(() => {
-      setAllowInitialValueEasing(true)
-    })
-    return () => {
-      window.cancelAnimationFrame(raf)
-    }
-  }, [enableWindowToggle, tile.key])
+  const allowInitialValueEasing = true
   const renderedValuesAnimated = useEasedSeries(
     renderedValuesTarget,
     `${animationKey}|rendered|${renderBars.map((bar) => bar.key).join('|')}`,
     hasBars && barsExpanded && allowInitialValueEasing,
+    axisDurationMs,
   )
 
   useEffect(() => {
@@ -2084,7 +1994,7 @@ function PublicationsPerYearChart({
     targetAxisMax,
     `${animationKey}|axis-max|${autoScaleByWindow ? 'auto' : 'fixed'}`,
     axisAnimationEnabled,
-    360,
+    axisDurationMs,
   )
   const axisMax = axisAnimationEnabled ? Math.max(1, animatedAxisMax) : targetAxisMax
   const yAxisTickRatios = targetAxisScale
@@ -2305,7 +2215,7 @@ function PublicationsPerYearChart({
                     className={cn(
                       'block w-full rounded',
                       HOUSE_TOGGLE_CHART_BAR_CLASS,
-                      HOUSE_TOGGLE_CHART_SWAP_CLASS,
+                      enableWindowToggle && HOUSE_TOGGLE_CHART_SWAP_CLASS,
                       toneClass,
                       isActive && 'brightness-[1.08] saturate-[1.14]',
                     )}
@@ -2313,7 +2223,8 @@ function PublicationsPerYearChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: barsExpanded && !isStructureSwapActive ? `${Math.min(220, index * 18)}ms` : '0ms',
+                      transitionDelay: tileMotionEntryDelay(index, barsExpanded && !isStructureSwapActive),
+                      transitionDuration: barTransitionDuration,
                     }}
                   />
                 </div>
@@ -2383,7 +2294,6 @@ function PublicationsPerYearChart({
 }
 
 function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload }) {
-  const [chartVisible, setChartVisible] = useState(false)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
   const top3 = values[0] || 0
@@ -2393,8 +2303,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
   const ringCircumference = 2 * Math.PI * ringRadius
   const top3Pct = total > 0 ? (top3 / total) * 100 : 0
   const top3PctRounded = Math.max(0, Math.min(100, Math.round(top3Pct)))
-  const restPctRounded = Math.max(0, 100 - top3PctRounded)
-  const top3AnimatedDash = ((chartVisible ? top3PctRounded : 0) / 100) * ringCircumference
+  const top3AnimatedDash = (top3PctRounded / 100) * ringCircumference
   const explicitTotalPublicationsCandidates = [
     Number(chartData.total_publications),
     Number(chartData.total_publications_count),
@@ -2418,20 +2327,12 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
     ? topPapersCount
     : Math.max(0, Math.min(topPapersCount, totalPublications))
   const ringStrokeWidth = HOUSE_FIELD_PERCENTILE_RING_STROKE_WIDTH
-  const animationKey = useMemo(
-    () => `${top3PctRounded}-${restPctRounded}-${totalPublications ?? 'na'}-${effectiveTopPapersCount}`,
-    [effectiveTopPapersCount, restPctRounded, top3PctRounded, totalPublications],
+  const ringAnimationKey = useMemo(
+    () => `${top3PctRounded}|${totalPublications ?? 'na'}|${effectiveTopPapersCount}`,
+    [effectiveTopPapersCount, top3PctRounded, totalPublications],
   )
-  useEffect(() => {
-    setChartVisible(false)
-    let rafOne = 0
-    rafOne = window.requestAnimationFrame(() => {
-      setChartVisible(true)
-    })
-    return () => {
-      window.cancelAnimationFrame(rafOne)
-    }
-  }, [animationKey])
+  const ringVisible = useUnifiedToggleBarAnimation(ringAnimationKey, total > 0)
+  const ringVisibleDash = ringVisible ? top3AnimatedDash : 0
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -2439,7 +2340,7 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
         className={cn(
           HOUSE_CHART_TRANSITION_CLASS,
           'pb-2 pt-2.5',
-          chartVisible ? HOUSE_CHART_RING_ENTERED_CLASS : HOUSE_CHART_RING_EXITED_CLASS,
+          HOUSE_CHART_RING_ENTERED_CLASS,
         )}
       >
         {total > 0 ? (
@@ -2469,9 +2370,11 @@ function ImpactConcentrationPanel({ tile }: { tile: PublicationMetricTilePayload
                 strokeLinecap="round"
                 transform="rotate(-90 50 50)"
                 style={{
-                  strokeDasharray: `${top3AnimatedDash} ${ringCircumference}`,
+                  strokeDasharray: `${ringVisibleDash} ${ringCircumference}`,
                   strokeDashoffset: 0,
-                  transition: `${HOUSE_RING_ARC_TRANSITION}, ${HOUSE_RING_COLOR_TRANSITION}`,
+                  transitionProperty: 'stroke-dasharray,stroke-dashoffset',
+                  transitionDuration: 'var(--motion-duration-chart-refresh)',
+                  transitionTimingFunction: 'var(--motion-ease-chart-series)',
                 }}
               />
             </svg>
@@ -2562,74 +2465,46 @@ function MomentumTilePanel({
   const spreadRatio = (maxValue - minValue) / Math.max(1, maxValue)
   const headroomFactor = spreadRatio <= 0.1 ? 1.03 : spreadRatio <= 0.25 ? 1.06 : 1.1
   const scaledMaxTarget = maxValue * headroomFactor
-  const baselineTarget = comparisonBars.find((bar) => bar.key === 'baseline')?.value ?? 0
-  const recentTarget = comparisonBars.find((bar) => bar.key === 'recent')?.value ?? 0
-
-  const [animatedState, setAnimatedState] = useState<{
-    baseline: number
-    recent: number
-    max: number
-  }>(() => ({
-    baseline: baselineTarget,
-    recent: recentTarget,
-    max: Math.max(1, scaledMaxTarget),
-  }))
   const animationKey = useMemo(
     () => `${mode}|${comparisonBars.map((bar) => `${bar.key}-${bar.value.toFixed(3)}`).join('|')}`,
     [comparisonBars, mode],
   )
   const hasComparisonBars = comparisonBars.length > 0
-  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasComparisonBars)
-  const animatedStateRef = useRef(animatedState)
-  useEffect(() => {
-    animatedStateRef.current = animatedState
-  }, [animatedState])
+  const isEntryCycle = useIsFirstChartEntry(animationKey, hasComparisonBars)
+  const entryBarsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|entry`, hasComparisonBars && isEntryCycle)
+  const barsExpanded = isEntryCycle ? entryBarsExpanded : true
+  const barTransitionDuration = tileChartDurationVar(isEntryCycle)
+  const axisDurationMs = tileAxisDurationMs(isEntryCycle)
   useEffect(() => {
     setHoveredIndex(null)
   }, [animationKey])
-  useEffect(() => {
-    const target = {
-      baseline: baselineTarget,
-      recent: recentTarget,
-      max: Math.max(1, scaledMaxTarget),
-    }
-    const current = animatedStateRef.current
-    if (
-      Math.abs(current.baseline - target.baseline) < 0.001 &&
-      Math.abs(current.recent - target.recent) < 0.001 &&
-      Math.abs(current.max - target.max) < 0.001
-    ) {
-      return
-    }
-    if (prefersReducedMotion()) {
-      animatedStateRef.current = target
-      setAnimatedState(target)
-      return
-    }
-    const from = current
-    let raf = 0
-    const durationMs = 420
-    const startedAt = performance.now()
-    const easeOutCubic = (value: number) => 1 - ((1 - value) ** 3)
-    const step = (now: number) => {
-      const progress = Math.min(1, (now - startedAt) / durationMs)
-      const eased = easeOutCubic(progress)
-      const next = {
-        baseline: from.baseline + (target.baseline - from.baseline) * eased,
-        recent: from.recent + (target.recent - from.recent) * eased,
-        max: from.max + (target.max - from.max) * eased,
-      }
-      animatedStateRef.current = next
-      setAnimatedState(next)
-      if (progress < 1) {
-        raf = window.requestAnimationFrame(step)
-      }
-    }
-    raf = window.requestAnimationFrame(step)
-    return () => {
-      window.cancelAnimationFrame(raf)
-    }
-  }, [baselineTarget, recentTarget, scaledMaxTarget])
+  const renderedValuesTarget = useMemo(
+    () => comparisonBars.map((bar) => Math.max(0, bar.value)),
+    [comparisonBars],
+  )
+  const renderedValuesAnimated = useEasedSeries(
+    renderedValuesTarget,
+    `${animationKey}|momentum-values`,
+    hasComparisonBars,
+    axisDurationMs,
+  )
+  const heightTargets = useMemo(
+    () =>
+      comparisonBars.map((bar) => {
+        const safeValue = Math.max(0, bar.value)
+        if (safeValue <= 0) {
+          return 5
+        }
+        return Math.max(10, (safeValue / Math.max(1, scaledMaxTarget)) * 100)
+      }),
+    [comparisonBars, scaledMaxTarget],
+  )
+  const heightTargetsAnimated = useEasedSeries(
+    heightTargets,
+    `${animationKey}|momentum-heights`,
+    hasComparisonBars,
+    axisDurationMs,
+  )
 
   const axisLayout = useMemo(() => {
     const candidates: ChartAxisLayout[] = []
@@ -2661,8 +2536,6 @@ function MomentumTilePanel({
     return <div className={dashboardTileStyles.emptyChart}>{emptyLabel}</div>
   }
 
-  const animatedMax = Math.max(1, animatedState.max)
-
   return (
     <div className="flex h-full min-h-[8.2rem] w-full flex-col">
       <div
@@ -2686,8 +2559,8 @@ function MomentumTilePanel({
           ))}
           <div className="absolute inset-0 flex items-end gap-1">
             {comparisonBars.map((bar, index) => {
-              const animatedValue = bar.key === 'recent' ? animatedState.recent : animatedState.baseline
-              const heightPct = animatedValue <= 0 ? 5 : Math.max(10, (Math.max(0, animatedValue) / animatedMax) * 100)
+              const animatedValue = Math.max(0, renderedValuesAnimated[index] ?? renderedValuesTarget[index] ?? 0)
+              const heightPct = Math.max(0, Math.min(100, heightTargetsAnimated[index] ?? heightTargets[index] ?? 5))
               const isActive = hoveredIndex === index
               const yOffset = isActive ? -1 : 0
               const toneClass = bar.recent ? HOUSE_CHART_BAR_POSITIVE_CLASS : HOUSE_CHART_BAR_ACCENT_CLASS
@@ -2712,6 +2585,7 @@ function MomentumTilePanel({
                     className={cn(
                       'block w-full rounded',
                       HOUSE_TOGGLE_CHART_BAR_CLASS,
+                      HOUSE_TOGGLE_CHART_SWAP_CLASS,
                       toneClass,
                       isActive && 'brightness-[1.08] saturate-[1.14]',
                     )}
@@ -2720,7 +2594,8 @@ function MomentumTilePanel({
                       transform: `translateY(${yOffset}px) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       opacity: 1,
                       transformOrigin: 'bottom',
-                      transitionDelay: barsExpanded ? '0ms' : `${Math.min(220, index * 18)}ms`,
+                      transitionDelay: tileMotionEntryDelay(index, barsExpanded),
+                      transitionDuration: barTransitionDuration,
                     }}
                   />
                 </div>
@@ -2773,7 +2648,6 @@ function FieldPercentilePanel({
   threshold: FieldPercentileThreshold
   toggleControl?: ReactNode
 }) {
-  const [chartVisible, setChartVisible] = useState(false)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const shareMap = parseNumericKeyedMap(chartData.share_by_threshold_pct)
   const countMap = parseNumericKeyedMap(chartData.count_by_threshold)
@@ -2792,26 +2666,25 @@ function FieldPercentilePanel({
     ? Math.max(0, Math.round(papersAtThresholdRaw))
     : Math.max(0, Math.round((shareAbove / 100) * evaluatedPapers))
   const papersAtThresholdLabel = `${formatInt(papersAtThreshold)} ${papersAtThreshold === 1 ? 'paper' : 'papers'}`
-  const animationKey = useMemo(
-    () => `${threshold}-${shareAbove.toFixed(2)}-${evaluatedPapers}`,
-    [evaluatedPapers, shareAbove, threshold],
-  )
   const hasPercentileData = evaluatedPapers > 0
   const shareClamped = Math.max(0, Math.min(100, shareAbove))
   const ringRadius = 38
   const ringCircumference = 2 * Math.PI * ringRadius
-  const ringAnimatedDash = ((chartVisible ? shareClamped : 0) / 100) * ringCircumference
+  const ringAnimatedDash = (shareClamped / 100) * ringCircumference
+  const ringEntryKey = useMemo(
+    () => `${evaluatedPapers}`,
+    [evaluatedPapers],
+  )
+  const isRingEntryCycle = useIsFirstChartEntry(ringEntryKey, hasPercentileData)
+  const entryRingVisible = useUnifiedToggleBarAnimation(
+    `${ringEntryKey}|entry`,
+    hasPercentileData && isRingEntryCycle,
+  )
+  const ringVisible = isRingEntryCycle ? entryRingVisible : true
+  const ringTransitionDuration = tileChartDurationVar(isRingEntryCycle)
+  const ringTargetOffset = ringCircumference - ringAnimatedDash
+  const ringVisibleOffset = ringVisible ? ringTargetOffset : ringCircumference
   const ringShareToneClass = FIELD_PERCENTILE_RING_CLASS_BY_THRESHOLD[threshold] || HOUSE_CHART_RING_MAIN_SVG_CLASS
-  useEffect(() => {
-    setChartVisible(false)
-    let rafOne = 0
-    rafOne = window.requestAnimationFrame(() => {
-      setChartVisible(true)
-    })
-    return () => {
-      window.cancelAnimationFrame(rafOne)
-    }
-  }, [animationKey])
 
   if (!hasPercentileData) {
     return <div className={dashboardTileStyles.emptyChart}>No field percentile data</div>
@@ -2826,7 +2699,7 @@ function FieldPercentilePanel({
               HOUSE_CHART_RING_PANEL_CLASS,
               HOUSE_CHART_RING_TOGGLE_VISUAL_CLASS,
               HOUSE_CHART_TRANSITION_CLASS,
-              chartVisible ? HOUSE_CHART_RING_ENTERED_CLASS : HOUSE_CHART_RING_EXITED_CLASS,
+              HOUSE_CHART_RING_ENTERED_CLASS,
             )}
           >
             <div
@@ -2866,9 +2739,11 @@ function FieldPercentilePanel({
                     strokeLinecap="round"
                     transform="rotate(-90 50 50)"
                     style={{
-                      strokeDasharray: `${ringAnimatedDash} ${ringCircumference}`,
-                      strokeDashoffset: 0,
-                      transition: `${HOUSE_RING_ARC_TRANSITION}, ${HOUSE_RING_COLOR_TRANSITION}`,
+                      strokeDasharray: ringCircumference,
+                      strokeDashoffset: ringVisibleOffset,
+                      transitionProperty: 'stroke-dashoffset,stroke',
+                      transitionDuration: ringTransitionDuration,
+                      transitionTimingFunction: 'var(--motion-ease-chart-series)',
                     }}
                   />
                   <text x="50" y="50" textAnchor="middle" dominantBaseline="central" className={HOUSE_CHART_RING_CENTER_LABEL_CLASS}>
@@ -2885,8 +2760,6 @@ function FieldPercentilePanel({
 }
 
 function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload }) {
-  const [panelVisible, setPanelVisible] = useState(true)
-  const [barsExpanded, setBarsExpanded] = useState(false)
   const chartData = (tile.chart_data || {}) as Record<string, unknown>
   const firstAuthorshipRaw = Number(chartData.first_authorship_pct)
   const secondAuthorshipRaw = Number(chartData.second_authorship_pct)
@@ -2910,22 +2783,9 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
     () => `${Math.round(firstAuthorshipPct)}-${Math.round(secondAuthorshipPct)}-${Math.round(seniorAuthorshipPct)}-${Math.round(leadershipIndexPct)}-${totalPapers}`,
     [firstAuthorshipPct, leadershipIndexPct, secondAuthorshipPct, seniorAuthorshipPct, totalPapers],
   )
-  useEffect(() => {
-    setPanelVisible(false)
-    setBarsExpanded(false)
-    let rafOne = 0
-    let rafTwo = 0
-    rafOne = window.requestAnimationFrame(() => {
-      setPanelVisible(true)
-      rafTwo = window.requestAnimationFrame(() => {
-        setBarsExpanded(true)
-      })
-    })
-    return () => {
-      window.cancelAnimationFrame(rafOne)
-      window.cancelAnimationFrame(rafTwo)
-    }
-  }, [animationKey])
+  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, totalPapers > 0)
+  const isEntryCycle = useIsFirstChartEntry(animationKey, totalPapers > 0)
+  const progressTransitionDuration = tileChartDurationVar(isEntryCycle)
 
   if (totalPapers <= 0) {
     return <div className={dashboardTileStyles.emptyChart}>No authorship data</div>
@@ -2942,7 +2802,7 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
       <div
         className={cn(
           HOUSE_METRIC_PROGRESS_PANEL_CLASS,
-          panelVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
+          HOUSE_CHART_ENTERED_CLASS,
         )}
       >
         {rows.map((row, index) => (
@@ -2954,12 +2814,13 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
             <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[var(--metric-progress-track-height)]')}>
               <div
                 className={cn(
-                  'h-full rounded-full transition-[width] duration-320 ease-out',
+                  'h-full rounded-full transition-[width] duration-[var(--motion-duration-chart-toggle)] ease-out',
                   row.tone,
                 )}
                 style={{
                   width: `${barsExpanded ? row.value : 0}%`,
-                  transitionDelay: `${Math.min(220, index * 45)}ms`,
+                  transitionDelay: tileMotionEntryDelay(index, barsExpanded),
+                  transitionDuration: progressTransitionDuration,
                 }}
                 aria-hidden="true"
               />
@@ -2972,7 +2833,6 @@ function AuthorshipStructurePanel({ tile }: { tile: PublicationMetricTilePayload
 }
 
 function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayload }) {
-  const [panelVisible, setPanelVisible] = useState(true)
   const chartData = useMemo(
     () => ((tile.chart_data || {}) as Record<string, unknown>),
     [tile.chart_data],
@@ -3167,20 +3027,6 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
   const countries = countriesBase > 0 ? countriesBase : 0
   const continents = continentsBase > 0 ? continentsBase : 0
 
-  const animationKey = useMemo(
-    () => `${uniqueCollaborators}-${Math.round(repeatRatePct)}-${institutions}-${countries}-${continents}`,
-    [continents, countries, institutions, repeatRatePct, uniqueCollaborators],
-  )
-  useEffect(() => {
-    setPanelVisible(false)
-    const rafOne = window.requestAnimationFrame(() => {
-      setPanelVisible(true)
-    })
-    return () => {
-      window.cancelAnimationFrame(rafOne)
-    }
-  }, [animationKey])
-
   const summaryRows = [
     { key: 'institutions', label: 'Institutions', value: institutions },
     { key: 'countries', label: 'Countries', value: countries },
@@ -3188,6 +3034,19 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
   ] as const
 
   const totalSignal = uniqueCollaborators + institutions + countries + continents + Math.round(repeatRatePct)
+  const progressAnimationKey = useMemo(
+    () => tile.key || 'collaboration_structure',
+    [tile.key],
+  )
+  const isEntryCycle = useIsFirstChartEntry(progressAnimationKey, totalSignal > 0)
+  const progressDurationMs = tileAxisDurationMs(isEntryCycle)
+  const animatedRepeatRate = useEasedValue(
+    Math.max(0, Math.min(100, repeatRatePct)),
+    `${progressAnimationKey}|repeat-rate`,
+    totalSignal > 0,
+    progressDurationMs,
+  )
+  const progressWidth = Math.max(0, Math.min(100, animatedRepeatRate))
   if (totalSignal <= 0) {
     return <div className={dashboardTileStyles.emptyChart}>No collaboration data</div>
   }
@@ -3197,7 +3056,7 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
       <div
         className={cn(
           HOUSE_METRIC_PROGRESS_PANEL_CLASS,
-          panelVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
+          HOUSE_CHART_ENTERED_CLASS,
         )}
       >
         <div className="flex h-full min-h-0 flex-col">
@@ -3223,8 +3082,10 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
             </div>
             <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[var(--metric-progress-track-height)]')}>
               <div
-                className={cn('h-full rounded-full transition-[width] duration-[var(--motion-duration-ui)] ease-[var(--motion-ease-default)]', HOUSE_CHART_BAR_POSITIVE_CLASS)}
-                style={{ width: `${repeatRatePct}%` }}
+                className={cn('h-full rounded-full', HOUSE_CHART_BAR_POSITIVE_CLASS)}
+                style={{
+                  width: `${progressWidth}%`,
+                }}
                 aria-hidden="true"
               />
             </div>
@@ -3378,43 +3239,17 @@ function PublicationCategoryDistributionChart({
   const [valueMode, setValueMode] = useState<PublicationCategoryValueMode>('absolute')
   const [displayMode, setDisplayMode] = useState<PublicationCategoryDisplayMode>('chart')
   const [renderDisplayMode, setRenderDisplayMode] = useState<PublicationCategoryDisplayMode>('chart')
-  const [displayPanelVisible, setDisplayPanelVisible] = useState(true)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
-  const displayModeSwapMs = 220
   useEffect(() => {
     setWindowMode('5y')
     setValueMode('absolute')
     setDisplayMode('chart')
     setRenderDisplayMode('chart')
-    setDisplayPanelVisible(true)
   }, [dimension, publications.length])
 
   useEffect(() => {
-    if (displayMode === renderDisplayMode) {
-      setDisplayPanelVisible(true)
-      return
-    }
-    if (prefersReducedMotion()) {
-      setRenderDisplayMode(displayMode)
-      setDisplayPanelVisible(true)
-      return
-    }
-
-    setDisplayPanelVisible(false)
-    let swapTimer = 0
-    let raf = 0
-    swapTimer = window.setTimeout(() => {
-      setRenderDisplayMode(displayMode)
-      raf = window.requestAnimationFrame(() => {
-        setDisplayPanelVisible(true)
-      })
-    }, Math.round(displayModeSwapMs * 0.55))
-
-    return () => {
-      window.clearTimeout(swapTimer)
-      window.cancelAnimationFrame(raf)
-    }
-  }, [displayMode, displayModeSwapMs, renderDisplayMode])
+    setRenderDisplayMode(displayMode)
+  }, [displayMode])
 
   const yearsWithData = useMemo(() => {
     const values = publications
@@ -3572,6 +3407,9 @@ function PublicationCategoryDistributionChart({
     () => `${dimension}|${windowMode}|${valueMode}|${activeBars.map((bar) => `${bar.label}-${bar.count}`).join('|')}`,
     [activeBars, dimension, valueMode, windowMode],
   )
+  const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
+  const barTransitionDuration = tileChartDurationVar(isEntryCycle)
+  const axisDurationMs = tileAxisDurationMs(isEntryCycle)
   const swapTransition = useHouseBarSetTransition({
     bars: activeBars,
     animationKey,
@@ -3587,6 +3425,7 @@ function PublicationCategoryDistributionChart({
     renderedValuesTarget,
     `${animationKey}|category|${renderBars.map((bar) => bar.key).join('|')}`,
     hasBars && barsExpanded,
+    axisDurationMs,
   )
 
   useEffect(() => {
@@ -3620,7 +3459,7 @@ function PublicationCategoryDistributionChart({
     targetAxisMax,
     `${animationKey}|axis-max|${showPercentageMode ? 'percentage' : 'absolute'}`,
     axisAnimationEnabled,
-    360,
+    axisDurationMs,
   )
   const axisMax = axisAnimationEnabled ? Math.max(1, animatedAxisMax) : targetAxisMax
   const yAxisTickRatios = targetAxisScale.ticks.map((tickValue) => (
@@ -3802,11 +3641,9 @@ function PublicationCategoryDistributionChart({
         <div
           className={cn(
             HOUSE_CHART_TRANSITION_CLASS,
-            displayPanelVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
-            !displayPanelVisible && 'pointer-events-none',
+            HOUSE_CHART_ENTERED_CLASS,
             'min-h-0 overflow-auto',
           )}
-          style={{ transitionDuration: `${displayModeSwapMs}ms` }}
           data-ui={`${dimension}-distribution-table-frame`}
           data-house-role="chart-frame"
         >
@@ -3857,10 +3694,9 @@ function PublicationCategoryDistributionChart({
         <div
           className={cn(
             HOUSE_CHART_TRANSITION_CLASS,
-            displayPanelVisible ? HOUSE_CHART_ENTERED_CLASS : HOUSE_CHART_EXITED_CLASS,
-            !displayPanelVisible && 'pointer-events-none',
+            HOUSE_CHART_ENTERED_CLASS,
           )}
-          style={{ ...chartFrameStyle, transitionDuration: `${displayModeSwapMs}ms` }}
+          style={chartFrameStyle}
           data-ui={`${dimension}-distribution-chart-frame`}
           data-house-role="chart-frame"
         >
@@ -3907,7 +3743,8 @@ function PublicationCategoryDistributionChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: barsExpanded ? `${Math.min(220, index * 18)}ms` : '0ms',
+                      transitionDelay: tileMotionEntryDelay(index, barsExpanded),
+                      transitionDuration: barTransitionDuration,
                     }}
                   />
                 </div>
@@ -4533,7 +4370,7 @@ function TotalPublicationsDrilldownWorkspace({
                         key={`breakdown-year-${year}`}
                         type="button"
                         className={cn(
-                          'relative flex min-w-[1.95rem] flex-1 items-end rounded border border-transparent transition-all duration-200',
+                          'relative flex min-w-[1.95rem] flex-1 items-end rounded border border-transparent transition-all duration-[var(--motion-duration-chart-toggle)]',
                           isSelected && HOUSE_DRILLDOWN_BAR_SELECTED_OUTLINE_CLASS,
                         )}
                         onMouseEnter={() => setHoveredBreakdownYear(year)}
@@ -4543,7 +4380,7 @@ function TotalPublicationsDrilldownWorkspace({
                       >
                         <span
                           className={cn(
-                            'block w-full rounded transition-[height,filter] duration-220 ease-out',
+                            'block w-full rounded transition-[height,filter] duration-[var(--motion-duration-chart-toggle)] ease-out',
                             isSelected ? HOUSE_DRILLDOWN_BAR_SELECTED_CLASS : HOUSE_CHART_BAR_ACCENT_CLASS,
                           )}
                           style={{ height: `${heightPct}%` }}
@@ -4921,6 +4758,9 @@ function HIndexNeedsChart({
     [bars],
   )
   const barsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|hindex-needed`, bars.length > 0)
+  const isEntryCycle = useIsFirstChartEntry(`${animationKey}|hindex-needed`, bars.length > 0)
+  const barTransitionDuration = tileChartDurationVar(isEntryCycle)
+  const axisDurationMs = tileAxisDurationMs(isEntryCycle)
   const rawTargetCounts = useMemo(
     () => bars.map((bar) => Math.max(0, bar.count)),
     [bars],
@@ -4933,9 +4773,10 @@ function HIndexNeedsChart({
     targetCounts,
     `${animationKey}|counts|${collapse ? 'collapse' : 'expand'}`,
     animate,
+    axisDurationMs,
   )
   const targetMax = Math.max(1, ...rawTargetCounts) * 1.18
-  const animatedMax = useEasedValue(targetMax, `${animationKey}|max`, animate)
+  const animatedMax = useEasedValue(targetMax, `${animationKey}|max`, animate, axisDurationMs)
 
   useEffect(() => {
     setHoveredIndex(null)
@@ -5014,7 +4855,8 @@ function HIndexNeedsChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: barsExpanded ? `${Math.min(220, index * 18)}ms` : '0ms',
+                      transitionDelay: tileMotionEntryDelay(index, barsExpanded),
+                      transitionDuration: barTransitionDuration,
                     }}
                   />
                 </div>
@@ -5037,6 +4879,238 @@ function HIndexNeedsChart({
   )
 }
 
+void HIndexYearChart
+void HIndexNeedsChart
+
+type HIndexToggleBarDatum = {
+  key: string
+  label: string
+  value: number
+  kind: 'trajectory' | 'needed'
+  needed?: number
+}
+
+function HIndexToggleBarsChart({
+  tile,
+  mode,
+}: {
+  tile: PublicationMetricTilePayload
+  mode: HIndexViewMode
+}) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const chartData = (tile.chart_data || {}) as Record<string, unknown>
+
+  const trajectoryBars = useMemo<HIndexToggleBarDatum[]>(() => {
+    const years = toNumberArray(chartData.years).map((item) => Math.round(item))
+    const values = toNumberArray(chartData.values).map((item) => Math.max(0, item))
+    const hasValidSeries = years.length > 0 && values.length > 0 && years.length === values.length
+    if (!hasValidSeries) {
+      return []
+    }
+    return years.map((year, index) => ({
+      key: `trajectory-${year}-${index}`,
+      label: String(year).slice(-2),
+      value: values[index],
+      kind: 'trajectory',
+    }))
+  }, [chartData.values, chartData.years])
+
+  const neededBars = useMemo<HIndexToggleBarDatum[]>(() => {
+    const candidateGaps = toNumberArray(chartData.candidate_gaps)
+      .map((item) => Math.max(0, Math.round(item)))
+    return [
+      {
+        key: 'needed-1',
+        label: '+1',
+        needed: 1,
+        value: candidateGaps.filter((gap) => gap === 1).length,
+        kind: 'needed',
+      },
+      {
+        key: 'needed-3',
+        label: '+3',
+        needed: 3,
+        value: candidateGaps.filter((gap) => gap >= 3).length,
+        kind: 'needed',
+      },
+    ]
+  }, [chartData.candidate_gaps])
+
+  const activeBars = mode === 'needed' ? neededBars : trajectoryBars
+  const emptyLabel = mode === 'needed' ? 'No h-index citation-gap data' : 'No h-index timeline'
+  const hasBars = activeBars.length > 0
+  const animationKey = useMemo(
+    () => `${mode}|${activeBars.map((bar) => `${bar.key}-${bar.value}`).join('|')}`,
+    [activeBars, mode],
+  )
+  const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
+  const entryBarsExpanded = useUnifiedToggleBarAnimation(`${animationKey}|entry`, hasBars && isEntryCycle)
+  const barsExpanded = isEntryCycle ? entryBarsExpanded : true
+  const barTransitionDuration = tileChartDurationVar(isEntryCycle)
+  const axisDurationMs = tileAxisDurationMs(isEntryCycle)
+  const targetValues = useMemo(
+    () => activeBars.map((bar) => Math.max(0, bar.value)),
+    [activeBars],
+  )
+  const animatedValues = useEasedSeries(
+    targetValues,
+    `${animationKey}|values`,
+    hasBars,
+    axisDurationMs,
+  )
+  const targetAxisMax = useMemo(
+    () => Math.max(1, ...targetValues) * 1.18,
+    [targetValues],
+  )
+  const animatedAxisMax = useEasedValue(
+    targetAxisMax,
+    `${animationKey}|axis-max`,
+    hasBars,
+    axisDurationMs,
+  )
+  const scaledMax = Math.max(1, animatedAxisMax)
+  const axisLayout = useMemo(
+    () =>
+      buildChartAxisLayout({
+        axisLabels: activeBars.map((bar) => bar.label),
+        axisSubLabels: activeBars.map(() => null),
+        dense: activeBars.length >= 6,
+      }),
+    [activeBars],
+  )
+  const slotMetrics = useMemo(() => {
+    const slotCount = Math.max(1, activeBars.length)
+    const slotGapPct = slotCount >= 8 ? 1.8 : slotCount >= 6 ? 2.2 : 2.8
+    const totalGapPct = slotGapPct * Math.max(0, slotCount - 1)
+    const slotWidthPct = Math.max(2, (100 - totalGapPct) / slotCount)
+    const slotStepPct = slotWidthPct + slotGapPct
+    return {
+      slotCount,
+      slotWidthPct,
+      slotStepPct,
+    }
+  }, [activeBars.length])
+
+  useEffect(() => {
+    setHoveredIndex(null)
+  }, [animationKey])
+
+  if (!hasBars) {
+    return <div className={dashboardTileStyles.emptyChart}>{emptyLabel}</div>
+  }
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div
+        className={cn(
+          HOUSE_CHART_TRANSITION_CLASS,
+          HOUSE_CHART_SERIES_BY_SLOT_CLASS,
+          HOUSE_CHART_ENTERED_CLASS,
+        )}
+        style={{ paddingBottom: `${axisLayout.framePaddingBottomRem}rem` }}
+      >
+        <div
+          className="absolute inset-x-2"
+          style={{
+            top: 'var(--metric-right-chart-top-inset, 1rem)',
+            bottom: `${axisLayout.plotBottomRem}rem`,
+          }}
+        >
+          {[50].map((pct) => (
+            <div
+              key={`h-index-toggle-grid-${pct}`}
+              className={cn('pointer-events-none absolute inset-x-0', HOUSE_CHART_GRID_LINE_CLASS)}
+              style={{ bottom: `${pct}%` }}
+              aria-hidden="true"
+            />
+          ))}
+          <div className="absolute inset-0">
+            {activeBars.map((bar, index) => {
+              const animatedValue = Math.max(0, animatedValues[index] ?? 0)
+              const heightPct = animatedValue <= 0 ? 3 : Math.max(6, (animatedValue / scaledMax) * 100)
+              const leftPct = index * slotMetrics.slotStepPct
+              const isActive = hoveredIndex === index
+              const shouldShowTooltipInBar = bar.kind === 'needed' && heightPct >= 18
+              const tooltipStyle = shouldShowTooltipInBar
+                ? { top: `calc(${100 - heightPct}% + 0.2rem)` }
+                : { bottom: `calc(${heightPct}% + 0.35rem)` }
+              const tooltipText = bar.kind === 'needed'
+                ? `${formatInt(animatedValue)} ${Math.round(animatedValue) === 1 ? 'paper' : 'papers'}`
+                : `h ${formatInt(animatedValue)}`
+              const toneClass = bar.kind === 'needed'
+                ? bar.needed === 1
+                  ? HOUSE_CHART_BAR_POSITIVE_CLASS
+                  : HOUSE_CHART_BAR_ACCENT_CLASS
+                : HOUSE_CHART_BAR_ACCENT_CLASS
+              return (
+                <div
+                  key={`h-index-slot-${index}`}
+                  className={cn(
+                    'absolute inset-y-0',
+                    HOUSE_TOGGLE_CHART_MORPH_CLASS,
+                  )}
+                  style={{
+                    left: `${leftPct}%`,
+                    width: `${slotMetrics.slotWidthPct}%`,
+                    transitionDuration: barTransitionDuration,
+                  }}
+                  onMouseEnter={() => setHoveredIndex(index)}
+                  onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                >
+                  <span
+                    className={cn(
+                      HOUSE_DRILLDOWN_TOOLTIP_CLASS,
+                      isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
+                    )}
+                    style={tooltipStyle}
+                    aria-hidden="true"
+                  >
+                    {tooltipText}
+                  </span>
+                  <span
+                    className={cn(
+                      'absolute bottom-0 block w-full rounded',
+                      HOUSE_TOGGLE_CHART_BAR_CLASS,
+                      HOUSE_TOGGLE_CHART_MORPH_CLASS,
+                      HOUSE_TOGGLE_CHART_SWAP_CLASS,
+                      toneClass,
+                      isActive && 'brightness-[1.08] saturate-[1.14]',
+                    )}
+                    style={{
+                      height: `${heightPct}%`,
+                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
+                      transformOrigin: 'bottom',
+                      transitionDelay: tileMotionEntryDelay(index, barsExpanded),
+                      transitionDuration: barTransitionDuration,
+                    }}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        </div>
+        <div
+          className="pointer-events-none absolute inset-x-2"
+          style={{ bottom: `${axisLayout.axisBottomRem}rem`, minHeight: `${axisLayout.axisMinHeightRem}rem` }}
+        >
+          {activeBars.map((bar, index) => {
+            const leftPct = index * slotMetrics.slotStepPct
+            return (
+              <div
+                key={`h-index-slot-axis-${index}`}
+                className={cn('absolute top-0 leading-none text-center', HOUSE_TOGGLE_CHART_LABEL_CLASS)}
+                style={{ left: `${leftPct}%`, width: `${slotMetrics.slotWidthPct}%` }}
+              >
+                <p className={cn(HOUSE_CHART_AXIS_TEXT_CLASS, 'break-words px-0.5 leading-tight')}>{bar.label}</p>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function HIndexTrajectoryPanel({
   tile,
   mode,
@@ -5050,45 +5124,6 @@ function HIndexTrajectoryPanel({
   chartHeaderClassName?: string
   chartHeaderKind?: 'title' | 'toggle'
 }) {
-  const [renderMode, setRenderMode] = useState<HIndexViewMode>(mode)
-  const [visible, setVisible] = useState(false)
-  const fadeMs = 220
-
-  useEffect(() => {
-    if (prefersReducedMotion()) {
-      setVisible(true)
-      return
-    }
-    let raf = 0
-    raf = window.requestAnimationFrame(() => {
-      setVisible(true)
-    })
-    return () => {
-      window.cancelAnimationFrame(raf)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (mode === renderMode) {
-      return
-    }
-    if (prefersReducedMotion()) {
-      setRenderMode(mode)
-      setVisible(true)
-      return
-    }
-
-    setVisible(false)
-    const timer = window.setTimeout(() => {
-      setRenderMode(mode)
-      setVisible(true)
-    }, fadeMs)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [mode, renderMode])
-
   return (
     <div
       className={cn(
@@ -5101,17 +5136,8 @@ function HIndexTrajectoryPanel({
           {chartHeader}
         </div>
       ) : null}
-      <div
-        className={cn(
-          HOUSE_METRIC_RIGHT_CHART_BODY_CLASS,
-          'transition-opacity ease-out',
-          visible ? 'opacity-100' : 'opacity-0',
-        )}
-        style={{ transitionDuration: `${fadeMs}ms` }}
-      >
-        {renderMode === 'needed'
-          ? <HIndexNeedsChart tile={tile} animate={false} />
-          : <HIndexYearChart tile={tile} showCaption={false} animate={false} />}
+      <div className={HOUSE_METRIC_RIGHT_CHART_BODY_CLASS}>
+        <HIndexToggleBarsChart tile={tile} mode={mode} />
       </div>
     </div>
   )
@@ -5125,6 +5151,13 @@ function HIndexProgressInline({
   progressLabel?: string
 }) {
   const progressMeta = buildHIndexProgressMeta(tile)
+  const progressAnimationKey = useMemo(
+    () => `${Math.round(progressMeta.progressPct)}|${progressMeta.currentH}|${progressMeta.targetH}`,
+    [progressMeta.currentH, progressMeta.progressPct, progressMeta.targetH],
+  )
+  const progressExpanded = useUnifiedToggleBarAnimation(progressAnimationKey, true)
+  const isEntryCycle = useIsFirstChartEntry(progressAnimationKey, true)
+  const progressTransitionDuration = tileChartDurationVar(isEntryCycle)
   return (
     <div className="mt-6 w-full max-w-[11.7rem] space-y-1.5">
       {progressLabel ? (
@@ -5133,8 +5166,11 @@ function HIndexProgressInline({
       <div className="flex items-center gap-2">
         <div className={cn(HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS, 'h-[var(--metric-progress-track-height)] flex-1')}>
           <div
-            className={cn('h-full rounded-full transition-[width] duration-500 ease-out', HOUSE_CHART_BAR_POSITIVE_CLASS)}
-            style={{ width: `${progressMeta.progressPct}%` }}
+            className={cn('h-full rounded-full transition-[width] duration-[var(--motion-duration-chart-toggle)] ease-out', HOUSE_CHART_BAR_POSITIVE_CLASS)}
+            style={{
+              width: `${progressExpanded ? progressMeta.progressPct : 0}%`,
+              transitionDuration: progressTransitionDuration,
+            }}
             aria-hidden="true"
           />
         </div>
@@ -5244,6 +5280,33 @@ function InfluentialTrendPanel({
   const height = 92
   const points = buildLinePoints(values, width, height, labels, 8)
   const path = monotonePathFromPoints(points)
+  const pathRef = useRef<SVGPathElement | null>(null)
+  const [svgPathLength, setSvgPathLength] = useState(0)
+  const lineAnimationKey = useMemo(
+    () => values.map((value) => value.toFixed(3)).join('|'),
+    [values],
+  )
+  const isEntryCycle = useIsFirstChartEntry(lineAnimationKey, values.length > 0)
+  useEffect(() => {
+    const pathElement = pathRef.current
+    if (!pathElement) {
+      setSvgPathLength(0)
+      return
+    }
+    const measuredLength = pathElement.getTotalLength()
+    if (!Number.isFinite(measuredLength) || measuredLength <= 0) {
+      setSvgPathLength(1)
+      return
+    }
+    setSvgPathLength(measuredLength)
+  }, [path])
+  const entryLineVisible = useUnifiedToggleBarAnimation(
+    `${lineAnimationKey}|entry|${Math.round(svgPathLength)}`,
+    values.length > 0 && isEntryCycle && svgPathLength > 0,
+  )
+  const lineVisible = isEntryCycle ? entryLineVisible : true
+  const lineTransitionDuration = tileChartDurationVar(isEntryCycle)
+  const visiblePathLength = svgPathLength > 0 ? svgPathLength : 1
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
@@ -5262,6 +5325,7 @@ function InfluentialTrendPanel({
         <div className="relative h-full w-full">
           <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="h-full w-full">
             <path
+              ref={pathRef}
               d={path}
               fill="none"
               className={HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS}
@@ -5269,6 +5333,13 @@ function InfluentialTrendPanel({
               strokeLinecap="round"
               strokeLinejoin="round"
               shapeRendering="geometricPrecision"
+              style={{
+                strokeDasharray: visiblePathLength,
+                strokeDashoffset: lineVisible ? 0 : visiblePathLength,
+                transitionProperty: 'stroke-dashoffset',
+                transitionDuration: lineTransitionDuration,
+                transitionTimingFunction: 'var(--motion-ease-chart-series)',
+              }}
             />
           </svg>
         </div>
@@ -5488,6 +5559,10 @@ export function PublicationsTopStrip({
   const [insightsVisible, setInsightsVisible] = useState(
     () => readAccountSettings().publicationInsightsDefaultVisibility !== 'hidden',
   )
+  const tileMotionStyle = useMemo(() => ({
+    '--motion-duration-chart-refresh': `${TILE_MOTION_ENTRY_DURATION_MS}ms`,
+    '--motion-duration-chart-toggle': `${TILE_MOTION_TOGGLE_DURATION_MS}ms`,
+  }) as CSSProperties, [])
 
   const tiles = useMemo(() => {
     const source = metrics?.tiles ?? []
@@ -5585,7 +5660,7 @@ export function PublicationsTopStrip({
 
   return (
     <>
-      <Card className={HOUSE_SURFACE_PANEL_BARE_CLASS}>
+      <Card className={HOUSE_SURFACE_PANEL_BARE_CLASS} style={tileMotionStyle}>
         <CardContent className="p-0">
           <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5">
             <div className="min-w-0 flex items-center gap-2">

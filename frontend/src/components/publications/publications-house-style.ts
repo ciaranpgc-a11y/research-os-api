@@ -46,6 +46,8 @@ export const publicationsHouseDividers = {
 
 export const publicationsHouseMotion = {
   chartPanel: houseMotion.chartPanel,
+  chartSeriesByKey: houseMotion.chartSeriesByKey,
+  chartSeriesBySlot: houseMotion.chartSeriesBySlot,
   chartEnter: houseMotion.chartEnter,
   chartExit: houseMotion.chartExit,
   ringChartEnter: houseMotion.ringChartEnter,
@@ -60,6 +62,7 @@ export const publicationsHouseMotion = {
   toggleThumb: houseMotion.toggleThumb,
   toggleButton: houseMotion.toggleButton,
   toggleChartBar: houseMotion.toggleChartBar,
+  toggleChartMorph: houseMotion.toggleChartMorph,
   toggleChartSwap: houseMotion.toggleChartSwap,
   toggleChartLabel: houseMotion.toggleChartLabel,
   labelTransition: houseMotion.labelTransition,

@@ -871,6 +871,9 @@
   /* Field-percentile vertical toggle should read as one continuous track while inactive. */
   .house-metric-tile-shell .house-field-percentile-toggle-button {
     border-radius: 0 !important;
+    transition-property: background-color, color, filter, transform;
+    transition-duration: var(--motion-duration-chart-toggle);
+    transition-timing-function: var(--motion-ease-chart-series);
   }
 
   .house-metric-tile-shell .house-field-percentile-toggle-button.house-drilldown-toggle-button-muted,
@@ -2463,6 +2466,13 @@
     will-change: transform;
   }
 
+  .house-toggle-chart-morph {
+    transition-property: left, width, height, opacity, transform, filter, box-shadow;
+    transition-duration: var(--motion-duration-chart-toggle);
+    transition-timing-function: var(--motion-ease-chart-series);
+    will-change: left, width, height, transform, opacity;
+  }
+
   .house-toggle-chart-swap {
     transition-property: opacity;
     transition-duration: var(--motion-duration-base);
@@ -2478,6 +2488,14 @@
     transition-property: opacity, filter;
     transition-duration: var(--motion-duration-fast);
     will-change: opacity, filter;
+  }
+
+  .house-chart-series-by-slot .house-toggle-chart-morph {
+    transition-property: left, width, height, opacity, transform, filter, box-shadow;
+  }
+
+  .house-chart-series-by-key .house-toggle-chart-morph {
+    transition-property: height, opacity, transform, filter, box-shadow;
   }
 
   .house-toggle-chart-label {

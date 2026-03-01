@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Download, Lightbulb, Plus, RefreshCcw, Sparkles, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
+import { UKCollaborationMap } from '@/components/collaboration/UKCollaborationMap'
 import { BadgePrimitive as Badge } from '@/components/primitives/BadgePrimitive'
 import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
 import { CardPrimitive as Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/primitives/CardPrimitive'
@@ -182,6 +183,403 @@ export function ProfileCollaborationPage() {
   const [aiLoading, setAiLoading] = useState<string | null>(null)
   const [aiError, setAiError] = useState('')
   const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>('country')
+  const [geoView, setGeoView] = useState<'map' | 'grid'>('map')
+
+  // Mock data for dev visualization
+  useEffect(() => {
+    if (import.meta.env.DEV && import.meta.env.VITE_AUTH_BYPASS === 'true' && !listing) {
+      const mockCollaborators: CollaboratorPayload[] = [
+        {
+          id: '1',
+          user_id: 'mock-user',
+          full_name: 'Dr. Sarah Mitchell',
+          preferred_name: 'Sarah',
+          email: 'sarah.mitchell@imperial.ac.uk',
+          orcid_id: '0000-0001-1111-1111',
+          openalex_author_id: 'A111',
+          primary_institution: 'Imperial College London',
+          department: 'Department of Computing',
+          country: 'United Kingdom',
+          current_position: 'Senior Lecturer',
+          research_domains: ['Machine Learning', 'Computer Vision'],
+          notes: '',
+          metadata_enrichment_status: 'COMPLETE',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metrics: { coauthored_works_count: 12, last_collaboration_year: 2025, collaboration_strength_score: 85 },
+        },
+        {
+          id: '2',
+          user_id: 'mock-user',
+          full_name: 'Prof. James Patterson',
+          preferred_name: 'James',
+          email: 'j.patterson@cam.ac.uk',
+          orcid_id: '0000-0002-2222-2222',
+          openalex_author_id: 'A222',
+          primary_institution: 'University of Cambridge',
+          department: 'Department of Engineering',
+          country: 'United Kingdom',
+          current_position: 'Professor',
+          research_domains: ['Robotics', 'AI'],
+          notes: '',
+          metadata_enrichment_status: 'COMPLETE',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metrics: { coauthored_works_count: 18, last_collaboration_year: 2025, collaboration_strength_score: 92 },
+        },
+        {
+          id: '3',
+          user_id: 'mock-user',
+          full_name: 'Dr. Emily Chen',
+          preferred_name: 'Emily',
+          email: 'emily.chen@ed.ac.uk',
+          orcid_id: '0000-0003-3333-3333',
+          openalex_author_id: 'A333',
+          primary_institution: 'University of Edinburgh',
+          department: 'School of Informatics',
+          country: 'United Kingdom',
+          current_position: 'Research Fellow',
+          research_domains: ['Natural Language Processing', 'AI Ethics'],
+          notes: '',
+          metadata_enrichment_status: 'COMPLETE',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metrics: { coauthored_works_count: 8, last_collaboration_year: 2024, collaboration_strength_score: 72 },
+        },
+        {
+          id: '4',
+          user_id: 'mock-user',
+          full_name: 'Dr. Michael Brown',
+          preferred_name: 'Mike',
+          email: 'm.brown@manchester.ac.uk',
+          orcid_id: '0000-0004-4444-4444',
+          openalex_author_id: 'A444',
+          primary_institution: 'University of Manchester',
+          department: 'Department of Computer Science',
+          country: 'United Kingdom',
+          current_position: 'Lecturer',
+          research_domains: ['Distributed Systems', 'Cloud Computing'],
+          notes: '',
+          metadata_enrichment_status: 'COMPLETE',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metrics: { coauthored_works_count: 15, last_collaboration_year: 2025, collaboration_strength_score: 88 },
+        },
+        {
+          id: '5',
+          user_id: 'mock-user',
+          full_name: 'Prof. Rebecca Williams',
+          preferred_name: 'Rebecca',
+          email: 'r.williams@ucl.ac.uk',
+          orcid_id: '0000-0005-5555-5555',
+          openalex_author_id: 'A555',
+          primary_institution: 'University College London',
+          department: 'Department of Computer Science',
+          country: 'United Kingdom',
+          current_position: 'Professor',
+          research_domains: ['Data Science', 'Bioinformatics'],
+          notes: '',
+          metadata_enrichment_status: 'COMPLETE',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metrics: { coauthored_works_count: 22, last_collaboration_year: 2025, collaboration_strength_score: 95 },
+        },
+        {
+          id: '6',
+          user_id: 'mock-user',
+          full_name: 'Dr. David Thompson',
+          preferred_name: 'David',
+          email: 'd.thompson@ox.ac.uk',
+          orcid_id: '0000-0006-6666-6666',
+          openalex_author_id: 'A666',
+          primary_institution: 'University of Oxford',
+          department: 'Department of Computer Science',
+          country: 'United Kingdom',
+          current_position: 'Associate Professor',
+          research_domains: ['Quantum Computing', 'Algorithms'],
+          notes: '',
+          metadata_enrichment_status: 'COMPLETE',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metrics: { coauthored_works_count: 10, last_collaboration_year: 2025, collaboration_strength_score: 80 },
+        },
+        {
+          id: '7',
+          user_id: 'mock-user',
+          full_name: 'Dr. Laura Davies',
+          preferred_name: 'Laura',
+          email: 'l.davies@bristol.ac.uk',
+          orcid_id: '0000-0007-7777-7777',
+          openalex_author_id: 'A777',
+          primary_institution: 'University of Bristol',
+          department: 'Department of Engineering Mathematics',
+          country: 'United Kingdom',
+          current_position: 'Senior Lecturer',
+          research_domains: ['Computational Mathematics', 'Optimization'],
+          notes: '',
+          metadata_enrichment_status: 'COMPLETE',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metrics: { coauthored_works_count: 7, last_collaboration_year: 2024, collaboration_strength_score: 68 },
+        },
+        {
+          id: '8',
+          user_id: 'mock-user',
+          full_name: 'Prof. Andrew Wilson',
+          preferred_name: 'Andrew',
+          email: 'a.wilson@nottingham.ac.uk',
+          orcid_id: '0000-0008-8888-8888',
+          openalex_author_id: 'A888',
+          primary_institution: 'University of Nottingham',
+          department: 'School of Computer Science',
+          country: 'United Kingdom',
+          current_position: 'Professor',
+          research_domains: ['Software Engineering', 'Testing'],
+          notes: '',
+          metadata_enrichment_status: 'COMPLETE',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metrics: { coauthored_works_count: 14, last_collaboration_year: 2025, collaboration_strength_score: 86 },
+        },
+        {
+          id: '9',
+          user_id: 'mock-user',
+          full_name: 'Dr. Sophie Anderson',
+          preferred_name: 'Sophie',
+          email: 's.anderson@glasgow.ac.uk',
+          orcid_id: '0000-0009-9999-9999',
+          openalex_author_id: 'A999',
+          primary_institution: 'University of Glasgow',
+          department: 'School of Computing Science',
+          country: 'United Kingdom',
+          current_position: 'Lecturer',
+          research_domains: ['Human-Computer Interaction', 'Accessibility'],
+          notes: '',
+          metadata_enrichment_status: 'COMPLETE',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metrics: { coauthored_works_count: 11, last_collaboration_year: 2025, collaboration_strength_score: 78 },
+        },
+        {
+          id: '10',
+          user_id: 'mock-user',
+          full_name: 'Dr. Thomas Hughes',
+          preferred_name: 'Tom',
+          email: 't.hughes@cardiff.ac.uk',
+          orcid_id: '0000-0010-1010-1010',
+          openalex_author_id: 'A1010',
+          primary_institution: 'Cardiff University',
+          department: 'School of Computer Science & Informatics',
+          country: 'United Kingdom',
+          current_position: 'Senior Lecturer',
+          research_domains: ['Cybersecurity', 'Networks'],
+          notes: '',
+          metadata_enrichment_status: 'COMPLETE',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metrics: { coauthored_works_count: 9, last_collaboration_year: 2024, collaboration_strength_score: 74 },
+        },
+        {
+          id: '11',
+          user_id: 'mock-user',
+          full_name: 'Prof. Rachel Green',
+          preferred_name: 'Rachel',
+          email: 'r.green@york.ac.uk',
+          orcid_id: '0000-0011-1111-1111',
+          openalex_author_id: 'A1111',
+          primary_institution: 'University of York',
+          department: 'Department of Computer Science',
+          country: 'United Kingdom',
+          current_position: 'Professor',
+          research_domains: ['Autonomous Systems', 'Verification'],
+          notes: '',
+          metadata_enrichment_status: 'COMPLETE',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metrics: { coauthored_works_count: 16, last_collaboration_year: 2025, collaboration_strength_score: 90 },
+        },
+        {
+          id: '12',
+          user_id: 'mock-user',
+          full_name: 'Dr. Oliver Martin',
+          preferred_name: 'Oliver',
+          email: 'o.martin@qub.ac.uk',
+          orcid_id: '0000-0012-1212-1212',
+          openalex_author_id: 'A1212',
+          primary_institution: 'Queen\'s University Belfast',
+          department: 'School of Electronics, Electrical Engineering and Computer Science',
+          country: 'United Kingdom',
+          current_position: 'Lecturer',
+          research_domains: ['IoT', 'Embedded Systems'],
+          notes: '',
+          metadata_enrichment_status: 'COMPLETE',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metrics: { coauthored_works_count: 6, last_collaboration_year: 2024, collaboration_strength_score: 65 },
+        },
+        {
+          id: '13',
+          user_id: 'mock-user',
+          full_name: 'Dr. Hannah Lee',
+          preferred_name: 'Hannah',
+          email: 'h.lee@durham.ac.uk',
+          orcid_id: '0000-0013-1313-1313',
+          openalex_author_id: 'A1313',
+          primary_institution: 'Durham University',
+          department: 'Department of Computer Science',
+          country: 'United Kingdom',
+          current_position: 'Research Fellow',
+          research_domains: ['Data Mining', 'Social Network Analysis'],
+          notes: '',
+          metadata_enrichment_status: 'COMPLETE',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metrics: { coauthored_works_count: 5, last_collaboration_year: 2024, collaboration_strength_score: 62 },
+        },
+        {
+          id: '14',
+          user_id: 'mock-user',
+          full_name: 'Prof. Christopher Jones',
+          preferred_name: 'Chris',
+          email: 'c.jones@liverpool.ac.uk',
+          orcid_id: '0000-0014-1414-1414',
+          openalex_author_id: 'A1414',
+          primary_institution: 'University of Liverpool',
+          department: 'Department of Computer Science',
+          country: 'United Kingdom',
+          current_position: 'Professor',
+          research_domains: ['Knowledge Representation', 'Semantic Web'],
+          notes: '',
+          metadata_enrichment_status: 'COMPLETE',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metrics: { coauthored_works_count: 13, last_collaboration_year: 2025, collaboration_strength_score: 84 },
+        },
+        {
+          id: '15',
+          user_id: 'mock-user',
+          full_name: 'Dr. Jessica Taylor',
+          preferred_name: 'Jess',
+          email: 'j.taylor@mit.edu',
+          orcid_id: '0000-0015-1515-1515',
+          openalex_author_id: 'A1515',
+          primary_institution: 'Massachusetts Institute of Technology',
+          department: 'CSAIL',
+          country: 'United States',
+          current_position: 'Assistant Professor',
+          research_domains: ['Robotics', 'Machine Learning'],
+          notes: '',
+          metadata_enrichment_status: 'COMPLETE',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metrics: { coauthored_works_count: 4, last_collaboration_year: 2024, collaboration_strength_score: 58 },
+        },
+        {
+          id: '16',
+          user_id: 'mock-user',
+          full_name: 'Prof. Marco Rossi',
+          preferred_name: 'Marco',
+          email: 'm.rossi@unimi.it',
+          orcid_id: '0000-0016-1616-1616',
+          openalex_author_id: 'A1616',
+          primary_institution: 'University of Milan',
+          department: 'Department of Computer Science',
+          country: 'Italy',
+          current_position: 'Professor',
+          research_domains: ['Theoretical Computer Science', 'Algorithms'],
+          notes: '',
+          metadata_enrichment_status: 'COMPLETE',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metrics: { coauthored_works_count: 3, last_collaboration_year: 2023, collaboration_strength_score: 52 },
+        },
+      ]
+
+      const ukInstitutions = [
+        'Imperial College London',
+        'University College London',
+        'King\'s College London',
+        'University of Oxford',
+        'University of Cambridge',
+        'University of Manchester',
+        'University of Edinburgh',
+        'University of Glasgow',
+        'University of Bristol',
+        'University of Nottingham',
+        'Cardiff University',
+        'University of York',
+        'Durham University',
+        'University of Liverpool',
+        'University of Leeds',
+        'University of Birmingham',
+        'University of Warwick',
+        'University of Southampton',
+        'University of Exeter',
+        'Queen\'s University Belfast',
+      ]
+
+      const firstNames = [
+        'Avery', 'Jordan', 'Morgan', 'Taylor', 'Casey', 'Riley', 'Alex', 'Sam', 'Jamie', 'Cameron',
+      ]
+      const lastNames = [
+        'Campbell', 'Reid', 'Murphy', 'Parker', 'Bailey', 'Shaw', 'Gray', 'Ellis', 'Brooks', 'Turner',
+      ]
+
+      const currentUkCount = mockCollaborators.filter((item) => item.country === 'United Kingdom').length
+      const targetUkCount = 200
+      const toAdd = Math.max(0, targetUkCount - currentUkCount)
+
+      for (let i = 0; i < toAdd; i += 1) {
+        const institution = ukInstitutions[i % ukInstitutions.length]
+        const first = firstNames[i % firstNames.length]
+        const last = `${lastNames[i % lastNames.length]}${Math.floor(i / lastNames.length)}`
+        const idNum = mockCollaborators.length + 1
+        const strength = 52 + ((i * 9) % 44)
+
+        mockCollaborators.push({
+          id: String(idNum),
+          user_id: 'mock-user',
+          full_name: `Dr. ${first} ${last}`,
+          preferred_name: first,
+          email: `${first.toLowerCase()}.${last.toLowerCase()}@example.ac.uk`,
+          orcid_id: `0000-0000-${String(3000 + idNum).padStart(4, '0')}-${String(7000 + idNum).padStart(4, '0')}`,
+          openalex_author_id: `A${20000 + idNum}`,
+          primary_institution: institution,
+          department: 'Department of Computer Science',
+          country: 'United Kingdom',
+          current_position: i % 4 === 0 ? 'Professor' : i % 4 === 1 ? 'Senior Lecturer' : i % 4 === 2 ? 'Lecturer' : 'Research Fellow',
+          research_domains: i % 2 === 0 ? ['Machine Learning', 'AI'] : ['Data Science', 'Networks'],
+          notes: '',
+          metadata_enrichment_status: 'COMPLETE',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metrics: {
+            coauthored_works_count: Math.max(3, Math.floor(strength / 7)),
+            last_collaboration_year: 2023 + (i % 3),
+            collaboration_strength_score: strength,
+          },
+        })
+      }
+
+      setListing({
+        items: mockCollaborators,
+        total: mockCollaborators.length,
+        page: 1,
+        page_size: 250,
+      })
+
+      const totalUkCollaborators = mockCollaborators.filter((item) => item.country === 'United Kingdom').length
+
+      setSummary({
+        total_collaborators: mockCollaborators.length,
+        core_collaborators: Math.max(12, Math.floor(totalUkCollaborators * 0.18)),
+        active_collaborations_12m: Math.max(20, Math.floor(totalUkCollaborators * 0.7)),
+        new_collaborators_12m: Math.max(8, Math.floor(totalUkCollaborators * 0.2)),
+        last_computed_at: new Date().toISOString(),
+        status: 'COMPLETE',
+      })
+    }
+  }, [listing])
 
   const selectedCollaborator = useMemo(() => {
     const items = listing?.items || []
@@ -892,7 +1290,7 @@ export function ProfileCollaborationPage() {
         </Card>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="space-y-4">
         <Card>
           <CardHeader>
             <CardTitle>Strong collaborations</CardTitle>
@@ -958,7 +1356,38 @@ export function ProfileCollaborationPage() {
                 Domain
               </Button>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            
+            {heatmapMode === 'country' && (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={geoView === 'map' ? 'primary' : 'secondary'}
+                  onClick={() => setGeoView('map')}
+                >
+                  Map
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={geoView === 'grid' ? 'primary' : 'secondary'}
+                  onClick={() => setGeoView('grid')}
+                >
+                  Grid
+                </Button>
+              </div>
+            )}
+            
+            {heatmapMode === 'country' && geoView === 'map' ? (
+              <UKCollaborationMap 
+                collaborators={(listing?.items || []).map(item => ({
+                  country: item.country || '',
+                  primary_institution: item.primary_institution || '',
+                  collaboration_strength_score: item.metrics.collaboration_strength_score || 0,
+                }))}
+              />
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
               {heatmapCells.length > 0 ? (
                 heatmapCells.map((cell) => {
                   const max = heatmapCells[0]?.count || 0
@@ -976,7 +1405,8 @@ export function ProfileCollaborationPage() {
               ) : (
                 <p className="text-xs text-muted-foreground">No heat map data yet.</p>
               )}
-            </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
