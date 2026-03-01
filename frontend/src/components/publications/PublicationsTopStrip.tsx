@@ -6418,13 +6418,7 @@ export function PublicationsTopStrip({
                 onValueChange={(value) => setActiveDrilldownTab(value as DrilldownTab)}
                 className="w-full"
               >
-                <TabsList
-                  className={cn(
-                    HOUSE_ACTIONS_SECTION_TOOLS_CLASS,
-                    HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS,
-                    HOUSE_DRILLDOWN_TAB_LIST_CLASS,
-                  )}
-                >
+                <TabsList className={HOUSE_DRILLDOWN_TAB_LIST_CLASS}>
                   {DRILLDOWN_TABS.map((tab) => (
                     <TabsTrigger
                       key={tab.value}
@@ -6435,7 +6429,6 @@ export function PublicationsTopStrip({
                     </TabsTrigger>
                   ))}
                 </TabsList>
-                <div className={cn('mt-2', HOUSE_DRILLDOWN_DIVIDER_TOP_CLASS)} />
                 <div className="mt-2.5">
                   {activeTile.key === 'this_year_vs_last' ? (
                     <TotalPublicationsDrilldownWorkspace
