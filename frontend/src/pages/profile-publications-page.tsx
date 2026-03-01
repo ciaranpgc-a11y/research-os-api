@@ -1309,6 +1309,7 @@ export type ProfilePublicationsPageFixture = {
   personaState?: PersonaStatePayload | null
   analyticsResponse?: PublicationsAnalyticsResponsePayload | null
   topMetricsResponse?: PublicationsTopMetricsPayload | null
+  forceInsightsVisible?: boolean
   initialActiveDetailTab?: PublicationDetailTab
   filesByWorkId?: Record<string, PublicationFilesListPayload>
 }
@@ -2542,6 +2543,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           || (topMetricsResponse.status === 'RUNNING' && (topMetricsResponse.tiles || []).length === 0)
         }
         token={token || null}
+        forceInsightsVisible={Boolean(fixture?.forceInsightsVisible)}
         onOpenPublication={(workId) => {
           openPublicationInDetailPanel(workId, 'files')
         }}

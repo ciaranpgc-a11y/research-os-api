@@ -1,6 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import type { ReactNode } from 'react'
-import { useEffect } from 'react'
 
 import { ProfilePublicationsPage } from '@/pages/profile-publications-page'
 import type { ProfilePublicationsPageFixture } from '@/pages/profile-publications-page'
@@ -450,42 +449,44 @@ function buildLargePublicationsFixture(paperCount: number): ProfilePublicationsP
       timeline.slice(0, idx + 1).reduce((sum, current) => sum + current.citations, 0),
   }))
   fixture.topMetricsResponse = createTopMetricsPayload(generatedWorks.length, totalCitations, paperCount)
+  fixture.forceInsightsVisible = true
 
   return fixture
 }
 
-function PublicationsCompleteLive({ paperCount }: PublicationsLiveArgs) {
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-    try {
-      const raw = window.localStorage.getItem(ACCOUNT_SETTINGS_STORAGE_KEY)
-      let parsed: Record<string, unknown> = {}
-      if (raw) {
-        try {
-          const candidate = JSON.parse(raw) as unknown
-          parsed = candidate && typeof candidate === 'object' && !Array.isArray(candidate)
-            ? candidate as Record<string, unknown>
-            : {}
-        } catch {
-          parsed = {}
-        }
+function ensurePublicationInsightsVisibleDefault(): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  try {
+    const raw = window.localStorage.getItem(ACCOUNT_SETTINGS_STORAGE_KEY)
+    let parsed: Record<string, unknown> = {}
+    if (raw) {
+      try {
+        const candidate = JSON.parse(raw) as unknown
+        parsed = candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+          ? candidate as Record<string, unknown>
+          : {}
+      } catch {
+        parsed = {}
       }
-      if (parsed.publicationInsightsDefaultVisibility !== 'visible') {
-        window.localStorage.setItem(
-          ACCOUNT_SETTINGS_STORAGE_KEY,
-          JSON.stringify({
-            ...parsed,
-            publicationInsightsDefaultVisibility: 'visible',
-          }),
-        )
-      }
-    } catch {
-      // Ignore storage errors in restricted iframe/browser contexts.
     }
-  }, [])
+    if (parsed.publicationInsightsDefaultVisibility !== 'visible') {
+      window.localStorage.setItem(
+        ACCOUNT_SETTINGS_STORAGE_KEY,
+        JSON.stringify({
+          ...parsed,
+          publicationInsightsDefaultVisibility: 'visible',
+        }),
+      )
+    }
+  } catch {
+    // Ignore storage errors in restricted iframe/browser contexts.
+  }
+}
 
+function PublicationsCompleteLive({ paperCount }: PublicationsLiveArgs) {
+  ensurePublicationInsightsVisibleDefault()
   const fixture = buildLargePublicationsFixture(paperCount)
   return (
     <PublicationsLayoutPreview>

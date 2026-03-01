@@ -590,11 +590,11 @@ function ApprovedLeftPanel() {
           <p className="text-sm font-semibold text-neutral-900">Approved Left Panels (mirrored canonical)</p>
           <p className="text-xs text-neutral-600">Workspace home and Profile left panels aligned for shared sizing and state behavior.</p>
         </div>
-        <div className="bg-card p-4">
-          <div className="grid grid-cols-3 gap-4">
+        <div className="bg-card p-4 overflow-x-auto">
+          <div className="grid gap-4 pb-2" style={{ gridTemplateColumns: 'repeat(3, minmax(300px, max-content))' }}>
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Workspace home</p>
-              <div className="approved-left-panel-sync approved-left-panel-canvas w-[var(--layout-left-nav-width)] overflow-hidden rounded-md border border-border">
+              <div className="approved-left-panel-sync approved-left-panel-canvas w-[var(--layout-left-nav-width)] overflow-visible rounded-md border border-border" style={{ position: 'relative' }}>
                 <MemoryRouter initialEntries={[workspacePath]}>
                   <WorkspaceNavigator workspaceId={workspaceId} />
                 </MemoryRouter>
@@ -603,7 +603,7 @@ function ApprovedLeftPanel() {
 
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Inbox</p>
-              <div className="approved-left-panel-sync approved-left-panel-canvas w-[var(--layout-left-nav-width)] overflow-hidden rounded-md border border-border">
+              <div className="approved-left-panel-sync approved-left-panel-canvas w-[var(--layout-left-nav-width)] overflow-visible rounded-md border border-border" style={{ position: 'relative' }}>
                 <MemoryRouter initialEntries={[inboxPath]}>
                   <WorkspaceNavigator workspaceId={workspaceId} />
                 </MemoryRouter>
@@ -612,7 +612,8 @@ function ApprovedLeftPanel() {
 
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Profile</p>
-              <div className="approved-left-panel-sync approved-left-panel-canvas w-[var(--layout-left-nav-width)] overflow-hidden rounded-md border border-border">
+              <div className="approved-left-panel-sync approved-left-panel-canvas w-[var(--layout-left-nav-width)] overflow-visible rounded-md border border-border" style={{ position: 'relative' }}>
+
                 <MemoryRouter initialEntries={[profilePath]}>
                   <AccountNavigator />
                 </MemoryRouter>
@@ -625,6 +626,43 @@ function ApprovedLeftPanel() {
         .approved-left-panel-canvas {
           height: 36rem;
           background-color: hsl(var(--card));
+          position: relative;
+        }
+
+        .approved-left-panel-canvas .house-nav-section-label {
+          position: relative;
+        }
+
+        .approved-left-panel-canvas .house-nav-section-label::after {
+          content: '.house-nav-section-label';
+          position: absolute;
+          left: 100%;
+          top: 0;
+          margin-left: 8px;
+          font-size: 0.65rem;
+          color: hsl(var(--tone-neutral-500));
+          white-space: nowrap;
+          font-weight: normal;
+          font-family: monospace;
+          pointer-events: none;
+        }
+
+        .approved-left-panel-canvas .house-nav-item-label {
+          position: relative;
+        }
+
+        .approved-left-panel-canvas .house-nav-item-label::after {
+          content: '.house-nav-item-label';
+          position: absolute;
+          left: 100%;
+          top: 0;
+          margin-left: 8px;
+          font-size: 0.65rem;
+          color: hsl(var(--tone-neutral-500));
+          white-space: nowrap;
+          font-weight: normal;
+          font-family: monospace;
+          pointer-events: none;
         }
       `}</style>
     </section>
@@ -632,71 +670,98 @@ function ApprovedLeftPanel() {
 }
 
 function ApprovedPublicationsDrilldownSection() {
+  const [activeDrilldownTab, setActiveDrilldownTab] = useState<'summary' | 'breakdown' | 'trajectory' | 'context' | 'methods'>('summary')
+
+  const drilldownTabs = [
+    { id: 'summary', label: 'Summary' },
+    { id: 'breakdown', label: 'Breakdown' },
+    { id: 'trajectory', label: 'Trajectory' },
+    { id: 'context', label: 'Context' },
+    { id: 'methods', label: 'Methods' },
+  ] as const
+
   return (
     <section>
       <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-2 border-b border-neutral-200">
           <p className="text-sm font-semibold text-neutral-900">Approved Publications Tile Drilldown</p>
-          <p className="text-xs text-neutral-600">Canonical publications metric drilldown panel showing summary stats and typography.</p>
+          <p className="text-xs text-neutral-600">Canonical publications metric drilldown panel showing summary stats and typography with vertical tab navigation.</p>
         </div>
         <div className="bg-card p-4">
-          <div className="max-w-3xl rounded-md border border-border bg-background p-4">
-            <div className="house-left-border house-left-border-publications">
-              <h3 className="house-h1">Total publications</h3>
-              <p className="house-text mt-1">Total number of scholarly works indexed across your research career.</p>
+          <div className="max-w-4xl rounded-md border border-border bg-background overflow-hidden">
+            {/* Horizontal Tab Navigation */}
+            <div className="flex border-b border-border bg-card">
+              {drilldownTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveDrilldownTab(tab.id as typeof activeDrilldownTab)}
+                  className={`house-nav-item house-nav-item-publications flex-1 h-10 px-3 rounded-none border-0 ${activeDrilldownTab === tab.id ? 'house-nav-item-active' : ''}`}
+                  type="button"
+                >
+                  <span className="house-nav-item-label text-sm">{tab.label}</span>
+                </button>
+              ))}
             </div>
+            <div className="border-t border-[hsl(var(--publications-accent-500)/0.3)]" />
 
-            <div className="mt-4 space-y-3">
-              <p className="house-drilldown-section-label house-drilldown-section-title-spacer">Headline results</p>
-              
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="house-drilldown-summary-stat-card rounded-md border border-border bg-card p-3">
-                  <p className="house-drilldown-summary-stat-title">Total publications</p>
-                  <div className="house-drilldown-summary-stat-value-wrap">
-                    <p className="house-drilldown-summary-stat-value-emphasis tabular-nums">150</p>
-                  </div>
-                </div>
+            {/* Tab Content */}
+            <div className="p-4">
+              <div className="house-left-border house-left-border-publications pb-3">
+                <h3 className="house-h1">Total publications</h3>
+                <p className="house-text mt-1">Total number of scholarly works indexed across your research career.</p>
+              </div>
+              <div className="border-t border-[hsl(var(--publications-accent-500)/0.3)] mb-4" />
+
+              <div className="mt-4 space-y-3">
+                <p className="house-drilldown-section-label house-drilldown-section-title-spacer">Headline results</p>
                 
-                <div className="house-drilldown-summary-stat-card rounded-md border border-border bg-card p-3">
-                  <p className="house-drilldown-summary-stat-title">Active years</p>
-                  <div className="house-drilldown-summary-stat-value-wrap">
-                    <p className="house-drilldown-summary-stat-value tabular-nums">12</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="house-drilldown-summary-stat-card rounded-md border border-border bg-card p-3">
+                    <p className="house-drilldown-summary-stat-title">Total publications</p>
+                    <div className="house-drilldown-summary-stat-value-wrap">
+                      <p className="house-drilldown-summary-stat-value-emphasis tabular-nums">150</p>
+                    </div>
+                  </div>
+                  
+                  <div className="house-drilldown-summary-stat-card rounded-md border border-border bg-card p-3">
+                    <p className="house-drilldown-summary-stat-title">Active years</p>
+                    <div className="house-drilldown-summary-stat-value-wrap">
+                      <p className="house-drilldown-summary-stat-value tabular-nums">12</p>
+                    </div>
+                  </div>
+
+                  <div className="house-drilldown-summary-stat-card rounded-md border border-border bg-card p-3">
+                    <p className="house-drilldown-summary-stat-title">Mean per year</p>
+                    <div className="house-drilldown-summary-stat-value-wrap">
+                      <p className="house-drilldown-summary-stat-value tabular-nums">12.5</p>
+                    </div>
+                  </div>
+
+                  <div className="house-drilldown-summary-stat-card rounded-md border border-border bg-card p-3">
+                    <p className="house-drilldown-summary-stat-title">Current YTD</p>
+                    <div className="house-drilldown-summary-stat-value-wrap">
+                      <p className="house-drilldown-summary-stat-value tabular-nums">3</p>
+                    </div>
                   </div>
                 </div>
 
-                <div className="house-drilldown-summary-stat-card rounded-md border border-border bg-card p-3">
-                  <p className="house-drilldown-summary-stat-title">Mean per year</p>
-                  <div className="house-drilldown-summary-stat-value-wrap">
-                    <p className="house-drilldown-summary-stat-value tabular-nums">12.5</p>
+                <div className="house-drilldown-section-separator" />
+
+                <div>
+                  <p className="house-drilldown-section-label">Publication trends</p>
+                  <div className="mt-2 rounded-md border border-border bg-card p-3">
+                    <p className="house-drilldown-overline">Publications per year (last 5 years)</p>
+                    <div className="mt-2 h-24 rounded-sm border border-[hsl(var(--stroke-soft))] bg-[hsl(var(--tone-neutral-50))]" />
+                    <p className="house-drilldown-caption mt-2">Chart showing annual publication output trajectory</p>
                   </div>
                 </div>
 
-                <div className="house-drilldown-summary-stat-card rounded-md border border-border bg-card p-3">
-                  <p className="house-drilldown-summary-stat-title">Current YTD</p>
-                  <div className="house-drilldown-summary-stat-value-wrap">
-                    <p className="house-drilldown-summary-stat-value tabular-nums">3</p>
-                  </div>
+                <div>
+                  <p className="house-drilldown-section-label">Context</p>
+                  <p className="house-drilldown-note-soft mt-1">
+                    This drilldown provides comprehensive metrics. Currently viewing: <strong>{activeDrilldownTab}</strong> tab.
+                  </p>
                 </div>
-              </div>
-
-              <div className="house-drilldown-section-separator" />
-
-              <div>
-                <p className="house-drilldown-section-label">Publication trends</p>
-                <div className="mt-2 rounded-md border border-border bg-card p-3">
-                  <p className="house-drilldown-overline">Publications per year (last 5 years)</p>
-                  <div className="mt-2 h-32 rounded-sm border border-[hsl(var(--stroke-soft))] bg-[hsl(var(--tone-neutral-50))]" />
-                  <p className="house-drilldown-caption mt-2">Chart showing annual publication output trajectory</p>
-                </div>
-              </div>
-
-              <div>
-                <p className="house-drilldown-section-label">Context</p>
-                <p className="house-drilldown-note-soft mt-1">
-                  This drilldown provides comprehensive metrics about your publication output over time. 
-                  Use the tabs above to explore different views including summary, breakdown, trajectory, and methods.
-                </p>
-                <p className="house-drilldown-hint mt-2">💡 Click any year in the charts to filter publications from that period.</p>
               </div>
             </div>
           </div>
@@ -712,9 +777,9 @@ function ApprovedMarkersSection() {
       <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-2 border-b border-neutral-200">
           <p className="text-sm font-semibold text-neutral-900">Approved Markers</p>
-          <p className="text-xs text-neutral-600">Canonical marker widths for header, left nav, and panel/drilldown accents.</p>
+          <p className="text-xs text-neutral-600">Canonical marker widths and styles for header, left nav, and drilldown components.</p>
         </div>
-        <div className="grid gap-4 p-4 lg:grid-cols-4">
+        <div className="grid gap-4 p-4 lg:grid-cols-5">
           <article className="rounded-md border border-neutral-200 bg-white p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Header Marker</p>
             <div className="mt-3">
@@ -736,14 +801,31 @@ function ApprovedMarkersSection() {
           </article>
 
           <article className="rounded-md border border-neutral-200 bg-white p-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Panel / Drilldown Marker</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Drilldown Title Marker</p>
             <div className="mt-3">
-              <div className="house-left-border house-left-border-publications rounded-md border border-border bg-card p-3">
-                <p className="text-sm font-semibold text-neutral-900">Publication drilldown</p>
-                <p className="text-xs text-neutral-600">Marker follows shared panel token.</p>
+              <div className="house-left-border house-left-border-publications pb-3 mb-3">
+                <p className="text-sm font-semibold text-neutral-900">Publication drilldown title</p>
+                <p className="text-xs text-neutral-600 mt-1">Marker under title divider.</p>
               </div>
+              <div className="border-t border-[hsl(var(--publications-accent-500)/0.3)]" />
             </div>
-            <p className="mt-3 text-xs text-neutral-600">Width: <code>var(--marker-width-panel)</code></p>
+            <p className="mt-3 text-xs text-neutral-600">Style: <code>border-t border-[publications-accent/0.3]</code></p>
+          </article>
+
+          <article className="rounded-md border border-neutral-200 bg-white p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Drilldown Nav Marker</p>
+            <div className="mt-3">
+              <div className="flex gap-1 mb-2 bg-card p-2 rounded-sm">
+                <button type="button" className="house-nav-item house-nav-item-publications house-nav-item-active flex-1 h-8 px-2 rounded-none border-0">
+                  <span className="house-nav-item-label text-xs">Summary</span>
+                </button>
+                <button type="button" className="house-nav-item house-nav-item-publications flex-1 h-8 px-2 rounded-none border-0">
+                  <span className="house-nav-item-label text-xs">Details</span>
+                </button>
+              </div>
+              <div className="border-t border-[hsl(var(--publications-accent-500)/0.3)]" />
+            </div>
+            <p className="mt-3 text-xs text-neutral-600">Classes: <code>house-nav-item-publications</code> with marker divider below</p>
           </article>
         </div>
       </div>

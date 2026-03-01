@@ -31,6 +31,7 @@ type PublicationsTopStripProps = {
   token?: string | null
   onOpenPublication?: (workId: string) => void
   fetchMetricDetail?: (token: string, metricId: string) => Promise<PublicationMetricDetailPayload>
+  forceInsightsVisible?: boolean
 }
 
 function toNumberArray(value: unknown): number[] {
@@ -5608,6 +5609,7 @@ export function PublicationsTopStrip({
   token = null,
   onOpenPublication,
   fetchMetricDetail = fetchPublicationMetricDetail,
+  forceInsightsVisible = false,
 }: PublicationsTopStripProps) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [activeTileKey, setActiveTileKey] = useState<string>('')
@@ -5619,7 +5621,7 @@ export function PublicationsTopStrip({
   const [hIndexViewMode, setHIndexViewMode] = useState<HIndexViewMode>('trajectory')
   const [fieldPercentileThreshold, setFieldPercentileThreshold] = useState<FieldPercentileThreshold>(75)
   const [insightsVisible, setInsightsVisible] = useState(
-    () => readAccountSettings().publicationInsightsDefaultVisibility !== 'hidden',
+    () => forceInsightsVisible || readAccountSettings().publicationInsightsDefaultVisibility !== 'hidden',
   )
   const tileMotionStyle = useMemo(() => ({
     '--motion-duration-chart-refresh': `${TILE_MOTION_ENTRY_DURATION_MS}ms`,
@@ -5679,6 +5681,12 @@ export function PublicationsTopStrip({
   useEffect(() => {
     setActiveDrilldownTab('summary')
   }, [activeTileKey])
+
+  useEffect(() => {
+    if (forceInsightsVisible) {
+      setInsightsVisible(true)
+    }
+  }, [forceInsightsVisible])
 
   const onSelectTile = async (tile: PublicationMetricTilePayload) => {
     setActiveTileKey(tile.key)
