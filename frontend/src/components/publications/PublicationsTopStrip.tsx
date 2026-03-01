@@ -48,6 +48,62 @@ function estimatePolylineLength(points: Array<{ x: number; y: number }>): number
   return total
 }
 
+function buildSmoothSvgPath(points: Array<{ x: number; y: number }>): string {
+  if (!points.length) {
+    return ''
+  }
+  if (points.length === 1) {
+    const only = points[0]
+    return `M ${only.x.toFixed(3)} ${only.y.toFixed(3)}`
+  }
+  if (points.length === 2) {
+    const first = points[0]
+    const second = points[1]
+    return `M ${first.x.toFixed(3)} ${first.y.toFixed(3)} L ${second.x.toFixed(3)} ${second.y.toFixed(3)}`
+  }
+
+  // Monotone cubic interpolation (Fritsch-Carlson) converted to Bezier segments
+  // to avoid overshoot beyond data bounds (critical for cumulative trend lines).
+  const clampSvgCoord = (value: number): number => Math.max(0, Math.min(100, value))
+  const n = points.length
+  const dx = Array.from({ length: n - 1 }, (_, index) => Math.max(1e-6, points[index + 1].x - points[index].x))
+  const slope = Array.from({ length: n - 1 }, (_, index) => (points[index + 1].y - points[index].y) / dx[index])
+  const tangent = Array.from({ length: n }, () => 0)
+  tangent[0] = slope[0]
+  tangent[n - 1] = slope[n - 2]
+  for (let index = 1; index < n - 1; index += 1) {
+    tangent[index] = (slope[index - 1] + slope[index]) / 2
+  }
+  for (let index = 0; index < n - 1; index += 1) {
+    if (Math.abs(slope[index]) <= 1e-12) {
+      tangent[index] = 0
+      tangent[index + 1] = 0
+      continue
+    }
+    const a = tangent[index] / slope[index]
+    const b = tangent[index + 1] / slope[index]
+    const h = Math.hypot(a, b)
+    if (h > 3) {
+      const t = 3 / h
+      tangent[index] = t * a * slope[index]
+      tangent[index + 1] = t * b * slope[index]
+    }
+  }
+
+  let path = `M ${points[0].x.toFixed(3)} ${points[0].y.toFixed(3)}`
+  for (let index = 0; index < n - 1; index += 1) {
+    const p0 = points[index]
+    const p1 = points[index + 1]
+    const h = dx[index]
+    const cp1x = clampSvgCoord(p0.x + (h / 3))
+    const cp1y = clampSvgCoord(p0.y + ((tangent[index] * h) / 3))
+    const cp2x = clampSvgCoord(p1.x - (h / 3))
+    const cp2y = clampSvgCoord(p1.y - ((tangent[index + 1] * h) / 3))
+    path += ` C ${cp1x.toFixed(3)} ${cp1y.toFixed(3)}, ${cp2x.toFixed(3)} ${cp2y.toFixed(3)}, ${clampSvgCoord(p1.x).toFixed(3)} ${clampSvgCoord(p1.y).toFixed(3)}`
+  }
+  return path
+}
+
 function toNumberArray(value: unknown): number[] {
   if (!Array.isArray(value)) {
     return []
@@ -295,6 +351,7 @@ type MomentumYearBreakdown = {
 
 type MomentumWindowMode = '12m' | '5y'
 type PublicationsWindowMode = '1y' | '3y' | '5y' | 'all'
+type PublicationTrendsVisualMode = 'bars' | 'line'
 type PublicationCategoryValueMode = 'absolute' | 'percentage'
 type PublicationCategoryDisplayMode = 'chart' | 'table'
 type HIndexViewMode = 'trajectory' | 'needed'
@@ -314,6 +371,10 @@ const PUBLICATIONS_WINDOW_OPTIONS: Array<{ value: PublicationsWindowMode; label:
   { value: '3y', label: '3y' },
   { value: '5y', label: '5y' },
   { value: 'all', label: 'Life' },
+]
+const PUBLICATION_TRENDS_VISUAL_OPTIONS: Array<{ value: PublicationTrendsVisualMode; label: string }> = [
+  { value: 'bars', label: 'Bar view' },
+  { value: 'line', label: 'Line view' },
 ]
 const PUBLICATION_VALUE_MODE_OPTIONS: Array<{ value: PublicationCategoryValueMode; label: string }> = [
   { value: 'absolute', label: 'Absolute' },
@@ -352,6 +413,7 @@ const HOUSE_TOGGLE_TRACK_CLASS = publicationsHouseMotion.toggleTrack
 const HOUSE_TOGGLE_THUMB_CLASS = publicationsHouseMotion.toggleThumb
 const HOUSE_TOGGLE_BUTTON_CLASS = publicationsHouseMotion.toggleButton
 const HOUSE_TOGGLE_CHART_BAR_CLASS = publicationsHouseMotion.toggleChartBar
+const HOUSE_TOGGLE_CHART_LINE_CLASS = publicationsHouseMotion.toggleChartLine
 const HOUSE_TOGGLE_CHART_MORPH_CLASS = publicationsHouseMotion.toggleChartMorph
 const HOUSE_TOGGLE_CHART_SWAP_CLASS = publicationsHouseMotion.toggleChartSwap
 const HOUSE_TOGGLE_CHART_LABEL_CLASS = publicationsHouseMotion.toggleChartLabel
@@ -517,6 +579,61 @@ function buildTileToggleThumbStyle(activeIndex: number, optionCount: number): CS
     left: `${leftPercent}%`,
     willChange: 'left,width',
   }
+}
+
+function PublicationTrendsVisualToggle({
+  value,
+  onChange,
+}: {
+  value: PublicationTrendsVisualMode
+  onChange: (mode: PublicationTrendsVisualMode) => void
+}) {
+  return (
+    <div className="inline-flex items-center gap-1 rounded-md border border-border bg-background p-1" data-stop-tile-open="true">
+      {PUBLICATION_TRENDS_VISUAL_OPTIONS.map((option) => {
+        const isActive = value === option.value
+        return (
+          <button
+            key={`pub-trends-visual-${option.value}`}
+            type="button"
+            data-stop-tile-open="true"
+            aria-label={option.label}
+            aria-pressed={isActive}
+            className={cn(
+              'inline-flex h-7 w-7 items-center justify-center rounded-md border text-[hsl(var(--tone-neutral-700))] transition-colors',
+              isActive
+                ? 'border-border bg-accent text-foreground'
+                : 'border-transparent text-muted-foreground hover:bg-accent/60',
+            )}
+            onClick={(event) => {
+              event.stopPropagation()
+              if (isActive) {
+                return
+              }
+              onChange(option.value)
+            }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            {option.value === 'bars' ? (
+              <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5 fill-current">
+                <rect x="2" y="8.5" width="2.2" height="5.5" rx="0.6" />
+                <rect x="6.3" y="5.8" width="2.2" height="8.2" rx="0.6" />
+                <rect x="10.6" y="3.5" width="2.2" height="10.5" rx="0.6" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5">
+                <polyline points="2,11 6,8 9,9 14,4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="2" cy="11" r="1.1" fill="currentColor" />
+                <circle cx="6" cy="8" r="1.1" fill="currentColor" />
+                <circle cx="9" cy="9" r="1.1" fill="currentColor" />
+                <circle cx="14" cy="4" r="1.1" fill="currentColor" />
+              </svg>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
 function prefersReducedMotion(): boolean {
@@ -1856,6 +1973,9 @@ export function PublicationsPerYearChart({
   activeWindowMode,
   onWindowModeChange,
   showWindowToggle = true,
+  visualMode,
+  onVisualModeChange,
+  showVisualModeToggle = false,
 }: {
   tile: PublicationMetricTilePayload
   showCaption?: boolean
@@ -1876,12 +1996,25 @@ export function PublicationsPerYearChart({
   activeWindowMode?: PublicationsWindowMode
   onWindowModeChange?: (mode: PublicationsWindowMode) => void
   showWindowToggle?: boolean
+  visualMode?: PublicationTrendsVisualMode
+  onVisualModeChange?: (mode: PublicationTrendsVisualMode) => void
+  showVisualModeToggle?: boolean
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [windowMode, setWindowMode] = useState<PublicationsWindowMode>('5y')
+  const [localVisualMode, setLocalVisualMode] = useState<PublicationTrendsVisualMode>('bars')
   const effectiveWindowMode: PublicationsWindowMode = enableWindowToggle
     ? (activeWindowMode ?? windowMode)
     : 'all'
+  const effectiveVisualMode: PublicationTrendsVisualMode = visualMode ?? localVisualMode
+  const setEffectiveVisualMode = (mode: PublicationTrendsVisualMode) => {
+    if (visualMode === undefined) {
+      setLocalVisualMode(mode)
+    }
+    if (onVisualModeChange) {
+      onVisualModeChange(mode)
+    }
+  }
   useEffect(() => {
     if (!enableWindowToggle) {
       return
@@ -1939,6 +2072,32 @@ export function PublicationsPerYearChart({
     current: boolean
     axisLabel: string
     axisSubLabel?: string
+  }
+
+  type PublicationLineAxisTick = {
+    key: string
+    label: string
+    subLabel?: string
+    leftPct: number
+  }
+
+  const parseYearRangeFromBarKey = (key: string): { startYear: number; endYear: number } | null => {
+    const raw = String(key || '').trim()
+    if (!raw) {
+      return null
+    }
+    const segments = raw.split('-')
+    const first = Number(segments[0])
+    const last = Number(segments[segments.length - 1])
+    if (!Number.isFinite(first) || !Number.isFinite(last)) {
+      return null
+    }
+    const startYear = Math.round(Math.min(first, last))
+    const endYear = Math.round(Math.max(first, last))
+    if (startYear < 1900 || endYear < 1900 || endYear < startYear) {
+      return null
+    }
+    return { startYear, endYear }
   }
 
   type PublicationYearWindowBars = {
@@ -2123,20 +2282,34 @@ export function PublicationsPerYearChart({
     () => renderBars.map((bar) => Math.max(0, bar.value)),
     [renderBars],
   )
+  const renderedCumulativeValuesTarget = useMemo(() => {
+    let runningTotal = 0
+    return renderedValuesTarget.map((value) => {
+      runningTotal += Math.max(0, value)
+      return runningTotal
+    })
+  }, [renderedValuesTarget])
   const renderedValuesAnimated = renderedValuesTarget
+  const renderedCumulativeValuesAnimated = renderedCumulativeValuesTarget
 
   useEffect(() => {
     setHoveredIndex(null)
   }, [animationKey])
 
+  const valuesForScale = effectiveVisualMode === 'line' ? renderedCumulativeValuesTarget : renderedValuesTarget
   const maxValue = Math.max(
     1,
-    ...renderedValuesTarget,
+    ...valuesForScale,
   )
   const maxYearlyValue = Math.max(1, ...historyBars.map((bar) => Math.max(0, bar.value)))
   const maxMonthlyValue = Math.max(0, ...groupedMonthBars.bars.map((bar) => Math.max(0, bar.value)))
-  const maxWindowValue = Math.max(maxYearlyValue, maxMonthlyValue)
-  const maxAnimatedDisplayValue = Math.max(1, maxWindowValue * 1.5)
+  const maxWindowValueBars = Math.max(maxYearlyValue, maxMonthlyValue)
+  const maxWindowValueLine = Math.max(
+    1,
+    historyBars.reduce((sum, bar) => sum + Math.max(0, bar.value), 0),
+  )
+  const maxWindowValue = effectiveVisualMode === 'line' ? maxWindowValueLine : maxWindowValueBars
+  const maxAnimatedDisplayValue = Math.max(1, Math.max(maxWindowValue, maxValue) * 1.5)
   const stableAxisScale = enableWindowToggle && !autoScaleByWindow ? buildNiceAxis(maxWindowValue) : null
   const targetAxisScale = showAxes
     ? stableAxisScale || buildNiceAxis(maxValue)
@@ -2164,8 +2337,59 @@ export function PublicationsPerYearChart({
   const yAxisTickValues = yAxisTickRatios.map((ratio) => ratio * axisMax)
   const hideYearTickTabs = false
   const showXAxisTickTabs = !hideYearTickTabs
+  const buildLineModeTicksForWindow = (mode: PublicationsWindowMode): PublicationLineAxisTick[] => {
+    const positions = [0, 0.5, 1]
+    if (mode === 'all') {
+      const firstYear = historyBars[0]?.year
+      const lastYear = historyBars[historyBars.length - 1]?.year
+      if (!Number.isFinite(firstYear) || !Number.isFinite(lastYear)) {
+        return []
+      }
+      const startYear = Number(firstYear)
+      const endYear = Number(lastYear)
+      return positions.map((position, index) => {
+        const interpolatedYear = Math.round(startYear + ((endYear - startYear) * position))
+        return {
+          key: `line-axis-${mode}-${index}`,
+          label: String(interpolatedYear),
+          subLabel: undefined,
+          leftPct: position * 100,
+        }
+      })
+    }
+    const totalMonths = mode === '1y'
+      ? 12
+      : mode === '3y'
+        ? 36
+        : 60
+    const trailingMonthStarts = buildTrailingMonthStarts(totalMonths, true)
+    if (!trailingMonthStarts.length) {
+      return []
+    }
+    return positions.map((position, index) => {
+      const rawMonthIndex = Math.round((trailingMonthStarts.length - 1) * position)
+      const monthIndex = Math.max(0, Math.min(trailingMonthStarts.length - 1, rawMonthIndex))
+      const date = trailingMonthStarts[monthIndex]
+      return {
+        key: `line-axis-${mode}-${index}`,
+        label: MONTH_SHORT[date.getUTCMonth()],
+        subLabel: String(date.getUTCFullYear()),
+        leftPct: position * 100,
+      }
+    })
+  }
+  const lineModeXAxisTicks = useMemo(
+    () => (effectiveVisualMode === 'line' ? buildLineModeTicksForWindow(effectiveWindowMode) : []),
+    [effectiveVisualMode, effectiveWindowMode, historyBars],
+  )
   const activePeriodRangeLabel = usingMonthlyBars ? groupedMonthBars.rangeLabel : activeWindowBars.rangeLabel
-  const resolveXAxisTitleForWindowMode = (mode: PublicationsWindowMode): string => {
+  const resolveXAxisTitleForWindowMode = (
+    mode: PublicationsWindowMode,
+    visualMode: PublicationTrendsVisualMode = effectiveVisualMode,
+  ): string => {
+    if (visualMode === 'line') {
+      return 'Date'
+    }
     if (mode === '1y') {
       return 'Publication month'
     }
@@ -2176,38 +2400,46 @@ export function PublicationsPerYearChart({
   }
   const resolvedXAxisLabel = usingMonthlyBars
     ? resolveXAxisTitleForWindowMode('1y')
-    : (hideYearTickTabs && activePeriodRangeLabel
-      ? `${resolveXAxisTitleForWindowMode(effectiveWindowMode)} (${activePeriodRangeLabel})`
-      : resolveXAxisTitleForWindowMode(effectiveWindowMode))
+      : (hideYearTickTabs && activePeriodRangeLabel
+        ? `${resolveXAxisTitleForWindowMode(effectiveWindowMode)} (${activePeriodRangeLabel})`
+        : resolveXAxisTitleForWindowMode(effectiveWindowMode))
   const stableToggleTickValues = enableWindowToggle ? buildNiceAxis(maxWindowValue).ticks : yAxisTickValues
-  const gridTickRatios = yAxisTickRatios.slice(1)
-  const xAxisLabelLayout = enableWindowToggle && !hideYearTickTabs
-    ? mergeChartAxisLayouts(
-      PUBLICATIONS_WINDOW_OPTIONS.map((option) => {
-        const optionWindowBars = resolveBarsForWindowMode(option.value)
-        const optionBars = optionWindowBars.bars
-        return buildChartAxisLayout({
-          axisLabels: optionBars.map((bar) => bar.axisLabel),
-          axisSubLabels: optionBars.map((bar) => bar.axisSubLabel || null),
-          showXAxisName: showAxes,
-          xAxisName: showAxes ? resolveXAxisTitleForWindowMode(option.value) : null,
-          dense: optionBars.length >= 7 || option.value === '1y',
-          maxLabelLines: 2,
-          maxSubLabelLines: 2,
-          maxAxisNameLines: 2,
-        })
-      }),
-    )
-    : buildChartAxisLayout({
-      axisLabels: showXAxisTickTabs ? renderBars.map((bar) => bar.axisLabel) : [],
-      axisSubLabels: showXAxisTickTabs ? renderBars.map((bar) => bar.axisSubLabel || null) : [],
+  const gridTickRatios = effectiveVisualMode === 'line' ? yAxisTickRatios : yAxisTickRatios.slice(1)
+  const buildXAxisLayoutForWindow = (
+    mode: PublicationsWindowMode,
+    visualMode: PublicationTrendsVisualMode,
+  ): ChartAxisLayout => {
+    const optionWindowBars = resolveBarsForWindowMode(mode)
+    const optionBars = optionWindowBars.bars
+    const optionLineTicks = buildLineModeTicksForWindow(mode)
+    const axisLabels = visualMode === 'line'
+      ? optionLineTicks.map((tick) => tick.label)
+      : optionBars.map((bar) => bar.axisLabel)
+    const axisSubLabels = visualMode === 'line'
+      ? optionLineTicks.map((tick) => tick.subLabel || null)
+      : optionBars.map((bar) => bar.axisSubLabel || null)
+    return buildChartAxisLayout({
+      axisLabels,
+      axisSubLabels,
       showXAxisName: showAxes,
-      xAxisName: showAxes ? resolvedXAxisLabel : null,
-      dense: renderBars.length >= 7 || usingMonthlyBars,
+      xAxisName: showAxes ? resolveXAxisTitleForWindowMode(mode, visualMode) : null,
+      dense: visualMode === 'line' ? false : optionBars.length >= 7 || mode === '1y',
       maxLabelLines: 2,
       maxSubLabelLines: 2,
       maxAxisNameLines: 2,
     })
+  }
+  const xAxisLabelLayout = enableWindowToggle && !hideYearTickTabs
+    ? mergeChartAxisLayouts(
+      PUBLICATIONS_WINDOW_OPTIONS.flatMap((option) => ([
+        buildXAxisLayoutForWindow(option.value, 'bars'),
+        buildXAxisLayoutForWindow(option.value, 'line'),
+      ])),
+    )
+    : mergeChartAxisLayouts([
+      buildXAxisLayoutForWindow(effectiveWindowMode, 'bars'),
+      buildXAxisLayoutForWindow(effectiveWindowMode, 'line'),
+    ])
   const yAxisPanelWidthRem = showAxes
     ? buildYAxisPanelWidthRem(stableToggleTickValues, Boolean(yAxisLabel))
     : 0
@@ -2253,9 +2485,16 @@ export function PublicationsPerYearChart({
     paddingBottom: `${xAxisLabelLayout.framePaddingBottomRem}rem`,
   }
   const yAxisTickOffsetRem = PUBLICATIONS_CHART_Y_AXIS_TICK_OFFSET_REM
-  const gridLineToneClass = subtleGrid ? HOUSE_CHART_GRID_LINE_SUBTLE_CLASS : HOUSE_CHART_GRID_LINE_CLASS
+  const gridLineToneClass = effectiveVisualMode === 'line'
+    ? HOUSE_CHART_GRID_LINE_SUBTLE_CLASS
+    : subtleGrid
+      ? HOUSE_CHART_GRID_LINE_SUBTLE_CLASS
+      : HOUSE_CHART_GRID_LINE_CLASS
   const computeBarHeightPct = (value: number): number => (
     value <= 0 ? 3 : Math.min(100, Math.max(6, (value / barHeightAxisMax) * 100))
+  )
+  const computeLineHeightPct = (value: number): number => (
+    value <= 0 ? 0 : Math.max(0, Math.min(100, (value / barHeightAxisMax) * 100))
   )
   const useCurrentPeriodBarTone = showCurrentPeriodSemantic && usingMonthlyBars
   const resolveBarToneClass = (barValue: number, isCurrentPeriod: boolean): string => {
@@ -2279,6 +2518,65 @@ export function PublicationsPerYearChart({
   const rightMetaVisible = showPeriodHint
   const rightMetaText = periodHintText
   const rightMetaOpaque = periodHintVisible
+  const controlsRightVisible = rightMetaVisible || showVisualModeToggle
+  const lineSeriesPoints = renderBars.map((bar, index) => {
+    const rawAnimatedValue = renderedCumulativeValuesAnimated[index]
+    const fallbackValue = renderedCumulativeValuesTarget[index] ?? 0
+    const finiteAnimatedValue = Number.isFinite(rawAnimatedValue) ? rawAnimatedValue : fallbackValue
+    const animatedValue = Math.max(0, Math.min(maxAnimatedDisplayValue, finiteAnimatedValue))
+    const xPct = (() => {
+      if (effectiveVisualMode !== 'line') {
+        return (index * slotMetrics.slotStepPct) + (slotMetrics.slotWidthPct / 2)
+      }
+      const fallbackEven = renderBars.length <= 1 ? 1 : (index / Math.max(1, renderBars.length - 1))
+      if (usingMonthlyBars) {
+        const monthStarts = buildTrailingMonthStarts(renderBars.length, true)
+        if (monthStarts.length !== renderBars.length || !monthStarts.length) {
+          return fallbackEven * 100
+        }
+        const startMs = monthStarts[0].getTime()
+        const endBoundaryMs = Date.UTC(
+          monthStarts[monthStarts.length - 1].getUTCFullYear(),
+          monthStarts[monthStarts.length - 1].getUTCMonth() + 1,
+          1,
+        )
+        const spanMs = Math.max(1, endBoundaryMs - startMs)
+        const pointMs = monthStarts[index].getTime()
+        const normalized = Math.max(0, Math.min(1, (pointMs - startMs) / spanMs))
+        return normalized * 100
+      }
+      const parsedRanges = renderBars.map((item) => parseYearRangeFromBarKey(item.key))
+      if (parsedRanges.some((item) => item === null)) {
+        return fallbackEven * 100
+      }
+      const resolvedRanges = parsedRanges as Array<{ startYear: number; endYear: number }>
+      const startMs = Date.UTC(resolvedRanges[0].startYear, 0, 1)
+      const endMs = Date.UTC(resolvedRanges[resolvedRanges.length - 1].endYear + 1, 0, 1)
+      const spanMs = Math.max(1, endMs - startMs)
+      const pointMs = Date.UTC(resolvedRanges[index].endYear, 11, 31)
+      const normalized = Math.max(0, Math.min(1, (pointMs - startMs) / spanMs))
+      return normalized * 100
+    })()
+    const yPct = computeLineHeightPct(animatedValue)
+    return {
+      key: bar.key,
+      xPct,
+      yPct,
+      value: animatedValue,
+    }
+  })
+  const lineSeriesPathPointsBase = lineSeriesPoints.map((point) => ({
+    x: Math.max(0, Math.min(100, point.xPct)),
+    y: Math.max(0, Math.min(100, 100 - point.yPct)),
+  }))
+  const lineSeriesPathPoints = effectiveVisualMode === 'line'
+    ? [{ x: 0, y: 100 }, ...lineSeriesPathPointsBase]
+    : lineSeriesPathPointsBase
+  const lineSeriesPath = buildSmoothSvgPath(lineSeriesPathPoints)
+  const lineSeriesPathLength = estimatePolylineLength(lineSeriesPathPoints)
+  const lineModeVerticalGridPercents = effectiveVisualMode === 'line'
+    ? (effectiveWindowMode === '5y' ? [40, 80] : [50])
+    : []
 
   if (!hasBars) {
     return <div className={dashboardTileStyles.emptyChart}>No publication timeline</div>
@@ -2296,7 +2594,7 @@ export function PublicationsPerYearChart({
         </p>
       ) : null}
       {enableWindowToggle && showWindowToggle ? (
-        <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, rightMetaVisible ? 'justify-between' : 'justify-start')}>
+        <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, controlsRightVisible ? 'justify-between' : 'justify-start')}>
           <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
             <div
               className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
@@ -2338,18 +2636,28 @@ export function PublicationsPerYearChart({
                 ))}
             </div>
           </div>
-          {rightMetaVisible ? (
-            <p
-              className={cn(
-                HOUSE_DRILLDOWN_CHART_META_CLASS,
-                HOUSE_HEADING_LABEL_CLASS,
-                HOUSE_TOGGLE_CHART_LABEL_CLASS,
-                rightMetaOpaque ? 'opacity-100' : 'opacity-0',
-              )}
-              aria-live="polite"
-            >
-              {rightMetaText}
-            </p>
+          {controlsRightVisible ? (
+            <div className="flex items-center gap-2">
+              {rightMetaVisible ? (
+                <p
+                  className={cn(
+                    HOUSE_DRILLDOWN_CHART_META_CLASS,
+                    HOUSE_HEADING_LABEL_CLASS,
+                    HOUSE_TOGGLE_CHART_LABEL_CLASS,
+                    rightMetaOpaque ? 'opacity-100' : 'opacity-0',
+                  )}
+                  aria-live="polite"
+                >
+                  {rightMetaText}
+                </p>
+              ) : null}
+              {showVisualModeToggle ? (
+                <PublicationTrendsVisualToggle
+                  value={effectiveVisualMode}
+                  onChange={setEffectiveVisualMode}
+                />
+              ) : null}
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -2363,7 +2671,7 @@ export function PublicationsPerYearChart({
         data-ui="publications-chart-frame"
         data-house-role="chart-frame"
       >
-        {showMeanValueLabel && meanValueDisplay ? (
+        {showMeanValueLabel && meanValueDisplay && effectiveVisualMode !== 'line' ? (
           <p
               className={cn(
                 HOUSE_DRILLDOWN_CHART_META_CLASS,
@@ -2374,16 +2682,37 @@ export function PublicationsPerYearChart({
             Mean: {meanValueDisplay}
           </p>
         ) : null}
-        <div className="absolute" style={plotAreaStyle}>
+        <div className="absolute overflow-hidden" style={plotAreaStyle}>
           {gridTickRatios.map((ratio, index) => (
             <div
               key={`pub-grid-${index}`}
               className={cn('pointer-events-none absolute inset-x-0', gridLineToneClass, HOUSE_CHART_SCALE_LAYER_CLASS)}
-              style={{ bottom: `${Math.max(0, Math.min(100, ratio * 100))}%` }}
+              style={{
+                bottom: `${Math.max(0, Math.min(100, ratio * 100))}%`,
+                borderTop: effectiveVisualMode === 'line'
+                  ? `1px solid hsl(var(--stroke-soft) / ${ratio <= 0.0001 ? 0.95 : 0.76})`
+                  : undefined,
+              }}
               aria-hidden="true"
             />
           ))}
-          {showMeanLine ? (
+          {effectiveVisualMode === 'line' && lineModeVerticalGridPercents.length ? (
+            <svg className="pointer-events-none absolute inset-0 z-[1]" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              {lineModeVerticalGridPercents.map((leftPct, index) => (
+                <line
+                  key={`pub-line-grid-${index}`}
+                  x1={leftPct}
+                  y1={0}
+                  x2={leftPct}
+                  y2={100}
+                  stroke="hsl(var(--tone-neutral-500) / 0.62)"
+                  strokeWidth="1.2"
+                  vectorEffect="non-scaling-stroke"
+                />
+              ))}
+            </svg>
+          ) : null}
+          {showMeanLine && effectiveVisualMode !== 'line' ? (
             <div
               className={cn(
                 'pointer-events-none absolute inset-x-0',
@@ -2398,16 +2727,39 @@ export function PublicationsPerYearChart({
               aria-hidden="true"
             />
           ) : null}
+          {effectiveVisualMode === 'line' && lineSeriesPath ? (
+            <svg className="pointer-events-none absolute inset-0 z-[2]" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <path
+                d={lineSeriesPath}
+                className={cn(HOUSE_TOGGLE_CHART_LINE_CLASS, HOUSE_CHART_LINE_SOFT_SVG_CLASS)}
+                data-expanded="true"
+                style={{
+                  fill: 'none',
+                  strokeWidth: 1.2,
+                  transitionDuration: barTransitionDuration,
+                  ['--chart-path-length' as '--chart-path-length']: `${Math.max(1, lineSeriesPathLength)}`,
+                } as CSSProperties}
+              />
+            </svg>
+          ) : null}
           <div className="absolute inset-0" data-ui="chart-bars" data-house-role="chart-bars">
             {renderBars.map((bar, index) => {
               const rawAnimatedValue = renderedValuesAnimated[index]
               const finiteAnimatedValue = Number.isFinite(rawAnimatedValue) ? rawAnimatedValue : bar.value
               const animatedValue = Math.max(0, Math.min(maxAnimatedDisplayValue, finiteAnimatedValue))
+              const rawLineAnimatedValue = renderedCumulativeValuesAnimated[index]
+              const fallbackLineValue = renderedCumulativeValuesTarget[index] ?? 0
+              const finiteLineAnimatedValue = Number.isFinite(rawLineAnimatedValue) ? rawLineAnimatedValue : fallbackLineValue
+              const lineAnimatedValue = Math.max(0, Math.min(maxAnimatedDisplayValue, finiteLineAnimatedValue))
               const heightPct = computeBarHeightPct(animatedValue)
+              const lineHeightPct = computeLineHeightPct(lineAnimatedValue)
+              const tooltipAnchorHeightPct = effectiveVisualMode === 'line' ? lineHeightPct : heightPct
+              const tooltipValue = effectiveVisualMode === 'line' ? lineAnimatedValue : bar.value
               const leftPct = index * slotMetrics.slotStepPct
               const isActive = hoveredIndex === index
               const toneClass = resolveBarToneClass(bar.value, bar.current)
               const baseScaleX = isActive ? 1.035 : 1
+              const barScaleY = effectiveVisualMode === 'bars' && barsExpanded ? 1 : 0
               const entryDelayMs = isEntryCycle && barsExpanded
                 ? TILE_MOTION_ENTRY_START_DELAY_MS + Math.min(TILE_MOTION_ENTRY_STAGGER_MAX_MS, Math.max(0, index) * TILE_MOTION_ENTRY_BAR_STAGGER_MS)
                 : 0
@@ -2428,10 +2780,10 @@ export function PublicationsPerYearChart({
                       HOUSE_DRILLDOWN_TOOLTIP_CLASS,
                       isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
                     )}
-                    style={{ bottom: `calc(${heightPct}% + ${PUBLICATIONS_CHART_TOOLTIP_OFFSET_REM}rem)` }}
+                    style={{ bottom: `calc(${tooltipAnchorHeightPct}% + ${PUBLICATIONS_CHART_TOOLTIP_OFFSET_REM}rem)` }}
                     aria-hidden="true"
                   >
-                    {formatInt(bar.value)}
+                    {formatInt(tooltipValue)}
                   </span>
                   <span
                     className={cn(
@@ -2439,12 +2791,13 @@ export function PublicationsPerYearChart({
                       HOUSE_TOGGLE_CHART_BAR_CLASS,
                       enableWindowToggle && HOUSE_TOGGLE_CHART_MORPH_CLASS,
                       enableWindowToggle && HOUSE_TOGGLE_CHART_SWAP_CLASS,
+                      effectiveVisualMode === 'line' && 'opacity-0',
                       toneClass,
                       isActive && 'brightness-[1.08] saturate-[1.14]',
                     )}
                     style={{
                       height: `${heightPct}%`,
-                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${baseScaleX}) scaleY(${barsExpanded ? 1 : 0})`,
+                      transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${baseScaleX}) scaleY(${barScaleY})`,
                       transformOrigin: 'bottom',
                       transitionDelay: `${entryDelayMs}ms`,
                       transitionDuration: barTransitionDuration,
@@ -2477,20 +2830,73 @@ export function PublicationsPerYearChart({
         ) : null}
 
         {showXAxisTickTabs ? (
-          <div className={cn('pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1', HOUSE_TOGGLE_CHART_LABEL_CLASS)} style={xAxisTicksStyle}>
-            {renderBars.map((bar, index) => (
-              <div key={`${bar.key}-${index}-axis`} className="house-chart-axis-period-item text-center leading-none">
-                <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>
-                  {bar.axisLabel}
-                </p>
-                {bar.axisSubLabel ? (
-                  <p className={cn(HOUSE_CHART_AXIS_SUBTEXT_CLASS, HOUSE_CHART_AXIS_PERIOD_TAG_CLASS, 'break-words px-0.5')}>
-                    {bar.axisSubLabel}
+          effectiveVisualMode === 'line' ? (
+            <div
+              className={cn('pointer-events-none absolute', HOUSE_TOGGLE_CHART_LABEL_CLASS, HOUSE_CHART_SCALE_LAYER_CLASS)}
+              style={xAxisTicksStyle}
+            >
+              {lineModeXAxisTicks.map((tick, index) => {
+                const lastIndex = lineModeXAxisTicks.length - 1
+                const isFirst = index === 0
+                const isLast = index === lastIndex
+                const tickRoleLabel = isFirst ? 'Start' : isLast ? 'End' : 'Middle'
+                return (
+                  <div
+                    key={tick.key}
+                    className={cn(
+                      'house-chart-axis-period-item absolute top-0 leading-none',
+                      HOUSE_CHART_SCALE_TICK_CLASS,
+                    )}
+                    style={{
+                      left: `${tick.leftPct}%`,
+                      transform: isFirst ? 'translateX(0)' : isLast ? 'translateX(-100%)' : 'translateX(-50%)',
+                      transitionDuration: `${axisDurationMs}ms`,
+                      transitionProperty: 'left, opacity',
+                    }}
+                    aria-label={`${tickRoleLabel}: ${tick.label}${tick.subLabel ? ` ${tick.subLabel}` : ''}`}
+                  >
+                    <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>
+                      {tick.label}
+                    </p>
+                    {tick.subLabel ? (
+                      <p className={cn(HOUSE_CHART_AXIS_SUBTEXT_CLASS, HOUSE_CHART_AXIS_PERIOD_TAG_CLASS, 'break-words px-0.5')}>
+                        {tick.subLabel}
+                      </p>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div
+              className={cn(
+                'pointer-events-none absolute grid grid-flow-col auto-cols-fr items-start gap-1',
+                HOUSE_TOGGLE_CHART_LABEL_CLASS,
+                HOUSE_CHART_SCALE_LAYER_CLASS,
+              )}
+              style={xAxisTicksStyle}
+            >
+              {renderBars.map((bar, index) => (
+                <div
+                  key={`${bar.key}-${index}-axis`}
+                  className={cn(
+                    'house-chart-axis-period-item text-center leading-none',
+                    HOUSE_CHART_SCALE_TICK_CLASS,
+                  )}
+                  style={{ transitionDuration: barTransitionDuration }}
+                >
+                  <p className={cn(HOUSE_CHART_AXIS_TEXT_TREND_CLASS, 'break-words px-0.5 leading-[1.05]')}>
+                    {bar.axisLabel}
                   </p>
-                ) : null}
-              </div>
-            ))}
-          </div>
+                  {bar.axisSubLabel ? (
+                    <p className={cn(HOUSE_CHART_AXIS_SUBTEXT_CLASS, HOUSE_CHART_AXIS_PERIOD_TAG_CLASS, 'break-words px-0.5')}>
+                      {bar.axisSubLabel}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )
         ) : null}
 
         {showAxes ? (
@@ -2503,7 +2909,7 @@ export function PublicationsPerYearChart({
               minHeight: `${xAxisLabelLayout.xAxisNameMinHeightRem}rem`,
             }}
           >
-            <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, 'break-words text-center leading-tight')}>
+            <p className={cn(HOUSE_CHART_AXIS_TITLE_CLASS, HOUSE_CHART_SCALE_AXIS_TITLE_CLASS, 'break-words text-center leading-tight')}>
               {resolvedXAxisLabel}
             </p>
           </div>
@@ -4031,6 +4437,7 @@ function TotalPublicationsDrilldownWorkspace({
 }) {
   void _onOpenPublication
   const [publicationTrendsWindowMode, setPublicationTrendsWindowMode] = useState<PublicationsWindowMode>('5y')
+  const [publicationTrendsVisualMode, setPublicationTrendsVisualMode] = useState<PublicationTrendsVisualMode>('bars')
   const publicationTrendsWindowIndex = Math.max(
     0,
     PUBLICATIONS_WINDOW_OPTIONS.findIndex((option) => option.value === publicationTrendsWindowMode),
@@ -4038,6 +4445,7 @@ function TotalPublicationsDrilldownWorkspace({
 
   useEffect(() => {
     setPublicationTrendsWindowMode('5y')
+    setPublicationTrendsVisualMode('bars')
   }, [tile.key])
 
   const headlineMetricTiles = useMemo(() => {
@@ -4196,43 +4604,49 @@ function TotalPublicationsDrilldownWorkspace({
               <p className="house-drilldown-heading-block-title">Publication trends</p>
             </div>
             <div className="house-drilldown-content-block w-full">
-              <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
-                <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
-                  <div
-                    className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
-                    data-stop-tile-open="true"
-                    data-ui="publications-trends-window-toggle"
-                    data-house-role="chart-toggle"
-                  >
-                    <span
-                      className={HOUSE_TOGGLE_THUMB_CLASS}
-                      style={buildTileToggleThumbStyle(publicationTrendsWindowIndex, PUBLICATIONS_WINDOW_OPTIONS.length)}
-                      aria-hidden="true"
-                    />
-                    {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
-                      <button
-                        key={`pub-trends-window-${option.value}`}
-                        type="button"
-                        data-stop-tile-open="true"
-                        className={cn(
-                          HOUSE_TOGGLE_BUTTON_CLASS,
-                          publicationTrendsWindowMode === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
-                        )}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          if (publicationTrendsWindowMode === option.value) {
-                            return
-                          }
-                          setPublicationTrendsWindowMode(option.value)
-                        }}
-                        onMouseDown={(event) => event.stopPropagation()}
-                        aria-pressed={publicationTrendsWindowMode === option.value}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
+              <div className={cn(HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS, 'justify-between')}>
+                <div className={HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS}>
+                  <div className="house-approved-toggle-context inline-flex items-center" data-stop-tile-open="true">
+                    <div
+                      className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-4')}
+                      data-stop-tile-open="true"
+                      data-ui="publications-trends-window-toggle"
+                      data-house-role="chart-toggle"
+                    >
+                      <span
+                        className={HOUSE_TOGGLE_THUMB_CLASS}
+                        style={buildTileToggleThumbStyle(publicationTrendsWindowIndex, PUBLICATIONS_WINDOW_OPTIONS.length)}
+                        aria-hidden="true"
+                      />
+                      {PUBLICATIONS_WINDOW_OPTIONS.map((option) => (
+                        <button
+                          key={`pub-trends-window-${option.value}`}
+                          type="button"
+                          data-stop-tile-open="true"
+                          className={cn(
+                            HOUSE_TOGGLE_BUTTON_CLASS,
+                            publicationTrendsWindowMode === option.value ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
+                          )}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            if (publicationTrendsWindowMode === option.value) {
+                              return
+                            }
+                            setPublicationTrendsWindowMode(option.value)
+                          }}
+                          onMouseDown={(event) => event.stopPropagation()}
+                          aria-pressed={publicationTrendsWindowMode === option.value}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
+                <PublicationTrendsVisualToggle
+                  value={publicationTrendsVisualMode}
+                  onChange={setPublicationTrendsVisualMode}
+                />
               </div>
 
               <div className="house-drilldown-content-block house-drilldown-summary-trend-chart house-publications-drilldown-summary-trend-chart-tall w-full">
@@ -4249,6 +4663,8 @@ function TotalPublicationsDrilldownWorkspace({
                   subtleGrid
                   activeWindowMode={publicationTrendsWindowMode}
                   onWindowModeChange={setPublicationTrendsWindowMode}
+                  visualMode={publicationTrendsVisualMode}
+                  onVisualModeChange={setPublicationTrendsVisualMode}
                   showWindowToggle={false}
                 />
               </div>
