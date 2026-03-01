@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Download, Eye, EyeOff, FileText, Share2 } from 'lucide-react'
+import { Download, Eye, EyeOff, FileText, Share2, Toolbox } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -308,7 +308,6 @@ const PUBLICATION_INSIGHTS_TITLE = 'Publication insights'
 const PUBLICATION_INSIGHTS_LABEL = 'publication insights'
 const HOUSE_HEADING_SECTION_TITLE_CLASS = publicationsHouseHeadings.sectionTitle
 const HOUSE_HEADING_H2_CLASS = publicationsHouseHeadings.h2
-const HOUSE_TEXT_CLASS = publicationsHouseHeadings.text
 const HOUSE_METRIC_SUBTITLE_CLASS = publicationsHouseHeadings.metricSubtitle
 const HOUSE_METRIC_DETAIL_CLASS = publicationsHouseHeadings.metricDetail
 const HOUSE_TILE_SUBTITLE_CLASS = cn('house-metric-subtitle-row', HOUSE_METRIC_SUBTITLE_CLASS)
@@ -340,7 +339,6 @@ const HOUSE_TOGGLE_CHART_MORPH_CLASS = publicationsHouseMotion.toggleChartMorph
 const HOUSE_TOGGLE_CHART_SWAP_CLASS = publicationsHouseMotion.toggleChartSwap
 const HOUSE_TOGGLE_CHART_LABEL_CLASS = publicationsHouseMotion.toggleChartLabel
 const HOUSE_SURFACE_SECTION_PANEL_CLASS = publicationsHouseSurfaces.sectionPanel
-const HOUSE_SURFACE_SOFT_PANEL_CLASS = publicationsHouseSurfaces.softPanel
 const HOUSE_SURFACE_STRONG_PANEL_CLASS = publicationsHouseSurfaces.strongPanel
 const HOUSE_SURFACE_PANEL_BARE_CLASS = publicationsHouseSurfaces.panelBare
 const HOUSE_SURFACE_BANNER_CLASS = publicationsHouseSurfaces.banner
@@ -362,50 +360,26 @@ const HOUSE_DRILLDOWN_SHEET_CLASS = publicationsHouseDrilldown.sheet
 const HOUSE_DRILLDOWN_PLACEHOLDER_CLASS = publicationsHouseDrilldown.placeholder
 const HOUSE_DRILLDOWN_ALERT_CLASS = publicationsHouseDrilldown.alert
 const HOUSE_DRILLDOWN_HINT_CLASS = publicationsHouseDrilldown.hint
-const HOUSE_DRILLDOWN_CAPTION_CLASS = publicationsHouseDrilldown.caption
-const HOUSE_DRILLDOWN_CHIP_CLASS = publicationsHouseDrilldown.chip
-const HOUSE_DRILLDOWN_CHIP_ACTIVE_CLASS = publicationsHouseDrilldown.chipActive
-const HOUSE_DRILLDOWN_ACTION_CLASS = publicationsHouseDrilldown.action
 const HOUSE_DRILLDOWN_ROW_CLASS = publicationsHouseDrilldown.row
-const HOUSE_DRILLDOWN_ROW_ACTIVE_CLASS = publicationsHouseDrilldown.rowActive
 const HOUSE_DRILLDOWN_PROGRESS_TRACK_CLASS = publicationsHouseDrilldown.progressTrack
-const HOUSE_DRILLDOWN_PROGRESS_FILL_CLASS = publicationsHouseDrilldown.progressFill
-const HOUSE_DRILLDOWN_STAT_CARD_CLASS = publicationsHouseDrilldown.statCard
 const HOUSE_DRILLDOWN_STAT_TITLE_CLASS = publicationsHouseDrilldown.statTitle
-const HOUSE_DRILLDOWN_STAT_VALUE_CLASS = publicationsHouseDrilldown.statValue
 const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_CLASS = publicationsHouseDrilldown.summaryStatValue
 const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_EMPHASIS_CLASS = publicationsHouseDrilldown.summaryStatValueEmphasis
 const HOUSE_DRILLDOWN_SUMMARY_STAT_TITLE_CLASS = publicationsHouseDrilldown.summaryStatTitle
 const HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_CLASS = publicationsHouseDrilldown.summaryStatCard
-const HOUSE_DRILLDOWN_SUMMARY_STAT_CARD_ACTIVE_CLASS = publicationsHouseDrilldown.summaryStatCardActive
 const HOUSE_DRILLDOWN_SUMMARY_STAT_VALUE_WRAP_CLASS = publicationsHouseDrilldown.summaryStatValueWrap
 const HOUSE_DRILLDOWN_TITLE_CLASS = publicationsHouseDrilldown.title
 const HOUSE_DRILLDOWN_TITLE_EXPANDER_CLASS = publicationsHouseDrilldown.titleExpander
 const HOUSE_DRILLDOWN_OVERLINE_CLASS = publicationsHouseDrilldown.overline
 const HOUSE_DRILLDOWN_SECTION_LABEL_CLASS = publicationsHouseDrilldown.sectionLabel
-const HOUSE_DRILLDOWN_AXIS_CLASS = publicationsHouseDrilldown.axis
-const HOUSE_DRILLDOWN_RANGE_CLASS = publicationsHouseDrilldown.range
-const HOUSE_DRILLDOWN_BADGE_CLASS = publicationsHouseDrilldown.badge
-const HOUSE_DRILLDOWN_BADGE_POSITIVE_CLASS = publicationsHouseDrilldown.badgePositive
-const HOUSE_DRILLDOWN_BADGE_WARNING_CLASS = publicationsHouseDrilldown.badgeWarning
-const HOUSE_DRILLDOWN_BADGE_NEUTRAL_CLASS = publicationsHouseDrilldown.badgeNeutral
 const HOUSE_DRILLDOWN_NOTE_CLASS = publicationsHouseDrilldown.note
 const HOUSE_DRILLDOWN_NOTE_SOFT_CLASS = publicationsHouseDrilldown.noteSoft
-const HOUSE_DRILLDOWN_DIVIDER_TOP_CLASS = publicationsHouseDrilldown.dividerTop
-const HOUSE_DRILLDOWN_CHART_GRID_SVG_CLASS = publicationsHouseDrilldown.chartGridSvg
-const HOUSE_DRILLDOWN_CHART_AREA_SVG_CLASS = publicationsHouseDrilldown.chartAreaSvg
-const HOUSE_DRILLDOWN_CHART_MOVING_SVG_CLASS = publicationsHouseDrilldown.chartMovingSvg
 const HOUSE_DRILLDOWN_CHART_MAIN_SVG_CLASS = publicationsHouseDrilldown.chartMainSvg
 const HOUSE_DRILLDOWN_CHART_TOOLTIP_CLASS = publicationsHouseDrilldown.chartTooltip
 const HOUSE_DRILLDOWN_SKELETON_BLOCK_CLASS = publicationsHouseDrilldown.skeletonBlock
-const HOUSE_DRILLDOWN_BAR_SELECTED_CLASS = publicationsHouseDrilldown.barSelected
-const HOUSE_DRILLDOWN_BAR_SELECTED_OUTLINE_CLASS = publicationsHouseDrilldown.barSelectedOutline
-const HOUSE_DRILLDOWN_TABLE_ROW_CLASS = publicationsHouseDrilldown.tableRow
 const HOUSE_DRILLDOWN_TABLE_EMPTY_CLASS = publicationsHouseDrilldown.tableEmpty
 const HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS = publicationsHouseDrilldown.toggleButtonMuted
 const HOUSE_DRILLDOWN_SUMMARY_STATS_GRID_CLASS = publicationsHouseDrilldown.summaryStatsGrid
-const HOUSE_DRILLDOWN_SUMMARY_STATS_COMPACT_GRID_CLASS = publicationsHouseDrilldown.summaryStatsGridCompact
-const HOUSE_DRILLDOWN_SUMMARY_TREND_CHART_CLASS = publicationsHouseDrilldown.summaryTrendChart
 const HOUSE_DRILLDOWN_CHART_CONTROLS_ROW_CLASS = publicationsHouseDrilldown.chartControlsRow
 const HOUSE_DRILLDOWN_CHART_CONTROLS_LEFT_CLASS = publicationsHouseDrilldown.chartControlsLeft
 const HOUSE_DRILLDOWN_CHART_META_CLASS = publicationsHouseDrilldown.chartMeta
@@ -3109,8 +3083,8 @@ function CollaborationStructurePanel({ tile }: { tile: PublicationMetricTilePayl
   )
 }
 
-type PublicationDrilldownSortKey = 'year' | 'title' | 'role' | 'type' | 'venue' | 'citations'
-type PublicationTrajectoryMode = 'raw' | 'moving_avg' | 'cumulative'
+export type PublicationDrilldownSortKey = 'year' | 'title' | 'role' | 'type' | 'venue' | 'citations'
+export type PublicationTrajectoryMode = 'raw' | 'moving_avg' | 'cumulative'
 
 type PublicationDrilldownRecord = {
   workId: string
@@ -3194,7 +3168,7 @@ function normalizeRoleLabel(value: string): string {
   return clean.charAt(0).toUpperCase() + clean.slice(1)
 }
 
-function median(values: number[]): number {
+export function median(values: number[]): number {
   if (!values.length) {
     return 0
   }
@@ -3235,7 +3209,7 @@ function categoryLabelFromPublication(
   return label
 }
 
-function PublicationCategoryDistributionChart({
+export function PublicationCategoryDistributionChart({
   publications,
   dimension,
   xAxisLabel,
@@ -3816,7 +3790,7 @@ function PublicationCategoryDistributionChart({
 function TotalPublicationsDrilldownWorkspace({
   tile,
   activeTab,
-  onOpenPublication,
+  onOpenPublication: _onOpenPublication,
 }: {
   tile: PublicationMetricTilePayload
   activeTab: DrilldownTab
@@ -3865,18 +3839,6 @@ function TotalPublicationsDrilldownWorkspace({
     }
     return output
   }, [publications])
-  const sortedPublications = useMemo(
-    () => [...publications].sort((left, right) => {
-      const leftYear = left.year || 0
-      const rightYear = right.year || 0
-      if (leftYear !== rightYear) {
-        return rightYear - leftYear
-      }
-      return right.citations - left.citations
-    }),
-    [publications],
-  )
-
   const activeYears = years.filter((year) => (countsByYear.get(year) || 0) > 0).length
   const meanPerActiveYear = activeYears > 0 ? Math.round(publications.length / activeYears) : 0
   const latestYear = years.length ? years[years.length - 1] : null
@@ -5186,6 +5148,9 @@ export function PublicationsTopStrip({
   const [insightsVisible, setInsightsVisible] = useState(
     () => forceInsightsVisible || readAccountSettings().publicationInsightsDefaultVisibility !== 'hidden',
   )
+  const [toolboxOpen, setToolboxOpen] = useState(
+    () => forceInsightsVisible || readAccountSettings().publicationInsightsDefaultVisibility !== 'hidden',
+  )
   const tileMotionStyle = useMemo(() => ({
     '--motion-duration-chart-refresh': `${TILE_MOTION_ENTRY_DURATION_MS}ms`,
     '--motion-duration-chart-toggle': `${TILE_MOTION_TOGGLE_DURATION_MS}ms`,
@@ -5249,6 +5214,7 @@ export function PublicationsTopStrip({
   useEffect(() => {
     if (forceInsightsVisible) {
       setInsightsVisible(true)
+      setToolboxOpen(true)
     }
   }, [forceInsightsVisible])
 
@@ -5293,7 +5259,7 @@ export function PublicationsTopStrip({
   }
 
   const activeDrilldownTitle = useMemo(() => {
-    const rawTitle = String(activeTile?.title || activeTile?.drilldown?.title || '').trim()
+    const rawTitle = String(activeTile?.label || activeTile?.drilldown?.title || '').trim()
     const baseTitle = (rawTitle || 'Publication metric').replace(/[.:;,\s]+$/g, '').trim()
     if (/insights?$/i.test(baseTitle)) {
       return baseTitle
@@ -5305,7 +5271,7 @@ export function PublicationsTopStrip({
       return `${baseTitle.replace(/publications$/i, 'publication')} insights`
     }
     return `${baseTitle} insights`
-  }, [activeTile?.drilldown?.title, activeTile?.title])
+  }, [activeTile?.drilldown?.title, activeTile?.label])
 
   return (
     <>
@@ -5314,43 +5280,21 @@ export function PublicationsTopStrip({
           <div className="house-main-heading-block">
             <div className="min-w-0 flex items-center gap-2">
               <p className={HOUSE_HEADING_SECTION_TITLE_CLASS}>{PUBLICATION_INSIGHTS_TITLE}</p>
-              <Button
-                type="button"
-                data-stop-tile-open="true"
-                variant="house"
-                size="icon"
-                className={cn(
-                  'h-8 w-8 house-publications-action-icon house-publications-action-eye',
-                  HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS,
-                  insightsVisible
-                    ? 'house-publications-action-eye-on'
-                    : 'house-publications-action-eye-off',
-                )}
-                onClick={() => setInsightsVisible((current) => !current)}
-                aria-pressed={insightsVisible}
-                aria-label={insightsVisible ? `Set ${PUBLICATION_INSIGHTS_LABEL} not visible` : `Set ${PUBLICATION_INSIGHTS_LABEL} visible`}
-              >
-                {insightsVisible ? (
-                  <Eye className="house-publications-eye-glyph h-[1.09rem] w-[1.09rem]" strokeWidth={2.3} />
-                ) : (
-                  <EyeOff className="house-publications-eye-glyph h-[1.09rem] w-[1.09rem]" strokeWidth={2.3} />
-                )}
-              </Button>
               {metrics?.status === 'FAILED' ? (
                 <p className={cn('mt-1', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>Last update failed</p>
               ) : null}
             </div>
-            <div className="ml-auto flex min-h-8 min-w-[16.5rem] justify-end">
+            <div className="ml-auto flex min-h-8 min-w-[16.5rem] items-center justify-end gap-2">
               <div
                 className={cn(
                   'flex flex-wrap items-center',
                   HOUSE_ACTIONS_PILL_CLASS,
                   HOUSE_ACTIONS_SECTION_TOOLS_CLASS,
                   HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS,
-                  !insightsVisible && 'invisible pointer-events-none',
+                  (!insightsVisible || !toolboxOpen) && 'hidden',
                 )}
                 data-stop-tile-open="true"
-                aria-hidden={!insightsVisible}
+                aria-hidden={!insightsVisible || !toolboxOpen}
               >
                 <Button
                   type="button"
@@ -5386,6 +5330,57 @@ export function PublicationsTopStrip({
                   </Button>
                 </div>
               </div>
+              <Button
+                type="button"
+                data-stop-tile-open="true"
+                variant="house"
+                size="icon"
+                className={cn('h-8 w-8 house-publications-action-icon', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
+                onClick={() => {
+                  if (!insightsVisible) {
+                    setInsightsVisible(true)
+                    setToolboxOpen(true)
+                    return
+                  }
+                  setToolboxOpen((current) => !current)
+                }}
+                aria-pressed={toolboxOpen}
+                aria-label={toolboxOpen ? 'Hide toolbox actions' : 'Show toolbox actions'}
+              >
+                <Toolbox className="h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
+              </Button>
+              <Button
+                type="button"
+                data-stop-tile-open="true"
+                variant="house"
+                size="icon"
+                className={cn(
+                  'h-8 w-8 house-publications-action-icon house-publications-action-eye',
+                  HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS,
+                  insightsVisible
+                    ? 'house-publications-action-eye-on'
+                    : 'house-publications-action-eye-off',
+                )}
+                onClick={() => {
+                  setInsightsVisible((current) => {
+                    const nextVisible = !current
+                    if (nextVisible) {
+                      setToolboxOpen(true)
+                    } else {
+                      setToolboxOpen(false)
+                    }
+                    return nextVisible
+                  })
+                }}
+                aria-pressed={insightsVisible}
+                aria-label={insightsVisible ? `Set ${PUBLICATION_INSIGHTS_LABEL} not visible` : `Set ${PUBLICATION_INSIGHTS_LABEL} visible`}
+              >
+                {insightsVisible ? (
+                  <Eye className="house-publications-eye-glyph h-[1.09rem] w-[1.09rem]" strokeWidth={2.3} />
+                ) : (
+                  <EyeOff className="house-publications-eye-glyph h-[1.09rem] w-[1.09rem]" strokeWidth={2.3} />
+                )}
+              </Button>
             </div>
           </div>
 

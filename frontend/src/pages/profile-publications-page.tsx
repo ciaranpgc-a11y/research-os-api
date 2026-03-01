@@ -16,8 +16,7 @@ import {
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { TablePrimitive as Table, TableBody, TableCell, TableHead as TableHeader, TableHeaderCell as TableHead, TableRow } from '@/components/primitives/TablePrimitive'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { houseDividers, houseForms, houseLayout, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
-import { API_BASE_URL } from '@/lib/api'
+import { houseForms, houseLayout, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import {
   deletePublicationFile,
   downloadPublicationFile,
@@ -106,7 +105,6 @@ const PUBLICATIONS_OA_AUTO_MAX_PER_PASS = 60
 const PUBLICATIONS_OA_AUTO_INTER_REQUEST_DELAY_MS = 220
 const PUBLICATIONS_OA_AUTO_STATUS_CLEAR_DELAY_MS = 9000
 const PUBLICATION_DETAIL_ACTIVE_TAB_STORAGE_KEY = 'aawe.pubDetail.activeTab'
-const HOUSE_SECTION_DIVIDER_STRONG_CLASS = houseDividers.strong
 const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
 const HOUSE_PAGE_HEADER_CLASS = houseLayout.pageHeader
 const HOUSE_LEFT_BORDER_CLASS = houseSurfaces.leftBorder
