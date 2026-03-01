@@ -460,6 +460,7 @@ const TILE_MOTION_TOGGLE_DURATION_MS = 460
 const TILE_MOTION_AXIS_DURATION_MS = 420
 const TILE_MOTION_ENTRY_BAR_STAGGER_MS = 70
 const TILE_MOTION_ENTRY_STAGGER_MAX_MS = 420
+const TILE_MOTION_ENTRY_START_DELAY_MS = 120
 const PUBLICATIONS_CHART_TOP_INSET_REM = 1
 const PUBLICATIONS_CHART_RIGHT_INSET_REM = 0.5
 const PUBLICATIONS_CHART_Y_AXIS_LEFT_INSET_REM = 0.25
@@ -2098,34 +2099,16 @@ function PublicationsPerYearChart({
   )
   const hasBars = hasValidSeries && historyBars.length > 0 && activeBars.length > 0
   const isEntryCycle = useIsFirstChartEntry(animationKey, hasBars)
-  const barTransitionDuration = tileChartDurationVar(isEntryCycle)
-  const axisDurationMs = tileAxisDurationMs(isEntryCycle)
-  const legacyBarsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars, 'entry-only')
-  const swapTransition = useHouseBarSetTransition({
-    bars: activeBars,
-    animationKey,
-    enabled: hasBars && enableWindowToggle,
-    structureSwap: 'crossfade',
-    crossfadeMs: TILE_MOTION_TOGGLE_DURATION_MS,
-    barExpandMode: 'entry-only',
-  })
-  const renderBars = enableWindowToggle ? swapTransition.renderBars : activeBars
-  const outgoingBars = enableWindowToggle ? swapTransition.outgoingBars : []
-  const isCrossfading = enableWindowToggle && swapTransition.isCrossfading
-  const pendingBars = enableWindowToggle ? swapTransition.pendingBars : []
-  const isStructureSwapActive = enableWindowToggle && swapTransition.isSwappingStructure
-  const barsExpanded = enableWindowToggle ? swapTransition.barsExpanded : legacyBarsExpanded
+  const entrySweepDurationMs = Math.max(160, TILE_MOTION_ENTRY_DURATION_MS - TILE_MOTION_ENTRY_STAGGER_MAX_MS)
+  const barTransitionDuration = `${isEntryCycle ? entrySweepDurationMs : TILE_MOTION_TOGGLE_DURATION_MS}ms`
+  const axisDurationMs = TILE_MOTION_AXIS_DURATION_MS
+  const renderBars = activeBars
+  const barsExpanded = useUnifiedToggleBarAnimation(animationKey, hasBars, 'entry-only')
   const renderedValuesTarget = useMemo(
     () => renderBars.map((bar) => Math.max(0, bar.value)),
     [renderBars],
   )
-  const allowInitialValueEasing = true
-  const renderedValuesAnimated = useEasedSeries(
-    renderedValuesTarget,
-    `${animationKey}|rendered|${renderBars.map((bar) => bar.key).join('|')}`,
-    hasBars && barsExpanded && allowInitialValueEasing,
-    axisDurationMs,
-  )
+  const renderedValuesAnimated = renderedValuesTarget
 
   useEffect(() => {
     setHoveredIndex(null)
@@ -2134,7 +2117,6 @@ function PublicationsPerYearChart({
   const maxValue = Math.max(
     1,
     ...renderedValuesTarget,
-    ...pendingBars.map((bar) => Math.max(0, bar.value)),
   )
   const maxYearlyValue = Math.max(1, ...historyBars.map((bar) => Math.max(0, bar.value)))
   const maxMonthlyValue = Math.max(0, ...groupedMonthBars.bars.map((bar) => Math.max(0, bar.value)))
@@ -2159,6 +2141,7 @@ function PublicationsPerYearChart({
     axisDurationMs,
   )
   const axisMax = axisAnimationEnabled ? Math.max(1, animatedAxisMax) : targetAxisMax
+  const barHeightAxisMax = Math.max(1, targetAxisMax)
   const yAxisTickRatios = targetAxisScale
     ? targetAxisScale.ticks.map((tickValue) => (targetAxisScale.axisMax <= 0 ? 0 : tickValue / targetAxisScale.axisMax))
     : [0, 0.25, 0.5, 0.75, 1]
@@ -2229,22 +2212,6 @@ function PublicationsPerYearChart({
       slotStepPct,
     }
   }, [renderBars.length])
-  const outgoingSlotMetrics = useMemo(() => {
-    const slotCount = Math.max(1, outgoingBars.length)
-    const slotGapPct = slotCount >= 10
-      ? PUBLICATIONS_CHART_SLOT_GAP_PCT_DENSE
-      : slotCount >= 7
-        ? PUBLICATIONS_CHART_SLOT_GAP_PCT_MEDIUM
-        : PUBLICATIONS_CHART_SLOT_GAP_PCT_DEFAULT
-    const totalGapPct = slotGapPct * Math.max(0, slotCount - 1)
-    const slotWidthPct = Math.max(PUBLICATIONS_CHART_SLOT_MIN_WIDTH_PCT, (100 - totalGapPct) / slotCount)
-    const slotStepPct = slotWidthPct + slotGapPct
-    return {
-      slotCount,
-      slotWidthPct,
-      slotStepPct,
-    }
-  }, [outgoingBars.length])
   const yAxisPanelStyle = {
     left: `${PUBLICATIONS_CHART_Y_AXIS_LEFT_INSET_REM}rem`,
     top: `${PUBLICATIONS_CHART_TOP_INSET_REM}rem`,
@@ -2257,7 +2224,7 @@ function PublicationsPerYearChart({
   const yAxisTickOffsetRem = PUBLICATIONS_CHART_Y_AXIS_TICK_OFFSET_REM
   const gridLineToneClass = subtleGrid ? HOUSE_CHART_GRID_LINE_SUBTLE_CLASS : HOUSE_CHART_GRID_LINE_CLASS
   const computeBarHeightPct = (value: number): number => (
-    value <= 0 ? 3 : Math.min(100, Math.max(6, (value / axisMax) * 100))
+    value <= 0 ? 3 : Math.min(100, Math.max(6, (value / barHeightAxisMax) * 100))
   )
   const resolveBarToneClass = (barValue: number, isCurrentPeriod: boolean): string => {
     const relative = barValue >= meanValue * 1.1 ? 'above' : barValue <= meanValue * 0.9 ? 'below' : 'near'
@@ -2379,47 +2346,12 @@ function PublicationsPerYearChart({
                 'pointer-events-none absolute inset-x-0',
                 HOUSE_CHART_MEAN_LINE_CLASS,
                 HOUSE_CHART_SCALE_MEAN_LINE_CLASS,
-                isStructureSwapActive && HOUSE_CHART_SCALE_MEAN_LINE_DELAYED_CLASS,
               )}
               style={{ bottom: `${Math.max(0, Math.min(100, (Math.max(0, meanValue) / axisMax) * 100))}%` }}
               aria-hidden="true"
             />
           ) : null}
           <div className="absolute inset-0" data-ui="chart-bars" data-house-role="chart-bars">
-            {enableWindowToggle && outgoingBars.map((bar, index) => {
-              const heightPct = computeBarHeightPct(Math.max(0, bar.value))
-              const leftPct = index * outgoingSlotMetrics.slotStepPct
-              const toneClass = resolveBarToneClass(bar.value, bar.current)
-              return (
-                <div
-                  key={`outgoing-slot-${index}`}
-                  className={cn('pointer-events-none absolute inset-y-0', HOUSE_TOGGLE_CHART_MORPH_CLASS, HOUSE_TOGGLE_CHART_SWAP_CLASS)}
-                  style={{
-                    left: `${leftPct}%`,
-                    width: `${outgoingSlotMetrics.slotWidthPct}%`,
-                    opacity: isCrossfading ? 0 : 1,
-                    transitionDuration: `${TILE_MOTION_TOGGLE_DURATION_MS}ms`,
-                  }}
-                  aria-hidden="true"
-                >
-                  <span
-                    className={cn(
-                      'absolute bottom-0 block w-full rounded',
-                      HOUSE_TOGGLE_CHART_BAR_CLASS,
-                      HOUSE_TOGGLE_CHART_MORPH_CLASS,
-                      HOUSE_TOGGLE_CHART_SWAP_CLASS,
-                      toneClass,
-                    )}
-                    style={{
-                      height: `${heightPct}%`,
-                      transform: 'translateY(0px) scaleX(1) scaleY(1)',
-                      transformOrigin: 'bottom',
-                      transitionDuration: `${TILE_MOTION_TOGGLE_DURATION_MS}ms`,
-                    }}
-                  />
-                </div>
-              )
-            })}
             {renderBars.map((bar, index) => {
               const rawAnimatedValue = renderedValuesAnimated[index]
               const finiteAnimatedValue = Number.isFinite(rawAnimatedValue) ? rawAnimatedValue : bar.value
@@ -2428,6 +2360,9 @@ function PublicationsPerYearChart({
               const leftPct = index * slotMetrics.slotStepPct
               const isActive = hoveredIndex === index
               const toneClass = resolveBarToneClass(bar.value, bar.current)
+              const entryDelayMs = isEntryCycle && barsExpanded
+                ? TILE_MOTION_ENTRY_START_DELAY_MS + Math.min(TILE_MOTION_ENTRY_STAGGER_MAX_MS, Math.max(0, index) * TILE_MOTION_ENTRY_BAR_STAGGER_MS)
+                : 0
               return (
                 <div
                   key={`slot-${index}`}
@@ -2463,7 +2398,7 @@ function PublicationsPerYearChart({
                       height: `${heightPct}%`,
                       transform: `translateY(${isActive ? '-1px' : '0px'}) scaleX(${isActive ? 1.035 : 1}) scaleY(${barsExpanded ? 1 : 0})`,
                       transformOrigin: 'bottom',
-                      transitionDelay: tileMotionEntryDelay(index, isEntryCycle && barsExpanded && !isStructureSwapActive),
+                      transitionDelay: `${entryDelayMs}ms`,
                       transitionDuration: barTransitionDuration,
                     }}
                   />
@@ -4134,6 +4069,12 @@ function TotalPublicationsDrilldownWorkspace({
           endYear = endDate.getUTCFullYear()
         }
       }
+      if (yearValuePairs.length > 0) {
+        return yearValuePairs
+          .filter((entry) => entry.year >= startYear && entry.year <= endYear)
+          .reduce((sum, entry) => sum + Math.max(0, entry.value), 0)
+      }
+
       return publicationYears.filter((year) => year >= startYear && year <= endYear).length
     }
 
@@ -4150,8 +4091,15 @@ function TotalPublicationsDrilldownWorkspace({
         const peak = yearValuePairs.reduce((best, entry) => (entry.value > best.value ? entry : best), yearValuePairs[0])
         return `${formatInt(peak.value)} (${peak.year})`
       })()
+    const currentYearFromSeries = yearValuePairs.find((entry) => entry.year === fallbackNowYear)?.value
+      ?? yearValuePairs[yearValuePairs.length - 1]?.value
+      ?? null
+    const currentYearYtdRaw = Number(chartData.current_year_ytd)
+    const resolvedCurrentYearYtd = Number.isFinite(currentYearYtdRaw)
+      ? Math.max(0, currentYearYtdRaw)
+      : currentYearFromSeries
     const yearToDateValue = metricDisplayById.get('current_ytd')
-      ?? formatDrilldownValue(chartData.current_year_ytd)
+      ?? formatDrilldownValue(resolvedCurrentYearYtd)
 
     const rolling1Year = countRollingWindow('1y', 1)
     const rolling3Year = countRollingWindow('3y', 3)
