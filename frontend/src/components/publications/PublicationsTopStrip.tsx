@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Download, Eye, EyeOff, FileText, Share2 } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui/card'
@@ -2412,14 +2412,14 @@ function MomentumTilePanel({
       {
         key: 'baseline',
         label: 'Prior 9 month average',
-        subLabel: monthlyBreakdown.baselineWindowLabel,
+        subLabel: null,
         value: baseline ?? 0,
         recent: false,
       },
       {
         key: 'recent',
         label: 'Recent 3 month average',
-        subLabel: monthlyBreakdown.recentWindowLabel,
+        subLabel: null,
         value: recent ?? 0,
         recent: true,
       },
@@ -2427,8 +2427,6 @@ function MomentumTilePanel({
   }, [
     monthlyBreakdown.rate3m,
     monthlyBreakdown.rate9m,
-    monthlyBreakdown.baselineWindowLabel,
-    monthlyBreakdown.recentWindowLabel,
   ])
   const yearlyComparisonBars = useMemo(() => {
     const baseline = yearBreakdown?.rate4y ?? null
@@ -5192,22 +5190,77 @@ function HIndexViewToggle({
   mode: HIndexViewMode
   onModeChange: (mode: HIndexViewMode) => void
 }) {
+  const trackRef = useRef<HTMLDivElement>(null)
+  const trajectoryButtonRef = useRef<HTMLButtonElement>(null)
+  const neededButtonRef = useRef<HTMLButtonElement>(null)
+  const [thumbStyle, setThumbStyle] = useState<CSSProperties>({ left: '0px', width: '0px' })
+
+  useLayoutEffect(() => {
+    const updateThumbStyle = () => {
+      const trackElement = trackRef.current
+      const trajectoryElement = trajectoryButtonRef.current
+      const neededElement = neededButtonRef.current
+      if (!trackElement || !trajectoryElement || !neededElement) {
+        return
+      }
+      const activeButton = mode === 'needed' ? neededElement : trajectoryElement
+      const leftPx = activeButton.offsetLeft
+      const widthPx = activeButton.offsetWidth
+      setThumbStyle({
+        left: `${Math.max(0, leftPx)}px`,
+        width: `${Math.max(0, widthPx)}px`,
+      })
+    }
+
+    updateThumbStyle()
+    const frame = window.requestAnimationFrame(updateThumbStyle)
+
+    const observer = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(updateThumbStyle)
+      : null
+    if (observer) {
+      if (trackRef.current) {
+        observer.observe(trackRef.current)
+      }
+      if (trajectoryButtonRef.current) {
+        observer.observe(trajectoryButtonRef.current)
+      }
+      if (neededButtonRef.current) {
+        observer.observe(neededButtonRef.current)
+      }
+    }
+
+    window.addEventListener('resize', updateThumbStyle)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('resize', updateThumbStyle)
+      if (observer) {
+        observer.disconnect()
+      }
+    }
+  }, [mode])
+
   return (
     <div className="flex items-center">
       <div
-        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid-cols-2')}
+        ref={trackRef}
+        className={cn(HOUSE_METRIC_TOGGLE_TRACK_CLASS, 'grid')}
+        style={{ gridTemplateColumns: 'auto auto' }}
         data-stop-tile-open="true"
       >
         <span
           className={HOUSE_TOGGLE_THUMB_CLASS}
-          style={buildTileToggleThumbStyle(mode === 'needed' ? 1 : 0, 2)}
+          style={thumbStyle}
           aria-hidden="true"
         />
         <button
+          ref={trajectoryButtonRef}
           type="button"
           data-stop-tile-open="true"
           className={cn(
             HOUSE_TOGGLE_BUTTON_CLASS,
+            'whitespace-nowrap',
             mode === 'trajectory' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
           )}
           onClick={(event) => {
@@ -5223,10 +5276,12 @@ function HIndexViewToggle({
           Trend
         </button>
         <button
+          ref={neededButtonRef}
           type="button"
           data-stop-tile-open="true"
           className={cn(
             HOUSE_TOGGLE_BUTTON_CLASS,
+            'whitespace-nowrap',
             mode === 'needed' ? 'text-white' : HOUSE_DRILLDOWN_TOGGLE_MUTED_CLASS,
           )}
           onClick={(event) => {
