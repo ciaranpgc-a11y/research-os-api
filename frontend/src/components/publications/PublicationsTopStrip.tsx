@@ -5833,6 +5833,13 @@ export function PublicationsTopStrip({
   const [insightsVisible, setInsightsVisible] = useState(
     () => forceInsightsVisible || readAccountSettings().publicationInsightsDefaultVisibility !== 'hidden',
   )
+  const autoRevealLocalInsights = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return false
+    }
+    const host = String(window.location.hostname || '').toLowerCase()
+    return host === 'localhost' || host === '127.0.0.1'
+  }, [])
   const tileMotionStyle = useMemo(() => ({
     '--motion-duration-chart-refresh': `${TILE_MOTION_ENTRY_DURATION_MS}ms`,
     '--motion-duration-chart-toggle': `${TILE_MOTION_TOGGLE_DURATION_MS}ms`,
@@ -5897,6 +5904,19 @@ export function PublicationsTopStrip({
       setInsightsVisible(true)
     }
   }, [forceInsightsVisible])
+
+  useEffect(() => {
+    if (!autoRevealLocalInsights) {
+      return
+    }
+    if (insightsVisible) {
+      return
+    }
+    if (tiles.length <= 0) {
+      return
+    }
+    setInsightsVisible(true)
+  }, [autoRevealLocalInsights, insightsVisible, tiles.length])
 
   const onSelectTile = async (tile: PublicationMetricTilePayload) => {
     setActiveTileKey(tile.key)

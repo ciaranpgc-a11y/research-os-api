@@ -284,6 +284,8 @@
     --content-container-fluid-anchor-offset: 1rem;
     --content-container-fluid-anchor-offset-md: 1.25rem;
     --content-container-fluid-bottom-offset: 1rem;
+    --layout-section-anchor-inline: 0.75rem;
+    --layout-section-anchor-inline-md: 0.875rem;
     --page-title-marker-inset-block: 0rem;
     --page-title-offset-block: 0.4rem;
     --page-title-offset-inline: 0.4rem;
@@ -646,6 +648,10 @@
     gap: 0.5rem;
   }
 
+  .house-section-anchor {
+    margin-inline-start: var(--layout-section-anchor-inline);
+  }
+
   .house-content-container {
     margin-inline: auto;
     width: 100%;
@@ -679,6 +685,10 @@
   }
 
   @media (min-width: 768px) {
+    .house-section-anchor {
+      margin-inline-start: var(--layout-section-anchor-inline-md);
+    }
+
     .house-content-container {
       padding-top: var(--content-container-anchor-offset-md);
       padding-right: var(--content-container-anchor-offset-md);
@@ -2266,7 +2276,7 @@
 
   .house-left-border {
     position: relative;
-    padding-left: 0.75rem;
+    padding-left: var(--layout-section-anchor-inline);
     --house-rail-width: var(--marker-width-panel);
     --house-rail-color: var(--tone-accent-400);
     --house-rail-inset-block: 0.08rem;

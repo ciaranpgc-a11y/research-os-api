@@ -37,6 +37,18 @@ npm install
 npm run dev
 ```
 
+Seed local publication tiles (all users):
+```bash
+python scripts/seed_publications_demo.py --all-users --target-works 180
+```
+
+Seed local publication tiles (single user):
+```bash
+python scripts/seed_publications_demo.py --email your-email@example.com --target-works 180
+```
+
+VS Code task equivalent: `Backend: Seed Publications (All Users)`.
+
 Optional frontend API base override (PowerShell):
 ```powershell
 $env:VITE_API_BASE_URL="http://127.0.0.1:8000"

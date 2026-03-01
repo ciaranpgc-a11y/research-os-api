@@ -74,6 +74,7 @@ export const houseDividers = {
 
 export const houseLayout = {
   pageHeader: 'house-page-header',
+  sectionAnchor: 'house-section-anchor',
   sidebarFrame: 'house-sidebar-frame',
   sidebar: 'house-sidebar-shell',
   sidebarScroll: 'house-sidebar-scroll',

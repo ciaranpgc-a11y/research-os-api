@@ -106,6 +106,7 @@ const PUBLICATIONS_OA_AUTO_INTER_REQUEST_DELAY_MS = 220
 const PUBLICATIONS_OA_AUTO_STATUS_CLEAR_DELAY_MS = 9000
 const PUBLICATION_DETAIL_ACTIVE_TAB_STORAGE_KEY = 'aawe.pubDetail.activeTab'
 const HOUSE_SECTION_DIVIDER_STRONG_CLASS = houseDividers.strong
+const HOUSE_SECTION_ANCHOR_CLASS = houseLayout.sectionAnchor
 const HOUSE_PAGE_HEADER_CLASS = houseLayout.pageHeader
 const HOUSE_LEFT_BORDER_CLASS = houseSurfaces.leftBorder
 const HOUSE_LEFT_BORDER_PROFILE_CLASS = houseSurfaces.leftBorderProfile
@@ -2536,21 +2537,23 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         </p>
       </header>
 
-      <PublicationsTopStrip
-        metrics={topMetricsResponse}
-        loading={
-          !topMetricsResponse
-          || (topMetricsResponse.status === 'RUNNING' && (topMetricsResponse.tiles || []).length === 0)
-        }
-        token={token || null}
-        forceInsightsVisible={Boolean(fixture?.forceInsightsVisible)}
-        onOpenPublication={(workId) => {
-          openPublicationInDetailPanel(workId, 'files')
-        }}
-      />
-      <div className={HOUSE_SECTION_DIVIDER_STRONG_CLASS} />
+      <div className={HOUSE_SECTION_ANCHOR_CLASS}>
+        <PublicationsTopStrip
+          metrics={topMetricsResponse}
+          loading={
+            !topMetricsResponse
+            || (topMetricsResponse.status === 'RUNNING' && (topMetricsResponse.tiles || []).length === 0)
+          }
+          token={token || null}
+          forceInsightsVisible={Boolean(fixture?.forceInsightsVisible)}
+          onOpenPublication={(workId) => {
+            openPublicationInDetailPanel(workId, 'files')
+          }}
+        />
+      </div>
+      <div className={cn(HOUSE_SECTION_DIVIDER_STRONG_CLASS, HOUSE_SECTION_ANCHOR_CLASS)} />
 
-      <Card>
+      <Card className={HOUSE_SECTION_ANCHOR_CLASS}>
         <CardHeader className="pb-1">
           <h2 className={publicationsHouseHeadings.sectionTitle}>Publication library</h2>
         </CardHeader>
