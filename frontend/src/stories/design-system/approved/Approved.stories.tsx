@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { Download, Eye, EyeOff, FileText, KeyRound, Mail, Menu, Search, Settings, Share2, User } from 'lucide-react'
+import { Download, Eye, EyeOff, FileText, Hammer, KeyRound, Mail, Menu, Search, Settings, Share2, User } from 'lucide-react
 
 import { AuthPage } from '@/pages/auth-page'
 import { TopBar } from '@/components/layout/top-bar'
@@ -1359,6 +1360,153 @@ function ApprovedMetricTilesSection() {
 }
 
 function ApprovedMetricsToolbarSection() {
+
+  function ApprovedInsightsControlSection() {
+    const toolboxTooltipClass =
+      'house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-[999] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+
+    return (
+      <section>
+        <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+          <div className="px-4 py-2 border-b border-neutral-200">
+            <p className="text-sm font-semibold text-neutral-900">Approved Publications Insights Controls (Eye + Tools)</p>
+            <p className="text-xs text-neutral-600">Canonical right-rail control cluster for publications insights. Keep shell/behavior, swap tray actions as needed for Publication Library tools.</p>
+          </div>
+
+          <div className="grid gap-4 p-4 lg:grid-cols-2">
+            <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Visual preview</p>
+
+              <div className="house-main-heading-block w-full rounded-sm border border-neutral-200 p-2">
+                <p className="house-section-title">Publication insights</p>
+                <div className="ml-auto flex h-8 w-[25rem] shrink-0 items-center justify-end gap-1 overflow-visible">
+                  <div className="overflow-visible transition-[max-width,opacity,transform] duration-200 ease-out max-w-[20rem] translate-x-0 opacity-100">
+                    <div className="flex min-w-0 flex-nowrap items-center gap-1 whitespace-nowrap">
+                      <div className="group relative inline-flex">
+                        <button
+                          type="button"
+                          className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
+                          aria-label="Generate publication insights report"
+                        >
+                          <FileText className="h-4 w-4" />
+                        </button>
+                        <span className={toolboxTooltipClass} aria-hidden="true">Generate report</span>
+                      </div>
+                      <div className="house-publications-toolbox-divider" aria-hidden="true" />
+                      <div className="group relative inline-flex">
+                        <button
+                          type="button"
+                          className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
+                          aria-label="Download"
+                        >
+                          <Download className="h-4 w-4" />
+                        </button>
+                        <span className={toolboxTooltipClass} aria-hidden="true">Download</span>
+                      </div>
+                      <div className="house-publications-toolbox-divider" aria-hidden="true" />
+                      <div className="group relative inline-flex">
+                        <button
+                          type="button"
+                          className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
+                          aria-label="Share"
+                        >
+                          <Share2 className="h-4 w-4" />
+                        </button>
+                        <span className={toolboxTooltipClass} aria-hidden="true">Share</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-section-tool-button house-publications-tools-toggle-open inline-flex items-center justify-center"
+                    aria-label="Hide toolbox actions"
+                    aria-pressed="true"
+                  >
+                    <Hammer className="house-publications-tools-toggle-icon h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
+                  </button>
+
+                  <button
+                    type="button"
+                    className="h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-publications-eye-toggle house-section-tool-button inline-flex items-center justify-center"
+                    aria-label="Set publication insights not visible"
+                    aria-pressed="true"
+                  >
+                    <Eye className="house-publications-eye-toggle-icon h-[1.2rem] w-[1.2rem]" strokeWidth={2.1} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="house-main-heading-block w-full rounded-sm border border-neutral-200 p-2">
+                <p className="house-section-title">Publication insights (hidden)</p>
+                <div className="ml-auto flex h-8 w-[25rem] shrink-0 items-center justify-end gap-1 overflow-visible">
+                  <button
+                    type="button"
+                    className="h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-publications-eye-toggle house-section-tool-button inline-flex items-center justify-center"
+                    data-state="closed"
+                    aria-label="Set publication insights visible"
+                    aria-pressed="false"
+                  >
+                    <EyeOff className="house-publications-eye-toggle-icon h-[1.2rem] w-[1.2rem]" strokeWidth={2.1} />
+                  </button>
+                </div>
+              </div>
+            </article>
+
+            <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Class + token mapping</p>
+              <div className="overflow-hidden rounded-md border border-neutral-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-neutral-50 text-neutral-700">
+                    <tr>
+                      <th className="px-2 py-1.5 font-semibold">Element</th>
+                      <th className="px-2 py-1.5 font-semibold">Role</th>
+                      <th className="px-2 py-1.5 font-semibold">Token touchpoints</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-t border-neutral-200">
+                      <td className="px-2 py-1.5"><code>.house-publications-toolbox-item</code></td>
+                      <td className="px-2 py-1.5">Tray action slot</td>
+                      <td className="px-2 py-1.5">action shell for Generate/Download/Share; replace with Publication Library actions as needed</td>
+                    </tr>
+                    <tr className="border-t border-neutral-200">
+                      <td className="px-2 py-1.5"><code>.house-publications-toolbox-divider</code></td>
+                      <td className="px-2 py-1.5">Tray separator</td>
+                      <td className="px-2 py-1.5">single-stroke divider between action slots</td>
+                    </tr>
+                    <tr className="border-t border-neutral-200">
+                      <td className="px-2 py-1.5"><code>.house-publications-top-control</code></td>
+                      <td className="px-2 py-1.5">Right-rail control shell</td>
+                      <td className="px-2 py-1.5">shared square control geometry and border contract for tools/eye buttons</td>
+                    </tr>
+                    <tr className="border-t border-neutral-200">
+                      <td className="px-2 py-1.5"><code>.house-publications-tools-toggle-open</code> + <code>.house-publications-tools-toggle-icon</code></td>
+                      <td className="px-2 py-1.5">Tools open-state styling</td>
+                      <td className="px-2 py-1.5">active state fill + icon treatment for toolbox toggle</td>
+                    </tr>
+                    <tr className="border-t border-neutral-200">
+                      <td className="px-2 py-1.5"><code>.house-publications-eye-toggle</code> + <code>.house-publications-eye-toggle-icon</code></td>
+                      <td className="px-2 py-1.5">Visibility state styling</td>
+                      <td className="px-2 py-1.5">open/closed eye control visual contract for insights visibility</td>
+                    </tr>
+                    <tr className="border-t border-neutral-200">
+                      <td className="px-2 py-1.5"><code>.house-drilldown-chart-tooltip</code></td>
+                      <td className="px-2 py-1.5">Tooltip surface</td>
+                      <td className="px-2 py-1.5">same chart-tooltip style used for toolbox icon hovers</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+    )
+  }
+  const toolboxTooltipClass =
+    'house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-[999] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+
   return (
     <section>
       <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
@@ -1383,13 +1531,7 @@ function ApprovedMetricsToolbarSection() {
                     >
                       <FileText className="h-4 w-4" />
                     </button>
-                    <span
-                      className="house-approved-tooltip house-approved-tooltip-float"
-                      role="tooltip"
-                      aria-hidden="true"
-                    >
-                      Generate report
-                    </span>
+                    <span className={toolboxTooltipClass} aria-hidden="true">Generate report</span>
                   </div>
                   <div className="house-publications-toolbox-divider" aria-hidden="true" />
                   <div className="group relative inline-flex">
@@ -1400,13 +1542,7 @@ function ApprovedMetricsToolbarSection() {
                     >
                       <Download className="h-4 w-4" />
                     </button>
-                    <span
-                      className="house-approved-tooltip house-approved-tooltip-float"
-                      role="tooltip"
-                      aria-hidden="true"
-                    >
-                      Download
-                    </span>
+                    <span className={toolboxTooltipClass} aria-hidden="true">Download</span>
                   </div>
                   <div className="house-publications-toolbox-divider" aria-hidden="true" />
                   <div className="group relative inline-flex">
@@ -1417,13 +1553,7 @@ function ApprovedMetricsToolbarSection() {
                     >
                       <Share2 className="h-4 w-4" />
                     </button>
-                    <span
-                      className="house-approved-tooltip house-approved-tooltip-float"
-                      role="tooltip"
-                      aria-hidden="true"
-                    >
-                      Share
-                    </span>
+                    <span className={toolboxTooltipClass} aria-hidden="true">Share</span>
                   </div>
                 </div>
               </div>
@@ -1578,6 +1708,9 @@ function ApprovedNotificationBannersSection() {
 }
 
 function ApprovedTooltipSection() {
+  const toolboxTooltipClass =
+    'house-drilldown-chart-tooltip pointer-events-none absolute left-1/2 top-auto bottom-full mb-[0.35rem] z-[999] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+
   return (
     <section>
       <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
@@ -1595,39 +1728,30 @@ function ApprovedTooltipSection() {
                   type="button"
                   className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
                   aria-label="Generate publication insights report"
-                  title="Generate report"
                 >
                   <FileText className="h-4 w-4" />
                 </button>
-                <span className="house-approved-tooltip house-approved-tooltip-float" role="tooltip" aria-hidden="true">
-                  Generate report
-                </span>
+                <span className={toolboxTooltipClass} aria-hidden="true">Generate report</span>
               </div>
               <div className="group relative inline-flex">
                 <button
                   type="button"
                   className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
                   aria-label="Download"
-                  title="Download"
                 >
                   <Download className="h-4 w-4" />
                 </button>
-                <span className="house-approved-tooltip house-approved-tooltip-float" role="tooltip" aria-hidden="true">
-                  Download
-                </span>
+                <span className={toolboxTooltipClass} aria-hidden="true">Download</span>
               </div>
               <div className="group relative inline-flex">
                 <button
                   type="button"
                   className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
                   aria-label="Share"
-                  title="Share"
                 >
                   <Share2 className="h-4 w-4" />
                 </button>
-                <span className="house-approved-tooltip house-approved-tooltip-float" role="tooltip" aria-hidden="true">
-                  Share
-                </span>
+                <span className={toolboxTooltipClass} aria-hidden="true">Share</span>
               </div>
             </div>
           </article>
@@ -1645,19 +1769,14 @@ function ApprovedTooltipSection() {
                 </thead>
                 <tbody>
                   <tr className="border-t border-neutral-200">
-                    <td className="px-2 py-1.5"><code>.house-approved-tooltip</code></td>
-                    <td className="px-2 py-1.5">Canonical tooltip surface</td>
-                    <td className="px-2 py-1.5">neutral surface, stroke, radius, and foreground (shared with chart tooltip)</td>
-                  </tr>
-                  <tr className="border-t border-neutral-200">
-                    <td className="px-2 py-1.5"><code>.house-approved-tooltip-float</code></td>
-                    <td className="px-2 py-1.5">Tooltip positioning + reveal behavior</td>
-                    <td className="px-2 py-1.5">absolute top placement, 12px caption text, 18px total height, hover/focus visibility transition</td>
-                  </tr>
-                  <tr className="border-t border-neutral-200">
                     <td className="px-2 py-1.5"><code>.house-drilldown-chart-tooltip</code></td>
-                    <td className="px-2 py-1.5">Chart overlay alias</td>
-                    <td className="px-2 py-1.5">must match the same approved tooltip surface contract</td>
+                    <td className="px-2 py-1.5">Canonical tooltip surface</td>
+                    <td className="px-2 py-1.5">exact same surface token contract used by publication chart hover tooltips</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>toolboxTooltipClass</code></td>
+                    <td className="px-2 py-1.5">Placement + motion parity</td>
+                    <td className="px-2 py-1.5">left-anchored absolute tooltip, px-2/py-0.5, text-caption, leading-none, same 150ms ease-out hover motion</td>
                   </tr>
                 </tbody>
               </table>
@@ -3130,6 +3249,7 @@ function ApprovedPage() {
         <ApprovedLayoutTitlePositioning />
         <ApprovedTypographySection />
         <ApprovedMetricsToolbarSection />
+        <ApprovedInsightsControlSection />
         <ApprovedTooltipSection />
         <ApprovedNotificationBannersSection />
         <ApprovedPublicationsDrilldownSection />

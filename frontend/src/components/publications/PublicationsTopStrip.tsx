@@ -458,7 +458,6 @@ const HOUSE_DRILLDOWN_TOOLTIP_CLASS =
     HOUSE_DRILLDOWN_CHART_TOOLTIP_CLASS,
     'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out',
   )
-const HOUSE_APPROVED_TOOLTIP_CLASS = 'house-approved-tooltip house-approved-tooltip-float'
 const MAX_PUBLICATION_CHART_BARS = 12
 const HOUSE_METRIC_TOGGLE_TRACK_CLASS = HOUSE_TOGGLE_TRACK_CLASS
 
@@ -5278,10 +5277,10 @@ export function PublicationsTopStrip({
                 <p className={cn('mt-1', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>Last update failed</p>
               ) : null}
             </div>
-            <div className="ml-auto flex h-8 w-[25rem] shrink-0 items-center justify-end gap-1 overflow-x-hidden overflow-y-visible">
+            <div className="ml-auto flex h-8 w-[25rem] shrink-0 items-center justify-end gap-1 overflow-visible">
               <div
                 className={cn(
-                  'overflow-x-hidden overflow-y-visible transition-[max-width,opacity,transform] duration-200 ease-out',
+                  'overflow-visible transition-[max-width,opacity,transform] duration-200 ease-out',
                   insightsVisible && toolboxOpen
                     ? 'max-w-[20rem] translate-x-0 opacity-100'
                     : 'pointer-events-none max-w-0 translate-x-1 opacity-0',
@@ -5298,11 +5297,17 @@ export function PublicationsTopStrip({
                       size="icon"
                       className="h-8 w-8 house-publications-toolbox-item"
                       aria-label={`Generate ${PUBLICATION_INSIGHTS_LABEL} report`}
-                      title="Generate report"
                     >
                       <FileText className="h-4 w-4" strokeWidth={2.1} />
                     </Button>
-                    <span className={HOUSE_APPROVED_TOOLTIP_CLASS} role="tooltip" aria-hidden="true">
+                    <span
+                      className={cn(
+                        HOUSE_DRILLDOWN_TOOLTIP_CLASS,
+                        'top-auto bottom-full mb-[0.35rem] z-[999]',
+                        'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                      )}
+                      aria-hidden="true"
+                    >
                       Generate report
                     </span>
                   </div>
@@ -5315,11 +5320,17 @@ export function PublicationsTopStrip({
                       size="icon"
                       className="h-8 w-8 house-publications-toolbox-item"
                       aria-label="Download"
-                      title="Download"
                     >
                       <Download className="h-4 w-4" strokeWidth={2.1} />
                     </Button>
-                    <span className={HOUSE_APPROVED_TOOLTIP_CLASS} role="tooltip" aria-hidden="true">
+                    <span
+                      className={cn(
+                        HOUSE_DRILLDOWN_TOOLTIP_CLASS,
+                        'top-auto bottom-full mb-[0.35rem] z-[999]',
+                        'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                      )}
+                      aria-hidden="true"
+                    >
                       Download
                     </span>
                   </div>
@@ -5332,11 +5343,17 @@ export function PublicationsTopStrip({
                       size="icon"
                       className="h-8 w-8 house-publications-toolbox-item"
                       aria-label="Share"
-                      title="Share"
                     >
                       <Share2 className="h-4 w-4" strokeWidth={2.1} />
                     </Button>
-                    <span className={HOUSE_APPROVED_TOOLTIP_CLASS} role="tooltip" aria-hidden="true">
+                    <span
+                      className={cn(
+                        HOUSE_DRILLDOWN_TOOLTIP_CLASS,
+                        'top-auto bottom-full mb-[0.35rem] z-[999]',
+                        'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                      )}
+                      aria-hidden="true"
+                    >
                       Share
                     </span>
                   </div>
