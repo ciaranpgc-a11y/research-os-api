@@ -6,6 +6,7 @@ import { Download, Eye, EyeOff, FileText, Hammer, KeyRound, Mail, Menu, Search, 
 import { AuthPage } from '@/pages/auth-page'
 import { ProfilePublicationsPage } from '@/pages/profile-publications-page'
 import type { ProfilePublicationsPageFixture } from '@/pages/profile-publications-page'
+import { PublicationsPerYearChart } from '@/components/publications/PublicationsTopStrip'
 import { TopBar } from '@/components/layout/top-bar'
 import { AccountNavigator } from '@/components/layout/account-navigator'
 import { WorkspaceNavigator } from '@/components/layout/workspace-navigator'
@@ -868,11 +869,26 @@ function ApprovedPublicationsDrilldownSection() {
                     </div>
 
                     <div className="house-drilldown-heading-block-secondary">
-                      <p className="house-drilldown-overline">Publication trends over time</p>
+                      <p className="house-drilldown-overline">Publication trends</p>
                       <div className="house-publications-drilldown-stack-2">
-                        <div className="house-drilldown-row"><span>2024</span><span className="house-drilldown-note">11 publications</span></div>
-                        <div className="house-drilldown-row"><span>2023</span><span className="house-drilldown-note">14 publications</span></div>
-                        <div className="house-drilldown-row"><span>2022</span><span className="house-drilldown-note">12 publications</span></div>
+                        {/* Use the real chart for Total publications */}
+                        <PublicationsPerYearChart
+                          tile={{
+                            key: 'this_year_vs_last',
+                            label: 'Total publications',
+                            chart_data: {
+                              years: [2022, 2023, 2024],
+                              values: [12, 14, 11],
+                              mean_value: 13,
+                              current_year_ytd: 11,
+                            },
+                          }}
+                          showAxes
+                          enableWindowToggle={false}
+                          showPeriodHint={false}
+                          showCurrentPeriodSemantic={false}
+                          chartTitle={undefined}
+                        />
                       </div>
                     </div>
                   </>
