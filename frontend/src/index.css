@@ -1580,6 +1580,106 @@
     color: hsl(var(--tone-positive-900));
   }
 
+  .house-publications-top-control {
+    border-radius: 0.5rem !important;
+    border-width: 1px !important;
+    border-style: solid !important;
+    border-color: #000 !important;
+  }
+
+  .house-publications-top-control:hover,
+  .house-publications-top-control:focus-visible,
+  .house-publications-top-control[data-state='open'],
+  .house-publications-top-control[data-state='closed'] {
+    border-color: #000 !important;
+  }
+
+  .house-publications-toolbox-item {
+    border-color: transparent !important;
+    background-color: transparent !important;
+    color: hsl(var(--tone-neutral-700)) !important;
+    transition-property: background-color, border-color, color;
+    transition-duration: var(--motion-duration-ui);
+    transition-timing-function: ease-out;
+  }
+
+  .house-publications-toolbox-item:hover {
+    border-color: transparent !important;
+    background-color: hsl(var(--tone-positive-100) / 0.82) !important;
+    color: hsl(var(--tone-neutral-700)) !important;
+  }
+
+  .house-publications-toolbox-divider {
+    height: 1.25rem;
+    width: 1px;
+    background-color: hsl(var(--stroke-strong) / 0.74);
+  }
+
+  .house-publications-tools-toggle-open {
+    border-color: #000 !important;
+    background-color: hsl(var(--tone-positive-100) / 0.96) !important;
+    box-shadow: none !important;
+  }
+
+  .house-publications-tools-toggle-icon {
+    transition-property: transform;
+    transition-duration: 300ms;
+    transition-timing-function: ease-out;
+  }
+
+  [data-state='open'] .house-publications-tools-toggle-icon {
+    transform: translateY(-1px) rotate(28deg);
+  }
+
+  .house-publications-eye-toggle {
+    border-color: #000 !important;
+    background-color: hsl(var(--tone-neutral-50)) !important;
+    color: hsl(var(--tone-neutral-900)) !important;
+    transition-property: background-color, border-color, color, box-shadow;
+    transition-duration: 300ms;
+    transition-timing-function: ease-out;
+  }
+
+  .house-publications-eye-toggle[data-state='open'] {
+    border-color: #000 !important;
+    border-width: 1px !important;
+    border-style: solid !important;
+    background-color: hsl(var(--tone-neutral-50)) !important;
+    color: hsl(var(--tone-neutral-900)) !important;
+    box-shadow: none !important;
+  }
+
+  .house-publications-eye-toggle[data-state='open']:hover {
+    border-color: #000 !important;
+    background-color: hsl(var(--tone-positive-100) / 0.92) !important;
+    color: hsl(var(--tone-positive-900)) !important;
+  }
+
+  .house-publications-eye-toggle[data-state='closed'] {
+    border-color: #000 !important;
+    border-width: 1px !important;
+    border-style: solid !important;
+    background-color: hsl(var(--tone-neutral-50)) !important;
+    color: hsl(var(--tone-danger-900)) !important;
+    box-shadow: none !important;
+  }
+
+  .house-publications-eye-toggle[data-state='closed']:hover {
+    border-color: #000 !important;
+    background-color: hsl(var(--tone-danger-100) / 0.56) !important;
+    color: hsl(var(--tone-danger-900)) !important;
+  }
+
+  .house-publications-eye-toggle-icon {
+    transition-property: transform;
+    transition-duration: 300ms;
+    transition-timing-function: ease-out;
+  }
+
+  .house-publications-eye-toggle[data-state='open'] .house-publications-eye-toggle-icon {
+    transform: translateY(-1px) scale(1.06);
+  }
+
   .house-publications-action-eye {
     border-width: 1px;
     border-style: solid;
@@ -2267,6 +2367,17 @@
     border-left-width: var(--house-bold-outline-width);
     background-color: hsl(var(--tone-positive-50) / 0.94);
     color: hsl(var(--tone-positive-800));
+
+  .house-notification-section {
+    border: 1px solid hsl(var(--stroke-soft) / 0.92);
+    border-radius: 0.5rem;
+    background-color: hsl(var(--tone-neutral-50));
+    padding: 0.5rem;
+  }
+
+  .house-notification-section .house-banner {
+    margin: 0;
+  }
   }
 
   .house-metric-pill {
@@ -3651,12 +3762,42 @@
     stroke-linecap: round;
   }
 
+  /* Single approved tooltip surface for publications (charts + toolbar actions). */
+  .house-approved-tooltip,
   .house-drilldown-chart-tooltip {
     border: 1px solid hsl(var(--stroke-strong) / 0.94);
     border-radius: 0.375rem;
     background-color: hsl(var(--tone-neutral-50));
     box-shadow: none;
     color: hsl(var(--tone-neutral-700));
+  }
+
+  /* Position/visibility helper for icon-triggered tooltips. */
+  .house-approved-tooltip-float {
+    pointer-events: none;
+    position: absolute;
+    left: 50%;
+    top: 0;
+    z-index: 999;
+    transform: translate(-50%, calc(-100% - 0.35rem));
+    white-space: nowrap;
+    box-sizing: border-box;
+    height: 1.125rem;
+    padding-inline: 0.5rem;
+    padding-block: 0.125rem;
+    font-size: var(--text-caption-size);
+    line-height: 1;
+    opacity: 0;
+    transition-property: opacity;
+    transition-duration: var(--motion-duration-fast);
+    transition-timing-function: var(--ease-decelerate);
+    transition-delay: 0ms;
+  }
+
+  .group:hover .house-approved-tooltip-float,
+  .group:focus-within .house-approved-tooltip-float {
+    opacity: 1;
+    transition-delay: var(--motion-stagger-tight);
   }
 
   .house-drilldown-skeleton-block {

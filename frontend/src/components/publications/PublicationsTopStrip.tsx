@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Download, Eye, EyeOff, FileText, Share2, Toolbox } from 'lucide-react'
+import { Download, Eye, EyeOff, FileText, Hammer, Share2 } from 'lucide-react'
 
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -342,6 +342,7 @@ const HOUSE_SURFACE_SECTION_PANEL_CLASS = publicationsHouseSurfaces.sectionPanel
 const HOUSE_SURFACE_STRONG_PANEL_CLASS = publicationsHouseSurfaces.strongPanel
 const HOUSE_SURFACE_PANEL_BARE_CLASS = publicationsHouseSurfaces.panelBare
 const HOUSE_SURFACE_BANNER_CLASS = publicationsHouseSurfaces.banner
+const HOUSE_SURFACE_BANNER_INFO_CLASS = publicationsHouseSurfaces.bannerInfo
 const HOUSE_SURFACE_BANNER_WARNING_CLASS = publicationsHouseSurfaces.bannerWarning
 const HOUSE_SURFACE_METRIC_PILL_CLASS = publicationsHouseSurfaces.metricPill
 const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_CLASS = publicationsHouseSurfaces.metricPillPublications
@@ -349,13 +350,7 @@ const HOUSE_SURFACE_METRIC_PILL_PUBLICATIONS_REGULAR_CLASS = publicationsHouseSu
 const HOUSE_SURFACE_LEFT_BORDER_CLASS = publicationsHouseSurfaces.leftBorder
 const HOUSE_SURFACE_LEFT_BORDER_PUBLICATIONS_CLASS = publicationsHouseSurfaces.leftBorderPublications
 const HOUSE_DIVIDER_BORDER_SOFT_CLASS = publicationsHouseDividers.borderSoft
-const HOUSE_ACTIONS_SECTION_TOOLS_CLASS = publicationsHouseActions.sectionTools
-const HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS = publicationsHouseActions.sectionToolsPublications
 const HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS = publicationsHouseActions.sectionToolButton
-const HOUSE_ACTIONS_PILL_CLASS = publicationsHouseActions.actionPill
-const HOUSE_ACTIONS_PILL_PRIMARY_CLASS = publicationsHouseActions.actionPillPrimary
-const HOUSE_ACTIONS_PILL_ICON_GROUP_CLASS = publicationsHouseActions.actionPillIconGroup
-const HOUSE_ACTIONS_PILL_ICON_CLASS = publicationsHouseActions.actionPillIcon
 const HOUSE_DRILLDOWN_SHEET_CLASS = publicationsHouseDrilldown.sheet
 const HOUSE_DRILLDOWN_PLACEHOLDER_CLASS = publicationsHouseDrilldown.placeholder
 const HOUSE_DRILLDOWN_ALERT_CLASS = publicationsHouseDrilldown.alert
@@ -463,6 +458,7 @@ const HOUSE_DRILLDOWN_TOOLTIP_CLASS =
     HOUSE_DRILLDOWN_CHART_TOOLTIP_CLASS,
     'pointer-events-none absolute left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap px-2 py-0.5 text-caption leading-none transition-all duration-150 ease-out',
   )
+const HOUSE_APPROVED_TOOLTIP_CLASS = 'house-approved-tooltip house-approved-tooltip-float'
 const MAX_PUBLICATION_CHART_BARS = 12
 const HOUSE_METRIC_TOGGLE_TRACK_CLASS = HOUSE_TOGGLE_TRACK_CLASS
 
@@ -5148,9 +5144,7 @@ export function PublicationsTopStrip({
   const [insightsVisible, setInsightsVisible] = useState(
     () => forceInsightsVisible || readAccountSettings().publicationInsightsDefaultVisibility !== 'hidden',
   )
-  const [toolboxOpen, setToolboxOpen] = useState(
-    () => forceInsightsVisible || readAccountSettings().publicationInsightsDefaultVisibility !== 'hidden',
-  )
+  const [toolboxOpen, setToolboxOpen] = useState(false)
   const tileMotionStyle = useMemo(() => ({
     '--motion-duration-chart-refresh': `${TILE_MOTION_ENTRY_DURATION_MS}ms`,
     '--motion-duration-chart-toggle': `${TILE_MOTION_TOGGLE_DURATION_MS}ms`,
@@ -5214,7 +5208,7 @@ export function PublicationsTopStrip({
   useEffect(() => {
     if (forceInsightsVisible) {
       setInsightsVisible(true)
-      setToolboxOpen(true)
+      setToolboxOpen(false)
     }
   }, [forceInsightsVisible])
 
@@ -5284,89 +5278,112 @@ export function PublicationsTopStrip({
                 <p className={cn('mt-1', HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_WARNING_CLASS)}>Last update failed</p>
               ) : null}
             </div>
-            <div className="ml-auto flex min-h-8 min-w-[16.5rem] items-center justify-end gap-2">
+            <div className="ml-auto flex h-8 w-[25rem] shrink-0 items-center justify-end gap-1 overflow-x-hidden overflow-y-visible">
               <div
                 className={cn(
-                  'flex flex-wrap items-center',
-                  HOUSE_ACTIONS_PILL_CLASS,
-                  HOUSE_ACTIONS_SECTION_TOOLS_CLASS,
-                  HOUSE_ACTIONS_SECTION_TOOLS_PUBLICATIONS_CLASS,
-                  (!insightsVisible || !toolboxOpen) && 'hidden',
+                  'overflow-x-hidden overflow-y-visible transition-[max-width,opacity,transform] duration-200 ease-out',
+                  insightsVisible && toolboxOpen
+                    ? 'max-w-[20rem] translate-x-0 opacity-100'
+                    : 'pointer-events-none max-w-0 translate-x-1 opacity-0',
                 )}
                 data-stop-tile-open="true"
                 aria-hidden={!insightsVisible || !toolboxOpen}
               >
-                <Button
-                  type="button"
-                  data-stop-tile-open="true"
-                  variant="house"
-                  size="sm"
-                  className={cn('h-8 gap-1.5 px-3', HOUSE_ACTIONS_PILL_PRIMARY_CLASS, HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
-                  aria-label={`Generate ${PUBLICATION_INSIGHTS_LABEL} report`}
-                >
-                  <FileText className="h-3.5 w-3.5" />
-                  <span>Generate report</span>
-                </Button>
-                <div className={HOUSE_ACTIONS_PILL_ICON_GROUP_CLASS}>
-                  <Button
-                    type="button"
-                    data-stop-tile-open="true"
-                    variant="house"
-                    size="icon"
-                    className={cn('h-8 w-8', HOUSE_ACTIONS_PILL_ICON_CLASS, HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
-                    aria-label="Download"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    type="button"
-                    data-stop-tile-open="true"
-                    variant="house"
-                    size="icon"
-                    className={cn('h-8 w-8', HOUSE_ACTIONS_PILL_ICON_CLASS, HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
-                    aria-label="Share"
-                  >
-                    <Share2 className="h-3.5 w-3.5" />
-                  </Button>
+                <div className="flex min-w-0 flex-nowrap items-center gap-1 whitespace-nowrap">
+                  <div className="group relative inline-flex">
+                    <Button
+                      type="button"
+                      data-stop-tile-open="true"
+                      variant="house"
+                      size="icon"
+                      className="h-8 w-8 house-publications-toolbox-item"
+                      aria-label={`Generate ${PUBLICATION_INSIGHTS_LABEL} report`}
+                      title="Generate report"
+                    >
+                      <FileText className="h-4 w-4" strokeWidth={2.1} />
+                    </Button>
+                    <span className={HOUSE_APPROVED_TOOLTIP_CLASS} role="tooltip" aria-hidden="true">
+                      Generate report
+                    </span>
+                  </div>
+                  <div className="house-publications-toolbox-divider" aria-hidden="true" />
+                  <div className="group relative inline-flex">
+                    <Button
+                      type="button"
+                      data-stop-tile-open="true"
+                      variant="house"
+                      size="icon"
+                      className="h-8 w-8 house-publications-toolbox-item"
+                      aria-label="Download"
+                      title="Download"
+                    >
+                      <Download className="h-4 w-4" strokeWidth={2.1} />
+                    </Button>
+                    <span className={HOUSE_APPROVED_TOOLTIP_CLASS} role="tooltip" aria-hidden="true">
+                      Download
+                    </span>
+                  </div>
+                  <div className="house-publications-toolbox-divider" aria-hidden="true" />
+                  <div className="group relative inline-flex">
+                    <Button
+                      type="button"
+                      data-stop-tile-open="true"
+                      variant="house"
+                      size="icon"
+                      className="h-8 w-8 house-publications-toolbox-item"
+                      aria-label="Share"
+                      title="Share"
+                    >
+                      <Share2 className="h-4 w-4" strokeWidth={2.1} />
+                    </Button>
+                    <span className={HOUSE_APPROVED_TOOLTIP_CLASS} role="tooltip" aria-hidden="true">
+                      Share
+                    </span>
+                  </div>
                 </div>
               </div>
+              {insightsVisible ? (
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    data-stop-tile-open="true"
+                    data-state={toolboxOpen ? 'open' : 'closed'}
+                    variant="house"
+                    size="icon"
+                    className={cn(
+                      'h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control transition-[background-color,border-color,box-shadow] duration-200 ease-out',
+                      HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS,
+                      toolboxOpen && 'house-publications-tools-toggle-open',
+                    )}
+                    onClick={() => {
+                      setToolboxOpen((current) => !current)
+                    }}
+                    aria-pressed={toolboxOpen}
+                    aria-expanded={toolboxOpen}
+                    aria-label={toolboxOpen ? 'Hide toolbox actions' : 'Show toolbox actions'}
+                    title="Tools"
+                  >
+                    <Hammer
+                      className="house-publications-tools-toggle-icon h-[1.09rem] w-[1.09rem]"
+                      strokeWidth={2.1}
+                    />
+                  </Button>
+                </div>
+              ) : null}
               <Button
                 type="button"
                 data-stop-tile-open="true"
-                variant="house"
-                size="icon"
-                className={cn('h-8 w-8 house-publications-action-icon', HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS)}
-                onClick={() => {
-                  if (!insightsVisible) {
-                    setInsightsVisible(true)
-                    setToolboxOpen(true)
-                    return
-                  }
-                  setToolboxOpen((current) => !current)
-                }}
-                aria-pressed={toolboxOpen}
-                aria-label={toolboxOpen ? 'Hide toolbox actions' : 'Show toolbox actions'}
-              >
-                <Toolbox className="h-[1.09rem] w-[1.09rem]" strokeWidth={2.1} />
-              </Button>
-              <Button
-                type="button"
-                data-stop-tile-open="true"
+                data-state={insightsVisible ? 'open' : 'closed'}
                 variant="house"
                 size="icon"
                 className={cn(
-                  'h-8 w-8 house-publications-action-icon house-publications-action-eye',
+                  'h-8 w-8 shrink-0 house-publications-action-icon house-publications-top-control house-publications-eye-toggle',
                   HOUSE_ACTIONS_SECTION_TOOL_BUTTON_CLASS,
-                  insightsVisible
-                    ? 'house-publications-action-eye-on'
-                    : 'house-publications-action-eye-off',
                 )}
                 onClick={() => {
                   setInsightsVisible((current) => {
                     const nextVisible = !current
-                    if (nextVisible) {
-                      setToolboxOpen(true)
-                    } else {
+                    if (!nextVisible) {
                       setToolboxOpen(false)
                     }
                     return nextVisible
@@ -5376,9 +5393,9 @@ export function PublicationsTopStrip({
                 aria-label={insightsVisible ? `Set ${PUBLICATION_INSIGHTS_LABEL} not visible` : `Set ${PUBLICATION_INSIGHTS_LABEL} visible`}
               >
                 {insightsVisible ? (
-                  <Eye className="house-publications-eye-glyph h-[1.09rem] w-[1.09rem]" strokeWidth={2.3} />
+                  <Eye className="house-publications-eye-toggle-icon h-[1.2rem] w-[1.2rem]" strokeWidth={2.1} />
                 ) : (
-                  <EyeOff className="house-publications-eye-glyph h-[1.09rem] w-[1.09rem]" strokeWidth={2.3} />
+                  <EyeOff className="house-publications-eye-toggle-icon h-[1.2rem] w-[1.2rem]" strokeWidth={2.1} />
                 )}
               </Button>
             </div>
@@ -5770,7 +5787,15 @@ export function PublicationsTopStrip({
                 )
               })}
             </div>
-          ) : null}
+          ) : (
+            <div className="house-main-content-block pb-3">
+              <section className="house-notification-section" aria-live="polite">
+                <div className={cn(HOUSE_SURFACE_BANNER_CLASS, HOUSE_SURFACE_BANNER_INFO_CLASS)}>
+                  <p>Publication insights hidden by user.</p>
+                </div>
+              </section>
+            </div>
+          )}
         </CardContent>
       </Card>
 

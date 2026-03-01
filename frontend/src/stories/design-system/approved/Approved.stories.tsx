@@ -1365,6 +1365,7 @@ function ApprovedMetricsToolbarSection() {
         <div className="px-4 py-2 border-b border-neutral-200">
           <p className="text-sm font-semibold text-neutral-900">Approved Metrics Toolbar (Publications)</p>
           <p className="text-xs text-neutral-600">Live publications toolbar pattern for defining house tokens around report/download/share actions.</p>
+          <p className="text-xs text-neutral-600">Only approved tooltip class for this surface: <code>.house-approved-tooltip</code> (same visual contract as chart tooltips).</p>
         </div>
 
         <div className="grid gap-4 p-4 lg:grid-cols-2">
@@ -1373,32 +1374,260 @@ function ApprovedMetricsToolbarSection() {
             <div className="house-main-heading-block w-full rounded-sm border border-neutral-200 p-2">
               <p className="house-section-title">Publication insights</p>
               <div className="ml-auto flex min-h-8 min-w-[16.5rem] justify-end">
-                <div className="house-publications-actions house-section-tools house-section-tools-publications flex flex-wrap items-center">
-                  <button
-                    type="button"
-                    className="house-publications-action-primary house-section-tool-button h-8 gap-1.5 px-3 inline-flex items-center"
-                    aria-label="Generate publication insights report"
-                  >
-                    <FileText className="h-3.5 w-3.5" />
-                    <span>Generate report</span>
-                  </button>
-                  <div className="house-publications-action-icons">
+                <div className="flex min-w-0 flex-nowrap items-center gap-1 whitespace-nowrap">
+                  <div className="group relative inline-flex">
                     <button
                       type="button"
-                      className="house-publications-action-icon house-section-tool-button h-8 w-8 inline-flex items-center justify-center"
+                      className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
+                      aria-label="Generate publication insights report"
+                    >
+                      <FileText className="h-4 w-4" />
+                    </button>
+                    <span
+                      className="house-approved-tooltip house-approved-tooltip-float"
+                      role="tooltip"
+                      aria-hidden="true"
+                    >
+                      Generate report
+                    </span>
+                  </div>
+                  <div className="house-publications-toolbox-divider" aria-hidden="true" />
+                  <div className="group relative inline-flex">
+                    <button
+                      type="button"
+                      className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
                       aria-label="Download"
                     >
-                      <Download className="h-3.5 w-3.5" />
+                      <Download className="h-4 w-4" />
                     </button>
+                    <span
+                      className="house-approved-tooltip house-approved-tooltip-float"
+                      role="tooltip"
+                      aria-hidden="true"
+                    >
+                      Download
+                    </span>
+                  </div>
+                  <div className="house-publications-toolbox-divider" aria-hidden="true" />
+                  <div className="group relative inline-flex">
                     <button
                       type="button"
-                      className="house-publications-action-icon house-section-tool-button h-8 w-8 inline-flex items-center justify-center"
+                      className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
                       aria-label="Share"
                     >
-                      <Share2 className="h-3.5 w-3.5" />
+                      <Share2 className="h-4 w-4" />
                     </button>
+                    <span
+                      className="house-approved-tooltip house-approved-tooltip-float"
+                      role="tooltip"
+                      aria-hidden="true"
+                    >
+                      Share
+                    </span>
                   </div>
                 </div>
+              </div>
+            </div>
+            <div className="house-main-content-block rounded-sm border border-neutral-200 p-2">
+              <section className="house-notification-section">
+                <div className="house-banner house-banner-info">
+                  <p>Publication insights hidden by user.</p>
+                </div>
+              </section>
+            </div>
+          </article>
+
+          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Class + token mapping</p>
+            <div className="overflow-hidden rounded-md border border-neutral-200">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-neutral-50 text-neutral-700">
+                  <tr>
+                    <th className="px-2 py-1.5 font-semibold">Element</th>
+                    <th className="px-2 py-1.5 font-semibold">Role</th>
+                    <th className="px-2 py-1.5 font-semibold">Token touchpoints</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-approved-tooltip</code></td>
+                    <td className="px-2 py-1.5">Single approved tooltip surface</td>
+                    <td className="px-2 py-1.5">shared with chart overlays via the drilldown chart tooltip contract</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-publications-toolbox-item</code></td>
+                    <td className="px-2 py-1.5">Toolbox action item</td>
+                    <td className="px-2 py-1.5">shared base + hover bg without text/icon color shift</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-publications-toolbox-divider</code></td>
+                    <td className="px-2 py-1.5">Toolbox separator</td>
+                    <td className="px-2 py-1.5">single-stroke divider between Generate/Download/Share</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-publications-tools-toggle-open</code></td>
+                    <td className="px-2 py-1.5">Tools open state</td>
+                    <td className="px-2 py-1.5">persistent active green fill, no border ring</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-publications-tools-toggle-icon</code></td>
+                    <td className="px-2 py-1.5">Tools icon motion</td>
+                    <td className="px-2 py-1.5">open-state motion transform driven by <code>data-state</code></td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-notification-section</code></td>
+                    <td className="px-2 py-1.5">Formal notification wrapper</td>
+                    <td className="px-2 py-1.5">reusable section container for system/user state messaging</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-banner</code> + <code>.house-banner-info</code></td>
+                    <td className="px-2 py-1.5">Insights hidden box</td>
+                    <td className="px-2 py-1.5">notification message surface within the formal wrapper</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-section-tools-publications</code></td>
+                    <td className="px-2 py-1.5">Publications scope override</td>
+                    <td className="px-2 py-1.5">section-scoped palette and stroke tuning</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-section-tool-button</code></td>
+                    <td className="px-2 py-1.5">Shared interactive primitive</td>
+                    <td className="px-2 py-1.5">focus ring, interaction motion, shared control metrics</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ApprovedNotificationBannersSection() {
+  return (
+    <section>
+      <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-neutral-200">
+          <p className="text-sm font-semibold text-neutral-900">Approved Notifications (House Banners)</p>
+          <p className="text-xs text-neutral-600">Reusable formal notification format for system and user-state messaging across pages.</p>
+        </div>
+
+        <div className="grid gap-4 p-4 lg:grid-cols-2">
+          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Visual preview</p>
+            <div className="space-y-2">
+              <section className="house-notification-section">
+                <div className="house-banner house-banner-info">
+                  <p>Publication insights hidden by user.</p>
+                </div>
+              </section>
+              <section className="house-notification-section">
+                <div className="house-banner house-banner-success">
+                  <p>Metrics refreshed successfully.</p>
+                </div>
+              </section>
+              <section className="house-notification-section">
+                <div className="house-banner house-banner-warning">
+                  <p>Metrics are currently computing. This panel updates automatically.</p>
+                </div>
+              </section>
+              <section className="house-notification-section">
+                <div className="house-banner house-banner-danger">
+                  <p>Metrics refresh failed. Use Sync Publications to retry.</p>
+                </div>
+              </section>
+            </div>
+          </article>
+
+          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Class + token mapping</p>
+            <div className="overflow-hidden rounded-md border border-neutral-200">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-neutral-50 text-neutral-700">
+                  <tr>
+                    <th className="px-2 py-1.5 font-semibold">Element</th>
+                    <th className="px-2 py-1.5 font-semibold">Role</th>
+                    <th className="px-2 py-1.5 font-semibold">Token touchpoints</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-notification-section</code></td>
+                    <td className="px-2 py-1.5">Formal notification wrapper</td>
+                    <td className="px-2 py-1.5">reusable section shell with neutral surface, stroke, spacing</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-banner</code></td>
+                    <td className="px-2 py-1.5">Notification message container</td>
+                    <td className="px-2 py-1.5">bold outline width, radius, spacing, text metrics</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-banner-info</code>, <code>.house-banner-success</code>, <code>.house-banner-warning</code>, <code>.house-banner-danger</code></td>
+                    <td className="px-2 py-1.5">Semantic states</td>
+                    <td className="px-2 py-1.5">state-specific background, border, and foreground tone tokens</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ApprovedTooltipSection() {
+  return (
+    <section>
+      <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-neutral-200">
+          <p className="text-sm font-semibold text-neutral-900">Approved Tooltip (Publications)</p>
+          <p className="text-xs text-neutral-600">Single approved tooltip pattern for publications actions and chart overlays.</p>
+        </div>
+
+        <div className="grid gap-4 p-4 lg:grid-cols-2">
+          <article className="rounded-md border border-neutral-200 bg-background p-4 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Visual preview</p>
+            <div className="flex items-center gap-2">
+              <div className="group relative inline-flex">
+                <button
+                  type="button"
+                  className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
+                  aria-label="Generate publication insights report"
+                  title="Generate report"
+                >
+                  <FileText className="h-4 w-4" />
+                </button>
+                <span className="house-approved-tooltip house-approved-tooltip-float" role="tooltip" aria-hidden="true">
+                  Generate report
+                </span>
+              </div>
+              <div className="group relative inline-flex">
+                <button
+                  type="button"
+                  className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
+                  aria-label="Download"
+                  title="Download"
+                >
+                  <Download className="h-4 w-4" />
+                </button>
+                <span className="house-approved-tooltip house-approved-tooltip-float" role="tooltip" aria-hidden="true">
+                  Download
+                </span>
+              </div>
+              <div className="group relative inline-flex">
+                <button
+                  type="button"
+                  className="house-section-tool-button house-publications-toolbox-item h-8 w-8 inline-flex items-center justify-center"
+                  aria-label="Share"
+                  title="Share"
+                >
+                  <Share2 className="h-4 w-4" />
+                </button>
+                <span className="house-approved-tooltip house-approved-tooltip-float" role="tooltip" aria-hidden="true">
+                  Share
+                </span>
               </div>
             </div>
           </article>
@@ -1416,34 +1645,19 @@ function ApprovedMetricsToolbarSection() {
                 </thead>
                 <tbody>
                   <tr className="border-t border-neutral-200">
-                    <td className="px-2 py-1.5"><code>.house-publications-actions</code></td>
-                    <td className="px-2 py-1.5">Toolbar shell</td>
-                    <td className="px-2 py-1.5">surface/border/radius grouping for full action rail</td>
+                    <td className="px-2 py-1.5"><code>.house-approved-tooltip</code></td>
+                    <td className="px-2 py-1.5">Canonical tooltip surface</td>
+                    <td className="px-2 py-1.5">neutral surface, stroke, radius, and foreground (shared with chart tooltip)</td>
                   </tr>
                   <tr className="border-t border-neutral-200">
-                    <td className="px-2 py-1.5"><code>.house-publications-action-primary</code></td>
-                    <td className="px-2 py-1.5">Primary CTA segment</td>
-                    <td className="px-2 py-1.5">primary bg/fg, hover tone, segment divider behavior</td>
+                    <td className="px-2 py-1.5"><code>.house-approved-tooltip-float</code></td>
+                    <td className="px-2 py-1.5">Tooltip positioning + reveal behavior</td>
+                    <td className="px-2 py-1.5">absolute top placement, 12px caption text, 18px total height, hover/focus visibility transition</td>
                   </tr>
                   <tr className="border-t border-neutral-200">
-                    <td className="px-2 py-1.5"><code>.house-publications-action-icons</code></td>
-                    <td className="px-2 py-1.5">Icon group wrapper</td>
-                    <td className="px-2 py-1.5">group gap, join radius, internal separation</td>
-                  </tr>
-                  <tr className="border-t border-neutral-200">
-                    <td className="px-2 py-1.5"><code>.house-publications-action-icon</code></td>
-                    <td className="px-2 py-1.5">Icon segment</td>
-                    <td className="px-2 py-1.5">icon-button surface/hover/active tokens</td>
-                  </tr>
-                  <tr className="border-t border-neutral-200">
-                    <td className="px-2 py-1.5"><code>.house-section-tools-publications</code></td>
-                    <td className="px-2 py-1.5">Publications scope override</td>
-                    <td className="px-2 py-1.5">section-scoped palette and stroke tuning</td>
-                  </tr>
-                  <tr className="border-t border-neutral-200">
-                    <td className="px-2 py-1.5"><code>.house-section-tool-button</code></td>
-                    <td className="px-2 py-1.5">Shared interactive primitive</td>
-                    <td className="px-2 py-1.5">focus ring, interaction motion, shared control metrics</td>
+                    <td className="px-2 py-1.5"><code>.house-drilldown-chart-tooltip</code></td>
+                    <td className="px-2 py-1.5">Chart overlay alias</td>
+                    <td className="px-2 py-1.5">must match the same approved tooltip surface contract</td>
                   </tr>
                 </tbody>
               </table>
@@ -2916,6 +3130,8 @@ function ApprovedPage() {
         <ApprovedLayoutTitlePositioning />
         <ApprovedTypographySection />
         <ApprovedMetricsToolbarSection />
+        <ApprovedTooltipSection />
+        <ApprovedNotificationBannersSection />
         <ApprovedPublicationsDrilldownSection />
         <ApprovedDrilldownMetricTileSection />
         <ApprovedMetricTilesSection />
