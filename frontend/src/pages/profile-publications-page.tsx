@@ -110,6 +110,15 @@ const PUBLICATION_TABLE_COLUMN_DEFAULTS: Record<PublicationTableColumnKey, Publi
   article_type: { visible: true, align: 'left', width: 168 },
   citations: { visible: true, align: 'left', width: 136 },
 }
+const PUBLICATION_TABLE_COLUMN_WIDTH_LIMITS: Record<PublicationTableColumnKey, { min: number; max: number; growWeight: number }> = {
+  title: { min: 320, max: 760, growWeight: 6.4 },
+  year: { min: 96, max: 124, growWeight: 0.6 },
+  venue: { min: 180, max: 340, growWeight: 2.1 },
+  work_type: { min: 170, max: 260, growWeight: 1.6 },
+  article_type: { min: 140, max: 220, growWeight: 1.2 },
+  citations: { min: 124, max: 168, growWeight: 0.8 },
+}
+const PUBLICATION_TABLE_COLUMN_HARD_MIN = 56
 const PUBLICATION_TABLE_COLUMN_WIDTH_MIN = 80
 const PUBLICATION_TABLE_COLUMN_WIDTH_MAX = 640
 const PUBLICATION_EXPORT_FORMAT_OPTIONS: Array<{ value: PublicationExportFormat; label: string; extension: string; mimeType: string }> = [
@@ -1031,6 +1040,127 @@ function publicationTableColumnsEqual(
   ))
 }
 
+function clampPublicationTableColumnsToAvailableWidth(input: {
+  columns: Record<PublicationTableColumnKey, PublicationTableColumnPreference>
+  columnOrder: PublicationTableColumnKey[]
+  availableWidth: number
+}): Record<PublicationTableColumnKey, PublicationTableColumnPreference> {
+  const next: Record<PublicationTableColumnKey, PublicationTableColumnPreference> = {
+    title: { ...input.columns.title },
+    year: { ...input.columns.year },
+    venue: { ...input.columns.venue },
+    work_type: { ...input.columns.work_type },
+    article_type: { ...input.columns.article_type },
+    citations: { ...input.columns.citations },
+  }
+  const visibleColumns = input.columnOrder.filter((column) => next[column].visible)
+  if (visibleColumns.length === 0) {
+    return next
+  }
+
+  const containerBudget = Math.max(
+    visibleColumns.length * PUBLICATION_TABLE_COLUMN_HARD_MIN,
+    Math.round(Number(input.availableWidth) || 0) - 8,
+  )
+  const preferredWidths: Record<PublicationTableColumnKey, number> = {
+    title: next.title.width,
+    year: next.year.width,
+    venue: next.venue.width,
+    work_type: next.work_type.width,
+    article_type: next.article_type.width,
+    citations: next.citations.width,
+  }
+  for (const column of visibleColumns) {
+    const limits = PUBLICATION_TABLE_COLUMN_WIDTH_LIMITS[column]
+    const currentWidth = Number(next[column].width || PUBLICATION_TABLE_COLUMN_DEFAULTS[column].width)
+    const clamped = Math.max(limits.min, Math.min(limits.max, Math.round(currentWidth)))
+    preferredWidths[column] = clamped
+  }
+
+  let totalWidth = visibleColumns.reduce((sum, column) => sum + preferredWidths[column], 0)
+  if (totalWidth > containerBudget) {
+    let overflow = totalWidth - containerBudget
+    const shrinkOrder = [...visibleColumns].sort((left, right) => {
+      const rank = (column: PublicationTableColumnKey): number => {
+        if (column === 'title') {
+          return 100
+        }
+        if (column === 'venue') {
+          return 60
+        }
+        if (column === 'work_type') {
+          return 50
+        }
+        if (column === 'article_type') {
+          return 40
+        }
+        if (column === 'year') {
+          return 20
+        }
+        return 10
+      }
+      return rank(left) - rank(right)
+    })
+
+    for (const column of shrinkOrder) {
+      if (overflow <= 0) {
+        break
+      }
+      const preferredMin = PUBLICATION_TABLE_COLUMN_WIDTH_LIMITS[column].min
+      const reducible = Math.max(0, preferredWidths[column] - preferredMin)
+      if (reducible <= 0) {
+        continue
+      }
+      const deduction = Math.min(reducible, overflow)
+      preferredWidths[column] -= deduction
+      overflow -= deduction
+    }
+
+    if (overflow > 0) {
+      for (const column of shrinkOrder) {
+        if (overflow <= 0) {
+          break
+        }
+        const reducible = Math.max(0, preferredWidths[column] - PUBLICATION_TABLE_COLUMN_HARD_MIN)
+        if (reducible <= 0) {
+          continue
+        }
+        const deduction = Math.min(reducible, overflow)
+        preferredWidths[column] -= deduction
+        overflow -= deduction
+      }
+    }
+    totalWidth = visibleColumns.reduce((sum, column) => sum + preferredWidths[column], 0)
+  }
+
+  if (totalWidth < containerBudget) {
+    let remaining = containerBudget - totalWidth
+    const growOrder: PublicationTableColumnKey[] = ['title', 'venue', 'work_type', 'article_type', 'year', 'citations']
+    const growableColumns = growOrder.filter((column) => visibleColumns.includes(column))
+    for (const column of growableColumns) {
+      if (remaining <= 0) {
+        break
+      }
+      const maxWidth = PUBLICATION_TABLE_COLUMN_WIDTH_LIMITS[column].max
+      const growable = Math.max(0, maxWidth - preferredWidths[column])
+      if (growable <= 0) {
+        continue
+      }
+      const growth = Math.min(growable, remaining)
+      preferredWidths[column] += growth
+      remaining -= growth
+    }
+  }
+
+  for (const column of visibleColumns) {
+    next[column] = {
+      ...next[column],
+      width: Math.round(preferredWidths[column]),
+    }
+  }
+  return next
+}
+
 function autoFitPublicationTableColumns(input: {
   works: PersonaWork[]
   metricsByWorkId: Map<string, { citations: number; provider: string }>
@@ -1045,14 +1175,7 @@ function autoFitPublicationTableColumns(input: {
     article_type: { ...input.current.article_type },
     citations: { ...input.current.citations },
   }
-  const columnLimits: Record<PublicationTableColumnKey, { min: number; max: number; growWeight: number }> = {
-    title: { min: 320, max: 760, growWeight: 6.4 },
-    year: { min: 96, max: 124, growWeight: 0.6 },
-    venue: { min: 180, max: 340, growWeight: 2.1 },
-    work_type: { min: 170, max: 260, growWeight: 1.6 },
-    article_type: { min: 140, max: 220, growWeight: 1.2 },
-    citations: { min: 124, max: 168, growWeight: 0.8 },
-  }
+  const columnLimits = PUBLICATION_TABLE_COLUMN_WIDTH_LIMITS
   const safeAvailableWidth = Math.max(760, Math.round(input.availableWidth))
 
   const sampleSize = Math.max(1, Math.min(220, input.works.length))
@@ -2048,8 +2171,22 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     if (!user?.id) {
       return
     }
-    setPublicationTableColumns(loadPublicationTableColumnPreferences(user.id))
-  }, [user?.id])
+    const loaded = loadPublicationTableColumnPreferences(user.id)
+    setPublicationTableColumns(() => (
+      clampPublicationTableColumnsToAvailableWidth({
+        columns: {
+          title: { ...loaded.title },
+          year: { ...loaded.year },
+          venue: { ...loaded.venue },
+          work_type: { ...loaded.work_type },
+          article_type: { ...loaded.article_type },
+          citations: { ...loaded.citations },
+        },
+        columnOrder: publicationTableColumnOrder,
+        availableWidth: publicationTableLayoutWidth || 1100,
+      })
+    ))
+  }, [publicationTableColumnOrder, publicationTableLayoutWidth, user?.id])
 
   useEffect(() => {
     if (!user?.id) {
@@ -2684,12 +2821,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         current,
         availableWidth: publicationTableLayoutWidth,
       })
-      if (publicationTableColumnsEqual(current, next)) {
+      const normalized = clampPublicationTableColumnsToAvailableWidth({
+        columns: next,
+        columnOrder: publicationTableColumnOrder,
+        availableWidth: publicationTableLayoutWidth,
+      })
+      if (publicationTableColumnsEqual(current, normalized)) {
         return current
       }
-      return next
+      return normalized
     })
-  }, [metricsByWorkId, personaState?.works, publicationTableLayoutWidth])
+  }, [metricsByWorkId, personaState?.works, publicationTableColumnOrder, publicationTableLayoutWidth])
 
   const totalFilteredPublicationWorks = filteredWorks.length
   const publicationLibraryTotalPages = useMemo(() => {
@@ -3260,19 +3402,24 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       if (current[column].visible && visibleCount <= 1) {
         return current
       }
-      return {
+      const next = {
         ...current,
         [column]: {
           ...current[column],
           visible: !current[column].visible,
         },
       }
+      return clampPublicationTableColumnsToAvailableWidth({
+        columns: next,
+        columnOrder: publicationTableColumnOrder,
+        availableWidth: publicationTableLayoutWidth,
+      })
     })
-  }, [])
+  }, [publicationTableColumnOrder, publicationTableLayoutWidth])
 
   const onResetPublicationTableSettings = useCallback(() => {
-    setPublicationTableColumns((current) => (
-      PUBLICATION_TABLE_COLUMN_ORDER.reduce<Record<PublicationTableColumnKey, PublicationTableColumnPreference>>(
+    setPublicationTableColumns((current) => {
+      const reset = PUBLICATION_TABLE_COLUMN_ORDER.reduce<Record<PublicationTableColumnKey, PublicationTableColumnPreference>>(
         (accumulator, column) => {
           accumulator[column] = {
             ...current[column],
@@ -3289,7 +3436,12 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           citations: { ...current.citations },
         },
       )
-    ))
+      return clampPublicationTableColumnsToAvailableWidth({
+        columns: reset,
+        columnOrder: PUBLICATION_TABLE_COLUMN_ORDER,
+        availableWidth: publicationTableLayoutWidth,
+      })
+    })
     setPublicationTableColumnOrder([...PUBLICATION_TABLE_COLUMN_ORDER])
     setPublicationTableDensity('default')
     setPublicationTableAlternateRowColoring(true)
@@ -3297,7 +3449,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationTableAttachmentStatusVisible(true)
     setPublicationLibraryPageSize(50)
     setPublicationLibraryPage(1)
-  }, [])
+  }, [publicationTableLayoutWidth])
 
   const onAutoAdjustPublicationTableWidths = useCallback(() => {
     const works = filteredWorks.length > 0 ? filteredWorks : (personaState?.works ?? [])
@@ -3323,9 +3475,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         current,
         availableWidth,
       })
-      return next
+      return clampPublicationTableColumnsToAvailableWidth({
+        columns: next,
+        columnOrder: publicationTableColumnOrder,
+        availableWidth,
+      })
     })
-  }, [filteredWorks, metricsByWorkId, personaState?.works, publicationTableLayoutWidth, publicationTableResizingColumn])
+  }, [filteredWorks, metricsByWorkId, personaState?.works, publicationTableColumnOrder, publicationTableLayoutWidth, publicationTableResizingColumn])
 
   const onDownloadPublicationLibrary = useCallback(() => {
     const selectedFieldKeys = PUBLICATION_EXPORT_FIELD_OPTIONS
@@ -3663,9 +3819,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       if (!changed) {
         return current
       }
-      return next
+      return clampPublicationTableColumnsToAvailableWidth({
+        columns: next,
+        columnOrder: publicationTableColumnOrder,
+        availableWidth: publicationTableLayoutWidth,
+      })
     })
-  }, [publicationTableColumnOrder])
+  }, [publicationTableColumnOrder, publicationTableLayoutWidth])
 
   useEffect(() => {
     if (!publicationTableResizingColumn) {
@@ -3699,7 +3859,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         if (!changed) {
           return current
         }
-        return next
+        return clampPublicationTableColumnsToAvailableWidth({
+          columns: next,
+          columnOrder: publicationTableColumnOrder,
+          availableWidth: publicationTableLayoutWidth,
+        })
       })
     }
     const stopResize = () => {
@@ -3714,7 +3878,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       window.removeEventListener('pointerup', stopResize)
       window.removeEventListener('pointercancel', stopResize)
     }
-  }, [publicationTableResizingColumn])
+  }, [publicationTableColumnOrder, publicationTableLayoutWidth, publicationTableResizingColumn])
 
   const activePaneError = selectedWorkId
     ? paneErrorByKey[publicationPaneKey(selectedWorkId, activeDetailTab)] || ''
@@ -5029,14 +5193,14 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS}>{selectedDetail.structured_abstract_last_error}</p>
                             ) : null}
                             {selectedDetail?.structured_abstract?.sections?.length ? (
-                              <div className="space-y-3">
+                              <div className="space-y-0">
                                 {selectedDetail.structured_abstract.sections.map((section, index) => (
                                   <div key={`abstract-section-${section.key || index}`} className="space-y-2">
                                     <div className="house-drilldown-heading-block">
                                       <p className="house-drilldown-heading-block-title">{section.label || 'Summary'}</p>
                                     </div>
                                     <div className="house-drilldown-content-block">
-                                      <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                                      <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} w-full`}>
                                         <p className="leading-relaxed">{section.content || 'Not available'}</p>
                                       </div>
                                     </div>
@@ -5048,7 +5212,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                       <p className="house-drilldown-heading-block-title">Keywords</p>
                                     </div>
                                     <div className="house-drilldown-content-block">
-                                      <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                                      <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} w-full`}>
                                         <p className="leading-relaxed">{abstractKeywordList.join(', ')}</p>
                                       </div>
                                     </div>
@@ -5057,7 +5221,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               </div>
                             ) : effectiveDetailAbstract ? (
                               <div className="house-drilldown-content-block">
-                                <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} space-y-2`}>
+                                <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} w-full space-y-2`}>
                                   <p className="leading-relaxed">{abstractPreview}</p>
                                   {effectiveDetailAbstract.length > 700 ? (
                                     <button
@@ -5076,7 +5240,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                   <p className="house-drilldown-heading-block-title">Keywords</p>
                                 </div>
                                 <div className="house-drilldown-content-block">
-                                  <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                                  <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} w-full`}>
                                     <p className="leading-relaxed">{abstractKeywordList.join(', ')}</p>
                                   </div>
                                 </div>
