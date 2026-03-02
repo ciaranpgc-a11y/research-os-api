@@ -49,62 +49,6 @@ function estimatePolylineLength(points: Array<{ x: number; y: number }>): number
   return total
 }
 
-function buildSmoothSvgPath(points: Array<{ x: number; y: number }>): string {
-  if (!points.length) {
-    return ''
-  }
-  if (points.length === 1) {
-    const only = points[0]
-    return `M ${only.x.toFixed(3)} ${only.y.toFixed(3)}`
-  }
-  if (points.length === 2) {
-    const first = points[0]
-    const second = points[1]
-    return `M ${first.x.toFixed(3)} ${first.y.toFixed(3)} L ${second.x.toFixed(3)} ${second.y.toFixed(3)}`
-  }
-
-  // Monotone cubic interpolation (Fritsch-Carlson) converted to Bezier segments
-  // to avoid overshoot beyond data bounds (critical for cumulative trend lines).
-  const clampSvgCoord = (value: number): number => Math.max(0, Math.min(100, value))
-  const n = points.length
-  const dx = Array.from({ length: n - 1 }, (_, index) => Math.max(1e-6, points[index + 1].x - points[index].x))
-  const slope = Array.from({ length: n - 1 }, (_, index) => (points[index + 1].y - points[index].y) / dx[index])
-  const tangent = Array.from({ length: n }, () => 0)
-  tangent[0] = slope[0]
-  tangent[n - 1] = slope[n - 2]
-  for (let index = 1; index < n - 1; index += 1) {
-    tangent[index] = (slope[index - 1] + slope[index]) / 2
-  }
-  for (let index = 0; index < n - 1; index += 1) {
-    if (Math.abs(slope[index]) <= 1e-12) {
-      tangent[index] = 0
-      tangent[index + 1] = 0
-      continue
-    }
-    const a = tangent[index] / slope[index]
-    const b = tangent[index + 1] / slope[index]
-    const h = Math.hypot(a, b)
-    if (h > 3) {
-      const t = 3 / h
-      tangent[index] = t * a * slope[index]
-      tangent[index + 1] = t * b * slope[index]
-    }
-  }
-
-  let path = `M ${points[0].x.toFixed(3)} ${points[0].y.toFixed(3)}`
-  for (let index = 0; index < n - 1; index += 1) {
-    const p0 = points[index]
-    const p1 = points[index + 1]
-    const h = dx[index]
-    const cp1x = clampSvgCoord(p0.x + (h / 3))
-    const cp1y = clampSvgCoord(p0.y + ((tangent[index] * h) / 3))
-    const cp2x = clampSvgCoord(p1.x - (h / 3))
-    const cp2y = clampSvgCoord(p1.y - ((tangent[index + 1] * h) / 3))
-    path += ` C ${cp1x.toFixed(3)} ${cp1y.toFixed(3)}, ${cp2x.toFixed(3)} ${cp2y.toFixed(3)}, ${clampSvgCoord(p1.x).toFixed(3)} ${clampSvgCoord(p1.y).toFixed(3)}`
-  }
-  return path
-}
-
 function toNumberArray(value: unknown): number[] {
   if (!Array.isArray(value)) {
     return []
