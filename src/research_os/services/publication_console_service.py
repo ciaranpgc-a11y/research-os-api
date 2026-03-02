@@ -55,7 +55,7 @@ FILE_TYPE_PDF = "PDF"
 FILE_TYPE_DOCX = "DOCX"
 FILE_TYPE_OTHER = "OTHER"
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
-STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v3"
+STRUCTURED_ABSTRACT_CACHE_VERSION = "publication_structured_abstract_v4"
 
 _executor_lock = threading.Lock()
 _executor: ThreadPoolExecutor | None = None
