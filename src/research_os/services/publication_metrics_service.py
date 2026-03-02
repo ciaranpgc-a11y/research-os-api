@@ -133,6 +133,39 @@ def _safe_publication_month_start(value: Any) -> date | None:
         return None
 
 
+def _safe_publication_date_iso(value: Any) -> str | None:
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    token = str(value or "").strip()
+    if not token:
+        return None
+    normalized = token.replace("/", "-").replace("Z", "+00:00")
+    try:
+        parsed_dt = datetime.fromisoformat(normalized)
+        return parsed_dt.date().isoformat()
+    except Exception:
+        pass
+    parts = normalized.split("-")
+    if len(parts) >= 2:
+        year = _safe_int(parts[0])
+        month = _safe_int(parts[1])
+        day = _safe_int(parts[2]) if len(parts) >= 3 else 1
+        if (
+            year is not None
+            and month is not None
+            and day is not None
+            and 1 <= int(month) <= 12
+            and 1 <= int(day) <= 31
+        ):
+            try:
+                return date(int(year), int(month), int(day)).isoformat()
+            except Exception:
+                return None
+    return None
+
+
 def _normalize_status(value: str | None) -> str:
     clean = str(value or "").strip().upper()
     if clean in STATUSES:
@@ -2118,8 +2151,14 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
             and isinstance(latest_openalex.metric_payload, dict)
             else {}
         )
-        publication_month_start = _safe_publication_month_start(
+        publication_date_iso = _safe_publication_date_iso(
             latest_openalex_payload.get("publication_date")
+            or latest_openalex_payload.get("from_publication_date")
+            or latest_openalex_payload.get("publication_month")
+        )
+        publication_month_start = _safe_publication_month_start(
+            publication_date_iso
+            or latest_openalex_payload.get("publication_date")
             or latest_openalex_payload.get("publication_month")
             or latest_openalex_payload.get("from_publication_date")
         )
@@ -2348,6 +2387,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 }
                 if yearly_counts
                 else {},
+                "publication_date": publication_date_iso,
                 "publication_month_start": publication_month_start.isoformat()
                 if publication_month_start is not None
                 else None,
@@ -2515,6 +2555,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "doi": row["doi"],
                 "year": row["year"],
                 "journal": row["journal"],
+                "publication_date": row.get("publication_date"),
+                "publication_month_start": row.get("publication_month_start"),
                 "citations_lifetime": row["citations_lifetime"],
                 "confidence_score": row["confidence_score"],
                 "confidence_label": row["confidence_label"],
@@ -2534,6 +2576,8 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                     "doi": row["doi"],
                     "year": row["year"],
                     "journal": row["journal"],
+                    "publication_date": row.get("publication_date"),
+                    "publication_month_start": row.get("publication_month_start"),
                     "publication_type": row.get("publication_type"),
                     "work_type": row.get("work_type"),
                     "article_type": row.get("article_type"),
@@ -3460,6 +3504,29 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
     lifetime_month_end_iso = (
         f"{last_complete_month_start.year:04d}-{last_complete_month_start.month:02d}-01"
     )
+    publication_event_dates = sorted(
+        [
+            str(event_date)
+            for event_date in (
+                _safe_publication_date_iso(row.get("publication_date"))
+                or _safe_publication_date_iso(row.get("publication_month_start"))
+                or (
+                    f"{int(row.get('year')):04d}-01-01"
+                    if _safe_int(row.get("year")) is not None
+                    and 1900 <= int(_safe_int(row.get("year")) or 0) <= int(now.year)
+                    else None
+                )
+                or (
+                    f"{int(row.get('fallback_year')):04d}-01-01"
+                    if _safe_int(row.get("fallback_year")) is not None
+                    and 1900 <= int(_safe_int(row.get("fallback_year")) or 0) <= int(now.year)
+                    else None
+                )
+            for row in per_work_rows
+            )
+            if event_date is not None
+        ]
+    )
     influence_monthly_added_totals = [0 for _ in range(24)]
     for row in influence_candidates:
         additions = row.get("semantic_monthly_added_24")
@@ -3997,6 +4064,7 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "month_labels_12m": month_labels_12m,
                 "monthly_values_lifetime": monthly_publication_values_lifetime,
                 "month_labels_lifetime": lifetime_month_labels,
+                "publication_event_dates": publication_event_dates,
                 "lifetime_month_start": lifetime_month_start_iso,
                 "lifetime_month_end": lifetime_month_end_iso,
                 "publication_month_source": publication_month_source,

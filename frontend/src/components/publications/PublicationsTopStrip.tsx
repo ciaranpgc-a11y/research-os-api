@@ -414,7 +414,6 @@ const HOUSE_TOGGLE_TRACK_CLASS = publicationsHouseMotion.toggleTrack
 const HOUSE_TOGGLE_THUMB_CLASS = publicationsHouseMotion.toggleThumb
 const HOUSE_TOGGLE_BUTTON_CLASS = publicationsHouseMotion.toggleButton
 const HOUSE_TOGGLE_CHART_BAR_CLASS = publicationsHouseMotion.toggleChartBar
-const HOUSE_TOGGLE_CHART_LINE_CLASS = publicationsHouseMotion.toggleChartLine
 const HOUSE_TOGGLE_CHART_MORPH_CLASS = publicationsHouseMotion.toggleChartMorph
 const HOUSE_TOGGLE_CHART_SWAP_CLASS = publicationsHouseMotion.toggleChartSwap
 const HOUSE_TOGGLE_CHART_LABEL_CLASS = publicationsHouseMotion.toggleChartLabel
@@ -1044,6 +1043,48 @@ function parseIsoMonthStart(value: string): Date | null {
     return null
   }
   return new Date(Date.UTC(Math.round(year), Math.round(month) - 1, 1))
+}
+
+function parsePublicationDateToMs(value: unknown): number | null {
+  const token = String(value || '').trim()
+  if (!token) {
+    return null
+  }
+  const normalized = token.replace(/\//g, '-')
+  const dayMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (dayMatch) {
+    const year = Number(dayMatch[1])
+    const month = Number(dayMatch[2])
+    const day = Number(dayMatch[3])
+    if (
+      Number.isFinite(year)
+      && Number.isFinite(month)
+      && Number.isFinite(day)
+      && month >= 1
+      && month <= 12
+      && day >= 1
+      && day <= 31
+    ) {
+      return Date.UTC(Math.round(year), Math.round(month) - 1, Math.round(day))
+    }
+  }
+  const monthMatch = normalized.match(/^(\d{4})-(\d{2})$/)
+  if (monthMatch) {
+    const year = Number(monthMatch[1])
+    const month = Number(monthMatch[2])
+    if (Number.isFinite(year) && Number.isFinite(month) && month >= 1 && month <= 12) {
+      return Date.UTC(Math.round(year), Math.round(month) - 1, 1)
+    }
+  }
+  const yearMatch = normalized.match(/^(\d{4})$/)
+  if (yearMatch) {
+    const year = Number(yearMatch[1])
+    if (Number.isFinite(year)) {
+      return Date.UTC(Math.round(year), 0, 1)
+    }
+  }
+  const parsedIsoMonth = parseIsoMonthStart(normalized)
+  return parsedIsoMonth ? parsedIsoMonth.getTime() : null
 }
 
 function buildRollingWindowLabel(monthLabels: string[], endYear: number): string | null {
@@ -2354,7 +2395,42 @@ export function PublicationsPerYearChart({
 
   const resolveLineBarsForWindowMode = (mode: PublicationsWindowMode): PublicationYearWindowBars => {
     if (!lifetimeMonthlyBars.bars.length) {
-      return resolveBarsForWindowMode(mode)
+      if (mode === '1y') {
+        const hasMonthlySignal = groupedMonthBars.bars.some((bar) => Math.max(0, bar.value) > 0)
+        if (hasMonthlySignal) {
+          return {
+            bars: groupedMonthBars.bars,
+            bucketSize: groupedMonthBars.bucketSize,
+            rangeLabel: groupedMonthBars.rangeLabel,
+          }
+        }
+      }
+      const windowYears = mode === '3y'
+        ? 3
+        : mode === '5y'
+          ? 5
+          : mode === '1y'
+            ? 1
+            : null
+      const sourceBars = windowYears === null ? historyBars : historyBars.slice(-windowYears)
+      const bars: PublicationChartBar[] = sourceBars.map((bar) => ({
+        key: `${bar.year}-${bar.year}`,
+        value: Math.max(0, bar.value),
+        current: Boolean(bar.current),
+        axisLabel: String(bar.year),
+        axisSubLabel: undefined,
+        monthStartMs: Date.UTC(bar.year, 0, 1),
+      }))
+      const rangeLabel = sourceBars.length
+        ? sourceBars[0].year === sourceBars[sourceBars.length - 1].year
+          ? String(sourceBars[0].year)
+          : `${sourceBars[0].year}-${sourceBars[sourceBars.length - 1].year}`
+        : null
+      return {
+        bars,
+        bucketSize: 1,
+        rangeLabel,
+      }
     }
     const monthCount = mode === '1y'
       ? 12
@@ -2694,77 +2770,231 @@ export function PublicationsPerYearChart({
   const rightMetaText = periodHintText
   const rightMetaOpaque = periodHintVisible
   const controlsRightVisible = rightMetaVisible || showVisualModeToggle
-  const lineSeriesPoints = renderBars.map((bar, index) => {
-    const rawAnimatedValue = renderedCumulativeValuesAnimated[index]
-    const fallbackValue = renderedCumulativeValuesTarget[index] ?? 0
-    const finiteAnimatedValue = Number.isFinite(rawAnimatedValue) ? rawAnimatedValue : fallbackValue
-    const animatedValue = Math.max(0, Math.min(maxAnimatedDisplayValue, finiteAnimatedValue))
-    const xPct = (() => {
-      if (effectiveVisualMode !== 'line') {
-        return (index * slotMetrics.slotStepPct) + (slotMetrics.slotWidthPct / 2)
-      }
-      const fallbackEven = renderBars.length <= 1 ? 1 : (index / Math.max(1, renderBars.length - 1))
-      const monthStartMsValues = renderBars.map((item) => Number(item.monthStartMs))
-      const hasExplicitMonthlyTimeline = monthStartMsValues.length === renderBars.length
-        && monthStartMsValues.every((value) => Number.isFinite(value))
-      if (hasExplicitMonthlyTimeline) {
-        const startMs = monthStartMsValues[0]
-        const endMonthDate = new Date(monthStartMsValues[monthStartMsValues.length - 1])
-        const endBoundaryMs = Date.UTC(
-          endMonthDate.getUTCFullYear(),
-          endMonthDate.getUTCMonth() + 1,
-          1,
-        )
-        const spanMs = Math.max(1, endBoundaryMs - startMs)
-        const pointMs = monthStartMsValues[index]
-        const normalized = Math.max(0, Math.min(1, (pointMs - startMs) / spanMs))
-        return normalized * 100
-      }
-      if (usingMonthlyBars) {
-        const monthStarts = buildTrailingMonthStarts(renderBars.length, true)
-        if (monthStarts.length !== renderBars.length || !monthStarts.length) {
-          return fallbackEven * 100
+  const lineSeriesPoints = useMemo(() => {
+    const clampPct = (value: number) => Math.max(0, Math.min(100, value))
+    if (effectiveVisualMode !== 'line') {
+      return renderBars.map((bar, index) => {
+        const rawAnimatedValue = renderedCumulativeValuesAnimated[index]
+        const fallbackValue = renderedCumulativeValuesTarget[index] ?? 0
+        const finiteAnimatedValue = Number.isFinite(rawAnimatedValue) ? rawAnimatedValue : fallbackValue
+        const animatedValue = Math.max(0, Math.min(maxAnimatedDisplayValue, finiteAnimatedValue))
+        return {
+          key: bar.key,
+          xPct: (index * slotMetrics.slotStepPct) + (slotMetrics.slotWidthPct / 2),
+          yPct: clampPct((animatedValue / Math.max(1, barHeightAxisMax)) * 100),
+          value: animatedValue,
         }
-        const startMs = monthStarts[0].getTime()
-        const endBoundaryMs = Date.UTC(
-          monthStarts[monthStarts.length - 1].getUTCFullYear(),
-          monthStarts[monthStarts.length - 1].getUTCMonth() + 1,
-          1,
-        )
-        const spanMs = Math.max(1, endBoundaryMs - startMs)
-        const pointMs = monthStarts[index].getTime()
-        const normalized = Math.max(0, Math.min(1, (pointMs - startMs) / spanMs))
-        return normalized * 100
-      }
-      const parsedRanges = renderBars.map((item) => parseYearRangeFromBarKey(item.key))
-      if (parsedRanges.some((item) => item === null)) {
-        return fallbackEven * 100
-      }
-      const resolvedRanges = parsedRanges as Array<{ startYear: number; endYear: number }>
-      const startMs = Date.UTC(resolvedRanges[0].startYear, 0, 1)
-      const endMs = Date.UTC(resolvedRanges[resolvedRanges.length - 1].endYear + 1, 0, 1)
-      const spanMs = Math.max(1, endMs - startMs)
-      const pointMs = Date.UTC(resolvedRanges[index].endYear, 11, 31)
-      const normalized = Math.max(0, Math.min(1, (pointMs - startMs) / spanMs))
-      return normalized * 100
-    })()
-    const yPct = computeLineHeightPct(animatedValue)
-    return {
-      key: bar.key,
-      xPct,
-      yPct,
-      value: animatedValue,
+      })
     }
-  })
-  const lineSeriesPathPointsBase = lineSeriesPoints.map((point) => ({
-    x: Math.max(0, Math.min(100, point.xPct)),
-    y: Math.max(0, Math.min(100, 100 - point.yPct)),
-  }))
-  const lineSeriesPathPoints = effectiveVisualMode === 'line'
-    ? [{ x: 0, y: 100 }, ...lineSeriesPathPointsBase]
-    : lineSeriesPathPointsBase
-  const lineSeriesPath = buildSmoothSvgPath(lineSeriesPathPoints)
-  const lineSeriesPathLength = estimatePolylineLength(lineSeriesPathPoints)
+
+    const now = new Date()
+    const lastCompleteMonthEndExclusiveMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
+    const monthWindowSize = effectiveWindowMode === '1y'
+      ? 12
+      : effectiveWindowMode === '3y'
+        ? 36
+        : effectiveWindowMode === '5y'
+          ? 60
+          : null
+
+    const chartEventTimes = toStringArray(chartData.publication_event_dates)
+      .map((item) => parsePublicationDateToMs(item))
+      .filter((value): value is number => Number.isFinite(value))
+
+    const drilldown = (tile.drilldown || {}) as Record<string, unknown>
+    const drilldownPublications = Array.isArray(drilldown.publications) ? drilldown.publications : []
+    const drilldownEventTimes = drilldownPublications
+      .map((item) => {
+        if (!item || typeof item !== 'object') {
+          return null
+        }
+        const row = item as Record<string, unknown>
+        const publicationDateMs = parsePublicationDateToMs(row.publication_date)
+          ?? parsePublicationDateToMs(row.publication_month_start)
+        if (publicationDateMs !== null) {
+          return publicationDateMs
+        }
+        const year = Number(row.year)
+        if (Number.isFinite(year) && year >= 1900 && year <= 2100) {
+          return Date.UTC(Math.round(year), 0, 1)
+        }
+        return null
+      })
+      .filter((value): value is number => value !== null && Number.isFinite(value))
+
+    const monthlyLifetimeValues = toNumberArray(chartData.monthly_values_lifetime)
+      .map((value) => Math.max(0, Math.round(value)))
+    const monthlyLifetimeLabels = toStringArray(chartData.month_labels_lifetime)
+    const lifetimeMonthStartBase = parseIsoMonthStart(String(chartData.lifetime_month_start || ''))
+    const monthlyExpandedEventTimes: number[] = []
+    if (monthlyLifetimeValues.length > 0) {
+      monthlyLifetimeValues.forEach((count, index) => {
+        const parsedMonthStart = parseIsoMonthStart(monthlyLifetimeLabels[index] || '')
+        const fallbackMonthStart = lifetimeMonthStartBase
+          ? new Date(Date.UTC(lifetimeMonthStartBase.getUTCFullYear(), lifetimeMonthStartBase.getUTCMonth() + index, 1))
+          : null
+        const monthStart = parsedMonthStart || fallbackMonthStart
+        if (!(monthStart instanceof Date) || Number.isNaN(monthStart.getTime())) {
+          return
+        }
+        const monthStartMs = Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), 1)
+        const monthEndMs = Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1)
+        const safeCount = Math.max(0, Math.round(count))
+        if (safeCount <= 0) {
+          return
+        }
+        const spanMs = Math.max(1, monthEndMs - monthStartMs)
+        for (let itemIndex = 0; itemIndex < safeCount; itemIndex += 1) {
+          const ratio = (itemIndex + 0.5) / safeCount
+          monthlyExpandedEventTimes.push(Math.round(monthStartMs + (spanMs * ratio)))
+        }
+      })
+    }
+
+    const sourceEventTimes = (
+      chartEventTimes.length
+        ? chartEventTimes
+        : monthlyExpandedEventTimes.length
+          ? monthlyExpandedEventTimes
+          : drilldownEventTimes
+    )
+      .slice()
+      .sort((left, right) => left - right)
+    const boundedEventTimes = sourceEventTimes.filter((timeMs) => timeMs < lastCompleteMonthEndExclusiveMs)
+    const effectiveEventTimes = boundedEventTimes.length ? boundedEventTimes : sourceEventTimes
+
+    if (effectiveEventTimes.length > 0) {
+      const firstEventDate = new Date(effectiveEventTimes[0])
+      const allStartMs = Date.UTC(firstEventDate.getUTCFullYear(), firstEventDate.getUTCMonth(), 1)
+      const allEndMs = lastCompleteMonthEndExclusiveMs
+      const windowStartMs = monthWindowSize === null
+        ? allStartMs
+        : Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthWindowSize, 1)
+      const windowEndMs = monthWindowSize === null
+        ? allEndMs
+        : lastCompleteMonthEndExclusiveMs
+      const filteredEventTimes = effectiveEventTimes.filter((timeMs) => (
+        timeMs >= windowStartMs && timeMs < windowEndMs
+      ))
+      const timelineTimes = filteredEventTimes.length ? filteredEventTimes : effectiveEventTimes
+      const timelineStartMs = filteredEventTimes.length ? windowStartMs : allStartMs
+      const timelineEndMs = filteredEventTimes.length ? windowEndMs : allEndMs
+      const spanMs = Math.max(1, timelineEndMs - timelineStartMs)
+      return timelineTimes.map((timeMs, index) => {
+        const cumulativeValue = index + 1
+        return {
+          key: `line-event-${timeMs}-${index}`,
+          xPct: clampPct(((timeMs - timelineStartMs) / spanMs) * 100),
+          yPct: clampPct((cumulativeValue / Math.max(1, barHeightAxisMax)) * 100),
+          value: cumulativeValue,
+        }
+      })
+    }
+
+    type TimelineEvent = { timeMs: number }
+    const sourceBars = activeLineWindowBars.bars
+    const events: TimelineEvent[] = []
+    let timelineStartMs: number | null = null
+    let timelineEndMs: number | null = null
+    const currentYearEndBoundaryMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
+
+    const addEventsAcrossSpan = (startMs: number, endMs: number, count: number) => {
+      const safeCount = Math.max(0, Math.round(count))
+      if (safeCount <= 0) {
+        return
+      }
+      const spanMs = Math.max(1, endMs - startMs)
+      for (let index = 0; index < safeCount; index += 1) {
+        const ratio = (index + 0.5) / safeCount
+        events.push({
+          timeMs: Math.round(startMs + (spanMs * ratio)),
+        })
+      }
+    }
+
+    sourceBars.forEach((bar) => {
+      let startMs: number | null = null
+      let endMs: number | null = null
+
+      const monthStartMs = Number(bar.monthStartMs)
+      if (Number.isFinite(monthStartMs)) {
+        const monthDate = new Date(monthStartMs)
+        startMs = Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth(), 1)
+        endMs = Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth() + 1, 1)
+      } else {
+        const parsedRange = parseYearRangeFromBarKey(bar.key)
+        if (parsedRange) {
+          startMs = Date.UTC(parsedRange.startYear, 0, 1)
+          endMs = Date.UTC(parsedRange.endYear + 1, 0, 1)
+          if (parsedRange.endYear >= now.getUTCFullYear()) {
+            endMs = Math.min(endMs, currentYearEndBoundaryMs)
+          }
+        }
+      }
+
+      if (startMs === null || endMs === null || endMs <= startMs) {
+        return
+      }
+
+      timelineStartMs = timelineStartMs === null ? startMs : Math.min(timelineStartMs, startMs)
+      timelineEndMs = timelineEndMs === null ? endMs : Math.max(timelineEndMs, endMs)
+      addEventsAcrossSpan(startMs, endMs, bar.value)
+    })
+
+    if (!events.length) {
+      const fallbackBars = sourceBars.length ? sourceBars : renderBars
+      let runningTotal = 0
+      return fallbackBars.map((bar, index) => {
+        runningTotal += Math.max(0, Math.round(bar.value))
+        const evenX = fallbackBars.length <= 1 ? 100 : (index / Math.max(1, fallbackBars.length - 1)) * 100
+        return {
+          key: `line-fallback-${index}`,
+          xPct: clampPct(evenX),
+          yPct: clampPct((runningTotal / Math.max(1, barHeightAxisMax)) * 100),
+          value: runningTotal,
+        }
+      })
+    }
+
+    events.sort((left, right) => left.timeMs - right.timeMs)
+    const timelineStart = timelineStartMs !== null
+      ? Math.min(timelineStartMs, events[0].timeMs)
+      : events[0].timeMs
+    const fallbackEnd = events[events.length - 1].timeMs + (24 * 60 * 60 * 1000)
+    const timelineEnd = timelineEndMs !== null
+      ? Math.max(timelineEndMs, fallbackEnd)
+      : fallbackEnd
+    const spanMs = Math.max(1, timelineEnd - timelineStart)
+    let cumulative = 0
+    return events.map((event, index) => {
+      cumulative += 1
+      const xPct = clampPct(((event.timeMs - timelineStart) / spanMs) * 100)
+      const yPct = clampPct((cumulative / Math.max(1, barHeightAxisMax)) * 100)
+      return {
+        key: `line-event-fallback-${index}`,
+        xPct,
+        yPct,
+        value: cumulative,
+      }
+    })
+  }, [
+    activeLineWindowBars.bars,
+    barHeightAxisMax,
+    chartData.lifetime_month_start,
+    chartData.month_labels_lifetime,
+    chartData.monthly_values_lifetime,
+    chartData.publication_event_dates,
+    effectiveVisualMode,
+    effectiveWindowMode,
+    maxAnimatedDisplayValue,
+    parseYearRangeFromBarKey,
+    renderBars,
+    renderedCumulativeValuesAnimated,
+    renderedCumulativeValuesTarget,
+    slotMetrics.slotStepPct,
+    slotMetrics.slotWidthPct,
+    tile.drilldown,
+  ])
   const hoveredLinePoint = effectiveVisualMode === 'line' && hoveredIndex !== null
     ? lineSeriesPoints[hoveredIndex] || null
     : null
@@ -2933,20 +3163,19 @@ export function PublicationsPerYearChart({
               aria-hidden="true"
             />
           ) : null}
-          {effectiveVisualMode === 'line' && lineSeriesPath ? (
-            <svg className="pointer-events-none absolute inset-0 z-[2]" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-              <path
-                d={lineSeriesPath}
-                className={cn(HOUSE_TOGGLE_CHART_LINE_CLASS, HOUSE_CHART_LINE_SOFT_SVG_CLASS)}
-                data-expanded="true"
-                style={{
-                  fill: 'none',
-                  strokeWidth: 1.2,
-                  transitionDuration: barTransitionDuration,
-                  ['--chart-path-length' as '--chart-path-length']: `${Math.max(1, lineSeriesPathLength)}`,
-                } as CSSProperties}
-              />
-            </svg>
+          {effectiveVisualMode === 'line' ? (
+            <div className="pointer-events-none absolute inset-0 z-[2]" aria-hidden="true">
+              {lineSeriesPoints.map((point, index) => (
+                <span
+                  key={`pub-cumulative-point-${index}`}
+                  className="absolute h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-[hsl(var(--tone-accent-500))] shadow-[0_0_0_1px_hsl(var(--tone-accent-700)/0.28)]"
+                  style={{
+                    left: `${Math.max(0, Math.min(100, point.xPct))}%`,
+                    bottom: `calc(${Math.max(0, Math.min(100, point.yPct))}% - 0.15rem)`,
+                  }}
+                />
+              ))}
+            </div>
           ) : null}
           <div className="absolute inset-0" data-ui="chart-bars" data-house-role="chart-bars">
             {renderBars.map((bar, index) => {
@@ -2960,7 +3189,7 @@ export function PublicationsPerYearChart({
               const heightPct = computeBarHeightPct(animatedValue)
               const lineHeightPct = computeLineHeightPct(lineAnimatedValue)
               const tooltipAnchorHeightPct = effectiveVisualMode === 'line' ? lineHeightPct : heightPct
-              const tooltipValue = effectiveVisualMode === 'line' ? lineAnimatedValue : bar.value
+              const tooltipValue = bar.value
               const leftPct = index * slotMetrics.slotStepPct
               const isActive = hoveredIndex === index
               const toneClass = resolveBarToneClass(bar.value, bar.current)
@@ -2976,21 +3205,24 @@ export function PublicationsPerYearChart({
                   style={{
                     left: `${leftPct}%`,
                     width: `${slotMetrics.slotWidthPct}%`,
+                    pointerEvents: effectiveVisualMode === 'line' ? 'none' : undefined,
                     transitionDuration: barTransitionDuration,
                   }}
-                  onMouseEnter={() => setHoveredIndex(index)}
-                  onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                  onMouseEnter={effectiveVisualMode === 'line' ? undefined : () => setHoveredIndex(index)}
+                  onMouseLeave={effectiveVisualMode === 'line' ? undefined : () => setHoveredIndex((current) => (current === index ? null : current))}
                 >
-                  <span
-                    className={cn(
-                      HOUSE_DRILLDOWN_TOOLTIP_CLASS,
-                      isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
-                    )}
-                    style={{ bottom: `calc(${tooltipAnchorHeightPct}% + ${PUBLICATIONS_CHART_TOOLTIP_OFFSET_REM}rem)` }}
-                    aria-hidden="true"
-                  >
-                    {formatInt(tooltipValue)}
-                  </span>
+                  {effectiveVisualMode !== 'line' ? (
+                    <span
+                      className={cn(
+                        HOUSE_DRILLDOWN_TOOLTIP_CLASS,
+                        isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-1',
+                      )}
+                      style={{ bottom: `calc(${tooltipAnchorHeightPct}% + ${PUBLICATIONS_CHART_TOOLTIP_OFFSET_REM}rem)` }}
+                      aria-hidden="true"
+                    >
+                      {formatInt(tooltipValue)}
+                    </span>
+                  ) : null}
                   <span
                     className={cn(
                       'absolute bottom-0 block w-full rounded',
@@ -3013,6 +3245,23 @@ export function PublicationsPerYearChart({
               )
             })}
           </div>
+          {effectiveVisualMode === 'line' ? (
+            <div className="absolute inset-0 z-[3]">
+              {lineSeriesPoints.map((point, index) => (
+                <span
+                  key={`pub-cumulative-point-hit-${point.key}`}
+                  className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 cursor-default rounded-full"
+                  style={{
+                    left: `${Math.max(0, Math.min(100, point.xPct))}%`,
+                    bottom: `${Math.max(0, Math.min(100, point.yPct))}%`,
+                  }}
+                  onMouseEnter={() => setHoveredIndex(index)}
+                  onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                  aria-hidden="true"
+                />
+              ))}
+            </div>
+          ) : null}
           {effectiveVisualMode === 'line' && hoveredLinePoint ? (
             <>
               <span
