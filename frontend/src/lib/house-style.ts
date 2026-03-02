@@ -74,6 +74,7 @@ export const houseDividers = {
 
 export const houseLayout = {
   pageHeader: 'house-page-header',
+  pageMainContent: 'house-page-main-content',
   mainTitleBlock: 'house-main-title-block',
   mainHeadingBlock: 'house-main-heading-block',
   mainSubheadingBlock: 'house-main-subheading-block',

@@ -2388,6 +2388,17 @@ export function PublicationsPerYearChart({
     : resolveLineBarsForWindowMode(effectiveWindowMode)
   const lineUsesMonthlyTimeline = activeLineWindowBars.bars.length > 0
     && activeLineWindowBars.bars.every((bar) => Number.isFinite(bar.monthStartMs ?? Number.NaN))
+  const publicationTimelineSource = String(chartData.publication_month_source || '').trim()
+    || (lineUsesMonthlyTimeline ? 'lifetime_monthly' : 'yearly_fallback')
+  const publicationTimelineExactCount = Number.isFinite(Number(chartData.publication_month_exact_count))
+    ? Math.max(0, Math.round(Number(chartData.publication_month_exact_count)))
+    : 0
+  const publicationTimelineFallbackCount = Number.isFinite(Number(chartData.publication_month_fallback_count))
+    ? Math.max(0, Math.round(Number(chartData.publication_month_fallback_count)))
+    : 0
+  const publicationTimelineDebugText = tile.key === 'this_year_vs_last'
+    ? `Source: ${publicationTimelineSource} (exact ${formatInt(publicationTimelineExactCount)} / fallback ${formatInt(publicationTimelineFallbackCount)})`
+    : null
   const usingMonthlyTimelineForMode = effectiveWindowMode === '1y' || (effectiveVisualMode === 'line' && lineUsesMonthlyTimeline)
 
   const activeWindowBars = isCompactTileMode
@@ -2476,7 +2487,7 @@ export function PublicationsPerYearChart({
   )
   const axisMax = axisAnimationEnabled ? Math.max(1, animatedAxisMax) : targetAxisMax
   const renderedMeanValue = Math.max(0, meanValue)
-  const barHeightAxisMax = Math.max(1, targetAxisMax)
+  const barHeightAxisMax = Math.max(1, axisMax)
   const yAxisTickRatios = targetAxisScale
     ? targetAxisScale.ticks.map((tickValue) => (targetAxisScale.axisMax <= 0 ? 0 : tickValue / targetAxisScale.axisMax))
     : [0, 0.25, 0.5, 0.75, 1]
@@ -2754,6 +2765,9 @@ export function PublicationsPerYearChart({
     : lineSeriesPathPointsBase
   const lineSeriesPath = buildSmoothSvgPath(lineSeriesPathPoints)
   const lineSeriesPathLength = estimatePolylineLength(lineSeriesPathPoints)
+  const hoveredLinePoint = effectiveVisualMode === 'line' && hoveredIndex !== null
+    ? lineSeriesPoints[hoveredIndex] || null
+    : null
   const lineModeVerticalGridPercents = effectiveVisualMode === 'line'
     ? (effectiveWindowMode === '5y' ? [40, 80] : [50])
     : []
@@ -2851,6 +2865,18 @@ export function PublicationsPerYearChart({
         data-ui="publications-chart-frame"
         data-house-role="chart-frame"
       >
+        {showAxes && publicationTimelineDebugText ? (
+          <p
+            className={cn(
+              HOUSE_DRILLDOWN_CHART_META_CLASS,
+              HOUSE_HEADING_LABEL_CLASS,
+              'pointer-events-none absolute left-2 -top-0.5 z-[2] opacity-85',
+            )}
+            aria-hidden="true"
+          >
+            {publicationTimelineDebugText}
+          </p>
+        ) : null}
         {showMeanValueLabel && meanValueDisplay && effectiveVisualMode !== 'line' ? (
           <p
               className={cn(
@@ -2987,6 +3013,32 @@ export function PublicationsPerYearChart({
               )
             })}
           </div>
+          {effectiveVisualMode === 'line' && hoveredLinePoint ? (
+            <>
+              <span
+                className={cn(
+                  HOUSE_DRILLDOWN_TOOLTIP_CLASS,
+                  'pointer-events-none z-[4] opacity-100 translate-y-0',
+                )}
+                style={{
+                  left: `${Math.max(0, Math.min(100, hoveredLinePoint.xPct))}%`,
+                  transform: 'translateX(-50%)',
+                  bottom: `calc(${Math.max(0, Math.min(100, hoveredLinePoint.yPct))}% + ${PUBLICATIONS_CHART_TOOLTIP_OFFSET_REM}rem)`,
+                }}
+                aria-hidden="true"
+              >
+                {formatInt(hoveredLinePoint.value)}
+              </span>
+              <span
+                className="pointer-events-none absolute z-[4] h-2 w-2 -translate-x-1/2 rounded-full border border-white/85 bg-[hsl(var(--tone-accent-700))] shadow-[0_0_0_1px_hsl(var(--tone-accent-800)/0.35)]"
+                style={{
+                  left: `${Math.max(0, Math.min(100, hoveredLinePoint.xPct))}%`,
+                  bottom: `calc(${Math.max(0, Math.min(100, hoveredLinePoint.yPct))}% - 0.22rem)`,
+                }}
+                aria-hidden="true"
+              />
+            </>
+          ) : null}
         </div>
 
         {showAxes ? (

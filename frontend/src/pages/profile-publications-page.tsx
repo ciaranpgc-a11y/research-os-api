@@ -10,7 +10,7 @@ import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimiti
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { TablePrimitive as Table, TableBody, TableCell, TableHead as TableHeader, TableHeaderCell as TableHead, TableRow } from '@/components/primitives/TablePrimitive'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
-import { houseForms, houseLayout, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
+import { houseLayout, houseSurfaces, houseTables, houseTypography } from '@/lib/house-style'
 import {
   deletePublicationFile,
   downloadPublicationFile,
@@ -212,7 +212,6 @@ const HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS = publicationsHouseDrilldown.s
 const HOUSE_PUBLICATION_DRILLDOWN_ALERT_CLASS = publicationsHouseDrilldown.alert
 const HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS = publicationsHouseDrilldown.statTitle
 const HOUSE_PUBLICATION_DRILLDOWN_CAPTION_CLASS = publicationsHouseDrilldown.caption
-const HOUSE_PUBLICATION_DRILLDOWN_ACTION_CLASS = publicationsHouseDrilldown.action
 const HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS = publicationsHouseDrilldown.noteSoft
 const HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS = publicationsHouseDrilldown.noteWarning
 const HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS = publicationsHouseDrilldown.dividerTop
@@ -227,8 +226,8 @@ const HOUSE_PUBLICATION_DRILLDOWN_SHEET_CLASS = publicationsHouseDrilldown.sheet
 const HOUSE_PUBLICATION_DRILLDOWN_SHEET_BODY_CLASS = publicationsHouseDrilldown.sheetBody
 const HOUSE_PUBLICATION_DRILLDOWN_VALUE_POSITIVE_CLASS = publicationsHouseDrilldown.valuePositive
 const HOUSE_PUBLICATION_DRILLDOWN_VALUE_NEGATIVE_CLASS = publicationsHouseDrilldown.valueNegative
-const HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS = houseForms.actionButton
-const HOUSE_PUBLICATION_NEGATIVE_BUTTON_CLASS = houseForms.actionButtonDanger
+const HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS = 'house-publication-file-button-standard'
+const HOUSE_PUBLICATION_NEGATIVE_BUTTON_CLASS = 'house-publication-file-button-negative'
 
 const WORK_TYPE_LABELS: Record<string, string> = {
   'journal-article': 'Journal article',
@@ -5472,7 +5471,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                       <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>{fileLabel}</p>
                                       <p className={`truncate ${HOUSE_PUBLICATION_TEXT_CLASS}`} title={file.file_name}>{file.file_name}</p>
                                       <p className={HOUSE_PUBLICATION_DRILLDOWN_CAPTION_CLASS}>{file.file_type} | {sourceLabel} | {formatShortDate(file.created_at)}</p>
-                                      <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${HOUSE_PUBLICATION_DRILLDOWN_ACTION_CLASS}`}>
+                                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                         {file.source === 'OA_LINK' && file.download_url ? (
                                           <Button type="button" size="sm" variant="secondary" className={HOUSE_PUBLICATION_STANDARD_BUTTON_CLASS} asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
                                         ) : (

@@ -110,6 +110,29 @@ def _safe_float(value: Any) -> float | None:
     return None
 
 
+def _safe_publication_month_start(value: Any) -> date | None:
+    if isinstance(value, datetime):
+        return date(value.year, value.month, 1)
+    if isinstance(value, date):
+        return date(value.year, value.month, 1)
+    token = str(value or "").strip()
+    if not token:
+        return None
+    if len(token) >= 7:
+        prefix = token[:7]
+        try:
+            parsed = datetime.strptime(prefix, "%Y-%m")
+            return date(parsed.year, parsed.month, 1)
+        except Exception:
+            pass
+    try:
+        normalized = token.replace("Z", "+00:00")
+        parsed_dt = datetime.fromisoformat(normalized)
+        return date(parsed_dt.year, parsed_dt.month, 1)
+    except Exception:
+        return None
+
+
 def _normalize_status(value: str | None) -> str:
     clean = str(value or "").strip().upper()
     if clean in STATUSES:
@@ -2089,6 +2112,17 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 if str(item.provider or "").strip().lower() == "openalex"
             ]
         )
+        latest_openalex_payload = (
+            latest_openalex.metric_payload
+            if latest_openalex is not None
+            and isinstance(latest_openalex.metric_payload, dict)
+            else {}
+        )
+        publication_month_start = _safe_publication_month_start(
+            latest_openalex_payload.get("publication_date")
+            or latest_openalex_payload.get("publication_month")
+            or latest_openalex_payload.get("from_publication_date")
+        )
         latest_semantic = _best_snapshot(semantic_rows)
         latest_citations = (
             max(0, int(latest.citations_count or 0))
@@ -2314,6 +2348,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 }
                 if yearly_counts
                 else {},
+                "publication_month_start": publication_month_start.isoformat()
+                if publication_month_start is not None
+                else None,
                 "fallback_year": fallback_year_for_row,
                 "user_author_position": user_author_position_by_work.get(work_id),
                 "author_count": int(author_count_by_work.get(work_id, 0) or 0),
@@ -3293,54 +3330,119 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
         if current_year_publications > 0
         else f"0 in {now.year} (to date)"
     )
+    last_complete_month_end = _month_start(now) - timedelta(seconds=1)
+    last_complete_month_start = _month_start(last_complete_month_end)
+    publication_counts_by_month_exact: dict[tuple[int, int], int] = defaultdict(int)
+    publication_counts_by_year_fallback: dict[int, int] = defaultdict(int)
+    unknown_publication_month_or_year = 0
+    for row in per_work_rows:
+        month_start = _safe_publication_month_start(row.get("publication_month_start"))
+        if month_start is not None:
+            month_dt = datetime(
+                month_start.year, month_start.month, 1, tzinfo=timezone.utc
+            )
+            if month_dt <= last_complete_month_start:
+                publication_counts_by_month_exact[
+                    (month_start.year, month_start.month)
+                ] += 1
+                continue
+        parsed_year = _safe_int(row.get("year"))
+        if parsed_year is not None and 1900 <= int(parsed_year) <= int(now.year):
+            publication_counts_by_year_fallback[int(parsed_year)] += 1
+        else:
+            unknown_publication_month_or_year += 1
+    lifetime_start_year_candidates = [
+        year for year in publication_counts_by_year_fallback.keys()
+    ] + [year for year, _ in publication_counts_by_month_exact.keys()]
     lifetime_publication_year_start = (
-        int(min(publication_counts_by_year.keys()))
-        if publication_counts_by_year
+        min(lifetime_start_year_candidates)
+        if lifetime_start_year_candidates
         else int(now.year)
     )
     lifetime_publication_year_start = max(
-        1900, min(int(now.year), lifetime_publication_year_start)
+        1900, min(int(now.year), int(lifetime_publication_year_start))
     )
-    publication_counts_for_chart: dict[int, int] = {
-        int(year): max(0, int(count or 0))
-        for year, count in publication_counts_by_year.items()
-        if 1900 <= int(year) <= int(now.year)
-    }
-    if unknown_year_publications > 0:
-        publication_counts_for_chart[lifetime_publication_year_start] = (
-            publication_counts_for_chart.get(lifetime_publication_year_start, 0)
-            + int(unknown_year_publications)
+    if unknown_publication_month_or_year > 0:
+        publication_counts_by_year_fallback[lifetime_publication_year_start] = (
+            int(
+                publication_counts_by_year_fallback.get(
+                    lifetime_publication_year_start, 0
+                )
+            )
+            + int(unknown_publication_month_or_year)
         )
-    lifetime_publication_years = list(
-        range(lifetime_publication_year_start, int(now.year) + 1)
+    lifetime_month_start_point = datetime(
+        lifetime_publication_year_start, 1, 1, tzinfo=timezone.utc
     )
-    lifetime_publication_values = [
-        max(0, int(publication_counts_for_chart.get(year, 0)))
-        for year in lifetime_publication_years
-    ]
-    last_complete_month_end = _month_start(now) - timedelta(seconds=1)
-    last_complete_month_start = _month_start(last_complete_month_end)
+    if lifetime_month_start_point > last_complete_month_start:
+        lifetime_month_start_point = datetime(
+            last_complete_month_start.year,
+            last_complete_month_start.month,
+            1,
+            tzinfo=timezone.utc,
+        )
     lifetime_publication_month_count = max(
         1,
-        ((last_complete_month_start.year - lifetime_publication_year_start) * 12)
-        + last_complete_month_start.month,
-    )
-    monthly_publication_values_lifetime = _monthly_from_yearly_counts(
-        yearly_counts=publication_counts_for_chart,
-        now=last_complete_month_end,
-        months=lifetime_publication_month_count,
-    )
-    monthly_publication_values_lifetime = _normalize_monthly_to_total(
-        monthly_added=monthly_publication_values_lifetime,
-        target_total=int(sum(lifetime_publication_values)),
-    )
-    lifetime_month_start_point = _shift_month(
-        last_complete_month_start, -(lifetime_publication_month_count - 1)
+        (
+            (last_complete_month_start.year - lifetime_month_start_point.year) * 12
+            + (last_complete_month_start.month - lifetime_month_start_point.month)
+            + 1
+        ),
     )
     lifetime_month_points = [
         _shift_month(lifetime_month_start_point, index)
         for index in range(lifetime_publication_month_count)
     ]
+    monthly_publication_by_month_key: dict[tuple[int, int], int] = defaultdict(int)
+    for key, value in publication_counts_by_month_exact.items():
+        monthly_publication_by_month_key[key] += max(0, int(value or 0))
+    for year, yearly_count in publication_counts_by_year_fallback.items():
+        safe_count = max(0, int(yearly_count or 0))
+        if safe_count <= 0:
+            continue
+        year_month_points = [
+            point
+            for point in lifetime_month_points
+            if int(point.year) == int(year)
+        ]
+        if not year_month_points:
+            continue
+        month_slots = len(year_month_points)
+        base = safe_count // month_slots
+        remainder = safe_count % month_slots
+        for index, point in enumerate(year_month_points):
+            monthly_publication_by_month_key[(point.year, point.month)] += base + (
+                1 if index < remainder else 0
+            )
+    monthly_publication_values_lifetime = [
+        max(0, int(monthly_publication_by_month_key.get((point.year, point.month), 0)))
+        for point in lifetime_month_points
+    ]
+    yearly_publication_totals_from_months: dict[int, int] = defaultdict(int)
+    for point, value in zip(lifetime_month_points, monthly_publication_values_lifetime):
+        yearly_publication_totals_from_months[int(point.year)] += max(0, int(value or 0))
+    lifetime_publication_years = list(
+        range(int(lifetime_month_start_point.year), int(now.year) + 1)
+    )
+    lifetime_publication_values = [
+        max(0, int(yearly_publication_totals_from_months.get(year, 0)))
+        for year in lifetime_publication_years
+    ]
+    exact_publication_month_count = int(
+        sum(max(0, int(value or 0)) for value in publication_counts_by_month_exact.values())
+    )
+    fallback_publication_year_count = int(
+        sum(max(0, int(value or 0)) for value in publication_counts_by_year_fallback.values())
+    )
+    publication_month_source = (
+        "exact_month"
+        if fallback_publication_year_count <= 0
+        else (
+            "exact_plus_year_fallback"
+            if exact_publication_month_count > 0
+            else "year_fallback_only"
+        )
+    )
     lifetime_month_labels = [
         f"{point.year:04d}-{point.month:02d}" for point in lifetime_month_points
     ]
@@ -3897,6 +3999,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                 "month_labels_lifetime": lifetime_month_labels,
                 "lifetime_month_start": lifetime_month_start_iso,
                 "lifetime_month_end": lifetime_month_end_iso,
+                "publication_month_source": publication_month_source,
+                "publication_month_exact_count": exact_publication_month_count,
+                "publication_month_fallback_count": fallback_publication_year_count,
                 "mean_value": round(publication_mean_5y, 2),
                 "projected_year": now.year,
                 "projected_value": projected_current_publications,
@@ -3938,6 +4043,9 @@ def _build_payload(session, *, user_id: str, computed_at: datetime) -> dict[str,
                         "lifetime_values": lifetime_publication_values,
                         "lifetime_month_start": lifetime_month_start_iso,
                         "lifetime_month_end": lifetime_month_end_iso,
+                        "publication_month_source": publication_month_source,
+                        "publication_month_exact_count": exact_publication_month_count,
+                        "publication_month_fallback_count": fallback_publication_year_count,
                         "current_year_ytd": current_year_publications,
                         "projected_current_year": projected_current_publications,
                         "projection_confidence": projection_confidence,

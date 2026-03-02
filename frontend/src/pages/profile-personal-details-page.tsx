@@ -3,7 +3,6 @@ import { ChevronRight, GripVertical, Loader2, Plus, ShieldCheck, SlidersHorizont
 import { useNavigate } from 'react-router-dom'
 
 import { ButtonPrimitive as Button } from '@/components/primitives/ButtonPrimitive'
-import { CardPrimitive as Card, CardContent, CardHeader, CardTitle } from '@/components/primitives/CardPrimitive'
 import { InputPrimitive as Input } from '@/components/primitives/InputPrimitive'
 import {
   SelectPrimitive,
@@ -13,7 +12,7 @@ import {
   SelectValue,
 } from '@/components/primitives/SelectPrimitive'
 import { clearAuthSessionToken, getAuthSessionToken, getCachedAuthRole } from '@/lib/auth-session'
-import { houseDividers, houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
+import { houseLayout, houseSurfaces, houseTypography } from '@/lib/house-style'
 import { cn } from '@/lib/utils'
 import {
   fetchAffiliationAddressForMe,
@@ -130,13 +129,16 @@ const DEFAULT_PROFILE_PHOTO_POSITION_Y = 50
 const LEGACY_TOP_PROFILE_PHOTO_POSITION_Y = 20
 const HOUSE_ACTION_BUTTON_CLASS = `h-9 rounded-md border border-[hsl(var(--tone-accent-300)/0.92)] bg-[hsl(var(--tone-accent-50))] px-3.5 text-[hsl(var(--tone-accent-800))] ${houseTypography.buttonText} shadow-none hover:border-[hsl(var(--tone-accent-400)/0.94)] hover:bg-[hsl(var(--tone-accent-100))] hover:text-[hsl(var(--tone-accent-900))]`
 const HOUSE_ACTION_BUTTON_PRIMARY_CLASS = `h-9 rounded-md border border-[hsl(var(--tone-accent-700))] bg-[hsl(var(--tone-accent-700))] px-3.5 text-[hsl(var(--tone-neutral-50))] ${houseTypography.buttonText} shadow-none hover:border-[hsl(var(--tone-accent-800))] hover:bg-[hsl(var(--tone-accent-800))] hover:text-[hsl(var(--tone-neutral-50))]`
+const HOUSE_PAGE_HEADER_CLASS = houseLayout.pageHeader
+const HOUSE_PAGE_MAIN_CONTENT_CLASS = houseLayout.pageMainContent
 const HOUSE_PAGE_TITLE_CLASS = houseTypography.title
 const HOUSE_PAGE_TITLE_EXPANDER_CLASS = houseTypography.titleExpander
 const HOUSE_SECTION_TITLE_CLASS = houseTypography.sectionTitle
-const HOUSE_LEFT_BORDER_CLASS = `${houseSurfaces.leftBorder} ${houseSurfaces.leftBorderProfile}`
-const HOUSE_PROFILE_PHOTO_PANEL_CLASS = `sm:col-span-2 flex items-start gap-3 px-3 py-2.5 ${houseSurfaces.softPanel}`
+const HOUSE_LEFT_BORDER_CLASS = houseSurfaces.leftBorder
+const HOUSE_LEFT_BORDER_PROFILE_CLASS = houseSurfaces.leftBorderProfile
+const HOUSE_PROFILE_PHOTO_PANEL_CLASS = 'sm:col-span-2 flex items-start gap-3'
 const HOUSE_PROFILE_PHOTO_EDITOR_CLASS = 'space-y-2 rounded-md border border-[hsl(var(--stroke-strong)/0.92)] bg-[hsl(var(--tone-neutral-50))] p-2.5'
-const HOUSE_ACCOUNT_PANEL_CLASS = 'rounded-md border border-[hsl(var(--stroke-strong)/0.98)] bg-card px-3 py-2.5'
+const HOUSE_ACCOUNT_PANEL_CLASS = 'space-y-2.5'
 const HOUSE_SOCIAL_LINK_ROW_CLASS = 'sm:col-span-2 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3.5'
 const HOUSE_SOCIAL_LINK_LABEL_CLASS = 'inline-flex w-full shrink-0 items-center gap-2.5 px-2 py-1.5 house-field-label sm:w-[12rem]'
 const HOUSE_SOCIAL_LINK_ICON_CLASS = 'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-[hsl(var(--tone-neutral-300))] bg-[hsl(var(--tone-neutral-100))] text-caption font-semibold leading-none tracking-tight text-[hsl(var(--tone-neutral-700))]'
@@ -2020,38 +2022,39 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
 
   return (
     <section data-house-role="page" className="space-y-4">
-      <header data-house-role="page-header" className={cn(houseLayout.pageHeader, HOUSE_LEFT_BORDER_CLASS)}>
+      <header
+        data-house-role="page-header"
+        className={cn(HOUSE_PAGE_HEADER_CLASS, 'house-main-title-block', HOUSE_LEFT_BORDER_CLASS, HOUSE_LEFT_BORDER_PROFILE_CLASS)}
+      >
         <h1 data-house-role="page-title" className={HOUSE_PAGE_TITLE_CLASS}>Personal details</h1>
         <p data-house-role="page-title-expander" className={HOUSE_PAGE_TITLE_EXPANDER_CLASS}>
           Your professional information and research affiliations.
         </p>
       </header>
 
-      <Card className="border-[hsl(var(--tone-neutral-200))]">
-        <CardHeader className="space-y-2 pb-3">
+      <section className={cn(HOUSE_PAGE_MAIN_CONTENT_CLASS, 'space-y-3')}>
+        <div className="house-main-heading-block">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <CardTitle className={HOUSE_SECTION_TITLE_CLASS}>
-                Profile
-              </CardTitle>
-              {badges.map((badge) => (
-                <span
-                  key={badge.id}
-                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${badgeToneClass(badge.tone)} ${
-                    badge.variant === 'admin'
-                      ? 'ring-1 ring-[hsl(var(--tone-warning-300)/0.75)]'
-                      : ''
-                  }`}
-                  title={badge.detail}
-                >
-                  {badge.variant === 'admin' ? <ShieldCheck className="h-3.5 w-3.5" /> : null}
-                  {badge.label}
-                </span>
-              ))}
-            </div>
+            <h2 className={HOUSE_SECTION_TITLE_CLASS}>
+              Profile
+            </h2>
+            {badges.map((badge) => (
+              <span
+                key={badge.id}
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${badgeToneClass(badge.tone)} ${
+                  badge.variant === 'admin'
+                    ? 'ring-1 ring-[hsl(var(--tone-warning-300)/0.75)]'
+                    : ''
+                }`}
+                title={badge.detail}
+              >
+                {badge.variant === 'admin' ? <ShieldCheck className="h-3.5 w-3.5" /> : null}
+                {badge.label}
+              </span>
+            ))}
           </div>
-        </CardHeader>
-        <CardContent className="space-y-3 pt-3 text-sm">
+        </div>
+        <div className="space-y-3 text-sm">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className={HOUSE_PROFILE_PHOTO_PANEL_CLASS}>
               {draft.profilePhotoDataUrl ? (
@@ -2315,16 +2318,15 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
             </div>
 
           </div>
-        </CardContent>
-      </Card>
-      <div data-house-role="section-divider" className={houseDividers.strong} />
+        </div>
+      </section>
 
-      <Card className="border-[hsl(var(--tone-neutral-200))]">
-        <CardHeader className="border-b border-[hsl(var(--tone-neutral-200))] pb-3">
+      <section className={cn(HOUSE_PAGE_MAIN_CONTENT_CLASS, 'space-y-3')}>
+        <div>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle className={HOUSE_SECTION_TITLE_CLASS}>
+            <h2 className={HOUSE_SECTION_TITLE_CLASS}>
               Affiliation
-            </CardTitle>
+            </h2>
             <Button
               type="button"
               size="sm"
@@ -2336,8 +2338,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               Add new
             </Button>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-3 pt-3 text-sm">
+        </div>
+        <div className="space-y-3 text-sm">
 
           <div
             className={cn(
@@ -2649,16 +2651,15 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               </div>
             </div>
           ) : null}
-        </CardContent>
-      </Card>
-      <div data-house-role="section-divider" className={houseDividers.strong} />
+        </div>
+      </section>
 
-      <Card className="border-[hsl(var(--tone-neutral-200))]">
-        <CardHeader className="border-b border-[hsl(var(--tone-neutral-200))] pb-3">
+      <section className={cn(HOUSE_PAGE_MAIN_CONTENT_CLASS, 'space-y-3')}>
+        <div>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle className={HOUSE_SECTION_TITLE_CLASS}>
+            <h2 className={HOUSE_SECTION_TITLE_CLASS}>
               Publication affiliation
-            </CardTitle>
+            </h2>
             <Button
               type="button"
               variant="secondary"
@@ -2670,8 +2671,8 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
               {showPublicationAffiliationComposer ? 'Hide add form' : 'Add new'}
             </Button>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-3 pt-3 text-sm">
+        </div>
+        <div className="space-y-3 text-sm">
 
           {showPublicationAffiliationComposer ? (
             <div className="space-y-1 sm:col-span-2">
@@ -2799,10 +2800,10 @@ export function ProfilePersonalDetailsPage({ fixture }: ProfilePersonalDetailsPa
           {publicationAffiliationSuggestionsError ? (
             <p className="text-micro text-[hsl(var(--tone-warning-700))]">{publicationAffiliationSuggestionsError}</p>
           ) : null}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
-      <div className="space-y-2">
+      <div className={cn(HOUSE_PAGE_MAIN_CONTENT_CLASS, 'space-y-2')}>
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"

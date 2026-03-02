@@ -285,6 +285,8 @@ class OpenAlexMetricsProvider(MetricsProvider):
                 "journal_name": source.get("display_name"),
                 "type": candidate.get("type"),
                 "type_crossref": candidate.get("type_crossref"),
+                "publication_date": candidate.get("publication_date"),
+                "publication_year": candidate.get("publication_year"),
                 "abstract": abstract,
                 "counts_by_year": counts_by_year,
             },
