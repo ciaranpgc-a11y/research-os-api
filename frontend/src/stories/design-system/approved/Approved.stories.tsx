@@ -3157,6 +3157,22 @@ function ApprovedDrilldownMetricTileSection() {
           </article>
 
           <article className="rounded-md border border-neutral-200 bg-background p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Drilldown metric tile (abstract content)</p>
+            <div className="mt-3 space-y-2">
+              <div className="house-drilldown-heading-block">
+                <p className="house-drilldown-heading-block-title">Aims</p>
+              </div>
+              <div className="house-drilldown-content-block">
+                <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
+                  <p className="leading-relaxed">
+                    Four-dimensional flow cardiovascular MRI (4D flow CMR) has emerged as a promising technique for assessing aortic stenosis severity and predicting intervention.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article className="rounded-md border border-neutral-200 bg-background p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-600">Typography spec</p>
             <div className="mt-3 overflow-hidden rounded-md border border-neutral-200">
               <table className="w-full text-left text-xs">
@@ -3198,6 +3214,10 @@ function ApprovedDrilldownMetricTileSection() {
                   <tr className="border-t border-neutral-200">
                     <td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-card-small</code></td>
                     <td className="px-2 py-1.5">display:flex, flex-direction:column, justify-content:center, align-items:center, min-height:5rem, text-align:center, border:1px solid neutral-900, border-radius:0.375rem, background:surface-drilldown-elevated, box-shadow:inset outline, padding:0.55rem 0.75rem, gap:0.28rem</td>
+                  </tr>
+                  <tr className="border-t border-neutral-200">
+                    <td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-card.house-drilldown-abstract-metric-card</code></td>
+                    <td className="px-2 py-1.5">uses metric-tile border/surface tokens, but left-aligns content, removes centered min-height behavior, and applies text-card padding for abstract sections</td>
                   </tr>
                   <tr className="border-t border-neutral-200">
                     <td className="px-2 py-1.5"><code>.house-drilldown-summary-stat-title + .house-drilldown-stat-title</code></td>

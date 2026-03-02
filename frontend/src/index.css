@@ -4203,6 +4203,21 @@
     box-sizing: border-box;
   }
 
+  .house-drilldown-abstract-metric-card {
+    min-height: 0;
+    align-items: flex-start;
+    justify-content: flex-start;
+    text-align: left;
+    padding: 0.72rem 0.82rem;
+    gap: 0.32rem;
+  }
+
+  .house-drilldown-abstract-metric-card > p,
+  .house-drilldown-abstract-metric-card .house-drilldown-link {
+    width: 100%;
+    text-align: left;
+  }
+
   .house-publication-overview-stat-card {
     min-height: 3.35rem;
     align-items: flex-start;

@@ -1060,7 +1060,7 @@ function clampPublicationTableColumnsToAvailableWidth(input: {
 
   const containerBudget = Math.max(
     visibleColumns.length * PUBLICATION_TABLE_COLUMN_HARD_MIN,
-    Math.round(Number(input.availableWidth) || 0) - 8,
+    Math.round(Number(input.availableWidth) || 0),
   )
   const preferredWidths: Record<PublicationTableColumnKey, number> = {
     title: next.title.width,
@@ -1134,21 +1134,36 @@ function clampPublicationTableColumnsToAvailableWidth(input: {
   }
 
   if (totalWidth < containerBudget) {
-    let remaining = containerBudget - totalWidth
+    const remainingTarget = containerBudget - totalWidth
     const growOrder: PublicationTableColumnKey[] = ['title', 'venue', 'work_type', 'article_type', 'year', 'citations']
-    const growableColumns = growOrder.filter((column) => visibleColumns.includes(column))
-    for (const column of growableColumns) {
-      if (remaining <= 0) {
-        break
+    const growColumns = growOrder.filter((column) => visibleColumns.includes(column))
+    const totalGrowWeight = growColumns.reduce(
+      (sum, column) => sum + (PUBLICATION_TABLE_COLUMN_WIDTH_LIMITS[column].growWeight || 1),
+      0,
+    )
+    if (growColumns.length > 0 && totalGrowWeight > 0) {
+      const allocatedByColumn: Partial<Record<PublicationTableColumnKey, number>> = {}
+      let allocated = 0
+      for (const column of growColumns) {
+        const weight = PUBLICATION_TABLE_COLUMN_WIDTH_LIMITS[column].growWeight || 1
+        const growth = Math.max(0, Math.floor(remainingTarget * (weight / totalGrowWeight)))
+        allocatedByColumn[column] = growth
+        allocated += growth
       }
-      const maxWidth = PUBLICATION_TABLE_COLUMN_WIDTH_LIMITS[column].max
-      const growable = Math.max(0, maxWidth - preferredWidths[column])
-      if (growable <= 0) {
-        continue
+      let remaining = Math.max(0, remainingTarget - allocated)
+      const remainderOrder = [...growColumns].sort(
+        (left, right) => (PUBLICATION_TABLE_COLUMN_WIDTH_LIMITS[right].growWeight || 1) - (PUBLICATION_TABLE_COLUMN_WIDTH_LIMITS[left].growWeight || 1),
+      )
+      let index = 0
+      while (remaining > 0 && remainderOrder.length > 0) {
+        const column = remainderOrder[index % remainderOrder.length]
+        allocatedByColumn[column] = Number(allocatedByColumn[column] || 0) + 1
+        remaining -= 1
+        index += 1
       }
-      const growth = Math.min(growable, remaining)
-      preferredWidths[column] += growth
-      remaining -= growth
+      for (const column of growColumns) {
+        preferredWidths[column] += Number(allocatedByColumn[column] || 0)
+      }
     }
   }
 
@@ -1596,27 +1611,6 @@ function formatAuthorSurnameInitials(value: string): string {
   return initials ? `${surname} ${initials}` : surname
 }
 
-function formatVancouverCitation(input: {
-  title: string
-  journal: string
-  year: number | null
-  authors: string[]
-  doi: string | null
-}): string {
-  const names = (input.authors || []).filter((item) => item.trim())
-  const authorText =
-    names.length === 0
-      ? 'Author unavailable.'
-      : names.length > 6
-        ? `${names.slice(0, 6).join(', ')}, et al.`
-        : names.join(', ')
-  const title = input.title.trim() || 'Untitled'
-  const journal = input.journal.trim() || 'Journal unavailable'
-  const year = input.year ?? 'n.d.'
-  const doi = (input.doi || '').trim()
-  return `${authorText} ${title}. ${journal}. ${year}.${doi ? ` doi:${doi}.` : ''}`
-}
-
 function createDefaultPublicationExportFieldSelection(): Record<PublicationExportFieldKey, boolean> {
   return PUBLICATION_EXPORT_FIELD_OPTIONS.reduce<Record<PublicationExportFieldKey, boolean>>(
     (accumulator, option) => {
@@ -1977,7 +1971,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const [, setPaneLoadingByKey] = useState<Record<string, boolean>>({})
   const [paneErrorByKey, setPaneErrorByKey] = useState<Record<string, string>>({})
   const [expandedAbstractByWorkId, setExpandedAbstractByWorkId] = useState<Record<string, boolean>>({})
-  const [contentModeByWorkId, setContentModeByWorkId] = useState<Record<string, 'plain' | 'highlighted'>>({})
+  const [contentModeByWorkId] = useState<Record<string, 'plain' | 'highlighted'>>({})
   const [uploadingFile, setUploadingFile] = useState(false)
   const [oaPdfStatusByWorkId, setOaPdfStatusByWorkId] = useState<Record<string, PublicationOaPdfStatusRecord>>({})
   const [autoOaFinding, setAutoOaFinding] = useState(false)
@@ -2027,6 +2021,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     startWidths: Partial<Record<PublicationTableColumnKey, number>>
   } | null>(null)
   const filePickerRef = useRef<HTMLInputElement | null>(null)
+  const resolvePublicationTableAvailableWidth = useCallback(() => {
+    const measuredClient = publicationTableLayoutRef.current?.clientWidth
+    if (Number.isFinite(measuredClient) && Number(measuredClient) > 0) {
+      return Math.max(320, Math.round(Number(measuredClient)))
+    }
+    const measuredRect = publicationTableLayoutRef.current?.getBoundingClientRect().width
+    if (Number.isFinite(measuredRect) && Number(measuredRect) > 0) {
+      return Math.max(320, Math.round(Number(measuredRect)))
+    }
+    return Math.max(320, Math.round(Number(publicationTableLayoutWidth) || 320))
+  }, [publicationTableLayoutWidth])
 
   const loadData = useCallback(async (
     sessionToken: string,
@@ -2172,6 +2177,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return
     }
     const loaded = loadPublicationTableColumnPreferences(user.id)
+    const availableWidth = resolvePublicationTableAvailableWidth()
     setPublicationTableColumns(() => (
       clampPublicationTableColumnsToAvailableWidth({
         columns: {
@@ -2182,11 +2188,11 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
           article_type: { ...loaded.article_type },
           citations: { ...loaded.citations },
         },
-        columnOrder: publicationTableColumnOrder,
-        availableWidth: publicationTableLayoutWidth || 1100,
+        columnOrder: PUBLICATION_TABLE_COLUMN_ORDER,
+        availableWidth,
       })
     ))
-  }, [publicationTableColumnOrder, publicationTableLayoutWidth, user?.id])
+  }, [resolvePublicationTableAvailableWidth, user?.id])
 
   useEffect(() => {
     if (!user?.id) {
@@ -2194,6 +2200,21 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     setPublicationTableColumnOrder(loadPublicationTableColumnOrderPreference(user.id))
   }, [user?.id])
+
+  useEffect(() => {
+    const availableWidth = resolvePublicationTableAvailableWidth()
+    setPublicationTableColumns((current) => {
+      const normalized = clampPublicationTableColumnsToAvailableWidth({
+        columns: current,
+        columnOrder: publicationTableColumnOrder,
+        availableWidth,
+      })
+      if (publicationTableColumnsEqual(current, normalized)) {
+        return current
+      }
+      return normalized
+    })
+  }, [personaState?.works?.length, publicationLibraryVisible, publicationTableColumnOrder, publicationTableLayoutWidth, resolvePublicationTableAvailableWidth])
 
   useEffect(() => {
     if (!user?.id) {
@@ -2274,7 +2295,8 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return
     }
     const updateWidth = () => {
-      setPublicationTableLayoutWidth(Math.max(760, Math.round(node.clientWidth || 760)))
+      const measuredWidth = Math.round(node.clientWidth || node.getBoundingClientRect().width || 320)
+      setPublicationTableLayoutWidth(Math.max(320, measuredWidth))
     }
     updateWidth()
     if (typeof ResizeObserver === 'undefined') {
@@ -2290,7 +2312,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     return () => {
       observer.disconnect()
     }
-  }, [])
+  }, [publicationLibraryVisible, personaState?.works?.length])
 
   useEffect(() => {
     if (!publicationLibraryFiltersVisible && !publicationLibrarySearchVisible && !publicationLibraryDownloadVisible && !publicationLibrarySettingsVisible) {
@@ -2809,30 +2831,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     return filtered
   }, [metricsByWorkId, personaState?.works, query, selectedArticleTypes, selectedPublicationTypes, sortDirection, sortField])
 
-  useEffect(() => {
-    const works = personaState?.works ?? []
-    if (works.length === 0) {
-      return
-    }
-    setPublicationTableColumns((current) => {
-      const next = autoFitPublicationTableColumns({
-        works,
-        metricsByWorkId,
-        current,
-        availableWidth: publicationTableLayoutWidth,
-      })
-      const normalized = clampPublicationTableColumnsToAvailableWidth({
-        columns: next,
-        columnOrder: publicationTableColumnOrder,
-        availableWidth: publicationTableLayoutWidth,
-      })
-      if (publicationTableColumnsEqual(current, normalized)) {
-        return current
-      }
-      return normalized
-    })
-  }, [metricsByWorkId, personaState?.works, publicationTableColumnOrder, publicationTableLayoutWidth])
-
   const totalFilteredPublicationWorks = filteredWorks.length
   const publicationLibraryTotalPages = useMemo(() => {
     if (publicationLibraryPageSize === 'all') {
@@ -2874,23 +2872,31 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         Math.max(1, Math.min(publicationLibraryPage, publicationLibraryTotalPages)) * publicationLibraryPageSize,
       )
 
+  const effectivePublicationTableColumns = useMemo(() => (
+    clampPublicationTableColumnsToAvailableWidth({
+      columns: publicationTableColumns,
+      columnOrder: publicationTableColumnOrder,
+      availableWidth: resolvePublicationTableAvailableWidth(),
+    })
+  ), [publicationTableColumnOrder, publicationTableColumns, publicationTableLayoutWidth, resolvePublicationTableAvailableWidth])
+
   const visiblePublicationTableColumns = useMemo(() => (
-    publicationTableColumnOrder.filter((key) => publicationTableColumns[key].visible)
-  ), [publicationTableColumnOrder, publicationTableColumns])
+    publicationTableColumnOrder.filter((key) => effectivePublicationTableColumns[key].visible)
+  ), [effectivePublicationTableColumns, publicationTableColumnOrder])
 
   useEffect(() => {
     const sortColumn = sortField as PublicationTableColumnKey
-    if (publicationTableColumns[sortColumn]?.visible) {
+    if (effectivePublicationTableColumns[sortColumn]?.visible) {
       return
     }
     const fallbackColumn = publicationTableColumnOrder.find(
-      (column) => publicationTableColumns[column].visible,
+      (column) => effectivePublicationTableColumns[column].visible,
     )
     if (!fallbackColumn) {
       return
     }
     setSortField(PUBLICATION_TABLE_COLUMN_DEFINITIONS[fallbackColumn].sortField)
-  }, [publicationTableColumnOrder, publicationTableColumns, sortField])
+  }, [effectivePublicationTableColumns, publicationTableColumnOrder, sortField])
 
   useEffect(() => {
     if (filteredWorks.length === 0) {
@@ -3394,6 +3400,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   }, [publicationTableColumns])
 
   const onTogglePublicationColumnVisibility = useCallback((column: PublicationTableColumnKey) => {
+    const availableWidth = resolvePublicationTableAvailableWidth()
     setPublicationTableColumns((current) => {
       const visibleCount = PUBLICATION_TABLE_COLUMN_ORDER.reduce(
         (count, key) => count + (current[key].visible ? 1 : 0),
@@ -3412,12 +3419,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return clampPublicationTableColumnsToAvailableWidth({
         columns: next,
         columnOrder: publicationTableColumnOrder,
-        availableWidth: publicationTableLayoutWidth,
+        availableWidth,
       })
     })
-  }, [publicationTableColumnOrder, publicationTableLayoutWidth])
+  }, [publicationTableColumnOrder, resolvePublicationTableAvailableWidth])
 
   const onResetPublicationTableSettings = useCallback(() => {
+    const availableWidth = resolvePublicationTableAvailableWidth()
     setPublicationTableColumns((current) => {
       const reset = PUBLICATION_TABLE_COLUMN_ORDER.reduce<Record<PublicationTableColumnKey, PublicationTableColumnPreference>>(
         (accumulator, column) => {
@@ -3439,7 +3447,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return clampPublicationTableColumnsToAvailableWidth({
         columns: reset,
         columnOrder: PUBLICATION_TABLE_COLUMN_ORDER,
-        availableWidth: publicationTableLayoutWidth,
+        availableWidth,
       })
     })
     setPublicationTableColumnOrder([...PUBLICATION_TABLE_COLUMN_ORDER])
@@ -3449,7 +3457,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     setPublicationTableAttachmentStatusVisible(true)
     setPublicationLibraryPageSize(50)
     setPublicationLibraryPage(1)
-  }, [publicationTableLayoutWidth])
+  }, [resolvePublicationTableAvailableWidth])
 
   const onAutoAdjustPublicationTableWidths = useCallback(() => {
     const works = filteredWorks.length > 0 ? filteredWorks : (personaState?.works ?? [])
@@ -3460,14 +3468,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       publicationTableResizeRef.current = null
       setPublicationTableResizingColumn(null)
     }
-    const availableWidth = Math.max(
-      760,
-      Math.round(
-        publicationTableLayoutRef.current?.clientWidth && publicationTableLayoutRef.current.clientWidth > 0
-          ? publicationTableLayoutRef.current.clientWidth
-          : publicationTableLayoutWidth,
-      ),
-    )
+    const availableWidth = resolvePublicationTableAvailableWidth()
     setPublicationTableColumns((current) => {
       const next = autoFitPublicationTableColumns({
         works,
@@ -3481,7 +3482,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         availableWidth,
       })
     })
-  }, [filteredWorks, metricsByWorkId, personaState?.works, publicationTableColumnOrder, publicationTableLayoutWidth, publicationTableResizingColumn])
+  }, [filteredWorks, metricsByWorkId, personaState?.works, publicationTableColumnOrder, publicationTableResizingColumn, resolvePublicationTableAvailableWidth])
 
   const onDownloadPublicationLibrary = useCallback(() => {
     const selectedFieldKeys = PUBLICATION_EXPORT_FIELD_OPTIONS
@@ -3759,13 +3760,13 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     }
     event.preventDefault()
     event.stopPropagation()
-    const visibleColumns = publicationTableColumnOrder.filter((key) => publicationTableColumns[key].visible)
+    const visibleColumns = publicationTableColumnOrder.filter((key) => effectivePublicationTableColumns[key].visible)
     if (visibleColumns.length <= 1 || !visibleColumns.includes(column)) {
       return
     }
     const startWidths = visibleColumns.reduce<Partial<Record<PublicationTableColumnKey, number>>>((accumulator, key) => {
       accumulator[key] = Number(
-        publicationTableColumns[key].width || PUBLICATION_TABLE_COLUMN_DEFAULTS[key].width,
+        effectivePublicationTableColumns[key].width || PUBLICATION_TABLE_COLUMN_DEFAULTS[key].width,
       )
       return accumulator
     }, {})
@@ -3776,7 +3777,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       startWidths,
     }
     setPublicationTableResizingColumn(column)
-  }, [publicationTableColumnOrder, publicationTableColumns])
+  }, [effectivePublicationTableColumns, publicationTableColumnOrder])
 
   const onPublicationHeadingResizeHandleKeyDown = useCallback((
     event: React.KeyboardEvent<HTMLButtonElement>,
@@ -3788,6 +3789,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     event.preventDefault()
     event.stopPropagation()
     const deltaPx = event.key === 'ArrowLeft' ? -16 : 16
+    const availableWidth = resolvePublicationTableAvailableWidth()
     setPublicationTableColumns((current) => {
       const visibleColumns = publicationTableColumnOrder.filter((key) => current[key].visible)
       if (visibleColumns.length <= 1 || !visibleColumns.includes(column)) {
@@ -3822,10 +3824,10 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       return clampPublicationTableColumnsToAvailableWidth({
         columns: next,
         columnOrder: publicationTableColumnOrder,
-        availableWidth: publicationTableLayoutWidth,
+        availableWidth,
       })
     })
-  }, [publicationTableColumnOrder, publicationTableLayoutWidth])
+  }, [publicationTableColumnOrder, resolvePublicationTableAvailableWidth])
 
   useEffect(() => {
     if (!publicationTableResizingColumn) {
@@ -3836,6 +3838,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       if (!resizeState) {
         return
       }
+      const availableWidth = resolvePublicationTableAvailableWidth()
       const resized = clampPublicationTableDistributedResize({
         column: resizeState.column,
         visibleColumns: resizeState.visibleColumns,
@@ -3862,7 +3865,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
         return clampPublicationTableColumnsToAvailableWidth({
           columns: next,
           columnOrder: publicationTableColumnOrder,
-          availableWidth: publicationTableLayoutWidth,
+          availableWidth,
         })
       })
     }
@@ -3878,7 +3881,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       window.removeEventListener('pointerup', stopResize)
       window.removeEventListener('pointercancel', stopResize)
     }
-  }, [publicationTableColumnOrder, publicationTableLayoutWidth, publicationTableResizingColumn])
+  }, [publicationTableColumnOrder, publicationTableResizingColumn, resolvePublicationTableAvailableWidth])
 
   const activePaneError = selectedWorkId
     ? paneErrorByKey[publicationPaneKey(selectedWorkId, activeDetailTab)] || ''
@@ -3900,7 +3903,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const abstractKeywordList = (structuredAbstractKeywords.length > 0 ? structuredAbstractKeywords : detailKeywords)
     .map((item) => String(item || '').trim())
     .filter((item, index, array) => item.length > 0 && array.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index)
-  const contentMode = selectedWorkId ? (contentModeByWorkId[selectedWorkId] || 'plain') : 'plain'
   const abstractExpanded = selectedWorkId ? Boolean(expandedAbstractByWorkId[selectedWorkId]) : false
   const abstractPreview = abstractExpanded ? effectiveDetailAbstract : effectiveDetailAbstract.slice(0, 700)
 
@@ -3930,35 +3932,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       ...current,
       [selectedWorkId]: !current[selectedWorkId],
     }))
-  }
-
-  const onContentModeChange = async (nextMode: 'plain' | 'highlighted') => {
-    if (!selectedWorkId) {
-      return
-    }
-    setContentModeByWorkId((current) => ({ ...current, [selectedWorkId]: nextMode }))
-    if (nextMode === 'highlighted') {
-      await loadPublicationAiData(selectedWorkId)
-    }
-  }
-
-  const onCopyVancouverCitation = async () => {
-    if (!selectedWork) {
-      return
-    }
-    const citation = formatVancouverCitation({
-      title: selectedDetail?.title || selectedWork.title,
-      journal: detailJournal,
-      year: detailYear,
-      authors: selectedAuthorNames,
-      doi: detailDoi,
-    })
-    try {
-      await navigator.clipboard.writeText(citation)
-      setStatus('Citation copied to clipboard.')
-    } catch {
-      setError('Could not copy citation to clipboard.')
-    }
   }
 
   const refreshFilesTab = async (workId: string) => {
@@ -4740,15 +4713,16 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                   <Table
                     striped={publicationTableAlternateRowColoring}
                     className={cn(
-                      'min-w-sz-760 table-fixed house-table-resizable',
+                      'w-full table-fixed house-table-resizable',
                       publicationTableDensity === 'compact' && 'house-publications-table-density-compact',
                       publicationTableDensity === 'comfortable' && 'house-publications-table-density-comfortable',
                     )}
+                    data-house-no-column-resize="true"
                     data-house-no-column-controls="true"
                   >
                     <colgroup>
                       {visiblePublicationTableColumns.map((columnKey) => {
-                        const width = publicationTableColumns[columnKey].width
+                        const width = effectivePublicationTableColumns[columnKey].width
                         return (
                           <col
                             key={`table-col-${columnKey}`}
@@ -5153,36 +5127,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         </TabsContent>
 
                         <TabsContent value="content" className="mt-0" role="tabpanel" id="publication-drilldown-panel-content" aria-labelledby="publication-drilldown-tab-content">
-                          <div className="house-drilldown-heading-block">
-                            <p className="house-drilldown-heading-block-title">Abstract</p>
-                          </div>
                           <div className="house-drilldown-content-block space-y-3">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant={contentMode === 'plain' ? 'primary' : 'secondary'}
-                                onClick={() => void onContentModeChange('plain')}
-                              >
-                                Plain
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant={contentMode === 'highlighted' ? 'primary' : 'secondary'}
-                                onClick={() => void onContentModeChange('highlighted')}
-                              >
-                                Highlighted
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => void onCopyVancouverCitation()}
-                              >
-                                Copy citation
-                              </Button>
-                            </div>
                             {selectedDetail?.structured_abstract_status === 'RUNNING' ? (
                               <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Structuring abstract...</p>
                             ) : null}
@@ -5200,7 +5145,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                       <p className="house-drilldown-heading-block-title">{section.label || 'Summary'}</p>
                                     </div>
                                     <div className="house-drilldown-content-block">
-                                      <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} w-full`}>
+                                      <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
                                         <p className="leading-relaxed">{section.content || 'Not available'}</p>
                                       </div>
                                     </div>
@@ -5212,7 +5157,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                       <p className="house-drilldown-heading-block-title">Keywords</p>
                                     </div>
                                     <div className="house-drilldown-content-block">
-                                      <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} w-full`}>
+                                      <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
                                         <p className="leading-relaxed">{abstractKeywordList.join(', ')}</p>
                                       </div>
                                     </div>
@@ -5221,7 +5166,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                               </div>
                             ) : effectiveDetailAbstract ? (
                               <div className="house-drilldown-content-block">
-                                <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} w-full space-y-2`}>
+                                <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full space-y-2">
                                   <p className="leading-relaxed">{abstractPreview}</p>
                                   {effectiveDetailAbstract.length > 700 ? (
                                     <button
@@ -5240,7 +5185,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                   <p className="house-drilldown-heading-block-title">Keywords</p>
                                 </div>
                                 <div className="house-drilldown-content-block">
-                                  <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} w-full`}>
+                                  <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
                                     <p className="leading-relaxed">{abstractKeywordList.join(', ')}</p>
                                   </div>
                                 </div>
