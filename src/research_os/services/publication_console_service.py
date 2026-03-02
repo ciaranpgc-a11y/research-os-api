@@ -898,7 +898,7 @@ def _extract_structured_abstract_from_pubmed(
             continue
 
         summary_parts.append(content)
-            sections.append({"key": key, "label": label, "content": content})
+        sections.append({"key": key, "label": label, "content": content})
 
     if not summary_parts:
         return None, [], keywords
