@@ -1682,6 +1682,76 @@ function extractRegistrationSectionContent(value: string): string {
   return matches.join(' ').trim()
 }
 
+type LocalAbstractSection = {
+  key: string
+  label: string
+  content: string
+}
+
+function canonicalAbstractSectionKey(value: string): string {
+  const clean = String(value || '').trim().toLowerCase()
+  if (!clean) {
+    return 'other'
+  }
+  if (/(intro|background|objective|aim|purpose)/i.test(clean)) {
+    return 'introduction'
+  }
+  if (/(method|materials and methods|study design|design)/i.test(clean)) {
+    return 'methods'
+  }
+  if (/(result|finding|outcome|analysis)/i.test(clean)) {
+    return 'results'
+  }
+  if (/(conclusion|discussion|implication|interpretation)/i.test(clean)) {
+    return 'conclusions'
+  }
+  if (/(registration|prospero|clinicaltrials|nct|isrctn|crd)/i.test(clean)) {
+    return 'registration'
+  }
+  return 'other'
+}
+
+function normalizeAbstractHeadingLabel(value: string): string {
+  const clean = String(value || '').trim().replace(/\s+/g, ' ')
+  if (!clean) {
+    return 'Summary'
+  }
+  if (clean.toUpperCase() === clean) {
+    return clean.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase())
+  }
+  return clean.charAt(0).toUpperCase() + clean.slice(1)
+}
+
+function extractHeadingSectionsFromAbstractSource(value: string): LocalAbstractSection[] {
+  const text = normalizeAbstractDisplayText(value)
+  if (!text) {
+    return []
+  }
+  const headingPattern = /(?:^|(?<=[\n\r])|(?<=[.!?]\s))(background|introduction|aims?|objective|objectives|purpose|methods?|materials and methods|study design|design|results?|findings?|conclusion|conclusions|discussion|trial registration(?: number)?|registration(?: number)?|prospero registration|prospero)\s*:?\s*/gim
+  const matches = Array.from(text.matchAll(headingPattern))
+  if (!matches.length) {
+    return []
+  }
+
+  const sections: LocalAbstractSection[] = []
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index]
+    const heading = normalizeAbstractHeadingLabel(String(match[1] || '').trim())
+    const start = Number(match.index || 0) + String(match[0] || '').length
+    const end = index + 1 < matches.length ? Number(matches[index + 1].index || text.length) : text.length
+    const content = normalizeAbstractDisplayText(text.slice(start, end))
+    if (!content) {
+      continue
+    }
+    sections.push({
+      key: canonicalAbstractSectionKey(heading),
+      label: heading,
+      content,
+    })
+  }
+  return sections
+}
+
 function createDefaultPublicationExportFieldSelection(): Record<PublicationExportFieldKey, boolean> {
   return PUBLICATION_EXPORT_FIELD_OPTIONS.reduce<Record<PublicationExportFieldKey, boolean>>(
     (accumulator, option) => {
@@ -3975,12 +4045,32 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     .map((item) => String(item || '').trim())
     .filter((item, index, array) => item.length > 0 && array.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index)
   const structuredSections = selectedDetail?.structured_abstract?.sections || []
-  const hasStructuredRegistrationSection = structuredSections.some((section) =>
+  const structuredSourceAbstract = normalizeAbstractDisplayText(String(selectedDetail?.structured_abstract?.source_abstract || effectiveDetailAbstract || ''))
+  const structuredSectionsJoined = normalizeAbstractDisplayText(
+    structuredSections.map((section) => String(section?.content || '')).join(' '),
+  )
+  const structuredCoverageRatio = structuredSourceAbstract.length > 0
+    ? (structuredSectionsJoined.length / structuredSourceAbstract.length)
+    : 1
+  const fallbackSectionsFromSource = useMemo(
+    () => extractHeadingSectionsFromAbstractSource(structuredSourceAbstract),
+    [structuredSourceAbstract],
+  )
+  const resolvedStructuredSections = useMemo(() => {
+    if (!structuredSections.length) {
+      return []
+    }
+    if (structuredCoverageRatio < 0.62 && fallbackSectionsFromSource.length >= 2) {
+      return fallbackSectionsFromSource
+    }
+    return structuredSections
+  }, [fallbackSectionsFromSource, structuredCoverageRatio, structuredSections])
+  const hasStructuredRegistrationSection = resolvedStructuredSections.some((section) =>
     /\b(registration|prospero)\b/i.test(String(section?.label || section?.key || '')),
   )
   const inferredRegistrationSectionContent = hasStructuredRegistrationSection
     ? ''
-    : extractRegistrationSectionContent(effectiveDetailAbstract)
+    : extractRegistrationSectionContent(structuredSourceAbstract)
   const abstractExpanded = selectedWorkId ? Boolean(expandedAbstractByWorkId[selectedWorkId]) : false
   const abstractPreview = abstractExpanded ? effectiveDetailAbstract : effectiveDetailAbstract.slice(0, 700)
   const abstractPreviewParagraphs = useMemo(() => {
@@ -5154,15 +5244,17 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                         {index < list.length - 1 ? ', ' : ''}
                                       </span>
                                     ))}
-                                    {!overviewAuthorsExpanded && overviewAuthors.length > PUBLICATION_OVERVIEW_AUTHORS_PREVIEW_LIMIT ? (
+                                    {overviewAuthors.length > PUBLICATION_OVERVIEW_AUTHORS_PREVIEW_LIMIT ? (
                                       <>
                                         {' '}
                                         <button
                                           type="button"
                                           className={HOUSE_PUBLICATION_DRILLDOWN_LINK_CLASS}
-                                          onClick={() => setOverviewAuthorsExpanded(true)}
+                                          onClick={() => setOverviewAuthorsExpanded((current) => !current)}
                                         >
-                                          +{overviewAuthors.length - PUBLICATION_OVERVIEW_AUTHORS_PREVIEW_LIMIT} more
+                                          {overviewAuthorsExpanded
+                                            ? 'Show less'
+                                            : `+${overviewAuthors.length - PUBLICATION_OVERVIEW_AUTHORS_PREVIEW_LIMIT} more`}
                                         </button>
                                       </>
                                     ) : null}
@@ -5238,9 +5330,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 </div>
                               </div>
                             ) : null}
-                            {structuredSections.length ? (
+                            {resolvedStructuredSections.length ? (
                               <>
-                                {structuredSections.map((section, index) => {
+                                {resolvedStructuredSections.map((section, index) => {
                                   const sectionParagraphs = splitLongTextIntoParagraphs(section.content || '')
                                   return [
                                     <div key={`abstract-section-heading-${section.key || index}`} className="house-drilldown-heading-block">

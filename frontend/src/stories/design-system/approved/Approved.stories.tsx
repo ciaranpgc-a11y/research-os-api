@@ -1462,8 +1462,16 @@ function ApprovedPublicationLibraryDrilldownSection() {
                       <p className="house-drilldown-heading-block-title">Files</p>
                     </div>
                     <div className="house-drilldown-content-block">
-                      <div className="house-drilldown-stat-card">
-                        <p className="house-drilldown-note-soft">No files linked to this publication.</p>
+                      <div className="space-y-3">
+                        <div className="house-drilldown-stat-card space-y-2">
+                          <p className="house-drilldown-stat-title">OA Manuscript Download</p>
+                          <p className="house-drilldown-note break-all">biomarker-cohort-imaging-manuscript.pdf</p>
+                          <p className="house-drilldown-caption">PDF | OA link | 14 Mar 2026</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <button type="button" className="house-drilldown-action">Open</button>
+                            <button type="button" className="house-drilldown-action ml-auto">Delete</button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                     <div className="house-drilldown-heading-block">
@@ -1539,6 +1547,27 @@ function ApprovedPublicationLibraryDrilldownSection() {
     </section>
   )
 }
+
+function ApprovedButtonsSection() {
+  return (
+    <section>
+      <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div className="px-4 py-2 border-b border-neutral-200">
+          <p className="text-sm font-semibold text-neutral-900">Approved Buttons</p>
+          <p className="text-xs text-neutral-600">Canonical publication action buttons for tokenized styling.</p>
+        </div>
+        <div className="p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="house-drilldown-action">Open</button>
+            <button type="button" className="house-drilldown-action">Delete</button>
+            <button type="button" className="house-drilldown-action">Upload file</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function ApprovedMarkersSection() {
   return (
     <section>
@@ -4641,6 +4670,7 @@ function ApprovedPage() {
             <h2 className="text-2xl font-bold tracking-tight text-neutral-900">2. Interaction patterns</h2>
             <p className="mt-1 text-sm text-neutral-600">Toolbars, insight controls, tooltips, and notification surfaces for consistent behavior.</p>
           </div>
+          <ApprovedButtonsSection />
           <ApprovedMetricsToolbarSection />
           <ApprovedInsightsControlSection />
           <ApprovedDefaultPublicationTableSection />

@@ -1838,13 +1838,13 @@ def _extract_inline_heading_sections(text: str | None) -> list[dict[str, str]]:
         return []
 
     heading_pattern = re.compile(
-        r"(?i)\b("
+        r"(?im)(?:^|(?<=[\n\r])|(?<=[.!?]\s))("
         r"background|introduction|aims?|objective|objectives|purpose|"
         r"methods?|materials and methods|study design|design|"
         r"results?|findings?|"
         r"conclusion|conclusions|discussion|"
         r"trial registration(?: number)?|registration(?: number)?|prospero registration|prospero"
-        r")\s*:"
+        r")\s*:?\s*"
     )
     matches = list(heading_pattern.finditer(clean_text))
     if not matches:
