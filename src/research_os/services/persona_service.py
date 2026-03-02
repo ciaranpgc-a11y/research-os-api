@@ -653,15 +653,19 @@ def upsert_work(
         return _upsert(session)
     with session_scope() as owned_session:
         result = _upsert(owned_session)
-    if bool(result.get("structured_abstract_refresh_needed")):
+    publication_id = str(result.get("id") or "").strip()
+    if publication_id:
         try:
             from research_os.services.publication_console_service import (
-                enqueue_publication_structured_abstract_refresh,
+                enqueue_publication_drilldown_warmup,
             )
 
-            enqueue_publication_structured_abstract_refresh(
+            enqueue_publication_drilldown_warmup(
                 user_id=user_id,
-                publication_id=str(result.get("id") or ""),
+                publication_id=publication_id,
+                force_structured_abstract=bool(
+                    result.get("structured_abstract_refresh_needed")
+                ),
             )
         except Exception:
             pass
@@ -1274,13 +1278,14 @@ def sync_metrics(
     if structured_abstract_refresh_ids:
         try:
             from research_os.services.publication_console_service import (
-                enqueue_publication_structured_abstract_refresh,
+                enqueue_publication_drilldown_warmup,
             )
 
             for work_id in structured_abstract_refresh_ids:
-                enqueue_publication_structured_abstract_refresh(
+                enqueue_publication_drilldown_warmup(
                     user_id=user_id,
                     publication_id=work_id,
+                    force_structured_abstract=True,
                 )
         except Exception:
             pass

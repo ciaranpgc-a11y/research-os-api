@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 
 from research_os.db import OrcidOAuthState, User, Work, create_all_tables, session_scope
 from research_os.services.publication_console_service import (
-    enqueue_publication_structured_abstract_refresh,
+    enqueue_publication_drilldown_warmup,
 )
 from research_os.services.persona_service import (
     recompute_collaborator_edges,
@@ -800,11 +800,12 @@ def import_orcid_works(
         new_works_count = max(0, int(current_works_count) - int(baseline_works_count))
         user.orcid_last_synced_at = _utcnow()
         session.flush()
-    for work_id in structured_abstract_refresh_ids:
+    for work_id in upserted_ids:
         try:
-            enqueue_publication_structured_abstract_refresh(
+            enqueue_publication_drilldown_warmup(
                 user_id=user_id,
                 publication_id=work_id,
+                force_structured_abstract=work_id in structured_abstract_refresh_ids,
             )
         except Exception:
             pass

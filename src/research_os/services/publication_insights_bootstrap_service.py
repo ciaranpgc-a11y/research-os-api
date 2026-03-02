@@ -27,7 +27,7 @@ from research_os.services.persona_sync_job_service import (
     serialize_persona_sync_job,
 )
 from research_os.services.publication_console_service import (
-    enqueue_publication_structured_abstract_refresh,
+    enqueue_publication_drilldown_warmup,
 )
 
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
@@ -541,11 +541,12 @@ def bootstrap_publication_insights_from_orcid(
         user.orcid_last_synced_at = _utcnow()
         session.flush()
 
-    for work_id in structured_abstract_refresh_ids:
+    for work_id in upserted_ids:
         try:
-            enqueue_publication_structured_abstract_refresh(
+            enqueue_publication_drilldown_warmup(
                 user_id=user_id,
                 publication_id=work_id,
+                force_structured_abstract=work_id in structured_abstract_refresh_ids,
             )
         except Exception:
             pass

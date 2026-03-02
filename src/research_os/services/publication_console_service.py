@@ -2542,6 +2542,38 @@ def enqueue_publication_structured_abstract_refresh(
     )
 
 
+def _enqueue_drilldown_warmup_if_needed(
+    *, user_id: str, publication_id: str, force_structured_abstract: bool = False
+) -> dict[str, bool]:
+    return {
+        "authors": bool(
+            _enqueue_authors_if_needed(user_id=user_id, publication_id=publication_id)
+        ),
+        "impact": bool(
+            _enqueue_impact_if_needed(user_id=user_id, publication_id=publication_id)
+        ),
+        "ai": bool(_enqueue_ai_if_needed(user_id=user_id, publication_id=publication_id)),
+        "structured_abstract": bool(
+            _enqueue_structured_abstract_if_needed(
+                user_id=user_id,
+                publication_id=publication_id,
+                force=force_structured_abstract,
+            )
+        ),
+    }
+
+
+def enqueue_publication_drilldown_warmup(
+    *, user_id: str, publication_id: str, force_structured_abstract: bool = False
+) -> dict[str, bool]:
+    create_all_tables()
+    return _enqueue_drilldown_warmup_if_needed(
+        user_id=user_id,
+        publication_id=publication_id,
+        force_structured_abstract=force_structured_abstract,
+    )
+
+
 def trigger_publication_structured_abstract_refresh(
     *, user_id: str, publication_id: str
 ) -> dict[str, Any]:
@@ -2600,10 +2632,10 @@ def get_publication_details(*, user_id: str, publication_id: str) -> dict[str, A
 
     if response_payload is None:
         raise PublicationConsoleNotFoundError("Publication details could not be loaded.")
-    _enqueue_structured_abstract_if_needed(
+    _enqueue_drilldown_warmup_if_needed(
         user_id=user_id,
         publication_id=publication_id,
-        force=False,
+        force_structured_abstract=False,
     )
     return response_payload
 

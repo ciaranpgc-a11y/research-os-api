@@ -757,38 +757,112 @@ function clampPublicationTableColumnWidth(value: number, fallback: number): numb
   )
 }
 
-function clampPublicationTableAdjacentResize(input: {
-  primaryStartWidth: number
-  adjacentStartWidth: number
+function clampPublicationTableDistributedResize(input: {
+  column: PublicationTableColumnKey
+  visibleColumns: PublicationTableColumnKey[]
+  startWidths: Partial<Record<PublicationTableColumnKey, number>>
   deltaPx: number
-}): { primaryWidth: number; adjacentWidth: number } {
+}): Partial<Record<PublicationTableColumnKey, number>> {
   const min = PUBLICATION_TABLE_COLUMN_WIDTH_MIN
   const max = PUBLICATION_TABLE_COLUMN_WIDTH_MAX
-  const pairTotal = Math.max(0, Math.round(input.primaryStartWidth + input.adjacentStartWidth))
-  let primaryWidth = Math.round(input.primaryStartWidth + input.deltaPx)
-  primaryWidth = Math.max(min, Math.min(max, primaryWidth))
-  let adjacentWidth = pairTotal - primaryWidth
-
-  if (adjacentWidth < min) {
-    adjacentWidth = min
-    primaryWidth = pairTotal - adjacentWidth
-  } else if (adjacentWidth > max) {
-    adjacentWidth = max
-    primaryWidth = pairTotal - adjacentWidth
+  const primaryIndex = input.visibleColumns.indexOf(input.column)
+  if (primaryIndex < 0 || input.visibleColumns.length <= 1) {
+    return input.startWidths
   }
 
-  if (primaryWidth < min) {
-    primaryWidth = min
-    adjacentWidth = pairTotal - primaryWidth
-  } else if (primaryWidth > max) {
-    primaryWidth = max
-    adjacentWidth = pairTotal - primaryWidth
+  const normalizedWidths: Partial<Record<PublicationTableColumnKey, number>> = {}
+  for (const key of input.visibleColumns) {
+    const fallback = PUBLICATION_TABLE_COLUMN_DEFAULTS[key].width
+    normalizedWidths[key] = clampPublicationTableColumnWidth(
+      Number(input.startWidths[key] ?? fallback),
+      fallback,
+    )
   }
 
-  return {
-    primaryWidth: clampPublicationTableColumnWidth(primaryWidth, input.primaryStartWidth),
-    adjacentWidth: clampPublicationTableColumnWidth(adjacentWidth, input.adjacentStartWidth),
+  const primaryStart = Number(
+    normalizedWidths[input.column] ?? PUBLICATION_TABLE_COLUMN_DEFAULTS[input.column].width,
+  )
+  const requestedDelta = Math.round(input.deltaPx)
+  if (!requestedDelta) {
+    return normalizedWidths
   }
+
+  const rightColumns = input.visibleColumns.slice(primaryIndex + 1)
+  const leftColumns = input.visibleColumns.slice(0, primaryIndex).reverse()
+  const compensationOrder = [...rightColumns, ...leftColumns]
+  if (compensationOrder.length === 0) {
+    return normalizedWidths
+  }
+
+  const maxPrimaryGrow = Math.min(
+    max - primaryStart,
+    compensationOrder.reduce(
+      (sum, key) => sum + Math.max(0, Number(normalizedWidths[key] ?? min) - min),
+      0,
+    ),
+  )
+  const maxPrimaryShrink = Math.min(
+    primaryStart - min,
+    compensationOrder.reduce(
+      (sum, key) => sum + Math.max(0, max - Number(normalizedWidths[key] ?? min)),
+      0,
+    ),
+  )
+
+  let appliedDelta = requestedDelta
+  if (appliedDelta > 0) {
+    appliedDelta = Math.min(appliedDelta, maxPrimaryGrow)
+  } else {
+    appliedDelta = -Math.min(Math.abs(appliedDelta), maxPrimaryShrink)
+  }
+  if (!appliedDelta) {
+    return normalizedWidths
+  }
+
+  let remaining = Math.abs(appliedDelta)
+  if (appliedDelta > 0) {
+    for (const key of compensationOrder) {
+      if (!remaining) {
+        break
+      }
+      const current = Number(normalizedWidths[key] ?? min)
+      const reducible = Math.max(0, current - min)
+      if (!reducible) {
+        continue
+      }
+      const step = Math.min(reducible, remaining)
+      normalizedWidths[key] = current - step
+      remaining -= step
+    }
+    const actualDelta = Math.abs(appliedDelta) - remaining
+    normalizedWidths[input.column] = primaryStart + actualDelta
+  } else {
+    for (const key of compensationOrder) {
+      if (!remaining) {
+        break
+      }
+      const current = Number(normalizedWidths[key] ?? min)
+      const growable = Math.max(0, max - current)
+      if (!growable) {
+        continue
+      }
+      const step = Math.min(growable, remaining)
+      normalizedWidths[key] = current + step
+      remaining -= step
+    }
+    const actualDelta = Math.abs(appliedDelta) - remaining
+    normalizedWidths[input.column] = primaryStart - actualDelta
+  }
+
+  for (const key of input.visibleColumns) {
+    const fallback = PUBLICATION_TABLE_COLUMN_DEFAULTS[key].width
+    normalizedWidths[key] = clampPublicationTableColumnWidth(
+      Number(normalizedWidths[key] ?? fallback),
+      fallback,
+    )
+  }
+
+  return normalizedWidths
 }
 
 function parsePublicationTableColumnAlign(value: unknown): PublicationTableColumnAlign {
@@ -1825,10 +1899,9 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
   const publicationLibrarySettingsPopoverRef = useRef<HTMLDivElement | null>(null)
   const publicationTableResizeRef = useRef<{
     column: PublicationTableColumnKey
-    adjacentColumn: PublicationTableColumnKey
+    visibleColumns: PublicationTableColumnKey[]
     startX: number
-    startWidth: number
-    adjacentStartWidth: number
+    startWidths: Partial<Record<PublicationTableColumnKey, number>>
   } | null>(null)
   const filePickerRef = useRef<HTMLInputElement | null>(null)
 
@@ -3531,21 +3604,20 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     event.preventDefault()
     event.stopPropagation()
     const visibleColumns = publicationTableColumnOrder.filter((key) => publicationTableColumns[key].visible)
-    const columnIndex = visibleColumns.indexOf(column)
-    const adjacentColumn = columnIndex >= 0 ? visibleColumns[columnIndex + 1] : undefined
-    if (!adjacentColumn) {
+    if (visibleColumns.length <= 1 || !visibleColumns.includes(column)) {
       return
     }
-    const startWidth = Number(publicationTableColumns[column].width || PUBLICATION_TABLE_COLUMN_DEFAULTS[column].width)
-    const adjacentStartWidth = Number(
-      publicationTableColumns[adjacentColumn].width || PUBLICATION_TABLE_COLUMN_DEFAULTS[adjacentColumn].width,
-    )
+    const startWidths = visibleColumns.reduce<Partial<Record<PublicationTableColumnKey, number>>>((accumulator, key) => {
+      accumulator[key] = Number(
+        publicationTableColumns[key].width || PUBLICATION_TABLE_COLUMN_DEFAULTS[key].width,
+      )
+      return accumulator
+    }, {})
     publicationTableResizeRef.current = {
       column,
-      adjacentColumn,
+      visibleColumns,
       startX: event.clientX,
-      startWidth,
-      adjacentStartWidth,
+      startWidths,
     }
     setPublicationTableResizingColumn(column)
   }, [publicationTableColumnOrder, publicationTableColumns])
@@ -3562,34 +3634,36 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
     const deltaPx = event.key === 'ArrowLeft' ? -16 : 16
     setPublicationTableColumns((current) => {
       const visibleColumns = publicationTableColumnOrder.filter((key) => current[key].visible)
-      const columnIndex = visibleColumns.indexOf(column)
-      const adjacentColumn = columnIndex >= 0 ? visibleColumns[columnIndex + 1] : undefined
-      if (!adjacentColumn) {
+      if (visibleColumns.length <= 1 || !visibleColumns.includes(column)) {
         return current
       }
-      const startWidth = Number(current[column].width || PUBLICATION_TABLE_COLUMN_DEFAULTS[column].width)
-      const adjacentStartWidth = Number(
-        current[adjacentColumn].width || PUBLICATION_TABLE_COLUMN_DEFAULTS[adjacentColumn].width,
-      )
-      const resized = clampPublicationTableAdjacentResize({
-        primaryStartWidth: startWidth,
-        adjacentStartWidth,
+      const startWidths = visibleColumns.reduce<Partial<Record<PublicationTableColumnKey, number>>>((accumulator, key) => {
+        accumulator[key] = Number(current[key].width || PUBLICATION_TABLE_COLUMN_DEFAULTS[key].width)
+        return accumulator
+      }, {})
+      const resized = clampPublicationTableDistributedResize({
+        column,
+        visibleColumns,
+        startWidths,
         deltaPx,
       })
-      if (resized.primaryWidth === startWidth && resized.adjacentWidth === adjacentStartWidth) {
+      let changed = false
+      const next = { ...current }
+      for (const key of visibleColumns) {
+        const nextWidth = Number(resized[key] ?? current[key].width)
+        if (nextWidth === current[key].width) {
+          continue
+        }
+        changed = true
+        next[key] = {
+          ...current[key],
+          width: nextWidth,
+        }
+      }
+      if (!changed) {
         return current
       }
-      return {
-        ...current,
-        [column]: {
-          ...current[column],
-          width: resized.primaryWidth,
-        },
-        [adjacentColumn]: {
-          ...current[adjacentColumn],
-          width: resized.adjacentWidth,
-        },
-      }
+      return next
     })
   }, [publicationTableColumnOrder])
 
@@ -3602,29 +3676,30 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
       if (!resizeState) {
         return
       }
-      const resized = clampPublicationTableAdjacentResize({
-        primaryStartWidth: resizeState.startWidth,
-        adjacentStartWidth: resizeState.adjacentStartWidth,
+      const resized = clampPublicationTableDistributedResize({
+        column: resizeState.column,
+        visibleColumns: resizeState.visibleColumns,
+        startWidths: resizeState.startWidths,
         deltaPx: event.clientX - resizeState.startX,
       })
       setPublicationTableColumns((current) => {
-        if (
-          current[resizeState.column].width === resized.primaryWidth &&
-          current[resizeState.adjacentColumn].width === resized.adjacentWidth
-        ) {
+        let changed = false
+        const next = { ...current }
+        for (const key of resizeState.visibleColumns) {
+          const nextWidth = Number(resized[key] ?? current[key].width)
+          if (nextWidth === current[key].width) {
+            continue
+          }
+          changed = true
+          next[key] = {
+            ...current[key],
+            width: nextWidth,
+          }
+        }
+        if (!changed) {
           return current
         }
-        return {
-          ...current,
-          [resizeState.column]: {
-            ...current[resizeState.column],
-            width: resized.primaryWidth,
-          },
-          [resizeState.adjacentColumn]: {
-            ...current[resizeState.adjacentColumn],
-            width: resized.adjacentWidth,
-          },
-        }
+        return next
       })
     }
     const stopResize = () => {
