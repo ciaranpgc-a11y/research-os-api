@@ -813,8 +813,16 @@ def _extract_structured_abstract_from_pubmed(
         key = _canonical_structured_section_key(raw_label or label) or "other"
         if raw_label:
             summary_parts.append(f"{raw_label}: {content}")
-        else:
+            sections.append({"key": key, "label": label, "content": content})
+            continue
+
+        inline_sections = _extract_inline_heading_sections(content)
+        if inline_sections:
             summary_parts.append(content)
+            sections.extend(inline_sections)
+            continue
+
+        summary_parts.append(content)
         sections.append({"key": key, "label": label, "content": content})
 
     if not summary_parts:
@@ -1680,35 +1688,63 @@ def _coerce_structured_sections(payload: dict[str, Any]) -> list[dict[str, str]]
     return result
 
 
+def _extract_inline_heading_sections(text: str | None) -> list[dict[str, str]]:
+    clean_text = _normalize_abstract_text(text)
+    if not clean_text:
+        return []
+
+    heading_pattern = re.compile(
+        r"(?i)\b("
+        r"background|introduction|aims?|objective|objectives|purpose|"
+        r"methods?|materials and methods|study design|design|"
+        r"results?|findings?|"
+        r"conclusion|conclusions|discussion|"
+        r"trial registration(?: number)?"
+        r")\s*:"
+    )
+    matches = list(heading_pattern.finditer(clean_text))
+    if not matches:
+        return []
+
+    sections: list[dict[str, str]] = []
+    leading_text = clean_text[: matches[0].start()].strip(" ;")
+    if leading_text and leading_text.lower() not in {"abstract", "abstract."}:
+        sections.append(
+            {
+                "key": "other",
+                "label": "Summary",
+                "content": leading_text,
+            }
+        )
+
+    for index, match in enumerate(matches):
+        raw_label = str(match.group(1) or "").strip()
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(clean_text)
+        content = clean_text[start:end].strip(" ;")
+        if not content:
+            continue
+        key = _canonical_structured_section_key(raw_label) or "other"
+        label = _normalize_heading_label(raw_label) or _structured_section_label(key)
+        sections.append({"key": key, "label": label, "content": content})
+    return sections
+
+
 def _fallback_structured_sections(abstract: str | None) -> tuple[str, list[dict[str, str]]]:
     text = _normalize_abstract_text(abstract)
     if not text:
         return "UNAVAILABLE", []
 
-    key_points = _extract_key_points_from_abstract(text)
-
-    def _is_stated(value: str | None) -> bool:
-        clean = _normalize_abstract_text(value)
-        return bool(clean) and clean.lower() != "not stated in abstract."
-
-    imrad_sections: list[dict[str, str]] = []
-    for key, source in [
-        ("introduction", key_points.get("objective")),
-        ("methods", key_points.get("methods")),
-        ("results", key_points.get("main_findings")),
-        ("conclusions", key_points.get("conclusion")),
-    ]:
-        if not _is_stated(source):
-            continue
-        imrad_sections.append(
-            {
-                "key": key,
-                "label": _structured_section_label(key),
-                "content": _normalize_abstract_text(source),
-            }
-        )
-    if len(imrad_sections) >= 2:
-        return "IMRAD", imrad_sections
+    heading_sections = _extract_inline_heading_sections(text)
+    if heading_sections:
+        heading_keys = {item.get("key") for item in heading_sections}
+        imrad_ready = {
+            "introduction",
+            "methods",
+            "results",
+            "conclusions",
+        }.issubset(heading_keys)
+        return ("IMRAD" if imrad_ready else "HEADING_BASED"), heading_sections
 
     sentences = _split_sentences(text)
     if not sentences:
@@ -1867,43 +1903,23 @@ def _build_structured_abstract_payload(
         )
 
     fallback_format, fallback_sections = _fallback_structured_sections(abstract)
-    fallback_payload = {
-        "format": fallback_format,
-        "sections": fallback_sections,
-        "source_abstract": abstract,
-        "metadata": {
-            "parser_version": parser_version,
-            "source_abstract_sha256": source_hash,
-            "generation_method": "fallback",
-            "generated_at": generated_at,
-        },
-    }
-
-    try:
-        format_value, sections, model_name = _generate_structured_abstract_with_model(
-            title=title,
-            journal=journal or "Not available",
-            year=year,
-            abstract=abstract,
-        )
-        return (
-            {
-                "format": format_value,
-                "sections": sections,
-                "source_abstract": abstract,
-                "metadata": {
-                    "parser_version": parser_version,
-                    "source_abstract_sha256": source_hash,
-                    "generation_method": "openai",
-                    "model_name": model_name,
-                    "generated_at": generated_at,
-                },
+    return (
+        {
+            "format": fallback_format,
+            "sections": fallback_sections,
+            "source_abstract": abstract,
+            "metadata": {
+                "parser_version": parser_version,
+                "source_abstract_sha256": source_hash,
+                "generation_method": "deterministic",
+                "generated_at": generated_at,
+                "title": title,
+                "journal": journal,
+                "year": year,
             },
-            model_name,
-        )
-    except Exception as exc:
-        fallback_payload["metadata"]["model_error"] = str(exc)[:400]
-        return fallback_payload, None
+        },
+        None,
+    )
 
 
 def _structured_abstract_view_payload(
