@@ -1385,37 +1385,33 @@ function ApprovedPublicationLibraryDrilldownSection() {
                     <div className="house-drilldown-heading-block">
                       <p className="house-drilldown-heading-block-title">Content</p>
                     </div>
-                    <div className="house-drilldown-content-block space-y-3">
-                      <div className="house-drilldown-heading-block">
-                        <p className="house-drilldown-heading-block-title">Display mode</p>
+                    <div className="house-drilldown-heading-block">
+                      <p className="house-drilldown-heading-block-title">Display mode</p>
+                    </div>
+                    <div className="house-drilldown-content-block">
+                      <div className="flex items-center gap-2">
+                        <button type="button" className="house-drilldown-action">Plain</button>
+                        <button type="button" className="house-drilldown-action">Highlighted</button>
                       </div>
-                      <div className="house-drilldown-content-block">
-                        <div className="flex items-center gap-2">
-                          <button type="button" className="house-drilldown-action">Plain</button>
-                          <button type="button" className="house-drilldown-action">Highlighted</button>
-                        </div>
+                    </div>
+                    <div className="house-drilldown-heading-block">
+                      <p className="house-drilldown-heading-block-title">Abstract</p>
+                    </div>
+                    <div className="house-drilldown-content-block">
+                      <div className="house-drilldown-stat-card">
+                        <p className="house-drilldown-note-soft">Abstract preview content appears here. Example: this publication explores novel methods in cardiovascular biomarker discovery across large cohorts using advanced imaging and longitudinal follow-up.</p>
                       </div>
-                      <div className="house-drilldown-divider-top" />
-                      <div className="house-drilldown-heading-block">
-                        <p className="house-drilldown-heading-block-title">Abstract</p>
-                      </div>
-                      <div className="house-drilldown-content-block">
-                        <div className="house-drilldown-stat-card">
-                          <p className="house-drilldown-note-soft">Abstract preview content appears here. Example: this publication explores novel methods in cardiovascular biomarker discovery across large cohorts using advanced imaging and longitudinal follow-up.</p>
-                        </div>
-                      </div>
-                      <div className="house-drilldown-divider-top" />
-                      <div className="house-drilldown-heading-block">
-                        <p className="house-drilldown-heading-block-title">Keywords</p>
-                      </div>
-                      <div className="house-drilldown-content-block">
-                        <div className="flex flex-wrap gap-1">
-                          {['Imaging', 'Cardiology', 'Biomarker', 'Cohort'].map((keyword) => (
-                            <span key={keyword} className="house-drilldown-chip">
-                              {keyword}
-                            </span>
-                          ))}
-                        </div>
+                    </div>
+                    <div className="house-drilldown-heading-block">
+                      <p className="house-drilldown-heading-block-title">Keywords</p>
+                    </div>
+                    <div className="house-drilldown-content-block">
+                      <div className="flex flex-wrap gap-1">
+                        {['Imaging', 'Cardiology', 'Biomarker', 'Cohort'].map((keyword) => (
+                          <span key={keyword} className="house-drilldown-chip">
+                            {keyword}
+                          </span>
+                        ))}
                       </div>
                     </div>
                   </>
@@ -1426,38 +1422,35 @@ function ApprovedPublicationLibraryDrilldownSection() {
                     <div className="house-drilldown-heading-block">
                       <p className="house-drilldown-heading-block-title">Impact</p>
                     </div>
-                    <div className="house-drilldown-content-block space-y-3">
-                      <div className="house-drilldown-heading-block">
-                        <p className="house-drilldown-heading-block-title">Citation snapshot</p>
-                      </div>
-                      <div className="house-drilldown-content-block">
-                        <div className="house-drilldown-summary-stats-grid">
-                          <div className="house-drilldown-stat-card">
-                            <p className="house-drilldown-overline">Total citations</p>
-                            <p className="house-drilldown-stat-value">182</p>
-                          </div>
-                          <div className="house-drilldown-stat-card">
-                            <p className="house-drilldown-overline">Citations (12m)</p>
-                            <p className="house-drilldown-stat-value">48</p>
-                          </div>
-                          <div className="house-drilldown-stat-card">
-                            <p className="house-drilldown-overline">YoY %</p>
-                            <p className="house-drilldown-stat-value">+18%</p>
-                          </div>
-                          <div className="house-drilldown-stat-card">
-                            <p className="house-drilldown-overline">Acceleration</p>
-                            <p className="house-drilldown-stat-value">+2 / month</p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="house-drilldown-divider-top" />
-                      <div className="house-drilldown-heading-block">
-                        <p className="house-drilldown-heading-block-title">Key citing papers</p>
-                      </div>
-                      <div className="house-drilldown-content-block">
+                    <div className="house-drilldown-heading-block">
+                      <p className="house-drilldown-heading-block-title">Citation snapshot</p>
+                    </div>
+                    <div className="house-drilldown-content-block">
+                      <div className="house-drilldown-summary-stats-grid">
                         <div className="house-drilldown-stat-card">
-                          <p className="house-drilldown-note-soft">2025 | Follow-up trial demonstrates translation into multicenter practice.</p>
+                          <p className="house-drilldown-overline">Total citations</p>
+                          <p className="house-drilldown-stat-value">182</p>
                         </div>
+                        <div className="house-drilldown-stat-card">
+                          <p className="house-drilldown-overline">Citations (12m)</p>
+                          <p className="house-drilldown-stat-value">48</p>
+                        </div>
+                        <div className="house-drilldown-stat-card">
+                          <p className="house-drilldown-overline">YoY %</p>
+                          <p className="house-drilldown-stat-value">+18%</p>
+                        </div>
+                        <div className="house-drilldown-stat-card">
+                          <p className="house-drilldown-overline">Acceleration</p>
+                          <p className="house-drilldown-stat-value">+2 / month</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="house-drilldown-heading-block">
+                      <p className="house-drilldown-heading-block-title">Key citing papers</p>
+                    </div>
+                    <div className="house-drilldown-content-block">
+                      <div className="house-drilldown-stat-card">
+                        <p className="house-drilldown-note-soft">2025 | Follow-up trial demonstrates translation into multicenter practice.</p>
                       </div>
                     </div>
                   </>
@@ -1468,11 +1461,15 @@ function ApprovedPublicationLibraryDrilldownSection() {
                     <div className="house-drilldown-heading-block">
                       <p className="house-drilldown-heading-block-title">Files</p>
                     </div>
-                    <div className="house-drilldown-content-block space-y-3">
+                    <div className="house-drilldown-content-block">
                       <div className="house-drilldown-stat-card">
                         <p className="house-drilldown-note-soft">No files linked to this publication.</p>
                       </div>
-                      <div className="house-drilldown-divider-top" />
+                    </div>
+                    <div className="house-drilldown-heading-block">
+                      <p className="house-drilldown-heading-block-title">Add files</p>
+                    </div>
+                    <div className="house-drilldown-content-block">
                       <div className="house-drilldown-file-drop">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <div>
@@ -1493,35 +1490,41 @@ function ApprovedPublicationLibraryDrilldownSection() {
                     <div className="house-drilldown-heading-block">
                       <p className="house-drilldown-heading-block-title">AI insights</p>
                     </div>
-                    <div className="house-drilldown-content-block space-y-3">
+                    <div className="house-drilldown-content-block">
                       <p className="house-banner house-banner-info text-micro">AI-generated draft insights. Verify against full text.</p>
+                    </div>
+                    <div className="house-drilldown-content-block">
                       <p className="house-drilldown-note-soft">Generating impact insights...</p>
-                      <div className="house-drilldown-divider-top" />
-                      <div className="house-drilldown-heading-block">
-                        <p className="house-drilldown-heading-block-title">Performance summary</p>
-                      </div>
+                    </div>
+                    <div className="house-drilldown-heading-block">
+                      <p className="house-drilldown-heading-block-title">Performance summary</p>
+                    </div>
+                    <div className="house-drilldown-content-block">
                       <div className="house-drilldown-stat-card">
                         <p className="house-drilldown-note">Topical relevance increased in the last 12 months.</p>
                       </div>
-                      <div className="house-drilldown-divider-top" />
-                      <div className="house-drilldown-heading-block">
-                        <p className="house-drilldown-heading-block-title">Trajectory</p>
-                      </div>
+                    </div>
+                    <div className="house-drilldown-heading-block">
+                      <p className="house-drilldown-heading-block-title">Trajectory</p>
+                    </div>
+                    <div className="house-drilldown-content-block">
                       <div className="house-drilldown-stat-card">
                         <p className="house-drilldown-stat-value">Growth sustaining</p>
                       </div>
-                      <div className="house-drilldown-divider-top" />
-                      <div className="house-drilldown-heading-block">
-                        <p className="house-drilldown-heading-block-title">Reuse suggestions</p>
-                      </div>
+                    </div>
+                    <div className="house-drilldown-heading-block">
+                      <p className="house-drilldown-heading-block-title">Reuse suggestions</p>
+                    </div>
+                    <div className="house-drilldown-content-block">
                       <div className="house-drilldown-stat-card space-y-1">
                         <p className="house-drilldown-note">- Add to translational methods section.</p>
                         <p className="house-drilldown-note">- Reference in biomarker validation summary.</p>
                       </div>
-                      <div className="house-drilldown-divider-top" />
-                      <div className="house-drilldown-heading-block">
-                        <p className="house-drilldown-heading-block-title">Caution flags</p>
-                      </div>
+                    </div>
+                    <div className="house-drilldown-heading-block">
+                      <p className="house-drilldown-heading-block-title">Caution flags</p>
+                    </div>
+                    <div className="house-drilldown-content-block">
                       <div className="house-drilldown-stat-card space-y-1">
                         <p className="house-drilldown-note-soft">No caution flags.</p>
                       </div>

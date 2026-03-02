@@ -5127,32 +5127,42 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                         </TabsContent>
 
                         <TabsContent value="content" className="mt-0" role="tabpanel" id="publication-drilldown-panel-content" aria-labelledby="publication-drilldown-tab-content">
-                          <div className="house-drilldown-content-block space-y-3">
+                          <>
                             {selectedDetail?.structured_abstract_status === 'RUNNING' ? (
-                              <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Structuring abstract...</p>
+                              <div className="house-drilldown-content-block">
+                                <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
+                                  <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Structuring abstract...</p>
+                                </div>
+                              </div>
                             ) : null}
                             {selectedDetail?.structured_abstract_status === 'FAILED' ? (
-                              <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS}>Structured abstract generation failed. Showing raw abstract.</p>
+                              <div className="house-drilldown-content-block">
+                                <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
+                                  <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS}>Structured abstract generation failed. Showing raw abstract.</p>
+                                </div>
+                              </div>
                             ) : null}
                             {selectedDetail?.structured_abstract_last_error ? (
-                              <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS}>{selectedDetail.structured_abstract_last_error}</p>
+                              <div className="house-drilldown-content-block">
+                                <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
+                                  <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS}>{selectedDetail.structured_abstract_last_error}</p>
+                                </div>
+                              </div>
                             ) : null}
                             {selectedDetail?.structured_abstract?.sections?.length ? (
-                              <div className="space-y-0">
-                                {selectedDetail.structured_abstract.sections.map((section, index) => (
-                                  <div key={`abstract-section-${section.key || index}`} className="space-y-2">
-                                    <div className="house-drilldown-heading-block">
-                                      <p className="house-drilldown-heading-block-title">{section.label || 'Summary'}</p>
+                              <>
+                                {selectedDetail.structured_abstract.sections.map((section, index) => ([
+                                  <div key={`abstract-section-heading-${section.key || index}`} className="house-drilldown-heading-block">
+                                    <p className="house-drilldown-heading-block-title">{section.label || 'Summary'}</p>
+                                  </div>,
+                                  <div key={`abstract-section-content-${section.key || index}`} className="house-drilldown-content-block">
+                                    <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
+                                      <p className="leading-relaxed">{section.content || 'Not available'}</p>
                                     </div>
-                                    <div className="house-drilldown-content-block">
-                                      <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
-                                        <p className="leading-relaxed">{section.content || 'Not available'}</p>
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
+                                  </div>,
+                                ]))}
                                 {abstractKeywordList.length > 0 ? (
-                                  <div className="space-y-2">
+                                  <>
                                     <div className="house-drilldown-heading-block">
                                       <p className="house-drilldown-heading-block-title">Keywords</p>
                                     </div>
@@ -5161,17 +5171,18 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                         <p className="leading-relaxed">{abstractKeywordList.join(', ')}</p>
                                       </div>
                                     </div>
-                                  </div>
+                                  </>
                                 ) : null}
-                              </div>
+                              </>
                             ) : effectiveDetailAbstract ? (
                               <div className="house-drilldown-content-block">
-                                <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full space-y-2">
+                                <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
                                   <p className="leading-relaxed">{abstractPreview}</p>
                                   {effectiveDetailAbstract.length > 700 ? (
                                     <button
                                       type="button"
                                       className={HOUSE_PUBLICATION_DRILLDOWN_LINK_CLASS}
+                                      style={{ marginTop: '0.5rem' }}
                                       onClick={onToggleAbstractExpanded}
                                     >
                                       {abstractExpanded ? 'Show less' : 'Show more'}
@@ -5180,7 +5191,7 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                 </div>
                               </div>
                             ) : abstractKeywordList.length > 0 ? (
-                              <div className="space-y-2">
+                              <>
                                 <div className="house-drilldown-heading-block">
                                   <p className="house-drilldown-heading-block-title">Keywords</p>
                                 </div>
@@ -5189,38 +5200,53 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                                     <p className="leading-relaxed">{abstractKeywordList.join(', ')}</p>
                                   </div>
                                 </div>
-                              </div>
+                              </>
                             ) : (
-                              <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>No abstract available.</p>
+                              <div className="house-drilldown-content-block">
+                                <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
+                                  <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>No abstract available.</p>
+                                </div>
+                              </div>
                             )}
-                          </div>
+                          </>
                         </TabsContent>
 
                         <TabsContent value="impact" className="mt-0" role="tabpanel" id="publication-drilldown-panel-impact" aria-labelledby="publication-drilldown-tab-impact">
                           <div className="house-drilldown-heading-block">
                             <p className="house-drilldown-heading-block-title">Impact</p>
                           </div>
-                          <div className="house-drilldown-content-block space-y-3">
-                          {selectedImpactResponse?.status === 'RUNNING' ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Computing impact insights...</p> : null}
-                          {selectedImpactResponse?.status === 'FAILED' ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS}>Last impact update failed. Showing cached data.</p> : null}
-                            <div className="house-drilldown-heading-block">
-                              <p className="house-drilldown-heading-block-title">Citation snapshot</p>
+                          {selectedImpactResponse?.status === 'RUNNING' ? (
+                            <div className="house-drilldown-content-block">
+                              <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                                <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Computing impact insights...</p>
+                              </div>
                             </div>
+                          ) : null}
+                          {selectedImpactResponse?.status === 'FAILED' ? (
+                            <div className="house-drilldown-content-block">
+                              <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                                <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS}>Last impact update failed. Showing cached data.</p>
+                              </div>
+                            </div>
+                          ) : null}
+                          <div className="house-drilldown-heading-block">
+                            <p className="house-drilldown-heading-block-title">Citation snapshot</p>
+                          </div>
                           <div className="house-drilldown-content-block">
                             <div className="house-drilldown-summary-stats-grid">
-                            <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}><p className="house-drilldown-overline">Total citations</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_total ?? detailCitations}</p></div>
-                            <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}><p className="house-drilldown-overline">Citations (12m)</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_last_12m ?? 0}</p></div>
-                            <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}><p className="house-drilldown-overline">YoY %</p><p className={`font-semibold ${growthToneClass(selectedImpactResponse?.payload?.yoy_pct ?? null)}`}>{formatSignedPercent(selectedImpactResponse?.payload?.yoy_pct ?? null)}</p></div>
-                            <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}><p className="house-drilldown-overline">Acceleration</p><p className="font-semibold">{selectedImpactResponse?.payload?.acceleration_citations_per_month ?? 0}/month</p></div>
+                              <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}><p className="house-drilldown-overline">Total citations</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_total ?? detailCitations}</p></div>
+                              <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}><p className="house-drilldown-overline">Citations (12m)</p><p className="font-semibold">{selectedImpactResponse?.payload?.citations_last_12m ?? 0}</p></div>
+                              <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}><p className="house-drilldown-overline">YoY %</p><p className={`font-semibold ${growthToneClass(selectedImpactResponse?.payload?.yoy_pct ?? null)}`}>{formatSignedPercent(selectedImpactResponse?.payload?.yoy_pct ?? null)}</p></div>
+                              <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}><p className="house-drilldown-overline">Acceleration</p><p className="font-semibold">{selectedImpactResponse?.payload?.acceleration_citations_per_month ?? 0}/month</p></div>
                             </div>
                           </div>
-                          <div className={HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS} />
                           <div className="house-drilldown-heading-block">
                             <p className="house-drilldown-heading-block-title">Key citing papers</p>
                           </div>
-                          <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
-                            {(selectedImpactResponse?.payload?.key_citing_papers || []).length === 0 ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Not available from source.</p> : (selectedImpactResponse?.payload?.key_citing_papers || []).slice(0, 5).map((paper, index) => <p key={`${paper.title}-${index}`}>{paper.year ?? 'n/a'} | {paper.title}</p>)}
-                          </div>
+                          <div className="house-drilldown-content-block">
+                            <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                              {(selectedImpactResponse?.payload?.key_citing_papers || []).length === 0 ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Not available from source.</p> : (selectedImpactResponse?.payload?.key_citing_papers || []).slice(0, 5).map((paper, index) => <p key={`${paper.title}-${index}`}>{paper.year ?? 'n/a'} | {paper.title}</p>)}
+                            </div>
                           </div>
                         </TabsContent>
 
@@ -5228,37 +5254,41 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           <div className="house-drilldown-heading-block">
                             <p className="house-drilldown-heading-block-title">Files</p>
                           </div>
-                          <div className="house-drilldown-content-block space-y-3">
-                          {selectedFiles.length === 0 ? (
-                            <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS}`}>
-                              <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>No files linked to this publication.</p>
-                            </div>
-                          ) : (
-                            <div className="space-y-3">
-                              {selectedFiles.map((file) => {
-                                const fileLabel = 'OA Manuscript Download'
-                                const sourceLabel = file.source === 'OA_LINK' ? 'OA link' : 'Uploaded'
-                                return (
-                                  <div key={file.id} className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS} space-y-2`}>
-                                    <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>{fileLabel}</p>
-                                    <p className={`truncate ${HOUSE_PUBLICATION_TEXT_CLASS}`} title={file.file_name}>{file.file_name}</p>
-                                    <p className={HOUSE_PUBLICATION_DRILLDOWN_CAPTION_CLASS}>{file.file_type} | {sourceLabel} | {formatShortDate(file.created_at)}</p>
-                                    <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${HOUSE_PUBLICATION_DRILLDOWN_ACTION_CLASS}`}>
-                                      {file.source === 'OA_LINK' && file.download_url ? (
-                                        <Button type="button" size="sm" variant="primary" asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
-                                      ) : (
-                                        <Button type="button" size="sm" variant="primary" disabled={downloadingFileId === file.id} onClick={() => void onDownloadPublicationFile(file.id, file.file_name)}>{downloadingFileId === file.id ? 'Downloading...' : 'Download'}</Button>
-                                      )}
-                                      <Button type="button" size="sm" variant="secondary" onClick={() => onSharePublicationFileEmail(file)}>Share (email)</Button>
-                                      <Button type="button" size="sm" variant="secondary" onClick={() => onSharePublicationFileWithUser(file)}>Share with user</Button>
-                                      <Button type="button" size="sm" variant="secondary" className="ml-auto" disabled={deletingFileId === file.id} onClick={() => void onDeletePublicationFile(file.id)}>{deletingFileId === file.id ? 'Deleting...' : 'Delete'}</Button>
+                          <div className="house-drilldown-content-block">
+                            {selectedFiles.length === 0 ? (
+                              <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS}`}>
+                                <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>No files linked to this publication.</p>
+                              </div>
+                            ) : (
+                              <div className="space-y-3">
+                                {selectedFiles.map((file) => {
+                                  const fileLabel = 'OA Manuscript Download'
+                                  const sourceLabel = file.source === 'OA_LINK' ? 'OA link' : 'Uploaded'
+                                  return (
+                                    <div key={file.id} className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} ${HOUSE_PUBLICATION_DRILLDOWN_TRANSITION_CLASS} space-y-2`}>
+                                      <p className={HOUSE_PUBLICATION_DRILLDOWN_STAT_TITLE_CLASS}>{fileLabel}</p>
+                                      <p className={`truncate ${HOUSE_PUBLICATION_TEXT_CLASS}`} title={file.file_name}>{file.file_name}</p>
+                                      <p className={HOUSE_PUBLICATION_DRILLDOWN_CAPTION_CLASS}>{file.file_type} | {sourceLabel} | {formatShortDate(file.created_at)}</p>
+                                      <div className={`mt-1 flex flex-wrap items-center gap-1.5 ${HOUSE_PUBLICATION_DRILLDOWN_ACTION_CLASS}`}>
+                                        {file.source === 'OA_LINK' && file.download_url ? (
+                                          <Button type="button" size="sm" variant="primary" asChild><a href={file.download_url} target="_blank" rel="noreferrer">Open</a></Button>
+                                        ) : (
+                                          <Button type="button" size="sm" variant="primary" disabled={downloadingFileId === file.id} onClick={() => void onDownloadPublicationFile(file.id, file.file_name)}>{downloadingFileId === file.id ? 'Downloading...' : 'Download'}</Button>
+                                        )}
+                                        <Button type="button" size="sm" variant="secondary" onClick={() => onSharePublicationFileEmail(file)}>Share (email)</Button>
+                                        <Button type="button" size="sm" variant="secondary" onClick={() => onSharePublicationFileWithUser(file)}>Share with user</Button>
+                                        <Button type="button" size="sm" variant="secondary" className="ml-auto" disabled={deletingFileId === file.id} onClick={() => void onDeletePublicationFile(file.id)}>{deletingFileId === file.id ? 'Deleting...' : 'Delete'}</Button>
+                                      </div>
                                     </div>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          )}
-                          <div data-house-role="files-tab-divider" className={HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS} />
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                          <div className="house-drilldown-heading-block">
+                            <p className="house-drilldown-heading-block-title">Add files</p>
+                          </div>
+                          <div className="house-drilldown-content-block">
                           <div
                             className={cn(
                               HOUSE_PUBLICATION_DRILLDOWN_FILE_DROP_CLASS,
@@ -5294,38 +5324,54 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
                           <div className="house-drilldown-heading-block">
                             <p className="house-drilldown-heading-block-title">AI insights</p>
                           </div>
-                          <div className="house-drilldown-content-block space-y-3">
-                          <p className={`${HOUSE_BANNER_CLASS} text-micro`}>AI-generated draft insights. Verify against full text.</p>
-                          {selectedAiResponse?.status === 'RUNNING' ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Generating insights...</p> : null}
-                          {selectedAiResponse?.status === 'FAILED' ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS}>Last AI update failed. Showing cached data.</p> : null}
-                            <div className={HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS} />
-                            <div className="house-drilldown-heading-block">
-                              <p className="house-drilldown-heading-block-title">Performance summary</p>
-                            </div>
-                          <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
-                            <p className="leading-relaxed">{selectedAiResponse?.payload?.performance_summary || 'Not available'}</p>
+                          <div className="house-drilldown-content-block">
+                            <p className={`${HOUSE_BANNER_CLASS} text-micro`}>AI-generated draft insights. Verify against full text.</p>
                           </div>
-                            <div className={HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS} />
-                            <div className="house-drilldown-heading-block">
-                              <p className="house-drilldown-heading-block-title">Trajectory</p>
+                          {selectedAiResponse?.status === 'RUNNING' ? (
+                            <div className="house-drilldown-content-block">
+                              <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                                <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Generating insights...</p>
+                              </div>
                             </div>
-                          <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
-                            <p className="font-medium">{(selectedAiResponse?.payload?.trajectory_classification || 'UNKNOWN').replace(/_/g, ' ')}</p>
-                          </div>
-                            <div className={HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS} />
-                            <div className="house-drilldown-heading-block">
-                              <p className="house-drilldown-heading-block-title">Reuse suggestions</p>
+                          ) : null}
+                          {selectedAiResponse?.status === 'FAILED' ? (
+                            <div className="house-drilldown-content-block">
+                              <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                                <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_WARNING_CLASS}>Last AI update failed. Showing cached data.</p>
+                              </div>
                             </div>
-                          <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} space-y-1`}>
-                            {(selectedAiResponse?.payload?.reuse_suggestions || []).length === 0 ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>No suggestions yet.</p> : (selectedAiResponse?.payload?.reuse_suggestions || []).map((item, index) => <p key={`${item}-${index}`}>- {item}</p>)}
+                          ) : null}
+                          <div className="house-drilldown-heading-block">
+                            <p className="house-drilldown-heading-block-title">Performance summary</p>
                           </div>
-                            <div className={HOUSE_PUBLICATION_DRILLDOWN_DIVIDER_TOP_CLASS} />
-                            <div className="house-drilldown-heading-block">
-                              <p className="house-drilldown-heading-block-title">Caution flags</p>
+                          <div className="house-drilldown-content-block">
+                            <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                              <p className="leading-relaxed">{selectedAiResponse?.payload?.performance_summary || 'Not available'}</p>
                             </div>
-                          <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} space-y-1`}>
-                            {(selectedAiResponse?.payload?.caution_flags || []).length === 0 ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>No caution flags.</p> : (selectedAiResponse?.payload?.caution_flags || []).map((item, index) => <p key={`${item}-${index}`}>- {item}</p>)}
                           </div>
+                          <div className="house-drilldown-heading-block">
+                            <p className="house-drilldown-heading-block-title">Trajectory</p>
+                          </div>
+                          <div className="house-drilldown-content-block">
+                            <div className={HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS}>
+                              <p className="font-medium">{(selectedAiResponse?.payload?.trajectory_classification || 'UNKNOWN').replace(/_/g, ' ')}</p>
+                            </div>
+                          </div>
+                          <div className="house-drilldown-heading-block">
+                            <p className="house-drilldown-heading-block-title">Reuse suggestions</p>
+                          </div>
+                          <div className="house-drilldown-content-block">
+                            <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} space-y-1`}>
+                              {(selectedAiResponse?.payload?.reuse_suggestions || []).length === 0 ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>No suggestions yet.</p> : (selectedAiResponse?.payload?.reuse_suggestions || []).map((item, index) => <p key={`${item}-${index}`}>- {item}</p>)}
+                            </div>
+                          </div>
+                          <div className="house-drilldown-heading-block">
+                            <p className="house-drilldown-heading-block-title">Caution flags</p>
+                          </div>
+                          <div className="house-drilldown-content-block">
+                            <div className={`${HOUSE_PUBLICATION_DRILLDOWN_STAT_CARD_CLASS} space-y-1`}>
+                              {(selectedAiResponse?.payload?.caution_flags || []).length === 0 ? <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>No caution flags.</p> : (selectedAiResponse?.payload?.caution_flags || []).map((item, index) => <p key={`${item}-${index}`}>- {item}</p>)}
+                            </div>
                           </div>
                         </TabsContent>
                         </div>
