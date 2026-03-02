@@ -1468,8 +1468,8 @@ function ApprovedPublicationLibraryDrilldownSection() {
                           <p className="house-drilldown-note break-all">biomarker-cohort-imaging-manuscript.pdf</p>
                           <p className="house-drilldown-caption">PDF | OA link | 14 Mar 2026</p>
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            <button type="button" className="house-drilldown-action">Open</button>
-                            <button type="button" className="house-drilldown-action ml-auto">Delete</button>
+                            <button type="button" className="house-drilldown-action approved-profile-hover-action approved-button-standard">Open</button>
+                            <button type="button" className="house-drilldown-action approved-profile-hover-action approved-button-negative ml-auto">Delete</button>
                           </div>
                         </div>
                       </div>
@@ -1485,7 +1485,7 @@ function ApprovedPublicationLibraryDrilldownSection() {
                             <p className="house-drilldown-note-soft">Drag and drop files here, or use upload.</p>
                           </div>
                           <div className="flex items-start">
-                            <button type="button" className="house-drilldown-action">Upload file</button>
+                            <button type="button" className="house-drilldown-action approved-profile-hover-action approved-button-major">Upload file</button>
                           </div>
                         </div>
                       </div>
@@ -1554,16 +1554,68 @@ function ApprovedButtonsSection() {
       <div className="rounded-lg border border-neutral-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-2 border-b border-neutral-200">
           <p className="text-sm font-semibold text-neutral-900">Approved Buttons</p>
-          <p className="text-xs text-neutral-600">Canonical publication action buttons for tokenized styling.</p>
+          <p className="text-xs text-neutral-600">Canonical publication button variants: Standard, Negative, and Major.</p>
         </div>
         <div className="p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" className="house-drilldown-action">Open</button>
-            <button type="button" className="house-drilldown-action">Delete</button>
-            <button type="button" className="house-drilldown-action">Upload file</button>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-[0.06em] text-neutral-600">Standard button</p>
+              <button type="button" className="house-drilldown-action approved-profile-hover-action approved-button-standard">Open</button>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-[0.06em] text-neutral-600">Negative button</p>
+              <button type="button" className="house-drilldown-action approved-profile-hover-action approved-button-negative">Delete</button>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-[0.06em] text-neutral-600">Major button</p>
+              <button type="button" className="house-drilldown-action approved-profile-hover-action approved-button-major">Upload file</button>
+            </div>
           </div>
         </div>
       </div>
+      <style>{`
+        .approved-profile-hover-action {
+          border-color: hsl(0 0% 0%);
+        }
+
+        .approved-profile-hover-action:hover,
+        .approved-profile-hover-action:focus-visible {
+          border-color: hsl(0 0% 0%);
+        }
+
+        .approved-button-standard {
+          background-color: transparent;
+          color: hsl(var(--tone-neutral-700));
+        }
+
+        .approved-button-standard:hover,
+        .approved-button-standard:focus-visible {
+          background-color: var(--top-nav-hover-bg-profile);
+          color: hsl(var(--tone-neutral-700));
+        }
+
+        .approved-button-negative {
+          background-color: transparent;
+          color: hsl(var(--tone-danger-700));
+        }
+
+        .approved-button-negative:hover,
+        .approved-button-negative:focus-visible {
+          background-color: hsl(var(--tone-danger-100));
+          color: hsl(var(--tone-danger-700));
+        }
+
+        .approved-button-major {
+          background-color: hsl(var(--section-style-profile-accent) / 0.92);
+          color: hsl(var(--tone-neutral-50));
+        }
+
+        .approved-button-major:hover,
+        .approved-button-major:focus-visible {
+          background-color: hsl(var(--section-style-profile-accent));
+          color: hsl(var(--tone-neutral-50));
+        }
+      `}</style>
     </section>
   )
 }
@@ -4616,6 +4668,20 @@ function ProviderIconSection() {
   )
 }
 
+function ApprovedIconsSection() {
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-white shadow-sm">
+      <div className="px-4 py-2 border-b border-neutral-200">
+        <p className="text-sm font-semibold text-neutral-900">Approved Icons</p>
+        <p className="text-xs text-neutral-600">Canonical icon definitions for reuse in future approved stories.</p>
+      </div>
+      <div className="p-4">
+        <ProviderIconSection />
+      </div>
+    </div>
+  )
+}
+
 function ApprovedPage() {
   return (
     <div className="min-h-screen bg-white">
@@ -4635,6 +4701,7 @@ function ApprovedPage() {
             <a href="#tiles-toggles" className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-800">4. Tiles</a>
             <a href="#animation-specs" className="rounded border border-rose-200 bg-rose-50 px-2 py-1 font-semibold text-rose-800">5. Animation</a>
             <a href="#nav-shells" className="rounded border border-slate-200 bg-slate-50 px-2 py-1 font-semibold text-slate-800">6. Nav shells</a>
+            <a href="#buttons-icons" className="rounded border border-violet-200 bg-violet-50 px-2 py-1 font-semibold text-violet-800">7. Buttons and icons</a>
           </div>
         </section>
 
@@ -4654,15 +4721,6 @@ function ApprovedPage() {
             </div>
           </details>
           <AuthPagePanel />
-          <div className="rounded-lg border border-neutral-200 bg-white shadow-sm">
-            <div className="px-4 py-2 border-b border-neutral-200">
-              <p className="text-sm font-semibold text-neutral-900">Approved Icons</p>
-              <p className="text-xs text-neutral-600">Canonical icon definitions for reuse in future approved stories.</p>
-            </div>
-            <div className="p-4">
-              <ProviderIconSection />
-            </div>
-          </div>
         </section>
 
         <section id="interactions" className="scroll-mt-24 space-y-4">
@@ -4670,7 +4728,6 @@ function ApprovedPage() {
             <h2 className="text-2xl font-bold tracking-tight text-neutral-900">2. Interaction patterns</h2>
             <p className="mt-1 text-sm text-neutral-600">Toolbars, insight controls, tooltips, and notification surfaces for consistent behavior.</p>
           </div>
-          <ApprovedButtonsSection />
           <ApprovedMetricsToolbarSection />
           <ApprovedInsightsControlSection />
           <ApprovedDefaultPublicationTableSection />
@@ -4725,6 +4782,15 @@ function ApprovedPage() {
             <p className="mt-1 text-sm text-neutral-600">Left-panel canonical shells across workspace, inbox, and profile.</p>
           </div>
           <ApprovedLeftPanel />
+        </section>
+
+        <section id="buttons-icons" className="scroll-mt-24 space-y-4">
+          <div className="rounded-lg border border-violet-200 border-l-4 border-l-violet-500 bg-violet-50 p-4">
+            <h2 className="text-2xl font-bold tracking-tight text-neutral-900">7. Buttons and icons</h2>
+            <p className="mt-1 text-sm text-neutral-600">Canonical button and icon references used by approved interaction surfaces.</p>
+          </div>
+          <ApprovedButtonsSection />
+          <ApprovedIconsSection />
         </section>
       </div>
     </div>

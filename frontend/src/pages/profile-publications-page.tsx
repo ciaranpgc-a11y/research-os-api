@@ -5309,13 +5309,6 @@ export function ProfilePublicationsPage({ fixture }: ProfilePublicationsPageProp
 
                         <TabsContent value="content" className="mt-0" role="tabpanel" id="publication-drilldown-panel-content" aria-labelledby="publication-drilldown-tab-content">
                           <>
-                            {selectedDetail?.structured_abstract_status === 'RUNNING' ? (
-                              <div className="house-drilldown-content-block">
-                                <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">
-                                  <p className={HOUSE_PUBLICATION_DRILLDOWN_NOTE_SOFT_CLASS}>Structuring abstract...</p>
-                                </div>
-                              </div>
-                            ) : null}
                             {selectedDetail?.structured_abstract_status === 'FAILED' ? (
                               <div className="house-drilldown-content-block">
                                 <div className="house-drilldown-summary-stat-card house-drilldown-abstract-metric-card w-full">

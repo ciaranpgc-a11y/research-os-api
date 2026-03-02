@@ -2420,11 +2420,15 @@ def _enqueue_structured_abstract_if_needed(
                 force or not payload or hash_changed or version_changed
             )
             if should_enqueue and status != RUNNING_STATUS:
-                row.status = RUNNING_STATUS
                 row.last_error = None
                 row.updated_at = now
-                row.source_abstract_sha256 = abstract_seed_hash
-                row.parser_version = parser_version
+                if payload:
+                    # Keep existing structured payload visible while refresh runs in background.
+                    row.status = READY_STATUS
+                else:
+                    row.status = RUNNING_STATUS
+                    row.source_abstract_sha256 = abstract_seed_hash
+                    row.parser_version = parser_version
                 session.flush()
             elif not has_source_seed:
                 row.payload_json = _empty_structured_abstract_payload()
